@@ -110,12 +110,14 @@ fn surface_config_rejects_each_missing_hard_capability() {
 
     let mut no_copy = compatible_caps();
     no_copy.usages = TextureUsages::RENDER_ATTACHMENT;
-    assert!(matches!(
-        build_surface_config(&no_copy, UVec2::splat(100), Vsync::On),
-        Err(SurfaceError::MissingUsages {
-            required,
-            supported,
-        }) if required == REQUIRED_SURFACE_USAGES
-            && supported == TextureUsages::RENDER_ATTACHMENT
-    ));
+    let unmet = build_surface_config(&no_copy, UVec2::splat(100), Vsync::On).unwrap_err();
+    let SurfaceError::MissingUsages { missing } = &unmet else {
+        panic!("{unmet:?}");
+    };
+    // The surface offers the attachment usage and not the copy, so the report
+    // must name the one it lacks and not the one it has.
+    assert!(
+        missing.contains("COPY_DST") && !missing.contains("RENDER_ATTACHMENT"),
+        "{missing}"
+    );
 }

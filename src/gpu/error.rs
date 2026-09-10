@@ -3,6 +3,37 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+/// Whatever the graphics driver reported, kept whole but not named.
+///
+/// A driver failure is worth printing and worth chaining, and worth nothing
+/// else: a caller cannot act on the difference between one adapter refusal and
+/// another. Holding it behind this is what lets [`GpuRequestError`] and
+/// [`SurfaceError`] carry the cause without putting a graphics-API type in
+/// Palantir's published surface.
+#[derive(Debug)]
+pub struct DriverError(Box<dyn Error + Send + Sync + 'static>);
+
+impl DriverError {
+    pub(crate) fn new(source: impl Error + Send + Sync + 'static) -> Self {
+        Self(Box::new(source))
+    }
+}
+
+impl Display for DriverError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl Error for DriverError {
+    /// The driver error's own cause, skipping the driver error itself: its
+    /// words are already interpolated by whichever variant holds this, so
+    /// chaining it would print the same sentence twice.
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.0.source()
+    }
+}
+
 /// A device or adapter cannot run Palantir's pipelines.
 ///
 /// Raised against an adapter while
@@ -12,14 +43,13 @@ use std::fmt::{Display, Formatter};
 pub enum UnmetRequirements {
     /// A feature Palantir cannot run without is absent.
     Features {
-        /// What Palantir needs.
-        required: wgpu::Features,
-        /// What the device offers.
-        available: wgpu::Features,
+        /// The features Palantir needs and the device does not have, in the
+        /// graphics API's own words.
+        missing: String,
     },
     /// A limit Palantir needs raised sits below the floor.
     Limit {
-        /// The `wgpu::Limits` field, by its own name.
+        /// The device-limit field, by its name in the graphics API.
         name: &'static str,
         /// The floor Palantir needs.
         required: u64,
@@ -31,13 +61,9 @@ pub enum UnmetRequirements {
 impl Display for UnmetRequirements {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Features {
-                required,
-                available,
-            } => write!(
+            Self::Features { missing } => write!(
                 f,
-                "graphics device is missing {:?}, which Palantir requires (it has {available:?})",
-                *required - *available
+                "graphics device is missing {missing}, which Palantir requires"
             ),
             Self::Limit {
                 name,
@@ -67,8 +93,8 @@ pub enum GpuRequestError {
     NoBackend,
     /// No graphics adapter matched the requested power policy.
     RequestAdapter {
-        /// What wgpu reported.
-        source: wgpu::RequestAdapterError,
+        /// What the driver reported.
+        source: DriverError,
     },
     /// The adapter that answered cannot run Palantir's pipelines.
     Requirements {
@@ -77,8 +103,8 @@ pub enum GpuRequestError {
     },
     /// The adapter could not create the logical device.
     RequestDevice {
-        /// What wgpu reported.
-        source: wgpu::RequestDeviceError,
+        /// What the driver reported.
+        source: DriverError,
     },
 }
 
@@ -121,8 +147,8 @@ impl Error for GpuRequestError {
 pub enum SurfaceError {
     /// The platform could not create a presentation surface for the window.
     Create {
-        /// What the graphics driver reported.
-        source: wgpu::CreateSurfaceError,
+        /// What the driver reported.
+        source: DriverError,
     },
     /// Opening the device for this surface failed.
     Device {
@@ -135,10 +161,9 @@ pub enum SurfaceError {
     MissingSrgb,
     /// The surface lacks texture usages Palantir's compositor needs.
     MissingUsages {
-        /// What the compositor needs.
-        required: wgpu::TextureUsages,
-        /// What the surface offers.
-        supported: wgpu::TextureUsages,
+        /// The usages the compositor needs and the surface does not offer, in
+        /// the graphics API's own words.
+        missing: String,
     },
 }
 
@@ -150,12 +175,6 @@ impl From<GpuRequestError> for SurfaceError {
 }
 
 #[cfg(feature = "winit")]
-impl From<wgpu::CreateSurfaceError> for SurfaceError {
-    fn from(source: wgpu::CreateSurfaceError) -> Self {
-        Self::Create { source }
-    }
-}
-
 #[cfg(feature = "winit")]
 impl Display for SurfaceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -166,13 +185,9 @@ impl Display for SurfaceError {
                 f.write_str("graphics adapter cannot present to the window surface")
             }
             Self::MissingSrgb => f.write_str("window surface has no sRGB format and color space"),
-            Self::MissingUsages {
-                required,
-                supported,
-            } => write!(
+            Self::MissingUsages { missing } => write!(
                 f,
-                "window surface lacks required texture usages \
-                 (required: {required:?}, supported: {supported:?})"
+                "window surface cannot do {missing}, which Palantir's compositor needs"
             ),
         }
     }
@@ -189,5 +204,42 @@ impl Error for SurfaceError {
             Self::Device { source } => source.source(),
             Self::Incompatible | Self::MissingSrgb | Self::MissingUsages { .. } => None,
         }
+    }
+}
+
+/// The set flags of a graphics-API bitfield, by their own names.
+///
+/// `Debug` on one of those prints the wrapper type and its unset halves —
+/// `Features { features_wgpu: FeaturesWGPU(0x0), features_webgpu:
+/// FeaturesWebGPU(IMMEDIATES) }` — which is not a sentence to put in front of
+/// somebody whose window failed to open. The names alone are.
+///
+/// Takes the iterator rather than the bitfield, because the two callers pass
+/// two unrelated graphics-API types and neither crate's flag trait is a
+/// dependency here.
+pub(crate) fn flag_names<T>(names: impl Iterator<Item = (&'static str, T)>) -> String {
+    names.map(|(name, _)| name).collect::<Vec<_>>().join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The message a person reads when a window will not open. `Debug` on one
+    /// of these bitfields prints the wrapper and its unset halves, so the
+    /// names have to be pulled out by hand.
+    #[test]
+    fn flag_names_reports_the_names_alone() {
+        let missing = flag_names(wgpu::Features::IMMEDIATES.iter_names());
+        assert_eq!(missing, "IMMEDIATES");
+
+        let usages = wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC;
+        assert_eq!(flag_names(usages.iter_names()), "COPY_SRC, COPY_DST");
+
+        assert_eq!(
+            flag_names(wgpu::TextureUsages::empty().iter_names()),
+            "",
+            "nothing missing reads as nothing, not as a bare wrapper"
+        );
     }
 }

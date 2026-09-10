@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use pollster::FutureExt;
 
 use crate::gpu::device_requirements::DeviceRequirements;
-use crate::gpu::error::{GpuRequestError, UnmetRequirements};
+use crate::gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 use crate::gpu::power_preference::PowerPreference;
 
 /// A graphics device and its queue, as Palantir holds them.
@@ -157,7 +157,9 @@ impl GpuRequest<'_> {
                 apply_limit_buckets: false,
             })
             .block_on()
-            .map_err(|source| GpuRequestError::RequestAdapter { source })?;
+            .map_err(|source| GpuRequestError::RequestAdapter {
+                source: DriverError::new(source),
+            })?;
 
         // Which physical GPU and backend won the `power_preference` sort is
         // the single most load-bearing fact about a session's frame times, and
@@ -193,7 +195,9 @@ impl GpuRequest<'_> {
                 trace: wgpu::Trace::Off,
             })
             .block_on()
-            .map_err(|source| GpuRequestError::RequestDevice { source })?;
+            .map_err(|source| GpuRequestError::RequestDevice {
+                source: DriverError::new(source),
+            })?;
 
         Ok(RequestedGpu {
             adapter,
