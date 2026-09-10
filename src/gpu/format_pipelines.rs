@@ -7,10 +7,11 @@
 //! target's format; pulling them out here lets a single set of resources
 //! drive any number of formats — a window on an sRGB output and one on an
 //! HDR output share every atlas and buffer, differing only in which
-//! `FormatPipelines` their draws bind. Built eagerly (both the base and
-//! the stencil-test twin of each kind) so the set is complete the moment
-//! it exists.
+//! `FormatPipelines` their draws bind. Built eagerly — every kind, and the
+//! stencil-test twin of the kinds that have one — so the set is complete the
+//! moment it exists.
 
+use crate::gpu::blit_pipeline::BlitPipeline;
 use crate::gpu::curve_pipeline::CurvePipeline;
 use crate::gpu::image_pipeline::ImagePipeline;
 use crate::gpu::mesh_pipeline::MeshPipeline;
@@ -32,6 +33,10 @@ pub(super) struct FormatPipelines {
     /// group-0 layout, so they are one pipeline pair binding whichever
     /// atlas the step names. See [`RasterProgram`].
     pub(super) raster: StencilVariant,
+    /// Presents the retained backbuffer onto a target that cannot be copied
+    /// into. One pipeline, no stencil twin: it runs in a pass of its own,
+    /// after every clipped draw.
+    pub(super) blit: wgpu::RenderPipeline,
 }
 
 /// The format-independent resource structs [`FormatPipelines::new`] reads shaders
@@ -49,6 +54,7 @@ pub(super) struct PipelineSources<'a> {
     pub(super) image: &'a ImagePipeline,
     pub(super) curve: &'a CurvePipeline,
     pub(super) raster: &'a RasterProgram,
+    pub(super) blit: &'a BlitPipeline,
 }
 
 impl FormatPipelines {
@@ -65,6 +71,7 @@ impl FormatPipelines {
             image,
             curve,
             raster,
+            blit,
         } = sources;
         Self {
             quad: quad.build_variants(device, gradient_bgl, format),
@@ -72,6 +79,7 @@ impl FormatPipelines {
             image: image.build_variants(device, image_bgl, format),
             curve: curve.build_variants(device, gradient_bgl, format),
             raster: raster.build_variants(device, format),
+            blit: blit.build(device, format, image_bgl),
         }
     }
 }

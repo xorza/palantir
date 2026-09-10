@@ -51,7 +51,7 @@ fn compatible_caps() -> SurfaceCapabilities {
         }],
         present_modes: vec![wgpu::PresentMode::Fifo],
         alpha_modes: vec![CompositeAlphaMode::Opaque],
-        usages: REQUIRED_SURFACE_USAGES,
+        usages: REQUIRED_SURFACE_USAGES | OPTIONAL_SURFACE_USAGES,
     }
 }
 
@@ -65,7 +65,11 @@ fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
 
     let config = build_surface_config(&compatible_caps(), size, Vsync::Off).unwrap();
 
-    assert_eq!(config.usage, REQUIRED_SURFACE_USAGES);
+    assert_eq!(
+        config.usage,
+        REQUIRED_SURFACE_USAGES | OPTIONAL_SURFACE_USAGES,
+        "a surface that offers the copy is configured with it"
+    );
     assert_eq!(config.format, TextureFormat::Bgra8UnormSrgb);
     assert_eq!(config.color_space, wgpu::SurfaceColorSpace::Srgb);
     assert_eq!(config.width, 1);
@@ -79,6 +83,25 @@ fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
     let synced = build_surface_config(&compatible_caps(), size, Vsync::On).unwrap();
     assert_eq!(synced.present_mode, wgpu::PresentMode::AutoVsync);
     assert_ne!(synced.present_mode, config.present_mode);
+}
+
+/// A GLES swapchain *is* the default framebuffer: nothing can be copied into
+/// it, so EGL advertises the attachment usage alone. Demanding the copy made
+/// every such target unusable, for a path that is only ever an optimisation.
+/// So the copy is negotiated, and its absence is not an error.
+#[test]
+fn a_surface_without_the_copy_usage_is_configured_without_it() {
+    let mut draw_only = compatible_caps();
+    draw_only.usages = REQUIRED_SURFACE_USAGES;
+
+    let config = build_surface_config(&draw_only, UVec2::splat(100), Vsync::On)
+        .expect("a surface that can be drawn into is usable");
+
+    assert_eq!(config.usage, REQUIRED_SURFACE_USAGES);
+    assert!(
+        !config.usage.contains(wgpu::TextureUsages::COPY_DST),
+        "asking for a usage the surface does not have is what failed the window"
+    );
 }
 
 #[test]
@@ -108,16 +131,15 @@ fn surface_config_rejects_each_missing_hard_capability() {
         Err(SurfaceError::MissingSrgb)
     ));
 
-    let mut no_copy = compatible_caps();
-    no_copy.usages = TextureUsages::RENDER_ATTACHMENT;
-    let unmet = build_surface_config(&no_copy, UVec2::splat(100), Vsync::On).unwrap_err();
+    // Nowhere to draw is the one usage failure left: the copy is negotiated.
+    let mut no_attachment = compatible_caps();
+    no_attachment.usages = TextureUsages::COPY_DST;
+    let unmet = build_surface_config(&no_attachment, UVec2::splat(100), Vsync::On).unwrap_err();
     let SurfaceError::MissingUsages { missing } = &unmet else {
         panic!("{unmet:?}");
     };
-    // The surface offers the attachment usage and not the copy, so the report
-    // must name the one it lacks and not the one it has.
     assert!(
-        missing.contains("COPY_DST") && !missing.contains("RENDER_ATTACHMENT"),
-        "{missing}"
+        missing.contains("RENDER_ATTACHMENT") && !missing.contains("COPY_DST"),
+        "the report must name the usage the surface lacks, not the one it has: {missing}"
     );
 }

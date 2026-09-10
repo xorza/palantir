@@ -135,16 +135,70 @@ impl GpuRequest<'_> {
     /// so a tie between two same-device-type adapters is decided by
     /// enumeration order and nothing else.
     ///
+    /// A windowed host passes its window's display handle, and on Linux that
+    /// is not a nicety. The GLES backend picks its EGL display from this
+    /// handle: given an Xlib or Wayland one it calls `eglGetPlatformDisplay`
+    /// for that platform, and given none it falls to
+    /// `EGL_MESA_platform_surfaceless`, which enumerates DRM render nodes. The
+    /// adapter that comes back then belongs to a different display than the
+    /// window, and adapter selection rejects it with "gl not compatible with
+    /// provided surface".
+    ///
+    /// Reported from an Orange Pi 5 Plus, where surfaceless can never work: the
+    /// Mali sits behind the vendor kbase driver at `/dev/mali0` and is not a
+    /// DRM node at all, so the only nodes to enumerate are the display
+    /// controller and the NPU. Vulkan, Metal and Dx12 ignore the handle, so
+    /// passing it costs them nothing.
+    ///
+    /// The offscreen and bench hosts pass `None`: they have no display, and
+    /// surfaceless is what they want.
+    ///
     /// Separate from [`Self::open`] because the windowed host has to create
     /// its surface from the instance before it can ask for an adapter that
     /// presents to it.
     pub(crate) fn instance() -> Result<wgpu::Instance, GpuRequestError> {
-        if wgpu::Instance::enabled_backend_features().is_empty() {
-            return Err(GpuRequestError::NoBackend);
-        }
+        Self::check_backend()?;
         Ok(wgpu::Instance::new(
             wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
         ))
+    }
+
+    /// The instance a windowed host requests through, carrying the display
+    /// `window` lives on.
+    ///
+    /// The handle is not a nicety on Linux. The GLES backend picks its EGL
+    /// display from it: given an Xlib or Wayland handle it calls
+    /// `eglGetPlatformDisplay` for that platform, and given none it falls to
+    /// `EGL_MESA_platform_surfaceless`, which enumerates DRM render nodes. The
+    /// adapter that comes back then belongs to a different display than the
+    /// window, and adapter selection rejects it with "gl not compatible with
+    /// provided surface".
+    ///
+    /// Reported from an Orange Pi 5 Plus, where surfaceless can never work: the
+    /// Mali sits behind the vendor kbase driver at `/dev/mali0` and is not a
+    /// DRM node at all, so the only nodes to enumerate are the display
+    /// controller and the NPU. Vulkan, Metal and Dx12 ignore the handle, so
+    /// passing it costs a working backend nothing.
+    #[cfg(feature = "winit")]
+    pub(crate) fn windowed_instance<W>(
+        window: &std::sync::Arc<W>,
+    ) -> Result<wgpu::Instance, GpuRequestError>
+    where
+        W: wgpu::rwh::HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
+    {
+        Self::check_backend()?;
+        Ok(wgpu::Instance::new(
+            wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(
+                std::sync::Arc::clone(window),
+            )),
+        ))
+    }
+
+    fn check_backend() -> Result<(), GpuRequestError> {
+        if wgpu::Instance::enabled_backend_features().is_empty() {
+            return Err(GpuRequestError::NoBackend);
+        }
+        Ok(())
     }
 
     /// Pick an adapter and open a device on it.

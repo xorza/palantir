@@ -12,10 +12,16 @@ use crate::gpu::render_target::{self, TargetFormat};
 /// Owned per-window by `WindowDriver`; the backend is otherwise
 /// window-agnostic.
 use glam::UVec2;
+
+use crate::gpu::WgpuBackend;
 #[derive(Debug)]
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
+    /// Built once with the texture, because a target that cannot be copied
+    /// into needs this every frame it presents — minting one per frame would
+    /// put an allocation on the paint path.
+    bind_group: wgpu::BindGroup,
 }
 
 /// What [`Backbuffer::ensure`] hands back: the window's backbuffer, and
@@ -44,7 +50,7 @@ impl Backbuffer {
     /// `pipelines` map, so no global-format assert is needed.
     pub(crate) fn ensure<'s>(
         slot: &'s mut Option<Self>,
-        device: &wgpu::Device,
+        backend: &WgpuBackend,
         size: UVec2,
         format: TargetFormat,
     ) -> EnsuredBackbuffer<'s> {
@@ -61,7 +67,7 @@ impl Backbuffer {
         }
         let recreated = slot.is_none();
         EnsuredBackbuffer {
-            backbuffer: slot.get_or_insert_with(|| Self::new(device, size, format)),
+            backbuffer: slot.get_or_insert_with(|| Self::new(backend, size, format)),
             recreated,
         }
     }
@@ -96,21 +102,67 @@ impl Backbuffer {
     /// Private, so [`Self::ensure`] is the only way to one — it is what
     /// holds the "matches the surface" invariant [`Self::describes`]
     /// checks.
-    fn new(device: &wgpu::Device, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> Self {
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
+    fn new(backend: &WgpuBackend, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> Self {
+        let tex = backend.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.backbuffer"),
             size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            // `TEXTURE_BINDING` is for the targets that take no copy: there
+            // the backbuffer is sampled and drawn rather than copied.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = backend.backbuffer_bind_group(&view);
         Self {
-            view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
             tex,
+            view,
+            bind_group,
         }
+    }
+
+    /// Draw this backbuffer onto a target that cannot be copied into.
+    ///
+    /// The peer of [`Self::copy_onto`], reaching the same pixels through the
+    /// one usage every surface offers. A pass of its own, after the frame's
+    /// draws: it replaces the target rather than compositing onto it, so it
+    /// must not share a pass with anything that blends.
+    pub(super) fn draw_onto(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        pipeline: &wgpu::RenderPipeline,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.renderer.blit"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    // Clear rather than Load although the triangle writes
+                    // every texel, which is what lets a rotating swapchain
+                    // image hold anything at all: on the tilers this path
+                    // exists for, a clear skips reading the tile memory in.
+                    // `DontCare` skips even that, and asks for an unsafe
+                    // contract in return for one flag.
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.draw(0..3, 0..1);
     }
 
     /// The colour attachment to render into.

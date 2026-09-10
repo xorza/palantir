@@ -52,6 +52,8 @@ thread_local! {
 pub(crate) struct Harness {
     pub host: OffscreenHost,
     gpu: HeadlessTestGpuLease,
+    /// See [`Self::without_copy_dst`].
+    target_usages: wgpu::TextureUsages,
 }
 
 impl Harness {
@@ -75,7 +77,19 @@ impl Harness {
             .build();
         host.ui().set_theme(Theme::from_palette(&FIXTURE_PALETTE));
 
-        Self { host, gpu }
+        Self {
+            host,
+            gpu,
+            target_usages: TARGET_USAGES,
+        }
+    }
+
+    /// Render as a target that cannot be copied into would — a GLES swapchain
+    /// image. The renderer then presents its backbuffer by drawing it rather
+    /// than copying it.
+    pub(crate) fn without_copy_dst(mut self) -> Self {
+        self.target_usages = NO_COPY_DST_USAGES;
+        self
     }
 
     pub(crate) fn render(
@@ -102,7 +116,7 @@ impl Harness {
         clear: RgbaF32,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        let target = make_target(&self.gpu.device, format, physical);
+        let target = make_target(&self.gpu.device, format, physical, self.target_usages);
 
         self.host.ui().theme_mut().window_clear = clear;
         self.host.frame(&target, scale, &mut RecordApp::new(scene));
@@ -159,10 +173,23 @@ impl Harness {
     }
 }
 
+/// Every usage a caller-supplied target normally offers. `COPY_DST` is what
+/// lets the renderer present through a texture copy.
+const TARGET_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
+    .union(wgpu::TextureUsages::COPY_DST)
+    .union(wgpu::TextureUsages::COPY_SRC);
+
+/// What a GLES swapchain image offers: it *is* the default framebuffer, so
+/// nothing can be copied onto it. `COPY_SRC` is the harness's own, for
+/// readback.
+const NO_COPY_DST_USAGES: wgpu::TextureUsages =
+    wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_SRC);
+
 fn make_target(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
     physical: UVec2,
+    usage: wgpu::TextureUsages,
 ) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("palantir.visual_test.target"),
@@ -175,9 +202,7 @@ fn make_target(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
+        usage,
         view_formats: &[],
     })
 }

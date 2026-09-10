@@ -14,8 +14,19 @@ use crate::gpu::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::window_surface::WindowSurface;
 use crate::window::vsync::Vsync;
 
-const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
-    wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_DST);
+/// What a surface must offer to be usable at all: somewhere to draw.
+const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT;
+
+/// What the retained backbuffer takes when it can, and what a GLES swapchain
+/// cannot give.
+///
+/// A GLES surface *is* the default framebuffer, so nothing can be copied into
+/// it and EGL advertises `RENDER_ATTACHMENT` alone. Demanding this made every
+/// such target unusable. It is negotiated instead, and a surface without it
+/// loses nothing: the backbuffer reaches it by being drawn rather than copied
+/// — see
+/// [`Backbuffer::draw_onto`](crate::gpu::backbuffer::Backbuffer::draw_onto).
+const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::COPY_DST;
 
 /// The device-and-swapchain choices a host seals once at startup and every
 /// window then inherits.
@@ -72,9 +83,12 @@ impl SurfaceManager {
         cfg: HostGpuConfig,
     ) -> Result<SurfaceStartup, SurfaceError>
     where
-        W: wgpu::DisplayAndWindowHandle + 'static,
+        W: wgpu::DisplayAndWindowHandle + std::fmt::Debug + 'static,
     {
-        let instance = GpuRequest::instance()?;
+        // With the window's display handle, which is what lets the GLES
+        // backend find the EGL display the window lives on — see
+        // [`GpuRequest::instance`].
+        let instance = GpuRequest::windowed_instance(window)?;
         let surface = create_surface(&instance, window)?;
 
         // Caller-driven opt-in through `HostGpuConfig::collect_gpu_stats`.
@@ -122,7 +136,7 @@ fn create_surface<W>(
     window: &Arc<W>,
 ) -> Result<wgpu::Surface<'static>, SurfaceError>
 where
-    W: wgpu::DisplayAndWindowHandle + 'static,
+    W: wgpu::DisplayAndWindowHandle + std::fmt::Debug + 'static,
 {
     instance
         .create_surface(Arc::clone(window))
@@ -151,7 +165,7 @@ impl SurfaceManager {
         size: UVec2,
     ) -> Result<WindowSurface, SurfaceError>
     where
-        W: wgpu::DisplayAndWindowHandle + 'static,
+        W: wgpu::DisplayAndWindowHandle + std::fmt::Debug + 'static,
     {
         let surface = create_surface(&self.instance, window)?;
         self.build_window_surface(surface, size)
@@ -239,7 +253,7 @@ fn build_surface_config(
         })
         .ok_or(SurfaceError::MissingSrgb)?;
     Ok(wgpu::SurfaceConfiguration {
-        usage: REQUIRED_SURFACE_USAGES,
+        usage: REQUIRED_SURFACE_USAGES | (caps.usages & OPTIONAL_SURFACE_USAGES),
         format,
         color_space: wgpu::SurfaceColorSpace::Srgb,
         width: size.x,
