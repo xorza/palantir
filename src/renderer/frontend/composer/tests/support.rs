@@ -3,6 +3,7 @@
 
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::IconId;
@@ -25,7 +26,6 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::GpuPaint;
-use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordStore;

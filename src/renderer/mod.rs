@@ -1,22 +1,20 @@
-//! Rendering pipeline, split into a CPU **frontend** (encode + compose,
-//! orchestrated by `Frontend`) and a GPU **backend** (`WgpuBackend`):
+//! The CPU half of the rendering pipeline: encode and compose, orchestrated
+//! by `Frontend`.
 //!
 //! - [`frontend`] owns the per-frame allocations (the composer's scratch and
 //!   the render buffer) and turns a `FrameScene` into `&RenderBuffer`. Pure
 //!   CPU; no device handles.
-//! - [`backend`] consumes `&RenderBuffer` and submits draws. The only
-//!   stage that touches a device/queue.
 //! - [`image_registry`] owns registered-image lifetimes. Its texels go to
-//!   an `ImageStore` the backend attaches, so it names no device.
+//!   an `ImageStore` that [`crate::gpu`] attaches, so it names no device.
 //!
 //! [`RenderBuffer`](render_buffer::RenderBuffer) and [`Quad`](quad::Quad)
-//! live at this level as the frontend↔backend contract. Geometry and schedule
-//! rows are CPU data; `GpuView` targets are a wgpu-only side channel carried by
-//! the same frame result so they composite through the image path.
+//! live at this level as the contract with [`crate::gpu`], which consumes a
+//! `&RenderBuffer` and submits the draws. Geometry and schedule rows are CPU
+//! data; `GpuView` targets are a device-only side channel carried by the same
+//! frame result so they composite through the image path.
 //!
 //! Both halves are owned once by each host and driven with the active private
 //! `WindowDriver` behind the public host facades.
-pub(crate) mod backend;
 pub(crate) mod error;
 pub(crate) mod frontend;
 pub(crate) mod gpu_paint;

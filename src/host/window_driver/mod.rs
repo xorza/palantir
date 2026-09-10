@@ -21,12 +21,13 @@
 use crate::app::App;
 use crate::common::tracy;
 use crate::display::Display;
+use crate::gpu::WgpuBackend;
+use crate::gpu::backbuffer::Backbuffer;
+use crate::gpu::render_target::{RenderTarget, TargetFormat};
+use crate::gpu::stencil::Stencil;
+use crate::gpu::submission::Submission;
+use crate::gpu::submission::SubmissionTargets;
 use crate::host::clock::{Clock, RealtimeClock};
-use crate::renderer::backend::WgpuBackend;
-use crate::renderer::backend::backbuffer::Backbuffer;
-use crate::renderer::backend::stencil::Stencil;
-use crate::renderer::backend::submission::Submission;
-use crate::renderer::backend::submission::SubmissionTargets;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
@@ -38,6 +39,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
 use crate::ui::resources::UiResources;
+use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
@@ -104,39 +106,38 @@ pub(super) struct WindowDriver {
 /// pixels, damage baseline, backbuffer format).
 ///
 /// This is the **single gate** on that state, and on a swapchain host it is
-/// also what decides when to reconfigure the surface. Any
-/// `wgpu::SurfaceConfiguration` field that becomes mutable at runtime must
-/// therefore be added here, or the new value sits in the host's config and
-/// silently never reaches the swapchain — nothing else re-reads it.
+/// also what decides when to reconfigure the surface. Any swapchain setting
+/// that becomes mutable at runtime must therefore be added here, or the new
+/// value sits in the host's config and silently never reaches the swapchain —
+/// nothing else re-reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TargetKey {
     pub(super) physical: UVec2,
-    pub(super) format: wgpu::TextureFormat,
+    pub(super) format: TargetFormat,
     /// `None` for a plain texture target, which is never presented and so
     /// has no swapchain to reconfigure.
-    pub(super) present_mode: Option<wgpu::PresentMode>,
+    pub(super) vsync: Option<Vsync>,
 }
 
 impl TargetKey {
-    pub(super) fn of(texture: &wgpu::Texture) -> Self {
-        let size = texture.size();
+    pub(super) fn of(target: RenderTarget<'_>) -> Self {
         Self {
-            physical: UVec2::new(size.width, size.height),
-            format: texture.format(),
-            present_mode: None,
+            physical: target.size(),
+            format: target.format(),
+            vsync: None,
         }
     }
 
     /// Whether this key describes a target with the given texture facts.
     ///
-    /// Compares only what a `wgpu::Texture` can answer for. `present_mode` is
-    /// a *swapchain* property, so a surface key legitimately holds `Some(..)`
+    /// Compares only what a render target can answer for. The pacing is a
+    /// *swapchain* property, so a surface key legitimately holds `Some(..)`
     /// while the frame's acquired texture — an ordinary texture — carries no
     /// trace of it. Equality would therefore never hold on a swapchain host;
     /// this is the predicate for "same target", as opposed to [`PartialEq`]'s
     /// "same target *configuration*", which is what [`WindowDriver::note_target`]
     /// gates invalidation and surface reconfiguration on.
-    pub(super) fn describes(&self, physical: UVec2, format: wgpu::TextureFormat) -> bool {
+    pub(super) fn describes(&self, physical: UVec2, format: TargetFormat) -> bool {
         self.physical == physical && self.format == format
     }
 }
@@ -164,7 +165,7 @@ pub(super) enum PresentStrategy {
 /// draw list for it — and threaded through to the GPU half, so the
 /// submitted plan is by construction the one the draw list was built for.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum PresentMode {
+pub(super) enum PresentPath {
     /// Skip frame on a backbuffer-copy window: copy the backbuffer onto the
     /// target so it's filled regardless of its prior contents.
     SkipCopy,
@@ -177,7 +178,7 @@ pub(super) enum PresentMode {
     ViaBackbuffer(RenderPlan),
 }
 
-impl PresentMode {
+impl PresentPath {
     /// Whether a frame in this mode *renders* through the retained
     /// backbuffer.
     ///
@@ -218,33 +219,33 @@ const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
 // past the other fails the build instead of silently killing promotion.
 const _: () = assert!(DIRECT_PROMOTE_COVERAGE < FULL_REPAINT_THRESHOLD);
 
-fn present_mode(
+fn present_path(
     plan: Option<RenderPlan>,
     strategy: PresentStrategy,
     backbuffer_fresh: bool,
-) -> PresentMode {
+) -> PresentPath {
     match strategy {
         PresentStrategy::DirectAdaptive => match plan {
             // Swapchain skips never acquire a target because the host owns them.
-            None => PresentMode::SkipNoop,
+            None => PresentPath::SkipNoop,
             Some(p) => match p.damage {
                 // Already a whole-surface repaint — straight into the target.
-                Damage::Full => PresentMode::Direct(p),
+                Damage::Full => PresentPath::Direct(p),
                 Damage::Partial(damage) => {
                     // The coverage the damage engine measured when it
                     // collapsed this frame's rects against the surface; see
                     // `DIRECT_PROMOTE_COVERAGE`.
                     if damage.coverage > DIRECT_PROMOTE_COVERAGE {
                         // Large partial: skip the copy, repaint direct.
-                        PresentMode::Direct(p.to_full())
+                        PresentPath::Direct(p.to_full())
                     } else if backbuffer_fresh {
                         // Backbuffer mirrors the target: paint just the damage
                         // region into it and copy out.
-                        PresentMode::ViaBackbuffer(p)
+                        PresentPath::ViaBackbuffer(p)
                     } else {
                         // Backbuffer went stale after a direct frame: resync it
                         // with one full repaint before cheap partials resume.
-                        PresentMode::ViaBackbuffer(p.to_full())
+                        PresentPath::ViaBackbuffer(p.to_full())
                     }
                 }
             },
@@ -252,20 +253,20 @@ fn present_mode(
         // Fresh target each call: render the plan into the backbuffer and copy
         // it out so the whole target is filled regardless of its prior contents.
         PresentStrategy::BackbufferCopy => match plan {
-            None => PresentMode::SkipCopy,
-            Some(p) => PresentMode::ViaBackbuffer(p),
+            None => PresentPath::SkipCopy,
+            Some(p) => PresentPath::ViaBackbuffer(p),
         },
     }
 }
 
-/// The CPU half's result: the host-facing report plus the [`PresentMode`]
+/// The CPU half's result: the host-facing report plus the [`PresentPath`]
 /// sealed at draw-list-build time. Threading the mode (rather than
 /// recomputing it in the GPU half) is what guarantees the submitted plan
 /// is the one the draw list was built for.
 #[derive(Debug)]
 pub(super) struct CpuFrame {
     pub(super) report: FrameReport,
-    pub(super) mode: PresentMode,
+    pub(super) mode: PresentPath,
 }
 
 /// Seals per-window policy before allocating the recorder.
@@ -423,7 +424,7 @@ impl WindowDriver {
     /// The shared CPU half: app lifecycle → record / measure / arrange /
     /// cascade / damage followed, when the frame actually paints, by the
     /// draw-list build (encode → compose → resolve `GpuView`s into the
-    /// frontend's buffer). Seals the [`PresentMode`] here — the one place it
+    /// frontend's buffer). Seals the [`PresentPath`] here — the one place it
     /// is computed — so the GPU half submits exactly the plan the draw list
     /// was built for (a promoted or resync'd Partial builds its escalated Full
     /// list). No GPU input — the `GpuView` size cap was captured on the
@@ -449,14 +450,14 @@ impl WindowDriver {
     }
 
     fn finish_cpu_frame(&mut self, frontend: &mut Frontend, report: FrameReport) -> CpuFrame {
-        let mode = present_mode(report.plan, self.strategy, self.backbuffer_fresh);
-        if !matches!(mode, PresentMode::SkipNoop) {
+        let mode = present_path(report.plan, self.strategy, self.backbuffer_fresh);
+        if !matches!(mode, PresentPath::SkipNoop) {
             self.output_valid = false;
         }
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets from the frozen scene.
         // Skip frames build nothing.
-        if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
+        if let PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) = mode {
             frontend.build(self.ui.frame_scene(), plan);
         }
         CpuFrame { report, mode }
@@ -514,40 +515,39 @@ impl WindowDriver {
     }
 
     /// GPU submit against a caller-supplied texture, through the shared
-    /// `backend`, dispatching on the [`PresentMode`] `cpu_frame` sealed. On
-    /// [`PresentMode::SkipCopy`], copies the persistent backbuffer onto
+    /// `backend`, dispatching on the [`PresentPath`] `cpu_frame` sealed. On
+    /// [`PresentPath::SkipCopy`], copies the persistent backbuffer onto
     /// `target` so callers that always present still see valid pixels.
     /// Shared by the offscreen and surface adapters.
     pub(super) fn render_to_texture(
         &mut self,
         buffer: &RenderBuffer,
         backend: &mut WgpuBackend,
-        target: &wgpu::Texture,
-        mode: PresentMode,
+        target: RenderTarget<'_>,
+        mode: PresentPath,
     ) {
         tracy::zone!();
         let size = target.size();
         let display_phys = self.ui.display().physical;
         debug_assert!(
-            size.width == display_phys.x && size.height == display_phys.y,
+            size == display_phys,
             "render_to_texture: target size {}x{} doesn't match the display physical \
              size ({}x{}) that `cpu_frame` ran against — scissor / viewport math \
              would be off. Update `Display.physical` on resize before the next \
              `cpu_frame`.",
-            size.width,
-            size.height,
+            size.x,
+            size.y,
             display_phys.x,
             display_phys.y,
         );
         debug_assert!(
-            self.target.is_some_and(|key| {
-                key.describes(UVec2::new(size.width, size.height), target.format())
-            }),
+            self.target
+                .is_some_and(|key| key.describes(size, target.format())),
             "render_to_texture: target ({}x{}, {:?}) differs from the one \
              `note_target` declared ({:?}), so the retained backbuffer / damage \
              baseline were never invalidated for it",
-            size.width,
-            size.height,
+            size.x,
+            size.y,
             target.format(),
             self.target,
         );
@@ -559,7 +559,7 @@ impl WindowDriver {
         // target. Gated to them: on a skip frame the frontend didn't build,
         // so `buffer.rounded_clips` is stale and no pass reads the stencil.
         let stencil = match mode {
-            PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
+            PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)
                 if !buffer.rounded_clips.is_empty() =>
             {
                 Some(Stencil::ensure(&mut self.stencil, backend.device(), size))
@@ -569,8 +569,8 @@ impl WindowDriver {
         match mode {
             // Nothing changed and the target already holds the last render —
             // leave it untouched.
-            PresentMode::SkipNoop => self.output_valid = true,
-            PresentMode::SkipCopy => {
+            PresentPath::SkipNoop => self.output_valid = true,
+            PresentPath::SkipCopy => {
                 // A `Skip` implies the previous frame painted at this size +
                 // format, so the backbuffer must exist (and match — the
                 // backend asserts that).
@@ -584,7 +584,7 @@ impl WindowDriver {
             // A direct repaint goes straight into the target and leaves the
             // mirror stale, so the next partial resyncs it first; one through
             // the backbuffer leaves it holding what the target holds.
-            PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) => {
+            PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
                 let backbuffer = if mode.renders_via_backbuffer() {
                     let ensured = Backbuffer::ensure(
                         &mut self.backbuffer,

@@ -1,22 +1,24 @@
 //! [`WinitHostConfig`] — startup tunables for [`WinitHost`](super::WinitHost).
 
+use crate::gpu::power_preference::PowerPreference;
 use crate::text::font_scope::FontScope;
+use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 
 /// Startup tunables for [`WinitHost`](super::WinitHost): the first
 /// window's [`WindowConfig`] plus the **app-global** GPU knobs that are
 /// fixed once at launch and shared by every window — the adapter power
-/// preference, the swapchain present mode, and the GPU-instrumentation
+/// preference, the swapchain pacing, and the GPU-instrumentation
 /// opt-in. Secondary windows ([`Ui::open_window`](crate::Ui::open_window))
 /// only carry a [`WindowConfig`]; they inherit these.
 #[derive(Clone, Debug)]
 pub struct WinitHostConfig {
     /// The first window's options.
     pub window: WindowConfig,
-    /// App-global presentation policy requested for every window. Supported
-    /// explicit modes are kept; unsupported ones use the matching automatic
-    /// policy for that surface.
-    pub present_mode: wgpu::PresentMode,
+    /// Whether every window's swapchain waits for the display's refresh.
+    /// The launch-time seat of the same choice
+    /// [`Ui::set_vsync`](crate::Ui::set_vsync) makes at runtime.
+    pub vsync: Vsync,
     /// Adapter power preference — selects the shared adapter at startup.
     ///
     /// `LowPower` by default, unlike the headless paths, which ask for
@@ -25,7 +27,7 @@ pub struct WinitHostConfig {
     /// without waking the discrete one, while a bench or a golden test is
     /// worth little unless it runs on the adapter a user is looking at.
     /// An application that draws something heavier should say so here.
-    pub power_preference: wgpu::PowerPreference,
+    pub power_preference: PowerPreference,
     /// Opt into GPU instrumentation (timestamp + pipeline-statistics
     /// queries). Off by default because the per-frame readback
     /// round-trip is non-trivial. Gates device-feature requests at
@@ -52,8 +54,8 @@ impl Default for WinitHostConfig {
     fn default() -> Self {
         Self {
             window: WindowConfig::default(),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            power_preference: wgpu::PowerPreference::LowPower,
+            vsync: Vsync::On,
+            power_preference: PowerPreference::LowPower,
             collect_gpu_stats: false,
             fonts: FontScope::System,
             pixel_snap: true,

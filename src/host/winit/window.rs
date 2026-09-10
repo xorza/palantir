@@ -3,15 +3,16 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use glam::{IVec2, UVec2, Vec2};
+use glam::{IVec2, Vec2};
 use winit::window::Window as WinitWindow;
 
 use crate::app::App;
 use crate::common::tracy::{self, FrameSet};
 use crate::display;
+use crate::gpu::requested_gpu::Gpu;
+use crate::gpu::window_surface::{Acquired, WindowSurface};
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
-use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
 use crate::host::winit::input::PointerTrace;
 use crate::host::winit::native;
 use crate::input::input_event::InputEvent;
@@ -93,8 +94,7 @@ const ACQUIRE_RETRY_MAX: Duration = Duration::from_millis(500);
 #[derive(Debug)]
 pub(super) struct Window {
     pub(super) window: Arc<WinitWindow>,
-    pub(super) surface: wgpu::Surface<'static>,
-    pub(super) config: wgpu::SurfaceConfiguration,
+    pub(super) surface: WindowSurface,
     pub(super) driver: WindowDriver,
     /// The device pixel ratio winit reports for this window. The factor
     /// the UI is actually drawn and clicked at is
@@ -139,13 +139,10 @@ impl Window {
         // actually opened, so `Ui::vsync` is truthful before any frame runs
         // and a control writing its own value back doesn't reconfigure an
         // explicitly-configured present mode out from under the host.
-        driver
-            .ui
-            .seed_vsync(gpu::vsync_of(surface.config.present_mode));
+        driver.ui.seed_vsync(surface.vsync());
         Self {
             window,
-            surface: surface.surface,
-            config: surface.config,
+            surface,
             driver,
             system_scale,
             next: FramePresent::Immediate,
@@ -262,7 +259,7 @@ impl Window {
     /// on [`Self::next`].
     pub(super) fn frame<T: App>(
         &mut self,
-        surfaces: &SurfaceManager,
+        gpu: &Gpu,
         core: &mut HostCore,
         app: &mut T,
         commands: &mut WindowCommands,
@@ -305,7 +302,7 @@ impl Window {
             // Before the display is minted, so a frame that lays out at a
             // new scale hit-tests against a pointer in the same space.
             self.resync_pointer();
-            let physical = UVec2::new(self.config.width, self.config.height);
+            let physical = self.surface.size();
             let display =
                 self.driver
                     .display(physical, self.system_scale, facts.refresh_millihertz);
@@ -319,14 +316,14 @@ impl Window {
             // repeated event.
             if self.driver.note_target(TargetKey {
                 physical,
-                format: self.config.format,
-                present_mode: Some(self.config.present_mode),
+                format: self.surface.format(),
+                vsync: Some(self.surface.vsync()),
             }) {
-                surfaces.configure(&self.surface, &self.config);
+                self.surface.configure(gpu);
             }
 
             let cpu = core.cpu_frame(&mut self.driver, display, app);
-            self.next = self.present(surfaces, core, cpu);
+            self.next = self.present(gpu, core, cpu);
         }
 
         self.finish(commands);
@@ -351,17 +348,12 @@ impl Window {
     /// acquire arms reach here, and an arm that reconfigured without the
     /// second half was correct only by accident — see
     /// [`WindowDriver::invalidate_target_contents`].
-    fn reconfigure(&mut self, surfaces: &SurfaceManager) {
-        surfaces.configure(&self.surface, &self.config);
+    fn reconfigure(&mut self, gpu: &Gpu) {
+        self.surface.configure(gpu);
         self.driver.invalidate_target_contents();
     }
 
-    fn present(
-        &mut self,
-        surfaces: &SurfaceManager,
-        core: &mut HostCore,
-        cpu: CpuFrame,
-    ) -> FramePresent {
+    fn present(&mut self, gpu: &Gpu, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
         let repaint = if report.plan.is_none() {
             // Nothing tried to acquire, so nothing can still be failing.
@@ -369,51 +361,35 @@ impl Window {
             report.repaint_requested
         } else {
             let retry = self.acquire_retry.take();
-            use wgpu::CurrentSurfaceTexture::*;
-            // Bound before the match so the zone closes on acquire
-            // rather than spanning the arm that submits: on a vsync-
-            // paced present this call is where the frame blocks, and
-            // folding the submit into it hides which of the two cost
-            // the time.
-            let acquired = {
-                tracy::zone!("Surface::acquire");
-                self.surface.get_current_texture()
-            };
-            match acquired {
-                Success(frame) => {
-                    core.submit(&mut self.driver, &frame.texture, mode);
+            match self.surface.acquire() {
+                Acquired::Ready(frame) => {
+                    core.submit(&mut self.driver, frame.target(), mode);
                     self.window.pre_present_notify();
-                    surfaces.present(frame);
+                    frame.present(gpu);
                     report.repaint_requested
                 }
-                // Binding and dropping is what releases the acquired
-                // texture here — `configure` fails with
-                // `PreviousOutputExists` while one is still alive, and that
-                // failure is a panic (wgpu surface configuration reports
-                // through the device error sink).
-                Suboptimal(frame) => {
+                Acquired::Suboptimal => {
                     tracing::warn!("surface acquire: suboptimal");
-                    drop(frame);
-                    self.reconfigure(surfaces);
+                    self.reconfigure(gpu);
                     true
                 }
-                Outdated | Lost => {
+                Acquired::Outdated => {
                     tracing::warn!("surface acquire: outdated / lost");
-                    self.reconfigure(surfaces);
+                    self.reconfigure(gpu);
                     true
                 }
-                Timeout => {
+                Acquired::Timeout => {
                     tracing::warn!("surface acquire: timeout");
                     true
                 }
-                Validation => {
+                Acquired::Validation => {
                     tracing::warn!("surface acquire: validation");
                     self.acquire_retry = Some(retry.map_or(ACQUIRE_RETRY_MIN, |delay| {
                         (delay * 2).min(ACQUIRE_RETRY_MAX)
                     }));
                     true
                 }
-                Occluded => false,
+                Acquired::Occluded => false,
             }
         };
 
@@ -451,10 +427,7 @@ impl Window {
     }
 
     /// Point the swapchain config at `vsync`, if it isn't already paced that
-    /// way. The comparison runs in [`Vsync`]'s two-state vocabulary rather
-    /// than wgpu's: a window opened on an explicit `Mailbox` already *is*
-    /// [`Vsync::Off`], so a recorder asking for `Off` must leave that finer
-    /// choice standing rather than flatten it to `AutoNoVsync`.
+    /// way.
     ///
     /// The reconfigure itself is left to the next frame's [`TargetKey`] check
     /// rather than done here. Recreating a swapchain invalidates the retained
@@ -466,14 +439,12 @@ impl Window {
     /// the retained state, wherever it happens.)
     ///
     /// Hence the forced repaint: an idle window schedules no next frame, so
-    /// without it the change would sit in `config` until something else
-    /// happened to wake the window.
+    /// without it the change would sit in the swapchain config until something
+    /// else happened to wake the window.
     fn set_vsync(&mut self, vsync: Vsync) {
-        if gpu::vsync_of(self.config.present_mode) == vsync {
-            return;
+        if self.surface.set_vsync(vsync) {
+            self.next = FramePresent::Immediate;
         }
-        self.config.present_mode = gpu::present_mode(vsync);
-        self.next = FramePresent::Immediate;
     }
 }
 

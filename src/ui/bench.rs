@@ -67,10 +67,10 @@ use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use crate::host::bench_gpu::{BenchGpu, Timing};
+use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
+use crate::gpu::texture_region::counters::WriteStats;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::RgbaF32;
-use crate::renderer::backend::texture_region::counters::WriteStats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
@@ -144,12 +144,12 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
 
 fn gpu_frame(
     host: &mut OffscreenHost,
-    target: &wgpu::Texture,
+    target: &BenchTarget,
     system_scale: f32,
     record: impl FnMut(&mut Ui),
 ) {
     let mut app = RecordApp::new(record);
-    host.frame(target, system_scale, &mut app);
+    host.frame(target.as_target(), system_scale, &mut app);
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
@@ -346,7 +346,7 @@ fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 }
 
 fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let targets: Vec<wgpu::Texture> = surface
+    let targets: Vec<BenchTarget> = surface
         .pool
         .iter()
         .enumerate()
@@ -375,7 +375,7 @@ fn report_write_stats(surface: &Surface) {
     fn run(
         label: &str,
         scale: f32,
-        targets: &[wgpu::Texture],
+        targets: &[BenchTarget],
         mut mutate: impl FnMut(&mut FrameFixture, usize),
     ) {
         let g = gpu();
@@ -396,7 +396,7 @@ fn report_write_stats(surface: &Surface) {
             // the just-submitted frame's resolve so the column
             // matches the iteration we're printing rather than the
             // previous one.
-            let _ = g.device.poll(wgpu::PollType::Poll);
+            g.poll();
             let stats = host.gpu_pass_stats();
             let gpu = stats
                 .last_pass_ms()
@@ -440,7 +440,7 @@ fn report_write_stats(surface: &Surface) {
         state.tick = state.tick.wrapping_add(1);
     });
 
-    let pool: Vec<wgpu::Texture> = surface
+    let pool: Vec<BenchTarget> = surface
         .pool
         .iter()
         .enumerate()

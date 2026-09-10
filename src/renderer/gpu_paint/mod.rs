@@ -27,13 +27,11 @@
 //! per-widget cache; the backend then frees the orphaned texture (see
 //! `GpuViewTargets::paint_gpu_views`).
 
-pub(crate) mod gpu_frame_ctx;
-pub(crate) mod gpu_init_ctx;
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;
 
-use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
-use crate::renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::gpu_init_ctx::GpuInitCtx;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.

@@ -1,13 +1,13 @@
 use super::*;
 use crate::ui::harness::UiHarness;
 
+use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;

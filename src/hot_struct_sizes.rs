@@ -4,6 +4,7 @@
 
 use crate::animation::anim_row::AnimRow;
 use crate::common::content_hash::ContentHash;
+use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::input::response::response_state::ResponseState;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::layout::ShapedText;
@@ -13,7 +14,6 @@ use crate::primitives::brush::Brush;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::recorded_text::RecordedText;
 use crate::primitives::span::Span;
-use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;

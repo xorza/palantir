@@ -920,7 +920,7 @@ impl std::fmt::Debug for CosmicMeasure {
 }
 
 // Wider than `cfg(test)`: `drop_all_buffers` is reached from the
-// `internals`-gated GPU tests in `renderer::backend::text`, which build
+// `internals`-gated GPU tests in `gpu::text`, which build
 // without `cfg(test)`.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod test_support {

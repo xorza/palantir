@@ -11,6 +11,11 @@
 //! owes, and a caller that differed would be measuring against a floor
 //! nobody else's number shares.
 
+// Reaches Palantir the way an outside consumer does, through the published
+// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
+// of the library's own modules.
+#![allow(clippy::disallowed_types)]
+
 use glam::UVec2;
 use palantir::internals::{HeadlessTestGpuLease, RecordApp};
 use palantir::{OffscreenHost, RgbaF32, Ui};
@@ -26,7 +31,7 @@ impl OffscreenTarget {
     /// The public offscreen path always copies from its backbuffer, so
     /// what every caller pins excludes the direct-present path.
     pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
-        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
+        let mut host = OffscreenHost::builder(gpu.handles()).build();
         host.ui().theme_mut().window_clear = RgbaF32::TRANSPARENT;
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),

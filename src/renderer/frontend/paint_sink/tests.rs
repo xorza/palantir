@@ -1,3 +1,4 @@
+use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
@@ -6,7 +7,6 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::gpu_paint::GpuPaint;
-use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use glam::Vec2;
 use std::cell::RefCell;

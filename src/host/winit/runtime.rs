@@ -16,9 +16,10 @@ use winit::window::WindowId;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
+use crate::gpu::surface_manager::{HostGpuConfig, SurfaceManager, SurfaceStartup};
 use crate::host::core::{HostCore, HostCoreConfig};
+use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::gpu::{GpuInit, SurfaceManager};
 use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
@@ -64,13 +65,13 @@ impl<T: App + 'static> WinitRuntime<T> {
         // them. An early return leaves the thread to finish and drop.
         let fonts = FontScan::spawn(config.fonts);
         let window = native::create_window(event_loop, token, &config.window)?;
-        let GpuInit {
+        let SurfaceStartup {
             surfaces,
             first_surface,
-        } = GpuInit::new(token, &window, &config)?;
+        } = SurfaceManager::start(&window, native::physical_size(&window), gpu_config(&config))
+            .map_err(|source| WinitHostError::Surface { token, source })?;
         let core = HostCore::new(
-            surfaces.device.clone(),
-            surfaces.queue.clone(),
+            surfaces.gpu.clone(),
             surfaces.max_texture_dim,
             fonts.join(),
             Clipboard::system_or_memory(),
@@ -123,7 +124,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     pub(super) fn draw(&mut self, slot: WindowSlot) {
         let single_window = self.windows.len() == 1;
         self.windows.at(slot).frame(
-            &self.surfaces,
+            &self.surfaces.gpu,
             &mut self.core,
             &mut self.app,
             &mut self.pending_commands,
@@ -216,7 +217,10 @@ impl<T: App + 'static> WinitRuntime<T> {
             return Ok(());
         }
         let window = native::create_window(event_loop, token, &config)?;
-        let surface = self.surfaces.make_surface(token, &window)?;
+        let surface = self
+            .surfaces
+            .make_surface(&window, native::physical_size(&window))
+            .map_err(|source| WinitHostError::Surface { token, source })?;
         let driver = self.core.driver(token).build();
         self.windows.push(Window::new(window, surface, driver));
         Ok(())
@@ -228,5 +232,15 @@ impl<T: App + 'static> WinitRuntime<T> {
         if let Some(win) = self.windows.take(token) {
             self.core.retire(&win.driver);
         }
+    }
+}
+
+/// The host config's device-and-swapchain half, in the graphics layer's own
+/// words.
+fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
+    HostGpuConfig {
+        power_preference: config.power_preference,
+        vsync: config.vsync,
+        collect_gpu_stats: config.collect_gpu_stats,
     }
 }

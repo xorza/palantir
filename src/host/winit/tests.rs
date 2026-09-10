@@ -1,7 +1,8 @@
 use crate::Ui;
 use crate::app::App;
 use crate::display::Display;
-use crate::host::error::GpuRequestError;
+use crate::gpu::error::GpuRequestError;
+use crate::gpu::power_preference::PowerPreference;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
@@ -14,6 +15,7 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
 use crate::ui::resources::UiResources;
+use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
@@ -51,36 +53,32 @@ impl App for CountingApp {
 fn builder_retains_defaults_and_granular_overrides() {
     let defaults = WinitHost::<CountingApp>::builder(WindowToken(3));
     assert_eq!(defaults.first_token, WindowToken(3));
-    assert_eq!(defaults.config.present_mode, wgpu::PresentMode::AutoVsync);
-    assert_eq!(
-        defaults.config.power_preference,
-        wgpu::PowerPreference::LowPower
-    );
+    assert_eq!(defaults.config.vsync, Vsync::On);
+    assert_eq!(defaults.config.power_preference, PowerPreference::LowPower);
     assert!(!defaults.config.collect_gpu_stats);
     assert!(defaults.config.pixel_snap);
 
     let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
         .config(WinitHostConfig {
             window: WindowConfig::new("config"),
-            present_mode: wgpu::PresentMode::Fifo,
-            power_preference: wgpu::PowerPreference::None,
+            vsync: Vsync::Off,
+            power_preference: PowerPreference::Any,
             collect_gpu_stats: false,
             fonts: FontScope::Bundled,
             pixel_snap: true,
         })
         .window(WindowConfig::new("window"))
         .title("title")
-        .present_mode(wgpu::PresentMode::Immediate)
-        .power_preference(wgpu::PowerPreference::HighPerformance)
+        .power_preference(PowerPreference::HighPerformance)
         .collect_gpu_stats(true)
         .pixel_snap(false);
 
     assert_eq!(builder.first_token, WindowToken(9));
     assert_eq!(builder.config.window.title, "title");
-    assert_eq!(builder.config.present_mode, wgpu::PresentMode::Immediate);
+    assert_eq!(builder.config.vsync, Vsync::Off);
     assert_eq!(
         builder.config.power_preference,
-        wgpu::PowerPreference::HighPerformance
+        PowerPreference::HighPerformance
     );
     assert!(builder.config.collect_gpu_stats);
     assert!(

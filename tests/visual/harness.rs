@@ -1,6 +1,11 @@
 //! Headless wgpu device + one-frame render + texture readback into
 //! an `image::RgbaImage`.
 
+// Reaches Palantir the way an outside consumer does, through the published
+// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
+// of the library's own modules.
+#![allow(clippy::disallowed_types)]
+
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -63,7 +68,7 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
+        let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(shaper)
             .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO))

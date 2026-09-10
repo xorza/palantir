@@ -2,9 +2,9 @@
 //! [`WinitHost`](crate::WinitHost). Both build on the same [`HostCore`]: one
 //! [`UiResources`](crate::ui::resources::UiResources), one
 //! [`Frontend`](crate::renderer::frontend::Frontend), one
-//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), and one
+//! [`WgpuBackend`](crate::gpu::WgpuBackend), and one
 //! [`WindowDriver`]. Unlike `WinitHost` there's no winit and no swapchain —
-//! the driver renders into a caller-supplied `wgpu::Texture`.
+//! the driver renders into a caller-supplied [`RenderTarget`].
 //! [`OffscreenHost::frame`] accepts the same [`App`] lifecycle as
 //! the windowed host, so update and replay semantics do not depend on the
 //! output backend.
@@ -41,9 +41,10 @@ use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
+use crate::gpu::render_target::RenderTarget;
+use crate::gpu::requested_gpu::Gpu;
 use crate::host::clock::Clock;
 use crate::host::core::{HostCore, HostCoreConfig};
-use crate::host::device_requirements::DeviceRequirements;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::response::input_delta::InputDelta;
@@ -65,8 +66,7 @@ pub struct OffscreenHost {
 /// Seals offscreen policy before allocating the backend and window driver.
 #[derive(Debug)]
 pub struct OffscreenHostBuilder {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    gpu: Gpu,
     /// `None` until [`Self::fonts`] or [`Self::shaper`] overrides; resolved
     /// to the bundled-fonts default lazily in [`Self::build`] so an override
     /// never pays the font load.
@@ -184,14 +184,13 @@ impl OffscreenHostBuilder {
     /// upstream of this call, so the report belongs at this boundary and not
     /// several layers into the backend.
     pub fn build(self) -> OffscreenHost {
-        if let Err(unmet) = DeviceRequirements::met_by(&self.device) {
+        if let Err(unmet) = self.gpu.requirements_met() {
             panic!("offscreen host device cannot run Palantir: {unmet}");
         }
-        let max_texture_dim = DeviceRequirements::max_texture_dim(&self.device);
+        let max_texture_dim = self.gpu.max_texture_dim();
         let clipboard = self.clipboard();
         let core = HostCore::new(
-            self.device,
-            self.queue,
+            self.gpu,
             max_texture_dim,
             self.shaper.unwrap_or_default(),
             clipboard,
@@ -224,10 +223,9 @@ impl OffscreenHost {
     /// Start building an offscreen host. The text shaper defaults to bundled
     /// fonts, GPU timing defaults off, the clock defaults to realtime, and
     /// physical-pixel snapping defaults on.
-    pub fn builder(device: wgpu::Device, queue: wgpu::Queue) -> OffscreenHostBuilder {
+    pub fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
-            device,
-            queue,
+            gpu,
             shaper: None,
             collect_gpu_stats: false,
             clock: None,
@@ -273,12 +271,13 @@ impl OffscreenHost {
     /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame
     /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
     /// window lifecycle.
-    pub fn frame<T: App>(
+    pub fn frame<'t, T: App>(
         &mut self,
-        target: &wgpu::Texture,
+        target: impl Into<RenderTarget<'t>>,
         system_scale: f32,
         app: &mut T,
     ) -> FrameReport {
+        let target = target.into();
         assert!(
             display::scale_factor_is_valid(system_scale),
             "offscreen system scale must be finite and at least {EPS}, got \
@@ -313,8 +312,11 @@ impl OffscreenHost {
     /// Whether the shared backend has built a pipeline set for `format`.
     /// Lets format-change tests confirm a new format materializes its own
     /// pipelines.
-    pub fn has_format_pipelines(&self, format: wgpu::TextureFormat) -> bool {
-        self.core.backend.has_format_pipelines(format)
+    pub fn has_format_pipelines(
+        &self,
+        format: impl Into<crate::gpu::render_target::TargetFormat>,
+    ) -> bool {
+        self.core.backend.has_format_pipelines(format.into())
     }
 
     /// Images resident in the GPU texture cache. Used by the format-change

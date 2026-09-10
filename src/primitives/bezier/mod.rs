@@ -1,5 +1,5 @@
 //! Bezier-curve utilities. Curves are rendered natively on the GPU
-//! (see `renderer::backend::curve_pipeline`); CPU flattening is no
+//! (see `gpu::curve_pipeline`); CPU flattening is no
 //! longer part of the pipeline. What remains: the quadratic→cubic
 //! promotion the curve-lowering path uses to feed a single shader code
 //! path, plus the curve-bbox helpers (`cubic_bbox` /
