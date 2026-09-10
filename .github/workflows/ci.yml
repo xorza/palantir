@@ -95,10 +95,11 @@ jobs:
       # `alloc` without its two device-driven modules — see `gates/on_gpu.rs`.
       # Its own invocation, so a skip cannot reach a lib test. `visual` needs
       # `golden`, which stays off: its baselines are gitignored.
-      - run: |
-          cargo test --locked --test alloc -- \
-            --skip fixtures::renderer:: \
-            --skip gates::on_gpu::
+      #
+      # One line because Windows runs a step under PowerShell, where a
+      # backslash continuation is not one — it reads the next line's `--` as a
+      # unary operator and stops.
+      - run: cargo test --locked --test alloc -- --skip fixtures::renderer:: --skip gates::on_gpu::
       # `doc = include_str!` makes the README a doctest, and its example needs
       # the default features.
       - run: cargo test --locked --doc
