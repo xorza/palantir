@@ -177,12 +177,12 @@ impl OffscreenHostBuilder {
     /// # Panics
     ///
     /// Panics if the device cannot run Palantir's pipelines — see
-    /// [`DeviceRequirements`]. Checked here rather than left to the first
-    /// pipeline that trips over it, because a device is only ever short of a
-    /// feature its own request forgot to ask for: by the time one exists,
-    /// `request_device` has already granted whatever was asked. The mistake is
-    /// upstream of this call, so the report belongs at this boundary and not
-    /// several layers into the backend.
+    /// [`DeviceRequirements`](crate::DeviceRequirements). Checked here rather
+    /// than left to the first pipeline that trips over it, because a device is
+    /// only ever short of a feature its own request forgot to ask for: by the
+    /// time one exists, `request_device` has already granted whatever was
+    /// asked. The mistake is upstream of this call, so the report belongs at
+    /// this boundary and not several layers into the backend.
     pub fn build(self) -> OffscreenHost {
         if let Err(unmet) = self.gpu.requirements_met() {
             panic!("offscreen host device cannot run Palantir: {unmet}");
