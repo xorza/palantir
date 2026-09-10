@@ -79,6 +79,11 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
           key: ${{ matrix.os }}
       - run: cargo test --locked --lib
+      # `winit` off is a supported configuration: the crate then embeds into a
+      # host's own event loop. Nothing else in the matrix builds it, and the
+      # self dev-dependency has to keep `default-features = false` for this
+      # invocation to differ from the one above at all.
+      - run: cargo test --locked --lib --no-default-features
       # `alloc` without its two device-driven modules — see `gates/on_gpu.rs`.
       # Its own invocation, so a skip cannot reach a lib test. `visual` needs
       # `golden`, which stays off: its baselines are gitignored.

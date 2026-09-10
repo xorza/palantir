@@ -84,8 +84,12 @@ tracy-client = { version = "0.19", optional = true }
 # showcase needs `internals` for the two demo surfaces it reads. Depending on
 # ourselves is the only way to hand it one. Cargo strips a path-only
 # dev-dependency when packaging, so the published manifest carries no cycle.
+#
+# `default-features = false` is what keeps `--no-default-features` meaningful:
+# a request here unifies into every test target, so without it the flag builds
+# the default feature set and the winit-free configuration goes uncompiled.
 [dev-dependencies]
-palantir = { path = ".", features = ["internals"] }
+palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 static_assertions = "1.1"
