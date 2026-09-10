@@ -86,12 +86,19 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
           key: ${{ matrix.os }}
+      # A per-step cap, because the job's own 45 minutes is the wrong
+      # instrument for a test binary that stops making progress: it spends
+      # the whole budget before saying so, and then says only that the job
+      # timed out. A cap covers the step's compile as well as its run, so a
+      # warm cache is what these are sized against.
       - run: cargo test --locked --lib
+        timeout-minutes: 10
       # `winit` off is a supported configuration: the crate then embeds into a
       # host's own event loop. Nothing else in the matrix builds it, and the
       # self dev-dependency has to keep `default-features = false` for this
       # invocation to differ from the one above at all.
       - run: cargo test --locked --lib --no-default-features
+        timeout-minutes: 10
       # `alloc` without its two device-driven modules — see `gates/on_gpu.rs`.
       # Its own invocation, so a skip cannot reach a lib test. `visual` needs
       # `golden`, which stays off: its baselines are gitignored.
@@ -102,9 +109,11 @@ jobs:
       # colon before a space, which a plain scalar would read as a key.
       - run: |
           cargo test --locked --test alloc -- --skip fixtures::renderer:: --skip gates::on_gpu::
+        timeout-minutes: 10
       # `doc = include_str!` makes the README a doctest, and its example needs
       # the default features.
       - run: cargo test --locked --doc
+        timeout-minutes: 10
 
   docs:
     name: rustdoc

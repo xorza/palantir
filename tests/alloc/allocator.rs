@@ -15,6 +15,19 @@
 //! allocs (Vec growth in `TRACES`, backtrace internals) neither
 //! recurse forever nor get counted.
 //!
+//! Nothing is counted while the thread is panicking. Beyond the counts
+//! being meaningless once a frame is unwinding rather than rendering,
+//! this is what keeps the suite off a Windows deadlock. Stack walking and
+//! symbol resolution both go through `dbghelp`, which is single-threaded;
+//! the `backtrace` crate and the copy vendored into std serialize on one
+//! shared named mutex to cope, and that mutex is recursive per thread. So
+//! a panic hook printing its own backtrace (`RUST_BACKTRACE=1`, which CI
+//! sets) allocates, re-enters this allocator, and walks the stack again
+//! from inside dbghelp's own call — reacquiring the outer mutex happily
+//! while blocking on dbghelp's internal ones. With a second test thread
+//! panicking at the same time the two wedge each other, and the `alloc`
+//! binary hangs until the job times out.
+//!
 //! Capture is unresolved (`new_unresolved`) so the hot path is just a
 //! stack walk, and symbol resolution runs lazily inside the harness
 //! when a fixture fails. A window keeps the first [`TRACE_CAP`] of
@@ -52,7 +65,12 @@ pub(crate) const TRACE_CAP: usize = 8;
 
 #[inline]
 fn track(size: usize) {
-    if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) {
+    // A panicking thread is unwinding, not rendering a frame: what it
+    // allocates belongs to the panic machinery, not to the audit window.
+    // Skipping it is also what keeps this allocator out of `dbghelp`
+    // underneath a panic hook already inside it — see the module docs.
+    // `panicking()` is a thread-local read, so the hot path is unmoved.
+    if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) || std::thread::panicking() {
         return;
     }
     ALLOCS.with(|c| c.set(c.get() + 1));
