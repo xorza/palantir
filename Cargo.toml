@@ -64,11 +64,6 @@ memchr = "2.8"
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = "1.0"
-# `gles` is not a fourth desktop backend: adapter selection prefers the others
-# wherever they work, and it costs two crates that load libEGL at runtime. It
-# is here for the boards where it is the only backend there is — a Mali behind
-# a vendor kbase driver has no Vulkan, and without this such a target has no
-# adapter to select at all.
 wgpu = { version = "30.0", default-features = false, features = [
     "std",
     "parking_lot",
