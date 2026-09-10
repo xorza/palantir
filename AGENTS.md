@@ -70,6 +70,20 @@ harnesses and for `scripts/bench-perf.sh`. Read it before measuring or reaching
 for `perf`; it carries the A/B protocol, the profiling recipes, and the traps
 that otherwise get rediscovered one wasted capture at a time.
 
+## Verification
+
+```
+cargo fmt --all --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --lib --test alloc --features internals,bench,golden,gpu-debug-markers
+```
+
+`--all-features` is clippy's alone. `profile-with-tracy` starts the Tracy client
+before `main`, so a test binary under it opens the profiler's socket and prints
+`SymInitialize FAILED with code 87`. The test run names every feature but that one,
+and names `alloc` rather than taking `--tests`, because `golden` would pull in
+`visual`, whose baselines are gitignored.
+
 ## Gated reach-in modules
 
 Test and bench code that needs past a file's privates goes in one gated module

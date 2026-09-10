@@ -51,7 +51,9 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
           key: ${{ matrix.os }}
       # Compiles the internals/golden/bench reach-ins and the examples. Clippy
-      # never runs them, so the golden suite's absent baselines cost nothing.
+      # never runs them, so the golden suite's absent baselines cost nothing and
+      # `profile-with-tracy` starts no profiler. Only clippy may take
+      # `--all-features`: a `cargo test` under it opens the Tracy socket.
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test:
