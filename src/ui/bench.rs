@@ -59,9 +59,9 @@
 //! of its own.
 //!
 //! The shared workload lives in [`crate::frame_fixture`] and also drives
-//! the allocation gates in `tests/alloc/gates.rs` and the showcase's
-//! `frame bench` page — run `cargo run --example showcase --features showcase`
-//! to eyeball the tree these numbers come from.
+//! the allocation gates in `tests/alloc/gates/` and the showcase's
+//! `frame bench` page — run `cargo run --example showcase` to eyeball the
+//! tree these numbers come from.
 
 use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
