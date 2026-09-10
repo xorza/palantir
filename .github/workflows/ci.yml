@@ -61,11 +61,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        # Windows is here for Dx12, which runs nowhere else. Compiling it is
+        # not enough: a backend can disagree about layout and fail only at
+        # runtime. This crate has met that once already — HLSL constant-buffer
+        # rules put a nested immediate member on the next register, and text
+        # vanished on Dx12 while every other pipeline was fine (see
+        # `prelude.wgsl`). Nothing but a test on Windows catches the next one.
+        os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
       - uses: actions/checkout@v5
       # Hosted Linux runners have no GPU, and vulkan is the only backend this
-      # crate builds there. macOS needs nothing: its runner exposes Metal.
+      # crate builds there. macOS needs nothing: its runner exposes Metal, and
+      # Windows nothing either: WARP, Microsoft's software Dx12 adapter, ships
+      # in the box.
       - name: Install a software Vulkan adapter
         if: runner.os == 'Linux'
         run: |
