@@ -2,7 +2,7 @@
     {
         "label": "Run showcase",
         "command": "cargo",
-        "args": ["run", "--release", "--features", "showcase", "--example", "showcase"],
+        "args": ["run", "--release", "--example", "showcase"],
         "cwd": "$ZED_WORKTREE_ROOT",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
