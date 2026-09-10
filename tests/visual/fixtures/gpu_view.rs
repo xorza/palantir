@@ -2,6 +2,11 @@
 //! callback renders into the framework-owned off-screen target, which is
 //! then composited into the UI through the image pipeline.
 
+// Reaches Palantir the way an outside consumer does, through the published
+// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
+// of the library's own modules.
+#![allow(clippy::disallowed_types)]
+
 use std::cell::RefCell;
 use std::rc::Rc;
 

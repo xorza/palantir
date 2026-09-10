@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use glam::IVec2;
+use glam::{IVec2, UVec2};
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Icon, Window as WinitWindow, WindowAttributes};
@@ -131,6 +131,12 @@ fn position_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
             && pos.x < mp.x + ms.width as i32
             && pos.y < mp.y + ms.height as i32
     })
+}
+
+/// The window's physical extent, as the graphics layer wants it.
+pub(super) fn physical_size(window: &WinitWindow) -> UVec2 {
+    let size = window.inner_size();
+    UVec2::new(size.width, size.height)
 }
 
 #[cfg(test)]

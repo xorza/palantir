@@ -18,10 +18,12 @@
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::display::Display;
-use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
-use crate::renderer::backend::WgpuBackend;
-use crate::renderer::backend::backend_config::BackendConfig;
-use crate::renderer::backend::backend_resources::BackendResources;
+use crate::gpu::WgpuBackend;
+use crate::gpu::backend_config::BackendConfig;
+use crate::gpu::backend_resources::BackendResources;
+use crate::gpu::render_target::RenderTarget;
+use crate::gpu::requested_gpu::Gpu;
+use crate::host::window_driver::{CpuFrame, PresentPath, WindowDriver, WindowDriverBuilder};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
@@ -58,8 +60,7 @@ impl HostCore {
     /// surface clamp, the [`TextureLimit`] and the frontend's clamp have
     /// to be one number rather than two readings of the device's limits.
     pub(super) fn new(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
+        gpu: Gpu,
         max_texture_dim: NonZeroU32,
         shaper: TextShaper,
         clipboard: Clipboard,
@@ -71,8 +72,7 @@ impl HostCore {
             TextureLimit::from_device(max_texture_dim),
         );
         let backend = WgpuBackend::new(
-            device,
-            queue,
+            gpu,
             BackendResources {
                 text: resources.text(),
                 images: resources.images(),
@@ -133,8 +133,8 @@ impl HostCore {
     pub(super) fn submit(
         &mut self,
         driver: &mut WindowDriver,
-        target: &wgpu::Texture,
-        mode: PresentMode,
+        target: RenderTarget<'_>,
+        mode: PresentPath,
     ) {
         driver.render_to_texture(&self.frontend.buffer, &mut self.backend, target, mode);
     }

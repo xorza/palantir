@@ -171,6 +171,9 @@ pub(crate) mod display;
 /// with no harness dependency, so reaching it costs nothing.
 #[cfg(feature = "internals")]
 pub(crate) mod frame_fixture;
+/// Every wgpu call in the crate. Pipelines, atlases, the device request and
+/// the surface all live here, so no other module names a `wgpu` type.
+pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;
 pub(crate) mod input;
@@ -206,7 +209,7 @@ pub mod internals {
     /// Needs a real GPU device, so unlike its neighbours this one exists
     /// only under the feature — never in a plain `cargo test` build.
     #[cfg(feature = "internals")]
-    pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    pub use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     #[cfg(feature = "internals")]
     pub use crate::text::internals::TEXT_SCALE_STEP;
     pub use crate::ui::harness::UiHarness;
@@ -221,12 +224,17 @@ pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 
 /// The `wgpu` Palantir was built against.
 ///
-/// Re-exported because Palantir's surface is not wgpu-free: [`GpuPaint`] hands
-/// out a `Device` and a `CommandEncoder`, [`OffscreenHost`] is handed a
-/// `Device` and a `Queue` and renders into a `Texture`. A consumer naming
-/// those from its own `wgpu` dependency has to keep that dependency
-/// semver-identical to this one by hand, and a mismatch turns every one of
-/// those types foreign at the call site. Going through this one cannot skew.
+/// Re-exported because Palantir's surface is not wgpu-free, and cannot be:
+/// [`GpuPaint`] hands out a `Device` and a `CommandEncoder`, [`Gpu`]
+/// is built from a `Device` and a `Queue`, and [`RenderTarget`] borrows a
+/// `Texture`. Those four are the whole of it — every other host, driver and
+/// widget path names a Palantir type instead, and `clippy.toml` fails the
+/// build when a module outside `crate::gpu` reaches for a graphics-API type.
+///
+/// A consumer naming those from its own `wgpu` dependency has to keep that
+/// dependency semver-identical to this one by hand, and a mismatch turns
+/// every one of those types foreign at the call site. Going through this one
+/// cannot skew.
 pub use wgpu;
 
 /// Format text straight into the frame's record store, with no `String` in
@@ -369,10 +377,14 @@ pub use frame_fixture::FrameFixture;
 /// comparable.
 #[cfg(feature = "internals")]
 pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
+pub use gpu::device_requirements::DeviceRequirements;
+#[cfg(feature = "winit")]
+pub use gpu::error::SurfaceError;
+pub use gpu::error::{GpuRequestError, UnmetRequirements};
+pub use gpu::power_preference::PowerPreference;
+pub use gpu::render_target::{RenderTarget, TargetFormat};
+pub use gpu::requested_gpu::{Gpu, RequestedGpu};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
-pub use host::device_requirements::DeviceRequirements;
-pub use host::error::{GpuRequestError, UnmetRequirements};
-pub use host::gpu_request::RequestedGpu;
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
 /// instead of a swapchain (screenshots, thumbnails, server-side
@@ -463,6 +475,8 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
+pub use gpu::gpu_frame_ctx::GpuFrameCtx;
+pub use gpu::gpu_init_ctx::GpuInitCtx;
 pub use icons::icon_set::{IconHandle, IconSet};
 pub use icons::icon_table::{IconDef, IconId, IconTable};
 pub use primitives::stroke::Stroke;
@@ -470,8 +484,6 @@ pub use primitives::translate_scale::TranslateScale;
 pub use primitives::widget_id::WidgetId;
 pub use renderer::error::ImageLoadError;
 pub use renderer::gpu_paint::GpuPaint;
-pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
-pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use renderer::image_registry::image_handle::ImageHandle;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;

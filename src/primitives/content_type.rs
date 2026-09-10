@@ -27,13 +27,6 @@ pub enum ContentType {
 }
 
 impl ContentType {
-    pub(crate) fn format(self) -> wgpu::TextureFormat {
-        match self {
-            Self::Mask => wgpu::TextureFormat::R8Unorm,
-            Self::Color => wgpu::TextureFormat::Rgba8UnormSrgb,
-        }
-    }
-
     pub(crate) fn bytes_per_pixel(self) -> u32 {
         match self {
             Self::Mask => 1,

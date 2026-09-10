@@ -113,7 +113,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// of the protected tier of the shaped-buffer cache, which each entry
 /// extends by its own share of [`RENDERED_RUN_KEEP_SPREAD_MASK`], and
 /// the ceiling the backend's glyph-template window
-/// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
+/// (`gpu::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
 ///
 /// **The relation between the two windows is an ordering, not an

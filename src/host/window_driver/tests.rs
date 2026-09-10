@@ -2,9 +2,9 @@
 //! selection, output validity, and the record-store lifecycle.
 
 mod present_mode_tests {
-    use crate::host::window_driver::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
+    use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive};
-    use crate::host::window_driver::{PresentMode, present_mode};
+    use crate::host::window_driver::{PresentPath, present_path};
     use crate::primitives::color::RgbaF32;
     use crate::primitives::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
@@ -35,7 +35,7 @@ mod present_mode_tests {
             damage: Damage::Partial(damage),
         })
     }
-    const DIRECT_FULL: PresentMode = Direct(RenderPlan {
+    const DIRECT_FULL: PresentPath = Direct(RenderPlan {
         clear: RgbaF32::BLACK,
         damage: Damage::Full,
     });
@@ -47,14 +47,14 @@ mod present_mode_tests {
         // Backbuffer freshness is irrelevant here (every frame touches it).
         for fresh in [false, true] {
             assert_eq!(
-                present_mode(full(), BackbufferCopy, fresh),
+                present_path(full(), BackbufferCopy, fresh),
                 ViaBackbuffer(full().unwrap())
             );
             assert_eq!(
-                present_mode(partial(10.0, 10.0), BackbufferCopy, fresh),
+                present_path(partial(10.0, 10.0), BackbufferCopy, fresh),
                 ViaBackbuffer(partial(10.0, 10.0).unwrap())
             );
-            assert_eq!(present_mode(None, BackbufferCopy, fresh), SkipCopy);
+            assert_eq!(present_path(None, BackbufferCopy, fresh), SkipCopy);
         }
     }
 
@@ -64,10 +64,10 @@ mod present_mode_tests {
         // depends on backbuffer freshness.
         for fresh in [false, true] {
             assert_eq!(
-                present_mode(full(), DirectAdaptive, fresh),
+                present_path(full(), DirectAdaptive, fresh),
                 Direct(full().unwrap())
             );
-            assert_eq!(present_mode(None, DirectAdaptive, fresh), SkipNoop);
+            assert_eq!(present_path(None, DirectAdaptive, fresh), SkipNoop);
         }
     }
 
@@ -77,12 +77,12 @@ mod present_mode_tests {
         let small = partial(10.0, 10.0);
         // Fresh: the backbuffer mirrors the target, so paint just the region.
         assert_eq!(
-            present_mode(small, DirectAdaptive, true),
+            present_path(small, DirectAdaptive, true),
             ViaBackbuffer(small.unwrap())
         );
         // Stale (after a direct frame): resync with one full repaint first.
         assert_eq!(
-            present_mode(small, DirectAdaptive, false),
+            present_path(small, DirectAdaptive, false),
             ViaBackbuffer(full().unwrap())
         );
     }
@@ -93,7 +93,7 @@ mod present_mode_tests {
         // direct (dropping the copy) regardless of backbuffer freshness.
         let large = partial(80.0, 80.0);
         for fresh in [false, true] {
-            assert_eq!(present_mode(large, DirectAdaptive, fresh), DIRECT_FULL);
+            assert_eq!(present_path(large, DirectAdaptive, fresh), DIRECT_FULL);
         }
     }
 
@@ -103,11 +103,11 @@ mod present_mode_tests {
         // just over promotes. 63×63 = 3_969 (0.3969) vs 64×64 = 4_096 (0.4096) —
         // straddling the 0.4 line.
         assert!(matches!(
-            present_mode(partial(63.0, 63.0), DirectAdaptive, true),
+            present_path(partial(63.0, 63.0), DirectAdaptive, true),
             ViaBackbuffer(_)
         ));
         assert_eq!(
-            present_mode(partial(64.0, 64.0), DirectAdaptive, true),
+            present_path(partial(64.0, 64.0), DirectAdaptive, true),
             DIRECT_FULL
         );
     }
@@ -117,7 +117,8 @@ mod output_validity_tests {
     use glam::UVec2;
 
     use crate::common::clipboard::Clipboard;
-    use crate::host::window_driver::{PresentMode, PresentStrategy, TargetKey, WindowDriver};
+    use crate::gpu::render_target::TargetFormat;
+    use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
@@ -222,25 +223,25 @@ mod output_validity_tests {
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            present_mode: Some(wgpu::PresentMode::AutoVsync),
+            format: wgpu::TextureFormat::Rgba8Unorm.into(),
+            vsync: Some(Vsync::On),
         };
         let resized = TargetKey {
             physical: UVec2::new(65, 48),
             ..first
         };
         let reformatted = TargetKey {
-            format: wgpu::TextureFormat::Bgra8Unorm,
+            format: wgpu::TextureFormat::Bgra8Unorm.into(),
             ..resized
         };
         let vsync_off = TargetKey {
-            present_mode: Some(wgpu::PresentMode::AutoNoVsync),
+            vsync: Some(Vsync::Off),
             ..reformatted
         };
         // A texture target is never presented, so it carries no mode at all —
         // and must still read as a change against an otherwise-equal surface.
         let offscreen = TargetKey {
-            present_mode: None,
+            vsync: None,
             ..vsync_off
         };
 
@@ -269,38 +270,31 @@ mod output_validity_tests {
         assert!(driver.backbuffer_fresh);
     }
 
-    /// The submit-time "same target" check must ignore `present_mode`, which
-    /// is the one field of the key a `wgpu::Texture` cannot answer for.
+    /// The submit-time "same target" check must ignore the pacing, which is
+    /// the one field of the key a render target cannot answer for.
     ///
     /// The regression: `render_to_texture` asserted the noted key *equals*
-    /// `TargetKey::of(target)`, and `of` reports `present_mode: None` because
+    /// `TargetKey::of(target)`, and `of` reports `vsync: None` because
     /// a plain texture has no swapchain. Once a surface key started carrying
     /// `Some(..)`, the two could never be equal — every debug-build swapchain
     /// frame tripped it on the first submit.
     #[test]
-    fn a_surface_key_describes_its_acquired_texture_whatever_the_present_mode() {
+    fn a_surface_key_describes_its_acquired_texture_whatever_the_pacing() {
         let physical = UVec2::new(3078, 1908);
-        let format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let format = TargetFormat::from(wgpu::TextureFormat::Bgra8UnormSrgb);
         let surface = TargetKey {
             physical,
             format,
-            present_mode: Some(wgpu::PresentMode::AutoVsync),
+            vsync: Some(Vsync::On),
         };
 
         // An acquired swapchain texture reports size + format and nothing
         // else; every present mode describes it, including no mode at all.
-        for present_mode in [
-            Some(wgpu::PresentMode::AutoVsync),
-            Some(wgpu::PresentMode::AutoNoVsync),
-            None,
-        ] {
-            let key = TargetKey {
-                present_mode,
-                ..surface
-            };
+        for vsync in [Some(Vsync::On), Some(Vsync::Off), None] {
+            let key = TargetKey { vsync, ..surface };
             assert!(
                 key.describes(physical, format),
-                "{present_mode:?} must still describe its own texture"
+                "{vsync:?} must still describe its own texture"
             );
         }
 
@@ -308,7 +302,7 @@ mod output_validity_tests {
         // genuinely not the one the CPU half ran against.
         assert!(!surface.describes(UVec2::new(3078, 1907), format), "size");
         assert!(
-            !surface.describes(physical, wgpu::TextureFormat::Rgba8Unorm),
+            !surface.describes(physical, wgpu::TextureFormat::Rgba8Unorm.into()),
             "format"
         );
         // And the mode axis stays live for `note_target`'s own equality —
@@ -316,7 +310,7 @@ mod output_validity_tests {
         assert_ne!(
             surface,
             TargetKey {
-                present_mode: Some(wgpu::PresentMode::AutoNoVsync),
+                vsync: Some(Vsync::Off),
                 ..surface
             },
             "describes() is deliberately weaker than equality, not a \
@@ -343,7 +337,7 @@ mod output_validity_tests {
                 damage: Damage::Full,
             })),
         );
-        assert!(matches!(paint.mode, PresentMode::Direct(_)));
+        assert!(matches!(paint.mode, PresentPath::Direct(_)));
         assert!(
             !driver.output_valid,
             "paint stays pending until acquire and submit complete"
@@ -353,7 +347,7 @@ mod output_validity_tests {
         assert!(driver.output_valid, "successful submit restores validity");
 
         let skip = driver.finish_cpu_frame(&mut frontend, report(None));
-        assert!(matches!(skip.mode, PresentMode::SkipNoop));
+        assert!(matches!(skip.mode, PresentPath::SkipNoop));
         assert!(
             driver.output_valid,
             "SkipNoop preserves valid target pixels"
@@ -361,7 +355,7 @@ mod output_validity_tests {
 
         driver.strategy = PresentStrategy::BackbufferCopy;
         let skip_copy = driver.finish_cpu_frame(&mut frontend, report(None));
-        assert!(matches!(skip_copy.mode, PresentMode::SkipCopy));
+        assert!(matches!(skip_copy.mode, PresentPath::SkipCopy));
         assert!(
             !driver.output_valid,
             "SkipCopy stays pending until the copy is submitted"

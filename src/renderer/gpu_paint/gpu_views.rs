@@ -115,9 +115,9 @@ impl GpuViews {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::gpu_paint::GpuPaint;
-    use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use crate::renderer::gpu_paint::gpu_views::GpuViews;
     use std::cell::RefCell;

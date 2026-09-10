@@ -13,16 +13,9 @@
 //! `DebugOverlayConfig`) deliberately lives at the crate root, not here — the
 //! `Ui` API must not depend on the host machinery.
 
-#[cfg(feature = "bench")]
-pub(crate) mod bench_gpu;
 pub(crate) mod clock;
 mod core;
-pub(crate) mod device_requirements;
-pub(crate) mod error;
-pub(crate) mod gpu_request;
 pub(crate) mod offscreen;
-#[cfg(feature = "internals")]
-pub(crate) mod test_gpu;
 mod window_driver;
 #[cfg(feature = "winit")]
 pub(crate) mod winit;

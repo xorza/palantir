@@ -1,6 +1,6 @@
 //! App-global diagnostic configuration, the GPU measurement handles behind it,
 //! and the `frame_stats` overlay one of its flags turns on. Backend collection
-//! lives in `renderer::backend`.
+//! lives in `gpu`.
 
 pub(crate) mod frame_stats;
 pub(crate) mod gpu_pass_stats;

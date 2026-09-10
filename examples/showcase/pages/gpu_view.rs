@@ -4,6 +4,11 @@
 //! framework-owned target, a private depth buffer recreated on resize,
 //! and continuous repaint driving the animation.
 
+// The `GpuView` escape hatch is raw wgpu by definition, so naming its types is
+// what this page is for. `clippy.toml` keeps them out of the library's own
+// modules, not out of what a consumer writes.
+#![allow(clippy::disallowed_types)]
+
 use std::cell::RefCell;
 use std::rc::Rc;
 

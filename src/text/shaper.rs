@@ -53,7 +53,7 @@ struct Shared {
 
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
 /// Both [`crate::Ui`] (layout-time measurement) and
-/// [`crate::renderer::backend::WgpuBackend`]
+/// [`crate::gpu::WgpuBackend`]
 /// (shaping during render) borrow this; the backend reaches the measurer
 /// through [`TextShaper::glyphs`] and reads its clock through
 /// [`TextShaper::frame`].

@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::host::error::GpuRequestError;
+use crate::gpu::error::{GpuRequestError, SurfaceError};
 use crate::window::window_token::WindowToken;
 
 /// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no
@@ -51,29 +51,18 @@ pub enum WinitHostError {
         /// What the platform reported.
         source: winit::error::OsError,
     },
-    /// Wgpu could not create a presentation surface for a native window.
-    CreateSurface {
+    /// A native window has no surface Palantir can present through.
+    Surface {
         /// The window whose surface failed.
         token: WindowToken,
-        /// What wgpu reported.
-        source: wgpu::CreateSurfaceError,
+        /// What went wrong with it.
+        source: SurfaceError,
     },
     /// Asking the driver for a device failed — the same four ways it fails
     /// for every host, so the same enum describes them.
     Gpu {
         /// Which of the four ways the request failed.
         source: GpuRequestError,
-    },
-    /// The selected adapter cannot present to this window's surface.
-    IncompatibleSurface,
-    /// The surface cannot satisfy Palantir's linear-to-sRGB output contract.
-    MissingSrgbSurface,
-    /// The surface lacks texture usages required by Palantir's compositor.
-    MissingSurfaceUsages {
-        /// What the compositor needs.
-        required: wgpu::TextureUsages,
-        /// What the surface offers.
-        supported: wgpu::TextureUsages,
     },
 }
 
@@ -85,24 +74,10 @@ impl Display for WinitHostError {
             Self::CreateWindow { token, source } => {
                 write!(f, "failed to create window {token:?}: {source}")
             }
-            Self::CreateSurface { token, source } => {
-                write!(f, "failed to create surface for window {token:?}: {source}")
+            Self::Surface { token, source } => {
+                write!(f, "window {token:?} surface failed: {source}")
             }
             Self::Gpu { source } => Display::fmt(source, f),
-            Self::IncompatibleSurface => {
-                f.write_str("graphics adapter cannot present to the window surface")
-            }
-            Self::MissingSrgbSurface => {
-                f.write_str("window surface has no sRGB format and color space")
-            }
-            Self::MissingSurfaceUsages {
-                required,
-                supported,
-            } => write!(
-                f,
-                "window surface lacks required texture usages \
-                 (required: {required:?}, supported: {supported:?})"
-            ),
         }
     }
 }
@@ -118,14 +93,11 @@ impl Error for WinitHostError {
         match self {
             Self::CreateEventLoop { source } | Self::RunEventLoop { source } => Some(source),
             Self::CreateWindow { source, .. } => Some(source),
-            Self::CreateSurface { source, .. } => Some(source),
+            Self::Surface { source, .. } => Some(source),
             // The inner's own source, skipping the inner itself. This
             // variant adds no words of its own — its `Display` forwards —
             // so chaining it would print the identical sentence twice.
             Self::Gpu { source } => source.source(),
-            Self::IncompatibleSurface
-            | Self::MissingSrgbSurface
-            | Self::MissingSurfaceUsages { .. } => None,
         }
     }
 }
@@ -134,7 +106,7 @@ impl Error for WinitHostError {
 mod tests {
     use std::error::Error;
 
-    use crate::host::error::{GpuRequestError, UnmetRequirements};
+    use crate::gpu::error::{GpuRequestError, UnmetRequirements};
     use crate::host::winit::error::{HostDisconnected, WinitHostError};
 
     #[test]

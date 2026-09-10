@@ -1,5 +1,5 @@
 //! Circular-arc utilities for the native GPU stroke pipeline. Arcs
-//! render exactly on the GPU (see `renderer::backend::curve_pipeline`);
+//! render exactly on the GPU (see `gpu::curve_pipeline`);
 //! what lives here is the CPU-side bbox that sizes the lowered record.
 
 use crate::primitives::rect::Rect;

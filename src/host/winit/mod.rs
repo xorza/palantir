@@ -57,7 +57,6 @@
 
 pub(crate) mod config;
 pub(crate) mod error;
-mod gpu;
 pub(crate) mod handle;
 mod input;
 mod native;
@@ -65,6 +64,7 @@ mod runtime;
 mod window;
 mod window_set;
 
+use crate::gpu::power_preference::PowerPreference;
 use std::marker::PhantomData;
 use std::time::Instant;
 
@@ -76,9 +76,9 @@ use winit::window::WindowId;
 
 use crate::app::App;
 use crate::display;
+use crate::gpu::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::gpu::SurfaceManager;
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
@@ -190,23 +190,6 @@ where
         self
     }
 
-    /// Set the app-global presentation policy. An explicit mode unsupported by
-    /// a surface falls back to its matching automatic policy.
-    ///
-    /// The escape hatch for a mode [`Vsync`] cannot name — `Mailbox`,
-    /// `Immediate`, `FifoRelaxed`. Naming a [`wgpu::PresentMode`] means
-    /// depending on wgpu directly, at a version matching the one palantir
-    /// links, so [`Self::vsync`] covers the common case without that.
-    ///
-    /// **One slot, written by both.** This and [`Self::vsync`] set the same
-    /// field, so the later call in the chain is the one that survives —
-    /// `.present_mode(Mailbox).vsync(Vsync::On)` starts on `AutoVsync`, not
-    /// on `Mailbox`.
-    pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
-        self.config.present_mode = mode;
-        self
-    }
-
     /// Start every window with `vsync` — the launch-time twin of
     /// [`Ui::set_vsync`](crate::Ui::set_vsync), in the same backend-neutral
     /// vocabulary.
@@ -214,16 +197,13 @@ where
     /// Prefer this over asking for the same thing from the first frame: set
     /// here it reaches the *initial* swapchain, where the runtime request
     /// would build one swapchain and immediately replace it.
-    ///
-    /// Writes the same field [`Self::present_mode`] does, so the later call
-    /// in the chain wins.
     pub fn vsync(mut self, vsync: Vsync) -> Self {
-        self.config.present_mode = gpu::present_mode(vsync);
+        self.config.vsync = vsync;
         self
     }
 
     /// Set the adapter power preference used at startup.
-    pub fn power_preference(mut self, pref: wgpu::PowerPreference) -> Self {
+    pub fn power_preference(mut self, pref: PowerPreference) -> Self {
         self.config.power_preference = pref;
         self
     }
@@ -460,9 +440,7 @@ where
                 // drains faster than we drain it. Letting `about_to_wait`
                 // coalesce into one `RedrawRequested` per loop tick gives the
                 // smoother feel in practice.
-                if size.x != win.config.width || size.y != win.config.height {
-                    win.config.width = size.x;
-                    win.config.height = size.y;
+                if win.surface.resize(size) {
                     win.next = FramePresent::Immediate;
                 }
             }
