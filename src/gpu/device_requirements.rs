@@ -1,7 +1,7 @@
 //! What Palantir needs from the device it draws on.
 
 use crate::gpu::IMMEDIATES_BYTES;
-use crate::gpu::error::UnmetRequirements;
+use crate::gpu::error::{self, UnmetRequirements};
 
 /// The features and limits to ask an adapter for, so that the device it
 /// returns can run Palantir's pipelines.
@@ -66,8 +66,7 @@ impl DeviceRequirements {
     fn check(available: wgpu::Features, limits: &wgpu::Limits) -> Result<(), UnmetRequirements> {
         if !available.contains(Self::FEATURES) {
             return Err(UnmetRequirements::Features {
-                required: Self::FEATURES,
-                available,
+                missing: error::flag_names((Self::FEATURES - available).iter_names()),
             });
         }
         if limits.max_immediate_size < IMMEDIATES_BYTES {
@@ -170,13 +169,12 @@ mod tests {
         // The non-negotiable one is not dropped.
         let missing =
             DeviceRequirements::against(Features::empty(), ceiling.clone(), optional).unwrap_err();
+        let UnmetRequirements::Features { missing } = &missing else {
+            panic!("{missing:?}");
+        };
         assert!(
-            matches!(
-                missing,
-                UnmetRequirements::Features { required, available }
-                    if required == Features::IMMEDIATES && available.is_empty()
-            ),
-            "{missing:?}"
+            missing.contains("IMMEDIATES"),
+            "the message must name the feature that is absent, got {missing}"
         );
 
         let mut short = ceiling;

@@ -380,7 +380,7 @@ pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
 pub use gpu::device_requirements::DeviceRequirements;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
-pub use gpu::error::{GpuRequestError, UnmetRequirements};
+pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 pub use gpu::power_preference::PowerPreference;
 pub use gpu::render_target::{RenderTarget, TargetFormat};
 pub use gpu::requested_gpu::{Gpu, RequestedGpu};

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use glam::UVec2;
 
 use crate::gpu::device_requirements::DeviceRequirements;
-use crate::gpu::error::SurfaceError;
+use crate::gpu::error::{self, DriverError, SurfaceError};
 use crate::gpu::power_preference::PowerPreference;
 use crate::gpu::requested_gpu::Gpu;
 use crate::gpu::requested_gpu::{GpuRequest, RequestedGpu};
@@ -124,7 +124,11 @@ fn create_surface<W>(
 where
     W: wgpu::DisplayAndWindowHandle + 'static,
 {
-    Ok(instance.create_surface(Arc::clone(window))?)
+    instance
+        .create_surface(Arc::clone(window))
+        .map_err(|source| SurfaceError::Create {
+            source: DriverError::new(source),
+        })
 }
 
 impl SurfaceManager {
@@ -218,8 +222,7 @@ fn build_surface_config(
     }
     if !caps.usages.contains(REQUIRED_SURFACE_USAGES) {
         return Err(SurfaceError::MissingUsages {
-            required: REQUIRED_SURFACE_USAGES,
-            supported: caps.usages,
+            missing: error::flag_names((REQUIRED_SURFACE_USAGES - caps.usages).iter_names()),
         });
     }
     // The color pipeline writes linear values and relies on an sRGB
