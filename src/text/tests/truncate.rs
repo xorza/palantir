@@ -322,29 +322,48 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
             .w
     };
 
-    let rtl = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
-    let marker_only = c.measure("\u{2026}", unbounded).size.w;
+    // Three shin, among the widest Hebrew letters, then three vav, among the
+    // narrowest — and neither takes a positional form, so a cut prefix
+    // reshapes to the same advances it was measured with. Every budget below
+    // is measured off the same face rather than named, because a baked-in
+    // pixel count buys one letter on one platform's Hebrew face and two on
+    // another's.
+    let rtl = "\u{5e9}\u{5e9}\u{5e9}\u{5d5}\u{5d5}\u{5d5}";
+    let width_of = |c: &mut CosmicMeasure, text: &str| c.measure(text, unbounded).size.w;
+    let marker_only = width_of(&mut c, "\u{2026}");
+    let one_prefix = width_of(&mut c, "\u{5e9}\u{2026}");
+    let two_prefix = width_of(&mut c, "\u{5e9}\u{5e9}\u{2026}");
+    let two_suffix = width_of(&mut c, "\u{5d5}\u{5d5}\u{2026}");
+    let whole = width_of(&mut c, rtl);
 
-    // Room for the marker plus one glyph: something of the run must survive.
-    let one = elide(&mut c, rtl, 28.0);
+    // What the machine's face owes the case for either half below to prove
+    // anything: room for a real cut, and two ends that measure apart.
     assert!(
-        one > marker_only,
-        "an RTL run with room to spare must keep text, got {one} vs bare marker {marker_only}",
+        two_prefix < whole,
+        "two letters and the marker must be a cut, not the whole run: \
+         {two_prefix} against {whole}",
+    );
+    assert!(
+        (two_prefix - two_suffix).abs() >= 1.0,
+        "prefix and suffix widths must differ for this to prove anything: \
+         {two_prefix} vs {two_suffix}",
     );
 
-    // Room for two: the survivors must be the logical prefix. The logical
-    // *suffix* is the wrong answer a visual-order cut reaches for, and
-    // Hebrew glyph advances differ enough to tell the two apart.
-    let two = elide(&mut c, rtl, 35.0);
-    let prefix = c.measure("\u{5e9}\u{5dc}\u{2026}", unbounded).size.w;
-    let suffix = c.measure("\u{5d5}\u{5dd}\u{2026}", unbounded).size.w;
-    assert!(
-        (two - prefix).abs() < 1.0,
-        "RTL elision must keep the leading characters: {two} vs prefix {prefix}",
+    // Room for the marker plus one letter: that letter must survive.
+    let one = elide(&mut c, rtl, one_prefix);
+    assert_eq!(
+        one, one_prefix,
+        "an RTL run with room to spare must keep text, and a bare marker \
+         measures {marker_only}",
     );
-    assert!(
-        (two - suffix).abs() >= 1.0,
-        "prefix and suffix widths must differ for this to prove anything: {two} vs {suffix}",
+
+    // Room for two: the survivors must be the logical prefix, and not the
+    // logical suffix a visual-order cut reaches for.
+    let two = elide(&mut c, rtl, two_prefix);
+    assert_eq!(
+        two, two_prefix,
+        "RTL elision must keep the leading letters, and {two_suffix} is what \
+         the trailing ones measure",
     );
 
     // LTR is the control: same code path, and widening the box must reveal

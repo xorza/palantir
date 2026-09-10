@@ -69,9 +69,18 @@ fn pure_blue_lies_outside_the_cube() {
     // Reading pure blue back saturates both axes rather than reporting
     // something out of range, so a picker opened on it shows its handles in
     // the corner.
+    //
+    // Both axes are one to within `f32` resolution, and which side of it they
+    // land on belongs to the platform: over glibc they come out one ULP above
+    // one and the clamp catches them, while MSVC's `cbrt` rounds the other way
+    // and leaves `v` one ULP below. Eight ULPs of slack covers that
+    // disagreement over a chain of a cube root, a square root and a three-step
+    // Halley solve, and stays well inside a thousandth of an 8-bit step — a
+    // difference no picker can show.
+    let top = 1.0 - 4.0 * f32::EPSILON..=1.0;
     let coords = Okhsv::from_color(RgbaF32::hex(0x0000ff), 0.0);
-    assert_eq!(coords.s, 1.0);
-    assert_eq!(coords.v, 1.0);
+    assert!(top.contains(&coords.s), "blue saturation {}", coords.s);
+    assert!(top.contains(&coords.v), "blue value {}", coords.v);
 }
 
 /// Distance between two hues the short way round the circle.
