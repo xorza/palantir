@@ -1,0 +1,11 @@
+# The f16 <-> f32 conversions behind colour, corner radii, spacing and shadow
+# geometry inline into their callers only when F16C is static; x86-64-v3
+# carries F16C, plus AVX2 and FMA. The floor it sets is Haswell (2013), which
+# is this repository's call and not the crate's — a consumer that needs the
+# baseline build gets the runtime fallback either way.
+#
+# The key is arch-gated, so an aarch64 build gets no flag rather than an
+# ignored one. RUSTFLAGS in the environment replaces this whole section, so CI
+# (which sets `-D warnings`) builds baseline.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v3"]

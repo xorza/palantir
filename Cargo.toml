@@ -14,6 +14,7 @@ categories = ["gui", "graphics", "rendering::engine"]
 # SIL Open Font License, so the tarball as a whole carries both terms.
 license = "(MIT OR Apache-2.0) AND OFL-1.1"
 exclude = [
+    ".cargo/",
     ".github/",
     ".gitignore",
     ".notes/",
