@@ -6,7 +6,7 @@
 //! re-entry-guard balance, panic-safety of the audit guard, the
 //! panic + trace-dump failure path, and the `user_frames` filter.
 
-use crate::allocator::with_audit;
+use crate::allocator::{TRACE_CAP, with_audit};
 use crate::harness;
 use crate::harness::{Audit, user_frames};
 use palantir::{Button, Configure, Sizing, Ui};
@@ -35,7 +35,6 @@ fn counts_exactly_what_audit_window_allocates() {
 
 #[test]
 fn allocs_outside_audit_are_silent() {
-    // Allocate before; allocate after; the inner audit sees zero.
     for _ in 0..32 {
         one_alloc();
     }
@@ -91,22 +90,27 @@ fn sibling_thread_allocs_do_not_pollute_audit() {
 #[test]
 fn re_entry_guard_keeps_counter_and_traces_aligned() {
     // The bookkeeping path (Vec growth in TRACES, Backtrace internals)
-    // calls back into the allocator. CAPTURING must suppress those, so
-    // `traces.len() == counter.allocs` even after the very first alloc
-    // (when TRACES allocates its initial buffer) and after capacity-
-    // doubling pushes.
-    let r = with_audit(|| {
-        for _ in 0..64 {
-            one_alloc();
-        }
-    });
-    assert_eq!(
-        r.allocs as usize,
-        r.traces.len(),
-        "trace count must equal alloc count (counter={}, traces={})",
-        r.allocs,
-        r.traces.len(),
-    );
+    // calls back into the allocator. CAPTURING must suppress those, or the
+    // counter would run past what the body allocated and the capture would
+    // recurse. The sub-cap row allocates TRACES' initial buffer and grows it
+    // once, and the row above the cap is what proves the bound leaves the
+    // count alone.
+    for allocs in [TRACE_CAP - 1, 64] {
+        let r = with_audit(|| {
+            for _ in 0..allocs {
+                one_alloc();
+            }
+        });
+        assert_eq!(
+            r.allocs as usize, allocs,
+            "the guard must keep its own bookkeeping out of the count",
+        );
+        assert_eq!(
+            r.traces.len(),
+            allocs.min(TRACE_CAP),
+            "traces follow the count to the cap and stop (allocs={allocs})",
+        );
+    }
 }
 
 #[test]
@@ -129,8 +133,6 @@ fn audit_guard_clears_in_audit_on_panic() {
 
 #[test]
 fn stale_traces_drained_between_audits() {
-    // Two back-to-back audits on the same thread: the second should
-    // not see the first's traces.
     let _ = with_audit(|| {
         for _ in 0..3 {
             one_alloc();
