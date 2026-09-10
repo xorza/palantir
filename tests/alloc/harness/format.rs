@@ -9,6 +9,7 @@
 
 use backtrace::Backtrace;
 use std::fmt::Write as _;
+use std::path::{self, Path};
 
 /// Render `bt` as a tight call stack from fixture closure down to the
 /// allocating call site. With `PALANTIR_ALLOC_FULL_BT=1`, bypass the
@@ -35,7 +36,7 @@ pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
             // point into the scene closure; further frames are
             // #[test] wrappers that all point at the same file with
             // no extra signal.
-            match classify(rel) {
+            match classify(&rel) {
                 FrameKind::Other => continue,
                 FrameKind::Fixture if seen_fixture_frame => break 'outer,
                 FrameKind::Fixture => seen_fixture_frame = true,
@@ -91,13 +92,84 @@ fn strip_test_crate_prefix(name: String) -> String {
     name.replace("alloc::", "")
 }
 
-/// Workspace-relative tail of a captured filename, or `None` if the path
-/// isn't inside this crate. `backtrace`'s symbol resolver returns absolute
-/// paths (`/home/.../palantir/src/widgets/button.rs`); strip the crate
-/// root resolved at compile time so we don't depend on the project
-/// directory's case or name (`Palantir` vs `palantir`, etc.).
-fn user_relative(path: &str) -> Option<&str> {
+/// Crate-relative tail of a captured filename, or `None` if the path isn't
+/// inside this crate, with separators normalised to `/`.
+///
+/// The platforms hand back different shapes for the crate's *own* files.
+/// DWARF joins each name onto the compilation directory, so Linux and macOS
+/// report an absolute path (`/home/.../palantir/src/widgets/button.rs`);
+/// strip the crate root resolved at compile time, so we don't depend on the
+/// project directory's case or name (`Palantir` vs `palantir`). A PDB keeps
+/// what cargo passed instead, so Windows reports the same file already
+/// relative and backslash-separated, sometimes led by a `.` component.
+///
+/// An absolute path with no manifest prefix belongs to a dependency or to
+/// std, so reject it. A relative one can only be ours: cargo passes every
+/// dependency by absolute path.
+fn user_relative(path: &str) -> Option<String> {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let stripped = path.strip_prefix(manifest)?;
-    Some(stripped.strip_prefix('/').unwrap_or(stripped))
+    let rel = match path.strip_prefix(manifest) {
+        Some(tail) => tail.trim_start_matches(path::is_separator),
+        None if Path::new(path).is_absolute() => return None,
+        None => path,
+    };
+    // `MAIN_SEPARATOR` is already `/` off Windows, so this is a no-op there.
+    let rel = rel.replace(path::MAIN_SEPARATOR, "/");
+    Some(rel.trim_start_matches("./").to_owned())
+}
+
+mod tests {
+    use super::{FrameKind, classify, user_relative};
+    use std::path::{MAIN_SEPARATOR_STR, Path};
+
+    /// Rewrite `/` as whatever the running platform's debug info would carry,
+    /// so one table covers the DWARF and the PDB shape at once.
+    fn native(path: &str) -> String {
+        path.replace('/', MAIN_SEPARATOR_STR)
+    }
+
+    /// Whether the frame filter would print this file at all.
+    fn kept(path: &str) -> bool {
+        user_relative(path).is_some_and(|rel| !matches!(classify(&rel), FrameKind::Other))
+    }
+
+    #[test]
+    fn user_relative_normalises_every_shape_of_our_own_files() {
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        // DWARF: the file name joined onto the compilation directory.
+        let absolute = native(&format!("{manifest}/src/widgets/button.rs"));
+        // PDB: what cargo passed, sometimes led by a `.` component.
+        for path in [absolute, native("./src/widgets/button.rs")] {
+            assert_eq!(
+                user_relative(&path).as_deref(),
+                Some("src/widgets/button.rs"),
+                "unexpected tail for {path}",
+            );
+        }
+        assert_eq!(
+            user_relative(&native("tests/alloc/fixtures/text.rs")).as_deref(),
+            Some("tests/alloc/fixtures/text.rs"),
+        );
+    }
+
+    #[test]
+    fn user_relative_keeps_crate_files_and_drops_everyone_else() {
+        assert!(kept(&native("src/widgets/button.rs")));
+        assert!(kept(&native("tests/alloc/fixtures/text.rs")));
+        // Harness machinery is ours, and still not worth a frame.
+        assert!(!kept(&native("tests/alloc/harness/format.rs")));
+        // A sibling crate built by path: absolute, and not under the manifest.
+        let outside = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("the manifest directory has a parent")
+            .join("not-palantir")
+            .join("src/lib.rs");
+        assert!(!kept(&outside.to_string_lossy()));
+        // std ships a path that is absolute on unix and rootless on Windows,
+        // so this one is rejected by the manifest prefix on one platform and
+        // by `src/` not matching `/rustc/...` on the other.
+        assert!(!kept(
+            "/rustc/0000000000000000000000000000000000000000/library/std/src/rt.rs"
+        ));
+    }
 }
