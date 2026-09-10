@@ -3,6 +3,7 @@
 //! fixtures by extending an existing module or creating a new one and
 //! declaring it below.
 
+mod blit;
 mod damage;
 mod expander;
 mod format_change;

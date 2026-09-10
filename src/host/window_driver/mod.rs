@@ -157,6 +157,11 @@ pub(super) enum PresentStrategy {
     /// direct full repaint. A direct frame leaves the backbuffer stale, so the
     /// next partial resyncs it with one full repaint before cheap partials
     /// resume.
+    ///
+    /// A surface that cannot be copied into is served the same way: the
+    /// backbuffer reaches it by being drawn rather than copied, so damage
+    /// stays cheap there too. See
+    /// [`Backbuffer::draw_onto`](crate::gpu::backbuffer::Backbuffer::draw_onto).
     DirectAdaptive,
 }
 
@@ -586,12 +591,8 @@ impl WindowDriver {
             // the backbuffer leaves it holding what the target holds.
             PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
                 let backbuffer = if mode.renders_via_backbuffer() {
-                    let ensured = Backbuffer::ensure(
-                        &mut self.backbuffer,
-                        backend.device(),
-                        size,
-                        target.format(),
-                    );
+                    let ensured =
+                        Backbuffer::ensure(&mut self.backbuffer, backend, size, target.format());
                     // A Partial reaches here un-escalated only when
                     // `backbuffer_fresh` — last frame rendered into the
                     // backbuffer at this size/format — so a recreate under

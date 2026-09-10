@@ -106,6 +106,7 @@ pub(crate) mod backend_resources;
 pub(crate) mod bench;
 #[cfg(feature = "bench")]
 pub(crate) mod bench_gpu;
+mod blit_pipeline;
 pub(crate) mod curve_pipeline;
 mod debug_marker;
 pub(crate) mod device_requirements;
@@ -155,6 +156,7 @@ use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
 use crate::gpu::backbuffer::Backbuffer;
 use crate::gpu::backend_config::BackendConfig;
 use crate::gpu::backend_resources::BackendResources;
+use crate::gpu::blit_pipeline::BlitPipeline;
 use crate::gpu::curve_pipeline::CurvePipeline;
 use crate::gpu::format_pipelines::FormatPipelines;
 use crate::gpu::format_pipelines::PipelineSources;
@@ -249,6 +251,9 @@ pub(crate) struct WgpuBackend {
     /// draw through, and so the one pipeline pair per format they
     /// share — see [`RasterProgram`].
     raster: RasterProgram,
+    /// Presents the retained backbuffer onto a target that takes no copy —
+    /// see [`BlitPipeline`].
+    blit: BlitPipeline,
     icon: IconBackend,
     curve: CurvePipeline,
     text: TextBackend,
@@ -316,6 +321,7 @@ impl WgpuBackend {
         let gpu_view_targets = GpuViewTargets::new(image_store.binding().clone());
         let curve = CurvePipeline::new(&device);
         let raster = RasterProgram::new(&device);
+        let blit = BlitPipeline::new(&device);
         let text = TextBackend::new(&device, &raster, resources.text.clone());
         let icon = IconBackend::new(&device, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&device);
@@ -351,6 +357,7 @@ impl WgpuBackend {
             image_store,
             gpu_view_targets,
             raster,
+            blit,
             icon,
             curve,
             text,
@@ -387,6 +394,7 @@ impl WgpuBackend {
                     image: &self.image,
                     curve: &self.curve,
                     raster: &self.raster,
+                    blit: &self.blit,
                 },
             );
             self.pipelines.insert(format, built);
@@ -472,7 +480,8 @@ impl WgpuBackend {
         // pass lands on it after the backbuffer copy. Building it
         // unconditionally would add a view per frame to the backbuffer
         // path, which is the path a normal run takes.
-        let surface_view = (via_backbuffer.is_none() || overlay_count > 0)
+        // A target that takes no copy needs the view for the blit as well.
+        let surface_view = (via_backbuffer.is_none() || overlay_count > 0 || !target.takes_copy())
             .then(|| surface_tex.create_view(&wgpu::TextureViewDescriptor::default()));
         let color_view: &wgpu::TextureView = match via_backbuffer {
             Some(bb) => bb.view(),
@@ -502,7 +511,14 @@ impl WgpuBackend {
         );
 
         if let Some(bb) = via_backbuffer {
-            bb.copy_onto(&mut encoder, surface_tex);
+            if target.takes_copy() {
+                bb.copy_onto(&mut encoder, surface_tex);
+            } else {
+                let view = surface_view
+                    .as_ref()
+                    .expect("a target that takes no copy builds the surface view");
+                bb.draw_onto(&mut encoder, view, &fmt.blit);
+            }
         }
 
         if overlay_count > 0 {
@@ -1043,6 +1059,15 @@ impl WgpuBackend {
         &self.device
     }
 
+    /// A per-window [`Backbuffer`]'s group-0 binding, built through the one
+    /// layout every sampled texture here shares rather than a second one that
+    /// would have to agree with it.
+    pub(crate) fn backbuffer_bind_group(&self, view: &wgpu::TextureView) -> wgpu::BindGroup {
+        self.image_store
+            .binding()
+            .bind_group(&self.device, view, "palantir.renderer.backbuffer.bg")
+    }
+
     /// Skip path: the host's damage compute returned `None`, but the
     /// swapchain target still needs valid pixels (visual tests capture
     /// it unconditionally; the showcase short-circuits earlier, but
@@ -1067,7 +1092,16 @@ impl WgpuBackend {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.skip"),
             });
-        backbuffer.copy_onto(&mut encoder, surface_tex);
+        if target.takes_copy() {
+            backbuffer.copy_onto(&mut encoder, surface_tex);
+        } else {
+            let fmt = self
+                .pipelines
+                .get(&surface_tex.format())
+                .expect("a skip implies a prior submit built this format's pipelines");
+            let view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
+            backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
+        }
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 

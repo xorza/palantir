@@ -18,6 +18,7 @@ use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
 use crate::gpu::surface_manager::{HostGpuConfig, SurfaceManager, SurfaceStartup};
 use crate::host::core::{HostCore, HostCoreConfig};
+use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::HostHandle;
@@ -80,7 +81,10 @@ impl<T: App + 'static> WinitRuntime<T> {
                 pixel_snap: config.pixel_snap,
             },
         );
-        let mut driver = core.driver(token).build();
+        let mut driver = core
+            .driver(token)
+            .strategy(PresentStrategy::DirectAdaptive)
+            .build();
         let create_app = bootstrap
             .create_app
             .take()
@@ -221,7 +225,11 @@ impl<T: App + 'static> WinitRuntime<T> {
             .surfaces
             .make_surface(&window, native::physical_size(&window))
             .map_err(|source| WinitHostError::Surface { token, source })?;
-        let driver = self.core.driver(token).build();
+        let driver = self
+            .core
+            .driver(token)
+            .strategy(PresentStrategy::DirectAdaptive)
+            .build();
         self.windows.push(Window::new(window, surface, driver));
         Ok(())
     }

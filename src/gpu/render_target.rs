@@ -30,6 +30,16 @@ impl<'a> RenderTarget<'a> {
         TargetFormat::from(self.texture.format())
     }
 
+    /// Whether a finished frame can be copied onto this target.
+    ///
+    /// False for a GLES swapchain image, which *is* the default framebuffer:
+    /// nothing can be copied onto it, so EGL offers `RENDER_ATTACHMENT` alone.
+    /// The backbuffer reaches such a target by being drawn instead — see
+    /// [`Backbuffer::draw_onto`](crate::gpu::backbuffer::Backbuffer::draw_onto).
+    pub(crate) fn takes_copy(self) -> bool {
+        self.texture.usage().contains(wgpu::TextureUsages::COPY_DST)
+    }
+
     pub(crate) fn texture(self) -> &'a wgpu::Texture {
         self.texture
     }

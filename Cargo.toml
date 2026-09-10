@@ -1,6 +1,6 @@
 [package]
 name = "palantir"
-version = "0.6.2"
+version = "0.7.0"
 edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
@@ -49,7 +49,7 @@ private_intra_doc_links = "deny"
 redundant_explicit_links = "deny"
 
 [dependencies]
-palantir-anim-derive = { path = "anim-derive", version = "=0.6.2" }
+palantir-anim-derive = { path = "anim-derive", version = "=0.7.0" }
 arboard = { version = "3.6", default-features = false, optional = true }
 bytemuck = { version = "1.25", features = ["derive"] }
 cosmic-text = "0.19"
@@ -64,7 +64,20 @@ memchr = "2.8"
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = "1.0"
-wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12", "gles"] }
+# `gles` is not a fourth desktop backend: adapter selection prefers the others
+# wherever they work, and it costs two crates that load libEGL at runtime. It
+# is here for the boards where it is the only backend there is — a Mali behind
+# a vendor kbase driver has no Vulkan, and without this such a target has no
+# adapter to select at all.
+wgpu = { version = "30.0", default-features = false, features = [
+    "std",
+    "parking_lot",
+    "wgsl",
+    "vulkan",
+    "metal",
+    "dx12",
+    "gles",
+] }
 winit = { version = "0.30", optional = true }
 padding-struct = "0.2"
 soa-rs = "1.0"

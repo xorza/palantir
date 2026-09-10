@@ -1,12 +1,12 @@
 //! Assembly of a pipeline's WGSL source: the shared prelude, then the
 //! shader body with its Rust-owned constants substituted in.
 
-/// Concatenated ahead of every shader body, so the vocabulary the five
+/// Concatenated ahead of every shader body, so the vocabulary the
 /// pipelines share has one definition. See the file itself for what may
 /// go in it.
 const PRELUDE: &str = include_str!("prelude.wgsl");
 
-/// The five shader bodies. Each pipeline names its own here rather than
+/// The shader bodies. Each pipeline names its own here rather than
 /// writing an `include_str!` of its own, so
 /// `every_pinned_shader_constant_is_read` covers exactly the sources the
 /// backend compiles — a new pipeline that skips this module is a shader
@@ -16,6 +16,7 @@ pub(super) const MESH_WGSL: &str = include_str!("mesh.wgsl");
 pub(super) const CURVE_WGSL: &str = include_str!("curve_pipeline/curve.wgsl");
 pub(super) const IMAGE_WGSL: &str = include_str!("image_pipeline/image.wgsl");
 pub(super) const RASTER_ATLAS_WGSL: &str = include_str!("raster_atlas/shader.wgsl");
+pub(super) const BLIT_WGSL: &str = include_str!("blit.wgsl");
 
 #[derive(Debug)]
 pub(super) struct ShaderConstant {
@@ -92,12 +93,13 @@ mod tests {
     }
 
     /// The sources the backend compiles, named for the failure message.
-    const SHADERS: [(&str, &str); 5] = [
+    const SHADERS: [(&str, &str); 6] = [
         ("quad.wgsl", super::QUAD_WGSL),
         ("mesh.wgsl", super::MESH_WGSL),
         ("curve.wgsl", super::CURVE_WGSL),
         ("image.wgsl", super::IMAGE_WGSL),
         ("raster_atlas.wgsl", super::RASTER_ATLAS_WGSL),
+        ("blit.wgsl", super::BLIT_WGSL),
     ];
 
     /// Every constant the Rust side substitutes is compared against

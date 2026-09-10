@@ -67,6 +67,8 @@ pub struct OffscreenHost {
 #[derive(Debug)]
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
+    /// See [`Self::retained_target`].
+    retained_target: bool,
     /// `None` until [`Self::fonts`] or [`Self::shaper`] overrides; resolved
     /// to the bundled-fonts default lazily in [`Self::build`] so an override
     /// never pays the font load.
@@ -131,6 +133,27 @@ impl OffscreenHostBuilder {
     /// caller-controlled phase.
     pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
         self.clock = Some(Box::new(clock));
+        self
+    }
+
+    /// Promise that every frame renders into the *same* texture, so the
+    /// target keeps what the last frame drew.
+    ///
+    /// Off by default, because the safe assumption about a caller-supplied
+    /// texture is that it is a fresh one: without last frame's pixels, a
+    /// partial repaint would leave the rest of the target undefined, so every
+    /// frame goes through the retained backbuffer and is copied out whole.
+    ///
+    /// A caller that loops on one texture — a thumbnailer, a server-side
+    /// compositor — pays that backbuffer and that copy for nothing. Saying so
+    /// here renders straight into the target instead, and lets small damage
+    /// repaint only the damage.
+    ///
+    /// **Only say it if it is true.** Turning this on while handing in a fresh
+    /// texture each call leaves everything outside the damage region holding
+    /// whatever that texture happened to contain.
+    pub fn retained_target(mut self, retained: bool) -> Self {
+        self.retained_target = retained;
         self
     }
 
@@ -199,12 +222,15 @@ impl OffscreenHostBuilder {
                 pixel_snap: self.pixel_snap,
             },
         );
-        let mut driver = core
-            .driver(OffscreenHost::WINDOW)
+        let strategy = if self.retained_target {
+            PresentStrategy::DirectAdaptive
+        } else {
             // The target's prior contents can't be relied on (a caller may
             // hand in a fresh texture each call), so every frame must fill the
             // whole thing.
-            .strategy(PresentStrategy::BackbufferCopy);
+            PresentStrategy::BackbufferCopy
+        };
+        let mut driver = core.driver(OffscreenHost::WINDOW).strategy(strategy);
         if let Some(clock) = self.clock {
             driver = driver.clock(clock);
         }
@@ -226,6 +252,7 @@ impl OffscreenHost {
     pub fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
+            retained_target: false,
             shaper: None,
             collect_gpu_stats: false,
             clock: None,
