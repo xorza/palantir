@@ -1,7 +1,7 @@
 # Benches
 
 Criterion benches over the frame pipeline. The rest is the profiling
-manual — how to invoke things is in `scripts/bench-perf.sh`'s header.
+manual — how to invoke things is in `benches/bench-perf.sh`'s header.
 
 ## Running them
 
@@ -59,7 +59,7 @@ its module doc for the mechanism.
 
 ## Profiling
 
-`scripts/bench-perf.sh` — Linux only, needs `perf` + `taskset`. Reads
+`benches/bench-perf.sh` — Linux only, needs `perf` + `taskset`. Reads
 `vendor_id` and picks the PMU layout, metrics, and precise-sampling
 mechanism to match, pins to one core, and runs five passes:
 

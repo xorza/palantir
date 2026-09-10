@@ -6,13 +6,13 @@
 # PEBS; AMD has one homogeneous PMU and gets metric groups + IBS. The
 # script detects `vendor_id` and picks the path.
 #
-#   scripts/bench-perf.sh                            # frame bench, 5s
-#   DRIVER=damage scripts/bench-perf.sh              # a different driver
-#   DRIVER='damage cascade' scripts/bench-perf.sh    # several
-#   DRIVER= scripts/bench-perf.sh                    # every default driver
-#   DRIVER=damage FILTER='workload$' scripts/bench-perf.sh
-#   SKIP_MEM=1 SKIP_MICRO=1 SKIP_IBS=1 scripts/bench-perf.sh
-#   scripts/bench-perf.sh --profile-time 2           # extra bench args
+#   benches/bench-perf.sh                            # frame bench, 5s
+#   DRIVER=damage benches/bench-perf.sh              # a different driver
+#   DRIVER='damage cascade' benches/bench-perf.sh    # several
+#   DRIVER= benches/bench-perf.sh                    # every default driver
+#   DRIVER=damage FILTER='workload$' benches/bench-perf.sh
+#   SKIP_MEM=1 SKIP_MICRO=1 SKIP_IBS=1 benches/bench-perf.sh
+#   benches/bench-perf.sh --profile-time 2           # extra bench args
 #
 # Env: BENCH (target, default criterion — every criterion driver shares
 # it, so pick one with DRIVER), DRIVER (space-separated driver names,

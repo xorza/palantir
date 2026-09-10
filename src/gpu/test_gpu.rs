@@ -1,8 +1,9 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
 use crate::gpu::power_preference::PowerPreference;
+use std::env;
 use std::fs::{File, OpenOptions};
-use std::path::Path;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -105,15 +106,21 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
 }
 
 fn lock_gpu_process() -> File {
-    let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp");
-    std::fs::create_dir_all(&scratch).expect("create Palantir scratch directory");
+    // The scope stays one working copy, as it was when the file sat under the
+    // manifest directory: two checkouts test in parallel, two binaries of one
+    // checkout take turns. The hashed manifest path carries that scope into a
+    // directory every checkout shares. It also keeps two users off one file,
+    // which the sticky bit on `/tmp` would leave unopenable for the second.
+    let mut hasher = DefaultHasher::new();
+    env!("CARGO_MANIFEST_DIR").hash(&mut hasher);
+    let path = env::temp_dir().join(format!("palantir-gpu-test-{:016x}.lock", hasher.finish()));
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
-        .open(scratch.join("gpu-test.lock"))
-        .expect("open Palantir GPU test lock");
+        .open(&path)
+        .unwrap_or_else(|error| panic!("open Palantir GPU test lock {}: {error}", path.display()));
     file.lock().expect("lock Palantir GPU test process");
     file
 }
