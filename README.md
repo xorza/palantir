@@ -74,7 +74,8 @@ The build sets `-C target-feature=+f16c` (see [Recommended build flag](#recommen
 A short screen recording of the
 [showcase](https://github.com/xorza/palantir/tree/master/examples/showcase) tabs:
 
-https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
+https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
+
 
 ---
 
