@@ -358,13 +358,13 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
                     .show(ui);
                 Button::new()
                     .id_salt("e-2")
-                    .size((Sizing::fixed(140.0), Sizing::HUG))
-                    .text_wrap(TextWrap::SingleLine)
-                    .label("Screenshot 2026-05-28 at 01.21.25.png")
+                    .label("fits its content")
                     .show(ui);
                 Button::new()
                     .id_salt("e-3")
-                    .label("fits its content")
+                    .size((Sizing::fixed(140.0), Sizing::HUG))
+                    .text_wrap(TextWrap::SingleLine)
+                    .label("Screenshot 2026-05-28 at 01.21.25.png")
                     .show(ui);
             });
         },
