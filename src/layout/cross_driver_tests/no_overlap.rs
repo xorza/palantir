@@ -30,7 +30,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         .padding(8.0)
         .background(Background {
             fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
-            stroke: Stroke::solid(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
+            border: Stroke::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
             corners: Corners::all(4.0),
             shadow: Shadow::NONE,
         })

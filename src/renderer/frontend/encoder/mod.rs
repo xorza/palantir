@@ -20,6 +20,7 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
+use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::paint::ShapeBrush;
 
 /// Retained encoder state.
@@ -47,22 +48,33 @@ impl GradientResolver {
         atlas: &SharedGradientAtlas,
         brush: ShapeBrush,
     ) -> BrushSource {
-        let id = match brush {
-            ShapeBrush::Solid(color) => return BrushSource::Solid(color),
-            ShapeBrush::Gradient { id, .. } => id,
-        };
+        match brush {
+            ShapeBrush::Solid(color) => BrushSource::Solid(color),
+            ShapeBrush::Gradient { id, .. } => {
+                BrushSource::Gradient(self.resolve(gradients, atlas, id))
+            }
+        }
+    }
+
+    /// `id`'s gradient with its atlas row, registered once per pass.
+    fn resolve(
+        &mut self,
+        gradients: &[RecordedGradient],
+        atlas: &SharedGradientAtlas,
+        id: GradientId,
+    ) -> ResolvedGradient {
         let idx = id.0 as usize;
         if let Some(resolved) = self.resolved[idx] {
-            return BrushSource::Gradient(resolved);
+            return resolved;
         }
         let gradient = &gradients[idx];
         let resolved = ResolvedGradient {
             axis: gradient.axis,
-            lut_row: atlas.register_stops(&gradient.stops, gradient.interp),
+            lut_row: atlas.register(&gradient.ramp),
             kind: gradient.kind,
         };
         self.resolved[idx] = Some(resolved);
-        BrushSource::Gradient(resolved)
+        resolved
     }
 }
 

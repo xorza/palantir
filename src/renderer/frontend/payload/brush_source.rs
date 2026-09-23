@@ -19,14 +19,10 @@ pub(crate) enum BrushSource {
 impl BrushSource {
     /// Lower to the colour lanes every draw payload carries: a `Solid`
     /// takes its colour with the `SOLID` kind and the magenta fallback
-    /// row; a `Gradient` takes the atlas row instead, and its colour lane
-    /// becomes an opacity multiplier that starts at one.
-    ///
-    /// **A gradient's colour lane is unread by the atlas path**, because
-    /// the row at `lut_row` supplies the colour. That leaves it free, and
-    /// the shader's gradient branch multiplies the sampled alpha by it —
-    /// which is what lets [`DrawQuadPayload::faded`] fade a gradient fill
-    /// with no second uniform and no per-alpha atlas row.
+    /// row; a `Gradient` takes the atlas row, and its colour lane starts
+    /// as white — the identity of the multiply [`GpuFill::color`] applies
+    /// to a sample. That is what lets [`DrawQuadPayload::faded`] fade a
+    /// gradient fill with no second uniform and no per-alpha atlas row.
     ///
     /// [`DrawQuadPayload::faded`]: crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload::faded
     #[inline]
@@ -38,7 +34,7 @@ impl BrushSource {
                 lut_row: LutRow::FALLBACK,
             },
             Self::Gradient(g) => GpuFill {
-                color: RgbaF16::opacity_one(),
+                color: RgbaF16::WHITE,
                 kind: g.kind,
                 lut_row: g.lut_row,
             },

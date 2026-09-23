@@ -161,7 +161,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
         .sense(Sense::DRAG)
         .background(
             Background::rounded(accent, Corners::all(6.0))
-                .with_stroke(Stroke::solid(RgbaF32::hex(0x14161a), 1.0)),
+                .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
         )
         .show(ui)
         .snapshot();

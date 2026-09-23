@@ -100,14 +100,14 @@ impl TextEditTheme {
     /// glyphs sit half a caret to the leading side of the box's own middle.
     pub fn corner_centring(&self, text: Size, at: Vec2) -> Vec2 {
         let [left, top, ..] = self.defaults.padding.as_array();
-        // `Tree::open_node` folds the chrome's stroke into the padding, so the
+        // `Tree::open_node` folds the chrome's border into the padding, so the
         // inner rect a run is laid in sits inside the ring as well — and
         // `TextEdit::show` mirrors that fold rather than reading the node back.
         //
         // Off `normal`, and safe to be: the width is one number across all four
         // states so that focus changes a field's colour without moving its
         // text — see [`TextEditTheme::from_palette`].
-        let ring = self.looks.normal.background.stroke.ring();
+        let ring = self.looks.normal.background.border_inset();
         at - Vec2::new(text.w, text.h) * 0.5
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
@@ -125,11 +125,11 @@ impl TextEditTheme {
         // the layout shift.
         let stroke_w = 1.5;
         let normal_bg = Background::rounded(p.elem_mid, radius)
-            .with_stroke(Stroke::solid(p.border_soft(), stroke_w));
+            .with_border(Stroke::new(p.border_soft(), stroke_w));
         let focused_bg = Background::rounded(p.elem_mid, radius)
-            .with_stroke(Stroke::solid(p.border_focused, stroke_w));
-        let disabled_bg = Background::rounded(p.elem, radius)
-            .with_stroke(Stroke::solid(p.border_soft(), stroke_w));
+            .with_border(Stroke::new(p.border_focused, stroke_w));
+        let disabled_bg =
+            Background::rounded(p.elem, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
         // Selection = accent at ~25% alpha — readable wash that doesn't
         // obscure the glyphs underneath.
         let selection = p.accent.with_alpha(0.25);

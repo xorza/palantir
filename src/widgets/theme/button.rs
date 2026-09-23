@@ -41,11 +41,11 @@ impl ButtonTheme {
     pub fn from_palette(p: &Palette) -> Self {
         let bg = |fill: RgbaF32| {
             Background::rounded(fill, Corners::all(4.0))
-                .with_stroke(Stroke::solid(p.border_soft(), 1.0))
+                .with_border(Stroke::new(p.border_soft(), 1.0))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
         let pressed_bg = Background::rounded(p.elem_strong, Corners::all(4.0))
-            .with_stroke(Stroke::solid(p.border_focused, 1.0));
+            .with_border(Stroke::new(p.border_focused, 1.0));
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {

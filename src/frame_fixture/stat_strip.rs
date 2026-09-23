@@ -68,7 +68,7 @@ pub(super) fn show(ui: &mut Ui) {
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
                                 fill,
-                                stroke: Stroke::solid(tokens::BORDER, 1.0),
+                                border: Stroke::new(tokens::BORDER, 1.0),
                                 corners: Corners::all(8.0),
                                 shadow: Shadow::drop(
                                     RgbaF32::srgba(0.0, 0.0, 0.0, 0.45),
@@ -84,7 +84,7 @@ pub(super) fn show(ui: &mut Ui) {
                             .id_salt(("stat-alert", i))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                stroke: Stroke::solid(tokens::WARN, 2.0),
+                                border: Stroke::new(tokens::WARN, 2.0),
                                 corners: Corners::all(8.0),
                                 ..Default::default()
                             })

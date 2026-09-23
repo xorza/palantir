@@ -3,9 +3,9 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::num::F32Ext;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::text_input::TextInput;
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
@@ -97,7 +97,7 @@ impl<'a> Checkbox<'a> {
         chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
-                    Shape::polyline(&check, PolylineColors::Single(indicator), indicator_stroke)
+                    Shape::polyline(&check, Stroke::new(indicator, indicator_stroke))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );

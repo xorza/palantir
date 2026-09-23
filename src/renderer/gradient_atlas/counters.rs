@@ -11,7 +11,7 @@
 //!
 //! ## Why these seven
 //!
-//! Every arm of [`CpuGradientAtlas::register_stops`] ends in a
+//! Every arm of [`CpuGradientAtlas::register`] ends in a
 //! `LutRow`, and from the outside a row id says nothing about how it
 //! was reached. Resolving from the index, baking into a free row,
 //! baking over an evicted one, doubling the table, and giving up to the
@@ -27,8 +27,8 @@
 //! to.
 //!
 //! [`BenchOnly`]: crate::common::counters::BenchOnly
-//! [`CpuGradientAtlas::register_stops`]:
-//!     crate::renderer::gradient_atlas::CpuGradientAtlas::register_stops
+//! [`CpuGradientAtlas::register`]:
+//!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
 
 use crate::common::counters::counter_snapshot;
 
@@ -42,7 +42,7 @@ counter_snapshot! {
     /// what a span of registrations did.
     pub(super) struct GradientAtlasCounts;
 
-    /// `register_stops` calls, however they resolved.
+    /// `register` calls, however they resolved.
     registrations: u32,
     /// Calls answered straight from the index — no bake. The
     /// steady-state metric: a frame redrawing unchanged gradients must

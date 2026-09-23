@@ -70,8 +70,8 @@ impl QuadGeom {
 /// reused lanes from the transformed points.
 ///
 /// `fill: RgbaF16` is the solid colour when `kind == SOLID` (and the
-/// tint when it's a shadow); zeroed for gradients, where the atlas row
-/// supplies the colour. Storing as `RgbaF16` (8 B linear-RGB) vs. 16 B
+/// tint when it's a shadow); for a gradient it multiplies the colour the
+/// atlas row supplies. Storing as `RgbaF16` (8 B linear-RGB) vs. 16 B
 /// `RgbaF32` saves 8 B per payload — the composer decodes via
 /// `RgbaF32::from(f16)` at `Quad` write time.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -276,12 +276,12 @@ mod tests {
         let cases: [(&str, ShapeStroke, bool); 4] = [
             (
                 "transparent_color",
-                Stroke::solid(RgbaF32::TRANSPARENT, 3.0).into(),
+                Stroke::new(RgbaF32::TRANSPARENT, 3.0).into(),
                 true,
             ),
-            ("zero_width", Stroke::solid(green, 0.0).into(), true),
-            ("nan_width", Stroke::solid(green, f32::NAN).into(), true),
-            ("live", Stroke::solid(green, 3.0).into(), false),
+            ("zero_width", Stroke::new(green, 0.0).into(), true),
+            ("nan_width", Stroke::new(green, f32::NAN).into(), true),
+            ("live", Stroke::new(green, 3.0).into(), false),
         ];
         for (label, stroke, expect_normalized) in cases {
             let rp = DrawQuadPayload::rect(
@@ -327,17 +327,17 @@ mod tests {
         }
     }
 
-    /// A fade reaches a solid fill and a gradient fill by different
-    /// routes, and both have to arrive.
+    /// A fade reaches a solid fill and a gradient fill through the one
+    /// alpha lane.
     ///
     /// A solid carries its own colour, so the fade scales the real alpha:
-    /// half of `0.8` is `0.4`. A gradient's colour comes from the atlas
-    /// row instead, which leaves its colour lane free to *be* the
-    /// multiplier — so it starts at one and a half fade takes it to
-    /// `0.5`, with the unread RGB left at zero. The stroke is scaled
-    /// either way, and `faded(1.0)` changes nothing.
+    /// half of `0.8` is `0.4`. A gradient's colour lane multiplies the
+    /// sample, so it starts white and a half fade takes its alpha to
+    /// `0.5` with the RGB left at one. A fade to zero makes either a
+    /// no-op. The stroke is scaled either way, and `faded(1.0)` changes
+    /// nothing.
     #[test]
-    fn a_fade_reaches_the_solid_alpha_and_the_gradients_opacity_lane() {
+    fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
         let stroke = ShapeStroke {
             width: 2.0,
             color: RgbaF16::new(1.0, 1.0, 1.0, 1.0),
@@ -357,18 +357,22 @@ mod tests {
             lut_row: LutRow::FALLBACK,
             kind: FillKind::linear(Spread::Pad),
         }));
-        let opacity = gradient.fill.color.unpack();
         assert_eq!(
-            (opacity.r, opacity.g, opacity.b),
-            (0.0, 0.0, 0.0),
-            "the gradient's colour lanes are unread and stay zeroed",
-        );
-        assert!(
-            (opacity.a - 1.0).abs() < 1e-3,
-            "an unfaded gradient is opaque"
+            gradient.fill.color,
+            RgbaF16::WHITE,
+            "an unfaded gradient multiplies its sample by one",
         );
         let faded = gradient.faded(0.5);
-        assert!((faded.fill.color.unpack().a - 0.5).abs() < 1e-3);
+        let multiplier = faded.fill.color.unpack();
+        assert_eq!((multiplier.r, multiplier.g, multiplier.b), (1.0, 1.0, 1.0));
+        assert!((multiplier.a - 0.5).abs() < 1e-3);
         assert_eq!(faded.fill.lut_row, gradient.fill.lut_row);
+
+        assert!(!solid.fill.is_noop() && !gradient.fill.is_noop());
+        assert!(solid.fill.faded(0.0).is_noop());
+        assert!(
+            gradient.fill.faded(0.0).is_noop(),
+            "a gradient faded out paints nothing"
+        );
     }
 }

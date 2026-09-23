@@ -1,7 +1,7 @@
 //! One interned gradient's retained content.
 
-use crate::primitives::brush::gradient::stops::GradientStops;
-use crate::primitives::brush::gradient::{FillAxis, Interp};
+use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::fill_kind::FillKind;
 
 /// Retained gradient content. The physical atlas row is resolved while
@@ -10,8 +10,7 @@ use crate::primitives::fill_kind::FillKind;
 pub(crate) struct RecordedGradient {
     pub(crate) axis: FillAxis,
     pub(crate) kind: FillKind,
-    pub(crate) stops: GradientStops,
-    pub(crate) interp: Interp,
+    pub(crate) ramp: ColorRamp,
 }
 
 impl PartialEq for RecordedGradient {
@@ -19,7 +18,6 @@ impl PartialEq for RecordedGradient {
         // Raw equality is the hot path; unpacking also collapses canonical ±0.
         (self.axis == other.axis || self.axis.lanes() == other.axis.lanes())
             && self.kind == other.kind
-            && self.stops == other.stops
-            && self.interp == other.interp
+            && self.ramp == other.ramp
     }
 }

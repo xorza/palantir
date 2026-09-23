@@ -5,7 +5,7 @@
 //! showcase's `frame bench` page, but their *only* load-bearing property
 //! is that the chrome they feed stays non-noop: [`card_bg`] must keep a
 //! real drop shadow (it is the sole driver of `emit_shadow`'s chrome
-//! branch) and a hairline stroke, or the workload silently loses coverage.
+//! branch) and a hairline border, or the workload silently loses coverage.
 
 use crate::demo_swatches;
 use crate::layout::types::sizing::Sizing;
@@ -43,7 +43,7 @@ pub(super) const VIOLET: RgbaF32 = demo_swatches::VIOLET;
 pub(super) fn card_bg() -> Background {
     Background {
         fill: CARD_BG.into(),
-        stroke: Stroke::solid(BORDER, 1.0),
+        border: Stroke::new(BORDER, 1.0),
         corners: Corners::all(8.0),
         shadow: Shadow::drop(
             RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),

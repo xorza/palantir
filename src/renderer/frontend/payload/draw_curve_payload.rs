@@ -25,9 +25,9 @@ pub(crate) struct DrawCurvePayload {
     /// its centre and shifting both angles.
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
-    /// Only solid and linear are valid on a curve; the lowering
-    /// hard-asserts. A curve reads no gradient geometry lane, so
-    /// [`GpuFill`] is the whole of its brush.
+    /// Solid or ramp — [`GpuFill::curve`] makes it, and can make no other
+    /// kind. A curve reads no gradient geometry lane, so [`GpuFill`] is
+    /// the whole of its paint.
     pub(crate) fill: GpuFill,
     pub(crate) width: f32,
     /// Typed Pod wire form; composer widens it only at the GPU
@@ -51,10 +51,9 @@ impl DrawCurvePayload {
     }
 
     /// Paints nothing when: zero/negative stroke width, a
-    /// degenerate arc radius (nothing to trace), or a solid fill that's
-    /// fully transparent. Gradient fills always paint (the
-    /// all-transparent-stops case is caught by `Brush::is_noop` before
-    /// lowering).
+    /// degenerate arc radius (nothing to trace), or a fully transparent
+    /// stroke colour. A ramp whose stops are all transparent is caught
+    /// by `CurveShape`'s no-op test before lowering.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         if paints_nothing(self.width) {

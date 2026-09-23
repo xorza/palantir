@@ -25,7 +25,7 @@ fn widget_look_serde_roundtrip() {
         WidgetLook {
             background: Background {
                 fill: RgbaF32::hex(0x336699).into(),
-                stroke: Stroke::solid(RgbaF32::hex(0xffffff), 1.5),
+                border: Stroke::new(RgbaF32::hex(0xffffff), 1.5),
                 corners: Corners::all(6.0),
                 shadow: Shadow::NONE,
             },

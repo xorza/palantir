@@ -1,7 +1,6 @@
 //! Shared cross-frame handle for CPU gradient registration and flushing.
 
-use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::stops::GradientStops;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::{
     CpuGradientAtlas, DEFAULT_MAX_ATLAS_ROWS, FlushedRows, MAX_ATLAS_ROWS,
@@ -44,8 +43,8 @@ impl SharedGradientAtlas {
     }
 
     #[inline]
-    pub(crate) fn register_stops(&self, stops: &GradientStops, interp: Interp) -> LutRow {
-        self.cpu.borrow_mut().register_stops(stops, interp)
+    pub(crate) fn register(&self, ramp: &ColorRamp) -> LutRow {
+        self.cpu.borrow_mut().register(ramp)
     }
 
     /// Hand this frame's dirty rows to `upload`, if there are any. Clean
@@ -70,7 +69,7 @@ pub(crate) mod test_support {
             self.cpu.borrow().max_rows()
         }
 
-        /// `register_stops` calls so far. Lets the encoder's resolver
+        /// `register` calls so far. Lets the encoder's resolver
         /// tests prove their per-pass memo suppresses repeat
         /// registrations — a memoized call and a cache hit are otherwise
         /// indistinguishable from outside. Accumulates for the life of

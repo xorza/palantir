@@ -44,7 +44,7 @@ fn dashboard_matches_golden() {
                     .gap(8.0)
                     .background(Background {
                         fill: RgbaF32::srgb(0.18, 0.22, 0.32).into(),
-                        stroke: Stroke::solid(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
+                        border: Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
                         corners: Corners::all(6.0),
                         shadow: Shadow::NONE,
                     })
@@ -120,7 +120,7 @@ fn dashboard_matches_golden() {
                                 .gap(6.0)
                                 .background(Background {
                                     fill: (*c).into(),
-                                    stroke: Stroke::solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
+                                    border: Stroke::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     corners: Corners::all(8.0),
                                     shadow: Shadow::NONE,
                                 })

@@ -182,7 +182,7 @@ impl Rect {
     }
 
     /// Outset by `amount` on each side, growing both edges — the
-    /// "uniform expansion" case (centred stroke painted-extent,
+    /// "uniform expansion" case (a path's stroke extent, an
     /// AABB-around-circle). Counterpart to [`Self::deflated`], which is
     /// the same step inward and clamps where this one does not.
     #[inline]

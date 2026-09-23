@@ -28,7 +28,7 @@ use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
 
-/// A scene touching multiple format-dependent pipelines: a stroked,
+/// A scene touching multiple format-dependent pipelines: a bordered,
 /// rounded frame (quad pipeline) wrapping a button with a text label
 /// (quad + text atlas). Both pipelines get rebuilt on the format flip,
 /// so an incorrect rebuild shows up as a pixel mismatch.
@@ -43,7 +43,7 @@ fn scene(ui: &mut palantir::Ui) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
                     fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
-                    stroke: Stroke::solid(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
+                    border: Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
                     corners: Corners::all(12.0),
                     ..Default::default()
                 })
@@ -91,7 +91,7 @@ fn recreate_backend_on_format_change_renders_identically() {
     // Both formats are sRGB: identical perceptual output expected.
     // A small per-channel tolerance covers BGRA-vs-RGBA rounding in the
     // encode; allow a few stray pixels along AA edges of the rounded
-    // stroke where the two formats can round opposite directions.
+    // border where the two formats can round opposite directions.
     let tol = Tolerance {
         per_channel: 2,
         max_ratio: 0.01,

@@ -136,7 +136,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 
     let bg = Background {
         fill: RgbaF32::hex(0x336699).into(),
-        stroke: Stroke::solid(RgbaF32::hex(0xffffff), 2.0),
+        border: Stroke::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
     };
@@ -157,10 +157,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let snap = captured.take().expect("animate ran");
     assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
     assert_eq!(
-        snap.background.stroke.width, 2.0,
+        snap.background.border.width, 2.0,
         "None: stroke width snaps"
     );
-    assert_eq!(snap.background.stroke.color, bg.stroke.color);
+    assert_eq!(snap.background.border.color, bg.border.color);
     assert_eq!(snap.background.corners, bg.corners);
     assert_eq!(
         snap.text.color, fallback.color,

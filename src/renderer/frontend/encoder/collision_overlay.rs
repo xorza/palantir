@@ -22,7 +22,7 @@ use crate::scene::forest::Forest;
 
 /// Magenta — distinct from the opt-in red damage-rect overlay. Painted
 /// unclipped at the end of `encode`, after every layer's regular paint.
-const STROKE: Stroke = Stroke::solid(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
+const STROKE: Stroke = Stroke::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
 
 /// Final pass: emit a magenta outline for each explicit-id collision
 /// recorded this frame. Painted after the regular per-layer walk so

@@ -25,8 +25,9 @@
 //! floor on a still tree so a drift in the driver reads there first.
 
 use crate::harness::{Audit, OffscreenTarget, SURFACE};
+use palantir::Stroke;
 use palantir::internals::headless_test_gpu;
-use palantir::widget::{Mesh, PolylineColors, Shape};
+use palantir::widget::{Mesh, Shape};
 use palantir::{
     Block, Configure, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
     TranslateScale, Ui,
@@ -139,11 +140,7 @@ fn polyline_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::polyline(
-                    &points,
-                    PolylineColors::Single(RgbaF32::WHITE),
-                    2.0,
-                ));
+                ui.add_shape(Shape::polyline(&points, Stroke::new(RgbaF32::WHITE, 2.0)));
             });
     });
 }

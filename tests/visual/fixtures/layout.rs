@@ -122,7 +122,7 @@ fn zstack_centered_button_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
                 fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
-                stroke: Stroke::solid(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
+                border: Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
                 corners: Corners::all(10.0),
                 shadow: Shadow::NONE,
             })

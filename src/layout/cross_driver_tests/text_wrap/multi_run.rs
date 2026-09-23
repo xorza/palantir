@@ -239,7 +239,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
                     .corners(crate::Corners::ZERO)
                     .fill(RgbaF32::WHITE)
-                    .stroke(crate::Stroke::ZERO),
+                    .border(crate::Stroke::ZERO),
             );
             let second = ui.intern("second-with-different-text");
             ui.add_shape(

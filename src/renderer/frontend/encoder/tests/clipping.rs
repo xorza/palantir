@@ -90,8 +90,8 @@ fn clip_emits_balanced_push_pop() {
 }
 
 /// Rounded-clip emission, plus encoded mask geometry: with zero padding
-/// the mask is inset by the chrome's stroke width (folded into padding at
-/// `open_node`) so children can't overpaint the stroke ring.
+/// the mask is inset by the chrome's border width (folded into padding at
+/// `open_node`) so children can't overpaint the border.
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
@@ -103,7 +103,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                 .size(80.0)
                 .background(Background {
                     fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    stroke: Stroke::solid(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
+                    border: Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                     corners: Corners::all(8.0),
                     shadow: Shadow::NONE,
                 })

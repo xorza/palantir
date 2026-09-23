@@ -73,7 +73,7 @@ fn stroked(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
             .fill(support::D)
-            .stroke(Stroke::solid(RgbaF32::WHITE, 3.0))
+            .border(Stroke::new(RgbaF32::WHITE, 3.0))
             .radius(10.0_f32),
     );
 }
@@ -82,7 +82,7 @@ fn stroked(ui: &mut Ui) {
 fn outline(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
-            .stroke(Stroke::solid(support::B, 3.0))
+            .border(Stroke::new(support::B, 3.0))
             .radius(8.0_f32),
     );
 }
@@ -220,7 +220,7 @@ fn window_mask(ui: &mut Ui) {
         Shape::owner_windowed_rect()
             .corners(18.0)
             .fill(support::WELL)
-            .stroke(Stroke::solid(support::A, 2.0)),
+            .border(Stroke::new(support::A, 2.0)),
     );
 }
 
@@ -232,6 +232,6 @@ fn window_anatomy(ui: &mut Ui) {
         Shape::owner_windowed_rect()
             .corners(28.0)
             .fill(support::B.with_alpha(0.75))
-            .stroke(Stroke::solid(support::C, 4.0)),
+            .border(Stroke::new(support::C, 4.0)),
     );
 }

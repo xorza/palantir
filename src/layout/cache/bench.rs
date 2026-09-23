@@ -187,19 +187,19 @@ fn build(ui: &mut Ui) {
 fn build_heavy(ui: &mut Ui) {
     let group_bg = Background {
         fill: RgbaF32::hex(0x1a1a1a).into(),
-        stroke: Stroke::solid(RgbaF32::hex(0x4d5663), 1.5),
+        border: Stroke::new(RgbaF32::hex(0x4d5663), 1.5),
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
     let row_bg = Background {
         fill: RgbaF32::hex(0x252525).into(),
-        stroke: Stroke::ZERO,
+        border: Stroke::ZERO,
         corners: Corners::all(6.0),
         shadow: Shadow::NONE,
     };
     let avatar_bg = Background {
         fill: RgbaF32::hex(0x3a4a5c).into(),
-        stroke: Stroke::ZERO,
+        border: Stroke::ZERO,
         corners: Corners::all(10.0),
         shadow: Shadow::NONE,
     };

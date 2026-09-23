@@ -3,6 +3,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
@@ -42,9 +43,12 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::line(Vec2::new(120.0, 120.0), Vec2::new(180.0, 180.0), 2.0)
-                        .brush(BLUE)
-                        .cap(LineCap::Round),
+                    Shape::line(
+                        Vec2::new(120.0, 120.0),
+                        Vec2::new(180.0, 180.0),
+                        Stroke::new(BLUE, 2.0),
+                    )
+                    .cap(LineCap::Round),
                 );
                 for i in 0..n_children {
                     Block::new()
@@ -323,9 +327,12 @@ fn shape_crossing_child_boundary_is_redamaged() {
 
     let line = |ui: &mut Ui| {
         ui.add_shape(
-            Shape::line(Vec2::new(10.0, 40.0), Vec2::new(70.0, 40.0), 4.0)
-                .brush(BLUE)
-                .cap(LineCap::Round),
+            Shape::line(
+                Vec2::new(10.0, 40.0),
+                Vec2::new(70.0, 40.0),
+                Stroke::new(BLUE, 4.0),
+            )
+            .cap(LineCap::Round),
         );
     };
     let child = |ui: &mut Ui| {
@@ -394,9 +401,12 @@ fn overlapping_direct_shape_swap_is_redamaged() {
     const PROBE: Rect = Rect::new(38.0, 29.0, 2.0, 2.0);
     let line = |ui: &mut Ui, color: RgbaF32| {
         ui.add_shape(
-            Shape::line(Vec2::new(10.0, 30.0), Vec2::new(70.0, 30.0), 8.0)
-                .brush(color)
-                .cap(LineCap::Round),
+            Shape::line(
+                Vec2::new(10.0, 30.0),
+                Vec2::new(70.0, 30.0),
+                Stroke::new(color, 8.0),
+            )
+            .cap(LineCap::Round),
         );
     };
     let canvas = |ui: &mut Ui, first: RgbaF32, second: RgbaF32| {
@@ -455,9 +465,12 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                     node(ui, "b", CHILD_B);
                 }
                 ui.add_shape(
-                    Shape::line(Vec2::new(10.0, 100.0), Vec2::new(70.0, 100.0), 4.0)
-                        .brush(RED)
-                        .cap(LineCap::Round),
+                    Shape::line(
+                        Vec2::new(10.0, 100.0),
+                        Vec2::new(70.0, 100.0),
+                        Stroke::new(RED, 4.0),
+                    )
+                    .cap(LineCap::Round),
                 );
             });
     };
@@ -508,9 +521,12 @@ fn rekeying_a_child_damages_only_the_child() {
                     })
                     .show(ui);
                 ui.add_shape(
-                    Shape::line(Vec2::new(10.0, 100.0), Vec2::new(70.0, 100.0), 4.0)
-                        .brush(RED)
-                        .cap(LineCap::Round),
+                    Shape::line(
+                        Vec2::new(10.0, 100.0),
+                        Vec2::new(70.0, 100.0),
+                        Stroke::new(RED, 4.0),
+                    )
+                    .cap(LineCap::Round),
                 );
             });
     };
@@ -773,9 +789,12 @@ fn front_insert_damages_only_the_new_shape() {
     const OLD_PROBE: Rect = Rect::new(30.0, 19.0, 2.0, 2.0);
     let line = |ui: &mut Ui, y: f32| {
         ui.add_shape(
-            Shape::line(Vec2::new(10.0, y), Vec2::new(70.0, y), 2.0)
-                .brush(BLUE)
-                .cap(LineCap::Round),
+            Shape::line(
+                Vec2::new(10.0, y),
+                Vec2::new(70.0, y),
+                Stroke::new(BLUE, 2.0),
+            )
+            .cap(LineCap::Round),
         );
     };
     let build = |ui: &mut Ui, with_front: bool| {
@@ -785,9 +804,12 @@ fn front_insert_damages_only_the_new_shape() {
             .show(ui, |ui| {
                 if with_front {
                     ui.add_shape(
-                        Shape::line(Vec2::new(140.0, 150.0), Vec2::new(170.0, 150.0), 2.0)
-                            .brush(RED)
-                            .cap(LineCap::Round),
+                        Shape::line(
+                            Vec2::new(140.0, 150.0),
+                            Vec2::new(170.0, 150.0),
+                            Stroke::new(RED, 2.0),
+                        )
+                        .cap(LineCap::Round),
                     );
                 }
                 line(ui, 20.0);

@@ -12,6 +12,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 
 use crate::Ui;
+use crate::primitives::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
@@ -120,16 +121,13 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
                 panel = panel.clip(ClipMode::Rect);
             }
             panel.show(ui, |ui| {
-                ui.add_shape(
-                    Shape::cubic_bezier(
-                        Vec2::new(10.0, 20.0),
-                        Vec2::new(20.0, 20.0),
-                        Vec2::new(30.0, 20.0),
-                        Vec2::new(40.0, 20.0),
-                        4.0,
-                    )
-                    .brush(RgbaF32::WHITE),
-                );
+                ui.add_shape(Shape::cubic_bezier(
+                    Vec2::new(10.0, 20.0),
+                    Vec2::new(20.0, 20.0),
+                    Vec2::new(30.0, 20.0),
+                    Vec2::new(40.0, 20.0),
+                    Stroke::new(RgbaF32::WHITE, 4.0),
+                ));
             });
         });
 

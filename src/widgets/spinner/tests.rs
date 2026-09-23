@@ -8,7 +8,7 @@ use crate::scene::layer::Layer;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::spinner::Spinner;
-use crate::widgets::spinner::{ArcGeometry, arc_geometry, comet_brush};
+use crate::widgets::spinner::{ArcGeometry, arc_geometry, comet};
 use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::UVec2;
 use glam::Vec2;
@@ -61,9 +61,9 @@ fn arc_and_spin_follow_the_spinner_theme() {
             .find_map(|s| match s {
                 ShapeRecord::Curve {
                     basis: CurveBasis::Arc { a1, .. },
-                    width,
+                    stroke,
                     ..
-                } => Some((*a1, *width)),
+                } => Some((*a1, stroke.width)),
                 _ => None,
             })
             .expect("spinner records one arc");
@@ -126,27 +126,22 @@ fn arc_and_spin_follow_the_spinner_theme() {
     assert_ne!(width, width_b);
 }
 
-/// Comet trail: tail transparent, head the full color, rgb equal on
-/// both stops (only alpha fades). A translucent base scales — the
-/// head must carry the base alpha, not opaque 1.0.
+/// Comet trail: transparent white at the tail, opaque white at the head,
+/// so the stroke colour it multiplies sets the hue. A translucent base
+/// keeps its own alpha at the head — times one, not raised to opaque.
 #[test]
-fn comet_brush_fades_tail_to_head() {
+fn comet_fades_tail_to_head() {
+    let ramp = comet();
+    assert_eq!(ramp.stops.len(), 2);
+    let (tail, head) = (ramp.stops[0], ramp.stops[1]);
+    assert_eq!((tail.offset(), head.offset()), (0.0, 1.0));
+    // White decodes from its sRGB bytes exactly, so these are exact.
+    assert_eq!(tail.color(), RgbaF32::new(1.0, 1.0, 1.0, 0.0));
+    assert_eq!(head.color(), RgbaF32::WHITE);
+
     let base = RgbaF32::srgb(0.6, 0.8, 1.0).with_alpha(0.5);
-    let g = comet_brush(base);
-    assert_eq!(g.stops.len(), 2);
-    let tail = g.stops[0];
-    let head = g.stops[1];
-    assert_eq!(tail.offset(), 0.0);
-    assert_eq!(head.offset(), 1.0);
-    // A stop stores sRGB bytes, so the head reads back as `base` after
-    // that round trip, not as `base` itself.
-    let quantized = RgbaF32::from_srgba(base.to_srgba_u8());
-    assert_eq!(tail.color().a, 0.0);
-    assert_eq!(head.color(), quantized);
-    // RGB is untouched — only alpha varies along the trail.
-    assert_eq!(tail.color().r, head.color().r);
-    assert_eq!(tail.color().g, head.color().g);
-    assert_eq!(tail.color().b, head.color().b);
+    assert_eq!(base.tinted(head.color()), base);
+    assert_eq!(base.tinted(tail.color()), base.with_alpha(0.0));
 }
 
 #[test]

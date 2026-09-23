@@ -27,7 +27,7 @@ fn spring_snap_fields_carry_target_immediately() {
     let id = wid("snap-carry");
     let start = Background {
         fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
-        stroke: Stroke::ZERO,
+        border: Stroke::ZERO,
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
     };
@@ -38,7 +38,7 @@ fn spring_snap_fields_carry_target_immediately() {
     // Retarget to a new fill (animated) and a new radius (snap).
     let target = Background {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-        stroke: Stroke::ZERO,
+        border: Stroke::ZERO,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
@@ -78,13 +78,13 @@ fn gradient_snap_clears_only_its_background_velocity() {
     let id = wid("gradient-background-velocity");
     let start = Background {
         fill: Brush::Solid(RgbaF32::BLACK),
-        stroke: Stroke::solid(RgbaF32::BLACK, 0.0),
+        border: Stroke::new(RgbaF32::BLACK, 0.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
     let moving = Background {
         fill: Brush::Solid(RgbaF32::WHITE),
-        stroke: Stroke::solid(RgbaF32::BLACK, 10.0),
+        border: Stroke::new(RgbaF32::BLACK, 10.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
@@ -99,7 +99,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
             next_frame(),
         );
     }
-    let stroke_velocity = spring_velocity(&map.rows[&(id, SLOT)]).stroke.width;
+    let stroke_velocity = spring_velocity(&map.rows[&(id, SLOT)]).border.width;
     assert!(
         stroke_velocity > 0.0,
         "test setup must carry positive stroke velocity",
@@ -112,7 +112,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
     ));
     let target = Background {
         fill: gradient.clone(),
-        stroke: Stroke::solid(RgbaF32::BLACK, 20.0),
+        border: Stroke::new(RgbaF32::BLACK, 20.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
@@ -121,7 +121,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
     let velocity = spring_velocity(row);
     assert_eq!(result.current.fill, gradient);
     assert_eq!(velocity.fill, Brush::TRANSPARENT);
-    assert_eq!(velocity.stroke.width, stroke_velocity);
+    assert_eq!(velocity.border.width, stroke_velocity);
     assert!(
         !result.settled,
         "the independently animated stroke still has real displacement",

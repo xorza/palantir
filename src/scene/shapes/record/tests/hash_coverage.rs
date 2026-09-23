@@ -9,7 +9,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::texture_id::TextureId;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::hash::compute_record_hash;
-use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke};
+use crate::scene::shapes::paint::{CurveRamp, LoweredShadow, ShapeBrush, ShapeStroke};
 use crate::scene::shapes::record::*;
 use crate::shape::rect::RectKind;
 use crate::text::font_family::FontFamily;
@@ -57,19 +57,18 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let white = RgbaF16::from(RgbaF32::WHITE);
     let red = RgbaF16::from(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0));
     let solid = ShapeBrush::Solid(white);
-    let stroke = ShapeStroke::from(Stroke::solid(RgbaF32::BLACK, 1.0));
-    let stroke2 = ShapeStroke::from(Stroke::solid(RgbaF32::BLACK, 2.0));
+    let stroke = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 1.0));
+    let stroke2 = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 2.0));
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
-    // --- Quad / Rect -------------------------------------------
     let quad_rect = |kind, local_rect, corners, fill, stroke| {
         ShapeRecord::Quad(QuadShape::Rect {
             kind,
             local_rect,
             corners,
             fill,
-            stroke,
+            border: stroke,
         })
     };
     let base = quad_rect(
@@ -160,7 +159,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &grad_rect(grad(5, 1)),
     );
 
-    // --- Quad / Shadow -----------------------------------------
     let shadow = |local_rect, corners, sh| {
         ShapeRecord::Quad(QuadShape::Shadow {
             local_rect,
@@ -212,7 +210,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         );
     }
 
-    // --- Quad / Triangle ---------------------------------------
     let tri = |a, b, c, radius, fill, stroke, bbox| {
         ShapeRecord::Quad(QuadShape::Triangle {
             a,
@@ -220,7 +217,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             c,
             radius,
             fill,
-            stroke,
+            border: stroke,
             bbox,
         })
     };
@@ -269,7 +266,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    // --- Polyline ----------------------------------------------
     let poly =
         |width, color_mode, cap, join, points, colors, bbox, content_hash| ShapeRecord::Polyline {
             width,
@@ -406,7 +402,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    // --- Text ---------------------------------------------------
     let recorded = |hash| RecordedText {
         span: Span::new(0, 1),
         hash,
@@ -557,7 +552,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    // --- Mesh ---------------------------------------------------
     let mesh = |local_rect, tint, vertices, indices, bbox, content_hash| ShapeRecord::Mesh {
         local_rect,
         tint,
@@ -647,7 +641,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    // --- Image --------------------------------------------------
     let image =
         |local_rect, tint, source, fit, min_filter, mag_filter, downsample| ShapeRecord::Image {
             local_rect,
@@ -818,13 +811,12 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    // --- Curve --------------------------------------------------
-    let curve = |basis, width, fill, cap, bbox| ShapeRecord::Curve {
-        basis,
-        width,
-        fill,
+    let curve = |cap, basis, stroke, bbox, ramp| ShapeRecord::Curve {
         cap,
+        basis,
+        stroke,
         bbox,
+        ramp,
     };
     let cubic = CurveBasis::Cubic {
         p0: Vec2::ZERO,
@@ -832,58 +824,73 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         p2: Vec2::ZERO,
         p3: Vec2::ZERO,
     };
-    let base = curve(cubic, 1.0, solid, LineCap::Butt, Rect::ZERO);
+    let none = CurveRamp::None;
+    let interned = |id, hash| CurveRamp::Interned {
+        id: GradientId(id),
+        hash,
+    };
+    let red_stroke = ShapeStroke::from(Stroke::new(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0));
+    let base = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, none);
     moves(
         "Curve.basis",
         &base,
         &curve(
+            LineCap::Butt,
             CurveBasis::Arc {
                 center: Vec2::ZERO,
                 radius: 1.0,
                 a0: 0.0,
                 a1: 1.0,
             },
-            1.0,
-            solid,
-            LineCap::Butt,
+            stroke,
             Rect::ZERO,
+            none,
         ),
     );
     moves(
-        "Curve.width",
+        "Curve.stroke width",
         &base,
-        &curve(cubic, 2.0, solid, LineCap::Butt, Rect::ZERO),
+        &curve(LineCap::Butt, cubic, stroke2, Rect::ZERO, none),
     );
     moves(
-        "Curve.fill",
+        "Curve.stroke colour",
         &base,
-        &curve(
-            cubic,
-            1.0,
-            ShapeBrush::Solid(red),
-            LineCap::Butt,
-            Rect::ZERO,
-        ),
+        &curve(LineCap::Butt, cubic, red_stroke, Rect::ZERO, none),
     );
     moves(
         "Curve.cap",
         &base,
-        &curve(cubic, 1.0, solid, LineCap::Round, Rect::ZERO),
+        &curve(LineCap::Round, cubic, stroke, Rect::ZERO, none),
+    );
+    // A ramp's content hash rides in the record, so it moves the hash,
+    // and its frame-local id does not. Cap and ramp share a byte, so the
+    // cap must still move the hash under a ramp.
+    let ramped = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(0, 1));
+    moves("Curve.ramp present", &base, &ramped);
+    moves(
+        "Curve.ramp hash",
+        &ramped,
+        &curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(0, 2)),
     );
     moves(
-        "Curve.fill gradient hash",
-        &curve(cubic, 1.0, grad(0, 1), LineCap::Butt, Rect::ZERO),
-        &curve(cubic, 1.0, grad(0, 2), LineCap::Butt, Rect::ZERO),
+        "Curve.cap under a ramp",
+        &ramped,
+        &curve(LineCap::Round, cubic, stroke, Rect::ZERO, interned(0, 1)),
+    );
+    excluded(
+        "Curve.ramp id (frame-local)",
+        &ramped,
+        &curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(7, 1)),
     );
     excluded(
         "Curve.bbox (derived from basis/width/cap)",
         &base,
         &curve(
-            cubic,
-            1.0,
-            solid,
             LineCap::Butt,
+            cubic,
+            stroke,
             Rect::new(5.0, 5.0, 5.0, 5.0),
+            none,
         ),
     );
 }

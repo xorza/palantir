@@ -9,7 +9,7 @@
 // KIND_CUBIC evaluates the `p0..p3` cubic; KIND_ARC evaluates
 // `p0 + p1.x * (cos θ, sin θ)` with `θ = mix(p2.x, p2.y, t)` — an
 // exact circle (no flattening, no cubic-approximation error) whose
-// gradient `t` tracks the sweep linearly; KIND_SEGMENT is a straight
+// ramp `t` tracks the sweep linearly; KIND_SEGMENT is a straight
 // polyline segment `p0 → p3` whose joint ends are butt-faced and
 // fragment-clipped at the composer-supplied bisector planes riding
 // `p1`/`p2`; KIND_JOIN_* expand to one billboard quad and fill the
@@ -52,9 +52,9 @@
 // PREMULTIPLIED_ALPHA_BLENDING.
 
 // Gradient LUT atlas, shared with the quad pipeline. Sampled per
-// fragment when `fill_kind != 0`. Same `Rgba16Float` (linear) format
-// + linear filter / clamp-to-edge sampler as quad.wgsl — the curve's
-// `t` is already in [0, 1] by construction, so spread is a no-op.
+// fragment for a ramp fill. Same `Rgba16Float` (linear) format + linear
+// filter / clamp-to-edge sampler as quad.wgsl — the curve's `t` is
+// already in [0, 1] by construction, so a ramp has no spread.
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
 
@@ -82,9 +82,9 @@ const KIND_JOIN_ROUND: u32 = /*{KIND_JOIN_ROUND}*/;
 const KIND_JOIN_BEVEL: u32 = /*{KIND_JOIN_BEVEL}*/;
 const KIND_JOIN_MITER: u32 = /*{KIND_JOIN_MITER}*/;
 
-// Solid is the fill this falls through to, so only the gradient tag
-// is pinned.
-const BRUSH_KIND_LINEAR: u32 = /*{BRUSH_KIND_LINEAR}*/;
+// Solid is the fill this falls through to, so only the ramp tag is
+// pinned.
+const BRUSH_KIND_RAMP: u32 = /*{BRUSH_KIND_RAMP}*/;
 
 // `VsOut.flags` bits — the per-instance predicates the fragment
 // actually branches on, packed once in `vs` so they ride one flat
@@ -93,7 +93,7 @@ const BRUSH_KIND_LINEAR: u32 = /*{BRUSH_KIND_LINEAR}*/;
 // depends on the join kinds being numbered consecutively, which
 // nothing on either side pins.
 const FLAG_ROUND_CAP: u32 = 1u;
-const FLAG_LINEAR_FILL: u32 = 2u;
+const FLAG_RAMP_FILL: u32 = 2u;
 const FLAG_CLIP: u32 = 4u;
 const FLAG_JOIN: u32 = 8u;
 const FLAG_JOIN_BEVEL: u32 = 16u;
@@ -140,11 +140,12 @@ struct VsOut {
     // `clamp(half_w - r, 0, plateau)`.
     @location(2) @interpolate(flat) half_w: f32,
     // Stroke colour, lerped `color0 → color1` along `t` for strips
-    // (constant when both lanes are equal).
+    // (constant when both lanes are equal). Multiplies the ramp sample
+    // under `FLAG_RAMP_FILL`.
     @location(3) color: vec4<f32>,
     // `FLAG_*` bits (+ join metric in bits 4..6).
     @location(4) @interpolate(flat) flags: u32,
-    // Gradient LUT atlas row; ignored without `FLAG_LINEAR_FILL`.
+    // Gradient LUT atlas row; ignored without `FLAG_RAMP_FILL`.
     // Carried as the row rather than a resolved `v` because deriving
     // `v` needs the atlas height, and that query has to run in the
     // fragment stage — the gradient bind group is fragment-visible only.
@@ -253,7 +254,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.jv0 = vec4<f32>(0.0);
     out.jv1 = vec4<f32>(0.0);
     out.color = in.color0;
-    var flags = select(0u, FLAG_LINEAR_FILL, (in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR);
+    var flags = select(0u, FLAG_RAMP_FILL, (in.fill_kind & 0xFFu) == BRUSH_KIND_RAMP);
     var phys: vec2<f32>;
 
     if (in.kind >= KIND_JOIN_ROUND) {
@@ -413,7 +414,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         }
     }
     var rgba = in.color;
-    if ((in.flags & FLAG_LINEAR_FILL) != 0u) {
+    if ((in.flags & FLAG_RAMP_FILL) != 0u) {
         // `curve_t` is in [0, 1] by construction and the sampler is
         // clamp-to-edge, so no explicit clamp. Row count is queried,
         // not baked in as a const: the atlas texture grows when one
@@ -421,11 +422,9 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // query keeps this pipeline valid across that resize.
         let lut_v = (f32(in.lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
         let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
-        // `in.color` is unread on this path — the row above supplies the
-        // colour — so its alpha lane carries a paint animation's opacity
-        // multiplier instead. It is 1.0 for every unanimated gradient.
-        // See `BrushSource::gpu_fill`.
-        rgba = vec4<f32>(c.rgb, c.a * rgba.a);
+        // The stroke colour multiplies the sample, channel by channel —
+        // the same rule as a mesh tint. See `GpuFill::curve`.
+        rgba = c * rgba;
     }
     let a = rgba.a * coverage;
     return premultiply(rgba.rgb, a);

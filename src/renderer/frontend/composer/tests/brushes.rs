@@ -122,7 +122,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         LinearGradient::two_stop(0.0, RgbaF32::WHITE, RgbaF32::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
     let atlas = SharedGradientAtlas::default();
-    let row = atlas.register_stops(&g.stops, g.interp);
+    let row = atlas.register(&g.ramp);
     let lowered = ResolvedGradient {
         axis: expected_axis,
         lut_row: row,
@@ -166,7 +166,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     let atlas = SharedGradientAtlas::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),
-        lut_row: atlas.register_stops(&g.stops, g.interp),
+        lut_row: atlas.register(&g.ramp),
         kind: FillKind::linear(g.spread),
     };
     let mut buffer = PaintCapture::default();

@@ -19,14 +19,14 @@ pub(crate) enum RectKind {
     Windowed = 1,
 }
 
-/// Filled and/or stroked rectangle.
+/// Filled and/or bordered rectangle.
 #[derive(Clone, Debug)]
 pub struct RectShape {
     pub(crate) kind: RectKind,
     pub(crate) local_rect: Option<Rect>,
     pub(crate) corners: Corners,
     pub(crate) fill: Brush,
-    pub(crate) stroke: Stroke,
+    pub(crate) border: Stroke,
 }
 
 impl RectShape {
@@ -36,7 +36,7 @@ impl RectShape {
             local_rect,
             corners: Corners::ZERO,
             fill: Brush::TRANSPARENT,
-            stroke: Stroke::ZERO,
+            border: Stroke::ZERO,
         }
     }
 }
@@ -48,9 +48,10 @@ impl RectShape {
         self
     }
 
-    /// Edge paint, centred on the boundary.
-    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
-        self.stroke = stroke.into();
+    /// Edge paint, inside the boundary: the outer edge of the border is
+    /// the rect's edge, like every area shape's.
+    pub fn border(mut self, border: impl Into<Stroke>) -> Self {
+        self.border = border.into();
         self
     }
 
@@ -64,7 +65,7 @@ impl RectShape {
 impl sealed::LowerShape for RectShape {
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty)
-            || (self.fill.is_noop() && self.stroke.is_noop())
+            || (self.fill.is_noop() && self.border.is_noop())
     }
 
     /// `fill` is screened here rather than where it interns: a gradient's
@@ -75,7 +76,7 @@ impl sealed::LowerShape for RectShape {
         self.local_rect.has_nan()
             || self.corners.has_nan()
             || self.fill.has_nan()
-            || self.stroke.has_nan()
+            || self.border.has_nan()
     }
 
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
@@ -84,8 +85,8 @@ impl sealed::LowerShape for RectShape {
             local_rect,
             corners,
             fill,
-            stroke,
+            border,
         } = self;
-        lower::rect(store, kind, local_rect, corners, &fill, stroke)
+        lower::rect(store, kind, local_rect, corners, &fill, border)
     }
 }

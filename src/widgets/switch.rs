@@ -87,8 +87,8 @@ impl<'a> Switch<'a> {
             plan: slot.plan(&response, on, theme.text),
             gap: slot.gap,
             // A `Canvas` so the knob can be absolutely positioned inside
-            // the track. Width is stroke-independent, so it resolves
-            // here even though the stroke isn't known until the body.
+            // the track. Width is border-independent, so it resolves
+            // here even though the border isn't known until the body.
             boxed: Widget::canvas().size((
                 Sizing::fixed(track_width(track_h, aspect)),
                 Sizing::fixed(track_h),
@@ -96,22 +96,22 @@ impl<'a> Switch<'a> {
             pill: Some(track_h * 0.5),
         };
         chrome.record_row(ui, self.widget, response, self.label, |ui, track| {
-            // The track's stroke auto-insets the Canvas content box by
+            // The track's border auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
-            // declared position is content-box-relative. Feed the stroke
+            // declared position is content-box-relative. Feed the border
             // into `switch_geom` so it subtracts it back out and the
             // knob's margins stay measured from the pill's outer edge —
-            // otherwise the knob arranges a stroke-width low and to the
+            // otherwise the knob arranges a border-width low and to the
             // right of centre. Read off the *resolved* chrome, not the
-            // theme: the stroke animates between the on and off looks,
+            // theme: the border animates between the on and off looks,
             // and a mid-transition knob has to track it.
-            let stroke = track.stroke.width;
-            let stroke_inset = if approx::paints_nothing(stroke) {
+            let border = track.border.width;
+            let border_inset = if approx::paints_nothing(border) {
                 0.0
             } else {
-                stroke
+                border
             };
-            let geom = switch_geom(track_h, inset, stroke_inset, aspect);
+            let geom = switch_geom(track_h, inset, border_inset, aspect);
 
             let target_x = if on { geom.on_x } else { geom.off_x };
             let knob_x = ui.animate(knob_id, "x", target_x, anim);
@@ -134,7 +134,7 @@ impl Configure for Switch<'_> {
 
 /// Knob placement inside the track. The track's own extent is
 /// [`track_width`] × `track_h` and is not repeated here — `Switch::show`
-/// needs it one step earlier, before the chrome (and so the stroke)
+/// needs it one step earlier, before the chrome (and so the border)
 /// resolves.
 #[derive(Debug)]
 struct SwitchGeom {
@@ -145,32 +145,32 @@ struct SwitchGeom {
 }
 
 /// Track width for a `track_h`-tall switch. Split out because it does
-/// not depend on the stroke: `Switch::show` sizes the track node from it
-/// before the chrome resolves, while [`switch_geom`] needs the stroke to
+/// not depend on the border: `Switch::show` sizes the track node from it
+/// before the chrome resolves, while [`switch_geom`] needs the border to
 /// place the knob.
 fn track_width(track_h: f32, aspect: f32) -> f32 {
     track_h * aspect
 }
 
 /// Derive the track/knob geometry from the track height, knob inset, and
-/// the track's `stroke` width. The knob is `track_h - 2*inset` (floored
+/// the track's `border` width. The knob is `track_h - 2*inset` (floored
 /// at 2 px so a degenerate height can't invert it) and, measured from the
 /// pill's outer edge, rests `inset` from the top and from whichever end
 /// it sits against.
 ///
-/// Returned x/y are **content-box-relative**: the track's stroke
-/// auto-insets the Canvas content box by `stroke` on every side
-/// (`Tree::open_node`), so each coordinate has `stroke` subtracted to land
-/// the knob back at its intended rect-relative margin. Pass `stroke = 0`
+/// Returned x/y are **content-box-relative**: the track's border
+/// auto-insets the Canvas content box by `border` on every side
+/// (`Tree::open_node`), so each coordinate has `border` subtracted to land
+/// the knob back at its intended rect-relative margin. Pass `border = 0`
 /// for a borderless track and the coordinates are the plain rect insets.
-fn switch_geom(track_h: f32, inset: f32, stroke: f32, aspect: f32) -> SwitchGeom {
+fn switch_geom(track_h: f32, inset: f32, border: f32, aspect: f32) -> SwitchGeom {
     let track_w = track_width(track_h, aspect);
     let knob = (track_h - 2.0 * inset).max(2.0);
     SwitchGeom {
         knob,
-        off_x: inset - stroke,
-        on_x: track_w - knob - inset - stroke,
-        knob_y: inset - stroke,
+        off_x: inset - border,
+        on_x: track_w - knob - inset - border,
+        knob_y: inset - border,
     }
 }
 
@@ -186,31 +186,31 @@ mod tests {
     const ASPECT: f32 = 1.75;
     use glam::UVec2;
 
-    /// Geometry math for the 20 px default with a 1 px track stroke:
-    /// `track_w = 35`, `knob = 14`. The stroke auto-insets the Canvas
+    /// Geometry math for the 20 px default with a 1 px track border:
+    /// `track_w = 35`, `knob = 14`. The border auto-insets the Canvas
     /// content box by 1 px on every side (`Tree::open_node`), so the
     /// returned content-box coords are `off_x = 2`, `on_x = 17`,
-    /// `knob_y = 2`. Re-adding the stroke inset puts the knob exactly
+    /// `knob_y = 2`. Re-adding the border inset puts the knob exactly
     /// `inset` (3 px) from every rect edge in both rest states — i.e.
     /// vertically centred and horizontally symmetric.
     #[test]
     fn switch_geom_default_dimensions() {
-        let (track_h, inset, stroke) = (20.0_f32, 3.0_f32, 1.0_f32);
+        let (track_h, inset, border) = (20.0_f32, 3.0_f32, 1.0_f32);
         let track_w = track_width(track_h, ASPECT);
-        let g = switch_geom(track_h, inset, stroke, ASPECT);
+        let g = switch_geom(track_h, inset, border, ASPECT);
         assert!((track_w - 35.0).abs() < 1e-6);
         assert!((g.knob - 14.0).abs() < 1e-6);
         assert!((g.off_x - 2.0).abs() < 1e-6);
         assert!((g.on_x - 17.0).abs() < 1e-6);
         assert!((g.knob_y - 2.0).abs() < 1e-6);
 
-        // Rect-relative margins (re-add the stroke the content box ate):
+        // Rect-relative margins (re-add the border the content box ate):
         // every one equals `inset`.
         let margins = [
-            ("off left", stroke + g.off_x),
-            ("on right", track_w - (stroke + g.on_x + g.knob)),
-            ("top", stroke + g.knob_y),
-            ("bottom", track_h - (stroke + g.knob_y + g.knob)),
+            ("off left", border + g.off_x),
+            ("on right", track_w - (border + g.on_x + g.knob)),
+            ("top", border + g.knob_y),
+            ("bottom", track_h - (border + g.knob_y + g.knob)),
         ];
         for (name, m) in margins {
             assert!(
@@ -220,10 +220,10 @@ mod tests {
         }
     }
 
-    /// With no track stroke the content box equals the rect, so the
+    /// With no track border the content box equals the rect, so the
     /// coordinates degenerate to the plain rect insets: `off_x = inset`,
     /// `on_x = track_w - knob - inset`, `knob_y = inset`. Pinning this
-    /// against `switch_geom_default_dimensions` shows the `stroke`
+    /// against `switch_geom_default_dimensions` shows the `border`
     /// argument actually moves the coordinates (off_x: 3 → 2).
     #[test]
     fn switch_geom_no_stroke_is_rect_relative() {
@@ -257,8 +257,8 @@ mod tests {
     }
 
     /// Regression: the off-response knob is centred in the track despite the
-    /// track's 1 px stroke auto-insetting the Canvas content box. Before
-    /// the stroke compensation the knob arranged at (4, 4) — 1 px low and
+    /// track's 1 px border auto-insetting the Canvas content box. Before
+    /// the border compensation the knob arranged at (4, 4) — 1 px low and
     /// 1 px right — leaving a 4/2 px top/bottom gap. It must rest `inset`
     /// (3 px) from every edge: offset (3, 3), 18 px of travel to the right.
     #[test]

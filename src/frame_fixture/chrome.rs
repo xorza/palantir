@@ -218,7 +218,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
         .click_outside(ClickOutside::PassThrough)
         .background(Background {
             fill: tokens::CARD_BG.into(),
-            stroke: Stroke::solid(tokens::BORDER, 1.0),
+            border: Stroke::new(tokens::BORDER, 1.0),
             corners: Corners::all(6.0),
             shadow: Shadow::drop(
                 RgbaF32::srgba(0.0, 0.0, 0.0, 0.55),

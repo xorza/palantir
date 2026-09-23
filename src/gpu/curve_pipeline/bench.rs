@@ -17,8 +17,8 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
 use crate::shape::style::LineJoin;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
@@ -82,16 +82,13 @@ fn record_cubics(ui: &mut Ui, phase: bool) {
     for row in 0..GRID {
         for col in 0..GRID {
             let origin = Vec2::new(col as f32 * CELL, row as f32 * CELL);
-            ui.add_shape(
-                Shape::cubic_bezier(
-                    origin + Vec2::new(2.0, 8.0),
-                    origin + Vec2::new(5.0, 5.5 + wobble),
-                    origin + Vec2::new(11.0, 10.5),
-                    origin + Vec2::new(14.0, 8.0),
-                    2.0,
-                )
-                .brush(color),
-            );
+            ui.add_shape(Shape::cubic_bezier(
+                origin + Vec2::new(2.0, 8.0),
+                origin + Vec2::new(5.0, 5.5 + wobble),
+                origin + Vec2::new(11.0, 10.5),
+                origin + Vec2::new(14.0, 8.0),
+                Stroke::new(color, 2.0),
+            ));
         }
     }
 }
@@ -107,9 +104,7 @@ fn record_joins(ui: &mut Ui, phase: bool) {
                 origin + Vec2::new(8.0, 4.0 + wobble),
                 origin + Vec2::new(13.5, 11.5),
             ];
-            ui.add_shape(
-                Shape::polyline(&points, PolylineColors::Single(color), 3.0).join(LineJoin::Round),
-            );
+            ui.add_shape(Shape::polyline(&points, Stroke::new(color, 3.0)).join(LineJoin::Round));
         }
     }
 }

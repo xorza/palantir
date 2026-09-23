@@ -12,7 +12,7 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
 use glam::Vec2;
 
-/// Filled and/or stroked triangle with optional uniform corner rounding.
+/// Filled and/or bordered triangle with optional uniform corner rounding.
 #[derive(Clone, Debug)]
 pub struct TriangleShape {
     pub(crate) a: Vec2,
@@ -20,7 +20,7 @@ pub struct TriangleShape {
     pub(crate) c: Vec2,
     pub(crate) radius: f32,
     pub(crate) fill: RgbaF32,
-    pub(crate) stroke: Stroke,
+    pub(crate) border: Stroke,
 }
 
 impl TriangleShape {
@@ -31,7 +31,7 @@ impl TriangleShape {
             c,
             radius: 0.0,
             fill: RgbaF32::TRANSPARENT,
-            stroke: Stroke::ZERO,
+            border: Stroke::ZERO,
         }
     }
 }
@@ -43,9 +43,9 @@ impl TriangleShape {
         self
     }
 
-    /// Edge paint.
-    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
-        self.stroke = stroke.into();
+    /// Edge paint, inside the boundary like every area shape's.
+    pub fn border(mut self, border: impl Into<Stroke>) -> Self {
+        self.border = border.into();
         self
     }
 
@@ -71,7 +71,7 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
 }
 impl sealed::LowerShape for TriangleShape {
     fn is_noop(&self) -> bool {
-        (self.fill.is_noop() && self.stroke.is_noop())
+        (self.fill.is_noop() && self.border.is_noop())
             || triangle_paint_empty(self.a, self.b, self.c)
     }
 
@@ -85,13 +85,13 @@ impl sealed::LowerShape for TriangleShape {
             || self.c.has_nan()
             || self.radius.is_nan()
             || self.fill.has_nan()
-            || self.stroke.has_nan()
+            || self.border.has_nan()
     }
 
     /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
     /// `radius`: the SDF offsets the shape outward by that much to round
-    /// its corners, and the stroke is inner-edge and adds no outward
-    /// reach.
+    /// its corners, and the border is inside the edge and adds no
+    /// outward reach.
     ///
     /// The AA fringe is **not** folded in here. It is half a *physical*
     /// pixel, and this rect is owner-local logical px — baking it in
@@ -107,7 +107,7 @@ impl sealed::LowerShape for TriangleShape {
             c,
             radius,
             fill,
-            stroke,
+            border,
         } = self;
         // Through `Aabb`, not raw `min`/`max`: those launder a NaN corner
         // out of the bounds, which would leave the record's own bbox
@@ -120,7 +120,7 @@ impl sealed::LowerShape for TriangleShape {
             c,
             radius,
             fill: fill.into(),
-            stroke: ShapeStroke::from(stroke),
+            border: ShapeStroke::from(border),
             bbox,
         })
     }

@@ -201,7 +201,7 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
 
 /// Pin: `Quad → Quad → Text` fits in one group. The text comes after
 /// both quads and renders on top of both — the common case (button
-/// background + button stroke + label).
+/// background + button border + label).
 #[test]
 fn compose_keeps_quads_then_text_in_one_group() {
     let buf = run(
@@ -593,8 +593,8 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
 
 //
 // Pruning drops a quad iff a later quad in the same group fully
-// covers its painted extent (`q.rect.inflated(stroke/2)`) under
-// `Rect::contains_rect`.
+// covers its painted extent (`q.rect`, which holds its inner-edge
+// border) under `Rect::contains_rect`.
 
 /// Regression: a quad overlapping text that lives in an *already-closed*
 /// batch within the same group must still flush so the text paints under
@@ -746,7 +746,7 @@ fn quad_fast_path_flag_cases() {
             "stroke disqualifies",
             rect(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::solid(RgbaF32::WHITE, 1.0),
+            Stroke::new(RgbaF32::WHITE, 1.0),
             solid(opaque),
             1.0,
             false,

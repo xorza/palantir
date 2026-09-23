@@ -1,10 +1,11 @@
 use crate::animation::animatable::Animatable;
+use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
-use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
@@ -12,7 +13,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::f32::consts::{FRAC_PI_4, PI};
 use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
-use tinyvec::ArrayVec;
 
 /// `LinearGradient::Hash` is what `shapes::lower` folds into a record's
 /// gradient content hash, so hashing the gradient is the production
@@ -95,17 +95,12 @@ fn authoring_values_convert_to_their_brush_variants() {
     let bytes = SrgbaU8::new(255, 0, 255, 51);
     let decoded = RgbaF32::new(1.0, 0.0, 1.0, 0.2);
     assert_eq!(Brush::from(bytes), Brush::Solid(decoded));
-    assert_eq!(CurveBrush::from(bytes), CurveBrush::from(decoded));
     assert_eq!(Brush::from(linear.clone()), Brush::Linear(linear));
     assert_eq!(Brush::from(radial.clone()), Brush::Radial(radial));
     assert_eq!(Brush::from(conic.clone()), Brush::Conic(conic));
     assert_eq!(
         Brush::from(linear_builder.clone()),
-        Brush::Linear(linear_builder.clone().build()),
-    );
-    assert_eq!(
-        CurveBrush::from(linear_builder.clone()),
-        CurveBrush::from(linear_builder.build()),
+        Brush::Linear(linear_builder.build()),
     );
 }
 
@@ -125,23 +120,26 @@ fn solid_is_noop_iff_color_is_noop() {
 }
 
 /// `LinearGradient` is inline-stored on every `Brush::Linear`, so
-/// its size sets the floor for `Brush`, `Background.fill`,
-/// `Stroke.brush`, and every `Shape::*` variant carrying a brush.
-/// Pin the size so any silent footprint regression (added field,
-/// stop-cap bump) trips a test rather than diffusing through the
-/// codebase. The exact number below is a function of `MAX_STOPS = 8`
-/// + `repr(C)` field layout; recompute when those change.
+/// its size sets the floor for `Brush`, `Background.fill`, and every
+/// `Shape::*` variant carrying a brush. Pin the size so any silent
+/// footprint regression (added field, stop-cap bump) trips a test
+/// rather than diffusing through the codebase. The exact numbers below
+/// are a function of `MAX_STOPS = 8` and the field layout; recompute
+/// when those change.
 #[test]
 fn linear_gradient_size_is_compact() {
-    // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 SrgbaU8)
-    // + 1 (spread) + 1 (interp) + tail-pad. Recompute if MAX_STOPS or
-    // Stop layout changes. Pinned to catch unintended layout drift.
-    assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
+    // GradientStops: 1 (len) + 8 × 5 (Stop = 1 offset_u8 + 4 SrgbaU8),
+    // align 1. ColorRamp adds 1 (interp) with no padding. LinearGradient:
+    // 4 (angle) + 42 (ramp) + 1 (spread) + 1 tail pad to align 4.
     assert_eq!(
-        std::mem::size_of::<GradientStops>(),
-        std::mem::size_of::<ArrayVec<[Stop; MAX_STOPS]>>(),
-        "the validated wrapper must retain inline ArrayVec storage",
+        (
+            std::mem::size_of::<GradientStops>(),
+            std::mem::align_of::<GradientStops>()
+        ),
+        (1 + 5 * MAX_STOPS, 1),
     );
+    assert_eq!(std::mem::size_of::<ColorRamp>(), 1 + 5 * MAX_STOPS + 1);
+    assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
 }
 
 #[test]
@@ -231,11 +229,11 @@ fn every_gradient_variant_round_trips_validated_stops() {
 #[test]
 fn linear_two_stop_authoring() {
     let g = LinearGradient::two_stop(0.0, RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x16213e));
-    assert_eq!(g.stops.len(), 2);
-    assert_eq!(g.stops[0].offset(), 0.0);
-    assert_eq!(g.stops[1].offset(), 1.0);
+    assert_eq!(g.ramp.stops.len(), 2);
+    assert_eq!(g.ramp.stops[0].offset(), 0.0);
+    assert_eq!(g.ramp.stops[1].offset(), 1.0);
     assert_eq!(g.spread, Spread::Pad);
-    assert_eq!(g.interp, Interp::Oklab);
+    assert_eq!(g.ramp.interp, Interp::Oklab);
     assert!(!g.is_noop());
 
     let overridden = g
@@ -243,8 +241,8 @@ fn linear_two_stop_authoring() {
         .with_spread(Spread::Repeat)
         .with_interp(Interp::Linear);
     assert_eq!(overridden.spread, Spread::Repeat);
-    assert_eq!(overridden.interp, Interp::Linear);
-    assert_eq!(overridden.stops, g.stops);
+    assert_eq!(overridden.ramp.interp, Interp::Linear);
+    assert_eq!(overridden.ramp.stops, g.ramp.stops);
     assert_eq!(overridden.geometry, g.geometry);
 }
 
@@ -258,12 +256,12 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .with_interp(Interp::Linear)
         .build();
     assert_eq!(linear.geometry.angle, PI / 2.0);
-    assert_eq!(linear.stops.len(), 3);
-    assert_eq!(linear.stops[0].offset(), 0.0);
-    assert_eq!(linear.stops[1].offset(), 128.0 / 255.0);
-    assert_eq!(linear.stops[2].offset(), 1.0);
+    assert_eq!(linear.ramp.stops.len(), 3);
+    assert_eq!(linear.ramp.stops[0].offset(), 0.0);
+    assert_eq!(linear.ramp.stops[1].offset(), 128.0 / 255.0);
+    assert_eq!(linear.ramp.stops[2].offset(), 1.0);
     assert_eq!(linear.spread, Spread::Reflect);
-    assert_eq!(linear.interp, Interp::Linear);
+    assert_eq!(linear.ramp.interp, Interp::Linear);
 
     let center = Vec2::new(0.25, 0.75);
     let radius = Vec2::new(0.4, 0.6);
@@ -273,7 +271,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(radial.geometry.center, center);
     assert_eq!(radial.geometry.radius, radius);
-    assert_eq!(radial.interp, Interp::Oklab);
+    assert_eq!(radial.ramp.interp, Interp::Oklab);
 
     let conic = ConicGradient::builder(center, FRAC_PI_4)
         .stop(0.0, RgbaF32::BLACK)
@@ -281,7 +279,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(conic.geometry.center, center);
     assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
-    assert_eq!(conic.interp, Interp::Linear);
+    assert_eq!(conic.ramp.interp, Interp::Linear);
 }
 
 #[test]
@@ -364,7 +362,7 @@ fn radial_default_centered() {
     let g = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
     assert_eq!(g.geometry.center, Vec2::splat(0.5));
     assert_eq!(g.geometry.radius, Vec2::splat(0.5));
-    assert_eq!(g.interp, Interp::Oklab);
+    assert_eq!(g.ramp.interp, Interp::Oklab);
     assert_eq!(g.spread, Spread::Pad);
     let a = g.axis();
     assert_eq!(a.lanes(), [0.5, 0.5, 0.5, 0.5]);
@@ -373,15 +371,15 @@ fn radial_default_centered() {
 #[test]
 fn conic_default_linear_interp_per_variant() {
     let g = ConicGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
-    assert_eq!(g.interp, Interp::Linear);
+    assert_eq!(g.ramp.interp, Interp::Linear);
     let l = LinearGradient::two_stop(
         0.0,
         RgbaF32::srgb(1.0, 0.0, 0.0),
         RgbaF32::srgb(0.0, 0.0, 1.0),
     );
-    assert_eq!(l.interp, Interp::Oklab);
+    assert_eq!(l.ramp.interp, Interp::Oklab);
     let r = RadialGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
-    assert_eq!(r.interp, Interp::Oklab);
+    assert_eq!(r.ramp.interp, Interp::Oklab);
 }
 
 #[test]

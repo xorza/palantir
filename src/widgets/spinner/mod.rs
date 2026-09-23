@@ -2,9 +2,10 @@
 //! paint clock, so an idle window animates it without recording.
 
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
+use crate::primitives::stroke::Stroke;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
@@ -34,7 +35,7 @@ use std::time::Duration;
 /// shifts the arc's angles when it emits the GPU instances, no
 /// geometry is rebuilt. The arc renders natively on the GPU (exact
 /// circle, adaptive subdivision), so it stays smooth at any size and
-/// DPI; the comet fade is a linear gradient sampled along the sweep.
+/// DPI; the comet fade is a ramp sampled along the sweep.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Spinner<'a> {
@@ -109,8 +110,8 @@ impl<'a> Spinner<'a> {
                 // stays cache-stable and only the composer re-spins it.
                 let ArcGeometry { center, radius } = arc_geometry(diameter, width);
                 ui.add_shape_animated(
-                    Shape::arc(center, radius, 0.0, sweep, width)
-                        .brush(comet_brush(color))
+                    Shape::arc(center, radius, 0.0, sweep, Stroke::new(color, width))
+                        .ramp(comet())
                         .cap(LineCap::Round),
                     // One turn per `TAU / speed` seconds — the old
                     // radians-per-second spelling, in the period the
@@ -149,13 +150,13 @@ fn arc_geometry(diameter: f32, width: f32) -> ArcGeometry {
     }
 }
 
-/// Comet-trail gradient along the sweep: fully transparent at the tail
-/// (t = 0, the arc's start angle), the full color at the head (t = 1).
-/// Scaling from the base alpha keeps a translucent base translucent.
-/// The gradient's `angle` is ignored on stroke shapes — the arc
-/// carries its own 1-D parameter.
-fn comet_brush(base: RgbaF32) -> LinearGradient {
-    LinearGradient::two_stop(0.0, base.with_alpha(0.0), base)
+/// Comet-trail ramp along the sweep: transparent at the tail (t = 0, the
+/// arc's start angle), opaque at the head (t = 1). White, because it
+/// multiplies the stroke colour: the colour sets the hue, its alpha
+/// scales the whole trail, and every spinner shares one ramp — one atlas
+/// row, whatever the theme.
+fn comet() -> ColorRamp {
+    ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE)
 }
 
 #[cfg(test)]

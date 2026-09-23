@@ -11,6 +11,7 @@ use crate::primitives::image::Image;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
@@ -139,11 +140,16 @@ impl<'a> ColorField<'a> {
                 },
             );
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
-            ui.add_shape(Shape::circle(marker, handle_radius, handle_width).brush(handle_outer));
-            ui.add_shape(
-                Shape::circle(marker, handle_radius - handle_width, handle_width)
-                    .brush(handle_inner),
-            );
+            ui.add_shape(Shape::circle(
+                marker,
+                handle_radius,
+                Stroke::new(handle_outer, handle_width),
+            ));
+            ui.add_shape(Shape::circle(
+                marker,
+                handle_radius - handle_width,
+                Stroke::new(handle_inner, handle_width),
+            ));
         });
         ValueResponse {
             response: Response::eager(id, ui, response),

@@ -215,7 +215,7 @@ fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .padding((10.0, 4.0))
         .background(
             Background::rounded(a.with_alpha(0.20), Corners::all(10.0))
-                .with_stroke(Stroke::solid(a.with_alpha(0.45), 1.0)),
+                .with_border(Stroke::new(a.with_alpha(0.45), 1.0)),
         )
         .show(ui, |ui| {
             Text::new(label)

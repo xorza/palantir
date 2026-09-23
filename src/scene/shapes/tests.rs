@@ -1,6 +1,7 @@
-use crate::primitives::color::RgbaF32;
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::image::Image;
 use crate::primitives::rect::Rect;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
@@ -9,7 +10,7 @@ use crate::scene::shapes::Shapes;
 use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
+use crate::shape::polyline::PolylineShape;
 use glam::UVec2;
 use glam::Vec2;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -22,11 +23,11 @@ enum ColorSource {
 }
 
 impl ColorSource {
-    fn colors<'a>(self, colors: &'a [RgbaF32]) -> PolylineColors<'a> {
+    fn apply<'a>(self, shape: PolylineShape<'a>, colors: &'a [RgbaF32]) -> PolylineShape<'a> {
         match self {
-            ColorSource::Single => PolylineColors::Single(RgbaF32::WHITE),
-            ColorSource::PerPoint => PolylineColors::PerPoint(colors),
-            ColorSource::PerSegment => PolylineColors::PerSegment(colors),
+            ColorSource::Single => shape,
+            ColorSource::PerPoint => shape.per_point(colors),
+            ColorSource::PerSegment => shape.per_segment(colors),
         }
     }
 
@@ -51,10 +52,26 @@ impl ColorSource {
 /// `lower::polyline` — not by the no-op query that used to open with it. So a
 /// polyline that never lowers (fewer than two points) is dropped in silence
 /// whatever its colour slice says, and one that does lower is checked.
+///
+/// What lowers stages each colour times the stroke colour, channel by
+/// channel, and a single-colour polyline stages the stroke colour itself.
 #[test]
 fn polyline_color_cardinality_is_enforced_at_lowering() {
     let points = [Vec2::ZERO, Vec2::new(10.0, 10.0)];
-    let colors = [RgbaF32::WHITE; 3];
+    let tint = RgbaF32::new(0.5, 0.25, 1.0, 0.5);
+    let colors = [
+        RgbaF32::new(1.0, 1.0, 1.0, 1.0),
+        RgbaF32::new(0.5, 1.0, 0.5, 1.0),
+        RgbaF32::new(0.0, 0.5, 1.0, 0.5),
+    ];
+    // `tint` × each colour: (0.5·1, 0.25·1, 1·1, 0.5·1), (0.5·0.5,
+    // 0.25·1, 1·0.5, 0.5·1), (0.5·0, 0.25·0.5, 1·1, 0.5·0.5). Every
+    // product is a power-of-two fraction, exact in f16.
+    let tinted = [
+        RgbaF32::new(0.5, 0.25, 1.0, 0.5),
+        RgbaF32::new(0.25, 0.25, 0.5, 0.5),
+        RgbaF32::new(0.0, 0.125, 1.0, 0.25),
+    ];
 
     for points_len in 0..=2 {
         for source in [
@@ -70,10 +87,9 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
             for &colors_len in color_lengths {
                 let mut shapes = Shapes::default();
                 let mut store = RecordStore::default();
-                let shape = Shape::polyline(
-                    &points[..points_len],
-                    source.colors(&colors[..colors_len]),
-                    1.0,
+                let shape = source.apply(
+                    Shape::polyline(&points[..points_len], Stroke::new(tint, 1.0)),
+                    &colors[..colors_len],
                 );
                 let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &mut store)));
                 // What the no-op gate drops never reaches lowering, and so is
@@ -126,6 +142,16 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                     };
                     assert_eq!(point_span.len, points_len as u32);
                     assert_eq!(color_span.len, source.stored_colors_len(points_len));
+                    let expected = match source {
+                        ColorSource::Single => std::slice::from_ref(&tint),
+                        ColorSource::PerPoint | ColorSource::PerSegment => &tinted[..colors_len],
+                    };
+                    let expected: Vec<RgbaF16> = expected.iter().map(|&c| c.into()).collect();
+                    assert_eq!(
+                        &store.polyline_colors[color_span.range()],
+                        expected.as_slice(),
+                        "{source:?}: staged colours are the stroke colour times each colour",
+                    );
                 }
             }
         }
@@ -259,10 +285,10 @@ fn the_nan_gate_drops_every_shape_kind() {
         "rect_stroke_colour",
         Shape::rect(ok_rect)
             .fill(white)
-            .stroke(Stroke::solid(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)),
+            .border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)),
         Shape::rect(ok_rect)
             .fill(white)
-            .stroke(Stroke::solid(RgbaF32::BLACK, 2.0)),
+            .border(Stroke::new(RgbaF32::BLACK, 2.0)),
     );
     gate(
         "triangle_corner",
@@ -279,18 +305,18 @@ fn the_nan_gate_drops_every_shape_kind() {
     );
     gate(
         "curve_control_point",
-        Shape::line(Vec2::ZERO, nan_pt, 2.0).brush(white),
-        Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), 2.0).brush(white),
+        Shape::line(Vec2::ZERO, nan_pt, Stroke::new(white, 2.0)),
+        Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), Stroke::new(white, 2.0)),
     );
     gate(
         "arc_centre",
-        Shape::arc(nan_pt, 4.0, 0.0, 1.0, 2.0).brush(white),
-        Shape::arc(Vec2::ZERO, 4.0, 0.0, 1.0, 2.0).brush(white),
+        Shape::arc(nan_pt, 4.0, 0.0, 1.0, Stroke::new(white, 2.0)),
+        Shape::arc(Vec2::ZERO, 4.0, 0.0, 1.0, Stroke::new(white, 2.0)),
     );
     gate(
         "polyline_point",
-        Shape::polyline(&pts_nan, PolylineColors::Single(white), 2.0),
-        Shape::polyline(&pts_ok, PolylineColors::Single(white), 2.0),
+        Shape::polyline(&pts_nan, Stroke::new(white, 2.0)),
+        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)),
     );
     gate("mesh_vertex", Shape::mesh(&mesh_nan), Shape::mesh(&mesh_ok));
     gate(

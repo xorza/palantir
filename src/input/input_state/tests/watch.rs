@@ -19,6 +19,7 @@ use crate::input::watch::PointerWake;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
@@ -252,9 +253,11 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
             .show(ui, |ui| {
                 let local = ui.pointer_local(id);
                 if let Some(center) = local {
-                    ui.add_shape(
-                        Shape::circle(center, 3.0, 2.0).brush(RgbaF32::srgb(0.2, 0.8, 1.0)),
-                    );
+                    ui.add_shape(Shape::circle(
+                        center,
+                        3.0,
+                        Stroke::new(RgbaF32::srgb(0.2, 0.8, 1.0), 2.0),
+                    ));
                 }
                 *painted_at = local;
             });

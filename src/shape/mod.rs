@@ -25,12 +25,13 @@ use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
+use crate::primitives::stroke::Stroke;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::shape::curve::{CurveGeometry, CurveShape};
 use crate::shape::icon::IconShape;
 use crate::shape::image::ImageShape;
 use crate::shape::mesh::MeshShape;
-use crate::shape::polyline::{PolylineColors, PolylineShape};
+use crate::shape::polyline::PolylineShape;
 use crate::shape::rect::{RectKind, RectShape};
 use crate::shape::shadow::ShadowShape;
 use crate::shape::text::TextShape;
@@ -132,8 +133,8 @@ pub struct Shape;
 
 impl Shape {
     /// A rounded rectangle painting `rect` (owner-relative). Starts
-    /// transparent-filled, strokeless, sharp-cornered — chain
-    /// [`RectShape::fill`] / [`RectShape::stroke`] / [`RectShape::corners`].
+    /// transparent-filled, borderless, sharp-cornered — chain
+    /// [`RectShape::fill`] / [`RectShape::border`] / [`RectShape::corners`].
     pub fn rect(rect: Rect) -> RectShape {
         RectShape::new(RectKind::Rounded, Some(rect))
     }
@@ -144,7 +145,7 @@ impl Shape {
     }
 
     /// An inverse-mask rectangle over `rect` — the sibling of
-    /// [`Self::rect`], same chainable fill/stroke/corners.
+    /// [`Self::rect`], same chainable fill/border/corners.
     pub fn windowed_rect(rect: Rect) -> RectShape {
         RectShape::new(RectKind::Windowed, Some(rect))
     }
@@ -155,43 +156,45 @@ impl Shape {
     }
 
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp
-    /// (radius 0), transparent-filled, strokeless.
+    /// (radius 0), transparent-filled, borderless.
     pub fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
         TriangleShape::new(a, b, c)
     }
 
-    /// A `width`-thick straight line from `a` to `b` (`Butt` cap).
-    /// Starts transparent.
-    pub fn line(a: Vec2, b: Vec2, width: f32) -> CurveShape {
-        CurveShape::new(CurveGeometry::Line { a, b }, width)
+    /// A straight line from `a` to `b` in `stroke` (`Butt` cap).
+    pub fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
+        CurveShape::new(CurveGeometry::Line { a, b }, stroke)
     }
 
-    /// A stroked polyline through `points`, coloured by `colors` (`Butt`
-    /// cap, `Miter` join).
-    pub fn polyline<'a>(
-        points: &'a [Vec2],
-        colors: PolylineColors<'a>,
-        width: f32,
-    ) -> PolylineShape<'a> {
-        PolylineShape::new(points, colors, width)
+    /// A polyline through `points` in `stroke` (`Butt` cap, `Miter`
+    /// join). Chain [`PolylineShape::per_point`] or
+    /// [`PolylineShape::per_segment`] to vary the colour along it.
+    pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_> {
+        PolylineShape::new(points, stroke)
     }
 
-    /// A stroked cubic Bézier through control points `p0..=p3` (`Butt`
-    /// cap). Starts transparent.
-    pub fn cubic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, width: f32) -> CurveShape {
-        CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, width)
+    /// A cubic Bézier through control points `p0..=p3` in `stroke`
+    /// (`Butt` cap).
+    pub fn cubic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, stroke: Stroke) -> CurveShape {
+        CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, stroke)
     }
 
-    /// A stroked quadratic Bézier through `p0`/`p1`/`p2`. See
+    /// A quadratic Bézier through `p0`/`p1`/`p2`. See
     /// [`Self::cubic_bezier`].
-    pub fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, width: f32) -> CurveShape {
-        CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, width)
+    pub fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
+        CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
     }
 
-    /// A stroked circular arc sweeping `sweep` radians from
-    /// `start_angle` (`Butt` cap). Starts transparent — chain
-    /// [`CurveShape::brush`] / [`CurveShape::cap`].
-    pub fn arc(center: Vec2, radius: f32, start_angle: f32, sweep: f32, width: f32) -> CurveShape {
+    /// A circular arc sweeping `sweep` radians from `start_angle` in
+    /// `stroke` (`Butt` cap) — chain [`CurveShape::ramp`] /
+    /// [`CurveShape::cap`].
+    pub fn arc(
+        center: Vec2,
+        radius: f32,
+        start_angle: f32,
+        sweep: f32,
+        stroke: Stroke,
+    ) -> CurveShape {
         CurveShape::new(
             CurveGeometry::Arc {
                 center,
@@ -199,14 +202,14 @@ impl Shape {
                 start_angle,
                 sweep,
             },
-            width,
+            stroke,
         )
     }
 
-    /// A stroked full circle — [`Self::arc`] with a `2π` sweep, which
-    /// closes seamlessly under the default `Butt` cap.
-    pub fn circle(center: Vec2, radius: f32, width: f32) -> CurveShape {
-        Self::arc(center, radius, 0.0, TAU, width)
+    /// A full circle — [`Self::arc`] with a `2π` sweep, which closes
+    /// seamlessly under the default `Butt` cap.
+    pub fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
+        Self::arc(center, radius, 0.0, TAU, stroke)
     }
 
     /// A shaped text run in `font`. Starts white, single-line, top-left

@@ -185,6 +185,19 @@ impl RgbaF32 {
         }
     }
 
+    /// This colour times `tint`, channel by channel with alpha — the rule
+    /// a mesh, image or stroke tint applies. Both are straight-alpha, so
+    /// the product is too.
+    #[inline]
+    pub(crate) fn tinted(self, tint: Self) -> Self {
+        Self {
+            r: self.r * tint.r,
+            g: self.g * tint.g,
+            b: self.b * tint.b,
+            a: self.a * tint.a,
+        }
+    }
+
     /// Per-channel linear interpolation toward `other`: `t = 0` is `self`,
     /// `t = 1` is `other`. Storage is linear / straight-alpha (see the
     /// [`RgbaF32`] docs), so a straight component blend is the correct one —
@@ -265,21 +278,16 @@ pub struct RgbaF16(F16x4);
 impl RgbaF16 {
     pub const TRANSPARENT: Self = Self(F16x4::ZERO);
 
+    /// Opaque white — the identity of the channel-by-channel multiply a
+    /// colour lane applies to a ramp sample.
+    pub(crate) const WHITE: Self = Self(F16x4::ONE);
+
     /// Linear channels and a straight alpha, packed to f16 lanes — the
     /// peer of [`RgbaF32::new`], with no encoding in its name for the
     /// same reason.
     #[inline]
     pub(crate) fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self(F16x4::from_lanes([r, g, b, a]))
-    }
-
-    /// Alpha one over zeroed colour — the identity for a lane that is an
-    /// opacity multiplier rather than a colour. A gradient fill's colour
-    /// lane is one; see
-    /// [`BrushSource::gpu_fill`](crate::renderer::frontend::payload::brush_source::BrushSource::gpu_fill).
-    #[inline]
-    pub(crate) fn opacity_one() -> Self {
-        Self::new(0.0, 0.0, 0.0, 1.0)
     }
 
     /// Scale the alpha lane by `by`, leaving the colour lanes alone.

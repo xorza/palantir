@@ -14,7 +14,7 @@
 //! widget beside it does.
 
 use crate::support;
-use palantir::widget::{ConfigureWidget, LineCap, LineJoin, PolylineColors, Shape, Widget};
+use palantir::widget::{ConfigureWidget, LineCap, LineJoin, Shape, Widget};
 use palantir::{
     Align, Background, Configure, Corners, FontFamily, Panel, Response, ResponseState, Sense,
     Shadow, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
@@ -268,7 +268,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     };
     let chrome = Background {
         fill: fill.into(),
-        stroke: Stroke::ZERO,
+        border: Stroke::ZERO,
         corners: Corners::all(support::RADIUS),
         shadow: Shadow::NONE,
     };
@@ -289,7 +289,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
 
 fn paint_bar(ui: &mut Ui, points: &[Vec2]) {
     ui.add_shape(
-        Shape::polyline(points, PolylineColors::Single(support::INK), 2.0)
+        Shape::polyline(points, Stroke::new(support::INK, 2.0))
             .cap(LineCap::Round)
             .join(LineJoin::Round),
     );

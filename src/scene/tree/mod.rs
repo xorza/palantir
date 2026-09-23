@@ -472,15 +472,15 @@ impl Tree {
             self.panel_table.push(cols.panel);
         }
         if let Some(ChromeInput { bg, store }) = chrome {
-            // Chrome stroke paints fully inside the node's arranged
+            // A chrome border paints fully inside the node's arranged
             // rect (see `quad.wgsl` SDF stroke band), so `padding` grows
-            // by the ring on every side and children sit inside the
-            // stroke without the user having to add it by hand.
+            // by the border on every side and children sit inside it
+            // without the user having to add it by hand.
             // Done here (not in the layout pass) so the layout columns
             // already carry the effective padding — zero hot-path cost
             // and the LayoutCore hash invalidates `MeasureCache`
             // automatically when the inflated value shifts.
-            let ring = bg.stroke.ring();
+            let ring = bg.border_inset();
             if ring != 0.0 {
                 let [l, t, r, b] = cols.layout.padding.as_array();
                 cols.layout.padding = Spacing::new(l + ring, t + ring, r + ring, b + ring);

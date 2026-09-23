@@ -91,7 +91,7 @@ impl Palette {
     /// down.
     pub fn popup_panel(&self) -> Background {
         Background::rounded(self.elem, Corners::all(4.0))
-            .with_stroke(Stroke::solid(self.border_mid(), 1.0))
+            .with_border(Stroke::new(self.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 RgbaF32::new(0.0, 0.0, 0.0, 0.5),
                 Vec2::new(0.0, 3.0),

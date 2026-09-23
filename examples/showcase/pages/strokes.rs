@@ -1,13 +1,13 @@
 //! Stroked geometry: widths down to sub-pixel hairlines, joins, caps,
 //! per-point / per-segment polyline colours, cubic and quadratic
-//! béziers, and circular arcs with solid and gradient brushes. Every
+//! béziers, and circular arcs in solid colours and along ramps. Every
 //! tile pushes raw `Shape`s through `ui.add_shape` — all of it renders
 //! on the GPU curve pipeline, with no CPU tessellation anywhere.
 
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
-use palantir::widget::{LineCap, LineJoin, PolylineColors, Shape};
-use palantir::{LinearGradient, RgbaF32, Stop, Ui, Vec2};
+use palantir::widget::{LineCap, LineJoin, Shape};
+use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui, Vec2};
 
 pub(crate) fn build(ui: &mut Ui) {
     section(
@@ -59,16 +59,22 @@ pub(crate) fn build(ui: &mut Ui) {
 fn widths(ui: &mut Ui) {
     for (i, w) in [1.0_f32, 2.0, 3.0, 5.0, 8.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
-        ui.add_shape(Shape::line(Vec2::new(16.0, y), Vec2::new(150.0, y), *w).brush(support::A));
+        ui.add_shape(Shape::line(
+            Vec2::new(16.0, y),
+            Vec2::new(150.0, y),
+            Stroke::new(support::A, *w),
+        ));
     }
 }
 
 fn hairlines(ui: &mut Ui) {
     for (i, w) in [0.1_f32, 0.25, 0.5, 0.75, 1.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
-        ui.add_shape(
-            Shape::line(Vec2::new(16.0, y), Vec2::new(150.0, y), *w).brush(RgbaF32::WHITE),
-        );
+        ui.add_shape(Shape::line(
+            Vec2::new(16.0, y),
+            Vec2::new(150.0, y),
+            Stroke::new(RgbaF32::WHITE, *w),
+        ));
     }
 }
 
@@ -85,7 +91,7 @@ fn joins(ui: &mut Ui) {
             Vec2::new(84.0, y),
             Vec2::new(144.0, y + 28.0),
         ];
-        ui.add_shape(Shape::polyline(&pts, PolylineColors::Single(support::A), 5.0).join(join));
+        ui.add_shape(Shape::polyline(&pts, Stroke::new(support::A, 5.0)).join(join));
     }
 }
 
@@ -95,10 +101,11 @@ fn joins(ui: &mut Ui) {
 fn caps(ui: &mut Ui) {
     for y in [32.0_f32, 80.0, 128.0] {
         for x in [40.0_f32, 128.0] {
-            ui.add_shape(
-                Shape::line(Vec2::new(x, y - 14.0), Vec2::new(x, y + 14.0), 1.0)
-                    .brush(RgbaF32::WHITE),
-            );
+            ui.add_shape(Shape::line(
+                Vec2::new(x, y - 14.0),
+                Vec2::new(x, y + 14.0),
+                Stroke::new(RgbaF32::WHITE, 1.0),
+            ));
         }
     }
     for (y, color, cap) in [
@@ -107,9 +114,12 @@ fn caps(ui: &mut Ui) {
         (128.0, support::A, LineCap::Round),
     ] {
         ui.add_shape(
-            Shape::line(Vec2::new(40.0, y), Vec2::new(128.0, y), 9.0)
-                .brush(color)
-                .cap(cap),
+            Shape::line(
+                Vec2::new(40.0, y),
+                Vec2::new(128.0, y),
+                Stroke::new(color, 9.0),
+            )
+            .cap(cap),
         );
     }
 }
@@ -128,9 +138,8 @@ fn curve_caps(ui: &mut Ui) {
                 Vec2::new(50.0, 10.0 + dy),
                 Vec2::new(114.0, 58.0 + dy),
                 Vec2::new(150.0, 34.0 + dy),
-                8.0,
+                Stroke::new(support::B, 8.0),
             )
-            .brush(support::B)
             .cap(*cap),
         );
     }
@@ -144,7 +153,7 @@ fn per_point(ui: &mut Ui) {
         Vec2::new(150.0, 148.0),
     ];
     let cols = [support::E, support::B, support::C, support::A];
-    ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 4.0));
+    ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 4.0)).per_point(&cols));
 }
 
 fn per_segment(ui: &mut Ui) {
@@ -165,11 +174,7 @@ fn per_segment(ui: &mut Ui) {
         support::D,
         RgbaF32::hex(0xff8fc8),
     ];
-    ui.add_shape(Shape::polyline(
-        &pts,
-        PolylineColors::PerSegment(&cols),
-        4.0,
-    ));
+    ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 4.0)).per_segment(&cols));
 }
 
 const P0: Vec2 = Vec2::new(16.0, 140.0);
@@ -182,37 +187,44 @@ const Q1: Vec2 = Vec2::new(84.0, 14.0);
 const Q2: Vec2 = Vec2::new(150.0, 140.0);
 
 fn cubic(ui: &mut Ui) {
-    ui.add_shape(Shape::cubic_bezier(P0, P1, P2, P3, 4.0).brush(support::A));
+    ui.add_shape(Shape::cubic_bezier(
+        P0,
+        P1,
+        P2,
+        P3,
+        Stroke::new(support::A, 4.0),
+    ));
 }
 
 fn quadratic(ui: &mut Ui) {
-    ui.add_shape(Shape::quadratic_bezier(Q0, Q1, Q2, 4.0).brush(support::C));
+    ui.add_shape(Shape::quadratic_bezier(
+        Q0,
+        Q1,
+        Q2,
+        Stroke::new(support::C, 4.0),
+    ));
 }
 
-/// Two-stop gradient along the curve's t parameter (p0 → p3). The
-/// `angle` field of `LinearGradient` is unused on curves.
+/// Two-stop ramp along the curve's t parameter (p0 → p3), over a white
+/// stroke so the ramp shows as authored.
 fn gradient_cubic(ui: &mut Ui) {
-    let brush = LinearGradient::two_stop(0.0, support::E, support::A);
     ui.add_shape(
-        Shape::cubic_bezier(P0, P1, P2, P3, 8.0)
-            .brush(brush)
+        Shape::cubic_bezier(P0, P1, P2, P3, Stroke::new(RgbaF32::WHITE, 8.0))
+            .ramp(ColorRamp::two_stop(support::E, support::A))
             .cap(LineCap::Round),
     );
 }
 
-/// Three-stop gradient — same atlas and bake path as rounded-rect fills.
+/// Three-stop ramp — same atlas and bake path as rounded-rect fills.
 fn gradient_multistop(ui: &mut Ui) {
-    let brush = LinearGradient::new(
-        0.0,
-        [
-            Stop::new(0.0, support::E),
-            Stop::new(0.5, support::B),
-            Stop::new(1.0, support::A),
-        ],
-    );
+    let ramp = ColorRamp::new([
+        Stop::new(0.0, support::E),
+        Stop::new(0.5, support::B),
+        Stop::new(1.0, support::A),
+    ]);
     ui.add_shape(
-        Shape::quadratic_bezier(Q0, Q1, Q2, 10.0)
-            .brush(brush)
+        Shape::quadratic_bezier(Q0, Q1, Q2, Stroke::new(RgbaF32::WHITE, 10.0))
+            .ramp(ramp)
             .cap(LineCap::Round),
     );
 }
@@ -220,21 +232,43 @@ fn gradient_multistop(ui: &mut Ui) {
 fn arcs(ui: &mut Ui) {
     use std::f32::consts::{FRAC_PI_2, PI, TAU};
     // Full circle: a ±2π sweep closes seamlessly under Butt caps.
-    ui.add_shape(Shape::circle(Vec2::new(44.0, 40.0), 28.0, 3.0).brush(support::A));
-    // 3/4 sweep with a gradient along the arc (the spinner's comet
-    // shape) — transparent tail to full head, round caps.
-    let comet = LinearGradient::two_stop(0.0, support::B.with_alpha(0.0), support::B);
+    ui.add_shape(Shape::circle(
+        Vec2::new(44.0, 40.0),
+        28.0,
+        Stroke::new(support::A, 3.0),
+    ));
+    // 3/4 sweep with a ramp along the arc (the spinner's comet shape) —
+    // transparent tail to full head, round caps. The ramp is white and
+    // the stroke colour sets the hue.
+    let comet = ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE);
     ui.add_shape(
-        Shape::arc(Vec2::new(120.0, 40.0), 28.0, -FRAC_PI_2, 1.5 * PI, 6.0)
-            .brush(comet)
-            .cap(LineCap::Round),
+        Shape::arc(
+            Vec2::new(120.0, 40.0),
+            28.0,
+            -FRAC_PI_2,
+            1.5 * PI,
+            Stroke::new(support::B, 6.0),
+        )
+        .ramp(comet)
+        .cap(LineCap::Round),
     );
     // Gauge-style bottom arc: half sweep, fat stroke, round caps.
     ui.add_shape(
-        Shape::arc(Vec2::new(84.0, 118.0), 36.0, PI, PI, 10.0)
-            .brush(support::C)
-            .cap(LineCap::Round),
+        Shape::arc(
+            Vec2::new(84.0, 118.0),
+            36.0,
+            PI,
+            PI,
+            Stroke::new(support::C, 10.0),
+        )
+        .cap(LineCap::Round),
     );
     // Thin negative-sweep quarter overlaying the gauge's track.
-    ui.add_shape(Shape::arc(Vec2::new(84.0, 118.0), 25.0, 0.0, -TAU * 0.25, 2.0).brush(support::E));
+    ui.add_shape(Shape::arc(
+        Vec2::new(84.0, 118.0),
+        25.0,
+        0.0,
+        -TAU * 0.25,
+        Stroke::new(support::E, 2.0),
+    ));
 }

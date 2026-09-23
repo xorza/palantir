@@ -249,7 +249,7 @@ fn evicted_content_can_be_re_registered() {
     assert_real_row(&atlas, reborn);
 }
 
-/// The invariant `register_stops` reads eviction off: rows registered
+/// The invariant `register` reads eviction off: rows registered
 /// this epoch form a head prefix of the MRU list, so checking the tail
 /// alone is equivalent to scanning for the oldest unprotected row.
 ///
@@ -291,7 +291,7 @@ fn epoch_current_rows_form_an_mru_prefix() {
         .filter(|i| {
             let g = distinct_grad(*i as f32 * 0.01);
             atlas
-                .resident_row(&g.stops, g.interp)
+                .resident_row(&g.ramp)
                 .is_some_and(|row| atlas.slots[row as usize].epoch == atlas.epoch)
         })
         .count();
@@ -320,7 +320,7 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
     let bakes = atlas.counters.counts().bakes;
     for (g, &row) in resident.iter().zip(&before) {
         assert_eq!(
-            atlas.resident_row(&g.stops, g.interp),
+            atlas.resident_row(&g.ramp),
             Some(row),
             "growth moved a resident gradient off row {row}",
         );
@@ -361,14 +361,11 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
     let newcomer = distinct_grad(9999.0);
     assert_eq!(register_for(&mut atlas, newcomer.clone()).0, first_row);
     assert_eq!(
-        atlas.resident_row(&first.stops, first.interp),
+        atlas.resident_row(&first.ramp),
         None,
         "evicted gradient still resolves to a row",
     );
-    assert_eq!(
-        atlas.resident_row(&newcomer.stops, newcomer.interp),
-        Some(first_row),
-    );
+    assert_eq!(atlas.resident_row(&newcomer.ramp), Some(first_row),);
     // The table stayed at one entry per occupied row.
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 
@@ -378,6 +375,6 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
     let reborn = register_for(&mut atlas, first.clone()).0;
     assert_ne!(reborn, first_row);
     let mut expected = fresh_row();
-    bake_stops(&first.stops, first.interp, &mut expected);
+    bake::row(&first.ramp, &mut expected);
     assert_eq!(atlas.baked[reborn as usize], expected);
 }

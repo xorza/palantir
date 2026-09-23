@@ -14,6 +14,7 @@ use crate::scene::cascade::engine::{
     finish_cascade_input,
 };
 
+use crate::primitives::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -109,9 +110,12 @@ fn incremental_matches_full_across_cascade_input_classes() {
                 for index in 0..count {
                     let offset = index as f32 * 10.0;
                     ui.add_shape(
-                        Shape::line(Vec2::splat(offset), Vec2::splat(offset + 20.0), 2.0)
-                            .brush(RgbaF32::WHITE)
-                            .cap(LineCap::Round),
+                        Shape::line(
+                            Vec2::splat(offset),
+                            Vec2::splat(offset + 20.0),
+                            Stroke::new(RgbaF32::WHITE, 2.0),
+                        )
+                        .cap(LineCap::Round),
                     );
                 }
             });
