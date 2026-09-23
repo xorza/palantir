@@ -61,10 +61,6 @@ arrange → cascade → encode + compose + paint**. Colour is linear-RGB f32
 everywhere on the CPU side; sRGB encoding happens on the GPU at swapchain
 write.
 
-Rendering changes (shaders, encoder/composer, atlases, colour pipeline, layout
-that moves pixels) need the visual suite run as well — the unit tests alone
-won't catch a render regression.
-
 Performance work starts at `benches/AGENTS.md` — the manual for both bench
 harnesses and for `benches/bench-perf.sh`. Read it before measuring or reaching
 for `perf`; it carries the A/B protocol, the profiling recipes, and the traps
@@ -83,6 +79,22 @@ before `main`, so a test binary under it opens the profiler's socket and prints
 `SymInitialize FAILED with code 87`. The test run names every feature but that one,
 and names `alloc` rather than taking `--tests`, because `golden` would pull in
 `visual`, whose baselines are gitignored.
+
+Rendering changes (shaders, encoder/composer, atlases, colour pipeline, layout
+that moves pixels) also run the visual suite — the unit tests alone won't catch
+a render regression:
+
+```
+cargo test --test visual --features internals,golden
+```
+
+Its goldens in `tests/visual/golden/` are local, so they show whatever tree
+last wrote them, and a missing one is written and then failed. Run the suite on
+the unchanged tree first; if it fails there, the goldens are stale — rewrite
+them with `UPDATE_GOLDEN=1` before changing anything. A failure leaves
+`actual.png`, `expected.png`, and `diff.png` in `tests/visual/output/<name>/`.
+
+A change a user can see ends with a look at `cargo run --example showcase`.
 
 ## Gated reach-in modules
 
