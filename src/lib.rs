@@ -336,7 +336,7 @@ pub mod widget {
     pub use crate::shape::icon::{IconFit, IconShape};
     pub use crate::shape::image::ImageShape;
     pub use crate::shape::mesh::MeshShape;
-    pub use crate::shape::polyline::{PolylineColors, PolylineShape};
+    pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
     pub use crate::shape::shadow::ShadowShape;
     pub use crate::shape::style::{LineCap, LineJoin};
@@ -433,6 +433,8 @@ pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{SizeSpec, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;
+pub use primitives::brush::Brush;
+pub use primitives::brush::gradient::color_ramp::ColorRamp;
 pub use primitives::brush::gradient::conic_geometry::{
     ConicGeometry, ConicGradient, ConicGradientBuilder,
 };
@@ -445,7 +447,6 @@ pub use primitives::brush::gradient::radial_geometry::{
 };
 pub use primitives::brush::gradient::stops::{GradientStops, Stop};
 pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
-pub use primitives::brush::{Brush, CurveBrush};
 pub use primitives::color::RgbaF32;
 pub use primitives::color::color_coords::ColorCoords;
 pub use primitives::color::color_model::{ColorModel, HueSlice};

@@ -11,6 +11,7 @@ use crate::primitives::image::Image;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
@@ -153,8 +154,16 @@ impl<'a> ColorStrip<'a> {
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             let top = Vec2::new(marker, 0.0);
             let bottom = Vec2::new(marker, size.h);
-            ui.add_shape(Shape::line(top, bottom, handle_width * 2.5).brush(handle_outer));
-            ui.add_shape(Shape::line(top, bottom, handle_width).brush(handle_inner));
+            ui.add_shape(Shape::line(
+                top,
+                bottom,
+                Stroke::new(handle_outer, handle_width * 2.5),
+            ));
+            ui.add_shape(Shape::line(
+                top,
+                bottom,
+                Stroke::new(handle_inner, handle_width),
+            ));
         });
         ValueResponse {
             response: Response::eager(id, ui, response),

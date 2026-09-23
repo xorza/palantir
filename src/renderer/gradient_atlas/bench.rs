@@ -1,6 +1,6 @@
 //! Register-path scaling benchmark for the gradient LUT atlas.
 //!
-//! The property under test is **flatness, not speed**: `register_stops`
+//! The property under test is **flatness, not speed**: `register`
 //! must not get more expensive as the atlas grows. It used to — lookup
 //! was an open-addressed probe over the row table whose eviction arm
 //! broke the probe invariant, so correctness required scanning every
@@ -50,8 +50,8 @@
 
 use crate::bench::Run;
 use crate::common::counters::CounterSet;
-use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
@@ -71,8 +71,8 @@ const WORKING_SET: u32 = 128;
 /// Seed base for the `miss` arms, past anything [`filled`] uses.
 const CHURN_BASE: u32 = 1_000_000;
 
-/// Distinct stop sequence per seed, walking the colour cube directly so
-/// every seed is a distinct bake key.
+/// Distinct ramp per seed, walking the colour cube directly so every
+/// seed is a distinct bake key.
 ///
 /// Deliberately *structured* rather than pre-mixed: whole channels stay
 /// constant across a run, which is what a real themed palette looks
@@ -83,10 +83,10 @@ const CHURN_BASE: u32 = 1_000_000;
 ///
 /// Built from the sRGB bytes a stop stores, which decode and re-encode
 /// exactly, so distinct seeds stay distinct keys.
-fn gradient_for(seed: u32) -> GradientStops {
+fn gradient_for(seed: u32) -> ColorRamp {
     let a = SrgbaU8::rgb(seed as u8, (seed >> 8) as u8, (seed >> 16) as u8);
     let b = SrgbaU8::rgb((seed >> 4) as u8, (seed >> 12) as u8, 0x40);
-    GradientStops::new([
+    ColorRamp::new([
         Stop::new(0.0, RgbaF32::from_srgba(a)),
         Stop::new(1.0, RgbaF32::from_srgba(b)),
     ])
@@ -103,7 +103,7 @@ fn filled(capacity: u32) -> CpuGradientAtlas {
     let mut seed = 0u32;
     while atlas.capacity() < capacity || atlas.counters.counts().bakes < capacity - 1 {
         seed += 1;
-        atlas.register_stops(&gradient_for(seed), Interp::Oklab);
+        atlas.register(&gradient_for(seed));
         assert!(seed < capacity * 4, "fill made no progress");
     }
     assert_eq!(atlas.capacity(), capacity);
@@ -123,12 +123,12 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         // resident whatever the capacity, so only the table around them
         // differs between arms.
         let mut atlas = filled(capacity);
-        let resident: Vec<GradientStops> = (capacity - WORKING_SET..capacity)
+        let resident: Vec<ColorRamp> = (capacity - WORKING_SET..capacity)
             .map(gradient_for)
             .collect();
         let before = atlas.counters.counts().bakes;
-        for stops in &resident {
-            black_box(atlas.register_stops(stops, Interp::Oklab));
+        for ramp in &resident {
+            black_box(atlas.register(ramp));
         }
         assert_eq!(
             atlas.counters.counts().bakes,
@@ -139,9 +139,9 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let mut i = 0usize;
         group.bench_with_input(BenchmarkId::new("hit", capacity), &capacity, |b, _| {
             b.iter(|| {
-                let stops = &resident[i % resident.len()];
+                let ramp = &resident[i % resident.len()];
                 i = i.wrapping_add(1);
-                black_box(atlas.register_stops(stops, Interp::Oklab))
+                black_box(atlas.register(ramp))
             });
         });
 
@@ -152,7 +152,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let (hits, bakes) = (atlas.counters.counts().hits, atlas.counters.counts().bakes);
         for k in 0..16 {
             atlas.flush();
-            black_box(atlas.register_stops(&gradient_for(CHURN_BASE + k), Interp::Oklab));
+            black_box(atlas.register(&gradient_for(CHURN_BASE + k)));
         }
         assert_eq!(
             atlas.counters.counts().hits,
@@ -174,7 +174,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 // grows instead of churning.
                 atlas.flush();
                 seed = seed.wrapping_add(1);
-                black_box(atlas.register_stops(&gradient_for(seed), Interp::Oklab))
+                black_box(atlas.register(&gradient_for(seed)))
             });
         });
         assert_eq!(

@@ -1,8 +1,10 @@
 //! Row assignment: reuse, dedup, and the reserved fallback at row zero.
 
 use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
+use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
+use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::tests::support::{
@@ -10,6 +12,7 @@ use crate::renderer::gradient_atlas::tests::support::{
 };
 use crate::renderer::gradient_atlas::*;
 use crate::renderer::texture_limit::TextureLimit;
+use glam::Vec2;
 use std::collections::HashSet;
 
 /// Row 0 is reserved magenta. Created at construction; dirty list
@@ -32,7 +35,7 @@ fn row_zero_reserved_as_magenta_fallback() {
 fn register_returns_nonzero_row_and_marks_dirty() {
     let mut atlas = CpuGradientAtlas::default();
     let g = distinct_grad(0.1);
-    let row = atlas.register_stops(&g.stops, g.interp);
+    let row = atlas.register(&g.ramp);
     assert_real_row(&atlas, row);
     assert!(atlas.dirty.is_some(), "register must mark atlas dirty");
 }
@@ -43,11 +46,11 @@ fn register_returns_nonzero_row_and_marks_dirty() {
 fn register_same_gradient_twice_reuses_row() {
     let mut atlas = CpuGradientAtlas::default();
     let g = distinct_grad(0.5);
-    let r1 = atlas.register_stops(&g.stops, g.interp);
+    let r1 = atlas.register(&g.ramp);
     // Flush so subsequent registrations of the same content can
     // be detected as no-ops.
     let _ = atlas.flush();
-    let r2 = atlas.register_stops(&g.stops, g.interp);
+    let r2 = atlas.register(&g.ramp);
     assert_eq!(r1, r2);
     assert!(
         atlas.dirty.is_none(),
@@ -57,7 +60,7 @@ fn register_same_gradient_twice_reuses_row() {
 
 /// Keys differing in the smallest possible way — one stop byte, or
 /// only the interpolation space — must land on different rows. The
-/// index is keyed on the whole `GradientLutKey`, so this is hashbrown's
+/// index is keyed on the whole `ColorRamp`, so this is hashbrown's
 /// `Eq` doing the work rather than a hand-written confirm; the atlas
 /// still owns the claim that nothing *else* distinguishes a bake.
 #[test]
@@ -70,7 +73,7 @@ fn near_identical_keys_never_share_a_row() {
     let mut rows = HashSet::new();
     for g in [&base, &one_byte_off] {
         for interp in [Interp::Oklab, Interp::Linear] {
-            let row = atlas.register_stops(&g.stops, interp);
+            let row = atlas.register(&g.ramp.with_interp(interp));
             assert_real_row(&atlas, row);
             assert!(rows.insert(row), "row {} aliased a distinct key", row.0);
         }
@@ -78,8 +81,8 @@ fn near_identical_keys_never_share_a_row() {
     assert_eq!(rows.len(), 4);
 
     // And each of the four still resolves back to its own row.
-    let first = atlas.register_stops(&base.stops, Interp::Oklab);
-    let second = atlas.register_stops(&one_byte_off.stops, Interp::Oklab);
+    let first = atlas.register(&base.ramp.with_interp(Interp::Oklab));
+    let second = atlas.register(&one_byte_off.ramp.with_interp(Interp::Oklab));
     assert_ne!(first, second);
 }
 
@@ -104,7 +107,7 @@ fn register_many_distinct_gradients_all_unique_rows() {
     let mut seen = HashSet::new();
     for i in 0..(INITIAL_ATLAS_ROWS - 1) {
         let g = distinct_grad(i as f32 * 0.01);
-        let row = atlas.register_stops(&g.stops, g.interp);
+        let row = atlas.register(&g.ramp);
         assert!(
             seen.insert(row),
             "row {} reused across distinct gradients",
@@ -115,22 +118,31 @@ fn register_many_distinct_gradients_all_unique_rows() {
     assert_eq!(seen.len(), INITIAL_ATLAS_ROWS as usize - 1);
 }
 
-/// (stops, interp) keying is variant-agnostic: a linear and a
-/// radial gradient with matching stops + interp share one atlas
-/// row. Geometry differs in the shader (per-fragment `t`), but the
+/// The atlas keys on the ramp alone, so a linear gradient, a radial
+/// gradient and a bare curve ramp with the same stops and interp share
+/// one row. Geometry differs in the shader (per-fragment `t`), but the
 /// LUT bake doesn't depend on it.
 #[test]
-fn register_stops_dedups_across_variants() {
+fn register_dedups_across_variants() {
     let mut atlas = CpuGradientAtlas::default();
-    let stops = GradientStops::new([
+    let stops = [
         Stop::new(0.0, SrgbaU8::rgb(255, 64, 0).into()),
         Stop::new(1.0, SrgbaU8::rgb(0, 128, 255).into()),
-    ]);
-    let r_linear = atlas.register_stops(&stops, Interp::Oklab);
-    let r_radial = atlas.register_stops(&stops, Interp::Oklab);
-    assert_eq!(r_linear, r_radial);
+    ];
+    let linear = LinearGradient::new(0.3, stops);
+    let radial = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), stops);
+    let curve = ColorRamp::new(stops);
+    assert_eq!(
+        linear.ramp.interp,
+        Interp::Oklab,
+        "both kinds default to Oklab"
+    );
+    assert_eq!(radial.ramp.interp, Interp::Oklab);
+    let r_linear = atlas.register(&linear.ramp);
+    assert_eq!(atlas.register(&radial.ramp), r_linear);
+    assert_eq!(atlas.register(&curve), r_linear);
     // Same stops, different interp → different row.
-    let r_other_interp = atlas.register_stops(&stops, Interp::Linear);
+    let r_other_interp = atlas.register(&curve.with_interp(Interp::Linear));
     assert_ne!(r_linear, r_other_interp);
 }
 

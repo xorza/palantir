@@ -16,7 +16,7 @@ use bytemuck::{Pod, Zeroable};
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching
 /// paint-payload fields:
 ///
-/// - **bits 0..8** — the family tag, one of the seven `TAG_*` below,
+/// - **bits 0..8** — the family tag, one of the eight `TAG_*` below,
 ///   read through [`Self::tag`];
 /// - **bits 8..16** — the `Spread` discriminant, carried by the three
 ///   gradient tags and ignored by the rest;
@@ -48,6 +48,7 @@ impl FillKind {
     pub(crate) const TAG_SHADOW_DROP: u32 = 4;
     pub(crate) const TAG_SHADOW_INSET: u32 = 5;
     pub(crate) const TAG_TRIANGLE: u32 = 6;
+    pub(crate) const TAG_RAMP: u32 = 7;
 
     /// This kind's family, without the spread or the flag bits — what
     /// every predicate below and the shader's `eval_fill` branch on.
@@ -107,6 +108,11 @@ impl FillKind {
     /// usual `stroke_color` / `stroke_width` fields.
     pub(crate) const TRIANGLE: Self = Self(Self::TAG_TRIANGLE);
 
+    /// Curve-ramp marker, read by the curve pipeline only. The atlas row
+    /// rides in `fill_lut_row`; the curve parameter `t` samples it, so
+    /// there is no axis and no spread.
+    pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
+
     /// Bit 16: fragment fast path. Set by the composer on a solid,
     /// sharp, stroke-less quad whose physical rect is pixel-aligned —
     /// every rasterized fragment is then interior (SDF coverage exactly
@@ -148,17 +154,5 @@ impl FillKind {
     #[inline]
     pub(crate) const fn is_shadow(self) -> bool {
         matches!(self.tag(), Self::TAG_SHADOW_DROP | Self::TAG_SHADOW_INSET)
-    }
-
-    /// True iff this `FillKind` marks a gradient draw — the kinds whose
-    /// colour comes from the atlas row rather than the instance's
-    /// `fill` lane, which is zeroed for them. The no-op gates read this
-    /// so they don't mistake that zeroed lane for a transparent fill.
-    #[inline]
-    pub(crate) const fn is_gradient(self) -> bool {
-        matches!(
-            self.tag(),
-            Self::TAG_LINEAR | Self::TAG_RADIAL | Self::TAG_CONIC
-        )
     }
 }

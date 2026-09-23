@@ -1,21 +1,23 @@
-//! A shape's outline: one colour and one width.
+//! A line's colour and width, as a border or as a path's stroke.
 
 use crate::primitives::approx::paints_nothing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::nan::NanCheck;
 use palantir_anim_derive::Animatable;
 
-/// Solid stroke paint.
+/// One colour and one width, and nothing about where the width lies:
+/// that is the shape's rule. An area shape — a [`Background`], a rect, a
+/// triangle — paints it as a border inside its edge. A path shape — a
+/// line, a curve, an arc, a polyline — centres it on the path.
+///
+/// [`Background`]: crate::Background
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
 pub struct Stroke {
     /// Ink colour.
     pub color: RgbaF32,
-    /// Line width in logical pixels. The stroke paints *inside* the rect
-    /// it bounds, and layout folds this width into the chrome's padding,
-    /// so children sit inside the stroke without the caller subtracting
-    /// it.
+    /// Width in logical pixels.
     pub width: f32,
 }
 
@@ -23,7 +25,7 @@ impl Stroke {
     /// Canonical "no stroke" — width 0, transparent color. Equivalent
     /// to `Stroke::default()` but `const`, so callers can use it in
     /// const contexts and read it as the sentinel "this background
-    /// has no stroke" without needing `Option<Stroke>` in the type.
+    /// has no border" without needing `Option<Stroke>` in the type.
     pub const ZERO: Self = Self {
         color: RgbaF32::TRANSPARENT,
         width: 0.0,
@@ -32,8 +34,8 @@ impl Stroke {
     /// True when this stroke would paint nothing visible — width is
     /// sub-UI-tolerance (including negative, treated as zero), or
     /// the color is fully transparent. The animation pipeline lerps
-    /// `Stroke` directly through `Stroke::ZERO`, so a "stroked →
-    /// no-stroke" transition settles at `is_noop()` and the encoder
+    /// `Stroke` directly through `Stroke::ZERO`, so a "bordered →
+    /// borderless" transition settles at `is_noop()` and the encoder
     /// filters it out without any `Option` collapse step.
     /// `&self` where the crate's other `Copy` paint predicates take
     /// `self`: `Background`'s `skip_serializing_if` names this, and
@@ -44,31 +46,9 @@ impl Stroke {
         paints_nothing(self.width) || self.color.is_noop()
     }
 
-    /// The ring this stroke paints *inside* the rect it bounds — its
-    /// width, or nothing when the width is a no-op.
-    ///
-    /// **The one definition of the fold** `Tree::open_node` applies to a
-    /// chrome's padding, so children sit inside the stroke without the
-    /// caller adding it by hand. The widgets that need the same inner
-    /// rect before the tree has it — `TextEdit` for its glyph and caret
-    /// coordinates, `TextEditTheme::corner_centring` for a `DragValue`'s
-    /// in-place edit — read the ring here rather than each writing the
-    /// gate out.
-    ///
-    /// On the width alone, and not [`Self::is_noop`]: a stroke the colour
-    /// makes invisible is still a stroke the fold makes room for.
-    #[inline]
-    pub(crate) const fn ring(&self) -> f32 {
-        if paints_nothing(self.width) {
-            0.0
-        } else {
-            self.width
-        }
-    }
-
     /// Construct a stroke with `color` and `width`.
     #[inline]
-    pub const fn solid(color: RgbaF32, width: f32) -> Self {
+    pub const fn new(color: RgbaF32, width: f32) -> Self {
         Self { color, width }
     }
 }

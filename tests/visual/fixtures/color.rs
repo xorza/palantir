@@ -15,6 +15,7 @@ use palantir::{Background, Block, Configure, FontFamily, Panel, RgbaF32, Sizing,
 
 use crate::fixtures::icon;
 use crate::harness::Harness;
+use palantir::Stroke;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
 /// One column per ramp value, each holding a block, a glyph, a line, an
@@ -56,14 +57,11 @@ fn ramp(ui: &mut Ui) {
                     .font_size(16.0)
                     .color(grey(v))
                     .show(ui);
-                ui.add_shape(
-                    Shape::line(
-                        Vec2::new(x + 2.0, LINE_Y),
-                        Vec2::new(x + COLUMN - 2.0, LINE_Y),
-                        6.0,
-                    )
-                    .brush(grey(v)),
-                );
+                ui.add_shape(Shape::line(
+                    Vec2::new(x + 2.0, LINE_Y),
+                    Vec2::new(x + COLUMN - 2.0, LINE_Y),
+                    Stroke::new(grey(v), 6.0),
+                ));
                 let (left, right) = (x + 2.0, x + COLUMN - 2.0);
                 let quad = [
                     Vec2::new(left, MESH_Y),

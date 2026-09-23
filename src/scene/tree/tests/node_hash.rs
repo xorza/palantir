@@ -6,12 +6,12 @@ use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -54,7 +54,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         Panel::canvas()
             .id(WidgetId::from_hash("polyline"))
             .show(ui, |ui| {
-                ui.add_shape(Shape::polyline(points, PolylineColors::Single(color), 2.0));
+                ui.add_shape(Shape::polyline(points, Stroke::new(color, 2.0)));
             })
             .response
             .node()
@@ -336,18 +336,16 @@ fn shape_hashes_column_sized_to_shape_records() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
-                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                );
-                ui.add_shape(
-                    Shape::line(
-                        glam::Vec2::new(10.0, 10.0),
-                        glam::Vec2::new(20.0, 20.0),
-                        1.0,
-                    )
-                    .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
-                );
+                ui.add_shape(Shape::line(
+                    glam::Vec2::new(0.0, 0.0),
+                    glam::Vec2::new(10.0, 10.0),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                ));
+                ui.add_shape(Shape::line(
+                    glam::Vec2::new(10.0, 10.0),
+                    glam::Vec2::new(20.0, 20.0),
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                ));
             });
     });
     let tree = h.ui.tree(Layer::Main);
@@ -388,10 +386,11 @@ fn shape_hash_stable_across_frames() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
-                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                );
+                ui.add_shape(Shape::line(
+                    glam::Vec2::new(0.0, 0.0),
+                    glam::Vec2::new(10.0, 10.0),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                ));
             });
     };
     let mut h = UiHarness::new(SURFACE);
@@ -419,14 +418,16 @@ fn one_shape_change_only_flips_its_own_hash() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
-                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                );
-                ui.add_shape(
-                    Shape::line(glam::Vec2::new(5.0, 5.0), b_endpoint, 1.0)
-                        .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
-                );
+                ui.add_shape(Shape::line(
+                    glam::Vec2::new(0.0, 0.0),
+                    glam::Vec2::new(10.0, 10.0),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                ));
+                ui.add_shape(Shape::line(
+                    glam::Vec2::new(5.0, 5.0),
+                    b_endpoint,
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                ));
             });
     };
     let mut h = UiHarness::new(SURFACE);

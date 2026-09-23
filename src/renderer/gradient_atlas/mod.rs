@@ -1,7 +1,7 @@
 //! CPU side of the gradient LUT atlas. Bakes stop sequences into LUT
 //! rows shared across linear / radial / conic gradient variants; the
-//! shader does the per-fragment `t` derivation. See [`bake_stops`] and
-//! [`CpuGradientAtlas::register_stops`].
+//! shader does the per-fragment `t` derivation. See [`bake::row`] and
+//! [`CpuGradientAtlas::register`].
 //!
 //! ## Bake output convention
 //!
@@ -25,7 +25,7 @@
 //! ## Interpolation spaces
 //!
 //! Stops live as sRGB-encoded bytes, the form they were authored in.
-//! `bake_stops` decodes each stop to a linear `RgbaF32` **once** per row
+//! `bake::row` decodes each stop to a linear `RgbaF32` **once** per row
 //! before the 256-texel loop, so the inner loop never runs the transfer
 //! function.
 //!
@@ -37,11 +37,10 @@
 //!   triplet and runs only `oklab_to_linear` per texel. Perceptually
 //!   uniform; the CSS Color 4 default.
 
-use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::stops::GradientStops;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::color::RgbaF16;
 use crate::primitives::lut_row::LutRow;
-use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
+use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
 use crate::renderer::gradient_atlas::mru_list::MruList;
 use rustc_hash::FxHashMap;
@@ -87,19 +86,6 @@ pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 /// neither crashes nor repaints what this frame's other draws captured.
 pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
 
-/// Exact bake identity shared by every gradient variant, and the key of
-/// [`CpuGradientAtlas::index`].
-///
-/// `Hash` and `Eq` come from the fields: [`GradientStops`] hashes its
-/// length and live stops and compares the same prefix, so equal keys
-/// hash equal. A true 64-bit hash collision is resolved by the map's
-/// own `Eq` check, not by anything this module has to write down.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct GradientLutKey {
-    stops: GradientStops,
-    interp: Interp,
-}
-
 /// One row's bookkeeping, held beside the baked texels rather than in
 /// them.
 ///
@@ -113,7 +99,7 @@ struct RowSlot {
     /// outgoing gradient's index entry. `None` for a row never claimed.
     /// Row 0 stays `None` — it is not a member of the MRU list, so
     /// nothing can claim it; `baked[0]` carries the fallback payload.
-    key: Option<GradientLutKey>,
+    key: Option<ColorRamp>,
     /// The [`CpuGradientAtlas::epoch`] the row was last registered in.
     /// A row stamped with the *current* epoch cannot be evicted — its
     /// `LutRow` id is already captured in this frame's lowered draw
@@ -154,11 +140,14 @@ struct RowSlot {
 /// second one.
 #[derive(Debug)]
 pub(crate) struct CpuGradientAtlas {
-    /// Bake key → the row holding it. A pure lookup index: it says
+    /// Ramp → the row holding it. A ramp is the exact bake identity,
+    /// whichever gradient kind or curve paints it; a true 64-bit hash
+    /// collision is resolved by the map's own `Eq` check. A pure lookup
+    /// index: it says
     /// nothing about where a gradient *may* live, which is what lets
     /// eviction take the LRU row and growth append rows without either
     /// one disturbing it.
-    index: FxHashMap<GradientLutKey, u32>,
+    index: FxHashMap<ColorRamp, u32>,
     /// Per-row bookkeeping: what the row holds and when it was last
     /// registered. One column rather than two, because every site reads
     /// or writes both together and two parallel `Vec`s were two lengths
@@ -178,7 +167,7 @@ pub(crate) struct CpuGradientAtlas {
     /// Hard row ceiling: `min(device max_texture_dimension_2d,
     /// MAX_ATLAS_ROWS)`, since the atlas is one texture row per
     /// gradient. Registrations past a full table at this capacity paint
-    /// the magenta fallback (see [`Self::register_stops`]).
+    /// the magenta fallback (see [`Self::register`]).
     max_rows: u32,
     /// Current registration epoch, bumped once per [`Self::flush`] — the
     /// per-submit boundary. The atlas is shared across windows, but each
@@ -299,12 +288,9 @@ impl CpuGradientAtlas {
     /// row: loudly wrong for the overflowing gradients, but it neither
     /// crashes nor corrupts the rows this frame's other draws already
     /// captured.
-    pub(crate) fn register_stops(&mut self, stops: &GradientStops, interp: Interp) -> LutRow {
+    pub(crate) fn register(&mut self, ramp: &ColorRamp) -> LutRow {
         self.counters.registrations.bump();
-        let key = GradientLutKey {
-            stops: *stops,
-            interp,
-        };
+        let key = *ramp;
         // Hit: one map probe, then mark the row as referenced this epoch
         // — its `LutRow` id is now in a draw payload, so it must not be
         // evicted before the upload.
@@ -335,7 +321,7 @@ impl CpuGradientAtlas {
     /// Mark `row` as the most recently used and referenced this epoch.
     /// Every registration path goes through here — that is what makes
     /// the epoch-current rows a head prefix of the MRU list, which is
-    /// what lets [`Self::register_stops`] decide eviction from the tail
+    /// what lets [`Self::register`] decide eviction from the tail
     /// alone. Pinned by `epoch_current_rows_form_an_mru_prefix`.
     #[inline]
     fn touch(&mut self, row: u32) {
@@ -397,9 +383,9 @@ impl CpuGradientAtlas {
 
     /// Bake `key` into `row` and take over the slot: index entry,
     /// recency, epoch stamp, dirty-range widening. The one place a
-    /// row's bookkeeping is written — shared by `register_stops`'
+    /// row's bookkeeping is written — shared by `register`'
     /// free-row and evict arms so they can't drift.
-    fn claim_row(&mut self, row: u32, key: GradientLutKey) -> LutRow {
+    fn claim_row(&mut self, row: u32, key: ColorRamp) -> LutRow {
         debug_assert_ne!(row, 0, "row 0 is the permanent magenta fallback");
         // Evicting: the outgoing gradient's index entry has to go with
         // its row, or a later lookup resolves to a row now holding
@@ -409,7 +395,7 @@ impl CpuGradientAtlas {
             self.index.remove(&evicted);
         }
         self.counters.bake(displaced.is_some());
-        bake_stops(&key.stops, key.interp, &mut self.baked[row as usize]);
+        bake::row(&key, &mut self.baked[row as usize]);
         self.index.insert(key, row);
         self.touch(row);
         self.mark_row_dirty(row);
@@ -437,7 +423,7 @@ impl CpuGradientAtlas {
     ///
     /// Also bumps the registration epoch: `flush` is the per-submit
     /// boundary, and rows registered since the previous flush are
-    /// eviction-exempt until after this one (see [`Self::register_stops`]).
+    /// eviction-exempt until after this one (see [`Self::register`]).
     pub(crate) fn flush(&mut self) -> Option<FlushedRows<'_>> {
         self.epoch = self.epoch.wrapping_add(1);
         let dirty = self.dirty.take()?;
@@ -461,7 +447,7 @@ pub(crate) mod test_support {
 
     impl CpuGradientAtlas {
         /// Whether the rows registered this epoch form a head prefix of
-        /// the MRU list — the property [`Self::register_stops`] decides
+        /// the MRU list — the property [`Self::register`] decides
         /// eviction from, by checking the tail alone. Every registration
         /// path must move its row to the head; one that stamps a row's
         /// `epoch` without doing so would leave an evictable-looking
@@ -494,13 +480,8 @@ pub(crate) mod test_support {
         /// the index — so a test can tell "resolved to the same row"
         /// from "re-baked into a new one" without registering (which
         /// would itself move the row).
-        pub(crate) fn resident_row(&self, stops: &GradientStops, interp: Interp) -> Option<u32> {
-            self.index
-                .get(&GradientLutKey {
-                    stops: *stops,
-                    interp,
-                })
-                .copied()
+        pub(crate) fn resident_row(&self, ramp: &ColorRamp) -> Option<u32> {
+            self.index.get(ramp).copied()
         }
     }
 }

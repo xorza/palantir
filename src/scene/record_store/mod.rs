@@ -162,15 +162,20 @@ impl RecordStore {
         MeshSpans { vertices, indices }
     }
 
-    /// Copy one polyline's points and colours in, packing the colours
-    /// once here rather than per emitted instance. Returns the spans a
-    /// `ShapeRecord::Polyline` carries.
-    pub(super) fn stage_polyline(&mut self, points: &[Vec2], colors: &[RgbaF32]) -> PolylineSpans {
+    /// Copy one polyline's points and colours in, each colour multiplied
+    /// by `tint` and packed once here rather than per emitted instance.
+    /// Returns the spans a `ShapeRecord::Polyline` carries.
+    pub(super) fn stage_polyline(
+        &mut self,
+        points: &[Vec2],
+        colors: &[RgbaF32],
+        tint: RgbaF32,
+    ) -> PolylineSpans {
         let staged_points = Span::new(self.polyline_points.len() as u32, points.len() as u32);
         self.polyline_points.extend_from_slice(points);
         let staged_colors = Span::new(self.polyline_colors.len() as u32, colors.len() as u32);
         self.polyline_colors
-            .extend(colors.iter().map(|&c| RgbaF16::from(c)));
+            .extend(colors.iter().map(|&c| RgbaF16::from(c.tinted(tint))));
         PolylineSpans {
             points: staged_points,
             colors: staged_colors,

@@ -154,23 +154,23 @@ impl ToggleTheme {
         let radius = Corners::all(corner);
         let edge = p.border_strong();
         let bg =
-            |fill: RgbaF32, stroke: Stroke| Background::rounded(fill, radius).with_stroke(stroke);
+            |fill: RgbaF32, stroke: Stroke| Background::rounded(fill, radius).with_border(stroke);
         let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                background: bg(p.elem_mid, Stroke::solid(edge, 1.0)),
+                background: bg(p.elem_mid, Stroke::new(edge, 1.0)),
                 text: None,
             },
             hovered: WidgetLook {
-                background: bg(p.elem_strong, Stroke::solid(edge, 1.0)),
+                background: bg(p.elem_strong, Stroke::new(edge, 1.0)),
                 text: None,
             },
             active: WidgetLook {
-                background: bg(p.elem_strong, Stroke::solid(p.border_focused, 1.0)),
+                background: bg(p.elem_strong, Stroke::new(p.border_focused, 1.0)),
                 text: None,
             },
             disabled: WidgetLook {
-                background: bg(p.elem, Stroke::solid(p.border_soft(), 1.0)),
+                background: bg(p.elem, Stroke::new(p.border_soft(), 1.0)),
                 text: disabled_text,
             },
         };
@@ -185,7 +185,7 @@ impl ToggleTheme {
                 text: None,
             },
             active: WidgetLook {
-                background: bg(acc, Stroke::solid(p.border_focused, 1.0)),
+                background: bg(acc, Stroke::new(p.border_focused, 1.0)),
                 text: None,
             },
             disabled: WidgetLook {

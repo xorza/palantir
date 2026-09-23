@@ -13,11 +13,12 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
-use crate::scene::shapes::paint::{BrushHash, CurveBasis, ImageSource, QuadShape, ShapeBrush};
+use crate::scene::shapes::paint::{
+    BrushHash, CurveBasis, CurveRamp, ImageSource, QuadShape, ShapeBrush,
+};
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
@@ -49,14 +50,14 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     local_rect,
                     corners,
                     fill,
-                    stroke,
+                    border,
                 } => {
                     h.write_u8(*kind as u8);
                     hash_optional_rect(*local_rect, &mut h);
                     corners.hash(&mut h);
                     hash_brush(*fill, &mut h);
                     // Pod-byte hash for `(color, width)` — one dispatch.
-                    h.pod(stroke);
+                    h.pod(border);
                 }
                 QuadShape::Shadow {
                     local_rect,
@@ -76,7 +77,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     c,
                     radius,
                     fill,
-                    stroke,
+                    border,
                     bbox: _,
                 } => {
                     a.hash_visual(&mut h);
@@ -84,7 +85,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     c.hash_visual(&mut h);
                     radius.hash_visual(&mut h);
                     fill.hash(&mut h);
-                    h.pod(stroke);
+                    h.pod(border);
                 }
             }
         }
@@ -226,17 +227,17 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         // record, so no lowering-time content hash is needed (unlike
         // `Polyline`/`Mesh`, whose payload bytes live in the record store).
         // `bbox` derives from geometry + width + cap and is excluded.
-        // Brush folded separately so strokes with the same geometry
-        // but different fills don't collide. Both bases share this
-        // record's discriminant, so `CurveBasis`'s goes in ahead of the
-        // basis fields to keep a cubic and an arc apart; the stroke
+        // The ramp goes in by its content hash, so strokes with the same
+        // geometry but different ramps don't collide. Both bases share
+        // this record's discriminant, so `CurveBasis`'s goes in ahead of
+        // the basis fields to keep a cubic and an arc apart; the stroke
         // fields they share are hashed once, after the split.
         ShapeRecord::Curve {
-            basis,
-            width,
-            fill,
             cap,
+            basis,
+            stroke,
             bbox: _,
+            ramp,
         } => {
             mem::discriminant(basis).hash(&mut h);
             match basis {
@@ -257,8 +258,15 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     a1.hash_visual(&mut h);
                 }
             }
-            h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
-            hash_brush(*fill, &mut h);
+            // Pod-byte hash for `(width, color)` — one dispatch.
+            h.pod(stroke);
+            match ramp {
+                CurveRamp::None => h.write_u8(*cap as u8),
+                CurveRamp::Interned { id: _, hash } => {
+                    h.write_u8(*cap as u8 | 0x80);
+                    h.write_u64(*hash);
+                }
+            }
         }
     }
     ContentHash(h.finish())

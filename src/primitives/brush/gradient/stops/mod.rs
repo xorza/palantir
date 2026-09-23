@@ -101,9 +101,19 @@ impl<'de> Deserialize<'de> for Stop {
 /// construction. That is also why there is no `DerefMut`: handing out
 /// `&mut [Stop]` would let a caller reorder the offsets afterwards and
 /// put the two back out of step.
-#[repr(transparent)]
+///
+/// A `u8` count beside a fixed array rather than a `tinyvec::ArrayVec`,
+/// whose `u16` count aligns the value to two bytes. At 41 B and align 1,
+/// a [`ColorRamp`](crate::ColorRamp) adds its interp byte with no tail
+/// padding, so a gradient's spread byte packs beside it and
+/// `LinearGradient` stays 48 B. Slots past `len` always hold
+/// `Stop::default()`, so the derived `Eq` agrees with the `Hash` below,
+/// which reads the live stops only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GradientStops(ArrayVec<[Stop; MAX_STOPS]>);
+pub struct GradientStops {
+    len: u8,
+    stops: [Stop; MAX_STOPS],
+}
 
 impl GradientStops {
     /// Collect stops into inline storage, panicking on an invalid count.
@@ -149,7 +159,12 @@ impl GradientStops {
                 current -= 1;
             }
         }
-        Self(values)
+        let mut stops = [Stop::default(); MAX_STOPS];
+        stops[..values.len()].copy_from_slice(&values);
+        Self {
+            len: values.len() as u8,
+            stops,
+        }
     }
 }
 
@@ -188,7 +203,7 @@ impl std::ops::Deref for GradientStops {
     type Target = [Stop];
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_slice()
+        &self.stops[..usize::from(self.len)]
     }
 }
 
@@ -224,7 +239,7 @@ impl std::hash::Hash for GradientStops {
 
 impl Serialize for GradientStops {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.serialize(serializer)
+        (**self).serialize(serializer)
     }
 }
 

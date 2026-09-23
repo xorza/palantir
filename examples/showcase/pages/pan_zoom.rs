@@ -15,7 +15,7 @@
 use crate::support;
 use crate::support::note_style;
 use palantir::SlotDefaults;
-use palantir::widget::{LineCap, LineJoin, PolylineColors, Shape};
+use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
     AnimSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Grid,
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
@@ -216,7 +216,7 @@ fn gradient_strip(ui: &mut Ui) {
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
                         corners: Corners::all(6.0),
-                        stroke: Stroke::solid(RgbaF32::hex(0x202020), 1.0),
+                        border: Stroke::new(RgbaF32::hex(0x202020), 1.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -321,7 +321,7 @@ fn canvas_polylines(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::fixed(120.0)))
         .background(
             Background::rounded(support::WELL, Corners::all(4.0))
-                .with_stroke(Stroke::solid(support::BORDER, 1.0)),
+                .with_border(Stroke::new(support::BORDER, 1.0)),
         )
         .show(ui, |ui| {
             Block::new()
@@ -345,7 +345,7 @@ fn canvas_polylines(ui: &mut Ui) {
                     0.4 + (1 + line) as f32 * 0.07,
                 );
                 ui.add_shape(
-                    Shape::polyline(&pts, PolylineColors::Single(c), 1.5)
+                    Shape::polyline(&pts, Stroke::new(c, 1.5))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
@@ -387,7 +387,7 @@ fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
     theme.looks.normal.background = bg(base);
     theme.looks.hovered.background = bg(brighten(base, 0.15));
     theme.looks.active.background =
-        bg(brighten(base, 0.3)).with_stroke(Stroke::solid(RgbaF32::WHITE, 1.0));
+        bg(brighten(base, 0.3)).with_border(Stroke::new(RgbaF32::WHITE, 1.0));
     theme.looks.disabled.background = bg(base);
 }
 

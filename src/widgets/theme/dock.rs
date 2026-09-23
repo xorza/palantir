@@ -60,12 +60,12 @@ impl DockTheme {
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             preview_fill: p.accent.with_alpha(0.18),
-            preview_stroke: Stroke::solid(p.accent, 1.5),
+            preview_stroke: Stroke::new(p.accent, 1.5),
             preview_corner: 2.0,
             caret_width: 3.0,
             ghost: WidgetLook {
                 background: Background::rounded(p.elem, Corners::all(4.0))
-                    .with_stroke(Stroke::solid(p.accent, 1.0)),
+                    .with_border(Stroke::new(p.accent, 1.0)),
                 text: None,
             },
             ghost_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),

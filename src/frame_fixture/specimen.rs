@@ -20,7 +20,6 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
@@ -73,7 +72,7 @@ fn add_brush_swatches(ui: &mut Ui) {
         Shape::rect(Rect::new(6.0, 6.0, 74.0, 38.0))
             .corners(6.0)
             .fill(RgbaF32::hex(0xd9544c))
-            .stroke(Stroke::solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5), 1.0)),
+            .border(Stroke::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5), 1.0)),
     );
     ui.add_shape(
         Shape::rect(Rect::new(88.0, 6.0, 74.0, 38.0))
@@ -112,9 +111,8 @@ fn add_curves(ui: &mut Ui) {
         Shape::line(
             glam::Vec2::new(12.0, 16.0),
             glam::Vec2::new(156.0, 28.0),
-            3.0,
+            Stroke::new(tokens::ACCENT, 3.0),
         )
-        .brush(tokens::ACCENT)
         .cap(LineCap::Round),
     );
     ui.add_shape(
@@ -122,9 +120,8 @@ fn add_curves(ui: &mut Ui) {
             glam::Vec2::new(12.0, 50.0),
             glam::Vec2::new(84.0, 22.0),
             glam::Vec2::new(156.0, 50.0),
-            3.0,
+            Stroke::new(tokens::WARN, 3.0),
         )
-        .brush(tokens::WARN)
         .cap(LineCap::Square),
     );
     ui.add_shape(
@@ -133,9 +130,8 @@ fn add_curves(ui: &mut Ui) {
             glam::Vec2::new(56.0, 56.0),
             glam::Vec2::new(112.0, 96.0),
             glam::Vec2::new(156.0, 68.0),
-            4.0,
+            Stroke::new(tokens::OK, 4.0),
         )
-        .brush(tokens::OK)
         .cap(LineCap::Round),
     );
 }
@@ -159,16 +155,29 @@ fn add_polyline(ui: &mut Ui) {
         demo_swatches::TEAL,
         demo_swatches::VIOLET,
     ];
-    ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 4.0).join(LineJoin::Round));
+    ui.add_shape(
+        Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 4.0))
+            .per_point(&cols)
+            .join(LineJoin::Round),
+    );
 }
 
 fn add_arcs(ui: &mut Ui) {
     ui.add_shape(
-        Shape::arc(glam::Vec2::new(84.0, 78.0), 40.0, PI, PI, 5.0)
-            .brush(tokens::ACCENT)
-            .cap(LineCap::Round),
+        Shape::arc(
+            glam::Vec2::new(84.0, 78.0),
+            40.0,
+            PI,
+            PI,
+            Stroke::new(tokens::ACCENT, 5.0),
+        )
+        .cap(LineCap::Round),
     );
-    ui.add_shape(Shape::circle(glam::Vec2::new(84.0, 26.0), 12.0, 3.0).brush(tokens::VIOLET));
+    ui.add_shape(Shape::circle(
+        glam::Vec2::new(84.0, 26.0),
+        12.0,
+        Stroke::new(tokens::VIOLET, 3.0),
+    ));
 }
 
 fn add_solids(ui: &mut Ui) {
@@ -201,7 +210,7 @@ fn add_shadow(ui: &mut Ui) {
         Shape::rect(plate)
             .corners(10.0)
             .fill(RgbaF32::hex(0x30364a))
-            .stroke(Stroke::solid(tokens::BORDER, 1.0)),
+            .border(Stroke::new(tokens::BORDER, 1.0)),
     );
 }
 

@@ -12,7 +12,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
+use crate::scene::shapes::paint::{CurveBasis, CurveRamp, ImageSource, QuadShape, ShapeStroke};
 use crate::shape::icon::IconFit;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::glyph_font::GlyphFont;
@@ -163,30 +163,30 @@ pub(crate) enum ShapeRecord {
     /// [`CurveBasis`] (quadratics promote to cubic at lowering, lines
     /// degenerate to one — see `shapes::lower`). One record kind, because
     /// everything outside `basis` is shared: the same pipeline, cap model,
-    /// gradient-along-`t` sampling, and deferred stroke bound. Stored
+    /// ramp-along-`t` sampling, and deferred stroke bound. Stored
     /// owner-local; the composer adds the owner origin + active transform
     /// at compose time and uploads to a per-instance buffer. No joins
-    /// (single-segment primitive); `fill` and `cap` are documented on
+    /// (single-segment primitive); `ramp` and `cap` are documented on
     /// their fields. `bbox` is the tight owner-local centerline AABB;
     /// damage and composition apply the shared raster-aware stroke
     /// inflation after transforms are known.
+    ///
+    /// Field order is the layout: a `repr(u8)` variant is laid out in
+    /// declaration order, and this one fills `ShapeRecord`'s 88 B only
+    /// with the byte-wide `cap` beside the tag and the 8-aligned `ramp`
+    /// last.
     Curve {
-        basis: CurveBasis,
-        width: f32,
-        /// Lowered stroke fill. Solid colour stays inline; `Linear`
-        /// gradient content rides as a `RecordedGradient` indexed by
-        /// `ShapeBrush::Gradient` and resolves its atlas row on encode.
-        /// The gradient is sampled in the shader along the curve
-        /// parameter `t` — p0 → p3 for a cubic, a0 → a1 for an arc — so
-        /// the `LinearGradient::angle` from authoring is intentionally
-        /// ignored: the stroke carries its own 1-D parameter. The
-        /// authoring type cannot contain radial or conic gradients.
-        fill: ShapeBrush,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by
         /// `width/2` past each endpoint along the local tangent.
         cap: LineCap,
+        basis: CurveBasis,
+        /// Width and colour, centred on the curve.
+        stroke: ShapeStroke,
         bbox: Rect,
+        /// The ramp the stroke colour multiplies, sampled along the curve
+        /// parameter `t` — p0 → p3 for a cubic, a0 → a1 for an arc.
+        ramp: CurveRamp,
     },
 }
 
@@ -294,9 +294,8 @@ impl NanCheck for ShapeRecord {
             } => local_rect.has_nan() || tint.has_nan(),
             // `bbox` is derived from `basis`, so it stands in for the
             // control points / centre / radius / angles.
-            ShapeRecord::Curve {
-                width, fill, bbox, ..
-            } => width.is_nan() || fill.has_nan() || bbox.has_nan(),
+            // A ramp's stops are integer-encoded, so it holds no NaN.
+            ShapeRecord::Curve { stroke, bbox, .. } => stroke.has_nan() || bbox.has_nan(),
         }
     }
 }

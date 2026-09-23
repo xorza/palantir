@@ -428,7 +428,7 @@ impl<'a> TextEdit<'a> {
         // the top row of glyphs sits above the clip and gets scissored
         // away. The node's own padding stays at the pre-inflate
         // value so Tree's fold reproduces the same effective padding.
-        let stroke_w = look.background.stroke.ring();
+        let stroke_w = look.background.border_inset();
         let padding = Spacing::from_array(
             self.widget
                 .authored_padding()

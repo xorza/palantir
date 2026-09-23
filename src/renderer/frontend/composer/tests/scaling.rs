@@ -91,7 +91,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
 /// it via `.max(0.0)` — and nothing was checking that they agreed.
 #[test]
 fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
-    let nan_stroke: ShapeStroke = Stroke::solid(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN).into();
+    let nan_stroke: ShapeStroke = Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN).into();
     let display = params(2.0, UVec2::new(400, 400));
 
     // An opaque fill keeps the draw alive, so the quad reaches the
@@ -200,7 +200,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
                     rect(0.0, 0.0, 50.0, 50.0),
                     Corners::all(8.0),
                     BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::solid(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5).into(),
+                    Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5).into(),
                 ),
                 1.0,
             );

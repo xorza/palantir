@@ -1,5 +1,4 @@
-//! What fills a shape: a solid colour, a gradient, or an image, plus the
-//! narrower set a stroked one-dimensional shape can take.
+//! What fills a shape: a solid colour or a gradient.
 
 pub(crate) mod gradient;
 
@@ -35,57 +34,6 @@ pub enum Brush {
     Conic(ConicGradient),
 }
 
-/// Paint source for one-dimensional stroked shapes. Solid colors and linear
-/// gradients have an unambiguous mapping along the curve parameter; radial and
-/// conic gradients do not.
-///
-/// A [`Brush`] behind a narrower door rather than a second enum beside it:
-/// the four `From` impls below are the only way to build one, so the
-/// radial and conic variants are unreachable by construction. It answers
-/// nothing itself — [`Self::as_brush`] hands the `Brush` back, and the
-/// no-op test, the NaN screen and the lowering stay single-sourced there.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CurveBrush(Brush);
-
-impl CurveBrush {
-    /// Paints nothing. The identity a stroke falls back to.
-    pub const TRANSPARENT: Self = Self(Brush::TRANSPARENT);
-
-    /// The paint source, for consumers that read, screen or lower it.
-    #[inline]
-    pub const fn as_brush(&self) -> &Brush {
-        &self.0
-    }
-}
-
-impl From<RgbaF32> for CurveBrush {
-    #[inline]
-    fn from(color: RgbaF32) -> Self {
-        Self(Brush::from(color))
-    }
-}
-
-impl From<SrgbaU8> for CurveBrush {
-    #[inline]
-    fn from(color: SrgbaU8) -> Self {
-        Self(Brush::from(color))
-    }
-}
-
-impl From<LinearGradient> for CurveBrush {
-    #[inline]
-    fn from(gradient: LinearGradient) -> Self {
-        Self(Brush::from(gradient))
-    }
-}
-
-impl From<LinearGradientBuilder> for CurveBrush {
-    #[inline]
-    fn from(builder: LinearGradientBuilder) -> Self {
-        Self(Brush::from(builder))
-    }
-}
-
 impl Brush {
     /// Paints nothing. The identity a fill falls back to.
     pub const TRANSPARENT: Self = Self::Solid(RgbaF32::TRANSPARENT);
@@ -109,16 +57,6 @@ impl Brush {
         match self {
             Brush::Solid(c) => Some(*c),
             Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
-        }
-    }
-
-    /// Extracts the linear gradient, the one kind a [`CurveBrush`] can
-    /// also hold. Returns `None` for every other variant.
-    #[inline]
-    pub const fn as_linear(&self) -> Option<&LinearGradient> {
-        match self {
-            Brush::Linear(g) => Some(g),
-            Brush::Solid(_) | Brush::Radial(_) | Brush::Conic(_) => None,
         }
     }
 }

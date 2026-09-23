@@ -189,7 +189,7 @@ impl TabsTheme {
                 },
                 active: WidgetLook {
                     background: Background::rounded(p.elem_strong, Corners::all(3.0))
-                        .with_stroke(Stroke::solid(p.border_focused, 1.0)),
+                        .with_border(Stroke::new(p.border_focused, 1.0)),
                     text: None,
                 },
                 disabled: WidgetLook {

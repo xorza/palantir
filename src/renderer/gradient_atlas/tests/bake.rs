@@ -20,7 +20,7 @@ fn linear_midpoint_black_to_white_is_half() {
     let g =
         LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE).with_interp(Interp::Linear);
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
     let mid = texel(&out, 127);
     assert!(
         (0.4..=0.6).contains(&mid.r),
@@ -43,7 +43,7 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     let green = linear(0, 255, 0);
     let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
     let mid = texel(&out, 127);
     // Both channels should be non-trivial at midpoint — Oklab
     // hits a yellowish midpoint, not the dark muddy brown that
@@ -68,10 +68,14 @@ fn endpoints_match_stops_exactly() {
         let g = LinearGradient::two_stop(0.0, linear(11, 22, 33), linear(244, 233, 222))
             .with_interp(interp);
         let mut out = fresh_row();
-        bake_stops(&g.stops, g.interp, &mut out);
+        bake::row(&g.ramp, &mut out);
         let label = format!("interp={interp:?}");
-        assert_stored(texel(&out, 0), g.stops[0].color(), &label);
-        assert_stored(texel(&out, LUT_ROW_TEXELS - 1), g.stops[1].color(), &label);
+        assert_stored(texel(&out, 0), g.ramp.stops[0].color(), &label);
+        assert_stored(
+            texel(&out, LUT_ROW_TEXELS - 1),
+            g.ramp.stops[1].color(),
+            &label,
+        );
     }
 }
 
@@ -87,7 +91,7 @@ fn three_stop_quarter_brackets_first_pair() {
         .with_interp(Interp::Linear)
         .build();
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
     // Texel at i=64 ≈ t=0.251 → halfway between stops 0 and 1.
     // r channel: lerp(0.0, 1.0, 0.502) ≈ 0.502.
     let q = texel(&out, 64);
@@ -151,10 +155,10 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     )
     .with_interp(Interp::Linear);
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
     for (i, got) in out.iter().enumerate() {
         let t = i as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        let want = RgbaF16::from(restart_scan(&g.stops, t));
+        let want = RgbaF16::from(restart_scan(&g.ramp.stops, t));
         assert_eq!(*got, want, "texel {i} at t={t}");
     }
 }
@@ -169,9 +173,13 @@ fn lut_row_layout() {
     assert_eq!(size_of::<RgbaF16>(), 8);
     let g = LinearGradient::two_stop(0.0, linear(1, 2, 3), linear(4, 5, 6));
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
-    assert_stored(texel(&out, 0), g.stops[0].color(), "first");
-    assert_stored(texel(&out, LUT_ROW_TEXELS - 1), g.stops[1].color(), "last");
+    bake::row(&g.ramp, &mut out);
+    assert_stored(texel(&out, 0), g.ramp.stops[0].color(), "first");
+    assert_stored(
+        texel(&out, LUT_ROW_TEXELS - 1),
+        g.ramp.stops[1].color(),
+        "last",
+    );
 }
 
 /// Unsorted stops are sorted at bake time. Authors shouldn't rely
@@ -185,7 +193,7 @@ fn unsorted_stops_get_sorted_at_bake() {
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
     // First texel should be blue (the stop at 0.0), last should be red.
     let first = texel(&out, 0);
     let last = texel(&out, LUT_ROW_TEXELS - 1);
@@ -206,7 +214,7 @@ fn partial_range_clamps_at_edges() {
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
     // Texel 0 (t=0): clamped to first stop colour (green).
     assert_eq!(texel(&out, 0).g, 1.0);
     // Texel 255 (t=1): clamped to last stop colour (blue).
@@ -237,7 +245,7 @@ fn dark_gradient_row_has_no_banding() {
     );
     let g = LinearGradient::two_stop(0.0, navy, blue); // default Oklab
     let mut out = fresh_row();
-    bake_stops(&g.stops, g.interp, &mut out);
+    bake::row(&g.ramp, &mut out);
 
     let reds: Vec<f32> = (0..LUT_ROW_TEXELS).map(|i| texel(&out, i).r).collect();
 

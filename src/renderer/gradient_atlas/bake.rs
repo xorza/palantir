@@ -3,13 +3,17 @@
 use crate::animation::animatable::Animatable;
 use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::color::{RgbaF16, RgbaF32, linear_to_oklab, oklab_to_linear};
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
 pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
 
-pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRowTexels) {
+/// Bake `ramp` into one row of texels.
+pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
+    let ColorRamp { stops, interp } = ramp;
+    let interp = *interp;
     // No sort here: `GradientStops` holds its stops in ascending offset
     // order as a type invariant, precisely so the value that keys this
     // row and the row it bakes cannot disagree.
@@ -34,10 +38,12 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
         Interp::Linear => &[],
     };
 
-    for (texel, color) in
-        out.iter_mut()
-            .zip(Ramp::new(stops, &linear_stops[..count], oklab, interp))
-    {
+    for (texel, color) in out.iter_mut().zip(RampTexels::new(
+        stops,
+        &linear_stops[..count],
+        oklab,
+        interp,
+    )) {
         *texel = color;
     }
 }
@@ -60,7 +66,7 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
 /// bounds anything only while the stops ascend. That is the type's
 /// invariant, so it arrives with the value.
 #[derive(Debug)]
-struct Ramp<'a> {
+struct RampTexels<'a> {
     stops: &'a GradientStops,
     linear: &'a [RgbaF32],
     /// Oklab coordinates of `linear`, empty under [`Interp::Linear`].
@@ -73,7 +79,7 @@ struct Ramp<'a> {
     texel: usize,
 }
 
-impl<'a> Ramp<'a> {
+impl<'a> RampTexels<'a> {
     /// Seat the cursor on the first segment. [`GradientStops`] holds at
     /// least two entries by construction, which is what makes that
     /// segment exist.
@@ -131,7 +137,7 @@ impl<'a> Ramp<'a> {
     }
 }
 
-impl Iterator for Ramp<'_> {
+impl Iterator for RampTexels<'_> {
     type Item = RgbaF16;
 
     fn next(&mut self) -> Option<RgbaF16> {
@@ -150,7 +156,7 @@ impl Iterator for Ramp<'_> {
     }
 }
 
-impl ExactSizeIterator for Ramp<'_> {}
+impl ExactSizeIterator for RampTexels<'_> {}
 
 fn lerp_oklab(
     lower: RgbaF32,
@@ -178,7 +184,7 @@ mod tests {
     use crate::primitives::brush::gradient::Interp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
     use crate::primitives::color::RgbaF32;
-    use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, Ramp};
+    use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, RampTexels};
 
     /// The bake `zip`s the ramp against a fixed-length row, so a ramp
     /// that yielded fewer texels would leave the tail of the row at
@@ -193,7 +199,7 @@ mod tests {
             Stop::new(1.0, RgbaF32::WHITE),
         ]);
         let linear = [RgbaF32::BLACK, RgbaF32::WHITE];
-        let ramp = Ramp::new(&stops, &linear, &[], Interp::Linear);
+        let ramp = RampTexels::new(&stops, &linear, &[], Interp::Linear);
 
         assert_eq!(ramp.len(), LUT_ROW_TEXELS);
         assert_eq!(ramp.count(), LUT_ROW_TEXELS);

@@ -3,8 +3,9 @@
 //! geometry so only the geometry varies between the entry points.
 
 use crate::primitives::approx::{paints_nothing, vec2_approx_eq};
-use crate::primitives::brush::CurveBrush;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::nan::NanCheck;
+use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::record::ShapeRecord;
@@ -41,26 +42,27 @@ pub(crate) enum CurveGeometry {
 /// together from the setters to the lowering entry points, so the geometry is the
 /// only thing that varies between them.
 #[derive(Clone, Debug)]
-pub(crate) struct CurveStroke {
-    pub(crate) width: f32,
-    pub(crate) brush: CurveBrush,
+pub(crate) struct CurveStyle {
+    pub(crate) stroke: Stroke,
+    pub(crate) ramp: Option<ColorRamp>,
     pub(crate) cap: LineCap,
 }
 
-/// Stroked line, Bézier, or circular arc.
+/// Stroked line, Bézier, or circular arc. The stroke is centred on the
+/// curve, like every path shape's.
 #[derive(Clone, Debug)]
 pub struct CurveShape {
     pub(crate) geometry: CurveGeometry,
-    pub(crate) stroke: CurveStroke,
+    pub(crate) style: CurveStyle,
 }
 
 impl CurveShape {
-    pub(super) fn new(geometry: CurveGeometry, width: f32) -> Self {
+    pub(super) fn new(geometry: CurveGeometry, stroke: Stroke) -> Self {
         Self {
             geometry,
-            stroke: CurveStroke {
-                width,
-                brush: CurveBrush::TRANSPARENT,
+            style: CurveStyle {
+                stroke,
+                ramp: None,
                 cap: LineCap::Butt,
             },
         }
@@ -68,23 +70,28 @@ impl CurveShape {
 }
 
 impl CurveShape {
-    /// Paint along the curve. Solid colours and linear gradients only —
-    /// see [`CurveBrush`](crate::CurveBrush).
-    pub fn brush(mut self, brush: impl Into<CurveBrush>) -> Self {
-        self.stroke.brush = brush.into();
+    /// Vary the colour along the curve: at curve parameter `t` it is the
+    /// stroke colour times `ramp` at `t`, channel by channel — the rule a
+    /// mesh tint follows. `t` runs from 0 at the start to 1 at the end:
+    /// `p0` → `p3` on a Bézier, across the sweep on an arc. It is the
+    /// curve parameter, not arc length: on a Bézier whose control points
+    /// are unevenly spaced, the colour changes fastest where the curve
+    /// moves least per step of `t`.
+    pub fn ramp(mut self, ramp: impl Into<ColorRamp>) -> Self {
+        self.style.ramp = Some(ramp.into());
         self
     }
 
     /// How the two ends are finished.
     pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
-        self.stroke.cap = cap.into();
+        self.style.cap = cap.into();
         self
     }
 }
 
 impl sealed::LowerShape for CurveShape {
     fn is_noop(&self) -> bool {
-        if paints_nothing(self.stroke.width) || self.stroke.brush.as_brush().is_noop() {
+        if self.style.stroke.is_noop() || self.style.ramp.is_some_and(|ramp| ramp.is_noop()) {
             return true;
         }
         match &self.geometry {
@@ -103,8 +110,9 @@ impl sealed::LowerShape for CurveShape {
 
     /// The geometry is a fixed handful of scalars, so they are read
     /// directly rather than through a fold — the bbox lowering derives
-    /// from them would carry the NaN too, but only after the brush had
-    /// interned its gradient into the store.
+    /// from them would carry the NaN too, but only after the ramp had
+    /// interned into the store. A ramp's stops are integer-encoded, so
+    /// it holds no NaN of its own.
     fn has_nan(&self) -> bool {
         let geometry = match &self.geometry {
             CurveGeometry::Line { a, b } => a.has_nan() || b.has_nan(),
@@ -121,10 +129,10 @@ impl sealed::LowerShape for CurveShape {
                 sweep,
             } => center.has_nan() || radius.is_nan() || start_angle.is_nan() || sweep.is_nan(),
         };
-        geometry || self.stroke.width.is_nan() || self.stroke.brush.as_brush().has_nan()
+        geometry || self.style.stroke.has_nan()
     }
 
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
-        lower::curve(store, self.geometry, self.stroke)
+        lower::curve(store, self.geometry, self.style)
     }
 }

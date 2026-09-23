@@ -36,7 +36,7 @@ pub(super) fn distinct_grad(seed: f32) -> LinearGradient {
 }
 
 pub(super) fn register_for(atlas: &mut CpuGradientAtlas, g: LinearGradient) -> LutRow {
-    atlas.register_stops(&g.stops, g.interp)
+    atlas.register(&g.ramp)
 }
 
 pub(super) fn assert_real_row(atlas: &CpuGradientAtlas, row: LutRow) {

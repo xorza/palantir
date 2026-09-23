@@ -16,7 +16,7 @@
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, swatch_bg, tiles};
-use palantir::widget::{PolylineColors, Shape};
+use palantir::widget::Shape;
 use palantir::{
     Align, Background, Block, Button, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke,
     Text, TextStyle, Ui, Vec2,
@@ -120,8 +120,8 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
     });
 }
 
-/// Red field, centered blue card with a thick green stroke and 40 px
-/// corners, black rect nested inside — its radius shrunk by the stroke
+/// Red field, centered blue card with a thick green border and 40 px
+/// corners, black rect nested inside — its radius shrunk by the border
 /// inset so the black corners follow the border's inner contour.
 fn concentricity(ui: &mut Ui) {
     const STROKE: f32 = 8.0;
@@ -139,7 +139,7 @@ fn concentricity(ui: &mut Ui) {
                 .child_align(Align::CENTER)
                 .background(
                     Background::rounded(RgbaF32::hex(0x0000ff), Corners::all(OUTER))
-                        .with_stroke(Stroke::solid(RgbaF32::hex(0x00ff00), STROKE)),
+                        .with_border(Stroke::new(RgbaF32::hex(0x00ff00), STROKE)),
                 )
                 .show(ui, |ui| {
                     Block::new()
@@ -175,8 +175,7 @@ fn translucent_solid(ui: &mut Ui) {
     let pts = [Vec2::new(14.0, 28.0), Vec2::new(154.0, 140.0)];
     ui.add_shape(Shape::polyline(
         &pts,
-        PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5)),
-        16.0,
+        Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 16.0),
     ));
 }
 
@@ -194,7 +193,7 @@ fn translucent_per_point(ui: &mut Ui) {
         RgbaF32::srgba(0.0, 1.0, 1.0, 0.5),
         RgbaF32::srgba(1.0, 0.0, 1.0, 0.5),
     ];
-    ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 14.0));
+    ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 14.0)).per_point(&cols));
 }
 
 /// α=0.25 — the bug grows with `(1 - a)`, so a lower alpha makes the
@@ -205,7 +204,6 @@ fn translucent_quarter(ui: &mut Ui) {
     let pts = [Vec2::new(14.0, 84.0), Vec2::new(154.0, 84.0)];
     ui.add_shape(Shape::polyline(
         &pts,
-        PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.25)),
-        24.0,
+        Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.25), 24.0),
     ));
 }

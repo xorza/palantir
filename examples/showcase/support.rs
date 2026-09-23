@@ -174,7 +174,7 @@ pub(crate) fn light_well_bg() -> Background {
 
 /// Raised interactive surface: lifted fill + hairline edge.
 pub(crate) fn raised_bg() -> Background {
-    Background::rounded(RAISED, Corners::all(8.0)).with_stroke(Stroke::solid(BORDER, 1.0))
+    Background::rounded(RAISED, Corners::all(8.0)).with_border(Stroke::new(BORDER, 1.0))
 }
 
 /// Section title above a block of demo content. The title is what makes

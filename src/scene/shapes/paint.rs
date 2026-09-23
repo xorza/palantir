@@ -34,6 +34,24 @@ pub(crate) enum ShapeBrush {
     },
 }
 
+/// What a curve's stroke colour multiplies: nothing, or a ramp interned
+/// in the record store.
+///
+/// The interned pair is inline in the variant rather than a struct of
+/// its own: a struct would carry its padding with it, and the tag could
+/// not share the id's word. Inline, the value is 16 B, which is what
+/// lets `ShapeRecord::Curve` fit its 88 B.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum CurveRamp {
+    None,
+    /// `id` is where the ramp is this frame and `hash` is what it is —
+    /// the same split as [`ShapeBrush::Gradient`].
+    Interned {
+        id: GradientId,
+        hash: u64,
+    },
+}
+
 /// What a lowered fill contributes to a hash: a variant tag and the
 /// payload the variant's identity is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,7 +191,7 @@ pub(crate) enum CurveBasis {
         p2: Vec2,
         p3: Vec2,
     },
-    /// Exact circle — no cubic approximation error, and gradient `t`
+    /// Exact circle — no cubic approximation error, and ramp `t`
     /// tracks the sweep linearly. `a0`/`a1` are radians in the screen
     /// convention (0 = +x, y-down ⇒ increasing = clockwise), so
     /// `a1 < a0` is a negative sweep.
@@ -219,7 +237,7 @@ impl Default for CurveBasis {
 /// [`ShapeRecord::Quad`]: crate::scene::shapes::record::ShapeRecord::Quad
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum QuadShape {
-    /// Filled/stroked rounded rectangle or inverse window, selected by
+    /// Filled/bordered rounded rectangle or inverse window, selected by
     /// `kind`. With `local_rect = None` it covers the owner node's full
     /// arranged rect (position/size come from layout). With
     /// `local_rect = Some(r)` it paints `r` at owner-relative coords —
@@ -235,7 +253,7 @@ pub(crate) enum QuadShape {
         local_rect: Option<Rect>,
         corners: Corners,
         fill: ShapeBrush,
-        stroke: ShapeStroke,
+        border: ShapeStroke,
     },
     /// Gaussian-blurred rounded rect — drop / inset shadow. All
     /// parameters are inline scalars; no retained payloads. With
@@ -249,14 +267,14 @@ pub(crate) enum QuadShape {
         corners: Corners,
         shadow: LoweredShadow,
     },
-    /// Filled/stroked rounded triangle, rendered as an analytic SDF
+    /// Filled/bordered rounded triangle, rendered as an analytic SDF
     /// (`FillKind::TRIANGLE`). `a`/`b`/`c` are owner-local corner
     /// points; the composer transforms them to physical px, packs them
     /// into the reused `Quad` corner/axis lanes, and the shader
     /// evaluates `sdf_triangle - radius` for rounded corners + coverage
     /// AA. Solid fill only (gradients don't fit the reused lanes).
     /// `bbox` is the owner-local AABB inflated by `radius + AA fringe`
-    /// for damage / cull (the stroke is inner-edge, so it adds no
+    /// for damage / cull (the border is inside the edge, so it adds no
     /// outward reach).
     Triangle {
         a: Vec2,
@@ -265,7 +283,7 @@ pub(crate) enum QuadShape {
         radius: f32,
         /// Solid linear-RGB fill (straight alpha).
         fill: RgbaF16,
-        stroke: ShapeStroke,
+        border: ShapeStroke,
         bbox: Rect,
     },
 }
@@ -336,7 +354,7 @@ pub(crate) enum ImageSource {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeRow {
     pub(crate) fill: ShapeBrush,
-    pub(crate) stroke: ShapeStroke,
+    pub(crate) border: ShapeStroke,
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
     pub(crate) hash: ContentHash,
@@ -481,9 +499,9 @@ impl NanCheck for QuadShape {
                 local_rect,
                 corners,
                 fill,
-                stroke,
+                border,
                 ..
-            } => local_rect.has_nan() || corners.has_nan() || fill.has_nan() || stroke.has_nan(),
+            } => local_rect.has_nan() || corners.has_nan() || fill.has_nan() || border.has_nan(),
             Self::Shadow {
                 local_rect,
                 corners,
@@ -493,9 +511,9 @@ impl NanCheck for QuadShape {
                 bbox,
                 radius,
                 fill,
-                stroke,
+                border,
                 ..
-            } => bbox.has_nan() || radius.is_nan() || fill.has_nan() || stroke.has_nan(),
+            } => bbox.has_nan() || radius.is_nan() || fill.has_nan() || border.has_nan(),
         }
     }
 }
@@ -513,10 +531,10 @@ mod tests {
     #[test]
     fn every_invisible_stroke_lowers_to_one_value() {
         let cases = [
-            Stroke::solid(RgbaF32::WHITE, -0.0),
-            Stroke::solid(RgbaF32::WHITE, 0.0),
-            Stroke::solid(RgbaF32::WHITE, 1e-9),
-            Stroke::solid(RgbaF32::TRANSPARENT, 4.0),
+            Stroke::new(RgbaF32::WHITE, -0.0),
+            Stroke::new(RgbaF32::WHITE, 0.0),
+            Stroke::new(RgbaF32::WHITE, 1e-9),
+            Stroke::new(RgbaF32::TRANSPARENT, 4.0),
         ];
         for stroke in cases {
             assert_eq!(
@@ -526,7 +544,7 @@ mod tests {
             );
         }
         // …and a stroke that does paint crosses verbatim.
-        let visible = Stroke::solid(RgbaF32::WHITE, 2.0);
+        let visible = Stroke::new(RgbaF32::WHITE, 2.0);
         assert_eq!(
             ShapeStroke::from(&visible),
             ShapeStroke {

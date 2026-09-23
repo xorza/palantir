@@ -5,8 +5,8 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
@@ -168,7 +168,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             arrow.record(ui, None, |ui| {
                 let pts = geom.chevron_pts();
                 ui.add_shape(
-                    Shape::polyline(&pts, PolylineColors::Single(arrow_color), geom.arrow_stroke)
+                    Shape::polyline(&pts, Stroke::new(arrow_color, geom.arrow_stroke))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );

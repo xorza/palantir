@@ -432,9 +432,9 @@ fn group(ui: &mut Ui, label: &'static str) {
 /// against the rest of the theme.
 fn outlined_style() -> ButtonTheme {
     let accent = support::ACCENT;
-    let stroke = Stroke::solid(accent, 1.5);
+    let stroke = Stroke::new(accent, 1.5);
     let bg =
-        |fill: RgbaF32, stroke| Background::rounded(fill, Corners::all(4.0)).with_stroke(stroke);
+        |fill: RgbaF32, stroke| Background::rounded(fill, Corners::all(4.0)).with_border(stroke);
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
@@ -452,7 +452,7 @@ fn outlined_style() -> ButtonTheme {
             disabled: WidgetLook {
                 background: bg(
                     RgbaF32::TRANSPARENT,
-                    Stroke::solid(accent.with_alpha(0.35), 1.5),
+                    Stroke::new(accent.with_alpha(0.35), 1.5),
                 ),
                 text: Some(TextStyle::default().with_color(support::INK_FAINT)),
             },

@@ -24,7 +24,7 @@ use crate::primitives::arc;
 use crate::primitives::background::Background;
 use crate::primitives::bezier;
 use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::{Gradient, GradientGeometry};
+use crate::primitives::brush::gradient::{FillAxis, Gradient, GradientGeometry};
 use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
@@ -36,10 +36,10 @@ use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::shapes::paint::{
-    ChromeRow, CurveBasis, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
+    ChromeRow, CurveBasis, CurveRamp, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
 };
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
-use crate::shape::curve::{CurveGeometry, CurveStroke};
+use crate::shape::curve::{CurveGeometry, CurveStyle};
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
@@ -47,11 +47,12 @@ use glam::Vec2;
 use std::f32::consts::TAU;
 use std::hash::Hasher as _;
 
-/// Stable content hash for a gradient variant: discriminant byte
-/// then the gradient's `Hash` impl (which hashes f32 canon-bits).
-/// Lets `ShapeRecord::Hash` stay context-free — the hash is captured at
-/// lowering and rides in the `ShapeBrush::Gradient` beside its id, so
-/// downstream cache keys don't need the store.
+/// Stable content hash for a gradient kind or a curve ramp: discriminant
+/// byte then the value's `Hash` impl (a gradient's hashes f32
+/// canon-bits). Lets `ShapeRecord::Hash` stay context-free — the hash is
+/// captured at lowering and rides in the `ShapeBrush::Gradient` or
+/// `CurveRamp::Interned` beside its id, so downstream cache keys don't
+/// need the store.
 #[inline]
 fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
     let mut h = Hasher::new();
@@ -75,8 +76,7 @@ fn gradient_brush<G: GradientGeometry>(
         RecordedGradient {
             axis: gradient.axis(),
             kind,
-            stops: gradient.stops,
-            interp: gradient.interp,
+            ramp: gradient.ramp,
         },
     );
     ShapeBrush::Gradient { id, hash }
@@ -136,10 +136,10 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         &bg.fill
     };
     let fill = brush(store, fill_brush);
-    let stroke = ShapeStroke::from(if bg.stroke.has_nan() {
+    let border = ShapeStroke::from(if bg.border.has_nan() {
         Stroke::ZERO
     } else {
-        bg.stroke
+        bg.border
     });
     let corners = if bg.corners.has_nan() {
         Corners::ZERO
@@ -165,7 +165,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     struct ChromeHashBytes {
         fill_payload: u64, // RgbaF16-as-u64 (Solid) or content hash (Gradient)
         corners_u64: u64,
-        stroke: ShapeStroke,   // 12 B align 4
+        border: ShapeStroke,   // 12 B align 4
         shadow: LoweredShadow, // 18 B align 2
         fill_tag: u8,
     }
@@ -173,7 +173,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     let packed = ChromeHashBytes {
         fill_payload: brush.payload,
         corners_u64: corners.as_u64(),
-        stroke,
+        border,
         shadow,
         fill_tag: brush.tag,
         ..bytemuck::Zeroable::zeroed()
@@ -183,7 +183,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     let hash = ContentHash(h.finish());
     ChromeRow {
         fill,
-        stroke,
+        border,
         corners,
         shadow,
         hash,
@@ -200,14 +200,14 @@ pub(crate) fn rect(
     local_rect: Option<Rect>,
     corners: Corners,
     fill: &Brush,
-    stroke: Stroke,
+    border: Stroke,
 ) -> ShapeRecord {
     ShapeRecord::Quad(QuadShape::Rect {
         kind,
         local_rect,
         corners,
         fill: brush(store, fill),
-        stroke: ShapeStroke::from(stroke),
+        border: ShapeStroke::from(border),
     })
 }
 
@@ -236,9 +236,9 @@ pub(crate) fn mesh(
     }
 }
 
-/// Lower a (points, colors, width) authoring shape into a
-/// `ShapeRecord::Polyline`: copy points and colors into the store,
-/// compute the content hash. Only `Shape::Polyline` routes through
+/// Lower a polyline authoring shape into a `ShapeRecord::Polyline`: copy
+/// the points into the store, and the colours multiplied by the stroke
+/// colour, then compute the content hash. Only `Shape::Polyline` routes through
 /// this — the one multi-segment stroke with interior joins; every
 /// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
 /// `ShapeRecord::Curve` directly, picking its [`CurveBasis`]. Both
@@ -246,14 +246,16 @@ pub(crate) fn mesh(
 pub(crate) fn polyline(
     store: &mut RecordStore,
     points: &[Vec2],
+    stroke: Stroke,
     colors: PolylineColors<'_>,
-    width: f32,
     cap: LineCap,
     join: LineJoin,
     bbox: Rect,
 ) -> ShapeRecord {
+    // `Single` stages one white multiplier, so every mode takes the same
+    // multiply and the stroke colour lands exactly: `1.0 × c` is `c`.
     let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
-        PolylineColors::Single(c) => (ColorMode::Single, std::slice::from_ref(c)),
+        PolylineColors::Single => (ColorMode::Single, std::slice::from_ref(&RgbaF32::WHITE)),
         PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
         PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
     };
@@ -278,7 +280,7 @@ pub(crate) fn polyline(
         !bbox.has_nan(),
         "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
     );
-    let staged = store.stage_polyline(points, color_slice);
+    let staged = store.stage_polyline(points, color_slice, stroke.color);
     let lowered_colors = &store.polyline_colors[staged.colors.range()];
 
     // Hash contract for polyline records: no variant tag needed —
@@ -289,7 +291,7 @@ pub(crate) fn polyline(
         point.hash_visual(&mut h);
     }
     h.pod_slice(lowered_colors);
-    let style = (approx::canon_bits(width) as u64) << 24
+    let style = (approx::canon_bits(stroke.width) as u64) << 24
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
         | (join as u64);
@@ -297,7 +299,7 @@ pub(crate) fn polyline(
     let content_hash = h.finish();
 
     ShapeRecord::Polyline {
-        width,
+        width: stroke.width,
         color_mode: mode,
         cap,
         join,
@@ -315,9 +317,8 @@ pub(crate) fn polyline(
 ///
 /// Tessellation happens GPU-side at draw time — no CPU flattening, no
 /// per-curve vertex/index allocation. The composer derives sub-instance
-/// count from the post-transform control-polygon length. A linear
-/// gradient samples along the curve parameter `t`; its `angle` is
-/// ignored.
+/// count from the post-transform control-polygon length. A ramp samples
+/// along the curve parameter `t`.
 ///
 /// Lines and quadratics reach the shader as cubics. A line's inner
 /// control points sit on the segment's thirds, so `B(t) = a + (b - a)·t`
@@ -325,18 +326,14 @@ pub(crate) fn polyline(
 /// flatness fast-path keeps that collinear cubic a single GPU instance.
 /// A quadratic's promotion is exact, not an approximation. An arc keeps
 /// its own basis: the shader evaluates the exact circle, so
-/// centre/radius/angles are stored verbatim and a linear gradient is
-/// sampled along the sweep.
+/// centre/radius/angles are stored verbatim and a ramp is sampled along
+/// the sweep.
 pub(crate) fn curve(
     store: &mut RecordStore,
     geometry: CurveGeometry,
-    stroke: CurveStroke,
+    style: CurveStyle,
 ) -> ShapeRecord {
-    let CurveStroke {
-        width,
-        brush: paint,
-        cap,
-    } = stroke;
+    let CurveStyle { stroke, ramp, cap } = style;
     let bounded = match geometry {
         CurveGeometry::Line { a, b } => {
             let third = (b - a) / 3.0;
@@ -371,7 +368,24 @@ pub(crate) fn curve(
             }
         }
     };
-    curve_record(bounded, width, brush(store, paint.as_brush()), cap)
+    let ramp = match &ramp {
+        None => CurveRamp::None,
+        Some(ramp) => {
+            // Tag 3, past the gradient kinds' 0..=2 in `brush`, so a ramp
+            // and a gradient over the same stops hash apart.
+            let hash = grad_hash(3, ramp);
+            let id = store.intern_gradient(
+                hash,
+                RecordedGradient {
+                    axis: FillAxis::ZERO,
+                    kind: FillKind::RAMP,
+                    ramp: *ramp,
+                },
+            );
+            CurveRamp::Interned { id, hash }
+        }
+    };
+    curve_record(bounded, ShapeStroke::from(stroke), ramp, cap)
 }
 
 /// One curve's shader basis and the tight bbox of its trace — what
@@ -393,17 +407,22 @@ fn cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> BoundedBasis {
 
 /// The one `ShapeRecord::Curve` constructor — both bases land here, so
 /// the stroke fields they share are assembled in exactly one place.
-/// The record hash (`compute_record_hash`) covers the basis + width +
-/// cap + brush directly; the only lowering-time hash it reads is the
-/// one a gradient `fill` carries.
-fn curve_record(bounded: BoundedBasis, width: f32, fill: ShapeBrush, cap: LineCap) -> ShapeRecord {
+/// The record hash (`compute_record_hash`) covers the basis + stroke +
+/// cap directly; the only lowering-time hash it reads is the one an
+/// interned `ramp` carries.
+fn curve_record(
+    bounded: BoundedBasis,
+    stroke: ShapeStroke,
+    ramp: CurveRamp,
+    cap: LineCap,
+) -> ShapeRecord {
     let BoundedBasis { basis, bbox } = bounded;
     ShapeRecord::Curve {
-        basis,
-        width,
-        fill,
         cap,
+        basis,
+        stroke,
         bbox,
+        ramp,
     }
 }
 
@@ -465,7 +484,7 @@ mod tests {
             (
                 "stroke",
                 Background {
-                    stroke: Stroke::solid(RgbaF32::WHITE, f32::NAN),
+                    border: Stroke::new(RgbaF32::WHITE, f32::NAN),
                     ..Background::fill(RgbaF32::WHITE)
                 },
             ),
@@ -557,7 +576,7 @@ mod tests {
             };
             assert!(
                 !row.corners.has_nan()
-                    && !row.stroke.has_nan()
+                    && !row.border.has_nan()
                     && !row.shadow.has_nan()
                     && !row.fill.has_nan(),
                 "a NaN {label} must not survive lowering",

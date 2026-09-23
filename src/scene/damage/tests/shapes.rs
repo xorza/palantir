@@ -3,6 +3,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size};
 use crate::scene::damage::Damage;
@@ -366,7 +367,6 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     use crate::scene::tree::paint_anims::curves;
     use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
     use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
-    use crate::shape::polyline::PolylineColors;
     use std::f32::consts::TAU;
     use std::time::Duration;
 
@@ -383,8 +383,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
                         ui.add_shape_animated(
                             Shape::polyline(
                                 &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                                PolylineColors::Single(RED),
-                                1.0,
+                                Stroke::new(RED, 1.0),
                             ),
                             PaintAnim::turn(0.0, 1.0)
                                 .started_at(Duration::ZERO)
@@ -442,14 +441,16 @@ fn node_snapshot_decomposition_matches_cascade() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 1.0)
-                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                );
-                ui.add_shape(
-                    Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0), 1.0)
-                        .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
-                );
+                ui.add_shape(Shape::line(
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 10.0),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                ));
+                ui.add_shape(Shape::line(
+                    Vec2::new(20.0, 20.0),
+                    Vec2::new(30.0, 30.0),
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                ));
             });
     });
 
@@ -492,14 +493,16 @@ fn node_snapshot_decomposition_matches_cascade() {
     // shape). The unchanged "multi" subtree-skips and contributes
     // nothing, so the buffer holds exactly the newcomer's rows.
     let two_lines = |ui: &mut Ui| {
-        ui.add_shape(
-            Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 1.0)
-                .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
-        );
-        ui.add_shape(
-            Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0), 1.0)
-                .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
-        );
+        ui.add_shape(Shape::line(
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 10.0),
+            Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+        ));
+        ui.add_shape(Shape::line(
+            Vec2::new(20.0, 20.0),
+            Vec2::new(30.0, 30.0),
+            Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+        ));
     };
     frame(&mut h, |ui| {
         Panel::hstack()
@@ -859,9 +862,12 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
         }
         p.show(ui, |ui| {
             ui.add_shape(
-                Shape::line(Vec2::new(5.0, 10.0), Vec2::new(20.0, 10.0), 2.0)
-                    .brush(color)
-                    .cap(LineCap::Round),
+                Shape::line(
+                    Vec2::new(5.0, 10.0),
+                    Vec2::new(20.0, 10.0),
+                    Stroke::new(color, 2.0),
+                )
+                .cap(LineCap::Round),
             );
         });
     };

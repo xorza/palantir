@@ -1,6 +1,7 @@
 //! Chained, allocation-free authoring of a gradient — stops pushed inline
 //! into the value they end up in.
 
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::stops::{GradientStopsBuilder, Stop};
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
 use crate::primitives::color::RgbaF32;
@@ -56,9 +57,11 @@ impl<G: GradientGeometry> GradientBuilder<G> {
     pub fn build(self) -> Gradient<G> {
         Gradient {
             geometry: self.geometry,
-            stops: self.stops.build(),
+            ramp: ColorRamp {
+                stops: self.stops.build(),
+                interp: self.interp,
+            },
             spread: self.spread,
-            interp: self.interp,
         }
     }
 }

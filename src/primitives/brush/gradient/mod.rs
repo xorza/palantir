@@ -1,15 +1,16 @@
 //! Gradients: one [`Gradient`] type parameterized by the geometry payload
 //! that distinguishes the linear, radial and conic kinds.
 //!
-//! Everything a gradient carries beside that payload — the stop list, the
-//! spread mode, the interpolation space, the builder, the cache-key hash
-//! and the NaN screen — is identical across the three kinds and is
-//! written once here.
+//! Everything a gradient carries beside that payload — the colour ramp,
+//! the spread mode, the builder, the cache-key hash and the NaN screen —
+//! is identical across the three kinds and is written once here.
 
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::nan::NanCheck;
 
+pub(crate) mod color_ramp;
 pub(crate) mod conic_geometry;
 pub(crate) mod gradient_builder;
 pub(crate) mod linear_geometry;
@@ -73,8 +74,9 @@ pub trait GradientGeometry {
     fn has_nan(&self) -> bool;
 }
 
-/// A gradient of any kind: `geometry` picks the kind, and the rest is
-/// the same for all three.
+/// A gradient of any kind: `geometry` maps each point of the fill to a
+/// value, `spread` folds values outside `0..=1` back in, and `ramp` maps
+/// the value to a colour. Only the geometry differs between the kinds.
 ///
 /// Stops live inline via [`GradientStops`] so a gradient value is
 /// heap-free — 48 B for the linear kind, 60 B for the radial one.
@@ -83,17 +85,23 @@ pub trait GradientGeometry {
 /// copies expensive through the recording chain; see `Brush`'s comment
 /// for the auto-`Copy` audit story. `.clone()` is cheap (one inline
 /// memcpy) — just explicit.
+// `repr(C)`, here and on `ColorRamp`, pins the two enum bytes last.
+// `Brush` stores its tag in values `interp` or `spread` never take, which
+// works only if that byte sits past the end of every smaller variant: in
+// the 60 B radial kind they are bytes 57 and 58, and the linear and conic
+// kinds are 48 B and 56 B. Free to reorder, rustc puts `interp` at byte
+// 16, and `Brush` needs 64 B.
+#[repr(C)]
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Gradient<G> {
     /// Where the parametric axis runs — see the geometry type.
     #[serde(flatten)]
     pub geometry: G,
-    /// The colour ramp along that axis.
-    pub stops: GradientStops,
+    /// The colours along that axis.
+    #[serde(flatten)]
+    pub ramp: ColorRamp,
     /// What happens outside `0..=1`.
     pub spread: Spread,
-    /// Which space the ramp interpolates in.
-    pub interp: Interp,
 }
 
 impl<G> Gradient<G> {
@@ -107,14 +115,14 @@ impl<G> Gradient<G> {
     /// Override the colour space interpolation runs in.
     /// Builder-style.
     pub const fn with_interp(mut self, interp: Interp) -> Self {
-        self.interp = interp;
+        self.ramp.interp = interp;
         self
     }
 
     /// Paints nothing visible when every stop is transparent.
     #[inline]
     pub fn is_noop(&self) -> bool {
-        self.stops.iter().all(|stop| stop.color().is_noop())
+        self.ramp.is_noop()
     }
 }
 
@@ -124,9 +132,11 @@ impl<G: GradientGeometry> Gradient<G> {
     fn from_stops(geometry: G, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             geometry,
-            stops: GradientStops::new(stops),
+            ramp: ColorRamp {
+                stops: GradientStops::new(stops),
+                interp: G::DEFAULT_INTERP,
+            },
             spread: Spread::default(),
-            interp: G::DEFAULT_INTERP,
         }
     }
 
@@ -139,13 +149,13 @@ impl<G: GradientGeometry> Gradient<G> {
 
 /// Hand-written rather than derived: the geometry needs canonical f32
 /// bit encoding, and the stops hash through their own packed form. Used
-/// by command-buffer dedup; the atlas hashes `(stops, interp)` separately
-/// (kind-agnostic) in `gradient_atlas::GradientLutKey`.
+/// by command-buffer dedup; the atlas keys its rows on the [`ColorRamp`]
+/// alone, which is kind-agnostic.
 impl<G: GradientGeometry> std::hash::Hash for Gradient<G> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.geometry.hash_geometry(state);
-        state.write_u64(gradient_tag(self.spread, self.interp));
-        std::hash::Hash::hash(&self.stops, state);
+        state.write_u64(gradient_tag(self.spread, self.ramp.interp));
+        std::hash::Hash::hash(&self.ramp.stops, state);
     }
 }
 

@@ -298,13 +298,13 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     clip_screen(screen, shape_clip)
                 }
                 ShapeRecord::Curve {
-                    width, cap, bbox, ..
+                    stroke, cap, bbox, ..
                 } => {
                     let local = spun_if_animated(*bbox, layout_rect, &tree.paint_anims, idx);
                     let centerline = lift_to_screen(local, layout_rect.min, shape_transform, None);
                     let screen = stroke_bounds::bbox(
                         centerline,
-                        *width * shape_transform.scale,
+                        stroke.width * shape_transform.scale,
                         HALF_FRINGE / display_scale,
                         *cap,
                         None,

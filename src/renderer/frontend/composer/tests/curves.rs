@@ -429,15 +429,18 @@ fn compose_splits_curve_batches_across_scissor_groups() {
     );
 }
 
+/// A ramp curve's fill reaches every sub-instance whole: the ramp tag,
+/// its atlas row, and the stroke colour in both colour lanes, where the
+/// shader multiplies it into the sample. A solid curve carries the solid
+/// tag and the fallback row instead.
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
-    use crate::primitives::brush::gradient::Spread;
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
+    let tint = RgbaF16::from(RgbaF32::new(0.25, 0.5, 1.0, 0.75));
     let buf = run(
         |b, _arena| {
-            // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
             // Every sub-instance must carry the same fill_kind and row.
             b.draw_curve(
                 DrawCurvePayload {
@@ -449,11 +452,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
                         p2: Vec2::new(90.0, 50.0),
                         p3: Vec2::new(100.0, 0.0),
                     },
-                    fill: GpuFill {
-                        color: RgbaF32::TRANSPARENT.into(),
-                        kind: FillKind::linear(Spread::Pad),
-                        lut_row: LutRow(7),
-                    },
+                    fill: GpuFill::curve(tint, Some(LutRow(7))),
                     width: 4.0,
                     ..Default::default()
                 },
@@ -467,13 +466,24 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
         "must emit at least one sub-instance"
     );
     for ci in &buf.curves {
-        assert_eq!(ci.fill_kind.0 & 0xFF, 1, "linear brush low byte");
+        assert_eq!(ci.fill_kind, FillKind::RAMP);
         assert_eq!(
             ci.fill_lut_row,
             LutRow(7),
             "row threaded through to instance"
         );
+        assert_eq!(
+            (ci.color0, ci.color1),
+            (tint, tint),
+            "the tint rides both lanes"
+        );
     }
+
+    let solid = GpuFill::curve(tint, None);
+    assert_eq!(
+        (solid.color, solid.kind, solid.lut_row),
+        (tint, FillKind::SOLID, LutRow::FALLBACK),
+    );
 }
 
 #[test]

@@ -36,7 +36,7 @@ impl Checkerboard {
             light: theme.checker_light,
             dark: theme.checker_dark,
             cell: theme.checker_cell.themed_length(1.0),
-            border: Stroke::solid(theme.border, theme.border_width.themed_length(0.0)),
+            border: Stroke::new(theme.border, theme.border_width.themed_length(0.0)),
         }
     }
 
@@ -47,7 +47,7 @@ impl Checkerboard {
         if color.a < 1.0 {
             self.paint(ui, size);
         }
-        ui.add_shape(Shape::owner_rect().fill(color).stroke(self.border));
+        ui.add_shape(Shape::owner_rect().fill(color).border(self.border));
     }
 
     /// Paint the pattern across the owner's rect. The caller decides whether

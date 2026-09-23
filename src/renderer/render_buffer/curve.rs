@@ -46,7 +46,7 @@ pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
 ///   `p2 = (a0, a1)` start/end angle in radians (screen convention:
 ///   0 = +x, y-down ⇒ increasing = clockwise); `p1.y`/`p3` unused.
 ///   The angle at `t` is `mix(a0, a1, t)` — exact circle, no cubic
-///   approximation error, and gradient `t` tracks the sweep linearly.
+///   approximation error, and ramp `t` tracks the sweep linearly.
 /// - [`CURVE_KIND_SEGMENT`] — `p0`/`p3` are the segment endpoints;
 ///   `p1`/`p2` carry the pre-oriented bisector clip-plane normals
 ///   for the start/end joint (zero = cap end, no clip; "keep" is
@@ -78,11 +78,11 @@ pub(crate) struct CurveInstance {
     pub(crate) t0: f32,
     pub(crate) t1: f32,
     pub(crate) width: f32,
-    /// Stroke colour at `t = 0`. Zeroed for a gradient `fill_kind`; the
-    /// shader samples the LUT row instead.
+    /// Stroke colour at `t = 0`. Under a ramp `fill_kind` it multiplies
+    /// the colour the shader samples from the LUT row.
     pub(crate) color0: RgbaF16,
     /// Stroke colour at `t = 1` — the shader lerps `color0 → color1`
-    /// along `t` (straight-alpha, like `PolylineColors::PerPoint`).
+    /// along `t` (straight-alpha, like a polyline's per-point colours).
     /// Equal to `color0` for single-colour strokes.
     pub(crate) color1: RgbaF16,
     /// Cap kind per end, packed: bits 0..8 = start cap, 8..16 = end
@@ -94,11 +94,13 @@ pub(crate) struct CurveInstance {
     /// this lane and skip cap extension. Polyline segments carry the
     /// user cap on true ends and Butt on joint ends.
     pub(crate) cap: u32,
-    /// Brush kind tag. Low byte 0 = solid, 1 = linear. Spread mode
-    /// would ride in bits 8..16 like the quad pipeline, but a curve's
-    /// `t` is already clamped to [0, 1] by construction, so spread is
-    /// a no-op here. `#[repr(transparent)]` over `u32`, so the GPU
-    /// sees the same bytes the `Uint32` vertex attribute expects.
+    /// Fill kind tag: [`FillKind::SOLID`] or [`FillKind::RAMP`], the two
+    /// [`GpuFill::curve`] can make. A curve's `t` is already in [0, 1]
+    /// by construction, so no spread rides here. `#[repr(transparent)]`
+    /// over `u32`, so the GPU sees the same bytes the `Uint32` vertex
+    /// attribute expects.
+    ///
+    /// [`GpuFill::curve`]: crate::renderer::frontend::payload::gpu_fill::GpuFill::curve
     pub(crate) fill_kind: FillKind,
     /// Atlas row when `fill_kind` is a gradient, else ignored.
     pub(crate) fill_lut_row: LutRow,

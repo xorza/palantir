@@ -11,7 +11,7 @@
 //!
 //! ## Why the tail alone answers eviction
 //!
-//! [`CpuGradientAtlas::register_stops`] moves a row to the head on
+//! [`CpuGradientAtlas::register`] moves a row to the head on
 //! every registration — hit or claim — and stamps it with the current
 //! epoch. Nothing ever moves a row backward, so every row registered
 //! this epoch sits strictly ahead of every row that wasn't: **the
@@ -21,8 +21,8 @@
 //! is, and the atlas must grow rather than repaint a row this frame's
 //! draws already reference.
 //!
-//! [`CpuGradientAtlas::register_stops`]:
-//!     crate::renderer::gradient_atlas::CpuGradientAtlas::register_stops
+//! [`CpuGradientAtlas::register`]:
+//!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
 
 /// Absent link. Distinguishable from every real row id because the row
 /// count is bounded by

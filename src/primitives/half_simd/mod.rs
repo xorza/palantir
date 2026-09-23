@@ -62,6 +62,9 @@ impl F16x4 {
     /// All-zero lanes (`0.0` in f16). Also the `Default`.
     pub(crate) const ZERO: Self = Self([0; 4]);
 
+    /// Every lane `1.0` in f16.
+    pub(crate) const ONE: Self = Self([half::f16::ONE.to_bits(); 4]);
+
     /// One lane's f16 bit pattern — for predicates that test a single
     /// lane (`RgbaF16`'s alpha) without unpacking all four to f32.
     #[inline(always)]

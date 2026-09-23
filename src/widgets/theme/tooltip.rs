@@ -63,7 +63,7 @@ impl TooltipTheme {
     /// A small raised bubble with a soft drop shadow.
     pub fn from_palette(p: &Palette) -> Self {
         let panel = Background::rounded(p.elem, Corners::all(4.0))
-            .with_stroke(Stroke::solid(p.border_mid(), 1.0))
+            .with_border(Stroke::new(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 RgbaF32::new(0.0, 0.0, 0.0, 0.6),
                 Vec2::new(2.0, 2.0),

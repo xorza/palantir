@@ -57,19 +57,19 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         ("RgbaF16::is_noop", RgbaF16::from(nan_color).is_noop()),
         (
             "Stroke::is_noop/width",
-            Stroke::solid(RgbaF32::WHITE, N).is_noop(),
+            Stroke::new(RgbaF32::WHITE, N).is_noop(),
         ),
         (
             "Stroke::is_noop/color",
-            Stroke::solid(nan_color, 2.0).is_noop(),
+            Stroke::new(nan_color, 2.0).is_noop(),
         ),
         (
             "ShapeStroke::is_noop/width",
-            ShapeStroke::from(Stroke::solid(RgbaF32::WHITE, N)).is_noop(),
+            ShapeStroke::from(Stroke::new(RgbaF32::WHITE, N)).is_noop(),
         ),
         (
             "ShapeStroke::is_noop/color",
-            ShapeStroke::from(Stroke::solid(nan_color, 2.0)).is_noop(),
+            ShapeStroke::from(Stroke::new(nan_color, 2.0)).is_noop(),
         ),
         ("Brush::is_noop", Brush::Solid(nan_color).is_noop()),
         (

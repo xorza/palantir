@@ -1,5 +1,5 @@
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::RgbaF32;
 use crate::primitives::fill_kind::FillKind;
@@ -13,7 +13,7 @@ use std::panic::AssertUnwindSafe;
 fn stores_are_isolated() {
     let mut first = RecordStore::default();
     let second = RecordStore::default();
-    first.stage_polyline(&[Vec2::new(3.0, 5.0)], &[]);
+    first.stage_polyline(&[Vec2::new(3.0, 5.0)], &[], RgbaF32::WHITE);
 
     assert_eq!(first.polyline_points.as_slice(), &[Vec2::new(3.0, 5.0)]);
     assert!(second.polyline_points.is_empty());
@@ -28,15 +28,11 @@ fn stores_are_isolated() {
 /// wasted rows, never a wrong one.
 #[test]
 fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
-    let stops = GradientStops::new([
-        Stop::new(0.0, RgbaF32::BLACK),
-        Stop::new(1.0, RgbaF32::WHITE),
-    ]);
+    let ramp = ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
     let first = RecordedGradient {
         axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
         kind: FillKind::linear(Spread::Pad),
-        stops,
-        interp: Interp::Oklab,
+        ramp,
     };
     let colliding = RecordedGradient {
         axis: FillAxis::from_lanes(0.0, 1.0, 0.0, 1.0),
@@ -72,8 +68,7 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     let after_clear = RecordedGradient {
         axis: FillAxis::ZERO,
         kind: FillKind::linear(Spread::Reflect),
-        stops,
-        interp: Interp::Linear,
+        ramp: ramp.with_interp(Interp::Linear),
     };
     let after_clear_id = gradients.intern(7, after_clear.clone());
     assert_eq!(after_clear_id.0, 0);
@@ -99,11 +94,7 @@ fn gradient_interner_dedups_at_every_table_width() {
         RecordedGradient {
             axis: FillAxis::from_lanes(i as f32, 0.0, 0.0, 1.0),
             kind: FillKind::linear(Spread::Pad),
-            stops: GradientStops::new([
-                Stop::new(0.0, RgbaF32::BLACK),
-                Stop::new(1.0, RgbaF32::WHITE),
-            ]),
-            interp: Interp::Oklab,
+            ramp: ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE),
         }
     }
 

@@ -100,14 +100,13 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     assert_eq!(buf.groups.len(), 2);
 }
 
+/// A quad's border is an inner-edge annulus, so it paints nothing
+/// outside the rect: a bordered quad under an opaque cover of the same
+/// rect is invisible and pruned, exactly like an unbordered one.
 #[test]
-fn prune_does_not_drop_stroked_quad_under_solid_cover() {
+fn prune_drops_bordered_quad_under_solid_cover() {
     use crate::primitives::stroke::Stroke;
     use crate::renderer::frontend::payload::brush_source::BrushSource;
-    // A stroked quad's stroke spills outside the rect; pruning a
-    // stroked quad on the strict containment test below would lose
-    // the stroke fringe. Predicate requires zero-stroke as
-    // occludable — stroked quads are kept regardless of cover.
     let buf = run(
         |b, _| {
             b.draw_quad(
@@ -115,7 +114,7 @@ fn prune_does_not_drop_stroked_quad_under_solid_cover() {
                     rect(0.0, 0.0, 100.0, 100.0),
                     Corners::default(),
                     BrushSource::Solid(RgbaF32::srgb(1.0, 0.0, 0.0).into()),
-                    Stroke::solid(RgbaF32::srgb(0.0, 1.0, 0.0), 2.0).into(),
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 2.0).into(),
                 ),
                 1.0,
             );
@@ -123,18 +122,10 @@ fn prune_does_not_drop_stroked_quad_under_solid_cover() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    // Top quad is solid opaque sharp-cornered no-stroke; it would be
-    // an occluder. Bottom quad has corners==0 and would normally be
-    // covered — but it has a stroke, so the occludee predicate
-    // (stroke_width ≈ 0) must reject it.
-    // NB: the design doc disqualifies stroked quads as both occluder
-    // AND occludable. Implementation only excludes stroked from
-    // occluders; occludables are not stroke-filtered today because
-    // the GPU rasterizes the stroked quad only inside the bounding
-    // rect's expanded box — actually the stroke is centred, so
-    // half extends outside the rect. A correctly-implemented
-    // occludable predicate must also exclude stroked quads.
-    assert_eq!(buf.quads.len(), 2, "stroked under-quad kept");
+    // The top quad is solid, opaque, sharp and pixel-aligned, so its
+    // cover is its whole rect, which contains the bordered quad's rect.
+    assert_eq!(buf.quads.len(), 1, "bordered under-quad pruned");
+    assert_eq!(buf.quads[0].stroke_width, 0.0, "the cover survives");
 }
 
 #[test]
@@ -382,7 +373,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
                     rect(0.0, 0.0, 100.0, 100.0),
                     Corners::default(),
                     BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::solid(RgbaF32::srgb(0.0, 0.0, 0.0), 2.0).into(),
+                    Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 2.0).into(),
                 ),
                 1.0,
             );
@@ -435,25 +426,25 @@ fn prune_occluder_stroke_translucency_gates_cover() {
         Case {
             label: "opaque_stroke_aa_edge_not_covered",
             under: rect(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::solid(RgbaF32::srgb(0.0, 1.0, 0.0), 4.0),
+            stroke: Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 4.0),
             pruned: false,
         },
         Case {
             label: "translucent_stroke_ring_not_covered",
             under: rect(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::solid(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
+            stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
             pruned: false,
         },
         Case {
             label: "translucent_stroke_interior_covered",
             under: rect(10.0, 10.0, 50.0, 50.0),
-            stroke: Stroke::solid(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
+            stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
             pruned: true,
         },
         Case {
             label: "stroke_wider_than_half_rect_no_cover",
             under: rect(10.0, 10.0, 50.0, 50.0),
-            stroke: Stroke::solid(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 60.0),
+            stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 60.0),
             pruned: false,
         },
     ];
@@ -653,7 +644,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                         rect(0.0, 0.0, 200.0, 200.0),
                         Corners::default(),
                         BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                        Stroke::solid(RgbaF32::WHITE, 2.0).into(),
+                        Stroke::new(RgbaF32::WHITE, 2.0).into(),
                     ),
                     1.0,
                 );

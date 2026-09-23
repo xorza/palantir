@@ -2,6 +2,7 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::capture::PaintCall;
@@ -31,7 +32,6 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use std::f32::consts::TAU;
 
     use crate::shape::Shape;
-    use crate::shape::polyline::PolylineColors;
     use std::time::Duration;
 
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
@@ -47,8 +47,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
                     ui.add_shape_animated(
                         Shape::polyline(
                             &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                            PolylineColors::Single(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                            1.0,
+                            Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                         ),
                         PaintAnim::turn(0.0, 1.0)
                             .started_at(Duration::ZERO)
@@ -118,7 +117,13 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .show(ui, |ui| {
                     ui.add_shape_animated(
-                        Shape::arc(Vec2::new(50.0, 20.0), 10.0, 0.0, PI, 2.0).brush(RgbaF32::WHITE),
+                        Shape::arc(
+                            Vec2::new(50.0, 20.0),
+                            10.0,
+                            0.0,
+                            PI,
+                            Stroke::new(RgbaF32::WHITE, 2.0),
+                        ),
                         PaintAnim::turn(0.0, 1.0)
                             .started_at(Duration::ZERO)
                             .period(Duration::from_secs_f32(TAU / 1.0))

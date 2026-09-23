@@ -434,11 +434,11 @@ mod record_store_tests {
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::color::{RgbaF16, RgbaF32};
     use crate::primitives::mesh::{Mesh, MeshVertex};
+    use crate::primitives::stroke::Stroke;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::texture_limit::TextureLimit;
     use crate::shape::Shape;
-    use crate::shape::polyline::PolylineColors;
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;
@@ -497,11 +497,9 @@ mod record_store_tests {
             .size(96.0)
             .show(ui, |ui| {
                 ui.add_shape(Shape::mesh(mesh));
-                ui.add_shape(Shape::polyline(
-                    points,
-                    PolylineColors::PerPoint(colors),
-                    3.0,
-                ));
+                ui.add_shape(
+                    Shape::polyline(points, Stroke::new(RgbaF32::WHITE, 3.0)).per_point(colors),
+                );
                 let label = ui.intern(label);
                 Text::new(label)
                     .id(WidgetId::from_hash((id, "text")))

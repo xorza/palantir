@@ -363,7 +363,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 self.theme.preview_fill,
                 Corners::all(self.theme.preview_corner),
             )
-            .with_stroke(self.theme.preview_stroke);
+            .with_border(self.theme.preview_stroke);
             ui.layer(Layer::Tooltip)
                 .fixed_at(r.min)
                 .max_size(r.size)

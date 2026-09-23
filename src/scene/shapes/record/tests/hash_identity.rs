@@ -8,7 +8,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::texture_id::TextureId;
 use crate::scene::shapes::hash::compute_record_hash;
-use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke};
+use crate::scene::shapes::paint::{CurveRamp, LoweredShadow, ShapeBrush, ShapeStroke};
 use crate::scene::shapes::record::*;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
@@ -26,7 +26,7 @@ use glam::Vec2;
 #[test]
 fn quad_shapes_hash_apart() {
     let fill = ShapeBrush::Solid(RgbaF16::from(RgbaF32::WHITE));
-    let stroke = ShapeStroke::from(Stroke::solid(RgbaF32::BLACK, 2.0));
+    let stroke = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 2.0));
     let corners = Corners::all(8.0);
     let rect = |kind| {
         ShapeRecord::Quad(QuadShape::Rect {
@@ -34,7 +34,7 @@ fn quad_shapes_hash_apart() {
             local_rect: None,
             corners,
             fill,
-            stroke,
+            border: stroke,
         })
     };
 
@@ -56,7 +56,7 @@ fn quad_shapes_hash_apart() {
         c: Vec2::ZERO,
         radius: 0.0,
         fill: RgbaF16::from(RgbaF32::WHITE),
-        stroke,
+        border: stroke,
         bbox: Rect::ZERO,
     });
     let mut seen = Vec::new();
@@ -82,13 +82,13 @@ fn quad_shapes_hash_apart() {
 /// repaint when a stroke changes shape.
 #[test]
 fn curve_and_arc_bases_hash_apart() {
-    let fill = ShapeBrush::Solid(RgbaF16::from(RgbaF32::WHITE));
+    let stroke = ShapeStroke::from(Stroke::new(RgbaF32::WHITE, 2.0));
     let curve = |basis| ShapeRecord::Curve {
-        basis,
-        width: 2.0,
-        fill,
         cap: LineCap::Butt,
+        basis,
+        stroke,
         bbox: Rect::ZERO,
+        ramp: CurveRamp::None,
     };
     let arc = |center, radius, a0, a1| {
         curve(CurveBasis::Arc {

@@ -5,10 +5,10 @@ use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
-    Background, Block, Brush, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ComboBox, Configure, ConicGradient, Corners, DragValue, LinearGradient, Modal, Panel,
-    ProgressBar, RadialGradient, Rect, RgbaF32, Shadow, Sizing, Slider, Spinner, SrgbaU8, Stroke,
-    Switch, Text, ToggleTheme,
+    Background, Block, Brush, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorRamp,
+    ColorStrip, ComboBox, Configure, ConicGradient, Corners, DragValue, LinearGradient, Modal,
+    Panel, ProgressBar, RadialGradient, Rect, RgbaF32, Shadow, Sizing, Slider, Spinner, SrgbaU8,
+    Stroke, Switch, Text, ToggleTheme,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -30,10 +30,10 @@ fn button_hello_matches_golden() {
     assert_matches_golden("button_hello", &img, Tolerance::default());
 }
 
-/// Exercises the rounded-rect SDF AA path: solid fill, visible stroke,
+/// Exercises the rounded-rect SDF AA path: solid fill, visible border,
 /// non-trivial corner radius, padded inside a darker scene.
 #[test]
-fn frame_filled_with_stroke_matches_golden() {
+fn frame_filled_with_border_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
         Panel::vstack()
@@ -46,14 +46,49 @@ fn frame_filled_with_stroke_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
                         fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
-                        stroke: Stroke::solid(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
+                        border: Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
                         corners: Corners::all(16.0),
                         shadow: Shadow::NONE,
                     })
                     .show(ui);
             });
     });
-    assert_matches_golden("frame_filled_with_stroke", &img, Tolerance::default());
+    assert_matches_golden("frame_filled_with_border", &img, Tolerance::default());
+}
+
+/// A border paints inside its rect: the border's outer edge is the
+/// rect's edge. On a pixel-aligned rect every pixel centre is a whole
+/// half pixel from an edge, so the SDF coverage there is exactly 0 or 1
+/// and the row through the middle reads, pixel for pixel: clear outside,
+/// then the border for exactly its width, then the fill.
+#[test]
+fn a_border_paints_inside_the_rect() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(20, 20), 1.0, RgbaF32::BLACK, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::rect(Rect::new(4.0, 4.0, 12.0, 12.0))
+                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0))
+                        .border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                );
+            });
+    });
+    let clear = Rgba([0, 0, 0, 255]);
+    let border = Rgba([255, 255, 255, 255]);
+    let fill = Rgba([255, 0, 0, 255]);
+    // The rect spans x 4..16; the border takes its outer 2 px each side.
+    let expected: Vec<_> = (0..20)
+        .map(|x| match x {
+            4..=5 | 14..=15 => border,
+            6..=13 => fill,
+            _ => clear,
+        })
+        .collect();
+    let row: Vec<_> = (0..20).map(|x| *img.get_pixel(x, 10)).collect();
+    assert_eq!(row, expected);
 }
 
 /// Pin the linear-gradient paint path end-to-end: composer registers
@@ -147,7 +182,7 @@ fn windowed_rect_masks_corners_matches_golden() {
                     Shape::windowed_rect(card)
                         .corners(20.0)
                         .fill(DARK_BG)
-                        .stroke(Stroke::solid(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                        .border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                 );
             });
     });
@@ -337,7 +372,7 @@ fn surface_rounded_clips_full_fill_child() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
                         fill: RgbaF32::TRANSPARENT.into(),
-                        stroke: Stroke::solid(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 5.0),
+                        border: Stroke::new(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 5.0),
                         corners: Corners::new(4.0, 12.0, 20.0, 28.0),
                         shadow: Shadow::NONE,
                     })
@@ -393,7 +428,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
                     .background(Background {
                         fill: RgbaF32::TRANSPARENT.into(),
-                        stroke: Stroke::solid(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 4.0),
+                        border: Stroke::new(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 4.0),
                         corners: Corners::all(24.0),
                         shadow: Shadow::NONE,
                     })
@@ -563,10 +598,11 @@ fn line_diagonal_aa_matches_golden() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::line(Vec2::new(10.0, 10.0), Vec2::new(150.0, 110.0), 4.0)
-                        .brush(RgbaF32::srgb(0.2, 0.9, 1.0)),
-                );
+                ui.add_shape(Shape::line(
+                    Vec2::new(10.0, 10.0),
+                    Vec2::new(150.0, 110.0),
+                    Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
+                ));
                 // Hairlines at sub-pixel width — should appear dim
                 // (coverage-faded) rather than vanish or look identical
                 // to the 4 px stroke. Two alignments pin the trapezoid
@@ -576,17 +612,18 @@ fn line_diagonal_aa_matches_golden() {
                 // equal total energy, so brightness doesn't pulse as a
                 // hairline drifts across alignments.
                 for y in [80.0, 40.5] {
-                    ui.add_shape(
-                        Shape::line(Vec2::new(10.0, y), Vec2::new(150.0, y), 0.4)
-                            .brush(RgbaF32::srgb(1.0, 1.0, 1.0)),
-                    );
+                    ui.add_shape(Shape::line(
+                        Vec2::new(10.0, y),
+                        Vec2::new(150.0, y),
+                        Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 0.4),
+                    ));
                 }
             });
     });
     assert_matches_golden("line_diagonal_aa", &img, Tolerance::default());
 }
 
-/// Pin: `Shape::Polyline` with `PolylineColors::PerPoint` paints
+/// Pin: `Shape::polyline` with `per_point` colours paints
 /// a multi-stop gradient via GPU vertex interpolation. A 4-point
 /// zig-zag with four corner colors exercises the per-point
 /// coloring + miter joins + composer arena copy in one frame. A
@@ -594,7 +631,6 @@ fn line_diagonal_aa_matches_golden() {
 /// strips, which would fail the gradient sample tolerance.
 #[test]
 fn polyline_gradient_matches_golden() {
-    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(160, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -613,7 +649,9 @@ fn polyline_gradient_matches_golden() {
                     RgbaF32::srgb(0.2, 1.0, 0.4),
                     RgbaF32::srgb(0.2, 0.6, 1.0),
                 ];
-                ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 5.0));
+                ui.add_shape(
+                    Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 5.0)).per_point(&cols),
+                );
             });
     });
     assert_matches_golden("polyline_gradient", &img, Tolerance::default());
@@ -628,7 +666,6 @@ fn polyline_gradient_matches_golden() {
 /// stroke only.
 #[test]
 fn polyline_bevel_join_matches_golden() {
-    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -641,13 +678,13 @@ fn polyline_bevel_join_matches_golden() {
                     Vec2::new(60.0, 60.0),
                     Vec2::new(105.0, 30.0),
                 ];
-                ui.add_shape(Shape::polyline(&shallow, PolylineColors::Single(cyan), 5.0));
+                ui.add_shape(Shape::polyline(&shallow, Stroke::new(cyan, 5.0)));
                 let sharp = [
                     Vec2::new(15.0, 100.0),
                     Vec2::new(80.0, 115.0),
                     Vec2::new(20.0, 130.0),
                 ];
-                ui.add_shape(Shape::polyline(&sharp, PolylineColors::Single(cyan), 5.0));
+                ui.add_shape(Shape::polyline(&sharp, Stroke::new(cyan, 5.0)));
             });
     });
     assert_matches_golden("polyline_bevel_join", &img, Tolerance::default());
@@ -672,9 +709,12 @@ fn polyline_round_caps_match_golden() {
                     (110.0, LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
                 ] {
                     ui.add_shape(
-                        Shape::line(Vec2::new(40.0, y), Vec2::new(140.0, y), 10.0)
-                            .brush(color)
-                            .cap(cap),
+                        Shape::line(
+                            Vec2::new(40.0, y),
+                            Vec2::new(140.0, y),
+                            Stroke::new(color, 10.0),
+                        )
+                        .cap(cap),
                     );
                 }
             });
@@ -689,7 +729,6 @@ fn polyline_round_caps_match_golden() {
 /// through to the chrome instances and their fragment metrics.
 #[test]
 fn polyline_round_join_matches_golden() {
-    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 200), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -707,9 +746,7 @@ fn polyline_round_join_matches_golden() {
                         Vec2::new(90.0, y),
                         Vec2::new(160.0, y + 40.0),
                     ];
-                    ui.add_shape(
-                        Shape::polyline(&pts, PolylineColors::Single(cyan), 8.0).join(join),
-                    );
+                    ui.add_shape(Shape::polyline(&pts, Stroke::new(cyan, 8.0)).join(join));
                 }
             });
     });
@@ -725,7 +762,6 @@ fn polyline_round_join_matches_golden() {
 /// the golden.
 #[test]
 fn polyline_translucent_joins_have_uniform_coverage() {
-    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     // Three translucent chevrons, one per join kind. The GPU joint
     // model clips adjacent segment strips at the angle bisector, so
@@ -750,8 +786,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
                     ui.add_shape(
                         Shape::polyline(
                             &pts,
-                            PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5)),
-                            14.0,
+                            Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 14.0),
                         )
                         .join(*join),
                     );
@@ -795,7 +830,6 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 /// step fails this with `delta ≈ 60+`.
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
-    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
     let img = h.render(UVec2::new(120, 120), 1.0, RgbaF32::BLACK, |ui| {
@@ -810,8 +844,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
                 let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
                 ui.add_shape(Shape::polyline(
                     &pts,
-                    PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5)),
-                    24.0,
+                    Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 24.0),
                 ));
             });
     });
@@ -864,9 +897,8 @@ fn curve_caps_match_golden() {
                             Vec2::new(60.0, dy - 10.0),
                             Vec2::new(140.0, dy - 10.0),
                             Vec2::new(170.0, dy + 40.0),
-                            8.0,
+                            Stroke::new(*color, 8.0),
                         )
-                        .brush(*color)
                         .cap(*cap),
                     );
                 }
@@ -877,9 +909,8 @@ fn curve_caps_match_golden() {
                         Vec2::new(30.0, 215.0),
                         Vec2::new(100.0, 170.0),
                         Vec2::new(170.0, 215.0),
-                        4.0,
+                        Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 4.0),
                     )
-                    .brush(RgbaF32::srgb(1.0, 0.85, 0.2))
                     .cap(LineCap::Round),
                 );
             });
@@ -928,7 +959,7 @@ fn triangle_matches_golden() {
                     )
                     .radius(8.0_f32)
                     .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                    .stroke(Stroke::solid(RgbaF32::WHITE, 3.0)),
+                    .border(Stroke::new(RgbaF32::WHITE, 3.0)),
                 );
                 // Bottom-right: stroke-only (transparent fill), CW winding.
                 ui.add_shape(
@@ -939,7 +970,7 @@ fn triangle_matches_golden() {
                     )
                     .radius(6.0_f32)
                     .fill(RgbaF32::TRANSPARENT)
-                    .stroke(Stroke::solid(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
+                    .border(Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
                 );
             });
     });
@@ -1009,19 +1040,25 @@ fn arc_shapes_match_golden() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::circle(Vec2::new(45.0, 70.0), 30.0, 4.0)
-                        .brush(RgbaF32::srgb(0.2, 0.9, 1.0)),
-                );
-                let comet = LinearGradient::two_stop(
-                    0.0,
+                ui.add_shape(Shape::circle(
+                    Vec2::new(45.0, 70.0),
+                    30.0,
+                    Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
+                ));
+                let comet = ColorRamp::two_stop(
                     RgbaF32::srgb(1.0, 0.85, 0.2).with_alpha(0.0),
                     RgbaF32::srgb(1.0, 0.85, 0.2),
                 );
                 ui.add_shape(
-                    Shape::arc(Vec2::new(130.0, 70.0), 30.0, -FRAC_PI_2, 1.5 * PI, 8.0)
-                        .brush(comet)
-                        .cap(LineCap::Round),
+                    Shape::arc(
+                        Vec2::new(130.0, 70.0),
+                        30.0,
+                        -FRAC_PI_2,
+                        1.5 * PI,
+                        Stroke::new(RgbaF32::WHITE, 8.0),
+                    )
+                    .ramp(comet)
+                    .cap(LineCap::Round),
                 );
             });
     });
@@ -1120,7 +1157,7 @@ fn modal_dialog_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
                 fill: RgbaF32::srgb(0.35, 0.45, 0.65).into(),
-                stroke: Stroke::ZERO,
+                border: Stroke::ZERO,
                 corners: Corners::ZERO,
                 shadow: Shadow::NONE,
             })

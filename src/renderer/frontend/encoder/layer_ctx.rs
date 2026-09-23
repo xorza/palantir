@@ -13,6 +13,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::lut_row::LutRow;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::encoder::GradientResolver;
@@ -27,6 +28,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
@@ -38,7 +40,10 @@ use crate::renderer::render_buffer::image::{
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::shapes::paint::{ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush};
+use crate::scene::record_store::recorded_gradients::GradientId;
+use crate::scene::shapes::paint::{
+    CurveRamp, ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush,
+};
 use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
@@ -82,6 +87,13 @@ impl LayerCtx<'_> {
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradient_resolver
             .source(self.gradients, self.gradient_atlas, brush)
+    }
+
+    /// The atlas row an interned ramp resolved to this pass.
+    fn gradient_row(&mut self, id: GradientId) -> LutRow {
+        self.gradient_resolver
+            .resolve(self.gradients, self.gradient_atlas, id)
+            .lut_row
     }
 
     /// Emit one of a node's shapes. Pulled out of `encode_node` so the
@@ -146,17 +158,17 @@ impl LayerCtx<'_> {
                     local_rect,
                     corners,
                     fill,
-                    stroke,
+                    border,
                     ..
                 } => {
                     let r = geometry::resolve_local_rect(owner_rect, *local_rect);
                     let src = self.brush_source(*fill);
                     match kind {
                         RectKind::Rounded => {
-                            out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *stroke), alpha)
+                            out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *border), alpha)
                         }
                         RectKind::Windowed => out.draw_quad(
-                            DrawQuadPayload::rect_window(r, *corners, src, *stroke),
+                            DrawQuadPayload::rect_window(r, *corners, src, *border),
                             alpha,
                         ),
                     }
@@ -172,13 +184,13 @@ impl LayerCtx<'_> {
                     c,
                     radius,
                     fill,
-                    stroke,
+                    border,
                     bbox: _,
                 } => {
                     // Corner points are owner-local; the composer folds `origin` +
                     // the active transform and derives the covering AABB. Solid
                     // fill only — the reused quad lanes have no room for a gradient.
-                    // Stroke noop-normalization happens inside
+                    // The border's noop-normalization happens inside
                     // `DrawQuadPayload::triangle`, the single canonical gate.
                     out.draw_quad(
                         DrawQuadPayload::triangle(
@@ -186,7 +198,7 @@ impl LayerCtx<'_> {
                             [*a, *b, *c],
                             *fill,
                             *radius,
-                            *stroke,
+                            *border,
                         ),
                         alpha,
                     )
@@ -291,25 +303,28 @@ impl LayerCtx<'_> {
                 );
             }
             ShapeRecord::Curve {
-                basis,
-                width,
-                fill,
                 cap,
+                basis,
+                stroke,
                 bbox,
+                ramp,
             } => {
                 // Curves are owner-local; composer adds `origin` + active
-                // transform before scaling to physical px. Curves carry no
-                // gradient axis, so `fill.axis` goes unread. The basis
+                // transform before scaling to physical px. The basis
                 // crosses verbatim — record and payload share the type, so
                 // both bases' cull, spin, and sub-instance sizing stay one
                 // code path from here through the composer.
+                let ramp_row = match *ramp {
+                    CurveRamp::None => None,
+                    CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
+                };
                 out.draw_curve(
                     DrawCurvePayload {
                         basis: *basis,
                         bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
                         origin: owner_rect.min,
-                        fill: self.brush_source(*fill).gpu_fill(),
-                        width: *width,
+                        fill: GpuFill::curve(stroke.color, ramp_row),
+                        width: stroke.width,
                         cap: *cap,
                     },
                     alpha,
@@ -451,11 +466,11 @@ impl LayerCtx<'_> {
         // WPF's `RenderTransform` convention.
         //
         // Chrome paints BEFORE the clip is pushed: `Tree::open_node` folds
-        // the chrome's stroke width into the padding that deflates the clip
+        // the chrome's border width into the padding that deflates the clip
         // (and, for `ClipMode::Rounded`, insets the mask), so chrome's own
-        // stroke pixels sit outside the mask. Painting chrome first leaves it
-        // unclipped — it self-clips via its SDF — which preserves the stroke
-        // ring while children stay clipped to the inset interior.
+        // border pixels sit outside the mask. Painting chrome first leaves it
+        // unclipped — it self-clips via its SDF — which preserves the border
+        // while children stay clipped to the inset interior.
         //
         // `Tree::open_node` drops chrome to `None` only when every paintable
         // part is no-op. Both `DrawQuadPayload::rect` and
@@ -480,7 +495,7 @@ impl LayerCtx<'_> {
             // paint extent and damage extent stay in lockstep.
             emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
             let src = self.brush_source(bg.fill);
-            out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.stroke), 1.0);
+            out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.border), 1.0);
         }
 
         if clip {

@@ -382,7 +382,7 @@ impl State {
                     .gap(16.0)
                     .background(
                         Background::rounded(support::CARD, Corners::all(10.0))
-                            .with_stroke(Stroke::solid(support::BORDER, 1.0)),
+                            .with_border(Stroke::new(support::BORDER, 1.0)),
                     )
                     .clip_rounded()
                     .show(ui, |ui| {

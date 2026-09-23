@@ -14,8 +14,8 @@ struct Occluder {
     /// (`out.quads[quads_cursor + idx]`).
     idx: u32,
     /// Largest axis-aligned rect with full opaque coverage. Used as the
-    /// left-hand side of `Rect::contains_rect(occludee.painted)` in the
-    /// prune sweep, where `painted = occludee.rect.inflated(stroke_width / 2)`.
+    /// left-hand side of `Rect::contains_rect(occludee.rect)` in the
+    /// prune sweep.
     cover: Rect,
 }
 
@@ -72,10 +72,10 @@ impl OcclusionPruner {
     ///   corner, stroke, and AA rules, in push order (ascending `idx`).
     ///
     /// Behaviour:
-    /// - For each quad at slice index `i`, compute its painted extent as
-    ///   `q.rect.inflated(q.stroke_width / 2)` (centred strokes spill
-    ///   outward; non-stroked inflate by zero). Drop it if some occluder
-    ///   with `idx > i` (drawn on top) has `cover.contains_rect(painted)`.
+    /// - For each quad at slice index `i`, its painted extent is `q.rect`:
+    ///   a quad's border is an inner-edge annulus, so it adds nothing
+    ///   outside the rect. Drop it if some occluder with `idx > i` (drawn
+    ///   on top) has `cover.contains_rect(q.rect)`.
     /// - Shadows (`FillKind::is_shadow`) are never dropped — their visual
     ///   blur extends past the stored rect.
     /// - Compacts in place via copy-down; preserves survivor order.
@@ -127,24 +127,22 @@ impl OcclusionPruner {
             if cursor >= occs.len() {
                 break;
             }
-            // quad.wgsl strokes are inner-edge, so `q.rect` (plus the
-            // shared ½px AA fringe every quad has) already bounds the
-            // painted extent; the stroke-width inflation here is
-            // conservative slack — it can only keep a quad, never
-            // wrongly drop one. Rounded under-quads share their
+            // `q.rect` is the painted extent: quad.wgsl borders are
+            // inner-edge, and the shared ½px AA fringe is what every
+            // cover's AA inset answers. Rounded under-quads share their
             // bounding rect with the painted region, so no
-            // corner-specific handling needed on this side.
-            let painted = q.rect.inflated(q.stroke_width * 0.5);
+            // corner-specific handling is needed on this side.
+            //
             // Cheap reject: no remaining cover is large enough to
-            // contain `painted` on at least one axis. This catches
+            // contain `q.rect` on at least one axis. This catches
             // the dominant "nested panels, parent larger than every
             // descendant" pattern without touching the inner loop.
             let max = self.suffix_max_cover[cursor];
-            if painted.size.w > max.x || painted.size.h > max.y {
+            if q.rect.size.w > max.x || q.rect.size.h > max.y {
                 continue;
             }
             for occ in &occs[cursor..] {
-                if occ.cover.contains_rect(painted) {
+                if occ.cover.contains_rect(q.rect) {
                     self.drop_indices.push(i as u32);
                     break;
                 }
