@@ -2,7 +2,6 @@
 //! and what the pointer and the keyboard did to it.
 
 use crate::input::pointer::PointerButton;
-use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::button_state::ButtonState;
 use crate::input::response::scroll_delta::ScrollDelta;
 use crate::primitives::num::F32Ext;
@@ -193,30 +192,6 @@ impl ResponseState {
     #[inline]
     pub fn any_clicked(&self) -> bool {
         PointerButton::all().any(|button| self.button(button).clicked())
-    }
-
-    /// Report the widget as focused for the rest of this frame, after it
-    /// called [`Ui::set_focus`](crate::Ui::set_focus) on itself.
-    ///
-    /// A probed state predates the request — focus resolves live, but
-    /// the snapshot was taken on entry — so without this the widget's
-    /// own response would deny the focus it just took.
-    #[inline]
-    pub(crate) fn mark_focused(&mut self) {
-        self.focused = true;
-    }
-
-    /// Report a single click, for a widget activated by something the
-    /// pointer pipeline never saw — a keyboard shortcut bound to a menu
-    /// row. Callers read `.clicked()` and must not have to care which
-    /// device produced it.
-    ///
-    /// This and [`Self::mark_focused`] are the only two things a widget
-    /// legitimately knows that its probed snapshot cannot. Writing to a
-    /// probed state any other way is inventing input.
-    #[inline]
-    pub(crate) fn mark_clicked(&mut self) {
-        self.left.phase = ButtonPhase::Up { click: Some(1) };
     }
 
     /// The per-button slice for a **runtime** `button` value — the one

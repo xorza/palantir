@@ -21,9 +21,9 @@ use crate::widgets::widget::Widget;
 /// per-state looks and box defaults once, in its `ThemeSlot` impl, so a
 /// widget reaches a plan through one call rather than restating the quartet.
 ///
-/// [`ThemeSlot::plan`]: crate::widgets::theme::widget_look::theme_slot::ThemeSlot::plan
+/// [`ThemeSlot::plan`]: crate::widget::ThemeSlot::plan
 #[derive(Debug)]
-pub(crate) struct LookPlan {
+pub struct LookPlan {
     /// The flattened look to animate toward.
     pub(crate) target: AnimatedLook,
     /// What the bundle contributes to the node around that look.
@@ -44,7 +44,7 @@ impl LookPlan {
     /// do wear it themselves pass `Some(&look.background)` to
     /// [`Widget::record`].
     ///
-    /// **The only route from a theme bundle to a painted look** — `Button`,
+    /// **The route from a theme bundle to a painted look** — `Button`,
     /// `ComboBox`, `DragValue`'s chip, `TextEdit`, `MenuItem`, and the three
     /// toggles (through `ToggleChrome::record_row`) all arrive here, so per-state
     /// precedence, spacing defaults, and transitions are one behaviour rather
@@ -55,7 +55,7 @@ impl LookPlan {
     // self-time. Force the whole chain into each widget so state picking,
     // default resolution and target construction optimize as one block.
     #[inline(always)]
-    pub(crate) fn apply(self, ui: &mut Ui, widget: &mut Widget) -> AnimatedLook {
+    pub fn apply(self, ui: &mut Ui, widget: &mut Widget) -> AnimatedLook {
         let Self {
             target,
             defaults:

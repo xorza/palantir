@@ -79,7 +79,7 @@ pub struct ContextMenu<'a> {
     /// so the caller's [`Configure`] calls land on the node that
     /// actually records — there is no second node to keep in sync or
     /// swap in at `show`. Its anchor is a placeholder until `show`
-    /// re-anchors it (see [`Popup::anchor`]); a closed menu returns
+    /// re-anchors it (see [`Popup::anchored`]); a closed menu returns
     /// before recording, so the placeholder never places anything.
     ///
     /// It owns the chrome too, so `.background(..)` and the theme
@@ -168,8 +168,8 @@ impl<'a> ContextMenu<'a> {
         // no call site of its own worth keying on.
         let resp = self
             .popup
-            .on(Layer::Menu)
-            .anchor(Anchor::at_point(open_at))
+            .layer(Layer::Menu)
+            .anchored(Anchor::at_point(open_at))
             .default_background(&ctx.panel)
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))

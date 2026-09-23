@@ -3,7 +3,8 @@
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::tests::support::{
     assert_real_row, distinct_grad, register_for,
 };
@@ -62,9 +63,9 @@ fn register_same_gradient_twice_reuses_row() {
 #[test]
 fn near_identical_keys_never_share_a_row() {
     let mut atlas = CpuGradientAtlas::default();
-    let base = LinearGradient::two_stop(0.0, RgbaU8::rgb(10, 20, 30).into(), RgbaF32::WHITE);
+    let base = LinearGradient::two_stop(0.0, SrgbaU8::rgb(10, 20, 30).into(), RgbaF32::WHITE);
     let one_byte_off =
-        LinearGradient::two_stop(0.0, RgbaU8::rgb(10, 20, 31).into(), RgbaF32::WHITE);
+        LinearGradient::two_stop(0.0, SrgbaU8::rgb(10, 20, 31).into(), RgbaF32::WHITE);
 
     let mut rows = HashSet::new();
     for g in [&base, &one_byte_off] {
@@ -122,8 +123,8 @@ fn register_many_distinct_gradients_all_unique_rows() {
 fn register_stops_dedups_across_variants() {
     let mut atlas = CpuGradientAtlas::default();
     let stops = GradientStops::new([
-        Stop::new(0.0, RgbaU8::rgb(255, 64, 0).into()),
-        Stop::new(1.0, RgbaU8::rgb(0, 128, 255).into()),
+        Stop::new(0.0, SrgbaU8::rgb(255, 64, 0).into()),
+        Stop::new(1.0, SrgbaU8::rgb(0, 128, 255).into()),
     ]);
     let r_linear = atlas.register_stops(&stops, Interp::Oklab);
     let r_radial = atlas.register_stops(&stops, Interp::Oklab);

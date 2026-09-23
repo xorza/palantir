@@ -1,5 +1,5 @@
-//! What [`DockState::validate`](crate::DockState::validate) rejects: a
-//! tree that broke one of the invariants the module doc lists.
+//! What deserializing a [`DockState`](crate::DockState) rejects: a tree
+//! that broke one of the invariants its module doc lists.
 
 use crate::widgets::dock::tab_group::TabGroupId;
 

@@ -8,7 +8,7 @@ use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::panel::Panel;
 use crate::widgets::response::Response;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
-use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
+use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
@@ -196,15 +196,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
                         icon: None,
                     });
                 }
-                let TabStripResponse {
-                    clicked,
-                    keyed,
-                    menu_picked,
-                    closed,
-                    drag_stopped,
-                    response: _,
-                    drag_started: _,
-                } = TabStrip::new(&buf.items)
+                let strip = TabStrip::new(&buf.items)
                     .id(strip_id)
                     .selected(*selected)
                     .overflow(overflow)
@@ -213,9 +205,9 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
                 StripHit {
                     // A tabbed view owns its selection outright, so every
                     // way of asking for a tab is the same request.
-                    clicked: clicked.or(keyed).or(menu_picked),
-                    closed,
-                    drag_stopped,
+                    clicked: strip.activated(),
+                    closed: strip.closed,
+                    drag_stopped: strip.drag_stopped,
                 }
             });
             if let Some(index) = hit.closed {

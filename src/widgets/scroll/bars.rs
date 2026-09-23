@@ -5,13 +5,11 @@
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::{self, BarDomain, ScrollbarsDef};
-use crate::layout::types::layout_mode::ScrollSpec;
+use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -20,53 +18,6 @@ use crate::widgets::scroll::ScrollGeometry;
 use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::widget::Widget;
-use glam::BVec2;
-
-/// Cross-axis space one bar reserves on a panned axis: the bar's
-/// `thickness` plus a `gap` strip so the bar doesn't touch the visible
-/// content. Returns 0 when the axis isn't panned.
-#[inline]
-fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
-    if panned {
-        theme.thickness + theme.gap
-    } else {
-        0.0
-    }
-}
-
-/// Cross-axis space the bars take out of the widget's box: the gutter
-/// reserved on each panned axis, and the viewport left over for content.
-#[derive(Copy, Clone, Debug)]
-pub(super) struct BarSpace {
-    pub(super) bar_viewport: Size,
-    pub(super) reserve_y: f32,
-    pub(super) reserve_x: f32,
-}
-
-pub(super) fn bar_space(
-    outer: Size,
-    pan: BVec2,
-    user_padding: Spacing,
-    theme: &ScrollbarTheme,
-    bar_mode: BarMode,
-) -> BarSpace {
-    // Only `Reserved` reserves the gutter on the pan axes. `Overlay`
-    // paints the bar over content without reservation; `Hidden` has
-    // no bar at all. Reservation is constant for `Reserved` (not
-    // toggled by overflow) so a Hug ancestor doesn't shift between
-    // frames; the bar thumb itself still appears conditionally on
-    // `content > viewport`, decided by `layout::scrollbars` after
-    // measure rather than here.
-    let reserve = matches!(bar_mode, BarMode::Reserved);
-    let reserve_y = bar_reservation(pan.y && reserve, theme);
-    let reserve_x = bar_reservation(pan.x && reserve, theme);
-    let bar_viewport = scrollbars::viewport(outer, reserve_y, reserve_x, user_padding);
-    BarSpace {
-        bar_viewport,
-        reserve_y,
-        reserve_x,
-    }
-}
 
 /// One scrollbar axis: the two leaves the overlay records for it, and
 /// last frame's interaction on each.
@@ -82,8 +33,8 @@ impl BarAxis {
     /// Emit this axis's two nodes onto the overlay: a track leaf with
     /// `Sense::CLICK` (paging on press) and a thumb leaf with
     /// `Sense::DRAG` painted on top. Neither carries a size or a
-    /// position — the overlay is a [`crate::layout::scrollbars`]
-    /// container, and its arrange assigns both rects once measure has
+    /// position — the overlay is a [`Widget::scrollbars`] container,
+    /// and its layout assigns both rects once measure has
     /// produced the content extent they are a ratio of.
     ///
     /// Both are recorded unconditionally, even on an axis showing no
@@ -112,53 +63,6 @@ impl BarAxis {
         let thumb = Widget::leaf().id(self.thumb_id).sense(Sense::DRAG);
         let chrome = Background::rounded(fill, radius);
         thumb.record(ui, Some(&chrome), |_| {});
-    }
-}
-
-/// One axis's bar resolved against the offset at the moment it was
-/// taken. Absent (`Bars::resolve` returning `None`) means the content
-/// fits that axis and no thumb shows.
-#[derive(Copy, Clone, Debug)]
-struct ResolvedBar {
-    /// Main-axis length of the track — also the page step, since a
-    /// click past the thumb pages by one viewport.
-    track_main: f32,
-    /// Post-zoom content extent on the main axis.
-    content_main: f32,
-    thumb_offset: f32,
-    thumb_size: f32,
-    /// The thumb's own travel, from the geometry that placed it.
-    travel: f32,
-}
-
-impl ResolvedBar {
-    /// The offset range this bar can express.
-    fn domain(&self) -> BarDomain {
-        BarDomain::new(self.content_main, self.track_main)
-    }
-
-    /// Offset moved per logical pixel of thumb travel.
-    ///
-    /// The denominator comes off the geometry that placed the thumb, not
-    /// off this bar's raw track: the two disagree by the track's floor,
-    /// and a drag scaled by the wrong one moves the content at a rate the
-    /// thumb does not follow.
-    fn travel(&self) -> ThumbTravel {
-        let domain = self.domain();
-        ThumbTravel {
-            factor: approx::share_of(domain.max_off(), self.travel),
-            domain,
-        }
-    }
-
-    fn page_at(&self, click_main: f32) -> TrackPage {
-        TrackPage {
-            click_main,
-            thumb_offset: self.thumb_offset,
-            thumb_size: self.thumb_size,
-            page_step: self.track_main,
-            domain: self.domain(),
-        }
     }
 }
 
@@ -196,28 +100,6 @@ impl Bars {
         [(Axis::Y, &self.v), (Axis::X, &self.h)]
     }
 
-    /// This axis's thumb against `offset`, or `None` when the content
-    /// fits and no thumb shows.
-    fn resolve(
-        &self,
-        axis: Axis,
-        geom: ScrollGeometry,
-        scaled: Size,
-        offset: f32,
-    ) -> Option<ResolvedBar> {
-        let track_main = axis.main(geom.space.bar_viewport);
-        let content_main = axis.main(scaled);
-        let g =
-            scrollbars::bar_geometry(track_main, content_main, offset, self.theme.min_thumb_px)?;
-        Some(ResolvedBar {
-            track_main,
-            content_main,
-            thumb_offset: g.thumb_offset,
-            thumb_size: g.thumb_size,
-            travel: g.travel,
-        })
-    }
-
     /// Fold this frame's bar interaction into the offset: thumb drags
     /// first, then track pages.
     ///
@@ -226,15 +108,13 @@ impl Bars {
     /// anchor is a single slot shared by both axes. Resolving each bar
     /// immediately before it is applied is what keeps the thumb tracking
     /// the cursor within the frame.
-    pub(super) fn drive(&self, state: &mut ScrollState, geom: ScrollGeometry, pan: BVec2) {
-        let scaled = geom.scaled_content(state.zoom);
+    pub(super) fn drive(&self, state: &mut ScrollState, geom: ScrollGeometry) {
+        let axes = geom.bars.axes;
         for (axis, bar) in self.axes() {
-            if !axis.main_b(pan) {
+            if !axes.pans(axis) {
                 continue;
             }
-            let travel = self
-                .resolve(axis, geom, scaled, axis.main_v(state.offset))
-                .map(|resolved| resolved.travel());
+            let travel = geom.thumb(axis, state).map(ThumbTravel::of);
             state.apply_thumb_drag(
                 axis,
                 bar.thumb.left.drag.started(),
@@ -243,50 +123,29 @@ impl Bars {
             );
         }
         for (axis, bar) in self.axes() {
-            if !axis.main_b(pan) || !bar.track.clicked() {
+            if !axes.pans(axis) || !bar.track.clicked() {
                 continue;
             }
             let Some(pointer_local) = bar.track.pointer_local else {
                 continue;
             };
-            let page = self
-                .resolve(axis, geom, scaled, axis.main_v(state.offset))
-                .map(|resolved| resolved.page_at(axis.main_v(pointer_local)));
+            let page = geom
+                .thumb(axis, state)
+                .map(|thumb| TrackPage::at(thumb, axis.main_v(pointer_local)));
             state.apply_track_page(axis, page);
         }
     }
 
-    /// Record the bar overlay as a sibling of the viewport: a
+    /// Record the bar overlay as a sibling of the viewport `def` names: a
     /// `scrollbars` container filling the outer rect, holding the four
     /// leaves in the fixed order its driver addresses them by. Painted
     /// after the viewport via record order, hit-tested above it via
     /// cascade order.
-    pub(super) fn record(
-        &self,
-        ui: &mut Ui,
-        scroll_id: WidgetId,
-        state: ScrollState,
-        geom: ScrollGeometry,
-        spec: ScrollSpec,
-    ) {
-        // The viewport was opened on the line above, so this pass's id
-        // map already holds its node — the handle the driver needs to
-        // reach `scroll_content`.
-        let content = ui.current_node(scroll_id);
-        let def_id = ui.push_scrollbars_def(ScrollbarsDef {
-            content,
-            offset: state.offset,
-            zoom: state.zoom,
-            spec,
-            reserve_y: geom.space.reserve_y,
-            reserve_x: geom.space.reserve_x,
-            padding: geom.padding,
-            bar_thickness: self.theme.thickness,
-            min_thumb: self.theme.min_thumb_px,
-        });
-        let overlay = Widget::scrollbars(def_id)
-            .id(scroll_id.with("bars"))
+    pub(super) fn record(&self, ui: &mut Ui, def: ScrollbarsDef) {
+        let mut overlay = Widget::scrollbars()
+            .id(def.content.with("bars"))
             .size((Sizing::FILL, Sizing::FILL));
+        overlay.scrollbar_def(ui, def);
         overlay.record(ui, None, |ui| {
             for (_, bar) in self.axes() {
                 bar.record(ui, &self.theme);
@@ -320,4 +179,30 @@ pub enum BarMode {
     Overlay,
     /// No bar and no gutter. Input still pans.
     Hidden,
+}
+
+impl BarMode {
+    /// The gutter the bars take out of the widget's box: a strip of the
+    /// bar's thickness plus its gap along the far edge across each panned
+    /// axis, so the bar does not touch the visible content.
+    ///
+    /// Only [`Self::Reserved`] reserves. [`Self::Overlay`] paints the bar
+    /// over the content, and [`Self::Hidden`] has no bar at all. The strip
+    /// does not depend on overflow, so a `Hug` ancestor does not shift
+    /// when the content starts or stops fitting; the thumb itself still
+    /// shows only when the content overflows, which the overlay's layout
+    /// decides after measure.
+    pub(super) fn gutter(self, axes: ScrollAxes, theme: &ScrollbarTheme) -> Spacing {
+        if self != Self::Reserved {
+            return Spacing::ZERO;
+        }
+        let strip = |axis| {
+            if axes.pans(axis) {
+                theme.thickness + theme.gap
+            } else {
+                0.0
+            }
+        };
+        Spacing::new(0.0, 0.0, strip(Axis::Y), strip(Axis::X))
+    }
 }

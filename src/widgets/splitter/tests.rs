@@ -21,22 +21,35 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
+/// What one [`frame_with`] frame recorded and reported.
+#[derive(Debug, Default)]
+struct Frame {
+    passes: usize,
+    changed: bool,
+    committed: bool,
+}
+
 /// One frame: a 401×100 horizontal splitter at the surface origin.
 /// Default theme reserves the 1 px rule, so the free span is 400 —
 /// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
 /// straddling it. Tests run two warm-up frames before interacting so
 /// the divider has arranged geometry for hit-testing.
-fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> usize {
-    let mut passes = 0;
+///
+/// The signals are OR-ed across record passes: a frame with action input
+/// records twice, and a signal fires on the pass that saw the input.
+fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Frame {
+    let mut frame = Frame::default();
     h.frame(|ui| {
-        passes += 1;
-        Splitter::horizontal(ratio)
+        let hit = Splitter::horizontal(ratio)
             .id(split_id())
             .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
             .min_pane(50.0)
             .show(ui, |_, _| {});
+        frame.passes += 1;
+        frame.changed |= hit.changed;
+        frame.committed |= hit.committed;
     });
-    passes
+    frame
 }
 
 #[test]
@@ -51,21 +64,27 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     // pointer 300.5 → first = 300 → 0.75.
     h.press_at(Vec2::new(200.5, 50.0));
     h.drag_to(Vec2::new(300.5, 50.0));
-    frame_with(&mut h, &mut ratio);
+    let moved = frame_with(&mut h, &mut ratio);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
+    );
+    assert!(
+        moved.changed && !moved.committed,
+        "a live drag changes the ratio and commits nothing: {moved:?}",
     );
 
     // A later drag movement records once. Layout follows the current
     // pointer immediately, while the caller still receives the prior
     // arranged ratio until the next record.
     h.drag_to(Vec2::new(999.0, 50.0));
-    assert_eq!(frame_with(&mut h, &mut ratio), 1);
+    let held = frame_with(&mut h, &mut ratio);
+    assert_eq!(held.passes, 1);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
+    assert!(!held.changed, "the binding did not move this frame");
     let rect = h.layout_rect(split_id().with("first")).expect("arranged");
     assert!(
         (rect.size.w - 350.0).abs() < 0.5,
@@ -74,21 +93,47 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     );
 
     h.drag_to(Vec2::new(998.0, 50.0));
-    assert_eq!(frame_with(&mut h, &mut ratio), 1);
+    let caught_up = frame_with(&mut h, &mut ratio);
+    assert_eq!(caught_up.passes, 1);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
         "the next record writes back the arranged 350/400 ratio, got {ratio}"
     );
+    assert!(caught_up.changed);
 
-    // Release ends the gesture; further pointer motion leaves the
-    // ratio alone.
+    // Release ends the gesture and commits the ratio it holds; further
+    // pointer motion leaves the ratio alone and commits nothing more.
     h.release();
     h.move_to(Vec2::new(100.0, 50.0));
-    frame_with(&mut h, &mut ratio);
+    let released = frame_with(&mut h, &mut ratio);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
         "ratio holds after release, got {ratio}"
     );
+    assert!(
+        released.committed && !released.changed,
+        "the release commits the held ratio: {released:?}",
+    );
+    let after = frame_with(&mut h, &mut ratio);
+    assert!(!after.committed && !after.changed, "{after:?}");
+
+    // A double-click on the divider — its seam now at 350.5 — resets to
+    // the centre. Layout takes 0.5 on the first pass, and the binding
+    // takes the arranged result on the next record, which commits it. A
+    // double-click is action input, so that record is the frame's second
+    // pass and the reset lands within the one frame.
+    let seam = Vec2::new(350.5, 50.0);
+    h.click_at(seam);
+    h.click_at(seam);
+    let reset = frame_with(&mut h, &mut ratio);
+    assert_eq!(reset.passes, 2, "premise: a double-click records twice");
+    assert!(
+        (ratio - 0.5).abs() < 1e-6,
+        "the reset writes the centre, got {ratio}"
+    );
+    assert!(reset.changed && reset.committed, "{reset:?}");
+    let settled = frame_with(&mut h, &mut ratio);
+    assert!(!settled.changed && !settled.committed, "{settled:?}");
 }
 
 #[test]

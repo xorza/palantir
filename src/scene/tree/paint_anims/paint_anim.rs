@@ -5,6 +5,7 @@ use crate::animation::animatable::Animatable;
 use crate::scene::tree::paint_anims::PaintMod;
 use crate::scene::tree::paint_anims::curves;
 use std::f32::consts::TAU;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// A phase in `[0, 1)` mapped to a unit value in `[0, 1]`.
@@ -49,7 +50,10 @@ pub enum PaintSteps {
     /// **What keeps a blinking caret off the frame budget.** A square
     /// curve at `Steps(2)` changes twice a period, so asking for a frame
     /// in between would buy an identical picture.
-    Steps(u32),
+    ///
+    /// Non-zero by type: zero steps would read as a shape that never
+    /// animates, with no other sign that the animation was asked for.
+    Steps(NonZeroU32),
 }
 
 /// What happens after one pass of the curve.
@@ -217,7 +221,7 @@ impl PaintAnim {
     /// animates, with no other sign that the animation was asked for —
     /// and this is a cold builder, so the check costs a frame nothing.
     pub fn steps(mut self, n: u32) -> Self {
-        assert!(n > 0, "a paint animation cannot have zero steps");
+        let n = NonZeroU32::new(n).expect("a paint animation cannot have zero steps");
         self.timing.steps = PaintSteps::Steps(n);
         self
     }
@@ -298,8 +302,10 @@ impl PaintTiming {
     fn quantize(self, phase: f32) -> f32 {
         match self.steps {
             PaintSteps::Continuous => phase,
-            PaintSteps::Steps(0) => 0.0,
-            PaintSteps::Steps(n) => (phase * n as f32).floor() / n as f32,
+            PaintSteps::Steps(n) => {
+                let n = n.get() as f32;
+                (phase * n).floor() / n
+            }
         }
     }
 
@@ -335,9 +341,8 @@ impl PaintTiming {
         }
         let wake = match self.steps {
             PaintSteps::Continuous => now,
-            PaintSteps::Steps(0) => return None,
             PaintSteps::Steps(n) => {
-                let step = self.period / n;
+                let step = self.period / n.get();
                 if step.is_zero() {
                     return None;
                 }

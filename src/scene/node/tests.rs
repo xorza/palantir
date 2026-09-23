@@ -1,8 +1,9 @@
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::layout_mode::PackedLayoutMeta;
+use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::*;
 use crate::scene::visibility::Visibility;
@@ -104,10 +105,10 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
     assert_eq!(columns.bounds, BoundsExtras::DEFAULT);
 }
 
-/// `set_mode` refines a node; it never re-kinds one. A pending grid
-/// takes only its own definition, and a resolved mode only a fresh
-/// payload of its own kind — which is what lets one method serve both
-/// the grid's deferred id and the scroll's deferred fit bits.
+/// `set_mode` refines a node; it never re-kinds one. A pending grid or
+/// bar overlay takes only its own definition, and a resolved mode only a
+/// fresh payload of its own kind — which is what lets one method serve
+/// both deferred definitions.
 #[test]
 fn set_mode_refines_a_node_and_never_rekinds_it() {
     let mut grid = Node::new(NodeMode::PendingGrid);
@@ -116,13 +117,32 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
     grid.set_mode(LayoutMode::Grid(grid_id));
     assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
 
-    let mut refined = Node::new(NodeMode::Resolved(LayoutMode::Scroll(ScrollSpec::VERTICAL)));
-    refined.set_mode(LayoutMode::Scroll(ScrollSpec::BOTH));
-    assert_eq!(refined.scroll_spec(), ScrollSpec::BOTH);
+    let mut bars = Node::new(NodeMode::PendingScrollbars);
+    assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&bars)).is_err());
+    let bars_id = ScrollbarsDefId::from_index(7);
+    bars.set_mode(LayoutMode::Scrollbars(bars_id));
+    assert_eq!(
+        bars.mode,
+        NodeMode::Resolved(LayoutMode::Scrollbars(bars_id))
+    );
+
+    let mut refined = Node::new(NodeMode::Resolved(LayoutMode::Scroll(ScrollAxes::VERTICAL)));
+    refined.set_mode(LayoutMode::Scroll(ScrollAxes::BOTH));
+    assert_eq!(
+        refined.mode,
+        NodeMode::Resolved(LayoutMode::Scroll(ScrollAxes::BOTH))
+    );
     assert!(
         std::panic::catch_unwind(|| Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack))
             .is_err(),
         "a pending grid takes only a grid definition",
+    );
+    assert!(
+        std::panic::catch_unwind(|| {
+            Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
+        })
+        .is_err(),
+        "a pending bar overlay takes only a bar definition",
     );
     assert!(
         std::panic::catch_unwind(|| {
@@ -159,17 +179,17 @@ fn layout_core_round_trips_mode_align_visibility() {
             Visibility::Collapsed,
         ),
         (
-            LayoutMode::Scroll(ScrollSpec::VERTICAL),
+            LayoutMode::Scroll(ScrollAxes::VERTICAL),
             Align::new(HAlign::Center, VAlign::Top),
             Visibility::Visible,
         ),
         (
-            LayoutMode::Scroll(ScrollSpec::HORIZONTAL),
+            LayoutMode::Scroll(ScrollAxes::HORIZONTAL),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
-            LayoutMode::Scroll(ScrollSpec::BOTH),
+            LayoutMode::Scroll(ScrollAxes::BOTH),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Hidden,
         ),

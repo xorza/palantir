@@ -135,11 +135,16 @@ impl Popup {
 
     /// Record into `layer` rather than [`Layer::Popup`].
     ///
-    /// In-crate, because which layer an overlay belongs on is a fact about the
-    /// kind of overlay it is and not about where a caller wants it: the ranks
-    /// are what keeps a menu above the popup that raised it, and a caller free
-    /// to pick would be free to invert them.
-    pub(crate) fn on(mut self, layer: Layer) -> Self {
+    /// For an overlay whose kind has its own rank: a context menu records on
+    /// [`Layer::Menu`], which is what lets one open from inside a popup. The
+    /// rank follows the kind of overlay, not the call site, because the ranks
+    /// are what keep a menu above the popup that raised it.
+    ///
+    /// # Panics
+    ///
+    /// At `show`, when this popup is nested inside a layer that does not sit
+    /// strictly below `layer` — the rule [`Ui::layer`] enforces.
+    pub fn layer(mut self, layer: Layer) -> Self {
         self.layer = layer;
         self
     }
@@ -159,7 +164,7 @@ impl Popup {
     /// Takes a borrow so a wrapper's themed panel is cloned only where
     /// it is used — the caller holds the whole theme bundle and reads
     /// the rest of it.
-    pub(crate) fn default_background(mut self, bg: &Background) -> Self {
+    pub fn default_background(mut self, bg: &Background) -> Self {
         if self.chrome.is_none() {
             self.chrome = Some(bg.clone());
         }
@@ -171,9 +176,9 @@ impl Popup {
     /// For a wrapper whose placement is late-bound: [`crate::ContextMenu`]
     /// holds its popup from the moment the caller starts configuring it,
     /// but doesn't learn where the menu was opened until `show` reads the
-    /// state map. The constructors stay the canonical way in. This is the
-    /// one case that cannot use them.
-    pub(crate) fn anchor(mut self, anchor: Anchor) -> Self {
+    /// state map. The constructors stay the canonical way in; this is for
+    /// a wrapper that cannot use them.
+    pub fn anchored(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }

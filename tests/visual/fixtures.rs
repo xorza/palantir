@@ -31,7 +31,7 @@ use crate::harness::FIXTURE_PALETTE;
 /// arrives as `Harness::render`'s `clear` argument rather than from
 /// `Theme::window_clear`, since a fixture wanting harder contrast passes
 /// `RgbaF32::BLACK` instead.
-pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.terminal_bg;
+pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.window_bg;
 
 /// Pixel comparison shared by the exact-value fixtures: an sRGB round-trip
 /// through the f16 tint and the render target moves a channel by at most one

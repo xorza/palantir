@@ -52,3 +52,13 @@ fn clip_from_px(px: vec2<f32>) -> vec4<f32> {
 fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
     return vec4<f32>(rgb * alpha, alpha);
 }
+
+// sRGB-encoded channels → linear light: the exact piecewise transfer
+// function of IEC 61966-2-1, the inverse of what the GPU applies at every
+// sRGB write, so a colour authored as sRGB bytes reaches the screen as
+// those bytes. The CPU decodes with the same function.
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    let low = c / 12.92;
+    let high = pow((c + 0.055) / 1.055, vec3<f32>(2.4));
+    return select(high, low, c <= vec3<f32>(0.04045));
+}

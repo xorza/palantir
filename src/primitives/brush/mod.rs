@@ -7,7 +7,8 @@ use crate::animation::animatable::Animatable;
 use crate::primitives::brush::gradient::conic_geometry::{ConicGradient, ConicGradientBuilder};
 use crate::primitives::brush::gradient::linear_geometry::{LinearGradient, LinearGradientBuilder};
 use crate::primitives::brush::gradient::radial_geometry::{RadialGradient, RadialGradientBuilder};
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::nan::NanCheck;
 
 /// Paint source for gradient-capable fills.
@@ -64,9 +65,9 @@ impl From<RgbaF32> for CurveBrush {
     }
 }
 
-impl From<RgbaU8> for CurveBrush {
+impl From<SrgbaU8> for CurveBrush {
     #[inline]
-    fn from(color: RgbaU8) -> Self {
+    fn from(color: SrgbaU8) -> Self {
         Self(Brush::from(color))
     }
 }
@@ -136,9 +137,9 @@ impl From<RgbaF32> for Brush {
     }
 }
 
-impl From<RgbaU8> for Brush {
+impl From<SrgbaU8> for Brush {
     #[inline]
-    fn from(color: RgbaU8) -> Self {
+    fn from(color: SrgbaU8) -> Self {
         Brush::Solid(color.into())
     }
 }

@@ -5,7 +5,7 @@
 use glam::UVec2;
 use image::RgbaImage;
 use palantir::widget::Shape;
-use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, RgbaU8, Sizing};
+use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing};
 
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
@@ -20,17 +20,18 @@ const SWATCH: u32 = 8;
 const VIEWPORT: UVec2 = UVec2::new(COLS * SWATCH, ROWS * SWATCH);
 const CLEAR: RgbaF32 = RgbaF32::BLACK;
 
-/// Linear-u8 stop colour for swatch `i`. Channels are spread far
-/// enough apart that neighbouring swatches stay distinguishable after
-/// the sRGB framebuffer encode, so sampling the wrong LUT row can't
-/// pass as rounding.
+/// Stop colour for swatch `i`, written in linear light as `byte / 255`.
+/// Channels are spread far enough apart that neighbouring swatches stay
+/// distinguishable after the sRGB framebuffer encode, so sampling the
+/// wrong LUT row can't pass as rounding.
 fn swatch_color(i: u32) -> RgbaF32 {
-    RgbaU8::rgb(
-        (40 + (i % COLS) * 10) as u8,
-        (40 + (i / COLS) * 12) as u8,
-        200,
+    let lin = |byte: u32| byte as f32 / 255.0;
+    RgbaF32::new(
+        lin(40 + (i % COLS) * 10),
+        lin(40 + (i / COLS) * 12),
+        lin(200),
+        1.0,
     )
-    .into()
 }
 
 /// Each swatch is a two-stop gradient whose stops share one colour, so

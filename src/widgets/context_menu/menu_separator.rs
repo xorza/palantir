@@ -60,7 +60,9 @@ impl<'a> MenuSeparator<'a> {
         // `Ui`'s own theme.
         let ui_theme = Rc::clone(ui.theme());
         let style = self.style.unwrap_or(&ui_theme.context_menu.separator);
-        Separator::over(self.widget, Axis::X).style(style).show(ui)
+        Separator::from_widget(self.widget, Axis::X)
+            .style(style)
+            .show(ui)
     }
 }
 

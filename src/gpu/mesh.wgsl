@@ -1,8 +1,9 @@
 struct VsIn {
     @location(0) pos: vec2<f32>,
-    // Linear lanes: `color` is linear bytes that the `Unorm8x4` fetch
-    // normalizes to `0..1`, and `tint` is linear f16. Neither needs a
-    // decode, so the rasterizer interpolates linear values directly.
+    // `color` is sRGB-encoded bytes that the `Unorm8x4` fetch normalizes
+    // to `0..1`, decoded below per vertex with the exact transfer function
+    // rather than a fit, so the rasterizer interpolates linear light.
+    // `tint` is linear f16 already.
     //
     // **Straight alpha in, premultiplied alpha out.** `color` and
     // `tint` carry straight-alpha values; `fs` premultiplies at
@@ -25,7 +26,7 @@ struct VsOut {
 fn vs(in: VsIn) -> VsOut {
     var out: VsOut;
     out.clip = clip_from_px(in.pos * in.scale + in.translate);
-    out.color = in.color * in.tint;
+    out.color = vec4<f32>(srgb_to_linear(in.color.rgb), in.color.a) * in.tint;
     return out;
 }
 

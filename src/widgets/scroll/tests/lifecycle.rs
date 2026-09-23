@@ -2,7 +2,6 @@
 
 use crate::Ui;
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::BarDomain;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -13,7 +12,7 @@ use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::{ScrollState, ThumbTravel};
+use crate::widgets::scroll::state::{BarDomain, ScrollState, ThumbTravel};
 use crate::widgets::scroll::tests::support::{
     SURFACE, build, read_state, scroll_content, scroll_viewport,
 };
@@ -94,7 +93,7 @@ fn state_is_swept_when_scroll_disappears() {
 
 /// A thumb drag composes each frame's *cumulative* delta against the
 /// offset the press captured, so the anchor cannot outlive the geometry
-/// that maps delta → offset. `bar_geometry` answers `None` the moment
+/// that maps delta → offset. `ScrollbarsDef::thumb` answers `None` the moment
 /// content fits or the track collapses, which a drag can reach mid-press
 /// (the content shrinks under it) while the pointer capture still names
 /// the zero-extent thumb.
@@ -103,7 +102,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
     let geom = Some(ThumbTravel {
         factor: 2.0,
         // Track 20, content 120 => the bar's domain is [0, 100].
-        domain: BarDomain::new(120.0, 20.0),
+        domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, 10.0);
@@ -339,7 +338,7 @@ fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
     let geom = Some(ThumbTravel {
         factor: 2.0,
         // Track 20, content 120 => the bar's domain is [0, 100].
-        domain: BarDomain::new(120.0, 20.0),
+        domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
     // Panned into the leading band, as a wheel over a scroll with a

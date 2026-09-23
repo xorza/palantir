@@ -1,1 +1,6 @@
 # Open issues
+
+- Eleven built-in widgets use items that are not published, so none of them can be rewritten outside the crate. `Scroll` and `Splitter` call `Axis::main`, `Axis::main_v`, `Axis::rows_cols` and `Axis::compose_spacing`. `Button`, `ToggleChrome` and `Tooltip` call `TextInput::is_empty`. `DockState` reads the private field `WidgetId.0`. `Checkbox` calls `ToggleTheme::check_polyline`, `ComboBox` calls `ComboBoxTheme::chevron_pts`, and `Expander` calls `ExpanderTheme::arrow_angle`. `DragValue` calls `Response::lazy`. `Splitter` calls `CursorIcon::resize_along`. `TextEdit` calls `TextStyle::metrics_valid`, `Stroke::ring` and `Align::place_in`.
+- Nothing checks that a built-in widget uses only published items. Review is the only guard, and it missed the items above.
+- `Scroll` and `TextEdit` build on the crate-private `Widget::scroll`, `Widget::scrollbars`, `Widget::scrollbar_def`, `ScrollAxes`, `ScrollbarsDef`, `BarGeometry` and `Ui::scroll_content`, whose API is not ready to publish. So neither widget can be rewritten outside the crate.
+- `GpuView` records through the crate-private `Ui::gpu_view` and wraps its renderer in the crate-private `GpuPaintRef`, so it cannot be rewritten outside the crate.

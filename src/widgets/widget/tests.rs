@@ -4,8 +4,9 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::limits::MAX_PACKED_GAP;
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -211,13 +212,11 @@ fn constructors_install_layout_modes() {
         assert_eq!(widget.node.mode, NodeMode::Resolved(expected));
     }
     assert_eq!(Widget::grid().node.mode, NodeMode::PendingGrid);
-
-    let scroll = Widget::scroll(ScrollSpec::VERTICAL);
+    assert_eq!(Widget::scrollbars().node.mode, NodeMode::PendingScrollbars);
     assert_eq!(
-        scroll.node.mode,
-        NodeMode::Resolved(LayoutMode::Scroll(ScrollSpec::VERTICAL)),
+        Widget::scroll(ScrollAxes::VERTICAL).node.mode,
+        NodeMode::Resolved(LayoutMode::Scroll(ScrollAxes::VERTICAL)),
     );
-    assert_eq!(scroll.node.scroll_spec(), ScrollSpec::VERTICAL);
 }
 
 #[test]

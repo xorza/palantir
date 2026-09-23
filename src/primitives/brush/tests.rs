@@ -5,7 +5,8 @@ use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::brush::{Brush, CurveBrush};
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
 use std::collections::hash_map::DefaultHasher;
 use std::f32::consts::{FRAC_PI_4, PI};
@@ -70,10 +71,10 @@ fn linear_gradient_hash_tracks_canonical_content() {
     let two_stops = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
     let three_stops = LinearGradient::builder(0.0)
         .stop(0.0, RgbaF32::BLACK)
-        .stop(0.5, RgbaU8::rgb(127, 127, 127).into())
+        .stop(0.5, RgbaF32::new(0.5, 0.5, 0.5, 1.0))
         .stop(1.0, RgbaF32::WHITE)
         .build();
-    let recolored = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaU8::rgb(255, 0, 0).into());
+    let recolored = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::new(1.0, 0.0, 0.0, 1.0));
     assert_ne!(h(&two_stops), h(&three_stops));
     assert_ne!(h(&two_stops), h(&recolored));
 }
@@ -81,7 +82,6 @@ fn linear_gradient_hash_tracks_canonical_content() {
 #[test]
 fn authoring_values_convert_to_their_brush_variants() {
     let color = RgbaF32::WHITE;
-    let color_u8 = RgbaU8::rgb(10, 20, 30);
     let linear = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
     let radial = RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
     let conic = ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
@@ -90,7 +90,12 @@ fn authoring_values_convert_to_their_brush_variants() {
         .stop(1.0, RgbaF32::WHITE);
 
     assert_eq!(Brush::from(color), Brush::Solid(color));
-    assert_eq!(Brush::from(color_u8), Brush::Solid(color_u8.into()));
+    // sRGB 0 and 255 decode to exactly 0.0 and 1.0, and alpha is straight:
+    // 51 / 255 = 0.2.
+    let bytes = SrgbaU8::new(255, 0, 255, 51);
+    let decoded = RgbaF32::new(1.0, 0.0, 1.0, 0.2);
+    assert_eq!(Brush::from(bytes), Brush::Solid(decoded));
+    assert_eq!(CurveBrush::from(bytes), CurveBrush::from(decoded));
     assert_eq!(Brush::from(linear.clone()), Brush::Linear(linear));
     assert_eq!(Brush::from(radial.clone()), Brush::Radial(radial));
     assert_eq!(Brush::from(conic.clone()), Brush::Conic(conic));
@@ -281,11 +286,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
 
 #[test]
 fn linear_all_transparent_is_noop() {
-    let g = LinearGradient::two_stop(
-        0.0,
-        RgbaF32::TRANSPARENT,
-        RgbaU8::new(255, 255, 255, 0).into(),
-    );
+    let g = LinearGradient::two_stop(0.0, RgbaF32::TRANSPARENT, RgbaF32::WHITE.with_alpha(0.0));
     assert!(g.is_noop());
     assert!(Brush::Linear(g).is_noop());
 }

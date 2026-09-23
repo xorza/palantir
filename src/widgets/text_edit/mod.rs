@@ -26,7 +26,7 @@ use crate::input::key_class::KeyFilter;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::layout::types::layout_mode::ScrollSpec;
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
@@ -137,7 +137,7 @@ impl<'a> TextEdit<'a> {
         // editor's own rect, so a `Fixed`-sized editor with long content
         // does not bleed over its neighbours. Chrome (background) draws
         // before the clip, so the editor's surround still paints normally.
-        let widget = Widget::scroll(ScrollSpec::BOTH)
+        let widget = Widget::scroll(ScrollAxes::BOTH)
             .sense(Sense::CLICK | Sense::SCROLL)
             .focusable(true)
             .clip_rect();

@@ -15,6 +15,7 @@ use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::splitter::SplitterTheme;
+use crate::widgets::value_response::ValueResponse;
 use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 
@@ -56,9 +57,12 @@ pub enum SplitHalf {
     Second,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct SplitterState {
     sync_ratio_next_record: bool,
+    /// A double-click reset the ratio. The binding takes the reset's
+    /// arranged result on the next record, and that record commits it.
+    commit_on_sync: bool,
 }
 
 impl<'a> Splitter<'a> {
@@ -108,16 +112,25 @@ impl<'a> Splitter<'a> {
     /// Record both panes and the divider between them. `body` runs twice,
     /// once per [`SplitHalf`].
     ///
-    /// The [`Response`] is the splitter's own, covering both panes. The
-    /// divider drags the bound `ratio` itself — nothing here has to be
-    /// read for that to happen.
+    /// The divider drags the bound `ratio` itself. The [`ValueResponse`]
+    /// says what that did, as it does for [`Slider`](crate::Slider): its
+    /// `response` is the splitter's own, covering both panes, `changed`
+    /// is set on every frame the ratio moves, and `committed` on the frame
+    /// a drag releases or a double-click reset lands.
+    ///
+    /// **The binding trails the drawn divider by one frame while it
+    /// moves.** Layout follows the pointer at once, but the ratio written
+    /// back is the share the panes were actually arranged at, which only
+    /// layout knows. That is the price of never writing a ratio a pane's
+    /// content floor overrides.
     pub fn show<'u>(
         mut self,
         ui: &'u mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
-    ) -> Response<'u> {
+    ) -> ValueResponse<'u> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
+        let input = *self.ratio;
 
         let theme = self.style.unwrap_or(&ui.theme().splitter);
         let grab_thickness = theme.grab_thickness.themed_length(1.0);
@@ -135,9 +148,8 @@ impl<'a> Splitter<'a> {
         let second_id = id.with("second");
         let axis = self.axis;
 
-        let sync_pending = ui
-            .state::<SplitterState>(id)
-            .is_some_and(|response| response.sync_ratio_next_record);
+        let state = ui.state::<SplitterState>(id).copied().unwrap_or_default();
+        let sync_pending = state.sync_ratio_next_record;
         let synced_ratio = if sync_pending {
             arranged_pane_ratio(ui, first_id, second_id, axis)
         } else {
@@ -146,6 +158,7 @@ impl<'a> Splitter<'a> {
         let ratio = synced_ratio.unwrap_or_else(|| sanitize_ratio(*self.ratio));
         let mut layout_ratio = ratio;
         let mut resizing = false;
+        let mut reset = false;
         if !response.disabled {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
@@ -163,17 +176,26 @@ impl<'a> Splitter<'a> {
             if divider.double_clicked() {
                 layout_ratio = 0.5;
                 resizing = true;
+                reset = true;
             }
         }
         *self.ratio = ratio;
+        // Approximate, because a ratio re-derived from arranged extents
+        // carries last-bit noise an exact compare would report every frame.
+        let changed = !approx::approx_zero(ratio - input);
+        let synced = synced_ratio.is_some();
+        let committed =
+            !response.disabled && (divider.left.drag.stopped() || (state.commit_on_sync && synced));
 
-        // Written only on a change, against the `sync_pending` read above
-        // — an absent row reads as `false` there, which is this field's
-        // default. A splitter that never resizes mints no row at all.
-        let sync_next = resizing || (sync_pending && synced_ratio.is_none());
-        if sync_next != sync_pending {
-            ui.state_or_default::<SplitterState>(id)
-                .sync_ratio_next_record = sync_next;
+        // Written only on a change, against the `state` read above — an
+        // absent row reads as the default there. A splitter that never
+        // resizes mints no row at all.
+        let next = SplitterState {
+            sync_ratio_next_record: resizing || (sync_pending && !synced),
+            commit_on_sync: reset || (state.commit_on_sync && !synced),
+        };
+        if next != state {
+            *ui.state_or_default::<SplitterState>(id) = next;
         }
 
         let bar_fill = if divider.left.drag.dragging() {
@@ -227,7 +249,11 @@ impl<'a> Splitter<'a> {
                 .record(ui, Some(&bar_bg), |_| {});
         });
 
-        Response::eager(id, ui, response)
+        ValueResponse {
+            response: Response::eager(id, ui, response),
+            changed,
+            committed,
+        }
     }
 }
 

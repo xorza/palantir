@@ -4,7 +4,7 @@
 
 use crate::layout::types::{sizing::SizeSpec, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing};
-use glam::{BVec2, Vec2};
+use glam::Vec2;
 
 /// Which axis a layout distributes children along (or which axis a query
 /// targets). `X` = horizontal, `Y` = vertical.
@@ -60,14 +60,6 @@ impl Axis {
         }
     }
     pub(crate) fn main_v(self, v: Vec2) -> f32 {
-        match self {
-            Axis::X => v.x,
-            Axis::Y => v.y,
-        }
-    }
-    /// This axis's lane of a boolean mask — `Scroll` reads its pan mask
-    /// per axis the same way it reads its offset.
-    pub(crate) fn main_b(self, v: BVec2) -> bool {
         match self {
             Axis::X => v.x,
             Axis::Y => v.y,

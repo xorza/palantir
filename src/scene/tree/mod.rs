@@ -37,7 +37,7 @@ pub(crate) mod tree_fingerprint;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::index16::Index16;
-use crate::layout::scrollbars::ScrollbarsDef;
+use crate::layout::scrollbars::scrollbars_def::ResolvedScrollbarsDef;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::layout::types::track::{GridDef, Track};
@@ -105,7 +105,7 @@ pub(crate) struct Tree {
     pub(crate) grid_defs: Vec<GridDef>,
     /// Side table for [`LayoutMode::Scrollbars`], same arrangement as
     /// `grid_defs`: the def is too wide for the packed 16-bit payload.
-    pub(crate) scrollbar_defs: Vec<ScrollbarsDef>,
+    pub(crate) scrollbar_defs: Vec<ResolvedScrollbarsDef>,
 
     /// Top-level root slots in this tree, in record order. Each slot's
     /// `first_node` indexes `records`; pipeline passes iterate the
@@ -355,7 +355,9 @@ impl Tree {
             }
             match mode {
                 LayoutMode::Grid(id) => grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h),
-                LayoutMode::Scrollbars(id) => scrollbar_defs[usize::from(id)].hash_visual(&mut h),
+                LayoutMode::Scrollbars(id) => {
+                    scrollbar_defs[usize::from(id)].def.hash_visual(&mut h);
+                }
                 _ => {}
             }
             let node_hash = h.finish();
@@ -375,9 +377,9 @@ impl Tree {
     }
 
     /// Intern one bar overlay's def, returning the id its node packs.
-    /// Called only by `Scroll::show`, which is why the `open_node`
-    /// debug assert can treat a dangling id as a caller bug.
-    pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
+    /// Called only by `Widget::scrollbar_def`, which is why the
+    /// `open_node` debug assert can treat a dangling id as a caller bug.
+    pub(crate) fn push_scrollbars_def(&mut self, def: ResolvedScrollbarsDef) -> ScrollbarsDefId {
         let id = ScrollbarsDefId::from_index(self.scrollbar_defs.len());
         self.scrollbar_defs.push(def);
         id
@@ -453,7 +455,7 @@ impl Tree {
             ),
             LayoutMode::Scrollbars(id) => debug_assert!(
                 usize::from(id) < self.scrollbar_defs.len(),
-                "LayoutMode::Scrollbars id {id:?} references no scrollbar_def — only Scroll::show should push bar overlays",
+                "LayoutMode::Scrollbars id {id:?} references no scrollbar_def — only Widget::scrollbar_def installs one",
             ),
             _ => {}
         }

@@ -624,7 +624,7 @@ fn showcase_palette() -> Palette {
         text: support::INK,
         text_muted: support::INK_DIM,
         text_disabled: support::INK_DISABLED,
-        terminal_bg: support::WINDOW,
+        window_bg: support::WINDOW,
         elem: support::ELEM,
         elem_mid: support::ELEM_MID,
         elem_strong: support::ELEM_STRONG,

@@ -2,13 +2,13 @@
 //! track + thumb, horizontal track + thumb) from geometry that does not
 //! exist until measure has run.
 //!
-//! `Scroll` cannot do this while recording. A thumb's extent is a
+//! A scroll widget cannot do this while recording. A thumb's extent is a
 //! content/viewport *ratio*, and on a scroll's first frame neither term is
 //! available: the viewport comes from the previous pass's arranged rect,
-//! and the content extent is written by `Scroll::measure` into
+//! and the content extent is written by the viewport's own measure into
 //! [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content).
-//! Resolving it here is what lets `Scroll` record its bars unconditionally
-//! instead of asking `Ui` to re-record the whole frame.
+//! Resolving it here is what lets the widget record its bars
+//! unconditionally instead of asking `Ui` to re-record the whole frame.
 //!
 //! Children are recorded in a fixed order (vertical track, vertical
 //! thumb, horizontal track, horizontal thumb) and an *absent* bar
@@ -16,196 +16,21 @@
 //! keeps the same shape every frame and the bar ids stay stable across
 //! an overflow toggle.
 
+pub(crate) mod scrollbars_def;
+
 use crate::layout::axis::Axis;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
-use crate::layout::types::layout_mode::{ScrollSpec, ScrollbarsDefId};
-use crate::primitives::approx;
-use crate::primitives::approx::FloatHash;
+use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::layout::types::layout_mode::ScrollbarsDefId;
 use crate::primitives::interned_text::InternedText;
-use crate::primitives::num::F32Px;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
-use std::hash::Hash;
-
-/// The strip a scroll's content actually occupies: its own extent less
-/// the reserved bar gutters and the user padding.
-///
-/// The single formula, called with two different `outer`s: the driver
-/// passes this frame's arranged overlay size to place the bars, while
-/// `Scroll` passes the previous pass's outer size to convert a thumb
-/// drag into an offset. They have to agree, or the bar the user grabs
-/// and the bar that gets drawn scale differently.
-pub(crate) fn viewport(outer: Size, reserve_y: f32, reserve_x: f32, padding: Spacing) -> Size {
-    Size::new(
-        (outer.w - reserve_y - padding.horizontal_sum()).max(0.0),
-        (outer.h - reserve_x - padding.vertical_sum()).max(0.0),
-    )
-}
-
-/// Everything the driver needs that *is* known while recording, plus a
-/// handle to the viewport whose measured content it isn't.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ScrollbarsDef {
-    /// Viewport node whose
-    /// [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content)
-    /// sizes the thumbs. Resolved at record time out of the *current*
-    /// pass's id map, so it is valid for exactly the pass that recorded it
-    /// — the tree is rebuilt every pass and every pass re-records this def.
-    pub(crate) content: NodeId,
-    pub(crate) offset: Vec2,
-    pub(crate) zoom: f32,
-    /// The owning `Scroll`'s spec, not a decoded copy of its pan mask:
-    /// one fact, and one place its bit layout is written down.
-    pub(crate) spec: ScrollSpec,
-    /// Cross-axis gutter strips deducted from the viewport, and the user
-    /// padding inside it. Both are content-independent — `bar_space`
-    /// reserves on the pan mask and `Reserved` alone, never on
-    /// overflow — so they
-    /// are known while recording even when nothing else is.
-    pub(crate) reserve_y: f32,
-    pub(crate) reserve_x: f32,
-    pub(crate) padding: Spacing,
-    pub(crate) bar_thickness: f32,
-    pub(crate) min_thumb: f32,
-}
-
-impl ScrollbarsDef {
-    /// Visual hash for the authoring rollup. `content` is deliberately
-    /// **excluded**: it is a positional index that shifts whenever any
-    /// earlier sibling's subtree grows, which would invalidate this
-    /// scroll's measure cache for a change that cannot affect its bars.
-    /// The owning node's `WidgetId` is folded separately and is what
-    /// actually distinguishes two scrolls.
-    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.offset.hash_visual(h);
-        self.zoom.hash_visual(h);
-        h.write_u16(self.spec.pan_bits());
-        self.reserve_y.hash_visual(h);
-        self.reserve_x.hash_visual(h);
-        self.padding.hash(h);
-        self.bar_thickness.hash_visual(h);
-        self.min_thumb.hash_visual(h);
-    }
-}
-
-/// The offset range a scrollbar can express: `[0, max_off]`.
-///
-/// Deliberately narrower than the wheel's range. `content_margin` opens
-/// a band below zero, and [`Scroll::content_margin`](crate::Scroll::content_margin)
-/// documents that a thumb does not show that extra travel — so the bar
-/// and the wheel legitimately disagree about the offset's lower bound.
-/// What is *not* legitimate is each interaction path re-deriving the
-/// bar's half by hand: the thumb drag, the track page, and the thumb's
-/// own position each spelling the `0.0` end and the `max_off` end for
-/// itself is how a drag anchored in the wheel's domain and clamped in the
-/// bar's goes unnoticed.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct BarDomain {
-    max_off: f32,
-}
-
-impl BarDomain {
-    /// The domain a bar of `track_main` showing `content_main` covers.
-    #[inline]
-    pub(crate) fn new(content_main: f32, track_main: f32) -> Self {
-        Self {
-            max_off: (content_main - track_main).max(0.0),
-        }
-    }
-
-    /// Offset at which the content's trailing edge meets the track's.
-    #[inline]
-    pub(crate) fn max_off(self) -> f32 {
-        self.max_off
-    }
-
-    /// Pull `offset` into the range. The one place either end is named.
-    #[inline]
-    pub(crate) fn clamp(self, offset: f32) -> f32 {
-        offset.clamp(0.0, self.max_off)
-    }
-
-    /// `offset` as a 0..1 position along the bar's travel.
-    #[inline]
-    pub(crate) fn fraction(self, offset: f32) -> f32 {
-        approx::share_of(offset, self.max_off).clamp(0.0, 1.0)
-    }
-}
-
-/// Thumb extent and travel along one axis, or `None` when the bar can't
-/// be drawn meaningfully — a non-positive viewport, or content that fits.
-/// The "content fits" arm is what makes an idle scroll show no thumb.
-///
-/// Both fields are already quantized to whole logical pixels, so the
-/// driver paints them as they arrive and `Scroll` maps pointer input
-/// against the same numbers that were drawn.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct BarGeometry {
-    pub(crate) thumb_size: f32,
-    pub(crate) thumb_offset: f32,
-    /// How far the thumb can slide — the floored track less the thumb.
-    ///
-    /// Carried rather than left to the reader, because the reader has
-    /// only the *raw* viewport to subtract from and the thumb was placed
-    /// against the floored one. A fractional viewport put the drag
-    /// denominator up to a pixel away from the distance the thumb
-    /// actually moves, so grabbing the thumb scrubbed the content at
-    /// slightly the wrong rate.
-    pub(crate) travel: f32,
-}
-
-/// A bar's track always spans its axis' whole viewport extent, so
-/// `viewport` is both the ratio the thumb expresses and, floored to whole
-/// logical pixels, the length it travels along.
-pub(crate) fn bar_geometry(
-    viewport: f32,
-    content: f32,
-    offset: f32,
-    min_thumb: f32,
-) -> Option<BarGeometry> {
-    if viewport <= 0.0 || content <= viewport {
-        return None;
-    }
-    // Quantized here rather than at the paint site: the widget reads
-    // these back to map a drag or a track click onto an offset, so the
-    // bar the user grabs has to be the bar that was drawn. Rounding on
-    // one side only put drag scaling up to a pixel out and made a click
-    // in the rounding sliver page away from the thumb.
-    //
-    // Whole logical pixels because physical snapping rounds a rect's
-    // min and max *independently* (`Rect::scaled_by`), which keeps
-    // adjacent rects flush but makes a rect's snapped *length* depend on
-    // where it sits — so a thumb on fractional coordinates visibly grows
-    // and shrinks by a pixel as it travels. Integer logical edges scale
-    // to integer physical ones at integer DPR, which pins the length; at
-    // fractional DPR it only narrows the wobble, since the real cause is
-    // in the snap.
-    //
-    // **One length, not two.** `travel` comes off the same `track` the
-    // thumb clamped into, so a 0..1 fraction of it lands in `0..=travel`
-    // and needs no clamp of its own. Flooring the viewport separately for
-    // each cap let a sub-pixel track floor to zero, take the one-pixel
-    // minimum thumb, and place it at -1.
-    let track = viewport.floor().max(1.0);
-    let thumb_size = (viewport / content * viewport)
-        .max(min_thumb)
-        .fast_round()
-        .clamp(1.0, track);
-    let travel = track - thumb_size;
-    let thumb_offset = (BarDomain::new(content, viewport).fraction(offset) * travel).fast_round();
-    Some(BarGeometry {
-        thumb_size,
-        thumb_offset,
-        travel,
-    })
-}
 
 /// One axis' track and thumb rects in overlay-local coordinates, or
 /// `None` when that axis shows no bar.
@@ -217,33 +42,17 @@ struct BarRects {
 
 /// Resolve one axis. `outer` is the overlay's arranged size, which is
 /// the scroll's outer rect — the overlay is `Fill` on both axes.
-fn axis_rects(
-    def: &ScrollbarsDef,
-    outer: Size,
-    scaled_content: Size,
-    axis: Axis,
-) -> Option<BarRects> {
-    let panned = axis.main_b(def.spec.pan_mask());
-    if !panned {
-        return None;
-    }
-    let viewport = viewport(outer, def.reserve_y, def.reserve_x, def.padding);
-    let main = axis.main(viewport);
-    let geom = bar_geometry(
-        main,
-        axis.main(scaled_content),
-        axis.main_v(def.offset),
-        def.min_thumb,
-    )?;
+fn axis_rects(def: &ScrollbarsDef, outer: Size, content: Size, axis: Axis) -> Option<BarRects> {
+    let bar = def.thumb(axis, outer, content)?;
     // The bar sits in the far-edge strip of the *outer* extent, not the
-    // viewport's: that strip is exactly what `reserve_*` set aside.
+    // viewport's: that strip is exactly what `reserve` set aside.
     let cross_pos = axis.cross(outer) - def.bar_thickness;
     Some(BarRects {
-        track: axis.compose_rect(0.0, cross_pos, main, def.bar_thickness),
+        track: axis.compose_rect(0.0, cross_pos, bar.track, def.bar_thickness),
         thumb: axis.compose_rect(
-            geom.thumb_offset,
+            bar.thumb_offset,
             cross_pos,
-            geom.thumb_size,
+            bar.thumb_size,
             def.bar_thickness,
         ),
     })
@@ -256,7 +65,7 @@ impl LayoutDriver for Scrollbars {
     /// Index of this overlay's definition in `Tree::scrollbar_defs`.
     type Payload = ScrollbarsDefId;
 
-    /// SizeSpec its thumbs from the *sibling* viewport's measured
+    /// Sizes its thumbs from the *sibling* viewport's measured
     /// `scroll_content`, so content that stops overflowing leaves this
     /// subtree's own hash and slot untouched while the bars it should
     /// retire stay exactly where they were.
@@ -291,11 +100,10 @@ impl LayoutDriver for Scrollbars {
     /// an axis that shows no bar. Child order is the recording contract from
     /// this module's doc.
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, id: Self::Payload, inner: Rect) {
-        let def = pass.tree.scrollbar_defs[usize::from(id)];
-        let raw_content = pass.scroll_content(def.content);
-        let scaled_content = raw_content.scaled_by(def.zoom);
-        let vertical = axis_rects(&def, inner.size, scaled_content, Axis::Y);
-        let horizontal = axis_rects(&def, inner.size, scaled_content, Axis::X);
+        let resolved = pass.tree.scrollbar_defs[usize::from(id)];
+        let content = pass.scroll_content(resolved.content);
+        let vertical = axis_rects(&resolved.def, inner.size, content, Axis::Y);
+        let horizontal = axis_rects(&resolved.def, inner.size, content, Axis::X);
 
         let slots = [
             vertical.map(|b| b.track),

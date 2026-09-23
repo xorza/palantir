@@ -238,8 +238,8 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
 /// reports `focused`.
 ///
 /// `DragValue` calls `Ui::set_focus` on itself mid-`show`, but its
-/// entry snapshot was taken before that — so without
-/// `ResponseState::mark_focused` the widget would hand back a response
+/// entry snapshot was taken before that — so without setting
+/// `ResponseState::focused` itself the widget would hand back a response
 /// denying the focus it had just taken, and a caller keying off
 /// `response.focused` would lag a frame behind the editor appearing.
 #[test]

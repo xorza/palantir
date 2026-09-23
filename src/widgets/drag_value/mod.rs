@@ -285,7 +285,9 @@ impl<'a> DragValue<'a> {
         // programmatic `set_focus` get the same fresh draft.
         if self.editable && response.clicked() {
             ui.set_focus(id);
-            response.mark_focused();
+            // The probed snapshot predates the request, so without this
+            // the response denies the focus the widget just took.
+            response.focused = true;
         }
 
         let text = match &self.value {

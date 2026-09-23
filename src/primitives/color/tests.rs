@@ -9,11 +9,11 @@ fn hash_value(value: impl Hash) -> u64 {
     hasher.finish()
 }
 
-/// Every byte of either byte form comes back from each wider form
-/// unchanged, alpha included: `RgbaF32` exactly, and `RgbaF16` because it
-/// holds every value within half a step of its byte.
+/// Every sRGB byte comes back from each wider form unchanged, alpha
+/// included: from `RgbaF32` exactly, and from `RgbaF16` because it holds
+/// every decoded value within half a display step of its byte.
 #[test]
-fn byte_forms_survive_the_trip_through_every_wider_form() {
+fn srgb_bytes_survive_the_trip_through_every_wider_form() {
     for byte in 0u8..=255 {
         let srgb = SrgbaU8::new(byte, byte, byte, byte);
         assert_eq!(
@@ -26,35 +26,7 @@ fn byte_forms_survive_the_trip_through_every_wider_form() {
             srgb,
             "sRGB {byte} via f16"
         );
-        let linear = RgbaU8::new(byte, byte, byte, byte);
-        assert_eq!(
-            RgbaU8::from(RgbaF32::from(linear)),
-            linear,
-            "linear {byte} via f32"
-        );
-        assert_eq!(
-            RgbaU8::from(RgbaF16::from(linear)),
-            linear,
-            "linear {byte} via f16"
-        );
     }
-}
-
-/// The two byte forms convert through linear light, and lose where their
-/// steps differ in size. Hand-computed: `#1a1a1a` decodes to linear
-/// `0.01033`, byte `2.63`, which rounds to 3. Linear byte 3 is `0.01176`,
-/// which encodes to sRGB `0.1107`, byte `28.2`, which rounds to 28. Alpha
-/// is linear in both forms and crosses unchanged.
-#[test]
-fn the_two_byte_forms_convert_through_linear_light() {
-    assert_eq!(
-        RgbaU8::from(SrgbaU8::new(26, 26, 26, 0x40)),
-        RgbaU8::new(3, 3, 3, 0x40),
-    );
-    assert_eq!(
-        SrgbaU8::from(RgbaU8::new(3, 3, 3, 0x40)),
-        SrgbaU8::new(28, 28, 28, 0x40),
-    );
 }
 
 /// Sanity: const-construction works in const context. If `RgbaF32::srgb`
