@@ -31,7 +31,7 @@
 # own id regex and gates only the timing loop — the driver's setup has
 # already run by then, which is why it is the wrong tool for picking one.
 #
-# Outputs land in tmp/ and are listed on exit. **benches/AGENTS.md is
+# Outputs land in tmp/ and are listed on exit. **benches/profiling.md is
 # the manual** — which file to read in what order, what the numbers
 # mean, and the Intel/AMD drill recipes.
 
@@ -213,7 +213,7 @@ if [ -z "${SKIP_MICRO:-}" ]; then
         # Two small core groups by default so the ~6 PMCs don't
         # oversubscribe; Zen4+ replaces them with a real slot-based
         # topdown when it advertises one. Uncore groups (l3_cache,
-        # data_fabric) need -a — see benches/AGENTS.md.
+        # data_fabric) need -a — see benches/profiling.md.
         AMD_GROUPS="branch_prediction,tlb"
         perf list metricgroups 2>/dev/null | grep -qiE 'pipeline_util|topdown' &&
             AMD_GROUPS="Pipeline_Util_Level1"
@@ -308,5 +308,5 @@ Precise-IP       : $PERF_IBS
 Mem data-source  : $PERF_MEM
 Callgraph (TUI)  : perf report -i $PERF_DATA
 Annotate symbol  : perf annotate -i $PERF_IBS_DATA <symbol>
-How to read it   : benches/AGENTS.md
+How to read it   : benches/profiling.md
 EOF
