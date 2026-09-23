@@ -204,7 +204,7 @@ fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     image.fill_with(|column, row| {
         let sat = (column as f32 + 0.5) / size.x as f32;
         let val = 1.0 - (row as f32 + 0.5) / size.y as f32;
-        slice.color(sat, val).to_srgba_u8()
+        slice.color(sat, val).into()
     });
 }
 
