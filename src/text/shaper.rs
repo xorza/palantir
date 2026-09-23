@@ -341,15 +341,15 @@ impl TextShaper {
     /// `TextSystem` test — ages text the same way a presenting window
     /// does.
     ///
-    /// **Every frame owes this exactly once, including one that records
-    /// nothing.** `FrameCycle::run` is the one caller, past the arm that
-    /// decided what kind of frame this was, so neither plan can skip it
-    /// and no plan can pay it twice. Skipping it does more than delay
-    /// eviction: the glyph atlas only considers a slot evictable while
-    /// `last_use < current_frame`, so a stalled clock leaves a full atlas
-    /// unable to reclaim *anything* and every insert starves until a
-    /// record frame arrives. That surfaces as glyphs missing from painted
-    /// text with no path to recovery.
+    /// **Every host frame owes this exactly once, including one that
+    /// records nothing.** `FrameRuntime::tick_text_clock` is the one
+    /// caller, and it runs on every frame of every window, so neither
+    /// plan can skip it and no host frame can pay it twice. Skipping it
+    /// does more than delay eviction: the glyph atlas only considers a
+    /// slot evictable while `last_use < current_frame`, so a stalled
+    /// clock leaves a full atlas unable to reclaim *anything* and every
+    /// insert starves until the clock moves. That surfaces as glyphs
+    /// missing from painted text with no path to recovery.
     pub(crate) fn tick_frame(&self) {
         self.shared.inner.borrow_mut().cosmic.tick_frame();
     }

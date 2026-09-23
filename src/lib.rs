@@ -211,7 +211,7 @@ pub mod internals {
     #[cfg(feature = "internals")]
     pub use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     #[cfg(feature = "internals")]
-    pub use crate::text::internals::TEXT_SCALE_STEP;
+    pub use crate::text::internals::{PROBATION_KEEP_FRAMES, TEXT_SCALE_STEP};
     pub use crate::ui::harness::UiHarness;
 }
 
@@ -306,8 +306,8 @@ pub mod prelude {
 /// here is needed to compose the widgets Palantir ships, and everything here
 /// is needed to write one beside them. Every widget in this crate is written
 /// against exactly this module plus the root, which is what keeps the two
-/// complete: see `examples/custom_widget.rs`, a widget built from nothing
-/// else.
+/// complete: see `examples/showcase/pages/custom_widget.rs`, a widget
+/// built from nothing else.
 ///
 /// The split is a namespace, not a permission — these are ordinary public
 /// items with one canonical path each, and an application that draws its own

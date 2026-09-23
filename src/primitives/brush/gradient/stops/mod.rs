@@ -2,7 +2,8 @@
 //! run a gradient carries them in, and the builder that sorts and
 //! validates one.
 
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::num;
 use serde::de::Error as _;
 use serde::ser::SerializeStruct;
@@ -15,11 +16,13 @@ pub(crate) const MAX_STOPS: usize = 8;
 
 /// One colour stop in a gradient. The position is the 0..1 parametric
 /// offset quantized to 8 bits (256 levels — finer than the LUT it bakes
-/// into), and the colour is 8-bit linear RGB. Total 5 B / stop, align 1,
-/// so `GradientStops` is 40 B inline vs. 64 B with f32 offsets. Stops
-/// are storage-only (never animated; snap on morph), feed a u8 LUT, and
-/// out-of-range positions clamp at construction — 8-bit precision is
-/// sufficient and saves ~24 B per gradient.
+/// into), and the colour is 8-bit **sRGB-encoded**, the form a designer
+/// writes: a hex-authored stop keeps its exact bytes, and any other colour
+/// lands within half a display step. Linear bytes would not — near black
+/// one linear step spans many display steps. Total 5 B / stop, align 1,
+/// so `GradientStops` is 40 B inline vs. 64 B with f32 offsets. Stops are
+/// storage-only (never animated; snap on morph), and out-of-range
+/// positions clamp at construction.
 ///
 /// The quantization stays an implementation detail, on both fields: they
 /// are private, [`Self::new`] clamps and quantizes, [`Self::offset`] and
@@ -30,19 +33,19 @@ pub(crate) const MAX_STOPS: usize = 8;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Stop {
     offset_u8: u8,
-    color: RgbaU8,
+    color: SrgbaU8,
 }
 
 impl Stop {
     /// Construct a stop. Finite offsets are clamped to 0..=1 and
-    /// quantized to u8 (round-to-nearest). The colour quantizes to linear
-    /// bytes, which is what the LUT bakes from.
+    /// quantized to u8 (round-to-nearest). The colour is encoded to sRGB
+    /// bytes, exactly for a colour built from a hex code.
     #[inline]
     pub fn new(offset: f32, color: RgbaF32) -> Self {
         assert!(offset.is_finite(), "gradient stop offset must be finite");
         Self {
             offset_u8: num::unit_to_u8(offset),
-            color: color.into(),
+            color: color.to_srgba_u8(),
         }
     }
 
@@ -57,7 +60,7 @@ impl Stop {
     /// way [`Self::offset`] decodes the position.
     #[inline]
     pub const fn color(self) -> RgbaF32 {
-        self.color.to_linear()
+        RgbaF32::from_srgba(self.color)
     }
 }
 
@@ -190,7 +193,7 @@ impl std::ops::Deref for GradientStops {
 }
 
 impl std::hash::Hash for GradientStops {
-    /// **Colour goes in the low half.** `RgbaU8::to_u32` is
+    /// **Colour goes in the low half.** `SrgbaU8::to_u32` is
     /// `from_be_bytes([r, g, b, a])`, so red is its top byte; packing the
     /// colour into the *high* half of this word puts red at bit 56, and
     /// `FxHasher`'s `(hash + word) * K` propagates entropy upward only —

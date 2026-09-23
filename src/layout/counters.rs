@@ -23,7 +23,7 @@ use crate::primitives::widget_id::WidgetId;
 /// Split because the cross-frame cache covers only the first half.
 /// `MeasureCache::try_lookup` can short-circuit an entire subtree — in
 /// steady state the root itself, so measure collapses to a few whole-tree
-/// `copy_from_slice`s — while `LayoutEngine::arrange` walks every node
+/// `copy_from_slice`s — while `LayoutPass::arrange` walks every node
 /// with full driver dispatch regardless. A whole-`run` number averages
 /// that asymmetry away; these two are what make it visible.
 ///

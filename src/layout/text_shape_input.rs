@@ -51,7 +51,7 @@ impl<'a> TextShapeInput<'a> {
     }
 
     /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth
-    /// for the layout-side leaf walk — `LayoutEngine::measure_dispatch`
+    /// for the layout-side leaf walk — `LayoutPass::measure_dispatch`
     /// drives wrap shaping, `intrinsic::leaf` drives the unbounded content
     /// axis. Filtering and destructuring happen here so neither side can
     /// drift on which shape variants contribute to size.

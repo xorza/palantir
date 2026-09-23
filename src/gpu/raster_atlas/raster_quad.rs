@@ -9,9 +9,10 @@
 
 use crate::gpu::shader_template::{self, ShaderConstant};
 use crate::gpu::viewport::ViewportPush;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::content_type::ContentType;
 
-/// One per-instance vertex record. 20 bytes, `Pod`.
+/// One per-instance vertex record. 24 bytes, `Pod`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RasterQuad {
@@ -22,7 +23,7 @@ pub(crate) struct RasterQuad {
     /// Atlas origin plus content type, packed by [`Self::pack_uv`].
     pub(crate) uv_and_kind: u32,
     /// Straight-alpha linear RGBA; the shader premultiplies at output.
-    pub(crate) color: u32,
+    pub(crate) color: RgbaF16,
 }
 
 impl RasterQuad {
@@ -131,7 +132,7 @@ const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
     0 => Sint32x2,
     1 => Uint32,
     2 => Uint32,
-    3 => Unorm8x4,
+    3 => Float16x4,
 ];
 
 // Compile-time guard: attribute offsets must match the struct fields they
@@ -155,8 +156,8 @@ mod tests {
     /// The GPU wire format. Pinned here rather than in either pass, because
     /// both draw through it and neither owns it.
     #[test]
-    fn raster_quad_is_20_bytes() {
-        assert_eq!(size_of::<RasterQuad>(), 20);
+    fn raster_quad_is_24_bytes() {
+        assert_eq!(size_of::<RasterQuad>(), 24);
         assert_eq!(align_of::<RasterQuad>(), 4);
         assert_eq!(offset_of!(RasterQuad, pos), 0);
         assert_eq!(offset_of!(RasterQuad, dim), 8);

@@ -45,10 +45,11 @@ enum Tier {
     /// and does nothing else.
     SubtreeUnchanged,
     /// Authoring and parent match but `cascade_input` moved — a scroll
-    /// tick, a pan, a sibling shift. Same widgets, same rows, same row
-    /// hashes; only their screens differ, so damage is exactly "what the
-    /// subtree painted before ∪ what it paints now" rather than the
-    /// per-row matcher's two-rects-per-row flood.
+    /// tick, a pan, a sibling shift, an ancestor that stopped painting.
+    /// Same widgets; every node that still paints has the same rows and
+    /// row hashes, and the rest paint nothing. So damage is exactly
+    /// "what the subtree painted before ∪ what it paints now" rather than
+    /// the per-row matcher's two-rects-per-row flood.
     SubtreeMoved,
     /// This node is unchanged; a descendant is not. Its own arena rows
     /// stay correct, so only the rollup needs refreshing.
@@ -63,8 +64,8 @@ enum Tier {
 ///
 /// Built fresh per layer so the mutable diff state is reborrowed from
 /// `DamageEngine` each time. Every field the arms mutate is a field
-/// here, which is what lets them be methods: disjoint field borrows do
-/// the work the hand-written local aliases used to.
+/// here, which is what lets them be methods: disjoint field borrows keep
+/// each arm's writes apart without local aliases.
 #[derive(Debug)]
 pub(super) struct LayerWalk<'a> {
     pub(super) prev: &'a mut WidgetIdMap<NodeSnapshot>,
@@ -280,10 +281,13 @@ impl LayerWalk<'_> {
     /// painted and what it paints now, then re-baseline every node in it
     /// without re-deriving anything the induction already gives us.
     ///
-    /// Equal `subtree_hash` pins the row *count* per node, which is what
-    /// makes the in-place `copy_from_slice` below sound: each snapshot
-    /// keeps the block it already holds, so no span moves and only
-    /// `cascade_input` needs refreshing.
+    /// Equal `subtree_hash` pins the row *count* of every node that still
+    /// paints, which is what makes the in-place `copy_from_slice` below
+    /// sound: each snapshot keeps the block it already holds, so no span
+    /// moves and only `cascade_input` needs refreshing. The one other
+    /// case is a node the cascade made invisible — a `Hidden` or
+    /// `Collapsed` ancestor — which has no rows at all; its snapshot is
+    /// evicted here, because the ancestor's own tier never reaches it.
     /// A node with no snapshot was skipped as [`Tier::Untracked`] back
     /// when it painted nothing visible; the frame a move brings its rows
     /// on-surface it gets inserted here, which is what keeps every node
@@ -300,6 +304,12 @@ impl LayerWalk<'_> {
             let wid = self.tree.records.widget_id()[j];
             let curr = self.cascade.paint_arena.rows_of(j);
             if curr.is_empty() {
+                if let Some(snap) = self.prev.remove(&wid) {
+                    prev_extent = prev_extent
+                        .union(self.paints.slots[snap.paint_span.range()].union_screens());
+                    self.paints.release(snap.paint_span);
+                    self.counters.mark_dirty(NodeId(j as u32));
+                }
                 continue;
             }
             // One probe: the refresh below is the only write, so it takes the
@@ -326,9 +336,9 @@ impl LayerWalk<'_> {
             self.counters.mark_dirty(NodeId(j as u32));
         }
         damage::push_screen(self.raw_rects, prev_extent);
-        // Rolled-up curr extent from the cascade — already `Rect::ZERO`
-        // for invisible subtrees, so a hide transition damages only the
-        // prev pixels.
+        // Rolled-up curr extent from the cascade — `Rect::ZERO` for an
+        // invisible subtree, so a hide transition damages only the prev
+        // pixels the evictions above folded in.
         //
         // Off the column, like every other "what does this subtree paint"
         // this frame. The prev half above cannot be: last frame's column

@@ -710,3 +710,43 @@ fn interning_per_pass_records_the_expected_bytes() {
         "the recorded bytes come from the pass that survived",
     );
 }
+
+/// The shared text clock counts host frames, not window frames.
+///
+/// Each window's first frame opens a round and ticks nothing. After that,
+/// two windows that paint in rounds tick the clock once per round — three
+/// rounds, three ticks, where one tick per window frame would give six.
+/// A window that paints twice while its sibling waits ticks on each of
+/// its own repeats, because each one starts a new host frame: two ticks,
+/// and the sibling's frame after them ticks nothing.
+#[test]
+fn the_text_clock_ticks_once_per_host_frame() {
+    use crate::text::shaper::TextShaper;
+    let shared = UiResources::new(
+        TextShaper::test_mono(),
+        Clipboard::memory(),
+        TextureLimit::default(),
+    );
+    let clock = || shared.text().frame();
+    let mut a = ui_with_shared(&shared);
+    let mut b = ui_with_shared(&shared);
+    let start = clock();
+
+    a.frame(|_| {});
+    b.frame(|_| {});
+    assert_eq!(clock(), start, "first frames tick nothing");
+    for round in 1..=3 {
+        a.frame(|_| {});
+        b.frame(|_| {});
+        assert_eq!(clock(), start + round, "one tick per round of both windows");
+    }
+
+    a.frame(|_| {});
+    a.frame(|_| {});
+    b.frame(|_| {});
+    assert_eq!(
+        clock(),
+        start + 5,
+        "A's two repeats tick twice, and B's frame not at all"
+    );
+}

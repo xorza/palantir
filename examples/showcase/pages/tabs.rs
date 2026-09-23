@@ -110,7 +110,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         .selected(s.overflowing)
                         .overflow(TabOverflow::Menu)
                         .show(ui);
-                    if let Some(i) = hit.clicked.or(hit.keyed) {
+                    if let Some(i) = hit.clicked.or(hit.keyed).or(hit.menu_picked) {
                         s.overflowing = i;
                     }
                 });

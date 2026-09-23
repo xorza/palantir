@@ -150,7 +150,7 @@ impl<G: GradientGeometry> std::hash::Hash for Gradient<G> {
 }
 
 /// Stop offsets and colours are integer-encoded (`Stop::offset_u8`,
-/// `RgbaU8`), so a gradient's geometry is the only place a NaN can hide.
+/// `SrgbaU8`), so a gradient's geometry is the only place a NaN can hide.
 impl<G: GradientGeometry> NanCheck for Gradient<G> {
     #[inline]
     fn has_nan(&self) -> bool {

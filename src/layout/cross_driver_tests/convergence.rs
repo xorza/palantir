@@ -1,4 +1,4 @@
-//! Regression: `LayoutEngine::measure`'s second-pass convergence path
+//! Regression: `LayoutPass::measure`'s second-pass convergence path
 //! used to assert `final_desired <= new_available`. That assumption
 //! breaks when a descendant subtree contains non-monotonic measure —
 //! e.g. a `wrap_hstack` whose row-pack changes shape under different

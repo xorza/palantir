@@ -314,8 +314,8 @@ impl Forest {
 
     /// Same as [`Self::add_shape`], but registers a `PaintAnim` against
     /// the freshly-pushed shape so the encoder applies the sampled
-    /// `PaintMod` at paint time and `post_record` folds the anim's
-    /// `next_wake` into the host's repaint queue. Drops silently
+    /// `PaintMod` at paint time and [`Self::min_paint_anim_wake`] folds
+    /// the anim's `next_wake` into the host's repaint queue. Drops silently
     /// (no entry pushed) if the shape itself was noop-collapsed.
     /// Effectively invisible shapes stay authored but omit their
     /// animation row until a visible record pass resumes them.

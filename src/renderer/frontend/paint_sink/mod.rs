@@ -189,11 +189,12 @@ pub(crate) trait PaintSink {
     #[inline]
     fn draw_polyline(&mut self, payload: DrawPolylinePayload, alpha: f32) {
         let payload = payload.faded(alpha);
-        // Asserted, not gated — the one payload whose no-op conditions
-        // are *already guaranteed* when it gets here, so a failure is a
-        // broken contract rather than a value to filter.
+        // The geometry half is asserted, not gated — the one no-op
+        // condition *already guaranteed* when it gets here, so a failure
+        // is a broken contract rather than a value to filter. The fade
+        // is gated below like every sibling's.
         //
-        // Both conditions are authoring-derived and unchanged by
+        // Both geometry conditions are authoring-derived and unchanged by
         // lowering: `PolylineShape::is_noop` rejects `< 2` points and a
         // non-painting width before `Shapes::add` lowers anything, and
         // the encoder forwards the record's span length and width
@@ -202,17 +203,19 @@ pub(crate) trait PaintSink {
         // the owner's arranged box, a text extent from the shaped
         // measure — which can legitimately collapse to nothing.
         //
-        // Debug-only is safe: the composer handles a degenerate polyline
-        // by emitting no geometry (pinned by
-        // `degenerate_polyline_emits_nothing_rather_than_panicking`), so
-        // a release build that somehow reached here still paints
-        // correctly — it just doesn't pay two comparisons per polyline
-        // per frame to re-establish what upstream already proved.
+        // Debug-only is safe: `is_noop` below covers the geometry as well,
+        // so a release build drops a degenerate polyline anyway, and the
+        // composer emits no geometry for one either (pinned by
+        // `degenerate_polyline_emits_nothing_rather_than_panicking`). The
+        // assert is there to name the broken upstream contract.
         debug_assert!(
-            !payload.is_noop(),
+            !payload.is_degenerate(),
             "degenerate polyline reached the sink — `PolylineShape::is_noop` \
              should have dropped it: {payload:?}",
         );
+        if payload.is_noop() {
+            return;
+        }
         self.polyline(payload);
     }
 }

@@ -7,6 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
+use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::harness::UiHarness;
@@ -859,4 +860,70 @@ fn a_hidden_container_takes_no_snapshot() {
         !h.engines.damage.prev.contains_key(&hidden_child),
         "a `Visible` child under it is rowless for the same reason",
     );
+}
+
+/// Pin: a chromeless container that stops painting takes its painted
+/// descendants' pixels with it. The descendants keep their authoring,
+/// so they reach the moved-subtree leg with no rows; that leg must
+/// evict them, or the frame reports no damage and they stay on screen.
+/// The frame that shows the container again repaints both.
+#[test]
+fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
+    const CHILD_PROBE: Rect = Rect::new(45.0, 45.0, 2.0, 2.0);
+    const GRANDCHILD_PROBE: Rect = Rect::new(12.0, 12.0, 2.0, 2.0);
+    let child = WidgetId::from_hash("child");
+    let grandchild = WidgetId::from_hash("grandchild");
+    let build = |ui: &mut Ui, vis: Visibility| {
+        Panel::zstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("container"))
+                    .visibility(vis)
+                    .show(ui, |ui| {
+                        Panel::zstack()
+                            .id(child)
+                            .size(50.0)
+                            .background(Background {
+                                fill: BLUE.into(),
+                                ..Default::default()
+                            })
+                            .show(ui, |ui| {
+                                Block::new()
+                                    .id(grandchild)
+                                    .size(20.0)
+                                    .background(Background {
+                                        fill: RED.into(),
+                                        ..Default::default()
+                                    })
+                                    .show(ui);
+                            });
+                    });
+            });
+    };
+    for vis in [Visibility::Hidden, Visibility::Collapsed] {
+        let mut h = UiHarness::new(DISPLAY.physical);
+        frame(&mut h, |ui| build(ui, Visibility::Visible));
+        let hide = Damage::expect_partial(frame(&mut h, |ui| build(ui, vis)));
+        for (probe, what) in [(CHILD_PROBE, "child"), (GRANDCHILD_PROBE, "grandchild")] {
+            assert!(
+                hide.any_intersects(probe),
+                "{vis:?}: the {what}'s old pixels must be damaged; region = {hide:?}",
+            );
+        }
+        for (wid, what) in [(child, "child"), (grandchild, "grandchild")] {
+            assert!(
+                !h.engines.damage.prev.contains_key(&wid),
+                "{vis:?}: the {what} paints nothing now, so its snapshot must go",
+            );
+        }
+        let show = Damage::expect_partial(frame(&mut h, |ui| build(ui, Visibility::Visible)));
+        for (probe, what) in [(CHILD_PROBE, "child"), (GRANDCHILD_PROBE, "grandchild")] {
+            assert!(
+                show.any_intersects(probe),
+                "{vis:?}: the {what}'s new pixels must be damaged; region = {show:?}",
+            );
+        }
+    }
 }

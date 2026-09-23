@@ -16,6 +16,7 @@ use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster_pass::RasterPass;
 use crate::gpu::text::encode::{EncodedKey, EncodedRunKey};
 use crate::gpu::text::encoded_counters::EncodedCounters;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::span::Span;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::render::GlyphRasterKey;
@@ -53,7 +54,7 @@ impl BlockSlot for EncodedGlyph {
                 pos: [0, 0],
                 dim: 0,
                 uv_and_kind: 0,
-                color: 0,
+                color: RgbaF16::TRANSPARENT,
             },
             atlas_slot: next,
             generation: 0,
@@ -446,7 +447,7 @@ pub(crate) mod test_support {
                             pos: [glyph as i32, run as i32],
                             dim: 0,
                             uv_and_kind: 0,
-                            color: 0,
+                            color: RgbaF16::TRANSPARENT,
                         },
                         atlas_slot: glyph,
                         generation: 1,
@@ -457,7 +458,7 @@ pub(crate) mod test_support {
                     // The churn axis: one fresh rung per frame.
                     scale_q: self.frame as u32,
                     // Run identity, stable across the gesture.
-                    area_color: run,
+                    area_color: u64::from(run),
                     bins: 0,
                 };
                 self.cache.settle(key, self.frame, true);
@@ -524,7 +525,7 @@ pub(crate) mod test_support {
                             pos: [glyph as i32, row as i32],
                             dim: 0,
                             uv_and_kind: 0,
-                            color: 0,
+                            color: RgbaF16::TRANSPARENT,
                         },
                         atlas_slot: glyph,
                         generation: 1,

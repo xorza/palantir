@@ -44,7 +44,8 @@ pub(crate) struct NodeRecord {
     /// hot measure/arrange path reads all six fields together.
     pub layout: LayoutCore,
     /// Packed paint/input flags (2 B: sense / disabled / clip /
-    /// focusable). Read by cascade / encoder / hit-test.
+    /// focusable / key-scope filter). Read by cascade / encoder /
+    /// hit-test / input routing.
     pub attrs: NodeFlags,
     /// Optional two-byte indices into the sparse `bounds_table` /
     /// `panel_table` / `chrome_table`. A field rather than a `Vec`

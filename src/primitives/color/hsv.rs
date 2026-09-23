@@ -1,7 +1,8 @@
 //! HSV — the classic axes, kept so a number copied out of another tool still
 //! means what it says.
 
-use crate::primitives::color::{RgbaF32, linear_to_srgb};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgb_transfer;
 
 /// Hue, saturation and value in the classic HSV space.
 ///
@@ -61,9 +62,9 @@ impl Hsv {
     ///
     /// `fallback_hue` answers grey, which has no hue to recover.
     pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
-        let r = linear_to_srgb(color.r);
-        let g = linear_to_srgb(color.g);
-        let b = linear_to_srgb(color.b);
+        let r = srgb_transfer::encode(color.r);
+        let g = srgb_transfer::encode(color.g);
+        let b = srgb_transfer::encode(color.b);
         let high = r.max(g).max(b);
         let low = r.min(g).min(b);
         let spread = high - low;

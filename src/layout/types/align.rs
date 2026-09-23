@@ -10,11 +10,10 @@ use crate::primitives::size::Size;
 /// child's own cross-axis `Sizing` (Fill → stretch, otherwise → start). Any
 /// non-`Auto` variant overrides both.
 ///
-/// `#[repr(u8)]` with explicit discriminants pins the on-disk tag:
-/// `TextShapeKey::halign_q` stores this as a byte and decodes it back
-/// positionally, so a reordered variant would resolve every cached shaped
-/// buffer to the wrong alignment. The same reason
-/// [`FontFamily`](crate::FontFamily) pins its own.
+/// `#[repr(u8)]` with explicit discriminants pins the packed tag:
+/// [`Align`] packs this into three bits and [`Align::halign`] unpacks it
+/// positionally, so a reordered variant would decode every packed
+/// `Align` to the wrong alignment.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HAlign {
@@ -60,8 +59,7 @@ pub enum VAlign {
 ///
 /// A reordered variant would decode every packed `Align` to the wrong one
 /// — silently, since the bits stay inside the mask and the `unreachable!`
-/// arms never fire. `TextShapeKey` decodes `HAlign` the same way off a
-/// stored tag byte, so this guards that too.
+/// arms never fire.
 const _: () = {
     assert!(
         HAlign::Auto as u8 == 0

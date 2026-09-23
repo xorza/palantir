@@ -2,6 +2,7 @@
 //! read on the atlas hit path.
 
 use crate::gpu::raster_atlas::raster_quad::RasterQuad;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::content_type::ContentType;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2};
@@ -35,7 +36,7 @@ impl SlotPlacement {
     /// Both tenants build a quad from a slot, and every term but the pen
     /// and the tint is the slot's: the extents, the atlas origin, the
     /// side to sample.
-    pub(crate) fn quad(self, pen: IVec2, color: u32) -> RasterQuad {
+    pub(crate) fn quad(self, pen: IVec2, color: RgbaF16) -> RasterQuad {
         RasterQuad {
             // `y` up in the rasterizer's sense, `y` down on screen.
             pos: [

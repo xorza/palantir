@@ -87,11 +87,14 @@ impl GpuViews {
         &self.entries[&id]
     }
 
-    /// Drop the rows of widgets the frame stopped recording. The backend
-    /// frees each orphaned texture the next frame it is absent from the
-    /// retention roster.
+    /// Drop the rows of widgets the frame stopped recording, one probe
+    /// each, so a frame pays for what it removed rather than for every
+    /// view the session ever held. The backend frees each orphaned
+    /// texture the next frame it is absent from the retention roster.
     pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
-        self.entries.retain(|id, _| !removed.contains(id));
+        for id in removed {
+            self.entries.remove(id);
+        }
     }
 
     /// Fill `out` with the retention roster: every view the frame
@@ -116,7 +119,7 @@ impl GpuViews {
 #[cfg(test)]
 mod tests {
     use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
     use crate::renderer::gpu_paint::GpuPaint;
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use crate::renderer::gpu_paint::gpu_views::GpuViews;
@@ -168,5 +171,22 @@ mod tests {
             "a new callback must not inherit a target init already ran against",
         );
         assert_eq!(epoch, 3, "and it paints on the frame it arrived");
+    }
+
+    /// Sweeping a removed view drops its row and leaves its sibling's,
+    /// so only the sibling's target stays on the retention roster.
+    #[test]
+    fn sweeping_a_removed_view_keeps_its_sibling() {
+        let (gone, kept) = (WidgetId::from_hash("gone"), WidgetId::from_hash("kept"));
+        let mut views = GpuViews::default();
+        views.record(gone, renderer(), true, 1);
+        views.record(kept, renderer(), true, 1);
+        let target = views.view(kept).texture_id;
+
+        let removed: WidgetIdSet = [gone].into_iter().collect();
+        views.sweep_removed(&removed);
+        let mut live = Vec::new();
+        views.collect_live_targets(&mut live);
+        assert_eq!(live, vec![target]);
     }
 }

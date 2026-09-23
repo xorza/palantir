@@ -432,7 +432,7 @@ mod record_store_tests {
     use crate::common::clipboard::Clipboard;
     use crate::host::clock::FixedClock;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::primitives::color::{RgbaF32, RgbaU8};
+    use crate::primitives::color::{RgbaF16, RgbaF32};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
@@ -453,7 +453,7 @@ mod record_store_tests {
         mesh_vertices: Vec<MeshVertex>,
         mesh_indices: Vec<u32>,
         polyline_points: Vec<Vec2>,
-        polyline_colors: Vec<RgbaU8>,
+        polyline_colors: Vec<RgbaF16>,
         text: String,
     }
 

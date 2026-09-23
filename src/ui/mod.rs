@@ -336,12 +336,11 @@ impl Ui {
 
     /// This frame's presses, in arrival order.
     ///
-    /// Layer-gated exactly like [`Self::pointer_events`]: a
-    /// An overlay's scope empties the stream for every layer strictly
-    /// below, and for no other — so the claiming overlay's own body keeps
-    /// reading, which is what lets a `TextEdit` inside a popup be typed
-    /// into. The claim owner reads its scoped stream through
-    /// its own layer.
+    /// Layer-gated exactly like [`Self::pointer_events`]: an overlay's
+    /// scope empties the stream for every layer strictly below, and for
+    /// no other — so the claiming overlay's own body keeps reading, which
+    /// is what lets a `TextEdit` inside a popup be typed into. The claim
+    /// owner reads its scoped stream through its own layer.
     #[inline]
     pub fn keyboard_events(&self) -> &[KeyPress] {
         self.input.keyboard_events(self.forest.current_layer())
@@ -981,7 +980,7 @@ impl Ui {
     /// survives. [`Self::animate`] plus [`Self::request_repaint`] paint
     /// the same pixels at the cost of a record pass per frame.
     ///
-    /// `post_record` folds the animation's next wake into the repaint
+    /// Every frame folds the animation's next wake into the repaint
     /// queue, so a caller schedules nothing of its own.
     ///
     /// Drops silently if the shape itself was noop-collapsed — zero
@@ -1029,7 +1028,8 @@ impl Ui {
     }
 
     /// Withdraw an [`input_scope`](crate::Configure::input_scope) this
-    /// pass recorded, so the next resolution does not see it.
+    /// pass recorded, so the next resolution does not see it. The
+    /// withdrawal holds through the end of the next frame.
     ///
     /// **The pass you call it in is unaffected.** A scope path is
     /// resolved once at pass start against a cascade that is one frame
@@ -1126,7 +1126,7 @@ impl Ui {
     /// reflect the previous frame's input, not events fed since. Reading
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
-    /// The widget's own `Node::disabled` is **not** folded in here — only
+    /// The widget's own `NodeFlags::is_disabled` is **not** folded in here — only
     /// `Widget::response` can see it. Both fold through
     /// `ResponseState::merge_disabled`, which is idempotent, so the
     /// interaction half is gone by the time either of them returns.

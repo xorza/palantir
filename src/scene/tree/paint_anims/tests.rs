@@ -139,12 +139,45 @@ fn pre_start_phase_is_solid_and_wakes_at_start() {
     assert_eq!(a.next_wake(before), Some(START));
 }
 
+/// A zero period finishes each pass the instant it starts. Linear
+/// `0 → 1` alpha, so the sampled alpha is the phase: `Once` jumps to its
+/// end value at the start, a repeat stays at its start value, and
+/// `Settle` stops modifying the shape (alpha 1, the identity) at its
+/// settle time. Before the start every mode reads phase 0 and wakes at
+/// the start.
 #[test]
-fn zero_period_never_wakes() {
-    let a = blink().period(Duration::ZERO);
-    // Degenerate, but must not panic. `next_wake` returns `None` so
-    // the wake folder drops it.
-    assert_eq!(a.next_wake(START + Duration::from_secs(1)), None);
+fn a_zero_period_settles_to_the_right_value() {
+    const SETTLE: Duration = Duration::from_secs(2);
+    let before = START - Duration::from_millis(200);
+    let settled = START + SETTLE;
+    let cases = [
+        (
+            PaintRepeat::Once,
+            [(0.0, Some(START)), (1.0, None), (1.0, None)],
+        ),
+        (
+            PaintRepeat::Forever,
+            [(0.0, Some(START)), (0.0, None), (0.0, None)],
+        ),
+        (
+            PaintRepeat::Settle(SETTLE),
+            [(0.0, Some(START)), (0.0, Some(settled)), (1.0, None)],
+        ),
+    ];
+    for (repeat, expected) in cases {
+        let a = PaintAnim::alpha(0.0, 1.0)
+            .started_at(START)
+            .period(Duration::ZERO)
+            .repeat(repeat)
+            .curve(curves::linear);
+        for (now, (alpha, wake)) in [before, START, settled].into_iter().zip(expected) {
+            assert_eq!(
+                (a.sample(now).alpha, a.next_wake(now)),
+                (alpha, wake),
+                "{repeat:?} at {now:?}",
+            );
+        }
+    }
 }
 
 #[test]

@@ -452,7 +452,7 @@ fn one_shape_change_only_flips_its_own_hash() {
 /// `subtree_ends` column against the tree on every run — an O(nodes) walk
 /// per layer per frame, on the incremental fast path. Folding the end into
 /// this hash covers the same ground for free, which is what lets
-/// `Cascade::subtree_ends` be the sparse ancestry column its doc claims.
+/// `LayerCascade::subtree_ends` be the sparse ancestry column its doc claims.
 /// If the fold is ever dropped, these two collide and a re-parent silently
 /// keeps the stale cascade.
 #[test]

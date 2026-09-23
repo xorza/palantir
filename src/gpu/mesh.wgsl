@@ -1,9 +1,8 @@
 struct VsIn {
     @location(0) pos: vec2<f32>,
-    // Linear-u8 lanes — `Unorm8x4` auto-normalizes `u8/255` to
-    // `0..1` floats with no decode. Stored linearly on the CPU
-    // (`From<RgbaF32> for RgbaU8` is a linear quantize), so the
-    // rasterizer interpolates linear values directly.
+    // Linear lanes: `color` is linear bytes that the `Unorm8x4` fetch
+    // normalizes to `0..1`, and `tint` is linear f16. Neither needs a
+    // decode, so the rasterizer interpolates linear values directly.
     //
     // **Straight alpha in, premultiplied alpha out.** `color` and
     // `tint` carry straight-alpha values; `fs` premultiplies at

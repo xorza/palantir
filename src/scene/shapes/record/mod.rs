@@ -182,10 +182,6 @@ pub(crate) enum ShapeRecord {
         /// ignored: the stroke carries its own 1-D parameter. The
         /// authoring type cannot contain radial or conic gradients.
         fill: ShapeBrush,
-        /// Pre-computed content hash of `fill` when it's a gradient,
-        /// `0` for solid — same context-free-hash trick as
-        /// [`QuadShape::Rect`]'s own `fill_grad_hash`.
-        fill_grad_hash: u64,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by
         /// `width/2` past each endpoint along the local tangent.

@@ -41,9 +41,7 @@ impl StateMap {
         self.stores.get_mut::<Store<T>>()?.try_get_mut(id)
     }
 
-    /// Caller guards on `removed` being non-empty — see
-    /// `FrameCycle::finalize_frame`, which shares that one guard with the
-    /// other removal-driven sweep.
+    /// Drop the rows of the widgets in `removed`, one probe each.
     pub(super) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         self.stores.sweep_removed(removed, Drained::Keep);
     }

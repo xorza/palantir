@@ -496,9 +496,9 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
 /// A probe answers in the alignment the *run* asked for, not the one its
 /// cache key carries.
 ///
-/// `TextShapeKey::halign_q` is a cache discriminator, projected onto what
-/// shaping varies on — an unbounded key stores `HAlign::Auto` whatever
-/// the run said, because an unbounded shape bakes no per-line offsets.
+/// The key's [`LineAlign`](crate::text::key::LineAlign) is a cache
+/// discriminator, projected onto what shaping varies on — an unbounded
+/// key stores `LineAlign::Auto` whatever the run said, because an unbounded shape bakes no per-line offsets.
 /// Reading the caret's alignment off it therefore put the caret on a
 /// glyphless line at the block's left edge for a right-aligned run.
 #[test]

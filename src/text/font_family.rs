@@ -1,22 +1,79 @@
 //! [`FontFamily`] and the process-wide table of interned family names.
 
+use rustc_hash::FxHashMap;
 use std::fmt;
 use std::sync::{LazyLock, RwLock, RwLockReadGuard};
 
-/// Append-only table mapping a [`FontFamily`] index to its name.
+/// The process-wide [`FamilyTable`].
 ///
-/// A process-wide static, and the crate's only mutable one. Nothing here
-/// is per-shaper because a [`TextStyle`](crate::TextStyle) deserialized
+/// A static, and the crate's only mutable one. Nothing here is
+/// per-shaper because a [`TextStyle`](crate::TextStyle) deserialized
 /// from a theme file has no shaper in reach to resolve a name against —
 /// and a family has to survive that round trip as the same two bytes the
 /// hot path carries.
+static NAMES: LazyLock<RwLock<FamilyTable>> =
+    LazyLock::new(|| RwLock::new(FamilyTable::seeded(FAMILY_LIMIT)));
+
+/// Every index a `u16` can name.
+const FAMILY_LIMIT: usize = 1 << 16;
+
+/// Append-only table mapping a [`FontFamily`] index to its name, and the
+/// name back to its index.
 ///
 /// Append-only, so an index handed out stays valid and `name` never has
 /// to fail. Names are leaked on the way in, which is what lets the table
 /// answer in `&'static str` and cosmic's `Attrs<'static>` hold one
-/// without a copy per shape.
-static NAMES: LazyLock<RwLock<Vec<&'static str>>> =
-    LazyLock::new(|| RwLock::new(vec![FontFamily::SANS_NAME, FontFamily::MONO_NAME]));
+/// without a copy per shape — and what lets the reverse index key on the
+/// same leaked string rather than on a second copy.
+#[derive(Debug)]
+struct FamilyTable {
+    names: Vec<&'static str>,
+    index: FxHashMap<&'static str, u16>,
+    /// How many names the table takes: [`FAMILY_LIMIT`] for the process
+    /// table, fewer in the test that fills one.
+    limit: usize,
+}
+
+impl FamilyTable {
+    /// The two bundled families at their fixed indices, and room for
+    /// `limit` names in all.
+    fn seeded(limit: usize) -> Self {
+        let mut table = Self {
+            names: Vec::new(),
+            index: FxHashMap::default(),
+            limit,
+        };
+        for name in [FontFamily::SANS_NAME, FontFamily::MONO_NAME] {
+            table.push(name);
+        }
+        table
+    }
+
+    fn get(&self, name: &str) -> Option<FontFamily> {
+        self.index.get(name).map(|&index| FontFamily(index))
+    }
+
+    /// The family called `name`, interning it when the table has not seen
+    /// it, or `None` when it has not and holds [`Self::limit`] names
+    /// already.
+    fn intern(&mut self, name: &str) -> Option<FontFamily> {
+        if let Some(found) = self.get(name) {
+            return Some(found);
+        }
+        if self.names.len() >= self.limit {
+            return None;
+        }
+        Some(self.push(String::leak(name.to_owned())))
+    }
+
+    fn push(&mut self, name: &'static str) -> FontFamily {
+        let index =
+            u16::try_from(self.names.len()).expect("the table limit keeps every index inside u16");
+        self.names.push(name);
+        self.index.insert(name, index);
+        FontFamily(index)
+    }
+}
 
 /// Which family to shape in, as an index into the interned name table.
 ///
@@ -46,26 +103,35 @@ impl FontFamily {
     /// a family no face answers to is not an error here — it resolves at
     /// shaping time, and [`Ui::font_available`](crate::Ui::font_available)
     /// is what asks in advance.
+    ///
+    /// # Panics
+    ///
+    /// Panics when 65 536 families are interned already and `name` is
+    /// not one of them.
     pub fn named(name: &str) -> Self {
-        if let Some(found) = index_of(&read_names(), name) {
-            return found;
+        Self::try_named(name).expect("more than 65536 font families interned")
+    }
+
+    /// [`Self::named`], or `None` when the table is full and `name` is not
+    /// in it. Untrusted names — a theme file's — come through here, so a
+    /// hostile file is a deserialization error rather than a panic.
+    pub(crate) fn try_named(name: &str) -> Option<Self> {
+        if let Some(found) = read_names().get(name) {
+            return Some(found);
         }
-        let mut names = NAMES.write().expect("the font name table is poisoned");
-        // Searched again under the write lock rather than reusing the read
-        // above: two threads can both miss it, and a name interned twice
-        // would be two families. An `RwLock` is not reentrant, so this
-        // cannot go back through the read path to ask.
-        if let Some(found) = index_of(&names, name) {
-            return found;
-        }
-        let index = u16::try_from(names.len()).expect("more than 65536 font families interned");
-        names.push(String::leak(name.to_owned()));
-        Self(index)
+        // `intern` searches again under the write lock rather than trusting
+        // the read above: two threads can both miss it, and a name interned
+        // twice would be two families.
+        NAMES
+            .write()
+            .expect("the font name table is poisoned")
+            .intern(name)
     }
 
     /// This family's name, as `Family::Name` wants it.
     pub fn name(self) -> &'static str {
         read_names()
+            .names
             .get(usize::from(self.0))
             .copied()
             .expect("a font family index this process never interned")
@@ -85,15 +151,8 @@ impl FontFamily {
     }
 }
 
-fn read_names() -> RwLockReadGuard<'static, Vec<&'static str>> {
+fn read_names() -> RwLockReadGuard<'static, FamilyTable> {
     NAMES.read().expect("the font name table is poisoned")
-}
-
-fn index_of(names: &[&'static str], name: &str) -> Option<FontFamily> {
-    names
-        .iter()
-        .position(|known| *known == name)
-        .map(|index| FontFamily(index as u16))
 }
 
 /// The name rather than the index, so a `{:?}` of a `TextStyle` reads
@@ -128,13 +187,14 @@ impl serde::de::Visitor<'_> for NameVisitor {
     }
 
     fn visit_str<E: serde::de::Error>(self, name: &str) -> Result<Self::Value, E> {
-        Ok(FontFamily::named(name))
+        FontFamily::try_named(name)
+            .ok_or_else(|| E::custom("more than 65536 font families interned"))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::text::font_family::FontFamily;
+    use crate::text::font_family::{FamilyTable, FontFamily};
 
     /// The two seeded families are the names `resolved_name` answers and the
     /// indices the key encodes — pinned together because the table's
@@ -158,6 +218,26 @@ mod tests {
         assert_eq!(first, again);
         assert_eq!(first.name(), "Palantir Test Family");
         assert!(first.raw() >= 2, "a fresh name cannot take a seeded index");
+    }
+
+    /// A full table refuses a new name and keeps answering every name it
+    /// holds with the index it gave out. Four names: the two seeded ones
+    /// at 0 and 1, then two fresh ones at 2 and 3.
+    #[test]
+    fn a_full_table_refuses_a_new_name() {
+        let mut table = FamilyTable::seeded(4);
+        let fresh = ["Full Table A", "Full Table B"].map(|name| table.intern(name));
+        assert_eq!(fresh, [Some(FontFamily(2)), Some(FontFamily(3))]);
+        assert_eq!(table.intern("Full Table C"), None, "the table is full");
+        for (name, index) in [
+            ("Inter", 0),
+            ("JetBrains Mono", 1),
+            ("Full Table A", 2),
+            ("Full Table B", 3),
+        ] {
+            assert_eq!(table.intern(name), Some(FontFamily(index)), "{name}");
+        }
+        assert_eq!(table.names.len(), 4, "a refusal leaves no trace");
     }
 
     /// A family round-trips through serde as its name, and an unknown

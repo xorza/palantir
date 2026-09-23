@@ -75,9 +75,10 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 /// **Adding a new field to category (2)** takes three coordinated
 /// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
 /// field carrying it through the cache, and a restore branch inside
-/// [`Self::restore_after_cache_hit`]. All four sites are compiler-enforced —
+/// [`Self::restore_after_cache_hit`]. All three are compiler-enforced —
 /// `capture_tree` and `restore_after_cache_hit` destructure
-/// exhaustively, the other two are struct literals — so a missed edit
+/// exhaustively, and the `CachedSubtree` field is a struct literal — so a
+/// missed edit
 /// is a build error, not a silent arrange corruption. The reset
 /// functions (`NodeArenas::clear`, `LayerLayout::resize_for`, and the
 /// one below) destructure to buy the same thing for a field left

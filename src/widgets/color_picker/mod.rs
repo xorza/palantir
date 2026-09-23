@@ -48,7 +48,7 @@ mod history;
 /// never rebuilds the rest from its axes. That matters at more than the
 /// margins: a small wedge of sRGB around pure blue is outside the Okhsv cube
 /// (see [`Okhsv`](crate::Okhsv)), so a picker that rebuilt the colour every
-/// time the opacity moved would quietly shift `#0000ff` to `#0038ff`.
+/// time the opacity moved would quietly shift `#0000ff` to `#0037ff`.
 ///
 /// # Retained state
 ///

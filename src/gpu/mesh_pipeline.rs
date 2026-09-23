@@ -202,10 +202,9 @@ fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bo
 
 const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
     0 => Float32x2,
-    // `Unorm8x4` normalizes `u8/255 → 0..1` floats on the GPU. The
-    // CPU side stores linear-u8 via the linear `From<RgbaF32> for
-    // RgbaU8` impl, so the shader sees linear values directly —
-    // no decode, no banding worse than 1/255 (below display step).
+    // `Unorm8x4` normalizes `u8/255 → 0..1` floats on the GPU.
+    // `MeshVertex::color` holds linear bytes, so the shader reads linear
+    // values with no decode.
     1 => Unorm8x4,
 ];
 
@@ -226,12 +225,12 @@ fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-// Tint storage matches `MeshVertex.color` (straight-alpha linear-u8);
-// shader multiplies per-fragment, no decode either side.
+// Tint is straight-alpha linear, like `MeshVertex.color`; the shader
+// multiplies the two, with no decode on either side.
 const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
     2 => Float32x2,
     3 => Float32,
-    4 => Unorm8x4,
+    4 => Float16x4,
 ];
 
 const _: () = {

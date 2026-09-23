@@ -65,7 +65,7 @@ fn cube_corners_are_the_gamut_edge() {
 #[test]
 fn pure_blue_lies_outside_the_cube() {
     let edge = Okhsv::new(CORNER_HUES[BLUE], 1.0, 1.0).to_color();
-    assert_eq!(edge.to_srgba_u8(), SrgbaU8::hex(0x0038ff));
+    assert_eq!(edge.to_srgba_u8(), SrgbaU8::hex(0x0037ff));
     // Reading pure blue back saturates both axes rather than reporting
     // something out of range, so a picker opened on it shows its handles in
     // the corner.

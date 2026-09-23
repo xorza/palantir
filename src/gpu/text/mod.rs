@@ -2,7 +2,7 @@
 //!
 //! Built to Palantir's contracts:
 //!
-//! - **Linear-premul end to end.** `RgbaU8` is straight-linear-u8 in,
+//! - **Linear-premul end to end.** Straight-alpha linear f16 in,
 //!   shader writes `vec4(rgb*a, a)`, blend is
 //!   `PREMULTIPLIED_ALPHA_BLENDING`. No sRGB encode/decode round-trip.
 //! - **Scissor does the clipping.** No per-glyph CPU clip; composer

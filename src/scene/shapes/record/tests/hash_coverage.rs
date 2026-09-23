@@ -63,14 +63,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let pt = |x| Vec2::new(x, 0.0);
 
     // --- Quad / Rect -------------------------------------------
-    let quad_rect = |kind, local_rect, corners, fill, stroke, fill_grad_hash| {
+    let quad_rect = |kind, local_rect, corners, fill, stroke| {
         ShapeRecord::Quad(QuadShape::Rect {
             kind,
             local_rect,
             corners,
             fill,
             stroke,
-            fill_grad_hash,
         })
     };
     let base = quad_rect(
@@ -79,7 +78,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         Corners::all(2.0),
         solid,
         stroke,
-        0,
     );
     moves(
         "Quad/Rect.kind",
@@ -90,7 +88,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             Corners::all(2.0),
             solid,
             stroke,
-            0,
         ),
     );
     moves(
@@ -102,7 +99,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             Corners::all(2.0),
             solid,
             stroke,
-            0,
         ),
     );
     moves(
@@ -114,7 +110,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             Corners::all(3.0),
             solid,
             stroke,
-            0,
         ),
     );
     moves(
@@ -126,7 +121,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             Corners::all(2.0),
             ShapeBrush::Solid(red),
             stroke,
-            0,
         ),
     );
     moves(
@@ -138,43 +132,32 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             Corners::all(2.0),
             solid,
             stroke2,
-            0,
         ),
     );
-    // `fill_grad_hash` stands in for the gradient's content, so it
-    // only participates when the fill *is* a gradient — with a solid
-    // it is deliberately unread.
-    excluded(
-        "Quad/Rect.fill_grad_hash under a solid fill",
-        &base,
-        &quad_rect(
+    // A gradient's content hash rides in its brush, so it moves the
+    // record's hash, and its frame-local id does not.
+    let grad = |id, hash| ShapeBrush::Gradient {
+        id: GradientId(id),
+        hash,
+    };
+    let grad_rect = |fill| {
+        quad_rect(
             RectKind::Rounded,
             rect(0.0),
             Corners::all(2.0),
-            solid,
+            fill,
             stroke,
-            9,
-        ),
-    );
-    let grad = ShapeBrush::Gradient(GradientId(0));
+        )
+    };
     moves(
-        "Quad/Rect.fill_grad_hash under a gradient fill",
-        &quad_rect(
-            RectKind::Rounded,
-            rect(0.0),
-            Corners::all(2.0),
-            grad,
-            stroke,
-            1,
-        ),
-        &quad_rect(
-            RectKind::Rounded,
-            rect(0.0),
-            Corners::all(2.0),
-            grad,
-            stroke,
-            2,
-        ),
+        "Quad/Rect.fill gradient hash",
+        &grad_rect(grad(0, 1)),
+        &grad_rect(grad(0, 2)),
+    );
+    excluded(
+        "Quad/Rect.fill gradient id",
+        &grad_rect(grad(0, 1)),
+        &grad_rect(grad(5, 1)),
     );
 
     // --- Quad / Shadow -----------------------------------------
@@ -836,11 +819,10 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     );
 
     // --- Curve --------------------------------------------------
-    let curve = |basis, width, fill, fill_grad_hash, cap, bbox| ShapeRecord::Curve {
+    let curve = |basis, width, fill, cap, bbox| ShapeRecord::Curve {
         basis,
         width,
         fill,
-        fill_grad_hash,
         cap,
         bbox,
     };
@@ -850,7 +832,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         p2: Vec2::ZERO,
         p3: Vec2::ZERO,
     };
-    let base = curve(cubic, 1.0, solid, 0, LineCap::Butt, Rect::ZERO);
+    let base = curve(cubic, 1.0, solid, LineCap::Butt, Rect::ZERO);
     moves(
         "Curve.basis",
         &base,
@@ -863,7 +845,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             },
             1.0,
             solid,
-            0,
             LineCap::Butt,
             Rect::ZERO,
         ),
@@ -871,7 +852,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     moves(
         "Curve.width",
         &base,
-        &curve(cubic, 2.0, solid, 0, LineCap::Butt, Rect::ZERO),
+        &curve(cubic, 2.0, solid, LineCap::Butt, Rect::ZERO),
     );
     moves(
         "Curve.fill",
@@ -880,7 +861,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             cubic,
             1.0,
             ShapeBrush::Solid(red),
-            0,
             LineCap::Butt,
             Rect::ZERO,
         ),
@@ -888,12 +868,12 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     moves(
         "Curve.cap",
         &base,
-        &curve(cubic, 1.0, solid, 0, LineCap::Round, Rect::ZERO),
+        &curve(cubic, 1.0, solid, LineCap::Round, Rect::ZERO),
     );
     moves(
-        "Curve.fill_grad_hash under a gradient fill",
-        &curve(cubic, 1.0, grad, 1, LineCap::Butt, Rect::ZERO),
-        &curve(cubic, 1.0, grad, 2, LineCap::Butt, Rect::ZERO),
+        "Curve.fill gradient hash",
+        &curve(cubic, 1.0, grad(0, 1), LineCap::Butt, Rect::ZERO),
+        &curve(cubic, 1.0, grad(0, 2), LineCap::Butt, Rect::ZERO),
     );
     excluded(
         "Curve.bbox (derived from basis/width/cap)",
@@ -902,7 +882,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             cubic,
             1.0,
             solid,
-            0,
             LineCap::Butt,
             Rect::new(5.0, 5.0, 5.0, 5.0),
         ),

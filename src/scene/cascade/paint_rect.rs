@@ -175,7 +175,7 @@ pub(super) struct PaintRectCtx<'a> {
 /// The returned `Rect` is the screen-space union of the non-paint-empty
 /// rows in `arena.rows[paints_start..arena.rows.len()]`, **plus the
 /// clip-only fold below** — so it is bit-identical to what
-/// `damage::union_screens` recomputes from the stored rows for every
+/// `PaintRows::union_screens` recomputes from the stored rows for every
 /// node except a chromeless clip-only container, where it is larger by
 /// that container's visible rect.
 ///

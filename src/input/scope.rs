@@ -28,28 +28,26 @@ use crate::scene::layer::Layer;
 /// fold. [`Self::resolve`] `debug_assert!`s the property rather than
 /// trusting the cascade walk to keep it.
 ///
-/// # Two mid-pass changes, two timings
+/// # Mid-pass changes wait for the next resolution
 ///
-/// Routing resolves once, at [`Self::resolve`]. Two things can move
-/// under it before the pass ends, and they take effect at different
-/// times on purpose:
+/// Routing resolves once, at [`Self::resolve`], and a pass routes by the
+/// state it started with. Two things can move under it before the pass
+/// ends, and both take effect at the next `resolve`:
 ///
-/// - **A withdrawal ([`Self::close`]) applies immediately.** An overlay
-///   that decided it is closing must stop owning input from that point
-///   on, or it swallows the click that lands where it used to be. The
-///   memo is dropped so reads after the withdrawal do not see the answer
-///   reads before it got.
-/// - **A focus move does not re-route this pass.** [`Self::path`] stays
-///   as `resolve` left it, so a widget that blurs itself on a keystroke
-///   does not thereby hand that same keystroke to the scope outside it —
-///   a `TextEdit` whose Escape blurs it would otherwise close the
-///   `Popup` around it with the one press. Focus takes effect at the
-///   next `resolve`, which is the same one-frame lag every other input
-///   answer carries.
+/// - **A focus move.** A widget that blurs itself on a keystroke must
+///   not hand that same keystroke to the scope outside it — a `TextEdit`
+///   whose Escape blurs it would otherwise close the `Popup` around it
+///   with the one press.
+/// - **A withdrawal ([`Self::close`]).** The same hazard from the other
+///   side: an overlay that closes on Escape and then withdraws would
+///   hand that Escape to the scopes beneath it later in the pass. The
+///   pointer loses nothing by the wait — clicks route through the hit
+///   index, and the click that lands where the overlay used to be comes
+///   on a later pass, which [`Self::closing`] and [`Self::closed`]
+///   already serve.
 ///
-/// The difference is which question is being asked: a withdrawal changes
-/// *who exists*, a focus move changes *who is preferred*, and this pass's
-/// events were already routed by the preference it had.
+/// The next `resolve` is often in the same frame: a dismissal is action
+/// input, and action input records the frame twice.
 #[derive(Debug, Default)]
 pub(super) struct Scopes {
     /// Scopes enclosing the focused widget within [`Self::active_layer`],
@@ -66,11 +64,9 @@ pub(super) struct Scopes {
     /// three want the same instant's rows, so one fold is not just
     /// cheaper but the more honest shape.
     ///
-    /// **Every read of the live set goes through here**, including the
-    /// ones after a [`Self::close`]: that lands mid-pass with no cascade
-    /// to refold from, so it drops the withdrawn row instead. A fold and
-    /// a removal, against a rescan of the whole scope column — through
-    /// two `Vec` scans per row — for every chord an app polls.
+    /// **Every read of the live set goes through here** — one fold,
+    /// against a rescan of the whole scope column through two `Vec` scans
+    /// per row for every chord an app polls.
     ///
     /// Capacity is retained across passes, like [`Self::path`].
     live: Vec<ScopeRow>,
@@ -87,7 +83,7 @@ pub(super) struct Scopes {
     /// [`Self::reader`]'s last answer — see [`ReaderMemo`].
     reader_memo: Option<ReaderMemo>,
     /// Scopes withdrawn by [`Self::close`] during the frame being
-    /// recorded.
+    /// recorded, honoured from the next [`Self::resolve`] on.
     ///
     /// The cascade is one frame stale, so an overlay that decides it is
     /// closing has already recorded its scope and would go on owning
@@ -117,9 +113,8 @@ pub(super) struct Scopes {
 /// position. Holding one entry collapses a table of `n` chords to one
 /// scan — the rest are a `WidgetId` compare.
 ///
-/// Keyed on `parent` alone, because the two things that *can* invalidate
-/// it both clear the memo outright: [`Scopes::resolve`] rebuilds the pass
-/// and [`Scopes::close`] withdraws a scope mid-pass. Nothing else the
+/// Keyed on `parent` alone, because the one thing that *can* invalidate
+/// it, [`Scopes::resolve`], clears the memo outright. Nothing else the
 /// scan reads changes within a pass.
 #[derive(Copy, Clone, Debug)]
 struct ReaderMemo {
@@ -176,18 +171,12 @@ impl Scopes {
         );
     }
 
-    /// Withdraw `owner` for the rest of this frame and all of the next —
-    /// see [`Self::closed`] for why that span.
+    /// Withdraw `owner` from every resolution through the end of the next
+    /// frame — see [`Self::closed`] for why that span. This pass keeps
+    /// routing as it resolved; see the type doc.
     pub(super) fn close(&mut self, owner: WidgetId) {
         if !self.closing.contains(&owner) {
             self.closing.push(owner);
-            // The snapshot follows the withdrawal, so every later read
-            // scans `live` rather than re-filtering the cascade's whole
-            // scope column through both withdrawal columns again.
-            self.live.retain(|row| row.id != owner);
-            // A withdrawal lands mid-pass, so reads after it must not see
-            // the answer reads before it got.
-            self.reader_memo = None;
         }
     }
 

@@ -17,8 +17,8 @@ use std::f32::consts::TAU;
 ///
 /// The conversion is Ottosson's reference
 /// (<https://bottosson.github.io/posts/colorpicker/>) over the crate's own
-/// Oklab matrices. It works entirely in linear light, so it never pays the
-/// cubic sRGB approximation that [`RgbaF32::srgb`] carries.
+/// Oklab matrices. It works entirely in linear light, with no sRGB transfer
+/// on the way.
 ///
 /// # The blue sliver
 ///
@@ -27,7 +27,7 @@ use std::f32::consts::TAU;
 /// red dips below zero, comes back, and only then does green leave. Okhsv's
 /// gamut edge is the *first* crossing, so it stops short and `#0000ff` sits
 /// just outside the cube. `Okhsv { s: 1.0, v: 1.0 }` at blue's hue is
-/// `#0038ff`.
+/// `#0037ff`.
 ///
 /// Every Okhsv picker has this, and it is a property of the space rather than
 /// of this port. A picker answers it by leaving the other routes to a colour
@@ -44,8 +44,13 @@ pub struct Okhsv {
 }
 
 /// Chroma below which a colour has no hue of its own and the caller's
-/// fallback answers instead. Well under one 8-bit step at any lightness.
-const GREY_CHROMA: f32 = 1e-7;
+/// fallback answers instead.
+///
+/// `f32` rounding in the two Oklab matrices leaves an exact grey with a
+/// chroma of up to about `3e-7`, and the smallest chroma of a colour one
+/// byte away from a grey is about `1e-3`. This sits between the two, more
+/// than thirty times from each.
+const GREY_CHROMA: f32 = 1e-5;
 
 /// The saturation the gamut triangle is anchored at in Ottosson's fit. Not a
 /// tunable: the inverse below undoes exactly this constant.

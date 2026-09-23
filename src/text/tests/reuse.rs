@@ -163,13 +163,13 @@ fn drive_visible(
     key
 }
 
-/// One frame boundary the way `FrameCycle::run` drives it: sweep the
-/// rows of whatever left the tree, then advance the shared clock.
+/// One frame boundary the way production drives it: sweep the rows of
+/// whatever left the tree, then advance the shared clock.
 ///
-/// The tick is the caller's because in production it is too — it sits
-/// past the arm that chose the frame plan, so that a paint-only frame
-/// pays it as well. A fixture that called `TextSystem::end_frame` alone
-/// would age nothing at all.
+/// The tick is the caller's because in production it is too — the
+/// window's frame runtime makes it, so that a paint-only frame pays it
+/// as well. A fixture that called `TextSystem::end_frame` alone would
+/// age nothing at all.
 fn frame_end_removing(text: &mut TextSystem, removed: &WidgetIdSet) {
     text.end_frame(removed);
     text.shaper().tick_frame();
@@ -308,6 +308,39 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
             "{label}: a demoted buffer must not outlive the probation window",
         );
     }
+}
+
+/// A widget that leaves the tree loses every row it holds, and no other
+/// widget loses any. The sweep probes the removed widget's ordinals from
+/// zero, so a sibling's rows are never read, let alone dropped.
+#[test]
+fn a_removed_widget_loses_all_its_rows_and_no_others() {
+    let mut text = TextSystem::cosmic();
+    let gone = WidgetId::from_hash("gone");
+    let kept = WidgetId::from_hash("kept");
+    for i in 0..3 {
+        drive(
+            &mut text,
+            slot_at(gone, i),
+            &format!("gone {i}"),
+            Some(200.0),
+        );
+    }
+    for i in 0..2 {
+        drive(
+            &mut text,
+            slot_at(kept, i),
+            &format!("kept {i}"),
+            Some(200.0),
+        );
+    }
+    assert_eq!(text.entry_count(), 5);
+
+    let removed: WidgetIdSet = [gone].into_iter().collect();
+    frame_end_removing(&mut text, &removed);
+    assert_eq!(text.entry_count(), 2, "5 rows less the removed widget's 3");
+    assert!(text.has_entry(kept, 0) && text.has_entry(kept, 1));
+    assert!(!text.has_entry(gone, 0));
 }
 
 /// A widget that records fewer runs than last time loses the rows above

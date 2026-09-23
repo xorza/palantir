@@ -30,10 +30,11 @@ use std::fmt;
 /// `shift` and `alt` are literal.
 ///
 /// Distinct from event-state [`Modifiers`] on purpose: that type also
-/// carries `mac_ctrl` (the raw macOS Control), which shortcut matching
-/// must *ignore*. Comparing a `Modifiers` directly would let a held
-/// macOS Control break an otherwise-matching chord, so [`ShortcutMods`] is the
-/// 3-field projection the matcher compares against.
+/// carries `mac_ctrl` (the raw macOS Control), which no chord declares.
+/// A held macOS Control is ignored by a chord that declares a command
+/// modifier and rejects every other one, as [`Modifiers::any_command`]
+/// classes it — so it cannot break ⌘Z, and a bare `Z` does not fire on
+/// Control+Z.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ShortcutMods {
     /// The primary command key — Cmd on macOS, Ctrl on Windows and Linux.
@@ -93,8 +94,8 @@ impl ShortcutMods {
         // Destructured exhaustively so a modifier added to `Modifiers`
         // is a compile error here rather than one that silently never
         // reaches shortcut matching. `mac_ctrl` is dropped on purpose —
-        // a `Shortcut` cannot express it, and
-        // [`Modifiers::any_command`] is what reads it instead.
+        // a `Shortcut` cannot express it, and [`Shortcut::matches`] reads
+        // it off the press instead.
         let Modifiers {
             ctrl,
             shift,
@@ -146,7 +147,8 @@ impl Shortcut {
     /// True iff `kp` matches this shortcut. Modifier comparison is
     /// exact (`ctrl+a` ≠ `ctrl+shift+a`); `Char` keys compare
     /// ignore-case to absorb shift-layout effects. The `repeat` flag is
-    /// ignored.
+    /// ignored. A held macOS Control rejects a shortcut with no command
+    /// modifier — see [`ShortcutMods`].
     ///
     /// Non-Latin-layout fallback: a command chord's letter key arrives as the
     /// *active layout's* character (Cyrillic `'я'` for the physical Z on a
@@ -157,6 +159,9 @@ impl Shortcut {
     /// non-ASCII gate leaves Dvorak / AZERTY untouched — their keys still
     /// produce ASCII letters, in their own intended positions.
     pub fn matches(self, kp: KeyPress) -> bool {
+        if kp.mods.mac_ctrl && !self.mods.any_command() {
+            return false;
+        }
         if self.matches_key(kp.key, kp.mods) {
             return true;
         }

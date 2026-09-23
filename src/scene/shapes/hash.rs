@@ -50,12 +50,11 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     corners,
                     fill,
                     stroke,
-                    fill_grad_hash,
                 } => {
                     h.write_u8(*kind as u8);
                     hash_optional_rect(*local_rect, &mut h);
                     corners.hash(&mut h);
-                    hash_brush(fill, *fill_grad_hash, &mut h);
+                    hash_brush(*fill, &mut h);
                     // Pod-byte hash for `(color, width)` — one dispatch.
                     h.pod(stroke);
                 }
@@ -127,10 +126,9 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             font.size_px.hash_visual(&mut h);
             font.line_height_px.hash_visual(&mut h);
             // The five face axes in one word: family and weight are 16
-            // bits each now, so a byte apiece no longer holds them and a
-            // `u32` no longer holds the set. Two runs that differ only in
-            // weight, style or family must not collide here — the node
-            // hash is what damage and reuse compare.
+            // bits each, so the set needs a `u64`. Two runs that differ
+            // only in weight, style or family must not collide here — the
+            // node hash is what damage and reuse compare.
             let face = (u64::from(font.family.raw()) << 40)
                 | (u64::from(font.weight.value()) << 24)
                 | ((font.slant as u64) << 16)
@@ -237,7 +235,6 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             basis,
             width,
             fill,
-            fill_grad_hash,
             cap,
             bbox: _,
         } => {
@@ -261,7 +258,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                 }
             }
             h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
-            hash_brush(fill, *fill_grad_hash, &mut h);
+            hash_brush(*fill, &mut h);
         }
     }
     ContentHash(h.finish())
@@ -279,8 +276,8 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
 
 /// Fold a lowered fill into the shape hash. The two values come off
 /// [`ShapeBrush::hash_parts`], which the chrome hash reads too.
-fn hash_brush(fill: &ShapeBrush, fill_grad_hash: u64, h: &mut Hasher) {
-    let BrushHash { tag, payload } = fill.hash_parts(fill_grad_hash);
+fn hash_brush(fill: ShapeBrush, h: &mut Hasher) {
+    let BrushHash { tag, payload } = fill.hash_parts();
     h.write_u8(tag);
     h.write_u64(payload);
 }

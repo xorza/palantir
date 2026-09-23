@@ -18,7 +18,7 @@ use glam::Vec2;
 ///
 /// Hash delegates to the packed `F16x4` representation — one `u64` write,
 /// fed every frame into
-/// `LayoutCore::hash` → `SubtreeRollups`.
+/// `LayoutCore::hash_with_flags` → `SubtreeRollups`.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Corners(F16x4);

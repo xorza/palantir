@@ -3,7 +3,7 @@
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::renderer::gradient_atlas::tests::support::{
     assert_real_row, distinct_grad, register_for,
 };
@@ -20,7 +20,7 @@ fn row_zero_reserved_as_magenta_fallback() {
     let atlas = CpuGradientAtlas::default();
     // Row 0 is linear (1, 0, 1, 1) across all texels — encodes to
     // #ff00ff on the sRGB framebuffer.
-    let magenta = RgbaF16::from(RgbaF32::new(1.0, 0.0, 1.0, 1.0));
+    let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
 

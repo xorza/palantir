@@ -321,20 +321,15 @@ impl<'a> TextEdit<'a> {
     /// `String`.
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = self.widget.resolve(ui);
-        // **The state row is moved out for the whole pass and moved back
-        // after.** Every stage of the pass wants it, and the stages are
-        // separated by `&mut Ui` calls — the keyboard drain, the shape
-        // probe, the context menu, the record — so a borrow taken from
-        // `ui` cannot survive between them. Owning it costs two moves of
-        // a small struct (no allocation: the undo buffers move with it)
-        // and collapses the seven per-stage lookups into one.
-        //
-        // [`Self::pass`] exists to make the write-back unconditional: it
-        // early-returns on an unstyled editor, and a `mem::take` whose
-        // write-back only runs on *some* paths silently resets the caret.
-        let mut state = std::mem::take(ui.state_or_default::<TextEditState>(id));
-        let signals = self.pass(ui, &mut state);
-        *ui.state_or_default::<TextEditState>(id) = state;
+        // **The state row is held for the whole pass.** Every stage of the
+        // pass wants it, and the stages are separated by `&mut Ui` calls —
+        // the keyboard drain, the shape probe, the context menu, the
+        // record — so a borrow taken from `ui` cannot survive between
+        // them. `with_state` moves it out and back (no allocation: the undo
+        // buffers move with it), which collapses the seven per-stage
+        // lookups into one and makes the write-back unconditional however
+        // [`Self::pass`] returns.
+        let signals = ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state));
 
         TextEditResponse {
             // The pass already probed this id and tracked the one field that

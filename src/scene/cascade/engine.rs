@@ -70,7 +70,7 @@ struct Frame {
     cascade: CascadeContext,
     subtree_end: u32,
     /// Node index this frame represents — used to write back
-    /// `subtree_paint_rect` into `Cascade::subtree_paint_rects` when
+    /// `subtree_paint_rect` into `LayerCascade::subtree_paint_rects` when
     /// this frame is popped (its subtree has been fully visited).
     node_idx: usize,
     /// Running union of this node's own `paint_rect` and the
@@ -191,7 +191,7 @@ impl CascadeEngine {
             // No structural walk here: `cascade_static` folds each
             // node's `subtree_end`, so the scalar compare above already
             // covers nesting. Zipping the whole column every run would be
-            // the one walk standing between `Cascade::subtree_ends` and
+            // the one walk standing between `LayerCascade::subtree_ends` and
             // the sparse ancestry column it is documented to be.
             entries_base += n as u32;
         }
@@ -278,7 +278,7 @@ pub(super) fn layout_hashes(forest: &Forest, layout: &Layout) -> PerLayer<Conten
 /// - the font epoch, the one arrange input that moves a rect while
 ///   every key addressing that rect stands still: a run measures to a
 ///   new width in a face loaded after it was authored, and nothing in
-///   the authoring says so (`TextShaper::font_epoch`);
+///   the authoring says so (`TextShaper::font_epoch`).
 ///
 /// Lives here, beside the walk it mirrors, on purpose: the skip is
 /// only sound while this enumeration covers every input `run_tree`
