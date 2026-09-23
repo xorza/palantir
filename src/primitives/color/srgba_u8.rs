@@ -1,6 +1,8 @@
 //! sRGB-encoded bytes: what a hex code, an image texel, or a number shown
 //! to a person means.
 
+use crate::primitives::color::{RgbaF16, RgbaF32, RgbaU8};
+
 /// A 4-byte **sRGB-encoded** colour with a straight 8-bit alpha.
 ///
 /// The one form in the crate that is not linear, and its own type so it
@@ -9,13 +11,9 @@
 /// texel written from a [`RgbaU8`] would paint far too dark. Both mistakes
 /// were one method call apart while they shared a type.
 ///
-/// Built from a hex literal, or by [`RgbaF32::to_srgba_u8`]. Read back
-/// through [`RgbaF32::from_srgba`], which decodes.
-///
-/// [`RgbaU8`]: crate::RgbaU8
-/// [`RgbaF32`]: crate::RgbaF32
-/// [`RgbaF32::to_srgba_u8`]: crate::RgbaF32::to_srgba_u8
-/// [`RgbaF32::from_srgba`]: crate::RgbaF32::from_srgba
+/// Built from a hex literal, by [`RgbaF32::to_srgba_u8`], or through
+/// `From` from any other colour type. Read back through
+/// [`RgbaF32::from_srgba`], which decodes.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SrgbaU8 {
@@ -62,5 +60,31 @@ impl SrgbaU8 {
     #[inline]
     pub(crate) const fn to_u32(self) -> u32 {
         u32::from_be_bytes([self.r, self.g, self.b, self.a])
+    }
+}
+
+impl From<RgbaF32> for SrgbaU8 {
+    /// The exact encode, [`RgbaF32::to_srgba_u8`].
+    #[inline]
+    fn from(c: RgbaF32) -> Self {
+        c.to_srgba_u8()
+    }
+}
+
+impl From<RgbaF16> for SrgbaU8 {
+    /// Unpack, then the exact encode.
+    #[inline]
+    fn from(c: RgbaF16) -> Self {
+        c.unpack().to_srgba_u8()
+    }
+}
+
+impl From<RgbaU8> for SrgbaU8 {
+    /// Un-quantize, then the exact encode: the sRGB byte nearest each
+    /// linear byte. Near white one sRGB step spans several linear steps,
+    /// so neighbouring linear bytes there can meet on one sRGB byte.
+    #[inline]
+    fn from(c: RgbaU8) -> Self {
+        c.to_linear().to_srgba_u8()
     }
 }

@@ -432,6 +432,23 @@ impl From<RgbaU8> for RgbaF32 {
     }
 }
 
+impl From<RgbaF16> for RgbaU8 {
+    /// Unpack, then the **linear** quantize.
+    #[inline]
+    fn from(c: RgbaF16) -> Self {
+        Self::from_linear(c.unpack())
+    }
+}
+
+impl From<SrgbaU8> for RgbaU8 {
+    /// Decode, then the **linear** quantize. Lossy near black, where one
+    /// linear step spans several sRGB steps: `#1a1a1a` lands on byte 3.
+    #[inline]
+    fn from(bytes: SrgbaU8) -> Self {
+        Self::from_linear(RgbaF32::from_srgba(bytes))
+    }
+}
+
 /// Linear-RGB colour packed as four f16 lanes in 8 B (align 2).
 /// Same lane scheme as `Corners` — pack and unpack go through
 /// `F16x4::from_lanes` and `F16x4::lanes`, one SIMD instruction on
@@ -533,6 +550,24 @@ impl From<RgbaF16> for RgbaF32 {
     #[inline]
     fn from(c: RgbaF16) -> Self {
         c.unpack()
+    }
+}
+
+impl From<RgbaU8> for RgbaF16 {
+    /// The **linear** un-quantize, packed. Every byte survives the trip
+    /// back: f16 holds `byte / 255` well inside half a step.
+    #[inline]
+    fn from(c: RgbaU8) -> Self {
+        c.to_linear().into()
+    }
+}
+
+impl From<SrgbaU8> for RgbaF16 {
+    /// The exact decode, packed. Every byte survives the trip back: f16
+    /// holds each decoded value well inside half a display step.
+    #[inline]
+    fn from(bytes: SrgbaU8) -> Self {
+        RgbaF32::from_srgba(bytes).into()
     }
 }
 
