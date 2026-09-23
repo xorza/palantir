@@ -63,8 +63,9 @@ write.
 
 Performance work starts at `benches/AGENTS.md` — the manual for both bench
 harnesses and for `benches/bench-perf.sh`. Read it before measuring or reaching
-for `perf`; it carries the A/B protocol, the profiling recipes, and the traps
-that otherwise get rediscovered one wasted capture at a time.
+for `perf`; it carries the A/B protocol and the traps that otherwise get
+rediscovered one wasted capture at a time, and points to `benches/profiling.md`
+for reading a capture.
 
 ## Verification
 
