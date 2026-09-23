@@ -11,11 +11,13 @@ use crate::input::key_class::KeyFilter;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
+use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec, ScrollbarsDefId};
+use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::SizeSpec;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -114,17 +116,37 @@ impl Widget {
         Self::new(NodeMode::PendingGrid)
     }
 
-    /// Bar-overlay container for [`crate::widgets::scroll::Scroll`]. Its
-    /// children are placed by `layout::scrollbars` after measure, which
-    /// is the only point the content extent they size against exists.
+    /// Scroll viewport. Its children measure unbounded on the axes `axes`
+    /// pans, so they report their full extent, and [`Ui::scroll_content`]
+    /// reads that extent back on the next frame.
+    ///
+    /// The viewport moves nothing by itself: pan the children with a
+    /// [`transform`](ConfigureWidget::transform) of the negated offset,
+    /// and clip them with [`clip_rect`](ConfigureWidget::clip_rect), as
+    /// [`crate::Scroll`] does. [`Self::scrollbars`] records bars for it.
     #[track_caller]
-    pub(crate) fn scrollbars(id: ScrollbarsDefId) -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Scrollbars(id)))
+    pub(crate) fn scroll(axes: ScrollAxes) -> Self {
+        Self::new(NodeMode::Resolved(LayoutMode::Scroll(axes)))
     }
 
+    /// Bar-overlay container for a [`Self::scroll`] viewport. Its bars
+    /// arrive through [`Self::scrollbar_def`] once a `Ui` is at hand, as a
+    /// grid's tracks do; recording it without them panics.
+    ///
+    /// Record it after the viewport, on the same layer — typically as the
+    /// viewport's sibling in a z-stack that holds both, filling it. It
+    /// places its children after measure, which is the only point the
+    /// content extent they size against exists, and reports no size of its
+    /// own.
+    ///
+    /// It takes exactly four leaves, in this order: the vertical track,
+    /// the vertical thumb, the horizontal track, the horizontal thumb.
+    /// Record all four every frame. An axis that shows no bar arranges its
+    /// two at zero size, which keeps the child list, and so each leaf's
+    /// state, the same while the content starts and stops fitting.
     #[track_caller]
-    pub(crate) fn scroll(spec: ScrollSpec) -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Scroll(spec)))
+    pub(crate) fn scrollbars() -> Self {
+        Self::new(NodeMode::PendingScrollbars)
     }
 
     #[track_caller]
@@ -396,6 +418,23 @@ impl Widget {
     pub fn grid_tracks(&mut self, ui: &mut Ui, rows: &[Track], cols: &[Track]) {
         let id = ui.push_grid_def(rows, cols);
         self.node.set_mode(LayoutMode::Grid(id));
+    }
+
+    /// Install this bar overlay's definition: `def` is interned into the
+    /// current layer's tree, and the overlay places its bars from it once
+    /// the viewport `def.content` names has measured.
+    ///
+    /// The definition lives in the tree for the reason a grid's tracks
+    /// do — see [`Self::grid_tracks`].
+    ///
+    /// # Panics
+    ///
+    /// Panics on a widget that is not a [`Self::scrollbars`], and when
+    /// the viewport `def.content` names was not recorded earlier this
+    /// frame.
+    pub(crate) fn scrollbar_def(&mut self, ui: &mut Ui, def: ScrollbarsDef) {
+        let id = ui.push_scrollbars_def(def);
+        self.node.set_mode(LayoutMode::Scrollbars(id));
     }
 
     /// Take over `from`'s placement — where it sits in its parent, and

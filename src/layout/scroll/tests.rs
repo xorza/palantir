@@ -2,7 +2,7 @@
 //! measure and arrange.
 
 use crate::Ui;
-use crate::layout::types::layout_mode::ScrollSpec;
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::size::Size;
@@ -14,7 +14,7 @@ use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::widget::Widget;
-use glam::{BVec2, UVec2};
+use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
@@ -438,7 +438,7 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
     fn record_scroll(ui: &mut Ui) {
         // `fit` on both panned axes is what makes a `Hug` scroll report its
         // content extent — the state whose desired can outgrow the slot.
-        Widget::scroll(ScrollSpec::BOTH.with_fit(BVec2::TRUE))
+        Widget::scroll(ScrollAxes::BOTH.fit_content(true, true))
             .size((Sizing::HUG, Sizing::HUG))
             .id(WidgetId::from_hash(SCROLL))
             .record(ui, None, |ui| {

@@ -3,7 +3,8 @@
 
 use crate::common::hash::Hasher;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::*;
 use std::hash::Hasher as _;
 
@@ -29,8 +30,8 @@ pub(super) fn distinct_grad(seed: f32) -> LinearGradient {
     let b = (v >> 16) as u8;
     LinearGradient::two_stop(
         0.0,
-        RgbaU8::rgb(r, g, b).into(),
-        RgbaU8::rgb(0, 0xff, 0).into(),
+        SrgbaU8::rgb(r, g, b).into(),
+        RgbaF32::new(0.0, 1.0, 0.0, 1.0),
     )
 }
 

@@ -1,5 +1,6 @@
 //! One activatable row inside a context menu.
 
+use crate::input::response::button_phase::ButtonPhase;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
@@ -72,7 +73,11 @@ impl<'a> MenuItem<'a> {
         self
     }
 
-    pub(crate) fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
+    /// Show `shortcut` as the right-aligned hint without binding it: the
+    /// row does not intercept the keypress. For a menu that mirrors a
+    /// chord something else already handles — an editor's own Ctrl+C, say
+    /// — where binding it here would handle the press twice.
+    pub fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Hint(shortcut);
         self
     }
@@ -154,8 +159,10 @@ impl<'a> MenuItem<'a> {
         };
         self.widget.record(ui, Some(&look.background), body);
 
+        // A shortcut is a click the pointer pipeline never saw. Callers
+        // read `.clicked()` and must not care which device produced it.
         if shortcut_fired {
-            response.mark_clicked();
+            response.left.phase = ButtonPhase::Up { click: Some(1) };
         }
         // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.

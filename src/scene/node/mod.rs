@@ -17,7 +17,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::limits;
 use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::size::Size;
@@ -296,13 +296,6 @@ impl Node {
             self.mode,
         );
         self.mode = NodeMode::Resolved(mode);
-    }
-
-    pub(crate) fn scroll_spec(&self) -> ScrollSpec {
-        let NodeMode::Resolved(LayoutMode::Scroll(spec)) = self.mode else {
-            panic!("scroll specification read from {:?} node", self.mode);
-        };
-        spec
     }
 
     pub(crate) fn new(mode: NodeMode) -> Self {

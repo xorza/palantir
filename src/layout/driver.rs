@@ -162,7 +162,8 @@ impl DriverOp for ReplayOp {
 mod tests {
     use crate::layout::axis::Axis;
     use crate::layout::driver::{DriverOp, ReplayOp};
-    use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
+    use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
+    use crate::layout::types::scroll_axes::ScrollAxes;
 
     /// `Scrollbars` is the sole driver that reads outside its own subtree,
     /// and the only thing standing between that and silently stale rects
@@ -179,7 +180,7 @@ mod tests {
             LayoutMode::ZStack,
             LayoutMode::Canvas,
             LayoutMode::Grid(GridDefId::from_index(0)),
-            LayoutMode::Scroll(ScrollSpec::BOTH),
+            LayoutMode::Scroll(ScrollAxes::BOTH),
         ];
         for mode in slot_pure {
             assert!(

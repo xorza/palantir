@@ -5,7 +5,7 @@ use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
@@ -39,9 +39,9 @@ fn linear_midpoint_black_to_white_is_half() {
 /// hues rather than dipping through dark brown).
 #[test]
 fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
-    let red = RgbaU8::rgb(255, 0, 0);
-    let green = RgbaU8::rgb(0, 255, 0);
-    let g = LinearGradient::two_stop(0.0, red.into(), green.into()).with_interp(Interp::Oklab);
+    let red = linear(255, 0, 0);
+    let green = linear(0, 255, 0);
+    let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
     let mid = texel(&out, 127);
@@ -59,39 +59,19 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     );
 }
 
-/// First and last texels match the corresponding stop colours
-/// exactly. Catches off-by-one in the parametric `t = i/(N-1)`
-/// stride and the edge-clamp guard.
+/// First and last texels hold the corresponding stops' stored colours.
+/// Catches off-by-one in the parametric `t = i/(N-1)` stride and the
+/// edge-clamp guard.
 #[test]
 fn endpoints_match_stops_exactly() {
-    let c0 = RgbaU8::rgb(11, 22, 33);
-    let c1 = RgbaU8::rgb(244, 233, 222);
     for interp in [Interp::Linear, Interp::Oklab] {
-        let g = LinearGradient::two_stop(0.0, c0.into(), c1.into()).with_interp(interp);
+        let g = LinearGradient::two_stop(0.0, linear(11, 22, 33), linear(244, 233, 222))
+            .with_interp(interp);
         let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
-        let first = texel(&out, 0);
-        let last = texel(&out, LUT_ROW_TEXELS - 1);
-        // Endpoints are an exact edge-clamp to the stop's linear
-        // value; the only loss is the f16 quantize, well under a
-        // u8 LSB (1/255 ≈ 0.004).
-        let tol = 1.0 / 255.0;
-        for (chan, (got, want)) in [
-            (first.r, lin(c0.r)),
-            (first.g, lin(c0.g)),
-            (first.b, lin(c0.b)),
-            (last.r, lin(c1.r)),
-            (last.g, lin(c1.g)),
-            (last.b, lin(c1.b)),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            assert!(
-                (got - want).abs() <= tol,
-                "interp={interp:?} chan {chan}: got {got} want {want}",
-            );
-        }
+        let label = format!("interp={interp:?}");
+        assert_stored(texel(&out, 0), g.stops[0].color(), &label);
+        assert_stored(texel(&out, LUT_ROW_TEXELS - 1), g.stops[1].color(), &label);
     }
 }
 
@@ -101,9 +81,9 @@ fn endpoints_match_stops_exactly() {
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
     let g = LinearGradient::builder(0.0)
-        .stop(0.0, RgbaU8::rgb(0, 0, 0).into())
-        .stop(0.5, RgbaU8::rgb(255, 0, 0).into())
-        .stop(1.0, RgbaU8::rgb(0, 0, 255).into())
+        .stop(0.0, linear(0, 0, 0))
+        .stop(0.5, linear(255, 0, 0))
+        .stop(1.0, linear(0, 0, 255))
         .with_interp(Interp::Linear)
         .build();
     let mut out = fresh_row();
@@ -159,14 +139,14 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     let g = LinearGradient::new(
         0.0,
         [
-            Stop::new(0.0, RgbaU8::rgb(0, 0, 0).into()),
-            Stop::new(0.002, RgbaU8::rgb(255, 0, 0).into()), // narrower than one texel
-            Stop::new(0.25, RgbaU8::rgb(0, 255, 0).into()),
-            Stop::new(0.5, RgbaU8::rgb(0, 0, 255).into()),
-            Stop::new(0.5, RgbaU8::rgb(255, 255, 0).into()), // hard stop
-            Stop::new(0.75, RgbaU8::rgb(0, 255, 255).into()),
-            Stop::new(0.9, RgbaU8::rgb(255, 0, 255).into()),
-            Stop::new(1.0, RgbaU8::rgb(255, 255, 255).into()),
+            Stop::new(0.0, linear(0, 0, 0)),
+            Stop::new(0.002, linear(255, 0, 0)), // narrower than one texel
+            Stop::new(0.25, linear(0, 255, 0)),
+            Stop::new(0.5, linear(0, 0, 255)),
+            Stop::new(0.5, linear(255, 255, 0)), // hard stop
+            Stop::new(0.75, linear(0, 255, 255)),
+            Stop::new(0.9, linear(255, 0, 255)),
+            Stop::new(1.0, linear(255, 255, 255)),
         ],
     )
     .with_interp(Interp::Linear);
@@ -187,25 +167,11 @@ fn lut_row_layout() {
     assert_eq!(LUT_ROW_TEXELS, 256);
     assert_eq!(size_of::<LutRowTexels>(), 2048);
     assert_eq!(size_of::<RgbaF16>(), 8);
-    let g = LinearGradient::two_stop(
-        0.0,
-        RgbaU8::rgb(1, 2, 3).into(),
-        RgbaU8::rgb(4, 5, 6).into(),
-    );
+    let g = LinearGradient::two_stop(0.0, linear(1, 2, 3), linear(4, 5, 6));
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
-    let tol = 1.0 / 255.0;
-    let approx = |got: f32, want: f32| assert!((got - want).abs() <= tol, "{got} vs {want}");
-    let first = texel(&out, 0);
-    approx(first.r, lin(1));
-    approx(first.g, lin(2));
-    approx(first.b, lin(3));
-    assert_eq!(first.a, 1.0);
-    let last = texel(&out, LUT_ROW_TEXELS - 1);
-    approx(last.r, lin(4));
-    approx(last.g, lin(5));
-    approx(last.b, lin(6));
-    assert_eq!(last.a, 1.0);
+    assert_stored(texel(&out, 0), g.stops[0].color(), "first");
+    assert_stored(texel(&out, LUT_ROW_TEXELS - 1), g.stops[1].color(), "last");
 }
 
 /// Unsorted stops are sorted at bake time. Authors shouldn't rely
@@ -214,8 +180,8 @@ fn lut_row_layout() {
 #[test]
 fn unsorted_stops_get_sorted_at_bake() {
     let stops = [
-        Stop::new(1.0, RgbaU8::rgb(255, 0, 0).into()), // out of order
-        Stop::new(0.0, RgbaU8::rgb(0, 0, 255).into()),
+        Stop::new(1.0, linear(255, 0, 0)), // out of order
+        Stop::new(0.0, linear(0, 0, 255)),
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
@@ -235,8 +201,8 @@ fn unsorted_stops_get_sorted_at_bake() {
 #[test]
 fn partial_range_clamps_at_edges() {
     let stops = [
-        Stop::new(0.25, RgbaU8::rgb(0, 255, 0).into()),
-        Stop::new(0.75, RgbaU8::rgb(0, 0, 255).into()),
+        Stop::new(0.25, linear(0, 255, 0)),
+        Stop::new(0.75, linear(0, 0, 255)),
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
@@ -307,9 +273,28 @@ fn texel(out: &LutRowTexels, i: usize) -> RgbaF32 {
     out[i].unpack()
 }
 
-/// Expected linear value of a `RgbaU8` channel: `RgbaU8` is linear
-/// storage, so the stored byte / 255 *is* the linear value the bake
-/// interpolates between (no sRGB decode).
-fn lin(byte: u8) -> f32 {
-    byte as f32 / 255.0
+/// An opaque stop colour whose channels are `byte / 255` in linear
+/// light, with no sRGB decode.
+fn linear(r: u8, g: u8, b: u8) -> RgbaF32 {
+    let lin = |byte: u8| f32::from(byte) / 255.0;
+    RgbaF32::new(lin(r), lin(g), lin(b), 1.0)
+}
+
+/// Assert a baked texel holds `want` at the store's precision. f16 keeps
+/// 11 significant bits, so rounding lands at most `2^-11` of the value
+/// away. The Oklab path's f32 round trip adds noise far below the `1e-6`
+/// slack on top.
+fn assert_stored(got: RgbaF32, want: RgbaF32, what: &str) {
+    for (chan, got, want) in [
+        ("r", got.r, want.r),
+        ("g", got.g, want.g),
+        ("b", got.b, want.b),
+        ("a", got.a, want.a),
+    ] {
+        let tol = want.abs() * 2f32.powi(-11) + 1e-6;
+        assert!(
+            (got - want).abs() <= tol,
+            "{what} {chan}: got {got}, want {want}",
+        );
+    }
 }

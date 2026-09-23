@@ -40,6 +40,34 @@ impl AnchorSide {
     }
 }
 
+/// Where an anchored body sits across the side it is anchored to: flush
+/// with the anchored rect's start edge, centred on it, or flush with its
+/// end. Below or above a rect that runs left to right; beside one, top to
+/// bottom. Either way the body still shifts back inside the surface when
+/// the alignment would push it off.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AnchorAlign {
+    /// Flush with the start edge — a dropdown under its trigger. The
+    /// default.
+    #[default]
+    Start,
+    /// Centred on the anchored rect — a tooltip under the thing it names.
+    Center,
+    /// Flush with the end edge.
+    End,
+}
+
+impl AnchorAlign {
+    const fn axis_align(self) -> AxisAlign {
+        match self {
+            Self::Start => AxisAlign::Start,
+            Self::Center => AxisAlign::Center,
+            Self::End => AxisAlign::End,
+        }
+    }
+}
+
 /// Where a side layer lands next to the thing it belongs to.
 ///
 /// Hand one to [`LayerScope::anchored`](crate::LayerScope::anchored). The
@@ -56,7 +84,7 @@ impl AnchorSide {
 pub struct Anchor {
     rect: Rect,
     side: AnchorSide,
-    align: AxisAlign,
+    align: AnchorAlign,
     gap: f32,
 }
 
@@ -74,7 +102,7 @@ impl Anchor {
         self.gap.hash_visual(state);
     }
 
-    pub(crate) const fn new(rect: Rect, side: AnchorSide, align: AxisAlign, gap: f32) -> Self {
+    pub(crate) const fn new(rect: Rect, side: AnchorSide, align: AnchorAlign, gap: f32) -> Self {
         Self {
             rect,
             side,
@@ -93,22 +121,29 @@ impl Anchor {
 
     /// Above `rect`, falling back to below it.
     pub const fn above(rect: Rect) -> Self {
-        Self::new(rect, AnchorSide::Above, AxisAlign::Start, 0.0)
+        Self::new(rect, AnchorSide::Above, AnchorAlign::Start, 0.0)
     }
 
     /// Below `rect`, falling back to above it.
     pub const fn below(rect: Rect) -> Self {
-        Self::new(rect, AnchorSide::Below, AxisAlign::Start, 0.0)
+        Self::new(rect, AnchorSide::Below, AnchorAlign::Start, 0.0)
     }
 
     /// Left of `rect`, falling back to its right.
     pub const fn left_of(rect: Rect) -> Self {
-        Self::new(rect, AnchorSide::LeftOf, AxisAlign::Start, 0.0)
+        Self::new(rect, AnchorSide::LeftOf, AnchorAlign::Start, 0.0)
     }
 
     /// Right of `rect`, falling back to its left.
     pub const fn right_of(rect: Rect) -> Self {
-        Self::new(rect, AnchorSide::RightOf, AxisAlign::Start, 0.0)
+        Self::new(rect, AnchorSide::RightOf, AnchorAlign::Start, 0.0)
+    }
+
+    /// Where the body sits across the side it is anchored to —
+    /// [`AnchorAlign::Start`] by default.
+    pub const fn align(mut self, align: AnchorAlign) -> Self {
+        self.align = align;
+        self
     }
 
     /// Hold the body this far off the anchored rect, in logical px.
@@ -161,9 +196,9 @@ fn choose_side(
     }
 }
 
-fn align_cross(align: AxisAlign, axis: Axis, rect: Rect, extent: f32, bounds: Rect) -> f32 {
+fn align_cross(align: AnchorAlign, axis: Axis, rect: Rect, extent: f32, bounds: Rect) -> f32 {
     let rect_min = axis.cross_v(rect.min);
-    let position = rect_min + align.offset_in(axis.cross(rect.size), extent);
+    let position = rect_min + align.axis_align().offset_in(axis.cross(rect.size), extent);
     let bounds_min = axis.cross_v(bounds.min);
     let bounds_max = axis.cross_v(bounds.max());
     position.clamp(bounds_min, (bounds_max - extent).max(bounds_min))

@@ -4,26 +4,28 @@
 //! at the sRGB target, so the two halves must be exact inverses, and every
 //! lane between them must hold the value at display precision. A cubic fit on
 //! the CPU side read `#1a1a1a` back as `#171717` and `#0a0a0a` as `#050505`.
-//! Linear bytes in the text, stroke and tint lanes then collapsed sRGB 8, 10
-//! and 16 onto 13. Only a readback showed either. The ramp sits in the dark
-//! range, where one display step is smallest in linear light.
+//! Linear bytes in the text, stroke, tint and mesh-vertex lanes then
+//! collapsed sRGB 8, 10 and 16 onto 13. Only a readback showed either. The
+//! ramp sits in the dark range, where one display step is smallest in
+//! linear light.
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{IconFit, Shape};
+use palantir::widget::{IconFit, Mesh, Shape};
 use palantir::{Background, Block, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
 
 use crate::fixtures::icon;
 use crate::harness::Harness;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
-/// One column per ramp value, each holding a block, a glyph, a line and an
-/// icon in that value.
+/// One column per ramp value, each holding a block, a glyph, a line, an
+/// icon and a mesh in that value.
 const COLUMN: f32 = 20.0;
 const BLOCK_Y: f32 = 0.0;
 const TEXT_Y: f32 = 12.0;
 const LINE_Y: f32 = 44.0;
 const ICON_Y: f32 = 52.0;
-const SURFACE: UVec2 = UVec2::new(COLUMN as u32 * RAMP.len() as u32, 64);
+const MESH_Y: f32 = 64.0;
+const SURFACE: UVec2 = UVec2::new(COLUMN as u32 * RAMP.len() as u32, 76);
 
 fn grey(v: u8) -> RgbaF32 {
     RgbaF32::hex(u32::from(v) * 0x01_01_01)
@@ -62,6 +64,14 @@ fn ramp(ui: &mut Ui) {
                     )
                     .brush(grey(v)),
                 );
+                let (left, right) = (x + 2.0, x + COLUMN - 2.0);
+                let quad = [
+                    Vec2::new(left, MESH_Y),
+                    Vec2::new(right, MESH_Y),
+                    Vec2::new(right, MESH_Y + 10.0),
+                    Vec2::new(left, MESH_Y + 10.0),
+                ];
+                ui.add_shape(Shape::mesh(&Mesh::filled_polygon(&quad, grey(v))));
                 Panel::zstack()
                     .id_salt(("icon", v))
                     .position(Vec2::new(x + 5.0, ICON_Y))
@@ -94,6 +104,11 @@ fn a_dark_ramp_reads_back_as_authored() {
             at(10, ICON_Y),
             want,
             "an icon tinted #{v:02x}{v:02x}{v:02x}"
+        );
+        assert_eq!(
+            at(10, MESH_Y),
+            want,
+            "a mesh coloured #{v:02x}{v:02x}{v:02x}"
         );
         // The glyph's edges are antialiased, so its fully covered pixels are
         // the brightest in its column, and they carry the colour exactly.

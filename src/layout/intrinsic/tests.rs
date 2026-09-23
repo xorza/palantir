@@ -3,7 +3,8 @@ use crate::layout::intrinsic::*;
 use crate::scene::tree::node_id::NodeId;
 
 use crate::Ui;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::scene::layer::Layer;
@@ -259,7 +260,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         LayoutMode::ZStack,
         LayoutMode::Canvas,
         LayoutMode::Grid(GridDefId::from_index(0)),
-        LayoutMode::Scroll(ScrollSpec::VERTICAL),
+        LayoutMode::Scroll(ScrollAxes::VERTICAL),
     ];
     let tree = h.ui.tree(Layer::Main);
     for expected in expected_modes {

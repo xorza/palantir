@@ -103,9 +103,8 @@ fn changed_and_committed_are_edges() {
 }
 
 /// The texture is sRGB-encoded, because that is what `Rgba8UnormSrgb` decodes
-/// on sample. Writing the linear bytes `RgbaU8::from` produces would paint
-/// the whole field far too bright, and nothing else in the crate would catch
-/// it.
+/// on sample. Writing linear bytes instead would paint the whole field far too
+/// bright, and nothing else in the crate would catch it.
 ///
 /// Two columns and three rows put a texel at `s = 0.25, v = 0.5` on hue 0. In
 /// HSV that is `R = v`, `G = B = v(1 - s)` as **encoded** components: 0.5 and

@@ -29,8 +29,10 @@ pub struct Palette {
     pub text_muted: RgbaF32,
     /// Disabled-state foreground.
     pub text_disabled: RgbaF32,
-    /// Window / editor background (`Theme::window_clear`).
-    pub terminal_bg: RgbaF32,
+    /// Window background (`Theme::window_clear`). Also the active tab
+    /// chip's fill, so the chip reads as continuous with the page, and the
+    /// check and dot a toggle draws on its accent.
+    pub window_bg: RgbaF32,
     /// Resting surface tier (disabled fills, menu panels).
     pub elem: RgbaF32,
     /// One step brighter — resting chrome for interactive surfaces.
@@ -50,7 +52,7 @@ impl Palette {
         text: RgbaF32::hex(0xffffff),
         text_muted: RgbaF32::hex(0xaaaaa8),
         text_disabled: RgbaF32::hex(0x878a8d),
-        terminal_bg: RgbaF32::hex(0x1a1a1a),
+        window_bg: RgbaF32::hex(0x1a1a1a),
         elem: RgbaF32::hex(0x343434),
         elem_mid: RgbaF32::hex(0x3e3e3e),
         elem_strong: RgbaF32::hex(0x4b4b4b),

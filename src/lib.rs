@@ -351,6 +351,8 @@ pub mod widget {
     pub use crate::widgets::configure::ConfigureWidget;
     pub use crate::widgets::configure::ThemeDefaults;
     pub use crate::widgets::theme::text_style::TextStyleOverrides;
+    pub use crate::widgets::theme::widget_look::look_plan::LookPlan;
+    pub use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
     pub use crate::widgets::widget::Widget;
     pub use palantir_anim_derive::Animatable;
 }
@@ -424,7 +426,7 @@ pub use input::watch::{KeyboardWake, PointerWake};
 pub use input::zoom_factor::ZoomFactor;
 pub use layout::axis::Axis;
 pub use layout::types::align::{Align, HAlign, VAlign};
-pub use layout::types::anchor::Anchor;
+pub use layout::types::anchor::{Anchor, AnchorAlign};
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
@@ -445,7 +447,6 @@ pub use primitives::brush::gradient::stops::{GradientStops, Stop};
 pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
 pub use primitives::brush::{Brush, CurveBrush};
 pub use primitives::color::RgbaF32;
-pub use primitives::color::RgbaU8;
 pub use primitives::color::color_coords::ColorCoords;
 pub use primitives::color::color_model::{ColorModel, HueSlice};
 pub use primitives::color::hsv::Hsv;

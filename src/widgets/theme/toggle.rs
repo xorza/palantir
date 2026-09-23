@@ -98,7 +98,7 @@ impl ToggleTheme {
     }
 
     /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
-    /// corner radius and a `terminal_bg` check.
+    /// corner radius and a `window_bg` check.
     pub fn checkbox(p: &Palette) -> Self {
         Self::built(
             ToggleGeometry {
@@ -106,13 +106,13 @@ impl ToggleTheme {
                 box_size: 16.0,
                 indicator_inset: 4.0,
             },
-            p.terminal_bg,
+            p.window_bg,
             p,
         )
     }
 
     /// Defaults sized for [`crate::RadioButton`] — 16 px pip with pill
-    /// radius (`box_size * 0.5`) and a `terminal_bg` dot.
+    /// radius (`box_size * 0.5`) and a `window_bg` dot.
     pub fn radio(p: &Palette) -> Self {
         Self::built(
             ToggleGeometry {
@@ -120,7 +120,7 @@ impl ToggleTheme {
                 box_size: 16.0,
                 indicator_inset: 4.0,
             },
-            p.terminal_bg,
+            p.window_bg,
             p,
         )
     }

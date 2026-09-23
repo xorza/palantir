@@ -4,7 +4,7 @@
 //! per-frame data input and rendering read.
 
 use crate::common::tracy;
-use crate::layout::scrollbars::ScrollbarsDef;
+use crate::layout::scrollbars::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::layout::types::placement::Placement;
 use crate::layout::types::track::Track;
@@ -18,7 +18,6 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
-use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimEntry;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::scene::tree::recording_scratch::OpenFrame;
@@ -107,12 +106,34 @@ impl Forest {
         self.trees[layer].push_grid_def(rows, cols)
     }
 
-    /// Intern a bar overlay's definition into the current layer's tree.
-    /// Companion to [`Self::push_grid_def`]; same layer contract.
+    /// Intern a bar overlay's definition into the current layer's tree,
+    /// with the viewport it names resolved to the node this pass recorded
+    /// it as. Companion to [`Self::push_grid_def`]; same layer contract.
+    ///
+    /// A direct probe of the id map the pass is filling, so the viewport
+    /// must be open already — unlike the cascade lookups on `Ui`, which
+    /// answer for last frame.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the viewport was not recorded earlier this frame.
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         let layer = self.current_layer();
-        self.trees[layer].push_scrollbars_def(def)
+        let Some(viewport) = self.ids.curr.get(&def.content) else {
+            panic!(
+                "scrollbar overlay names viewport {:?}, which was not recorded earlier this frame",
+                def.content,
+            );
+        };
+        // The driver reads the viewport's extent out of its own layer's
+        // table, so a node from another layer would index the wrong one.
+        debug_assert_eq!(
+            viewport.layer, layer,
+            "a scrollbar overlay and its viewport must record on one layer",
+        );
+        let content = viewport.node;
+        self.trees[layer].push_scrollbars_def(ResolvedScrollbarsDef { def, content })
     }
 
     /// Resolve `ident` against the currently-open parent into the id this
@@ -130,18 +151,6 @@ impl Forest {
     pub(crate) fn widget_id(&mut self, ident: Ident) -> WidgetId {
         let raw_id = ident.raw_id(self.current_parent_id());
         self.ids.resolve(raw_id, ident.is_explicit())
-    }
-
-    /// The node `id` was opened under in **this** record pass.
-    ///
-    /// A direct probe of the id map the pass is filling, so it answers
-    /// only after the matching [`Self::open_node`] and panics otherwise
-    /// — unlike the cascade lookups on `Ui`, which answer for last
-    /// frame. `Scroll` uses it to hand its bar overlay a live handle to
-    /// the viewport recorded one line earlier.
-    #[inline]
-    pub(crate) fn current_node(&self, id: WidgetId) -> NodeId {
-        self.ids.curr[&id].node
     }
 
     pub(crate) fn pre_record(&mut self) {
@@ -302,7 +311,7 @@ impl Forest {
     /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView))
     /// to the active node. Only the redraw `epoch` rides the shape — the
     /// view's `id` + app `paint` live in `Ui::gpu_views` keyed by the
-    /// owner's `WidgetId`; this is assembled by `Ui::gpu_view`, not lowered
+    /// owner's `WidgetId`; this is assembled by `Ui::add_gpu_view`, not lowered
     /// from a user-facing [`Shape`](crate::widget::Shape), so it skips the lowering
     /// path and can never noop-collapse.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {

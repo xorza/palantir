@@ -44,7 +44,7 @@ use crate::input::response::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::layout::Layout;
-use crate::layout::scrollbars::ScrollbarsDef;
+use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -64,7 +64,6 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
-use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::shape::Lower;
 use crate::text::error::FontLoadError;
@@ -1085,31 +1084,30 @@ impl Ui {
         self.forest.push_grid_def(rows, cols)
     }
 
+    /// Intern a bar overlay's definition into the current layer, with the
+    /// viewport it names resolved to this pass's node. Called by
+    /// [`Widget::scrollbar_def`], for the reason [`Self::push_grid_def`] is
+    /// on `Ui`.
+    ///
+    /// [`Widget::scrollbar_def`]: crate::widget::Widget::scrollbar_def
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         self.forest.push_scrollbars_def(def)
     }
 
-    /// The node `id` was recorded as **this pass**, for a caller that has
-    /// just opened it and needs the handle a downstream driver keys off.
-    /// Panics if `id` has not been recorded yet this pass.
-    #[inline]
-    pub(crate) fn current_node(&self, id: WidgetId) -> NodeId {
-        self.forest.current_node(id)
-    }
-
-    /// Last frame's measured content extent for the scroll viewport `id`,
-    /// `Size::ZERO` for any widget that is not one or has not yet arranged.
+    /// The content extent the scroll viewport `id` measured last frame,
+    /// before zoom: how far its children reach on each axis. `Size::ZERO`
+    /// for a widget that is not a
+    /// [`Widget::scroll`](crate::widget::Widget::scroll) viewport, or that
+    /// has not been laid out yet.
     ///
-    /// **A bridge, and that is why it lives here.** The extent is keyed by
-    /// `(layer, node)` in `Layout` while the caller holds a `WidgetId`, and
-    /// `Cascade` is what maps between them — so answering the question needs
-    /// both tables, and `Ui` is the only thing holding both. Cascade timing
-    /// applies: like [`Self::response_for`] this answers for the previous
-    /// frame, which is the lag `Scroll` wants — the bars describe the content
-    /// the user is looking at.
+    /// Last frame's, like [`Self::response_for`], which is the lag a scroll
+    /// widget wants: its bars describe the content the user is looking at.
     #[inline]
     pub(crate) fn scroll_content(&self, id: WidgetId) -> Size {
+        // A bridge: `Layout` keys the extent by `(layer, node)`, the caller
+        // holds a `WidgetId`, and `Cascade` maps between them. `Ui` is the
+        // one thing holding both tables.
         self.cascade
             .endpoint(id)
             .map_or(Size::ZERO, |endpoint| self.layout.scroll_content(endpoint))

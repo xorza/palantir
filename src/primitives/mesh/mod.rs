@@ -4,7 +4,7 @@
 
 use crate::common::hash::Hasher;
 use crate::primitives::approx::FloatHash;
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
 use bytemuck::{Pod, Zeroable};
@@ -20,30 +20,24 @@ use std::hash::Hasher as _;
 /// composer bakes the accumulated transform + DPI scale into a
 /// physical-px copy at compose time.
 ///
-/// `color` is **straight-alpha linear RGBA** — the mesh shader
-/// premultiplies at output — stored as `RgbaU8` (8 bits per channel,
-/// linear-space — the default `From<RgbaF32> for RgbaU8` is a linear
-/// quantize, no sRGB encoding). The GPU vertex
-/// attribute is `Unorm8x4`, so `u8/255` lands in the rasterizer as
-/// `0..1` linear floats with no shader decode. Banding in dark
-/// gradients across a mesh face is the trade-off for the 12 B vertex
-/// footprint vs. 24 B.
+/// `color` is **sRGB-encoded bytes with a straight alpha**, the form a
+/// colour is authored in: a hex colour survives exactly, and any other
+/// lands within half a display step. The mesh shader decodes it per
+/// vertex with the exact sRGB transfer function, so the rasterizer
+/// interpolates linear light across the face, and premultiplies at output.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct MeshVertex {
     /// Position in the owner's local logical pixels.
     pub pos: Vec2,
-    /// Vertex colour, linear and quantized. See the type doc for why it
-    /// is eight bits per channel.
-    pub color: RgbaU8,
+    /// Vertex colour, sRGB-encoded — see the type doc.
+    pub color: SrgbaU8,
 }
 
 impl MeshVertex {
-    /// Construct at `pos` with any `Into<RgbaU8>` colour — accepts a
-    /// linear `RgbaF32` (quantized at the boundary) or a `RgbaU8`
-    /// (passthrough), so call sites that already hold quantized colour
-    /// don't round-trip through f32.
-    pub fn new(pos: Vec2, color: impl Into<RgbaU8>) -> Self {
+    /// Construct at `pos` with any `Into<SrgbaU8>` colour — an `RgbaF32`
+    /// (encoded exactly at the boundary) or an `SrgbaU8` (stored as is).
+    pub fn new(pos: Vec2, color: impl Into<SrgbaU8>) -> Self {
         Self {
             pos,
             color: color.into(),
@@ -145,13 +139,13 @@ impl Mesh {
     }
 
     /// Push a vertex; returns its index for use in [`Self::triangle`].
-    /// `color` accepts `RgbaF32` or `RgbaU8`.
+    /// `color` accepts `RgbaF32` or `SrgbaU8`.
     ///
     /// # Panics
     ///
     /// Panics if the new vertex index cannot be represented by `u32`.
     #[inline]
-    pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaU8>) -> u32 {
+    pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32 {
         let index = checked_vertex_index(self.vertices.len());
         self.vertices.push(MeshVertex::new(pos, color));
         self.cached_hash.set(None);
@@ -234,9 +228,9 @@ impl Mesh {
     }
 
     /// Convenience: filled triangle in a single color (`RgbaF32` or
-    /// `RgbaU8`). Bbox falls out of the three known vertices —
+    /// `SrgbaU8`). Bbox falls out of the three known vertices —
     /// pre-cached so the first `bbox()` call is free.
-    pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<RgbaU8>) -> Self {
+    pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<SrgbaU8>) -> Self {
         let color = color.into();
         let mut m = Self::with_capacity(3, 3);
         let i0 = m.vertex(a, color);
@@ -253,9 +247,9 @@ impl Mesh {
     /// Convenience: filled convex polygon (fan triangulation around the
     /// first vertex). For non-convex polygons the result is visually
     /// wrong — caller's responsibility. `color` accepts `RgbaF32` or
-    /// `RgbaU8`. Bbox is pre-cached, so the first `bbox()` call is
+    /// `SrgbaU8`. Bbox is pre-cached, so the first `bbox()` call is
     /// free.
-    pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaU8>) -> Self {
+    pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self {
         if points.len() < 3 {
             return Self::new();
         }

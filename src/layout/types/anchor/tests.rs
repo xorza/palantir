@@ -1,5 +1,4 @@
-use crate::layout::types::align::AxisAlign;
-use crate::layout::types::anchor::{Anchor, AnchorSide};
+use crate::layout::types::anchor::{Anchor, AnchorAlign, AnchorSide};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -17,7 +16,7 @@ fn each_preferred_side_places_outside_the_rect() {
         (AnchorSide::RightOf, Vec2::new(246.0, 120.0)),
     ];
     for (side, expected) in cases {
-        let anchor = Anchor::new(RECT, side, AxisAlign::Start, 6.0);
+        let anchor = Anchor::new(RECT, side, AnchorAlign::Start, 6.0);
         assert_eq!(anchor.resolve(BODY, BOUNDS), expected, "{side:?}");
     }
 }
@@ -29,7 +28,7 @@ fn overflowing_preferred_side_flips_across_the_rect() {
             Anchor::new(
                 Rect::new(160.0, 4.0, 80.0, 40.0),
                 AnchorSide::Above,
-                AxisAlign::Start,
+                AnchorAlign::Start,
                 6.0,
             ),
             Vec2::new(160.0, 50.0),
@@ -38,7 +37,7 @@ fn overflowing_preferred_side_flips_across_the_rect() {
             Anchor::new(
                 Rect::new(160.0, 256.0, 80.0, 40.0),
                 AnchorSide::Below,
-                AxisAlign::Start,
+                AnchorAlign::Start,
                 6.0,
             ),
             Vec2::new(160.0, 190.0),
@@ -47,7 +46,7 @@ fn overflowing_preferred_side_flips_across_the_rect() {
             Anchor::new(
                 Rect::new(4.0, 120.0, 80.0, 40.0),
                 AnchorSide::LeftOf,
-                AxisAlign::Start,
+                AnchorAlign::Start,
                 6.0,
             ),
             Vec2::new(90.0, 120.0),
@@ -56,7 +55,7 @@ fn overflowing_preferred_side_flips_across_the_rect() {
             Anchor::new(
                 Rect::new(316.0, 120.0, 80.0, 40.0),
                 AnchorSide::RightOf,
-                AxisAlign::Start,
+                AnchorAlign::Start,
                 6.0,
             ),
             Vec2::new(210.0, 120.0),
@@ -70,12 +69,12 @@ fn overflowing_preferred_side_flips_across_the_rect() {
 #[test]
 fn cross_axis_alignment_uses_the_full_rect() {
     let cases = [
-        (AxisAlign::Start, 160.0),
-        (AxisAlign::Center, 150.0),
-        (AxisAlign::End, 140.0),
+        (AnchorAlign::Start, 160.0),
+        (AnchorAlign::Center, 150.0),
+        (AnchorAlign::End, 140.0),
     ];
     for (align, expected_x) in cases {
-        let anchor = Anchor::new(RECT, AnchorSide::Below, align, 0.0);
+        let anchor = Anchor::below(RECT).align(align);
         assert_eq!(
             anchor.resolve(BODY, BOUNDS),
             Vec2::new(expected_x, 160.0),
@@ -89,7 +88,7 @@ fn impossible_fit_clamps_inside_bounds() {
     let anchor = Anchor::new(
         Rect::new(390.0, 140.0, 10.0, 20.0),
         AnchorSide::Below,
-        AxisAlign::Start,
+        AnchorAlign::Start,
         6.0,
     );
     assert_eq!(anchor.resolve(Size::new(500.0, 400.0), BOUNDS), Vec2::ZERO,);

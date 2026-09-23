@@ -2,7 +2,6 @@
 //! group, and the drag-docking gesture.
 
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::scene::layer::Layer;
@@ -75,8 +74,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
     ///
     /// The widget never mutates the tree. Everything it decides arrives
     /// as an op, so an application can route dock changes through the
-    /// same queue as its own edits, keep them out of undo, and validate
-    /// before a save.
+    /// same queue as its own edits and keep them out of undo.
     #[track_caller]
     pub fn new(state: &'a DockState<T>, ops: &'a mut Vec<DockOp<T>>) -> Self {
         Self {
@@ -230,7 +228,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     SplitDir::Row => Splitter::horizontal(&mut live),
                     SplitDir::Column => Splitter::vertical(&mut live),
                 };
-                splitter
+                let hit = splitter
                     .id(state.splitter_id(path))
                     .min_pane(self.min_pane)
                     .show(ui, |ui, half| {
@@ -242,10 +240,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     });
                 // The widget wrote the divider drag into `live`; the
                 // tree itself only changes through the recorded op.
-                // Approximate rather than exact, because a re-derived
-                // ratio carries last-bit noise an `!=` would emit on
-                // every frame.
-                if !approx::approx_zero(live - ratio) {
+                if hit.changed {
                     self.ops.push(DockOp::SetRatio {
                         split: path,
                         ratio: live,

@@ -3,7 +3,7 @@
 //! another retained widget-state copy.
 
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::BarDomain;
+use crate::layout::scrollbars::scrollbars_def::BarGeometry;
 use crate::primitives::approx;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -63,6 +63,35 @@ struct OffsetBounds {
     hi: Vec2,
 }
 
+/// The offset range a scrollbar can express: `[0, max_off]`.
+///
+/// Deliberately narrower than the wheel's range. `content_margin` opens
+/// a band below zero, and [`Scroll::content_margin`](crate::Scroll::content_margin)
+/// documents that a thumb does not show that extra travel — so the bar
+/// and the wheel legitimately disagree about the offset's lower bound.
+/// What is *not* legitimate is each interaction path re-deriving the
+/// bar's half by hand: the thumb drag and the track page each spelling
+/// the `0.0` end and the `max_off` end for itself is how a drag anchored
+/// in the wheel's domain and clamped in the bar's goes unnoticed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct BarDomain {
+    max_off: f32,
+}
+
+impl BarDomain {
+    /// The range `[0, max_off]`.
+    #[inline]
+    pub(super) fn new(max_off: f32) -> Self {
+        Self { max_off }
+    }
+
+    /// Pull `offset` into the range. The one place either end is named.
+    #[inline]
+    pub(super) fn clamp(self, offset: f32) -> f32 {
+        offset.clamp(0.0, self.max_off)
+    }
+}
+
 /// What a thumb drag needs from its bar's resolved geometry. Named for
 /// the same reason [`TrackPage`] is: the two are siblings applied one
 /// after the other, and an anonymous `(f32, f32)` here reads as nothing
@@ -77,6 +106,21 @@ pub(super) struct ThumbTravel {
     pub(super) domain: BarDomain,
 }
 
+impl ThumbTravel {
+    /// The drag mapping for the bar `thumb`.
+    ///
+    /// The denominator is the travel of the geometry that placed the
+    /// thumb, not the bar's raw track: the two disagree by the track's
+    /// floor, and a drag scaled by the wrong one moves the content at a
+    /// rate the thumb does not follow.
+    pub(super) fn of(thumb: BarGeometry) -> Self {
+        Self {
+            factor: approx::share_of(thumb.max_offset, thumb.travel),
+            domain: BarDomain::new(thumb.max_offset),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TrackPage {
     pub(super) click_main: f32,
@@ -84,6 +128,20 @@ pub(super) struct TrackPage {
     pub(super) thumb_size: f32,
     pub(super) page_step: f32,
     pub(super) domain: BarDomain,
+}
+
+impl TrackPage {
+    /// A click at `click_main` along the track of the bar `thumb`. A page
+    /// is one track length, since the track spans the viewport.
+    pub(super) fn at(thumb: BarGeometry, click_main: f32) -> Self {
+        Self {
+            click_main,
+            thumb_offset: thumb.thumb_offset,
+            thumb_size: thumb.thumb_size,
+            page_step: thumb.track,
+            domain: BarDomain::new(thumb.max_offset),
+        }
+    }
 }
 
 impl ScrollState {

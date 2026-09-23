@@ -160,9 +160,13 @@ fn a_close_click_reports_a_close_and_not_a_click() {
     let hit = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
-        (r.clicked, r.closed)
+        (r.clicked, r.activated(), r.closed)
     });
-    assert_eq!(hit, (None, Some(1)), "the close won over the activation");
+    assert_eq!(
+        hit,
+        (None, None, Some(1)),
+        "the close won over the activation"
+    );
 }
 
 /// A plain chip click reports its slot, and nothing else.
@@ -177,9 +181,9 @@ fn a_chip_click_reports_its_slot() {
     let hit = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
-        (r.clicked, r.keyed, r.closed)
+        (r.clicked, r.keyed, r.activated(), r.closed)
     });
-    assert_eq!(hit, (Some(2), None, None));
+    assert_eq!(hit, (Some(2), None, Some(2), None));
 }
 
 /// Keyboard travel on the WAI-ARIA tab pattern. Reported apart from a
@@ -202,6 +206,7 @@ fn arrows_home_and_end_travel_and_wrap() {
                 .id(strip_id())
                 .selected(selected)
                 .show(ui);
+            assert_eq!(r.activated(), r.keyed, "a keyboard move is an activation");
             (r.keyed, r.clicked)
         });
         h.set_modifiers(Modifiers::default());
@@ -436,4 +441,22 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         h.rect(chevron).is_some(),
         "a chip cut in half is a chip the strip cannot show whole",
     );
+
+    // The hidden chip is one pick away: the chevron opens the menu, and
+    // its row reports the chip as a menu pick, which `activated` merges
+    // with a click and a keyboard move.
+    h.click_at(h.center_of(chevron));
+    h.frame(build(half_way));
+    h.click_at(h.center_of(strip_id().with("overflow_menu").with(30u64)));
+    let picked = h.frame_value(|ui| {
+        let items = items(ui, TabBadge::None);
+        let r = TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .overflow(TabOverflow::Menu)
+            .size((Sizing::fixed(half_way), Sizing::HUG))
+            .show(ui);
+        (r.menu_picked, r.clicked, r.activated())
+    });
+    assert_eq!(picked, (Some(2), None, Some(2)));
 }

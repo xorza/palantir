@@ -2,9 +2,13 @@
 //! thumb keeps.
 
 use crate::Ui;
-use crate::layout::scrollbars::bar_geometry;
+use crate::layout::axis::Axis;
+use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
@@ -16,9 +20,24 @@ use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
 use glam::UVec2;
 use glam::Vec2;
 
-/// `bar_geometry(viewport, content, offset, min_thumb)` returns
-/// `None` when content fits the viewport or the viewport collapses to
-/// zero; otherwise `Some { thumb_size, thumb_offset }`.
+/// A bare vertical def — no gutter, no padding, no zoom — offset by `offset`.
+fn vertical_def(offset: f32) -> ScrollbarsDef {
+    ScrollbarsDef {
+        content: WidgetId::from_hash("geometry"),
+        offset: Vec2::new(0.0, offset),
+        zoom: 1.0,
+        axes: ScrollAxes::VERTICAL,
+        reserve: Spacing::ZERO,
+        padding: Spacing::ZERO,
+        bar_thickness: 8.0,
+        min_thumb: theme().min_thumb_px,
+    }
+}
+
+/// `ScrollbarsDef::thumb` over a `viewport`-tall overlay returns `None`
+/// when content fits the viewport or the viewport collapses to zero;
+/// otherwise the thumb, with the track at the viewport's length and the
+/// bar's range at `content - viewport`.
 ///
 /// The track spans the whole viewport extent, so one length drives
 /// both the `viewport / content` ratio and the travel. Both results are
@@ -28,7 +47,7 @@ use glam::Vec2;
 /// and `thumb_offset = round(clamp(offset / (content - viewport), 0, 1) *
 /// (track - thumb_size))`.
 #[test]
-fn bar_geometry_thumb_size_and_offset_cases() {
+fn thumb_size_and_offset_cases() {
     #[derive(Debug)]
     struct Want {
         thumb_size: Option<f32>,
@@ -132,10 +151,16 @@ fn bar_geometry_thumb_size_and_offset_cases() {
         ("none_when_viewport_zero", 0.0, 800.0, 0.0, None),
     ];
     for (label, viewport, content, offset, want) in cases {
-        let got = bar_geometry(*viewport, *content, *offset, theme().min_thumb_px);
+        let got = vertical_def(*offset).thumb(
+            Axis::Y,
+            Size::new(100.0, *viewport),
+            Size::new(0.0, *content),
+        );
         match (want, got) {
             (None, None) => {}
             (Some(want), Some(g)) => {
+                assert_eq!(g.track, *viewport, "case: {label} track");
+                assert_eq!(g.max_offset, content - viewport, "case: {label} max_offset");
                 if let Some(s) = want.thumb_size {
                     assert!((g.thumb_size - s).abs() < 1e-3, "case: {label} thumb_size");
                 }
@@ -153,6 +178,50 @@ fn bar_geometry_thumb_size_and_offset_cases() {
             ),
         }
     }
+}
+
+/// What the def adds over the bare arithmetic: its gutter and padding
+/// deflate the viewport, its zoom scales the content, and an axis it does
+/// not pan shows no bar however far the content overflows.
+#[test]
+fn the_def_deflates_scales_and_skips_axes_it_does_not_pan() {
+    let outer = Size::new(300.0, 200.0);
+    let def = ScrollbarsDef {
+        reserve: Spacing::new(0.0, 0.0, 10.0, 12.0),
+        padding: Spacing::new(4.0, 6.0, 8.0, 2.0),
+        ..vertical_def(0.0)
+    };
+    // Across: 300 - (0 + 10) - (4 + 8) = 278. Down: 200 - (0 + 12) - (6 + 2) = 180.
+    assert_eq!(def.viewport(outer), Size::new(278.0, 180.0));
+    assert_eq!(def.viewport(Size::new(10.0, 10.0)), Size::ZERO);
+
+    // A 180 track over 720 of content: 180² / 720 = 45, over a 540 range.
+    let content = Size::new(1000.0, 720.0);
+    let thumb = def
+        .thumb(Axis::Y, outer, content)
+        .expect("720 overflows 180");
+    assert_eq!(
+        (thumb.track, thumb.thumb_size, thumb.max_offset),
+        (180.0, 45.0, 540.0)
+    );
+    // Zoom 0.5 halves the content to 360: 180² / 360 = 90, over a 180 range.
+    let zoomed = ScrollbarsDef { zoom: 0.5, ..def }
+        .thumb(Axis::Y, outer, content)
+        .expect("360 overflows 180");
+    assert_eq!((zoomed.thumb_size, zoomed.max_offset), (90.0, 180.0));
+    assert_ne!(zoomed, thumb);
+
+    // 1000 overflows the 278 across, but a vertical viewport has no
+    // horizontal bar. Panning both, it does: 278² / 1000 = 77.28 → 77.
+    assert_eq!(def.thumb(Axis::X, outer, content), None);
+    let both = ScrollbarsDef {
+        axes: ScrollAxes::BOTH,
+        ..def
+    };
+    let across = both
+        .thumb(Axis::X, outer, content)
+        .expect("1000 overflows 278");
+    assert_eq!((across.track, across.thumb_size), (278.0, 77.0));
 }
 
 /// A travelling thumb must not change *length* on screen. Physical

@@ -154,10 +154,10 @@ impl TabsTheme {
         };
         Self {
             active: StatefulLook {
-                normal: chip(p.terminal_bg, None),
-                hovered: chip(p.terminal_bg, None),
-                active: chip(p.terminal_bg, None),
-                disabled: chip(p.terminal_bg, disabled_text),
+                normal: chip(p.window_bg, None),
+                hovered: chip(p.window_bg, None),
+                active: chip(p.window_bg, None),
+                disabled: chip(p.window_bg, disabled_text),
             },
             inactive: StatefulLook {
                 normal: chip(p.elem_mid, inactive_text),

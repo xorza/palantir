@@ -609,11 +609,14 @@ fn serde_roundtrips_through_ron() {
     assert_eq!(back, d);
 }
 
+/// A saved layout that breaks an invariant fails to load, with that
+/// invariant's error, rather than loading into a state that panics on a
+/// later op.
 #[test]
-fn validate_rejects_each_corruption() {
+fn loading_rejects_each_corruption() {
     // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, corrupted
     // one invariant at a time through the gated raw access — no public
-    // op can produce these states.
+    // op can produce these states — then saved and read back.
     let base = {
         let mut d = seeded();
         let primary = d.primary().id;
@@ -732,16 +735,24 @@ fn validate_rejects_each_corruption() {
     for (name, corrupt, expected) in cases {
         let mut d = base.clone();
         corrupt(&mut d);
-        let err = d.validate().unwrap_err().to_string();
+        let err = load_err(&d);
         assert!(err.contains(expected), "{name}: unexpected error: {err}");
     }
+}
+
+/// Save `d` and read it back, expecting the read to fail.
+fn load_err(d: &DockState<Tab>) -> String {
+    let text = ron::ser::to_string(d).expect("a corrupt tree still serializes");
+    ron::from_str::<DockState<Tab>>(&text)
+        .expect_err("a corrupt layout must not load")
+        .to_string()
 }
 
 /// A duplicate tab is refused too. Split out from the table above
 /// because it needs a *second* group to put the copy in, so the
 /// corruption is a push rather than an edit in place.
 #[test]
-fn validate_rejects_a_tab_that_appears_twice() {
+fn loading_rejects_a_tab_that_appears_twice() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
@@ -749,7 +760,7 @@ fn validate_rejects_a_tab_that_appears_twice() {
         panic!("slot 1 is the primary group");
     };
     g.tabs.push(viewer(1));
-    let err = d.validate().unwrap_err().to_string();
+    let err = load_err(&d);
     assert!(err.contains("appears twice"), "unexpected error: {err}");
 }
 

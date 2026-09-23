@@ -304,7 +304,7 @@ impl Theme {
             dock: DockTheme::from_palette(p),
             expander: ExpanderTheme::from_palette(p),
             text: TextStyle::default().with_color(p.text),
-            window_clear: p.terminal_bg,
+            window_clear: p.window_bg,
             panel_background: None,
             panel_clip: ClipMode::None,
         }

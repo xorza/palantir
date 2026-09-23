@@ -4,8 +4,8 @@
 use crate::support;
 use crate::support::{body_style, note_style, well_bg};
 use palantir::{
-    Configure, Panel, Sizing, TabBadge, TabItem, TabOverflow, TabStrip, TabStripResponse,
-    TabbedView, Text, Ui, WidgetId, fmt,
+    Configure, Panel, Sizing, TabBadge, TabItem, TabOverflow, TabStrip, TabbedView, Text, Ui,
+    WidgetId, fmt,
 };
 
 const PAGES: [&str; 3] = ["Colour", "Geometry", "Metadata"];
@@ -110,7 +110,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         .selected(s.overflowing)
                         .overflow(TabOverflow::Menu)
                         .show(ui);
-                    if let Some(i) = hit.clicked.or(hit.keyed).or(hit.menu_picked) {
+                    if let Some(i) = hit.activated() {
                         s.overflowing = i;
                     }
                 });
@@ -147,22 +147,16 @@ fn strip_demo(ui: &mut Ui, s: &mut State) {
                     ..TabItem::new(key, fmt!(ui, "layer {key}"))
                 })
                 .collect();
-            let TabStripResponse {
-                clicked,
-                keyed,
-                closed,
-                ..
-            } = TabStrip::new(&items)
+            let hit = TabStrip::new(&items)
                 .id_salt("bare-strip")
                 .selected(s.picked)
                 .show(ui);
-            let clicked = clicked.or(keyed);
-            if let Some(slot) = closed
+            if let Some(slot) = hit.closed
                 && s.open.len() > 1
             {
                 s.open.remove(slot);
                 s.picked = s.picked.min(s.open.len() - 1);
-            } else if let Some(slot) = clicked {
+            } else if let Some(slot) = hit.activated() {
                 s.picked = slot;
             }
         });

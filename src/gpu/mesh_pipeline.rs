@@ -203,8 +203,8 @@ fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bo
 const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
     0 => Float32x2,
     // `Unorm8x4` normalizes `u8/255 → 0..1` floats on the GPU.
-    // `MeshVertex::color` holds linear bytes, so the shader reads linear
-    // values with no decode.
+    // `MeshVertex::color` holds sRGB-encoded bytes, which the shader
+    // decodes per vertex with the exact transfer function.
     1 => Unorm8x4,
 ];
 

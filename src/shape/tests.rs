@@ -1,7 +1,8 @@
 use crate::layout::types::align::Align;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::{Brush, CurveBrush};
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
@@ -113,7 +114,7 @@ fn typed_builders_set_the_fields_they_name() {
     assert_eq!(rect_shape.corners.as_array(), [6.0; 4]);
 
     let mesh = Mesh::new();
-    let tint = RgbaU8::rgb(10, 20, 30);
+    let tint = SrgbaU8::rgb(10, 20, 30);
     let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
     assert!(std::ptr::eq(mesh_shape.mesh, &mesh));
     assert_eq!(mesh_shape.local_rect, Some(rect));

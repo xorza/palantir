@@ -26,7 +26,9 @@ impl CloseHandle {
         self.requested.set(true);
     }
 
-    pub(crate) fn requested(&self) -> bool {
+    /// Whether anything asked to dismiss — what the overlay that handed
+    /// this out reads after its body ran.
+    pub fn requested(&self) -> bool {
         self.requested.get()
     }
 }

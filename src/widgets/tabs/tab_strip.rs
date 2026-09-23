@@ -61,8 +61,9 @@ pub enum TabOverflow {
 /// not all see the same sources. One that polls the chips itself a phase
 /// earlier — the dock's navigation scan does — already has the click,
 /// and acts on [`Self::keyed`] and [`Self::menu_picked`]; everyone else
-/// takes any of the three. A menu pick is its own field for exactly that
-/// reason: it happens inside a popup whose ids no chip scan can reach.
+/// takes any of the three, which is [`Self::activated`]. A menu pick is
+/// its own field for exactly that reason: it happens inside a popup whose
+/// ids no chip scan can reach.
 #[derive(Debug)]
 pub struct TabStripResponse<'a> {
     /// The strip's own pointer/click/hover [`Response`]. Which chip was
@@ -97,7 +98,7 @@ pub struct TabStripResponse<'a> {
 /// # use palantir::{TabItem, TabStrip, Ui};
 /// # fn demo(ui: &mut Ui, items: &[TabItem], active: usize) {
 /// let hit = TabStrip::new(items).selected(active).show(ui);
-/// if let Some(i) = hit.clicked {
+/// if let Some(i) = hit.activated() {
 ///     // activate items[i]
 /// }
 /// # }
@@ -116,6 +117,15 @@ pub struct TabStrip<'a> {
     focused: bool,
     overflow: TabOverflow,
     style: Option<&'a TabsTheme>,
+}
+
+impl TabStripResponse<'_> {
+    /// The chip activated this frame by any of the three sources — a
+    /// click, a keyboard move, or an overflow-menu pick. What a caller
+    /// that owns its selection outright acts on.
+    pub fn activated(&self) -> Option<usize> {
+        self.clicked.or(self.keyed).or(self.menu_picked)
+    }
 }
 
 impl<'a> TabStrip<'a> {

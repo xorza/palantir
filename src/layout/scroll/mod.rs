@@ -9,7 +9,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::pass::LayoutPass;
 use crate::layout::stack::Stack;
-use crate::layout::types::layout_mode::{ScrollChildLayout, ScrollSpec};
+use crate::layout::types::scroll_axes::{ScrollAxes, ScrollChildLayout};
 use crate::layout::zstack::ZStack;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
@@ -22,7 +22,7 @@ pub(super) struct Scroll;
 
 impl LayoutDriver for Scroll {
     /// The viewport's pan axes, child layout and fit rule.
-    type Payload = ScrollSpec;
+    type Payload = ScrollAxes;
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
@@ -32,32 +32,32 @@ impl LayoutDriver for Scroll {
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
-        spec: Self::Payload,
+        axes: Self::Payload,
         inner_avail: Size,
     ) -> Size {
         // A panned axis measures unbounded: what it scrolls over is not
         // limited by what it shows.
-        let child_avail = Size::INF.select(spec.pan_mask(), inner_avail);
-        let raw = match spec.child_layout() {
+        let child_avail = Size::INF.select(axes.pan_mask(), inner_avail);
+        let raw = match axes.child_layout() {
             ScrollChildLayout::Layered => ZStack::measure(pass, node, (), child_avail),
             ScrollChildLayout::Flow(main) => Stack::measure(pass, node, main, child_avail),
         };
 
         pass.set_scroll_content(node, raw);
 
-        raw.select(spec.contributes_mask(), Size::ZERO)
+        raw.select(axes.contributes_mask(), Size::ZERO)
     }
 
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, spec: Self::Payload, inner: Rect) {
-        match spec.child_layout() {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axes: Self::Payload, inner: Rect) {
+        match axes.child_layout() {
             ScrollChildLayout::Layered => ZStack::arrange(pass, node, (), inner),
             ScrollChildLayout::Flow(main) => Stack::arrange(pass, node, main, inner),
         }
     }
 
     /// A scroll's intrinsic has to answer exactly what its measure would: same
-    /// child driver, same per-axis contribution rule. Both come off the spec so
-    /// the two can't drift — [`ScrollSpec::contributes`] is where the `fit` case
+    /// child driver, same per-axis contribution rule. Both come off the payload so
+    /// the two can't drift — [`ScrollAxes::contributes`] is where the `fit` case
     /// is stated.
     ///
     /// **A scroll's two content sizes differ in kind, so one rule can't serve
@@ -73,17 +73,17 @@ impl LayoutDriver for Scroll {
         engine: &mut LayoutEngine,
         tree: &Tree,
         node: NodeId,
-        spec: Self::Payload,
+        axes: Self::Payload,
         axis: Axis,
         query: IntrinsicQuery,
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
-        let wants_min = query.includes(LenReq::MinContent) && !spec.pans(axis);
-        let wants_max = query.includes(LenReq::MaxContent) && spec.contributes(axis);
+        let wants_min = query.includes(LenReq::MinContent) && !axes.pans(axis);
+        let wants_max = query.includes(LenReq::MaxContent) && axes.contributes(axis);
         let Some(content_query) = IntrinsicQuery::of(wants_min, wants_max) else {
             return IntrinsicRange::ZERO;
         };
-        let content = match spec.child_layout() {
+        let content = match axes.child_layout() {
             ScrollChildLayout::Layered => {
                 ZStack::intrinsic(engine, tree, node, (), axis, content_query, interned_text)
             }

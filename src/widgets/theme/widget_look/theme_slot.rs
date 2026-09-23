@@ -11,19 +11,38 @@ use crate::widgets::theme::widget_look::look_plan::LookPlan;
 /// A theme bundle a widget wears whole: the per-state looks its response
 /// picks from, and the box defaults around them.
 ///
-/// [`Self::plan`] is the only route from a bundle to a [`LookPlan`], and
-/// the plan is the only route to a painted look. A bundle that grows a
-/// fifth box default therefore grows it in [`SlotDefaults`], and the
-/// compiler names every implementor — instead of the eight `show` bodies
-/// that each spelled the quartet out.
-pub(crate) trait ThemeSlot {
+/// [`Self::plan`] is the route from a bundle to a [`LookPlan`], and
+/// [`LookPlan::apply`] the route from the plan to a painted look — the two
+/// calls every themed widget in the crate makes, and the two a widget of
+/// your own makes to wear a theme bundle the same way:
+///
+/// ```
+/// # use palantir::widget::{ThemeSlot, Widget};
+/// # use palantir::Ui;
+/// # fn demo(ui: &mut Ui) {
+/// let mut widget = Widget::leaf();
+/// let response = widget.response(ui);
+/// let theme = ui.theme();
+/// let look = theme
+///     .button
+///     .plan(&response, (), theme.text)
+///     .apply(ui, &mut widget);
+/// widget.record(ui, Some(&look.background), |_| {});
+/// # }
+/// ```
+///
+/// A bundle that grows a fifth box default grows it in [`SlotDefaults`],
+/// and the compiler names every implementor.
+pub trait ThemeSlot {
     /// What the state pick needs past the response. `()` for the
     /// press-driven and focus-driven bundles; the toggles pass their
     /// checked flag, which selects between two four-state packs.
     type Pick: Copy;
 
+    /// The look this bundle holds for `response`'s state, under `pick`.
     fn look(&self, response: &ResponseState, pick: Self::Pick) -> &WidgetLook;
 
+    /// The spacing and transition spec the bundle contributes to the node.
     fn defaults(&self) -> SlotDefaults;
 
     /// Flatten into the owned plan [`LookPlan::apply`] consumes, resolving

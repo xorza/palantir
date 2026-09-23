@@ -9,7 +9,8 @@
 //! two snapshots for a no-op — and makes group iteration a plain vector
 //! scan in left-to-right pane order.
 //!
-//! Invariants, checked by [`DockState::validate`]:
+//! Invariants, checked whenever a [`DockState`] is deserialized, so a
+//! saved layout that breaks one is an error and never a state:
 //! - the vector is canonical pre-order, fully reachable from slot 0;
 //! - some group holds the pinned tab;
 //! - no group is empty, no tab appears twice, group ids are unique,
@@ -47,10 +48,6 @@ const RATIO_MAX: f32 = 0.9;
 /// comfortably inside a [`DockPath`].
 const DEFAULT_MAX_DEPTH: u32 = 4;
 
-fn default_max_depth() -> u32 {
-    DEFAULT_MAX_DEPTH
-}
-
 /// A tab's position in the tree: which group holds it, and where in that
 /// group's strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,8 +65,11 @@ pub struct TabAddress {
 /// widget never mutates it: [`DockView`](crate::DockView) reads it and
 /// emits [`DockOp`]s, and [`Self::apply`] is the one place a mutation
 /// happens. That is what lets an application route dock ops through the
-/// same queue as its own edits, keep them out of undo, and validate the
-/// tree before a save.
+/// same queue as its own edits and keep them out of undo.
+///
+/// A layout read back from a file is untrusted, so deserializing checks
+/// every structural invariant and reports a violation as a serde error.
+/// A `DockState` that exists is a valid one.
 ///
 /// ```
 /// # use palantir::{DockOp, DockState};
@@ -80,6 +80,10 @@ pub struct TabAddress {
 /// assert_eq!(dock.groups().count(), 1);
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(
+    try_from = "RawDockState<T>",
+    bound(deserialize = "T: DockTab + Deserialize<'de>")
+)]
 pub struct DockState<T> {
     /// Canonical pre-order — see the module doc. Private so every
     /// structural mutation goes through an op that re-packs.
@@ -96,11 +100,50 @@ pub struct DockState<T> {
     /// Policy, not document: not serialised. A state read back from a
     /// file carries the default, so an application that changes the cap
     /// applies the change after loading.
-    #[serde(skip, default = "default_max_depth")]
+    #[serde(skip_serializing)]
     max_depth: u32,
     /// Policy, not document — see [`Self::max_depth`].
-    #[serde(skip, default)]
+    #[serde(skip_serializing)]
     allowed_splits: AllowedSplits,
+}
+
+/// The document half of a [`DockState`], as a file holds it and before
+/// anything vouched for it. Deserializing goes through here, so an
+/// unchecked tree never becomes a `DockState`.
+#[derive(Debug, Deserialize)]
+struct RawDockState<T> {
+    nodes: Vec<DockNode<T>>,
+    focused: TabGroupId,
+    next_group: u64,
+    pinned: T,
+    seed: u64,
+}
+
+impl<T: DockTab> TryFrom<RawDockState<T>> for DockState<T> {
+    type Error = DockError<T>;
+
+    /// The file's tree under the default policy, if it holds every
+    /// invariant the module doc lists.
+    fn try_from(raw: RawDockState<T>) -> Result<Self, Self::Error> {
+        let RawDockState {
+            nodes,
+            focused,
+            next_group,
+            pinned,
+            seed,
+        } = raw;
+        let state = Self {
+            nodes,
+            focused,
+            next_group,
+            pinned,
+            seed,
+            max_depth: DEFAULT_MAX_DEPTH,
+            allowed_splits: AllowedSplits::default(),
+        };
+        state.validate()?;
+        Ok(state)
+    }
 }
 
 impl<T: DockTab> DockState<T> {
@@ -146,9 +189,9 @@ impl<T: DockTab> DockState<T> {
     /// to 16 panes.
     ///
     /// On the state rather than on the view because the *model* enforces
-    /// it: [`Self::apply`] refuses a deeper split and [`Self::validate`]
-    /// rejects a tree that holds one, so a second copy on the widget
-    /// could only fall out of step with this one.
+    /// it: [`Self::apply`] refuses a deeper split, so a second copy on the
+    /// widget could only fall out of step with this one. A layout read
+    /// from a file is checked against the default cap.
     ///
     /// # Panics
     ///
@@ -254,7 +297,7 @@ impl<T: DockTab> DockState<T> {
     ///
     /// A group that has gone since the press no-ops, like every other op
     /// fed a stale address: storing a dead id would strand `focused` and
-    /// fail [`Self::validate`] at the next save.
+    /// fail [`Self::validate`] at the next load.
     fn focus(&mut self, group: TabGroupId) {
         if self.group(group).is_some() {
             self.focused = group;
@@ -406,7 +449,7 @@ impl<T: DockTab> DockState<T> {
     /// The pinned tab is never offered to `keep`. It is what holds the
     /// tree non-empty, which is why [`DockOp::CloseTab`] refuses it and
     /// the close button never appears on it. A filter allowed to take it
-    /// would hand back a state [`Self::validate`] rejects and
+    /// would hand back a state that fails to load once saved, and that
     /// [`Self::primary`] panics on.
     ///
     /// Each surviving group keeps showing the tab it was showing, the
@@ -530,12 +573,12 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Structural validation, in every build — see the module doc for
-    /// the invariant list.
+    /// the invariant list. Deserializing runs it.
     ///
     /// A deserialized tree is untrusted input, so a violation is a
     /// returned error rather than a panic, and every index is
     /// bounds-checked before the slot it names is read.
-    pub fn validate(&self) -> Result<(), DockError<T>> {
+    pub(crate) fn validate(&self) -> Result<(), DockError<T>> {
         // Canonical pre-order: walking the tree must visit exactly the
         // slots `0..len` in order, which covers reachability, dead slots
         // and acyclicity in one sweep.

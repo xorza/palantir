@@ -1,8 +1,7 @@
 //! Colour in the forms one value takes on its way to the GPU: straight-alpha
 //! linear f32 for authoring and blending, four f16 lanes for the lowered
-//! records and every draw lane, four linear bytes for mesh vertex colours,
-//! and four sRGB-encoded bytes for what a hex code, a gradient stop or an
-//! image texel means.
+//! records and every draw lane, and four sRGB-encoded bytes for what a hex
+//! code, a gradient stop, a mesh vertex or an image texel means.
 //!
 //! One naming rule across all of them: the channels, then the width. A bare
 //! `Rgba` is linear light, the crate's convention everywhere on the CPU;
@@ -230,10 +229,8 @@ impl RgbaF32 {
     }
 
     /// Encode to **sRGB** 8-bit bytes: what an image texel, a CSS hex
-    /// string or a number shown to a person means. The linear quantize is
-    /// `RgbaU8::from`, and the two return different types so one cannot be
-    /// handed where the other is wanted. Inverts [`Self::from_srgba`]
-    /// exactly for every byte.
+    /// string or a number shown to a person means. Inverts
+    /// [`Self::from_srgba`] exactly for every byte.
     pub fn to_srgba_u8(self) -> SrgbaU8 {
         SrgbaU8 {
             r: srgb_transfer::encode_byte(self.r),
@@ -248,204 +245,6 @@ impl From<SrgbaU8> for RgbaF32 {
     #[inline]
     fn from(bytes: SrgbaU8) -> Self {
         Self::from_srgba(bytes)
-    }
-}
-
-/// A 4-byte **linear**-u8 colour: the storage of a mesh vertex's
-/// colour.
-///
-/// The `From<RgbaF32>` / `From<RgbaU8>` pair is a straight linear quantize
-/// — **no sRGB encode**. The sRGB-encoded byte form is its own type,
-/// [`SrgbaU8`], reached through [`RgbaF32::to_srgba_u8`]; [`Self::hex`] /
-/// [`Self::hexa`] read a hex code and decode it to linear bytes, so every
-/// value of this type is linear whichever way it was built.
-///
-/// The hex pair is also the only **`const`** route to a value of this type
-/// from a colour written the way a designer writes one: the `From` impl is
-/// not `const`, so a `const` mesh palette cannot go through [`RgbaF32`].
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    bytemuck::Pod,
-    bytemuck::Zeroable,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-pub struct RgbaU8 {
-    /// Red, linear, 0..255.
-    pub r: u8,
-    /// Green, linear, 0..255.
-    pub g: u8,
-    /// Blue, linear, 0..255.
-    pub b: u8,
-    /// Alpha, 0..255, straight.
-    pub a: u8,
-}
-
-impl std::hash::Hash for RgbaU8 {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
-    }
-}
-
-impl RgbaU8 {
-    /// Fully transparent black.
-    pub const TRANSPARENT: Self = Self {
-        r: 0,
-        g: 0,
-        b: 0,
-        a: 0,
-    };
-    /// Opaque white.
-    pub const WHITE: Self = Self {
-        r: 0xff,
-        g: 0xff,
-        b: 0xff,
-        a: 0xff,
-    };
-    /// Opaque black.
-    pub const BLACK: Self = Self {
-        r: 0,
-        g: 0,
-        b: 0,
-        a: 0xff,
-    };
-
-    /// Opaque colour from **linear** bytes. For a CSS hex code use
-    /// [`Self::hex`]; for bytes that stay sRGB-encoded, [`SrgbaU8`].
-    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b, a: 0xff }
-    }
-
-    /// Pack the four channels into a single `u32` as `0xRRGGBBAA`
-    /// (big-endian byte order — R in the most-significant byte). Used
-    /// by hash sites that want to write one `u32`/`u64` instead of
-    /// four `u8`s, cutting hasher dispatch and per-byte mixing.
-    #[inline]
-    pub const fn to_u32(self) -> u32 {
-        u32::from_be_bytes([self.r, self.g, self.b, self.a])
-    }
-
-    /// Per-channel rounding average — the straight-alpha linear
-    /// midpoint, quantized to within one 8-bit step. Used for polyline
-    /// join-chrome colors.
-    #[inline]
-    pub const fn midpoint(self, other: Self) -> Self {
-        const fn avg(a: u8, b: u8) -> u8 {
-            (a as u16 + b as u16).div_ceil(2) as u8
-        }
-        Self {
-            r: avg(self.r, other.r),
-            g: avg(self.g, other.g),
-            b: avg(self.b, other.b),
-            a: avg(self.a, other.a),
-        }
-    }
-    /// The type's own representation: linear bytes, stored as given. Use
-    /// [`Self::hex`] / [`Self::hexa`] when the bytes come from a CSS hex
-    /// code, and this when they are already linear — test fixtures,
-    /// atlas-bake maths.
-    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { r, g, b, a }
-    }
-    /// CSS-style `0xRRGGBB` opaque hex — interpreted as **sRGB** and
-    /// **decoded to linear** during construction, so `0x22ccdd` lands as
-    /// the matching linear triplet rather than the verbatim bytes, which
-    /// would paint far too bright. Opaque shorthand for [`Self::hexa`].
-    pub const fn hex(rgb: u32) -> Self {
-        Self::hexa((rgb << 8) | 0xff)
-    }
-    /// CSS-style `0xRRGGBBAA` hex with alpha — RGB sRGB-decoded to
-    /// linear like [`Self::hex`]; alpha is linear by convention
-    /// (matches CSS), passed through as `a/255`.
-    pub const fn hexa(rgba: u32) -> Self {
-        let bytes = SrgbaU8::hexa(rgba);
-        // Alpha is linear by convention, so it crosses as the byte it
-        // arrived as rather than through the quantize.
-        let rgb = Self::from_linear(RgbaF32::from_srgba(bytes));
-        Self {
-            r: rgb.r,
-            g: rgb.g,
-            b: rgb.b,
-            a: bytes.a,
-        }
-    }
-
-    /// **Linear** quantize — straight `(channel * 255) as u8`, no sRGB
-    /// encoding. Used by vertex colours and the hex constructors above. [`RgbaF32::to_srgba_u8`] is the sRGB-encoded
-    /// path, and it returns [`SrgbaU8`] rather than this type.
-    ///
-    /// The body [`From<RgbaF32>`](Self) runs, `const` so a `const fn`
-    /// constructor can reach it too.
-    pub(crate) const fn from_linear(c: RgbaF32) -> Self {
-        Self {
-            r: num::unit_to_u8(c.r),
-            g: num::unit_to_u8(c.g),
-            b: num::unit_to_u8(c.b),
-            a: num::unit_to_u8(c.a),
-        }
-    }
-
-    /// True when alpha is zero — paints nothing visible.
-    #[inline]
-    pub const fn is_noop(self) -> bool {
-        self.a == 0
-    }
-
-    /// The **linear** un-quantize, and the inverse of [`Self::from_linear`].
-    ///
-    /// The body [`From<RgbaU8>`](RgbaF32) runs, `const` for the same reason
-    /// its twin is: a `const fn` accessor over stored bytes needs to reach it.
-    pub(crate) const fn to_linear(self) -> RgbaF32 {
-        RgbaF32 {
-            r: self.r as f32 / 255.0,
-            g: self.g as f32 / 255.0,
-            b: self.b as f32 / 255.0,
-            a: self.a as f32 / 255.0,
-        }
-    }
-}
-
-impl From<RgbaF32> for RgbaU8 {
-    /// The **linear** quantize — straight `(channel * 255) as u8`, no
-    /// sRGB encoding. [`RgbaF32::to_srgba_u8`] is the sRGB-encoded path.
-    #[inline]
-    fn from(c: RgbaF32) -> Self {
-        Self::from_linear(c)
-    }
-}
-
-impl From<RgbaU8> for RgbaF32 {
-    /// **Linear** un-quantize — straight `u8 / 255.0`, mirrors the
-    /// `From<RgbaF32>` linear pack. No sRGB decoding; bytes that are
-    /// sRGB-encoded are an [`SrgbaU8`], which decodes through
-    /// [`RgbaF32::from_srgba`].
-    #[inline]
-    fn from(s: RgbaU8) -> Self {
-        s.to_linear()
-    }
-}
-
-impl From<RgbaF16> for RgbaU8 {
-    /// Unpack, then the **linear** quantize.
-    #[inline]
-    fn from(c: RgbaF16) -> Self {
-        Self::from_linear(c.unpack())
-    }
-}
-
-impl From<SrgbaU8> for RgbaU8 {
-    /// Decode, then the **linear** quantize. Lossy near black, where one
-    /// linear step spans several sRGB steps: `#1a1a1a` lands on byte 3.
-    #[inline]
-    fn from(bytes: SrgbaU8) -> Self {
-        Self::from_linear(RgbaF32::from_srgba(bytes))
     }
 }
 
@@ -550,15 +349,6 @@ impl From<RgbaF16> for RgbaF32 {
     #[inline]
     fn from(c: RgbaF16) -> Self {
         c.unpack()
-    }
-}
-
-impl From<RgbaU8> for RgbaF16 {
-    /// The **linear** un-quantize, packed. Every byte survives the trip
-    /// back: f16 holds `byte / 255` well inside half a step.
-    #[inline]
-    fn from(c: RgbaU8) -> Self {
-        c.to_linear().into()
     }
 }
 
