@@ -17,7 +17,7 @@ use crate::gpu::raster_program::RasterProgram;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::gpu::text::TextBackend;
 use crate::layout::types::align::Align;
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextDrawRow;
@@ -66,7 +66,7 @@ fn make_inner_run(
     origin: Vec2,
     viewport: UVec2,
     scale: f32,
-    color: RgbaU8,
+    color: RgbaF16,
 ) -> TextDrawRow {
     let interned = store.intern(text);
     let recorded = store.record_text(interned);
@@ -149,7 +149,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         Vec2::new(20.0, 20.0),
         PHYSICAL,
         1.0,
-        RgbaU8::new(240, 240, 240, 255),
+        RgbaF16::new(0.94, 0.94, 0.94, 1.0),
     )];
     shaper.drop_cosmic_buffers();
     assert!(
@@ -240,7 +240,7 @@ fn slot_generation_invalidates_only_referencing_run() {
             Vec2::new(20.0, 20.0),
             PHYSICAL,
             1.0,
-            RgbaU8::new(240, 240, 240, 255),
+            RgbaF16::new(0.94, 0.94, 0.94, 1.0),
         ),
         make_inner_run(
             &mut store,
@@ -251,7 +251,7 @@ fn slot_generation_invalidates_only_referencing_run() {
             Vec2::new(20.0, 60.0),
             PHYSICAL,
             1.0,
-            RgbaU8::new(240, 240, 240, 255),
+            RgbaF16::new(0.94, 0.94, 0.94, 1.0),
         ),
     ];
 
@@ -356,8 +356,8 @@ fn deferred_upload_keeps_batches_distinct() {
     let mut store = RecordStore::default();
     let mut backend = text_backend(&gpu.lease.device, &shaper);
 
-    let color_a = RgbaU8::new(240, 240, 240, 255);
-    let color_b = RgbaU8::new(200, 100, 50, 255);
+    let color_a = RgbaF16::new(0.94, 0.94, 0.94, 1.0);
+    let color_b = RgbaF16::new(0.78, 0.39, 0.2, 1.0);
     let run_a = make_inner_run(
         &mut store,
         &shaper,
@@ -415,14 +415,12 @@ fn deferred_upload_keeps_batches_distinct() {
     assert_eq!(backend.pass.batch_span(0), Span::new(0, n as u32));
     assert_eq!(backend.pass.batch_span(1), Span::new(n as u32, n as u32));
 
-    let a: u32 = bytemuck::cast(color_a);
-    let b: u32 = bytemuck::cast(color_b);
     for (ga, gb) in backend.pass.instances[..n]
         .iter()
         .zip(&backend.pass.instances[n..2 * n])
     {
-        assert_eq!(ga.color, a);
-        assert_eq!(gb.color, b);
+        assert_eq!(ga.color, color_a);
+        assert_eq!(gb.color, color_b);
         // Identical glyph, identical atlas slot, shifted 40 px down.
         assert_eq!(gb.uv_and_kind, ga.uv_and_kind);
         assert_eq!(gb.dim, ga.dim);
@@ -453,7 +451,7 @@ fn partially_culled_run_is_not_cached() {
         Vec2::ZERO,
         PHYSICAL,
         1.0,
-        RgbaU8::new(240, 240, 240, 255),
+        RgbaF16::new(0.94, 0.94, 0.94, 1.0),
     );
     // Clip to the first line: the pre-cull keeps lines with
     // line_top <= bounds_bot, so h = 10 keeps line 0 (top 0) and
@@ -573,7 +571,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
         Vec2::new(20.0, 20.0),
         PHYSICAL,
         1.0,
-        RgbaU8::new(240, 240, 240, 255),
+        RgbaF16::new(0.94, 0.94, 0.94, 1.0),
     )];
     run_one_frame(
         &gpu.lease.device,
@@ -646,7 +644,7 @@ fn swept_empty_glyph_reinserts() {
         Vec2::new(2.0, 2.0),
         PHYSICAL,
         1.0,
-        RgbaU8::new(240, 240, 240, 255),
+        RgbaF16::new(0.94, 0.94, 0.94, 1.0),
     )];
     let empties = |b: &TextBackend| {
         b.pass

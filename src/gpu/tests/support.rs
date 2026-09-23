@@ -2,7 +2,7 @@
 
 use crate::display::Display;
 use crate::gpu::schedule::{MaskPlan, RenderStep, for_each_step};
-use crate::primitives::color::{RgbaF16, RgbaF32, RgbaU8};
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -110,7 +110,7 @@ fn dummy_text() -> TextDrawRow {
             key: TextShapeKey::fixture(),
             span: Span::default(),
         },
-        color: RgbaU8::WHITE,
+        color: RgbaF16::from(RgbaF32::WHITE),
         scale: 1.0,
     }
 }

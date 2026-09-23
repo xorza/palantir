@@ -9,39 +9,6 @@ fn hash_value(value: impl Hash) -> u64 {
     hasher.finish()
 }
 
-/// Reference: spec-exact piecewise sRGB→linear (the previous in-tree
-/// implementation). Used as ground truth for the cubic approximation.
-fn srgb_to_linear_exact(c: f32) -> f32 {
-    if c <= 0.04045 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-/// Pin: the cubic stays within ~1.5e-3 of the spec-exact piecewise
-/// curve across `[0, 1]`. A regression past 2e-3 suggests the
-/// coefficients drifted; revisit before shipping.
-#[test]
-fn cubic_srgb_max_error_under_two_thousandths() {
-    let mut max_err: f32 = 0.0;
-    // Sweep at 1/1024 resolution — finer than 8-bit display, plenty
-    // to catch the worst-case point.
-    for i in 0..=1024 {
-        let c = i as f32 / 1024.0;
-        let approx = srgb_to_linear(c);
-        let exact = srgb_to_linear_exact(c);
-        let err = (approx - exact).abs();
-        if err > max_err {
-            max_err = err;
-        }
-    }
-    assert!(
-        max_err < 2.0e-3,
-        "cubic max error {max_err} exceeded 2e-3 threshold"
-    );
-}
-
 /// Sanity: const-construction works in const context. If `RgbaF32::srgb`
 /// regresses to non-const, this fails to compile.
 #[test]
@@ -57,8 +24,7 @@ fn ron_roundtrip(c: RgbaF32) -> (String, RgbaF32) {
 }
 
 /// Pin: serializing a RgbaF32 and re-serializing the parse converges
-/// to the same hex bytes for every (r, g, b) sRGB byte. Catches
-/// Newton-iteration regressions that drift by 1 LSB.
+/// to the same hex bytes for every (r, g, b) sRGB byte.
 #[test]
 fn hex_round_trip_stable_over_all_bytes() {
     for byte in 0u8..=255 {
@@ -74,8 +40,7 @@ fn hex_round_trip_stable_over_all_bytes() {
 /// silently change the output format and trip this test.
 #[test]
 fn opaque_emits_six_digits_translucent_emits_eight() {
-    // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc once round-tripped through
-    // the cubic / Newton inverse pair.
+    // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc.
     let (s, _) = ron_roundtrip(RgbaF32::srgb(0.2, 0.4, 0.8));
     assert!(
         s.contains(r##""#3366cc""##),
@@ -186,31 +151,15 @@ fn lerp_spans_both_endpoints_and_overshoots() {
     assert_eq!(a.lerp(b, 2.0).r, -1.0);
 }
 
-/// The direct `RgbaF16 → RgbaU8` quantize must stay byte-identical
-/// to the two-hop form (`RgbaU8::from(RgbaF32::from(x))`) it replaced
-/// at the composer's per-run/tint call sites.
-#[test]
-fn f16_to_u8_matches_two_hop_quantize() {
-    for c in [
-        RgbaF32::new(0.0, 0.0, 0.0, 0.0),
-        RgbaF32::new(1.0, 0.25, 0.5, 1.0),
-        RgbaF32::new(0.1, 0.9, 0.33, 0.5),
-        RgbaF32::new(1.0, 1.0, 1.0, 1.0),
-    ] {
-        let f16 = RgbaF16::from(c);
-        assert_eq!(RgbaU8::from(f16), RgbaU8::from(RgbaF32::from(f16)));
-    }
-}
-
-/// `faded` scales alpha and nothing else, on both packed types.
+/// `faded` scales alpha and nothing else.
 ///
-/// Hand-computed: half of `0.8` is `0.4`, and half of `200` is `100`.
+/// Hand-computed: half of `0.8` is `0.4`.
 /// The colour lanes must come back bit-identical, because a fade is an
 /// opacity change and a widget that fades a red shape does not want a
 /// darker red. `by == 1.0` is the identity the emit path leans on.
 #[test]
 fn faded_scales_only_the_alpha_lane() {
-    let f16 = RgbaF16::from(RgbaF32::new(0.25, 0.5, 0.75, 0.8));
+    let f16 = RgbaF16::new(0.25, 0.5, 0.75, 0.8);
     let full = f16.unpack();
     let half = f16.faded(0.5).unpack();
     assert_eq!((half.r, half.g, half.b), (full.r, full.g, full.b));
@@ -220,9 +169,5 @@ fn faded_scales_only_the_alpha_lane() {
         half.a,
     );
     assert_eq!(f16.faded(1.0), f16);
-
-    let u8c = RgbaU8::new(10, 20, 30, 200);
-    assert_eq!(u8c.faded(0.5), RgbaU8::new(10, 20, 30, 100));
-    assert_eq!(u8c.faded(1.0), u8c);
-    assert_eq!(u8c.faded(0.0).a, 0, "a zero fade is fully transparent");
+    assert!(f16.faded(0.0).is_noop(), "a zero fade is fully transparent");
 }

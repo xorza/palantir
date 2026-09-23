@@ -405,7 +405,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::color::RgbaU8;
+    use crate::primitives::color::srgba_u8::SrgbaU8;
 
     use crate::primitives::lut_row::LutRow;
 
@@ -438,11 +438,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn window_a(ui: &mut Ui, half: Duration) {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
-                LinearGradient::two_stop(
-                    0.0,
-                    RgbaU8::rgb(255, 0, 0).into(),
-                    RgbaU8::rgb(0, 0, 255).into(),
-                ),
+                LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
             ));
             add_blink_shape(ui, half);
         });
@@ -465,18 +461,17 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     b.frame(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
             for index in 0..INITIAL_ATLAS_ROWS - 1 {
-                ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(LinearGradient::two_stop(
+                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
+                    LinearGradient::two_stop(
                         0.0,
-                        RgbaU8::rgb(
+                        RgbaF32::from_srgba(SrgbaU8::rgb(
                             index as u8,
                             (index >> u8::BITS) as u8,
                             (index >> (u8::BITS * 2)) as u8,
-                        )
-                        .into(),
+                        )),
                         RgbaF32::WHITE,
-                    )),
-                );
+                    ),
+                ));
             }
         });
     });

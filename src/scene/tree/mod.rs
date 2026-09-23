@@ -278,7 +278,7 @@ impl Tree {
             // had to zip the whole `subtree_ends` column every cascade
             // run to notice — an O(nodes) walk per layer per frame on
             // the incremental fast path, and the reason
-            // `Cascade::subtree_ends` could not be the sparse
+            // `LayerCascade::subtree_ends` could not be the sparse
             // random-access column its doc describes.
             cascade_static_hasher.write_u32(subtree_ends[i].end());
             // Chrome authoring hash is pre-computed at lowering time

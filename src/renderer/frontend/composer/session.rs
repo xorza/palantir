@@ -3,7 +3,7 @@
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::approx::{EPS, paints_nothing};
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::num::{F32Px, Vec2Ext};
@@ -349,10 +349,8 @@ impl PaintSink for ComposeSession<'_> {
         // span passes through to `MeshDraw` verbatim. The
         // per-instance translate folds in both the owner
         // origin and the active push-transform stack so the
-        // shader produces physical coords. Phase 1's
-        // transform/tint move plus this slice eliminates
-        // both the per-vertex CPU multiply and the
-        // per-frame vertex copy.
+        // shader produces physical coords — no per-vertex CPU
+        // multiply and no per-frame vertex copy.
         let scale_phys = geometry::phys_scale(xform, scale);
         let phys_translate = (xform.scale * p.origin + xform.translation) * scale;
         self.out.meshes.push(MeshDrawRow {
@@ -363,7 +361,7 @@ impl PaintSink for ComposeSession<'_> {
             instance: MeshInstance {
                 translate: phys_translate,
                 scale: scale_phys,
-                tint: p.tint.into(),
+                tint: p.tint,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -391,7 +389,7 @@ impl PaintSink for ComposeSession<'_> {
         self.out.icons.push(IconDrawRow {
             key,
             origin: centred.fast_round().as_ivec2(),
-            color: p.tint.into(),
+            color: p.tint,
             desaturate: p.desaturate,
         });
     }
@@ -427,7 +425,7 @@ impl PaintSink for ComposeSession<'_> {
                 rect: composite,
                 uv_min: p.uv_min,
                 uv_size: p.uv_size,
-                tint: p.tint.into(),
+                tint: p.tint,
                 flags: p.flags,
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -516,11 +514,10 @@ impl PaintSink for ComposeSession<'_> {
         let spin = p.bounds.spin();
         // Style lanes are basis-independent; each arm below fills in
         // the geometry and its own `kind`.
-        let color: RgbaU8 = p.fill.color.into();
         let proto = CurveInstance {
             width: width_phys,
-            color0: color,
-            color1: color,
+            color0: p.fill.color,
+            color1: p.fill.color,
             cap: cap_lanes(cap as u32, cap as u32),
             fill_kind: p.fill.kind,
             fill_lut_row: p.fill.lut_row,
@@ -709,8 +706,7 @@ impl PaintSink for ComposeSession<'_> {
         // its way into an instance, so a faded polyline costs no copy of
         // the run. The joint chrome below averages these, so it inherits
         // the fade without asking for it.
-        let alpha = f32::from(p.alpha) / 255.0;
-        let seg_colors = |k: usize| -> (RgbaU8, RgbaU8) {
+        let seg_colors = |k: usize| -> (RgbaF16, RgbaF16) {
             let (a, b) = match mode {
                 ColorMode::Single => (src_colors[0], src_colors[0]),
                 ColorMode::PerPoint => (
@@ -722,7 +718,11 @@ impl PaintSink for ComposeSession<'_> {
                     (c, c)
                 }
             };
-            (a.faded(alpha), b.faded(alpha))
+            if p.alpha == 1.0 {
+                (a, b)
+            } else {
+                (a.faded(p.alpha), b.faded(p.alpha))
+            }
         };
         let user_cap = cap as u32;
         let n_segs = directions.len();
@@ -765,13 +765,20 @@ impl PaintSink for ComposeSession<'_> {
         // The face-plane normals ride the neighbor lanes
         // pre-oriented for the shader's keep test
         // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
-        // average of the adjacent colors.
+        // average of the adjacent colors, taken in linear light.
+        // Equal sides — a single colour, or the shared point of a
+        // per-point run — are the common case, and a colour averaged
+        // with itself is itself, so only differing sides pay the unpack.
         for k in 1..n_segs {
             let d_a = directions[k - 1];
             let d_b = directions[k];
             let (_, ca) = seg_colors(k - 1);
             let (cb, _) = seg_colors(k);
-            let color = ca.midpoint(cb);
+            let color = if ca == cb {
+                ca
+            } else {
+                RgbaF16::from(RgbaF32::from(ca).lerp(cb.into(), 0.5))
+            };
             self.out.curves.push(CurveInstance {
                 p0: pt(k),
                 p1: -d_a,
@@ -833,13 +840,10 @@ impl PaintSink for ComposeSession<'_> {
         self.out.texts.push(TextDrawRow {
             origin: phys_rect.min,
             bounds,
-            // Linear RgbaU8 straight to the text backend.
-            // Palantir's native text shader (see
-            // `src/renderer/backend/text/`) consumes linear
-            // bytes and premultiplies at output — matching
-            // the rest of the renderer's pipelines. No sRGB
-            // roundtrip.
-            color: t.color.into(),
+            // Linear straight to the text backend, which
+            // premultiplies at output like the rest of the
+            // renderer's pipelines. No sRGB round trip.
+            color: t.color,
             text: t.text,
             // Snap the ancestor-transform component of the
             // text scale to discrete 0.5% steps. Continuous

@@ -79,7 +79,9 @@ pub struct PaintTiming {
     /// Absolute time the first pass begins, in the frame clock's epoch.
     /// Before it the animation reads at phase zero.
     pub started_at: Duration,
-    /// One pass of the curve.
+    /// One pass of the curve. A zero period finishes each pass the
+    /// instant it starts: from `started_at` on, `Once` holds the end value
+    /// and a repeat holds the start value.
     pub period: Duration,
     /// How many passes run, and whether they settle.
     pub repeat: PaintRepeat,
@@ -258,9 +260,9 @@ impl PaintAnim {
     }
 
     /// Earliest absolute time at which the sample changes, or `None`
-    /// once it never will again. `post_record` folds the minimum over
-    /// every live entry into the wake queue, so a widget never schedules
-    /// its own repaint for one of these.
+    /// once it never will again. `Forest::min_paint_anim_wake` folds the
+    /// minimum over every live entry into the wake queue, so a widget
+    /// never schedules its own repaint for one of these.
     #[inline]
     pub(crate) fn next_wake(self, now: Duration) -> Option<Duration> {
         self.timing.next_wake(now)
@@ -272,19 +274,20 @@ impl PaintTiming {
     /// settled and stopped modifying the shape.
     #[inline]
     fn phase(self, now: Duration) -> Option<f32> {
-        if self.period.is_zero() {
-            return Some(0.0);
-        }
         let elapsed = now.saturating_sub(self.started_at);
+        if let PaintRepeat::Settle(after) = self.repeat
+            && elapsed >= after
+        {
+            return None;
+        }
+        let passes = if self.period.is_zero() {
+            if now >= self.started_at { 1.0 } else { 0.0 }
+        } else {
+            elapsed.as_secs_f64() / self.period.as_secs_f64()
+        };
         let raw = match self.repeat {
-            PaintRepeat::Once => (elapsed.as_secs_f64() / self.period.as_secs_f64()).min(1.0),
-            PaintRepeat::Forever => (elapsed.as_secs_f64() / self.period.as_secs_f64()).fract(),
-            PaintRepeat::Settle(after) => {
-                if elapsed >= after {
-                    return None;
-                }
-                (elapsed.as_secs_f64() / self.period.as_secs_f64()).fract()
-            }
+            PaintRepeat::Once => passes.min(1.0),
+            PaintRepeat::Forever | PaintRepeat::Settle(_) => passes.fract(),
         };
         Some(self.quantize(raw as f32))
     }
@@ -313,9 +316,6 @@ impl PaintTiming {
 
     #[inline]
     fn next_wake(self, now: Duration) -> Option<Duration> {
-        if self.period.is_zero() {
-            return None;
-        }
         if now < self.started_at {
             return Some(self.started_at);
         }
@@ -327,6 +327,11 @@ impl PaintTiming {
         let settles_at = self.settles_at();
         if settles_at.is_some_and(|at| now >= at) {
             return None;
+        }
+        if self.period.is_zero() {
+            // Every pass is over the instant it starts, so the settle is
+            // the one change left.
+            return settles_at;
         }
         let wake = match self.steps {
             PaintSteps::Continuous => now,

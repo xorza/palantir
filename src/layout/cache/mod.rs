@@ -96,7 +96,7 @@ pub(crate) struct NodeArenas {
     desired: Vec<Size>,
     /// Arranged rect per node, captured after `arrange` wrote it. The
     /// only column produced by the *second* half of the layout pass;
-    /// `LayoutEngine::arrange` replays it instead of re-running the
+    /// `LayoutPass::arrange` replays it instead of re-running the
     /// drivers when a subtree's slot is unchanged or merely translated.
     rect: Vec<Rect>,
     scroll_content: Vec<Size>,

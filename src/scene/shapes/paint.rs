@@ -22,7 +22,16 @@ use glam::{UVec2, Vec2};
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapeBrush {
     Solid(RgbaF16),
-    Gradient(GradientId),
+    /// A gradient interned in the record store. The reference and its
+    /// content hash travel as one value, the way a
+    /// [`RecordedText`](crate::primitives::recorded_text::RecordedText)
+    /// carries its span and hash: `id` is where the content is this
+    /// frame, and `hash` is what the content is, computed once at
+    /// lowering by [`brush`](super::lower::brush).
+    Gradient {
+        id: GradientId,
+        hash: u64,
+    },
 }
 
 /// What a lowered fill contributes to a hash: a variant tag and the
@@ -36,24 +45,23 @@ pub(crate) struct BrushHash {
 impl ShapeBrush {
     /// This fill's hash identity.
     ///
-    /// A `Gradient`'s own [`GradientId`] is a frame-local index into the
-    /// record store, so it is never the payload: `fill_grad_hash`,
-    /// computed once at lowering by [`brush`](super::lower::brush), is
-    /// the stable stand-in the record carries beside it.
+    /// A `Gradient`'s [`GradientId`] is a frame-local index into the
+    /// record store, so it is never the payload: the content hash it
+    /// carries beside the id is.
     ///
     /// One derivation, read by the shape-record hash and by the chrome
     /// hash, so a fill cannot be one thing to the damage diff and
     /// another to the measure cache.
     #[inline]
-    pub(crate) fn hash_parts(self, fill_grad_hash: u64) -> BrushHash {
+    pub(crate) fn hash_parts(self) -> BrushHash {
         match self {
             Self::Solid(color) => BrushHash {
                 tag: 0,
                 payload: color.as_u64(),
             },
-            Self::Gradient(_) => BrushHash {
+            Self::Gradient { id: _, hash } => BrushHash {
                 tag: 1,
-                payload: fill_grad_hash,
+                payload: hash,
             },
         }
     }
@@ -104,7 +112,7 @@ impl ShapeStroke {
     ///
     /// A NaN width normalizes away like any other non-painting width —
     /// `paints_nothing` classifies it as invisible. Catching a NaN *loudly* is
-    /// `Shape::debug_assert_no_nan`'s job, at the authoring boundary
+    /// `Shapes::add`'s job, at the authoring boundary
     /// where the value still has a call site; by the time it reaches
     /// here the useful thing to do is fail safe.
     #[inline]
@@ -217,7 +225,7 @@ pub(crate) enum QuadShape {
     /// `local_rect = Some(r)` it paints `r` at owner-relative coords —
     /// `r.min = (0, 0)` is the owner's top-left. The sub-rect form
     /// paints in the slot it was pushed in (interleaved with children
-    /// via the slot mechanism — see `Tree::add_shape`), still under the
+    /// via the slot mechanism — see `Forest::add_shape`), still under the
     /// owner's clip but outside its pan transform. Used for scrollbar
     /// tracks/thumbs (pushed after body content → slot N) and TextEdit
     /// carets (pushed after the Text shape on a leaf → slot 0, after the
@@ -228,12 +236,6 @@ pub(crate) enum QuadShape {
         corners: Corners,
         fill: ShapeBrush,
         stroke: ShapeStroke,
-        /// Pre-computed content hash of `fill` when it's a gradient,
-        /// 0 for solid. Lets the record hash stay context-free —
-        /// otherwise we'd need to thread the gradient payloads into
-        /// every hash call (subtree rollups, measure cache). The hash
-        /// is computed once at lowering time by [`super::lower::brush`].
-        fill_grad_hash: u64,
     },
     /// Gaussian-blurred rounded rect — drop / inset shadow. All
     /// parameters are inline scalars; no retained payloads. With
@@ -455,7 +457,7 @@ impl NanCheck for ShapeBrush {
     fn has_nan(&self) -> bool {
         match self {
             Self::Solid(color) => color.has_nan(),
-            Self::Gradient(_) => false,
+            Self::Gradient { .. } => false,
         }
     }
 }
@@ -542,13 +544,20 @@ mod tests {
     fn a_gradient_hashes_by_its_stops_and_not_its_frame_local_id() {
         use crate::scene::record_store::recorded_gradients::GradientId;
 
-        let a = ShapeBrush::Gradient(GradientId(1)).hash_parts(0xabcd);
-        let b = ShapeBrush::Gradient(GradientId(7)).hash_parts(0xabcd);
-        let c = ShapeBrush::Gradient(GradientId(1)).hash_parts(0x1234);
+        let gradient = |id, hash| {
+            ShapeBrush::Gradient {
+                id: GradientId(id),
+                hash,
+            }
+            .hash_parts()
+        };
+        let a = gradient(1, 0xabcd);
+        let b = gradient(7, 0xabcd);
+        let c = gradient(1, 0x1234);
         assert_eq!(a, b, "the id is frame-local and excluded");
         assert_ne!(a, c, "the stops decide");
 
-        let solid = ShapeBrush::Solid(RgbaF32::WHITE.into()).hash_parts(0xabcd);
+        let solid = ShapeBrush::Solid(RgbaF32::WHITE.into()).hash_parts();
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
         assert_eq!(
             solid.payload,

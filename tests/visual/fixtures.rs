@@ -4,6 +4,7 @@
 //! declaring it below.
 
 mod blit;
+mod color;
 mod damage;
 mod expander;
 mod format_change;

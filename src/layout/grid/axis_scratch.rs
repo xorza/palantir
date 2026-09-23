@@ -86,9 +86,10 @@ impl AxisScratch {
     /// what arrange gives a cell, and the resolved half of
     /// [`Self::known_span_size`].
     ///
-    /// Cells are range-checked against the parent's track counts at
-    /// record time (`Tree::check_grid_cell`), so `span.range()` is always
-    /// in bounds here — index directly.
+    /// Indexes directly. Debug builds range-check every cell against the
+    /// parent's track counts at record time (`Tree::check_grid_cell`); in
+    /// release an out-of-range span panics here instead, which is the
+    /// failure `Configure::grid_cell` documents.
     pub(super) fn span_size(&self, span: Span, gap: f32) -> f32 {
         self.sizes[span.range()].iter().sum::<f32>() + gap.gaps_between(span.len as usize)
     }

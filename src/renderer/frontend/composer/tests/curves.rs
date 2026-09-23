@@ -2,7 +2,7 @@
 //! their joins.
 
 use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::RgbaF32, color::RgbaU8};
+use crate::primitives::{color::RgbaF16, color::RgbaF32};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
@@ -232,9 +232,9 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let red = RgbaF32::srgb(1.0, 0.0, 0.0);
     let green = RgbaF32::srgb(0.0, 1.0, 0.0);
     let blue = RgbaF32::srgb(0.0, 0.0, 1.0);
-    let red8: RgbaU8 = red.into();
-    let green8: RgbaU8 = green.into();
-    let blue8: RgbaU8 = blue.into();
+    let red16 = RgbaF16::from(red);
+    let green16 = RgbaF16::from(green);
+    let blue16 = RgbaF16::from(blue);
 
     // PerPoint with a duplicated middle point: the duplicate is
     // dropped, and the kept segments read the colors at the original
@@ -266,14 +266,14 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         .filter(|c| c.kind == CURVE_KIND_SEGMENT)
         .collect();
     assert_eq!(segs.len(), 2, "duplicate point contributes no segment");
-    assert_eq!((segs[0].color0, segs[0].color1), (red8, green8));
-    assert_eq!((segs[1].color0, segs[1].color1), (green8, blue8));
+    assert_eq!((segs[0].color0, segs[0].color1), (red16, green16));
+    assert_eq!((segs[1].color0, segs[1].color1), (green16, blue16));
     let join = buf
         .curves
         .iter()
         .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
         .unwrap();
-    assert_eq!(join.color0, green8, "PerPoint chrome = the joint color");
+    assert_eq!(join.color0, green16, "PerPoint chrome = the joint color");
 
     // PerSegment: solid lanes per segment; the skipped middle point
     // drops the degenerate segment's color (index 1), so the kept
@@ -299,17 +299,19 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         .filter(|c| c.kind == CURVE_KIND_SEGMENT)
         .collect();
     assert_eq!(segs.len(), 2);
-    assert_eq!((segs[0].color0, segs[0].color1), (red8, red8));
-    assert_eq!((segs[1].color0, segs[1].color1), (blue8, blue8));
+    assert_eq!((segs[0].color0, segs[0].color1), (red16, red16));
+    assert_eq!((segs[1].color0, segs[1].color1), (blue16, blue16));
     let join = buf
         .curves
         .iter()
         .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
         .unwrap();
+    // Linear red (1, 0, 0) and blue (0, 0, 1) average to (0.5, 0, 0.5),
+    // which f16 holds exactly.
     assert_eq!(
         join.color0,
-        red8.midpoint(blue8),
-        "PerSegment chrome = midpoint of adjacent segment colors",
+        RgbaF16::new(0.5, 0.0, 0.5, 1.0),
+        "PerSegment chrome = linear midpoint of adjacent segment colors",
     );
 }
 
@@ -848,7 +850,7 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
         let buf = run(
             |b, arena| {
                 arena.polyline_points.push(Vec2::ZERO);
-                arena.polyline_colors.push(RgbaU8::WHITE);
+                arena.polyline_colors.push(RgbaF16::from(RgbaF32::WHITE));
                 b.polyline(DrawPolylinePayload {
                     bounds: StrokeBounds::Still(rect(0.0, 0.0, 4.0, 4.0)),
                     origin: Vec2::ZERO,

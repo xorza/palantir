@@ -37,6 +37,14 @@ fn primary_modifier_matches() {
     let cut = Shortcut::ctrl('X');
     assert!(cut.matches(kp(primary_mod(), Key::Char('x'))));
     assert!(cut.matches(kp(primary_mod(), Key::Char('X'))));
+    let with_mac_ctrl = Modifiers {
+        mac_ctrl: true,
+        ..primary_mod()
+    };
+    assert!(
+        cut.matches(kp(with_mac_ctrl, Key::Char('x'))),
+        "a held macOS Control must not break a chord that declares a command modifier",
+    );
 }
 
 #[test]
@@ -102,6 +110,18 @@ fn extra_modifier_rejects_match() {
     assert_eq!(ShortcutMods::from_event(mods), ShortcutMods::CTRL_SHIFT);
     assert!(!cut.matches(kp(mods, Key::Char('A'))));
     assert_eq!(cut.mods, ShortcutMods::CTRL);
+    // macOS Control plus a bare key is a chord, so a bare-key shortcut
+    // rejects it, as it rejects Ctrl or Alt.
+    let mac_ctrl = Modifiers {
+        mac_ctrl: true,
+        ..Modifiers::NONE
+    };
+    for key in [Key::Char('z'), Key::Tab] {
+        assert!(
+            !Shortcut::key(key).matches(kp(mac_ctrl, key)),
+            "{key:?} with macOS Control held must not match the bare key",
+        );
+    }
 }
 
 #[test]

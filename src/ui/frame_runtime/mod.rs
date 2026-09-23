@@ -11,6 +11,7 @@ use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh}
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::approx::EPS;
+use crate::text::shaper::TextShaper;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
 use crate::ui::frame_stamp::FrameStamp;
@@ -106,6 +107,10 @@ pub(crate) struct FrameRuntime {
     pub(crate) settle_frames: u32,
     /// Set when an unsettled animation or widget requests another frame.
     pub(super) repaint_requested: bool,
+    /// The shared text clock's reading when this window last framed, or
+    /// `None` before its first frame. Read and written only through
+    /// [`Self::tick_text_clock`].
+    text_frame: Option<u64>,
     /// Pending absolute wake deadlines, sorted ascending and coalesced.
     /// Entries retain merged [`WakeReasons`] so coincident real and
     /// paint-animation wakes still force a full record pass.
@@ -116,6 +121,27 @@ pub(crate) struct FrameRuntime {
 }
 
 impl FrameRuntime {
+    /// Advance the shared text clock when this window frames again on
+    /// the reading it last framed at.
+    ///
+    /// **A window frames at most once per host frame**, so framing again
+    /// on the same reading proves a host frame has passed. That makes the
+    /// clock count host frames with no host saying where one ends: N
+    /// windows painting together tick it once per round rather than N
+    /// times, and one window's glyphs stay unevictable while a sibling
+    /// paints in the same round. No host makes the tick, so no host can
+    /// forget it — and a forgotten tick would not merely delay eviction:
+    /// see [`TextShaper::tick_frame`] for the stall it causes.
+    ///
+    /// Every frame reaches here, `PaintOnly` ones included, so neither
+    /// plan can skip the tick and no frame can pay it twice.
+    pub(super) fn tick_text_clock(&mut self, text: &TextShaper) {
+        if self.text_frame == Some(text.frame()) {
+            text.tick_frame();
+        }
+        self.text_frame = Some(text.frame());
+    }
+
     /// Whether the cascade must run for fingerprint `fp`, stamping it
     /// when it must.
     ///
@@ -188,11 +214,6 @@ impl FrameRuntime {
         self.render_frame_id += 1;
     }
 
-    /// Decide what this frame does, **consuming** the wakes that fired by
-    /// now — the drain is the point, not a side effect, since a wake must
-    /// drive exactly one frame. Named `take_` for that reason: a reader is
-    /// entitled to assume a `classify_*` is pure, and this is the frame's
-    /// single entry decision.
     /// No frame has been stamped yet, so there is no previous display to
     /// compare against and no retained pixels to keep.
     ///
@@ -204,6 +225,11 @@ impl FrameRuntime {
         self.prev_stamp.is_none()
     }
 
+    /// Decide what this frame does, **consuming** the wakes that fired by
+    /// now — the drain is the point, not a side effect, since a wake must
+    /// drive exactly one frame. Named `take_` for that reason: a reader is
+    /// entitled to assume a `classify_*` is pure, and this is the frame's
+    /// single entry decision.
     pub(super) fn take_frame_plan(&mut self, input: FrameClassifyInput) -> FramePlan {
         let fired_count = self
             .repaint_wakes

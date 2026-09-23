@@ -1,6 +1,6 @@
 //! Curve-pipeline wire constants and per-instance GPU data.
 
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use glam::Vec2;
@@ -38,8 +38,7 @@ pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
 /// perpendicular, and offsets by ±(width/2 + AA fringe) to build the
 /// stroked strip. All geometry lanes are pre-transformed to
 /// physical-px; `width` is also physical px. Colors are linear-RGBA
-/// straight-alpha (same convention as `MeshVertex.color`); the
-/// fragment shader premultiplies at output.
+/// straight-alpha; the fragment shader premultiplies at output.
 ///
 /// Lane meaning by `kind`:
 /// - [`CURVE_KIND_CUBIC`] — `p0..p3` are the cubic control points.
@@ -81,11 +80,11 @@ pub(crate) struct CurveInstance {
     pub(crate) width: f32,
     /// Stroke colour at `t = 0`. Zeroed for a gradient `fill_kind`; the
     /// shader samples the LUT row instead.
-    pub(crate) color0: RgbaU8,
+    pub(crate) color0: RgbaF16,
     /// Stroke colour at `t = 1` — the shader lerps `color0 → color1`
     /// along `t` (straight-alpha, like `PolylineColors::PerPoint`).
     /// Equal to `color0` for single-colour strokes.
-    pub(crate) color1: RgbaU8,
+    pub(crate) color1: RgbaF16,
     /// Cap kind per end, packed: bits 0..8 = start cap, 8..16 = end
     /// cap, each a [`LineCap`](crate::shape::style::LineCap)
     /// discriminant the curve pipeline substitutes into its shader.

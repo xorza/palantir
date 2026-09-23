@@ -201,10 +201,9 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array
     1 => Float32x2, // rect.size
     2 => Float32x2, // uv_min
     3 => Float32x2, // uv_size
-    // `Unorm8x4` normalizes `u8/255 → 0..1`. Tint is linear straight-alpha
-    // on the CPU; shader multiplies by the sampled texel and premultiplies
-    // at write.
-    4 => Unorm8x4,  // tint
+    // Tint is linear straight-alpha; the shader multiplies it by the
+    // sampled texel and premultiplies at write.
+    4 => Float16x4, // tint
     5 => Uint32,    // flags (IMG_FLAG_* bits: tile wrap, nearest)
 ];
 

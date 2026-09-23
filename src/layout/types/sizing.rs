@@ -184,12 +184,16 @@ impl std::hash::Hash for Sizing {
     }
 }
 
-/// Per-axis `Sizing`, packed into 8 B (two `u32` slots). Each slot
-/// encodes one `Sizing`: top 2 bits = tag (0=Fixed, 1=Hug, 2=Fill),
-/// low 30 bits = the high 30 bits of the payload `f32`. Drops 2
-/// mantissa bits — ULP at 1 px ≈ 1e-7, at 1280 px ≈ 1e-3 — well below
-/// physical-pixel snapping resolution. Saves 8 B per `LayoutCore`
-/// (56 → 48) across the per-node SoA column.
+/// Per-axis `Sizing`, packed into 8 B (two `u32` slots) with no loss.
+/// Each slot holds its value's `f32` bits, and the tag rides in bit
+/// patterns no other variant can hold:
+///
+/// - `Fixed(v)` is `v` itself. It is non-negative, and `-0.0` folds to
+///   `+0.0`, so the sign bit is clear.
+/// - `Fill(w)` is `-w`. The weight is positive, so the sign bit is set.
+/// - `Hug` is `+∞`, which both of the others exclude: they are finite.
+///
+/// Saves 8 B per `LayoutCore` (36 → 28) across the per-node SoA column.
 ///
 /// Construct via `Default` (Hug × Hug), `SizeSpec::from(s)` (uniform),
 /// `SizeSpec::from(n)` (uniform Fixed via `Num`), or `SizeSpec::from((w, h))`
@@ -210,38 +214,27 @@ impl Default for SizeSpec {
     }
 }
 
-const SIZING_TAG_FIXED: u32 = 0;
-const SIZING_TAG_HUG: u32 = 1;
-const SIZING_TAG_FILL: u32 = 2;
-const SIZING_TAG_SHIFT: u32 = 30;
-const SIZING_VAL_MASK: u32 = (1 << 30) - 1;
+/// `Hug`'s slot — see [`SizeSpec`] for why no other variant can hold it.
+const HUG_BITS: u32 = f32::INFINITY.to_bits();
 
 #[inline]
 const fn encode_sizing(s: Sizing) -> u32 {
     match s.0 {
-        SizingValue::Fixed(value) => {
-            (SIZING_TAG_FIXED << SIZING_TAG_SHIFT) | (approx::eq_bits(value) >> 2)
-        }
-        SizingValue::Hug => SIZING_TAG_HUG << SIZING_TAG_SHIFT,
-        SizingValue::Fill(weight) => {
-            let payload = approx::eq_bits(weight) >> 2;
-            // Quantization must not turn a positive Fill into zero.
-            let payload = if payload == 0 { 1 } else { payload };
-            (SIZING_TAG_FILL << SIZING_TAG_SHIFT) | payload
-        }
+        SizingValue::Fixed(value) => approx::eq_bits(value),
+        SizingValue::Hug => HUG_BITS,
+        SizingValue::Fill(weight) => (-weight).to_bits(),
     }
 }
 
 #[inline]
 const fn decode_sizing(packed: u32) -> Sizing {
-    let tag = packed >> SIZING_TAG_SHIFT;
-    let val = f32::from_bits((packed & SIZING_VAL_MASK) << 2);
-    match tag {
-        SIZING_TAG_FIXED => Sizing(SizingValue::Fixed(val)),
-        SIZING_TAG_HUG => Sizing::HUG,
-        SIZING_TAG_FILL => Sizing(SizingValue::Fill(val)),
-        // Tag 3 is unconstructible by `encode_sizing`.
-        _ => unreachable!(),
+    let value = f32::from_bits(packed);
+    if packed == HUG_BITS {
+        Sizing::HUG
+    } else if value.is_sign_negative() {
+        Sizing(SizingValue::Fill(-value))
+    } else {
+        Sizing(SizingValue::Fixed(value))
     }
 }
 
@@ -255,7 +248,7 @@ impl SizeSpec {
         }
     }
     /// Packed 8-byte form: `w_packed` low, `h_packed` high. Used by
-    /// `LayoutCore::hash` to fold size into a single hasher write.
+    /// `LayoutCore::hash_with_flags` to fold size into a single hasher write.
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {
         ((self.h_packed as u64) << 32) | self.w_packed as u64
@@ -376,6 +369,46 @@ mod tests {
         );
     }
 
+    /// Every `Fixed` extent and `Fill` weight comes back bit for bit, on
+    /// both axes, beside a `Hug` on the other. The values reach every
+    /// part of the `f32` range a valid variant can hold: zero, the
+    /// smallest subnormal, the smallest normal, fractions whose low
+    /// mantissa bits a lossy packing would drop (`4097.7`), and the
+    /// largest finite value. `-0.0` is the one input that changes:
+    /// it folds to `+0.0`.
+    #[test]
+    fn packing_round_trips_every_value_exactly() {
+        let values = [
+            0.0,
+            -0.0,
+            f32::from_bits(1),
+            f32::MIN_POSITIVE,
+            0.1,
+            1279.9,
+            4097.7,
+            f32::MAX,
+        ];
+        for v in values {
+            let folded = if v == 0.0 { 0.0f32 } else { v };
+            let fixed = SizeSpec::new(Sizing::fixed(v), Sizing::HUG);
+            assert_eq!(
+                fixed.w().fixed_value().map(f32::to_bits),
+                Some(folded.to_bits()),
+                "Fixed({v:e})",
+            );
+            assert!(fixed.h().is_hug(), "the Hug beside Fixed({v:e})");
+            if v > 0.0 {
+                let fill = SizeSpec::new(Sizing::HUG, Sizing::fill(v));
+                assert_eq!(
+                    fill.h().fill_weight().map(f32::to_bits),
+                    Some(v.to_bits()),
+                    "Fill({v:e})",
+                );
+                assert!(fill.w().is_hug(), "the Hug beside Fill({v:e})");
+            }
+        }
+    }
+
     #[test]
     fn signed_zero_sizing_and_sizes_share_equality_and_hashes() {
         let positive = Sizing::fixed(0.0);
@@ -396,11 +429,6 @@ mod tests {
         assert_eq!(Sizing::share(0.0), Sizing::fixed(0.0));
         assert_eq!(Sizing::share(-0.0), Sizing::fixed(0.0));
         assert_eq!(Sizing::share(2.5), Sizing::fill(2.5));
-
-        let smallest_positive = f32::from_bits(1);
-        let packed = SizeSpec::new(Sizing::fill(smallest_positive), Sizing::HUG);
-        // Dropping two bits yields 0; the positive floor stores 1, then decode restores bits 4.
-        assert_eq!(packed.w().fill_weight(), Some(f32::from_bits(4)));
 
         type Case = (&'static str, fn() -> Sizing);
         let cases: &[Case] = &[

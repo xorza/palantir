@@ -340,15 +340,13 @@ mod tests {
     fn a_fade_reaches_the_solid_alpha_and_the_gradients_opacity_lane() {
         let stroke = ShapeStroke {
             width: 2.0,
-            color: RgbaF16::from(RgbaF32::new(1.0, 1.0, 1.0, 1.0)),
+            color: RgbaF16::new(1.0, 1.0, 1.0, 1.0),
         };
         let quad = |fill| {
             DrawQuadPayload::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Corners::ZERO, fill, stroke)
         };
 
-        let solid = quad(BrushSource::Solid(RgbaF16::from(RgbaF32::new(
-            0.25, 0.5, 0.75, 0.8,
-        ))));
+        let solid = quad(BrushSource::Solid(RgbaF16::new(0.25, 0.5, 0.75, 0.8)));
         assert_eq!(solid.faded(1.0), solid);
         let faded = solid.faded(0.5);
         assert!((faded.fill.color.unpack().a - 0.4).abs() < 1e-3);

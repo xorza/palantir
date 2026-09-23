@@ -16,7 +16,7 @@ use glam::Vec2;
 ///
 /// `disabled` is the **cascaded** disabled flag (the widget OR any
 /// ancestor), read from the previous frame's cascade — one-frame stale,
-/// like hover/press. The widget's own `Node::disabled` is folded on top
+/// like hover/press. The widget's own `NodeFlags::is_disabled` is folded on top
 /// by `Widget::response`, through the same fold `Ui::response_for` runs,
 /// so a widget disabled *this* frame reads and paints as disabled
 /// without waiting for the cascade.
@@ -99,7 +99,7 @@ impl ResponseState {
     /// **Three sources reach a widget's state, at three different
     /// times**: the cascade's effective flag (ancestor-or-self, one frame
     /// stale), this frame's ancestor scratch, and the widget's own
-    /// `Node::disabled` — which only `Widget::response` can see. Folding
+    /// `NodeFlags::is_disabled` — which only `Widget::response` can see. Folding
     /// them by hand let a widget disabled *this* frame report `disabled`
     /// beside `hovered` and `left.clicked()`, because the reset ran
     /// between the second source and the third.

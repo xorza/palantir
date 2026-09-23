@@ -15,7 +15,7 @@ use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live
-/// response state and `Node::disabled` via [`Self::pick`].
+/// response state and `NodeFlags::is_disabled` via [`Self::pick`].
 ///
 /// `padding`/`margin` apply when the user didn't call `.padding(...)`
 /// / `.margin(...)` on the builder. Explicit zero spacing overrides

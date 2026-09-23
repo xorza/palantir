@@ -128,7 +128,7 @@ fn solid_is_noop_iff_color_is_noop() {
 /// + `repr(C)` field layout; recompute when those change.
 #[test]
 fn linear_gradient_size_is_compact() {
-    // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 RgbaU8)
+    // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 SrgbaU8)
     // + 1 (spread) + 1 (interp) + tail-pad. Recompute if MAX_STOPS or
     // Stop layout changes. Pinned to catch unintended layout drift.
     assert_eq!(std::mem::size_of::<LinearGradient>(), 48);

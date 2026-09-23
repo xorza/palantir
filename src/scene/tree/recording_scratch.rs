@@ -10,9 +10,9 @@ use crate::scene::tree::node_id::NodeId;
 /// ([`RecordingScratch::open_frames`]). Carries the open node's
 /// `NodeId` plus precomputed disabled and effective-visibility cascade
 /// bits, so inherited state is available during recording without a
-/// tree walk. The node's resolved `WidgetId` is read on demand via
-/// `records.id[node.idx()]` at the one site that needs it
-/// (`Widget::resolve`).
+/// tree walk. The node's resolved `WidgetId` is read on demand from the
+/// `widget_id` column at the one site that needs it
+/// (`Forest::current_parent_id`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,

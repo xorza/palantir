@@ -246,7 +246,7 @@ pub(crate) mod test_support {
         /// because this is a shaper-level fixture: `LineFit` is what
         /// [`TextShapeKey`] stores and what `CosmicMeasure::resolve`
         /// switches on, while the policy is layout's to resolve. So the
-        /// gate here is a width alone, where `TextRun::request` gates on
+        /// gate here is a width alone, where `TextShaper::layout` gates on
         /// `(width, wrap.line_fit())`.
         ///
         /// The two still reach the same requests, which is what keeps a

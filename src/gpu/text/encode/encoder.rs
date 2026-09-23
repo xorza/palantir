@@ -18,6 +18,7 @@ use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::text::encode::EncodedRunKey;
 use crate::gpu::text::encode::cache::{EncodedCache, EncodedGlyph};
+use crate::primitives::color::RgbaF16;
 use glam::IVec2;
 
 /// The glyph-shaped half of the text pass: the encoded-run cache and the
@@ -96,9 +97,9 @@ impl TextEncoder {
             font_epoch: _,
         } = self;
         cache.start_row();
-        // The straight-linear cast of the run's colour — already baked
-        // into the cache identity, reused as the emit colour.
-        let color = run_key.key.area_color;
+        // The run's colour — already baked into the cache identity,
+        // reused as the emit colour.
+        let color: RgbaF16 = bytemuck::cast(run_key.key.area_color);
 
         // `culled` records whether the extraction dropped any line — see
         // `EncodedCache::settle` for why that bars caching.

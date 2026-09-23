@@ -2,7 +2,7 @@ use crate::ui::harness::UiHarness;
 use std::f32::consts::TAU;
 
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::widgets::configure::Configure;
@@ -138,9 +138,9 @@ fn comet_brush_fades_tail_to_head() {
     let head = g.stops[1];
     assert_eq!(tail.offset(), 0.0);
     assert_eq!(head.offset(), 1.0);
-    // A stop stores linear bytes, so the head reads back as `base` after
+    // A stop stores sRGB bytes, so the head reads back as `base` after
     // that round trip, not as `base` itself.
-    let quantized: RgbaF32 = RgbaU8::from(base).into();
+    let quantized = RgbaF32::from_srgba(base.to_srgba_u8());
     assert_eq!(tail.color().a, 0.0);
     assert_eq!(head.color(), quantized);
     // RGB is untouched — only alpha varies along the trail.

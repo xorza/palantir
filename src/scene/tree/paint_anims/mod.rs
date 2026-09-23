@@ -6,9 +6,10 @@
 //! against a freshly-added shape via `Ui::add_shape_animated`; the
 //! encoder samples it at paint time and folds the resulting [`PaintMod`]
 //! (an alpha multiplier today; transform mod once the renderer can
-//! express it) into the per-shape brush. `post_record` folds each anim's
-//! `next_wake` into the `Ui` frame runtime's wake queue, so widget code never calls
-//! `request_repaint_after` for these shapes.
+//! express it) into the per-shape brush. `Forest::min_paint_anim_wake`,
+//! which `FrameCycle::run` calls every frame, folds each anim's
+//! `next_wake` into the `Ui` frame runtime's wake queue, so widget code
+//! never calls `request_repaint_after` for these shapes.
 //!
 //! Unlike the value-interpolation animations in `crate::animation`
 //! (record-time readback, keyed `(WidgetId, AnimSlot)`), paint anims are

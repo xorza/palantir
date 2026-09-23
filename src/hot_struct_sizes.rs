@@ -100,7 +100,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 6016;
+const UI_SIZE: usize = 6032;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -214,23 +214,23 @@ const PINS: &[Pin] = &[
     pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
     pin::<DrawQuadPayload>("payload::DrawQuadPayload", 76, 4),
     pin::<DrawTextPayload>("payload::DrawTextPayload", 56, 8),
-    pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 52, 4),
+    pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 48, 4),
     pin::<DrawImagePayload>("payload::DrawImagePayload", 56, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 32, 4),
     pin::<Quad>("renderer::Quad", 60, 4),
-    pin::<CurveInstance>("renderer::CurveInstance", 68, 4),
-    pin::<MeshInstance>("renderer::MeshInstance", 16, 4),
-    pin::<ImageInstance>("renderer::ImageInstance", 40, 4),
+    pin::<CurveInstance>("renderer::CurveInstance", 76, 4),
+    pin::<MeshInstance>("renderer::MeshInstance", 20, 4),
+    pin::<ImageInstance>("renderer::ImageInstance", 44, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
-    pin::<RasterQuad>("atlas::RasterQuad", 20, 4),
+    pin::<RasterQuad>("atlas::RasterQuad", 24, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
-    pin::<TextDrawRow>("renderer::TextDrawRow", 64, 8),
-    pin::<IconDrawRow>("renderer::IconDrawRow", 24, 4),
-    pin::<ImageDrawRow>("renderer::ImageDrawRow", 48, 8),
-    pin::<MeshDrawRow>("renderer::MeshDrawRow", 32, 4),
+    pin::<TextDrawRow>("renderer::TextDrawRow", 72, 8),
+    pin::<IconDrawRow>("renderer::IconDrawRow", 28, 4),
+    pin::<ImageDrawRow>("renderer::ImageDrawRow", 56, 8),
+    pin::<MeshDrawRow>("renderer::MeshDrawRow", 36, 4),
 ];
 
 #[test]

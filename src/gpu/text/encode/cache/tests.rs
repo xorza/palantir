@@ -24,7 +24,7 @@ fn glyph(tag: u32) -> EncodedGlyph {
             pos: [tag as i32, -(tag as i32)],
             dim: tag,
             uv_and_kind: tag << 8,
-            color: !tag,
+            color: bytemuck::cast(u64::from(!tag)),
         },
         atlas_slot: tag,
         generation: tag + 1,

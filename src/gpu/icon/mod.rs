@@ -145,7 +145,7 @@ impl IconBackend {
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
             // An icon's raster *is* its box, so its bearing is zero and
             // the pen is the quad's top-left.
-            let mut quad = slot.quad(row.origin, bytemuck::cast(row.color));
+            let mut quad = slot.quad(row.origin, row.color);
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
             }

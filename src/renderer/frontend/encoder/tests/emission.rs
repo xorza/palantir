@@ -39,7 +39,10 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let gradients = [gradient];
     let atlas = SharedGradientAtlas::default();
     let mut resolver = GradientResolver::default();
-    let brush = ShapeBrush::Gradient(GradientId(0));
+    let brush = ShapeBrush::Gradient {
+        id: GradientId(0),
+        hash: 0,
+    };
 
     resolver.reset_for(gradients.len());
     let first = resolver.source(&gradients, &atlas, brush);

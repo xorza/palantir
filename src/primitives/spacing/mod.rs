@@ -12,7 +12,7 @@ use crate::primitives::serde::LaneCodec;
 /// at 4096. UI spacing never approaches the f16 ceiling.
 ///
 /// Hash delegates to the packed `F16x4` representation (one `u64` write) —
-/// `LayoutCore::hash` folds this twice per node every frame (padding + margin),
+/// `LayoutCore::hash_with_flags` folds this twice per node every frame (padding + margin),
 /// so the single-write form matters.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -21,7 +21,7 @@ pub struct Spacing(F16x4);
 f16x4_lanes!(Spacing, [left, top, right, bottom]);
 
 impl Spacing {
-    /// Packed 8-byte form. Used by `LayoutCore::hash` to fold the
+    /// Packed 8-byte form. Used by `LayoutCore::hash_with_flags` to fold the
     /// padding + margin lanes into the parent hasher write.
     #[inline]
     pub(crate) fn as_u64(self) -> u64 {

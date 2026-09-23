@@ -1,7 +1,8 @@
 //! Colour in the forms one value takes on its way to the GPU: straight-alpha
 //! linear f32 for authoring and blending, four f16 lanes for the lowered
-//! records, four linear bytes for gradient stops and vertex colours, and
-//! four sRGB-encoded bytes for what a hex code or an image texel means.
+//! records and every draw lane, four linear bytes for mesh vertex colours,
+//! and four sRGB-encoded bytes for what a hex code, a gradient stop or an
+//! image texel means.
 //!
 //! One naming rule across all of them: the channels, then the width. A bare
 //! `Rgba` is linear light, the crate's convention everywhere on the CPU;
@@ -14,6 +15,7 @@ pub(crate) mod color_coords;
 pub(crate) mod color_model;
 pub(crate) mod hsv;
 pub(crate) mod okhsv;
+mod srgb_transfer;
 
 use crate::animation::animatable::Animatable;
 use crate::primitives::approx::FloatHash;
@@ -49,8 +51,6 @@ use std::borrow::Cow;
 ///   for colours a human picked.
 /// - [`Self::new`] takes values that are **already linear**: tween outputs,
 ///   physically-derived values, interop with another linear pipeline.
-///   **already linear**: tween outputs, physically-derived values, interop
-///   with another linear pipeline.
 ///
 /// Writing an sRGB-encoded value straight into the fields skips the
 /// linearisation and will render too bright. Components may exceed `1.0`
@@ -167,9 +167,9 @@ impl RgbaF32 {
     /// linearised — alpha is already linear.
     pub const fn srgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
-            r: srgb_to_linear(r),
-            g: srgb_to_linear(g),
-            b: srgb_to_linear(b),
+            r: srgb_transfer::decode(r as f64),
+            g: srgb_transfer::decode(g as f64),
+            b: srgb_transfer::decode(b as f64),
             a,
         }
     }
@@ -206,13 +206,17 @@ impl RgbaF32 {
     /// Decode sRGB-encoded bytes. Alpha is not gamma-encoded — straight
     /// `a / 255`. `const`, and the [`From`] impl delegates here, so a hex
     /// literal can be a constant.
+    ///
+    /// Exact: each channel is the transfer function of `byte / 255`
+    /// rounded to `f32` once — a lookup into a table built at compile
+    /// time — so [`Self::to_srgba_u8`] gives every byte back.
     pub const fn from_srgba(bytes: SrgbaU8) -> Self {
-        Self::srgba(
-            bytes.r as f32 / 255.0,
-            bytes.g as f32 / 255.0,
-            bytes.b as f32 / 255.0,
-            bytes.a as f32 / 255.0,
-        )
+        Self {
+            r: srgb_transfer::DECODED_BYTES[bytes.r as usize],
+            g: srgb_transfer::DECODED_BYTES[bytes.g as usize],
+            b: srgb_transfer::DECODED_BYTES[bytes.b as usize],
+            a: bytes.a as f32 / 255.0,
+        }
     }
 
     /// Packed 24-bit `0xRRGGBB` sRGB literal, opaque. Matches CSS hex
@@ -225,18 +229,16 @@ impl RgbaF32 {
         Self::from_srgba(SrgbaU8::hexa(rgba))
     }
 
-    /// Encode to **sRGB** 8-bit bytes via the cubic-Newton inverse
-    /// (`linear_to_srgb`): what an image texel, a CSS hex string or a
-    /// number shown to a person means. The linear quantize is
+    /// Encode to **sRGB** 8-bit bytes: what an image texel, a CSS hex
+    /// string or a number shown to a person means. The linear quantize is
     /// `RgbaU8::from`, and the two return different types so one cannot be
-    /// handed where the other is wanted. Lossy round trip, ≤ 1 LSB per
-    /// channel.
+    /// handed where the other is wanted. Inverts [`Self::from_srgba`]
+    /// exactly for every byte.
     pub fn to_srgba_u8(self) -> SrgbaU8 {
-        let q = |x: f32| num::unit_to_u8(linear_to_srgb(x));
         SrgbaU8 {
-            r: q(self.r),
-            g: q(self.g),
-            b: q(self.b),
+            r: srgb_transfer::encode_byte(self.r),
+            g: srgb_transfer::encode_byte(self.g),
+            b: srgb_transfer::encode_byte(self.b),
             a: num::unit_to_u8(self.a),
         }
     }
@@ -249,8 +251,8 @@ impl From<SrgbaU8> for RgbaF32 {
     }
 }
 
-/// A 4-byte **linear**-u8 colour, for places where 8-bit linear precision
-/// is enough and footprint matters: gradient stops and mesh vertices.
+/// A 4-byte **linear**-u8 colour: the storage of a mesh vertex's
+/// colour.
 ///
 /// The `From<RgbaF32>` / `From<RgbaU8>` pair is a straight linear quantize
 /// — **no sRGB encode**. The sRGB-encoded byte form is its own type,
@@ -293,18 +295,6 @@ impl std::hash::Hash for RgbaU8 {
 }
 
 impl RgbaU8 {
-    /// Scale the alpha lane by `by`, leaving the colour lanes alone.
-    ///
-    /// The 8-bit peer of [`RgbaF16::faded`], for the polyline vertex
-    /// colours the composer writes straight into the curve instances.
-    #[inline]
-    pub(crate) fn faded(self, by: f32) -> Self {
-        Self {
-            a: (f32::from(self.a) * by).round().clamp(0.0, 255.0) as u8,
-            ..self
-        }
-    }
-
     /// Fully transparent black.
     pub const TRANSPARENT: Self = Self {
         r: 0,
@@ -364,13 +354,10 @@ impl RgbaU8 {
     pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
-    /// CSS-style `0xRRGGBB` opaque hex — interpreted as **sRGB-
-    /// perceptual** and **decoded to linear** during construction, so
-    /// the stored bytes match the linear-u8 atlas convention. A
-    /// previous mid-tone like `0x22ccdd` (sRGB-perceptual) lands as
-    /// the matching linear-u8 triplet, not as the verbatim bytes —
-    /// otherwise a linear-format LUT would display it wildly too
-    /// bright. Opaque shorthand for [`Self::hexa`].
+    /// CSS-style `0xRRGGBB` opaque hex — interpreted as **sRGB** and
+    /// **decoded to linear** during construction, so `0x22ccdd` lands as
+    /// the matching linear triplet rather than the verbatim bytes, which
+    /// would paint far too bright. Opaque shorthand for [`Self::hexa`].
     pub const fn hex(rgb: u32) -> Self {
         Self::hexa((rgb << 8) | 0xff)
     }
@@ -391,9 +378,7 @@ impl RgbaU8 {
     }
 
     /// **Linear** quantize — straight `(channel * 255) as u8`, no sRGB
-    /// encoding. Used by every linear-storage consumer: vertex colours,
-    /// gradient stops baked into the linear LUT, and the hex
-    /// constructors above. [`RgbaF32::to_srgba_u8`] is the sRGB-encoded
+    /// encoding. Used by vertex colours and the hex constructors above. [`RgbaF32::to_srgba_u8`] is the sRGB-encoded
     /// path, and it returns [`SrgbaU8`] rather than this type.
     ///
     /// The body [`From<RgbaF32>`](Self) runs, `const` so a `const fn`
@@ -439,8 +424,8 @@ impl From<RgbaF32> for RgbaU8 {
 impl From<RgbaU8> for RgbaF32 {
     /// **Linear** un-quantize — straight `u8 / 255.0`, mirrors the
     /// `From<RgbaF32>` linear pack. No sRGB decoding; bytes that are
-    /// sRGB-encoded are an [`SrgbaU8`], which decodes through the cubic
-    /// `srgb_to_linear`.
+    /// sRGB-encoded are an [`SrgbaU8`], which decodes through
+    /// [`RgbaF32::from_srgba`].
     #[inline]
     fn from(s: RgbaU8) -> Self {
         s.to_linear()
@@ -455,8 +440,8 @@ impl From<RgbaU8> for RgbaF32 {
 /// display quantization.
 ///
 /// Use this for storage sites that want half the footprint of
-/// `RgbaF32` (16 B) without `RgbaU8`'s cubic-Newton sRGB roundtrip.
-/// Pod-compatible; Hash delegates to [`F16x4`] (one `u64` write).
+/// `RgbaF32` (16 B) at display precision. Pod-compatible; Hash delegates
+/// to [`F16x4`] (one `u64` write).
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RgbaF16(F16x4);
@@ -464,13 +449,21 @@ pub struct RgbaF16(F16x4);
 impl RgbaF16 {
     pub const TRANSPARENT: Self = Self(F16x4::ZERO);
 
+    /// Linear channels and a straight alpha, packed to f16 lanes — the
+    /// peer of [`RgbaF32::new`], with no encoding in its name for the
+    /// same reason.
+    #[inline]
+    pub(crate) fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self(F16x4::from_lanes([r, g, b, a]))
+    }
+
     /// Alpha one over zeroed colour — the identity for a lane that is an
     /// opacity multiplier rather than a colour. A gradient fill's colour
     /// lane is one; see
     /// [`BrushSource::gpu_fill`](crate::renderer::frontend::payload::brush_source::BrushSource::gpu_fill).
     #[inline]
     pub(crate) fn opacity_one() -> Self {
-        Self(F16x4::from_lanes([0.0, 0.0, 0.0, 1.0]))
+        Self::new(0.0, 0.0, 0.0, 1.0)
     }
 
     /// Scale the alpha lane by `by`, leaving the colour lanes alone.
@@ -532,7 +525,7 @@ impl From<RgbaF32> for RgbaF16 {
     /// targets, scalar fallback elsewhere.
     #[inline]
     fn from(c: RgbaF32) -> Self {
-        Self(F16x4::from_lanes([c.r, c.g, c.b, c.a]))
+        Self::new(c.r, c.g, c.b, c.a)
     }
 }
 
@@ -540,17 +533,6 @@ impl From<RgbaF16> for RgbaF32 {
     #[inline]
     fn from(c: RgbaF16) -> Self {
         c.unpack()
-    }
-}
-
-/// Direct linear-f16 → linear-u8 quantize. Delegates through `RgbaF32`
-/// so it can't drift from the two-hop form; exists because the
-/// composer converts per text run / mesh / image / curve every frame
-/// and the double conversion read as two distinct steps at call sites.
-impl From<RgbaF16> for RgbaU8 {
-    #[inline]
-    fn from(c: RgbaF16) -> Self {
-        RgbaU8::from(RgbaF32::from(c))
     }
 }
 
@@ -625,16 +607,6 @@ const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
     }
 }
 
-/// sRGB→linear via cubic polynomial. Const-friendly (`f32::powf` is not
-/// const-stable; see rust-lang/rust#57241). Industry-standard cubic fit
-/// (Hejl-Burgess-Dawson and similar) over `[0, 1]`; max abs error ~1.5e-3
-/// in linear space — well below 8-bit display precision (1/255 ≈ 4e-3),
-/// so the difference is invisible in rendered output. Pinned by
-/// `tests::cubic_srgb_max_error_under_two_thousandths`.
-const fn srgb_to_linear(c: f32) -> f32 {
-    c * (c * (c * 0.305_306_01 + 0.682_171_1) + 0.012_522_878)
-}
-
 /// Linear-RGB → Oklab. Matrix constants from Björn Ottosson's reference
 /// (https://bottosson.github.io/posts/oklab/). Used by the gradient LUT
 /// bake when `Interp::Oklab` is selected — interpolation in Oklab gives
@@ -676,26 +648,6 @@ pub(crate) fn oklab_to_linear(lab: [f32; 3]) -> [f32; 3] {
         -1.268_438 * l3 + 2.609_757_4 * m3 - 0.341_319_4 * s3,
         -0.004_196_086_4 * l3 - 0.703_418_6 * m3 + 1.707_614_7 * s3,
     ]
-}
-
-/// Inverse of the cubic `srgb_to_linear`. Used by the serde
-/// serializer so that `serialize → parse → re-serialize` round-trips
-/// to the exact same hex bytes (a spec-exact piecewise inverse would
-/// drift by 1 LSB at certain values because it doesn't match the
-/// cubic's curve). Spec-exact piecewise gives a great Newton seed —
-/// 3 iterations converge to f32 precision over `[0, 1]`.
-fn linear_to_srgb(y: f32) -> f32 {
-    let mut x = if y <= 0.003_130_8 {
-        y * 12.92
-    } else {
-        1.055 * y.powf(1.0 / 2.4) - 0.055
-    };
-    for _ in 0..3 {
-        let f = srgb_to_linear(x) - y;
-        let f_prime = 3.0 * 0.305_306_01 * x * x + 2.0 * 0.682_171_1 * x + 0.012_522_878;
-        x -= f / f_prime;
-    }
-    x
 }
 
 impl NanCheck for RgbaF16 {

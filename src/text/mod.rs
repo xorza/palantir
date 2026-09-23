@@ -137,11 +137,9 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// recorded frame that drew no text would age buffers but not encoded
 /// entries.
 ///
-/// **A frame here is a window's, not the host's.** Two windows painting
-/// together spend this window in half the host frames it names. The
-/// ordering above is unaffected — every reader shrinks together — so
-/// read the number as "frames of paint", not as wall time. The clock's
-/// own field documents the limit and what closing it would take.
+/// **A frame here is the host's.** Two windows painting together spend
+/// one frame of this window per round, not two. Read the number as host
+/// frames of paint, not as wall time: an idle host does not age it.
 ///
 /// Lives here rather than with either cache because `renderer` depends
 /// on `text` and not the reverse, so this is the only spot both can
@@ -190,6 +188,13 @@ pub(crate) mod internals {
     /// itself would stop minting fresh raster keys the moment this moved,
     /// and a gate that stops missing stops measuring.
     pub const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
+
+    /// The shaped-buffer cache's short window, so a text audit can warm
+    /// through the first expiry drain it schedules — a one-off that comes
+    /// due this many frames after the first shape, whatever the frames
+    /// between look like.
+    pub const PROBATION_KEEP_FRAMES: u64 =
+        crate::text::cosmic::shaped_buffer_cache::PROBATION_KEEP_FRAMES;
 }
 
 #[cfg(test)]

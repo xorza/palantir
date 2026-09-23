@@ -485,10 +485,15 @@ pub trait Configure: Sized {
     /// [`GridCell::at`] and [`GridCell::span`]. Default `(0, 0)`.
     ///
     /// One setter for one field, so the placement cannot arrive half
-    /// written and no chain order can drop a span. Cell and span are
-    /// validated against the parent's grid def at record time — an
-    /// out-of-range placement panics (`Tree::check_grid_cell`). Ignored
-    /// outside a Grid parent.
+    /// written and no chain order can drop a span. Ignored outside a Grid
+    /// parent.
+    ///
+    /// # Panics
+    ///
+    /// An out-of-range cell or span panics. Debug builds check it against
+    /// the parent's grid def at record time (`Tree::check_grid_cell`);
+    /// release builds skip that check, and the grid pass panics on the
+    /// track index in layout instead.
     #[inline]
     fn grid_cell(mut self, cell: impl Into<GridCell>) -> Self {
         self.configure().grid_cell(cell);
@@ -515,7 +520,9 @@ pub trait Configure: Sized {
     }
 
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
-    /// Ignored when any child has [`crate::Sizing::fill`] on the main axis.
+    /// [`crate::Sizing::fill`] children take the leftover space first, so
+    /// with one on the main axis this distributes only what they leave:
+    /// nothing, unless a max size caps them.
     #[inline]
     fn justify(mut self, j: Justify) -> Self {
         self.configure().justify(j);

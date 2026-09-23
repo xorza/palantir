@@ -28,7 +28,7 @@ use std::panic::Location;
 
 use glam::UVec2;
 use palantir::Ui;
-use palantir::internals::UiHarness;
+use palantir::internals::{PROBATION_KEEP_FRAMES, UiHarness};
 
 use crate::allocator::{AuditResult, with_audit};
 
@@ -206,6 +206,16 @@ impl Audit {
     fn probe(self, frame: &mut impl FnMut()) -> usize {
         const MAX_WARMUP: usize = 8;
         const STABLE_RUN: usize = 2;
+        // Real shaping defers one allocation past any run of quiet frames:
+        // the shaped-buffer cache's first expiry drain grows its wheel's
+        // scratch. The tickets it drains are filed on the first frame, one
+        // probation window plus a frame out, and the clock ticks at the
+        // start of the frame after — so the warmup covers that frame too.
+        let floor = if self.text {
+            PROBATION_KEEP_FRAMES as usize + 2
+        } else {
+            0
+        };
 
         let mut warmup = 0;
         let mut stable = 0;
@@ -217,7 +227,7 @@ impl Audit {
             } else {
                 0
             };
-            if stable >= STABLE_RUN {
+            if stable >= STABLE_RUN && warmup >= floor {
                 break;
             }
         }

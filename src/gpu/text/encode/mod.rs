@@ -56,7 +56,9 @@ pub(crate) struct EncodedKey {
     /// 4-bin subpixel resolution, so distinct quantized scales are the
     /// only ones that produce distinct cosmic cache keys.
     scale_q: u32,
-    area_color: u32,
+    /// The run's [`RgbaF16`](crate::primitives::color::RgbaF16) colour, as
+    /// its bits: the colour lanes are floats, and a key needs `Eq`.
+    area_color: u64,
     /// Packed subpixel bins of the run origin, exactly as produced by
     /// [`crate::text::render::SubpixelOrigin::bins`].
     bins: u8,
@@ -79,7 +81,7 @@ impl EncodedRunKey {
     /// different fractional origins live in different cache entries.
     pub(super) fn for_row(row: &TextDrawRow, frame_scale: f32) -> Self {
         let scale = frame_scale * row.scale;
-        let area_color: u32 = bytemuck::cast(row.color);
+        let area_color = row.color.as_u64();
         let sub = SubpixelOrigin::of(row.origin);
         Self {
             key: EncodedKey {

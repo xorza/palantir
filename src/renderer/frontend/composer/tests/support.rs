@@ -10,7 +10,7 @@ use crate::icons::icon_table::IconId;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
-    color::RgbaF32, color::RgbaU8, corners::Corners, rect::Rect, stroke::Stroke,
+    color::RgbaF16, color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke,
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
@@ -207,7 +207,7 @@ pub(super) fn polyline_cmd(
     let c_start = store.polyline_colors.len() as u32;
     store
         .polyline_colors
-        .extend(colors.iter().map(|&c| RgbaU8::from(c)));
+        .extend(colors.iter().map(|&c| RgbaF16::from(c)));
     let mut lo = points[0];
     let mut hi = points[0];
     for &p in points {
@@ -216,7 +216,7 @@ pub(super) fn polyline_cmd(
     }
     b.draw_polyline(
         DrawPolylinePayload {
-            alpha: u8::MAX,
+            alpha: 1.0,
             bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
             origin: Vec2::ZERO,
             width,

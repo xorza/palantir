@@ -20,6 +20,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
     struct Case {
         points_len: u32,
         width: f32,
+        alpha: f32,
         expected_noop: bool,
     }
 
@@ -27,37 +28,57 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
         Case {
             points_len: 0,
             width: 1.0,
+            alpha: 1.0,
             expected_noop: true,
         },
         Case {
             points_len: 1,
             width: 1.0,
+            alpha: 1.0,
             expected_noop: true,
         },
         Case {
             points_len: 2,
             width: -1.0,
+            alpha: 1.0,
             expected_noop: true,
         },
         Case {
             points_len: 2,
             width: 0.0,
+            alpha: 1.0,
             expected_noop: true,
         },
         Case {
             points_len: 2,
             width: EPS * 0.5,
+            alpha: 1.0,
             expected_noop: true,
         },
         Case {
             points_len: 2,
             width: f32::NAN,
+            alpha: 1.0,
             expected_noop: true,
         },
         Case {
             points_len: 2,
             width: EPS * 2.0,
+            alpha: 1.0,
             expected_noop: false,
+        },
+        // The fade: faded to nothing, and to below the paint threshold.
+        Case {
+            points_len: 2,
+            width: 1.0,
+            alpha: 0.0,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 2,
+            width: 1.0,
+            alpha: EPS * 0.5,
+            expected_noop: true,
         },
     ];
 
@@ -65,6 +86,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
         let payload = DrawPolylinePayload {
             points_len: case.points_len,
             width: case.width,
+            alpha: case.alpha,
             ..Default::default()
         };
         assert_eq!(payload.is_noop(), case.expected_noop, "{case:?}");
@@ -201,4 +223,26 @@ fn the_gate_sees_the_faded_payload() {
         tint.a
     );
     assert_eq!((tint.r, tint.g, tint.b), (1.0, 1.0, 1.0));
+
+    // A polyline gates the same way: its fade rides the payload's own
+    // alpha lane, since its colours live in the record store.
+    let line = DrawPolylinePayload {
+        points_len: 2,
+        width: 1.0,
+        alpha: 1.0,
+        ..Default::default()
+    };
+    let mut faded_out = PaintCapture::default();
+    faded_out.draw_polyline(line, 0.0);
+    assert!(
+        faded_out.calls.is_empty(),
+        "a polyline animated to nothing must not reach the sink: {:?}",
+        faded_out.calls,
+    );
+    let mut half = PaintCapture::default();
+    half.draw_polyline(line, 0.5);
+    let [PaintCall::Polyline(payload)] = half.calls.as_slice() else {
+        panic!("expected one Polyline call, got {:?}", half.calls);
+    };
+    assert_eq!(payload.alpha, 0.5);
 }

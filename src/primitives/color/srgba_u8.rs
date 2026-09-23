@@ -55,4 +55,12 @@ impl SrgbaU8 {
         let [r, g, b, a] = rgba.to_be_bytes();
         Self { r, g, b, a }
     }
+
+    /// The four bytes as one `0xRRGGBBAA` word, the inverse of
+    /// [`Self::hexa`]: one hasher write instead of four. See
+    /// `GradientStops`'s `Hash` for why the byte order matters there.
+    #[inline]
+    pub(crate) const fn to_u32(self) -> u32 {
+        u32::from_be_bytes([self.r, self.g, self.b, self.a])
+    }
 }

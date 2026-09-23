@@ -260,7 +260,7 @@ impl LayerCtx<'_> {
                         color_mode: *color_mode,
                         cap: *cap,
                         join: *join,
-                        alpha: u8::MAX,
+                        alpha: 1.0,
                     },
                     alpha,
                 );
@@ -294,7 +294,6 @@ impl LayerCtx<'_> {
                 basis,
                 width,
                 fill,
-                fill_grad_hash: _,
                 cap,
                 bbox,
             } => {
@@ -413,7 +412,7 @@ impl LayerCtx<'_> {
             return;
         }
 
-        // Off-screen subtree cull. Reads `Cascade::subtree_paint_rects`
+        // Off-screen subtree cull. Reads `LayerCascade::subtree_paint_rects`
         // — the rolled-up paint bound that includes every descendant —
         // so a Canvas-positioned child overflowing its parent's `Fixed`
         // bound (or a shape with negative-margin overhang) doesn't get

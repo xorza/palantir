@@ -1,6 +1,6 @@
 // Palantir raster-atlas shader — the draw program for both the glyph atlas
 // and the icon atlas. Contract:
-// - color comes in straight-alpha linear-u8 (no sRGB decode here).
+// - color comes in straight-alpha linear f16 (no sRGB decode here).
 // - output is premultiplied linear: vec4(rgb*a, a).
 // - blend = PREMULTIPLIED_ALPHA_BLENDING; render target is sRGB
 //   (GPU re-encodes on write).
@@ -14,8 +14,8 @@ struct VertexIn {
     @location(0) pos: vec2<i32>,
     @location(1) dim: u32,           // (w | h<<16)
     @location(2) uv_and_kind: u32,   // (u | flags<<U_BITS | v<<16)
-    // Linear straight RGBA — `Unorm8x4` fetch normalizes the u8 bytes
-    // to 0..1 in hardware, no shader unpack.
+    // Linear straight RGBA — the `Float16x4` fetch widens in hardware,
+    // no shader unpack.
     @location(3) color: vec4<f32>,
 }
 
@@ -62,9 +62,8 @@ fn vs(in: VertexIn) -> VertexOut {
     var out: VertexOut;
     out.position = clip_from_px(vec2<f32>(pos));
 
-    // Straight-alpha linear color, already normalized by the Unorm8x4
-    // vertex fetch. Shader premuls at output; no sRGB decode — the
-    // instance bytes are linear.
+    // Straight-alpha linear color. Shader premuls at output; no sRGB
+    // decode — the instance lanes are linear.
     out.color = in.color;
     out.uv = uv_texel / f32(atlas_size_texels);
     out.flags = flags;

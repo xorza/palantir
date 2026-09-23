@@ -28,7 +28,7 @@ const RIGHT: [u8; 4] = [0x3c, 0x78, 0xe6, 255];
 
 /// The set, built once per thread. `from_svgs` derives each icon's viewBox
 /// and tintability by parsing it, so the fixtures state only their artwork.
-fn atlas() -> Rc<IconTable> {
+pub(crate) fn atlas() -> Rc<IconTable> {
     thread_local! {
         static BUILT: Rc<IconTable> =
             Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]));

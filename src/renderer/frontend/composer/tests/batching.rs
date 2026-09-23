@@ -368,7 +368,7 @@ fn compose_spins_polyline_about_bbox_center() {
         store.polyline_colors.push(RgbaF32::WHITE.into());
         buffer.draw_polyline(
             DrawPolylinePayload {
-                alpha: u8::MAX,
+                alpha: 1.0,
                 // Pivot is the 100x100 box centre, which `stroke_bounds`
                 // derives from the owner rect on the production path.
                 bounds: if rotation == 0.0 {

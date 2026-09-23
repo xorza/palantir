@@ -24,10 +24,10 @@
 //!
 //! ## Interpolation spaces
 //!
-//! Stops live as `RgbaU8` (linear u8 storage — the default
-//! `From<RgbaF32> for RgbaU8` is a linear quantize). `bake_stops`
-//! decodes each stop to a linear `RgbaF32` **once** per row before the
-//! 256-texel loop, so the inner loop never re-runs the cubic.
+//! Stops live as sRGB-encoded bytes, the form they were authored in.
+//! `bake_stops` decodes each stop to a linear `RgbaF32` **once** per row
+//! before the 256-texel loop, so the inner loop never runs the transfer
+//! function.
 //!
 //! - [`Interp::Linear`]: physically correct linear blend. Shows the
 //!   classic midpoint dip on saturated complementary pairs (red↔green
@@ -35,11 +35,11 @@
 //! - [`Interp::Oklab`]: pre-converts each stop's linear RGB to Oklab
 //!   `L/a/b` triplets once at bake time; the texel loop lerps the
 //!   triplet and runs only `oklab_to_linear` per texel. Perceptually
-//!   uniform; CSS RgbaF32 4 default.
+//!   uniform; the CSS Color 4 default.
 
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::GradientStops;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF16;
 use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
@@ -270,7 +270,7 @@ impl CpuGradientAtlas {
     fn init_row_zero_magenta(&mut self) {
         // Linear (1, 0, 1, 1): the sRGB framebuffer encodes this to
         // #ff00ff on write, so the fallback reads as bright magenta.
-        let magenta = RgbaF16::from(RgbaF32::new(1.0, 0.0, 1.0, 1.0));
+        let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
         self.baked[0].fill(magenta);
         // No `rows[0]` sentinel: row 0 is not a member of the MRU list,
         // so no claim can ever select it.

@@ -266,61 +266,86 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     }
 }
 
-/// A `release_input_scope` takes effect for reads **after it in the same pass**,
-/// not just on the next resolution.
+/// A `release_input_scope` takes effect at the next resolution, like a
+/// focus move: reads after it in its own pass get the answer reads before
+/// it got, and the next frame routes as if the scope were gone.
 ///
-/// Nested scopes, and the read sits inside the inner one. With focus on
-/// an unrecorded id nothing anchors a scope path, so the grant falls to
-/// the layer's outermost — the root — while the read speaks for the
-/// inner scope containing it, and the two disagree: no chord. Closing
-/// the inner scope leaves the root as the innermost live scope over that
-/// same record position, the two agree, and the chord lands.
+/// Nested scopes, `root` around `inner`, with one read at `root`'s own
+/// position and two inside `inner`, either side of the release. Two
+/// rows:
 ///
-/// The flip is the assertion: same position, same pass, same chord, both
-/// answers. A `reader` result cached across the close reports the first
-/// answer twice and this fails on the second.
+/// - **No focus anchor** — focus sits on an unrecorded id, so the grant
+///   falls to the layer's outermost, `root`. The read inside `inner`
+///   speaks for `inner` and misses. The read at `root` lands.
+/// - **Focus inside `inner`** — the path is `[root, inner]` and the grant
+///   is `inner`. The read inside `inner` lands and the read at `root`
+///   misses.
+///
+/// On the frame after the release, `inner` is withdrawn in both rows:
+/// the grant is `root`, every read speaks for `root`, and all of them
+/// land.
 #[test]
-fn a_close_reaches_reads_later_in_its_own_pass() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-    let (mut before, mut after) = (false, false);
-    // `closes` is false on the setup frame: a close outlives its own
-    // frame, so closing there would leave `inner` already withdrawn when
-    // the pass under test starts and there would be no flip to see.
-    let nested = |ui: &mut Ui, closes: bool, before: &mut bool, after: &mut bool| {
+fn a_close_takes_effect_at_the_next_resolution() {
+    #[derive(Default)]
+    struct Reads {
+        at_root: bool,
+        inner_before: bool,
+        inner_after: bool,
+    }
+    let nested = |ui: &mut Ui, focus_inside: bool, closes: bool, reads: &mut Reads| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
+                reads.at_root |= ui.escape_pressed();
                 Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui, |ui| {
-                        *before |= ui.escape_pressed();
+                        if focus_inside {
+                            Block::new()
+                                .id(WidgetId::from_hash("editor"))
+                                .size(10.0)
+                                .show(ui);
+                        }
+                        reads.inner_before |= ui.escape_pressed();
                         if closes {
                             ui.release_input_scope(WidgetId::from_hash("inner"));
                         }
-                        *after |= ui.escape_pressed();
+                        reads.inner_after |= ui.escape_pressed();
                     });
             });
     };
-    // The setup frame reads nothing — no key is queued yet — so it can
-    // share the accumulators with the frame that does.
-    h.frame(|ui| nested(ui, false, &mut before, &mut after));
-    press_escape(&mut h);
-    h.frame(|ui| nested(ui, true, &mut before, &mut after));
-
-    assert!(
-        !before,
-        "while the inner scope stands, the read it contains speaks for it \
-         and the outermost grant does not reach it",
-    );
-    assert!(
-        after,
-        "closing the inner scope hands the read to the root, which holds \
-         the grant — in the same pass",
-    );
+    for focus_inside in [false, true] {
+        let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+        // `closes` is false on the setup frame: a close outlives its own
+        // frame, so closing there would leave `inner` already withdrawn
+        // when the pass under test starts.
+        h.frame(|ui| nested(ui, focus_inside, false, &mut Reads::default()));
+        press_escape(&mut h);
+        let mut closing = Reads::default();
+        h.frame(|ui| nested(ui, focus_inside, true, &mut closing));
+        assert_eq!(
+            (closing.inner_before, closing.at_root),
+            (focus_inside, !focus_inside),
+            "focus inside inner = {focus_inside}: the grant goes to inner only when focus anchors it",
+        );
+        assert_eq!(
+            closing.inner_after, closing.inner_before,
+            "focus inside inner = {focus_inside}: a read after the release in the same pass \
+             must get the answer the read before it got",
+        );
+        press_escape(&mut h);
+        let mut next = Reads::default();
+        h.frame(|ui| nested(ui, focus_inside, false, &mut next));
+        assert!(
+            next.at_root && next.inner_before && next.inner_after,
+            "focus inside inner = {focus_inside}: on the next frame inner is withdrawn, \
+             so root holds the grant and every read lands",
+        );
+    }
 }
 
 /// Feed an Escape that the keyboard wake-gate will actually deliver.

@@ -145,15 +145,14 @@ impl InputState {
     }
 
     /// Move focus. **Deliberately does not re-route this pass** — see
-    /// [`Scopes`] for the two mid-pass changes and why only one of them
-    /// takes effect immediately.
+    /// [`Scopes`] for why mid-pass changes wait for the next resolution.
     pub(crate) fn set_focus(&mut self, id: Option<WidgetId>) {
         self.focused = id;
     }
 
     /// Withdraw `owner`'s scope from the next resolution — see
     /// [`Scopes::close`] for the span that covers, and [`Scopes`] for why
-    /// this one *does* take effect mid-pass.
+    /// this pass is unaffected.
     pub(crate) fn release_input_scope(&mut self, owner: WidgetId) {
         self.scopes.close(owner);
     }
@@ -573,12 +572,9 @@ impl InputState {
                 let target = self.pinch_target;
                 if let Some(target) = target {
                     let delta = self.target_scroll_delta_mut(target);
-                    // A host may forward whatever the platform sent, so an
-                    // invalid factor is data rather than a bug. It reads as
-                    // no pinch this frame.
-                    if let Some(f) = ZoomFactor::new(f) {
-                        delta.zoom = delta.zoom.combine(f);
-                    }
+                    let f = ZoomFactor::new(f)
+                        .expect("`InputEvent::is_valid` screened the zoom factor above");
+                    delta.zoom = delta.zoom.combine(f);
                 }
                 let subbed = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Zoom {
                     pos,

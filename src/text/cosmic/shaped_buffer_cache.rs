@@ -107,31 +107,16 @@ pub(super) struct ShapedBufferCache {
     /// count the same thing.
     ///
     /// It advances on the record path while the backend sweeps on the
-    /// submit path, so it both jumps — two windows record before one
-    /// submit — and stalls — two submits inside one recorded frame.
+    /// submit path, so it both jumps — a window that records twice before
+    /// one submit — and stalls — two windows submitting in one round.
     /// That is fine for an age comparison. It is never a cadence gate
     /// written as `frame % INTERVAL == 0`.
     ///
-    /// **It counts window-frames, not host frames — a known limit.**
-    /// Every window ticks it once per frame it records, so N windows
-    /// painting together age everything in units of N: two animating
-    /// windows give a buffer promised 120 frames 60 of the host's. The
-    /// ordering [`RENDERED_RUN_KEEP_FRAMES`] states survives, because all
-    /// three windows read this one counter and shrink by the same factor
-    /// — what it costs is reshaping and re-rasterizing sooner than the
-    /// constants read as. A window painting at a lower rate than its
-    /// sibling pays the same way: its atlas slots become evictable
-    /// against the sibling's frames, so pressure reclaims them earlier
-    /// than its own cadence would.
-    ///
-    /// Closing it takes a host-frame signal this layer does not have.
-    /// Winit's `about_to_wait` is the boundary, but the tick would have
-    /// to leave `FrameCycle::run` — which owns it precisely so no frame
-    /// plan can skip or double it — for every driver of a window, and a
-    /// driver that missed it would stall the clock rather than double
-    /// it. A stalled clock leaves the glyph atlas unable to reclaim
-    /// anything, with no path back; see
-    /// [`TextShaper::tick_frame`](crate::text::shaper::TextShaper::tick_frame).
+    /// **It counts host frames.** A window that frames again on the
+    /// reading it last framed at ticks it, so N windows painting together
+    /// tick it once per round — see `FrameRuntime::tick_text_clock`. A
+    /// window painting at a lower rate than its sibling ages at the
+    /// sibling's rate, which is the host's.
     frame: u64,
     /// Which keys come due on which frame, so [`Self::tick_frame`] costs
     /// what expires rather than what is resident.

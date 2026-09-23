@@ -49,7 +49,7 @@ impl GradientResolver {
     ) -> BrushSource {
         let id = match brush {
             ShapeBrush::Solid(color) => return BrushSource::Solid(color),
-            ShapeBrush::Gradient(id) => id,
+            ShapeBrush::Gradient { id, .. } => id,
         };
         let idx = id.0 as usize;
         if let Some(resolved) = self.resolved[idx] {

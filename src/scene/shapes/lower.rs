@@ -47,44 +47,17 @@ use glam::Vec2;
 use std::f32::consts::TAU;
 use std::hash::Hasher as _;
 
-/// Result of lowering a user-side `Brush`. `brush` is the storage form
-/// (`Solid` inline or `Gradient(id)` indexing into the store's
-/// gradient pool); `hash` is the pre-computed content hash so the
-/// caller can stamp it into a `ShapeRecord` / `ChromeRow` without
-/// threading the store into their `Hash` impls. `hash == 0` for
-/// `Solid` (no gradient payload to identify).
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct LoweredBrush {
-    pub(crate) brush: ShapeBrush,
-    pub(crate) hash: u64,
-}
-
 /// Stable content hash for a gradient variant: discriminant byte
 /// then the gradient's `Hash` impl (which hashes f32 canon-bits).
-/// Lets `ShapeRecord::Hash` stay context-free — we capture the hash
-/// at lowering and stamp it on the record alongside the
-/// `GradientId`, so downstream cache keys don't need the store.
+/// Lets `ShapeRecord::Hash` stay context-free — the hash is captured at
+/// lowering and rides in the `ShapeBrush::Gradient` beside its id, so
+/// downstream cache keys don't need the store.
 #[inline]
 fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
     let mut h = Hasher::new();
     h.write_u8(tag);
     g.hash(&mut h);
     h.finish()
-}
-
-fn stored_gradient(store: &mut RecordStore, gradient: RecordedGradient, hash: u64) -> LoweredBrush {
-    let id = store.intern_gradient(hash, gradient);
-    LoweredBrush {
-        brush: ShapeBrush::Gradient(id),
-        hash,
-    }
-}
-
-fn solid_brush(color: RgbaF32) -> LoweredBrush {
-    LoweredBrush {
-        brush: ShapeBrush::Solid(color.into()),
-        hash: 0,
-    }
 }
 
 /// Lower one gradient kind. `tag` and `kind` are the two things the
@@ -95,25 +68,25 @@ fn gradient_brush<G: GradientGeometry>(
     tag: u8,
     kind: FillKind,
     gradient: &Gradient<G>,
-) -> LoweredBrush {
-    stored_gradient(
-        store,
+) -> ShapeBrush {
+    let hash = grad_hash(tag, gradient);
+    let id = store.intern_gradient(
+        hash,
         RecordedGradient {
             axis: gradient.axis(),
             kind,
             stops: gradient.stops,
             interp: gradient.interp,
         },
-        grad_hash(tag, gradient),
-    )
+    );
+    ShapeBrush::Gradient { id, hash }
 }
 
 /// Lower a user-side `Brush` to the storage form: `Solid` stays
-/// inline; gradients retain their content in the store and return an indexing
-/// `ShapeBrush::Gradient`. The pre-computed content hash is returned
-/// alongside so the caller can stamp it into the `ShapeRecord` /
-/// `ChromeRow` and keep their `Hash` impls context-free.
-pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> LoweredBrush {
+/// inline; gradients retain their content in the store and return a
+/// `ShapeBrush::Gradient` holding the index and the content hash, which
+/// keeps the `ShapeRecord` / `ChromeRow` hashes context-free.
+pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
     // No screen of its own: a gradient's geometry disappears into the
     // store behind a `GradientId`, so the decision has to be made before
     // the intern, and both callers make it — `Shapes::add` on the
@@ -123,7 +96,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> LoweredBrush {
         "NaN gradient geometry reached lowering: {b:?}"
     );
     match b {
-        Brush::Solid(color) => solid_brush(*color),
+        Brush::Solid(color) => ShapeBrush::Solid((*color).into()),
         Brush::Linear(g) => gradient_brush(store, 0, FillKind::linear(g.spread), g),
         Brush::Radial(g) => gradient_brush(store, 1, FillKind::radial(g.spread), g),
         Brush::Conic(g) => gradient_brush(store, 2, FillKind::conic(g.spread), g),
@@ -162,10 +135,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     } else {
         &bg.fill
     };
-    let LoweredBrush {
-        brush: fill,
-        hash: fill_grad_hash,
-    } = brush(store, fill_brush);
+    let fill = brush(store, fill_brush);
     let stroke = ShapeStroke::from(if bg.stroke.has_nan() {
         Stroke::ZERO
     } else {
@@ -182,11 +152,10 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         bg.shadow.into()
     };
     // Canonical authoring hash: fold all inputs into one
-    // `Hasher::pod` call. Hashing field-by-field via 5 separate
-    // `Hasher::write*` calls (the prior shape) paid `hash_bytes`
-    // setup + final `add_to_hash` 5 times — ~40 cycles of overhead
-    // dominated `background`'s self-time (~0.5% of frame
-    // total). Field order is layout-engineered to avoid internal
+    // `Hasher::pod` call. Five separate `Hasher::write*` calls pay
+    // `hash_bytes` setup + final `add_to_hash` five times — ~40 cycles
+    // that dominate `background`'s self-time (~0.5% of frame total).
+    // Field order is layout-engineered to avoid internal
     // padding — descending alignment, u64s first, then the Pod
     // structs widest-aligned first, then the tag; `padding_struct`
     // fills the tail so `NoUninit` is sound.
@@ -194,13 +163,13 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     #[padding_struct::padding_struct]
     #[derive(Debug, Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
     struct ChromeHashBytes {
-        fill_payload: u64, // RgbaF16-as-u64 (Solid) or fill_grad_hash (Gradient)
+        fill_payload: u64, // RgbaF16-as-u64 (Solid) or content hash (Gradient)
         corners_u64: u64,
         stroke: ShapeStroke,   // 12 B align 4
         shadow: LoweredShadow, // 18 B align 2
         fill_tag: u8,
     }
-    let brush = fill.hash_parts(fill_grad_hash);
+    let brush = fill.hash_parts();
     let packed = ChromeHashBytes {
         fill_payload: brush.payload,
         corners_u64: corners.as_u64(),
@@ -233,14 +202,12 @@ pub(crate) fn rect(
     fill: &Brush,
     stroke: Stroke,
 ) -> ShapeRecord {
-    let lowered = brush(store, fill);
     ShapeRecord::Quad(QuadShape::Rect {
         kind,
         local_rect,
         corners,
-        fill: lowered.brush,
+        fill: brush(store, fill),
         stroke: ShapeStroke::from(stroke),
-        fill_grad_hash: lowered.hash,
     })
 }
 
@@ -427,20 +394,14 @@ fn cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> BoundedBasis {
 /// The one `ShapeRecord::Curve` constructor — both bases land here, so
 /// the stroke fields they share are assembled in exactly one place.
 /// The record hash (`compute_record_hash`) covers the basis + width +
-/// cap + brush directly; every input lives inline on the record, so no
-/// lowering-time content hash is captured here.
-fn curve_record(
-    bounded: BoundedBasis,
-    width: f32,
-    fill: LoweredBrush,
-    cap: LineCap,
-) -> ShapeRecord {
+/// cap + brush directly; the only lowering-time hash it reads is the
+/// one a gradient `fill` carries.
+fn curve_record(bounded: BoundedBasis, width: f32, fill: ShapeBrush, cap: LineCap) -> ShapeRecord {
     let BoundedBasis { basis, bbox } = bounded;
     ShapeRecord::Curve {
         basis,
         width,
-        fill: fill.brush,
-        fill_grad_hash: fill.hash,
+        fill,
         cap,
         bbox,
     }
@@ -469,8 +430,8 @@ mod tests {
     use std::collections::HashSet;
 
     fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
-        match brush(store, value).brush {
-            ShapeBrush::Gradient(id) => id,
+        match brush(store, value) {
+            ShapeBrush::Gradient { id, .. } => id,
             ShapeBrush::Solid(_) => panic!("test gradient lowered to a solid brush"),
         }
     }
@@ -536,17 +497,21 @@ mod tests {
         ];
         let centre = glam::Vec2::splat(0.5);
         let hashes = [
-            brush(&mut store, &Brush::Linear(LinearGradient::new(0.0, stops))).hash,
+            brush(&mut store, &Brush::Linear(LinearGradient::new(0.0, stops)))
+                .hash_parts()
+                .payload,
             brush(
                 &mut store,
                 &Brush::Radial(RadialGradient::new(centre, centre, stops)),
             )
-            .hash,
+            .hash_parts()
+            .payload,
             brush(
                 &mut store,
                 &Brush::Conic(ConicGradient::new(centre, 0.0, stops)),
             )
-            .hash,
+            .hash_parts()
+            .payload,
         ];
         let distinct: HashSet<u64> = hashes.iter().copied().collect();
         assert_eq!(distinct.len(), 3, "{hashes:?}");

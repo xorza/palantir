@@ -61,6 +61,12 @@ const UNBOUND_REQUEST: &str = "TextSystem entry points take an unbounded request
 #[derive(Debug)]
 pub(crate) struct TextSystem {
     shaper: TextShaper,
+    /// **One widget's rows always hold the ordinals `0..k`.** They are
+    /// created in record order, which numbers a widget's runs densely
+    /// from zero (`TextShapeInput::on_leaf`), and they leave only as a
+    /// suffix ([`Self::trim_rows`]) or whole ([`Self::end_frame`]). So a
+    /// widget's rows are found by probing from ordinal 0 to the first
+    /// miss, which is how both removals find them.
     entries: FxHashMap<TextRunSlot, TextReuseEntry>,
     /// Held once rather than asked per run: whether this window's shaper
     /// mints shaped buffers at all. False only under the gated mono metric.
@@ -146,25 +152,19 @@ impl TextSystem {
     /// Named for the `FramePlan::FullRecord` frame it closes: only a
     /// frame that recorded has a `removed` set to sweep against. It does
     /// **not** advance the shared text clock, which every frame owes
-    /// whether or not it recorded — `FrameCycle::run` ticks it once, past
-    /// the arm that chose the plan.
+    /// whether or not it recorded — `FrameRuntime::tick_text_clock` does
+    /// that at the start of every frame.
     ///
-    /// The empty-`removed` guard is not a micro-optimization.
-    /// `HashMap::retain` walks the raw table, so it costs *capacity* —
-    /// and capacity here is the session's peak widget×ordinal count,
-    /// which never shrinks. Without the guard a UI that once showed a
-    /// large text-bearing tree pays for that peak on every later frame
-    /// to discover nothing was removed, which is the steady state:
-    /// widgets leave the tree rarely, and the frames they do are already
-    /// the expensive ones. Every sibling sweep in `finalize_frame`
-    /// (`StateMap::sweep_removed`, `AnimMap::sweep_removed`, the
-    /// `gpu_views` retain) gates the same way.
+    /// **Probes per removed widget rather than walking the table.** A
+    /// table walk costs the map's capacity, which is the session's peak
+    /// widget×ordinal count and never shrinks, so a frame that removed
+    /// one widget would pay for the largest tree the UI ever showed.
+    /// The prefix invariant on [`Self::entries`] is what lets the probe
+    /// stop at the first missing ordinal.
     pub(crate) fn end_frame(&mut self, removed: &WidgetIdSet) {
-        if removed.is_empty() {
-            return;
+        for &widget_id in removed {
+            self.trim_rows(widget_id, 0);
         }
-        self.entries
-            .retain(|slot, _| !removed.contains(&slot.widget_id));
     }
 
     /// Drop the rows `widget_id` no longer records: ordinals `count` and
@@ -177,9 +177,9 @@ impl TextSystem {
     /// widget that *did* record, and whose ordinals past `count` are
     /// therefore unreachable until it grows back.
     ///
-    /// Ordinals are dense and assigned in record order
-    /// (`TextShapeInput::on_leaf`), so the first miss ends the walk: a
-    /// widget that did not shrink pays one failed lookup.
+    /// The rows form a prefix — see [`Self::entries`] — so the first
+    /// miss ends the walk: a widget that did not shrink pays one failed
+    /// lookup.
     ///
     /// **Dropped, not [retired](TextReuseEntry::retire)** — the same
     /// treatment [`Self::end_frame`] gives a widget that left the tree,

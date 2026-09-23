@@ -93,6 +93,9 @@ impl<'a> FrameCycle<'a> {
 
         let first_frame = self.ui.frame_runtime.is_first_frame();
         self.ui.frame_runtime.advance_clock(stamp.time);
+        self.ui
+            .frame_runtime
+            .tick_text_clock(self.ui.resources.text());
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
             damage_baseline_valid,
@@ -160,12 +163,6 @@ impl<'a> FrameCycle<'a> {
                 }
             }
         };
-
-        // Past the arm, because every frame owes this and neither plan
-        // may pay it twice — see `TextShaper::tick_frame`. Through the
-        // shaper `UiResources` owns rather than the layout engine's
-        // `TextSystem`, which a paint-only frame never runs.
-        self.ui.resources.text().tick_frame();
 
         self.ui.frame_runtime.note_processing(processing);
 
@@ -397,20 +394,14 @@ impl<'a> FrameCycle<'a> {
     fn finalize_frame(&mut self) {
         tracy::zone!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
-        // Two families, and the split is the point. These two run every
-        // frame whatever `removed` holds, because both also expire rows
-        // the frame didn't touch: text ticks the clock its caches age on,
-        // and the animation sweep drops slots no call site reached for.
-        // Each carries its own early-out for the nothing-to-do case.
+        // Every removal sweep probes per removed id, so each costs what
+        // the frame removed. The animation sweep alone walks its rows,
+        // because it also drops slots no call site reached for this
+        // frame.
         self.engines.layout.text.end_frame(removed);
         self.ui.anim.sweep_removed(removed);
-        // These two react to removals only, and both walk their whole map
-        // to do it — so the one guard sits here rather than being spelled
-        // differently inside each.
-        if !removed.is_empty() {
-            self.ui.state.sweep_removed(removed);
-            self.ui.gpu_views.sweep_removed(removed);
-        }
+        self.ui.state.sweep_removed(removed);
+        self.ui.gpu_views.sweep_removed(removed);
 
         self.ui.input.end_frame(&self.ui.cascade);
     }

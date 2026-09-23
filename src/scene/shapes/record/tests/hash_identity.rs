@@ -35,7 +35,6 @@ fn quad_shapes_hash_apart() {
             corners,
             fill,
             stroke,
-            fill_grad_hash: 0,
         })
     };
 
@@ -88,7 +87,6 @@ fn curve_and_arc_bases_hash_apart() {
         basis,
         width: 2.0,
         fill,
-        fill_grad_hash: 0,
         cap: LineCap::Butt,
         bbox: Rect::ZERO,
     };

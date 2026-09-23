@@ -1,11 +1,17 @@
 use crate::common::hash::Hasher;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use std::hash::{Hash, Hasher as _};
 
-/// Two-stop gradient, the shape almost every UI gradient takes.
-fn ramp(a: RgbaU8, b: RgbaU8) -> GradientStops {
-    GradientStops::new([Stop::new(0.0, a.into()), Stop::new(1.0, b.into())])
+/// Two-stop gradient, the shape almost every UI gradient takes. Built
+/// from the bytes a stop stores, which the decode and re-encode return
+/// exactly.
+fn ramp(a: SrgbaU8, b: SrgbaU8) -> GradientStops {
+    GradientStops::new([
+        Stop::new(0.0, RgbaF32::from_srgba(a)),
+        Stop::new(1.0, RgbaF32::from_srgba(b)),
+    ])
 }
 
 /// Entries landing on the most crowded bucket index, hashing `keys`
@@ -45,8 +51,8 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     let same_blue: Vec<GradientStops> = (0..N)
         .map(|i| {
             ramp(
-                RgbaU8::rgb(i as u8, (i * 3) as u8, 0x2e),
-                RgbaU8::rgb(0x4c, (i * 5) as u8, 0x2e),
+                SrgbaU8::rgb(i as u8, (i * 3) as u8, 0x2e),
+                SrgbaU8::rgb(0x4c, (i * 5) as u8, 0x2e),
             )
         })
         .collect();
@@ -54,12 +60,12 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     let mono: Vec<GradientStops> = (0..N)
         .map(|i| {
             let v = (i as u8).wrapping_mul(2);
-            ramp(RgbaU8::rgb(v, v, v), RgbaU8::rgb(v / 2, v / 2, v / 2))
+            ramp(SrgbaU8::rgb(v, v, v), SrgbaU8::rgb(v / 2, v / 2, v / 2))
         })
         .collect();
     // Only the red channel moves — the degenerate end of the range.
     let red_only: Vec<GradientStops> = (0..N)
-        .map(|i| ramp(RgbaU8::rgb(i as u8, 0, 0), RgbaU8::rgb(0x40, 0, 0)))
+        .map(|i| ramp(SrgbaU8::rgb(i as u8, 0, 0), SrgbaU8::rgb(0x40, 0, 0)))
         .collect();
 
     for (label, keys) in [
@@ -77,17 +83,35 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     }
 }
 
+/// A stop keeps the bytes of the hex code it was written as, and gives
+/// back the colour that hex code names. Every grey byte, so the dark
+/// ramp is covered: linear bytes collapsed sRGB 8, 10 and 16 onto one
+/// stored value.
+#[test]
+fn a_hex_stop_keeps_its_bytes() {
+    for v in 0u8..=255 {
+        let authored = RgbaF32::hex(u32::from(v) * 0x01_01_01);
+        let stop = Stop::new(0.0, authored);
+        assert_eq!(
+            stop.color,
+            SrgbaU8::rgb(v, v, v),
+            "stored bytes of #{v:02x}"
+        );
+        assert_eq!(stop.color(), authored, "decoded colour of #{v:02x}");
+    }
+}
+
 /// Distinct content still hashes distinctly — the spread above must
 /// not have come from collapsing information. Offset and colour
 /// occupy disjoint halves of one word, so a colour can never alias
 /// an offset.
 #[test]
 fn offset_and_colour_stay_independent() {
-    let base = ramp(RgbaU8::rgb(1, 2, 3), RgbaU8::rgb(4, 5, 6));
-    let colour_swapped = ramp(RgbaU8::rgb(4, 5, 6), RgbaU8::rgb(1, 2, 3));
+    let base = ramp(SrgbaU8::rgb(1, 2, 3), SrgbaU8::rgb(4, 5, 6));
+    let colour_swapped = ramp(SrgbaU8::rgb(4, 5, 6), SrgbaU8::rgb(1, 2, 3));
     let offset_moved = GradientStops::new([
-        Stop::new(0.0, RgbaU8::rgb(1, 2, 3).into()),
-        Stop::new(0.5, RgbaU8::rgb(4, 5, 6).into()),
+        Stop::new(0.0, RgbaF32::from_srgba(SrgbaU8::rgb(1, 2, 3))),
+        Stop::new(0.5, RgbaF32::from_srgba(SrgbaU8::rgb(4, 5, 6))),
     ]);
 
     let digest = |s: &GradientStops| {

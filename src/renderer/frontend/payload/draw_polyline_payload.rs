@@ -32,7 +32,7 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) color_mode: ColorMode,
     pub(crate) cap: LineCap,
     pub(crate) join: LineJoin,
-    /// Opacity multiplier from a paint animation, `255` for a still
+    /// Opacity multiplier from a paint animation, `1.0` for a still
     /// polyline.
     ///
     /// A lane rather than a scaled colour, because the colours are a span
@@ -40,11 +40,7 @@ pub(crate) struct DrawPolylinePayload {
     /// here would mean copying the run every frame. The composer folds it
     /// in as it writes each curve instance, where it is already touching
     /// every colour once.
-    ///
-    /// Eight bits, not a float: the colours it multiplies are `RgbaU8`,
-    /// so the extra precision has nowhere to land, and the byte rides in
-    /// this payload's tail padding instead of growing it.
-    pub(crate) alpha: u8,
+    pub(crate) alpha: f32,
 }
 
 impl DrawPolylinePayload {
@@ -57,19 +53,13 @@ impl DrawPolylinePayload {
             return self;
         }
         Self {
-            alpha: (f32::from(self.alpha) * by).round().clamp(0.0, 255.0) as u8,
+            alpha: self.alpha * by,
             ..self
         }
     }
 
-    /// Paints nothing when: fewer than two points (no segments) or a
-    /// non-paintable stroke width.
-    ///
-    /// Unlike its siblings this is an **invariant**, not a filter —
-    /// `PaintSink::draw_polyline` asserts it rather than gating on it,
-    /// because both conditions are authoring-derived and already
-    /// guaranteed by `Shape::Polyline::is_noop`. See that method for
-    /// why the two differ.
+    /// Paints nothing: [`Self::is_degenerate`], or faded to no ink by a
+    /// paint animation.
     ///
     /// **Does not** check colour noop-ness: per-point / per-segment
     /// colours live in spans on the record store, and an O(n) read here
@@ -79,6 +69,18 @@ impl DrawPolylinePayload {
     /// still paint stroke pixels, so it isn't checked either.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
+        self.is_degenerate() || paints_nothing(self.alpha)
+    }
+
+    /// Fewer than two points (no segments), or a non-paintable stroke
+    /// width.
+    ///
+    /// Unlike the fade this is an **invariant**, not a filter —
+    /// `PaintSink::draw_polyline` asserts it, because both conditions
+    /// are authoring-derived and already guaranteed by
+    /// `Shape::Polyline::is_noop`.
+    #[inline]
+    pub(crate) fn is_degenerate(&self) -> bool {
         self.points_len < 2 || paints_nothing(self.width)
     }
 }

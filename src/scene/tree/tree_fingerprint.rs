@@ -1,4 +1,4 @@
-//! The two whole-tree numbers `Cascade::can_update` compares each frame.
+//! The two whole-tree numbers `CascadeEngine::can_update` compares each frame.
 
 use crate::common::content_hash::ContentHash;
 

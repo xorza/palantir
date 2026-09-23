@@ -95,16 +95,15 @@ mod walk;
 #[derive(Debug)]
 pub(crate) struct DamageEngine {
     /// Per-pass merge budget (extra-overdraw px) used when
-    /// `compute` builds the next frame's region. Defaults to
-    /// [`DEFAULT_PASS_BUDGET_PX`]; override in place (e.g. from a
-    /// debug-overlay slider, a TBDR backend init, or a test) before
-    /// the next `FrameCycle::post_record` runs.
+    /// `compute` builds the next frame's region. Always
+    /// [`DEFAULT_PASS_BUDGET_PX`] in production; a field rather than the
+    /// constant only so a test can set it before the next `compute`.
     pub(crate) budget_px: f32,
     /// Last frame's snapshot, **only for widgets with paint rows last
     /// frame** (see the row invariant in the module doc).
     /// Read by the diff in `compute`, then updated/inserted/evicted
     /// in place per node. Cross-layer uniqueness of `WidgetId` is
-    /// already enforced by `SeenIds::record` at recording time, so
+    /// already enforced by `SeenIds::resolve` at recording time, so
     /// the bare `WidgetId` key is safe.
     pub(crate) prev: WidgetIdMap<NodeSnapshot>,
     /// Per-paint backing storage every `NodeSnapshot.paint_span` points
