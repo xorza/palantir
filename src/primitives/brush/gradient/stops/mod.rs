@@ -45,7 +45,7 @@ impl Stop {
         assert!(offset.is_finite(), "gradient stop offset must be finite");
         Self {
             offset_u8: num::unit_to_u8(offset),
-            color: color.to_srgba_u8(),
+            color: color.into(),
         }
     }
 

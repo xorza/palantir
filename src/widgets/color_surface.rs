@@ -88,9 +88,9 @@ impl<K: PartialEq> ColorSurface<K> {
     /// The handle to paint with, filled again first when `size` or `key`
     /// moved since the last call.
     ///
-    /// `fill` writes every texel, **sRGB-encoded**:
-    /// [`RgbaF32::to_srgba_u8`](crate::RgbaF32::to_srgba_u8), never the
-    /// linear quantize `RgbaU8::from` performs.
+    /// `fill` writes every texel **sRGB-encoded**. A texel is an
+    /// [`SrgbaU8`](crate::SrgbaU8), so `.into()` from an `RgbaF32` is the
+    /// exact encode, and linear bytes cannot land there by mistake.
     pub(crate) fn ensure(
         &mut self,
         ui: &Ui,
