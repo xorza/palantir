@@ -72,8 +72,8 @@ Read `benches/profiling.md` before interpreting a capture or hand-rolling a
 ### Budget
 
 Run the script before hand-rolling `perf record` — it already knows the
-vendor, PMU prefix, call-graph mechanism, and pinning. Skipping it turned a
-ten-minute pass into an hour:
+vendor, PMU prefix, call-graph mechanism, and pinning. Hand-rolled captures
+hit these traps:
 
 - **`perf report -g graph,…` over a whole capture never finishes** (10 min, no
   output, 16 MB file). For "who calls X", filter `perf script` stacks to those

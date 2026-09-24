@@ -628,15 +628,14 @@ struct Estimate {
 /// Locate criterion's output root — the `criterion/` dir under the
 /// `target/` cargo actually built into. The reliable signal is the bench
 /// binary's own path: criterion writes under the same `target/` tree the
-/// binary lives in (`<target>/<profile>/deps/<bin>`), and in this
-/// workspace that's the shared `Scenarium/target`, NOT the submodule-local
-/// `palantir/target`.
+/// binary lives in (`<target>/<profile>/deps/<bin>`). When a parent
+/// workspace builds palantir as a path dependency, that is the parent's
+/// shared `target/`, not the submodule-local `palantir/target`.
 ///
-/// A CWD walk-up (the previous approach) is wrong: cargo runs the bench
-/// with CWD at the submodule package dir, and a stale
-/// `palantir/target/criterion` left by an earlier standalone build
-/// shadows the real workspace dir — so the finalizer read months-old
-/// estimates from it and every per-machine row was stale.
+/// A CWD walk-up can't find it: cargo runs the bench with CWD at the
+/// package dir, where a stale `palantir/target/criterion` from a
+/// standalone build shadows the real one and would feed the results row
+/// old estimates.
 fn criterion_root() -> PathBuf {
     if let Ok(t) = std::env::var("CARGO_TARGET_DIR") {
         return PathBuf::from(t).join("criterion");
@@ -790,11 +789,10 @@ pub(crate) fn config() -> Criterion {
         .warm_up_time(Duration::from_secs(3))
 }
 
-/// `arms` decides which half runs — the runner resolved it from the
+/// `arms` decides which half runs — the runner resolves it from the
 /// driver's declared [`Arms::Both`] against what the invocation asked
-/// for, so this no longer reads the environment or decides whether it
-/// was wanted at all. Being called *is* being wanted; the registry's
-/// `opt_in` keeps it out of the default set.
+/// for. Being called *is* being wanted; the registry's `opt_in` keeps it
+/// out of the default set.
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     // Test and profile modes write no estimate, so the results row —
     // and the note it demands — would be meaningless.
