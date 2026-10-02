@@ -34,6 +34,10 @@ pub(super) struct WgpuImageStore {
     /// image allocates once rather than once per update. An image with
     /// no transparency never reaches it — see [`Self::write`].
     staged: RefCell<Vec<SrgbaU8>>,
+    /// Built here, with the backend, rather than on the first
+    /// soft-edged image: the build takes milliseconds, which belong to
+    /// startup and not to whichever frame registers that image.
+    premultiply: &'static [[u8; 256]; 256],
 }
 
 #[derive(Debug)]
@@ -50,6 +54,7 @@ impl WgpuImageStore {
             queue,
             textures: RefCell::default(),
             staged: RefCell::default(),
+            premultiply: premultiplied_bytes(),
         }
     }
 
@@ -123,7 +128,7 @@ impl ImageStore for WgpuImageStore {
             return;
         }
         let mut staged = self.staged.borrow_mut();
-        premultiply_into(texels, &mut staged);
+        premultiply_into(self.premultiply, texels, &mut staged);
         region.write(&self.queue, bytemuck::cast_slice(&staged));
     }
 
@@ -159,8 +164,7 @@ impl ImageStore for WgpuImageStore {
 /// Paid once per upload rather than per fragment, which suits an image
 /// registered once and sampled for as long as it is shown. An
 /// application refilling one every frame pays it every frame.
-fn premultiply_into(texels: &[SrgbaU8], out: &mut Vec<SrgbaU8>) {
-    let table = premultiplied_bytes();
+fn premultiply_into(table: &[[u8; 256]; 256], texels: &[SrgbaU8], out: &mut Vec<SrgbaU8>) {
     out.clear();
     out.reserve_exact(texels.len());
     out.extend(texels.iter().map(|texel| {
@@ -185,9 +189,9 @@ fn premultiply_into(texels: &[SrgbaU8], out: &mut Vec<SrgbaU8>) {
 /// stall the frame that registered the image. Two lookups instead, and
 /// the pass over the buffer is what is left.
 ///
-/// 64 KiB, built on the first upload and kept for the process. The build
-/// spends the arithmetic 65536 times, which is less than one soft image
-/// of any size would have spent.
+/// 64 KiB, built with the first image store and kept for the process.
+/// The build spends the arithmetic 65536 times, which is less than one
+/// soft image of any size would have spent.
 fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
     static TABLE: OnceLock<Box<[[u8; 256]; 256]>> = OnceLock::new();
     TABLE.get_or_init(|| {
@@ -238,7 +242,7 @@ pub(crate) mod test_support {
 
 #[cfg(all(test, feature = "internals"))]
 mod tests {
-    use crate::gpu::image_store::{WgpuImageStore, premultiply_into};
+    use crate::gpu::image_store::{WgpuImageStore, premultiplied_bytes, premultiply_into};
     use crate::gpu::test_gpu;
     use crate::primitives::color::RgbaF32;
     use crate::primitives::color::srgba_u8::SrgbaU8;
@@ -267,7 +271,7 @@ mod tests {
             })
             .collect();
         let mut out = Vec::new();
-        premultiply_into(&texels, &mut out);
+        premultiply_into(premultiplied_bytes(), &texels, &mut out);
 
         for (texel, got) in texels.iter().zip(&out) {
             let straight = RgbaF32::from(*texel);

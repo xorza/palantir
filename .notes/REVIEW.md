@@ -95,9 +95,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Text clipped by its own batch scissor
 - [ ] `src/renderer/frontend/composer/session.rs:809,859,1058` **bug (plausible)**: the text batch's GPU scissor is the union of the runs' measured-box `bounds`, even when no ancestor clips. Glyph ink outside the advance box is cut: italic overhang, a negative left side bearing, and the AA fringe lost when snapping rounds a 100.4 px box down to 100. It also depends on the batch: a run alone is cut at its own box, but batched with a wider neighbour its overhang shows, even past its own ancestor clip when the run is non-strict. Confirm with italic text whose last glyph overhangs, with no clip.
 
-## Render target colour encoding is not enforced
-- [ ] `src/gpu/render_target.rs:48-56` (`From<&wgpu::Texture>`) **bug**: any format is accepted. The pipeline writes linear light and relies on an sRGB (or float) target to encode it. An `OffscreenHost` given an `Rgba8Unorm`/`Bgra8Unorm` texture renders everything too dark, with no error: sRGB 0x80 grey → linear .216 → stored as 0x37. The contract is neither documented nor asserted (`surface_manager` enforces sRGB for windows only).
-
 ## RTL wrap-floor scan reads segments in visual order
 - [ ] `src/text/cosmic/geometry.rs:117` **bug**: segment boundaries are detected by `g.start ∈ breaks`, i.e. at a segment's logical first glyph. In an RTL run that glyph is visited last, so each reset happens one glyph late. Two neighbouring words merge into one segment, with the space between them counted inside it. Example: `"אב גד"` with letters 10 px and the space 5 px. Visual order is ד(7) ג(5) ' '(4) ב(2) א(0), with the break at 5. The scan yields segments {ד}=10 and {ג+' '+ב+א}=35, so `intrinsic_min=35` instead of 20. `WrapWithOverflow` min-content and target width are inflated for RTL text. No RTL case exists in the wrap-floor tests.
 
@@ -157,7 +154,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/scene/damage/walk.rs:362-378`: `emit_inverted_overlaps` pushes one rect per inverted overlapping pair into `raw_rects`, so the push count is O(rows²). Reversing the order of N fully overlapping children (a card deck, a canvas z-sort) pushes about N²/2 rects (N=1000 gives about 500k). Each goes through `DamageRegion::add`'s 8-slot scan and grows `raw_rects` to a new high-water mark.
 
 ## GPU per-frame cost and worst-case spikes
-- [ ] `src/gpu/image_store.rs:191-224`: the 64 K-entry premultiply table is built lazily on the first non-opaque image write. That is about 65 536 × (decode + powf + 3 Newton steps) ≈ several ms, on whichever frame first registers a soft-edged image. Build it at backend construction or as a static table.
 - [ ] `src/gpu/overlay_pass.rs:83-90`: the dim quad is re-uploaded through the belt on every Partial frame, although its content changes only with the viewport. `QuadPipeline::upload_clear` (`quad_pipeline.rs:108-126`) caches the same shape with `last_clear`. Two full-viewport single-quad buffers with different caching should share one mechanism.
 - [ ] `src/gpu/viewport.rs:38`: a release `assert!` on the per-frame path (`PartialScissors::new`). Per-frame contract checks are `debug_assert!`.
 
@@ -279,7 +275,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/gpu/text/mod.rs:53`: broken intra-doc link `RasterPass::build_variants`. It is `RasterProgram::build_variants`.
 - [ ] `src/gpu/text/mod.rs:11,22`: claims an "RgbaF32" colour side (it is `Rgba8UnormSrgb`) and "20-byte instances … uv high bit" (`RasterQuad` is 24 bytes, kind at bit 15).
 - [ ] `src/gpu/text/mod.rs:93`: "Rebinds the atlas bind group if it grew" — the rebind happens inside `RasterAtlas::grow`.
-- [ ] `src/gpu/image_pipeline/image.wgsl:5-8`: the header says the shader premultiplies the texel at write time. Texels are premultiplied at upload (`image_store::premultiply_into`), and `fs` treats `s` as already premultiplied.
 - [ ] `src/gpu/prelude.wgsl:10-11`: names `TextBackend::render_batch` as the atlas-size writer. It is `RasterAtlas::draw_span`.
 - [ ] `src/gpu/raster_atlas/mod.rs:313-315`: says "Both halves of the shared immediate region get written", but `draw_span` writes only the params half. The viewport comes from the backend's rebind.
 - [ ] `src/gpu/gpu_timings.rs:5`: references `host/winit/gpu/mod.rs`, which does not exist.
