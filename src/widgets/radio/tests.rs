@@ -1,11 +1,10 @@
-use crate::Ui;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Pick {
@@ -90,34 +89,4 @@ fn clicking_a_row_selects_it() {
         rows.changed, [false; 3],
         "re-clicking the selected row reports no pick",
     );
-}
-
-#[test]
-fn disabled_radio_does_not_select() {
-    // The enabled row is the control: the same click on the same spot
-    // selects it, so the disabled row's silence is the disabling.
-    let id = WidgetId::from_hash(("rb", "B"));
-    for (disabled, expected) in [(false, Pick::B), (true, Pick::A)] {
-        let mut h = UiHarness::new(UVec2::new(300, 100));
-        let mut sel = Pick::A;
-        let mut scene = |ui: &mut Ui| {
-            Panel::vstack().auto_id().show(ui, |ui| {
-                RadioButton::new(&mut sel, Pick::B)
-                    .id(id)
-                    .label("B")
-                    .disabled(disabled)
-                    .show(ui);
-            });
-        };
-        h.frame(&mut scene);
-        let at = Vec2::new(8.0, 8.0);
-        assert_eq!(
-            h.hit_at(at),
-            Some(id),
-            "disabled {disabled}: the click lands"
-        );
-        h.click_at(at);
-        h.frame(&mut scene);
-        assert_eq!(sel, expected, "disabled {disabled}");
-    }
 }

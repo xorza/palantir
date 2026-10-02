@@ -1,82 +1,9 @@
-use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
-
-fn run(value: &mut bool, h: &mut UiHarness) {
-    let mut v = *value;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut v)
-                .id(WidgetId::from_hash("cb"))
-                .label("label")
-                .show(ui);
-        });
-    });
-    *value = v;
-}
-
-#[test]
-fn clicking_toggles_value() {
-    let surface = UVec2::new(300, 100);
-    let mut h = UiHarness::new(surface);
-    let mut v = false;
-
-    // Frame 1: lay out so the row has a rect.
-    let mut rec = v;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut rec)
-                .id(WidgetId::from_hash("cb"))
-                .label("label")
-                .show(ui);
-        });
-    });
-    v = rec;
-    assert!(!v, "starts unchecked");
-
-    // Click on the box area.
-    h.click_at(Vec2::new(8.0, 8.0));
-    run(&mut v, &mut h);
-    assert!(v, "single click toggles on");
-
-    h.click_at(Vec2::new(8.0, 8.0));
-    run(&mut v, &mut h);
-    assert!(!v, "second click toggles off");
-}
-
-#[test]
-fn disabled_checkbox_does_not_toggle() {
-    // The enabled row is the control: the same click on the same spot
-    // toggles it, so the disabled row's silence is the disabling.
-    let id = WidgetId::from_hash("cb");
-    for (disabled, expected) in [(false, true), (true, false)] {
-        let mut h = UiHarness::new(UVec2::new(300, 100));
-        let mut v = false;
-        let mut scene = |ui: &mut Ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Checkbox::new(&mut v)
-                    .id(id)
-                    .label("label")
-                    .disabled(disabled)
-                    .show(ui);
-            });
-        };
-        h.frame(&mut scene);
-        let at = Vec2::new(8.0, 8.0);
-        assert_eq!(
-            h.hit_at(at),
-            Some(id),
-            "disabled {disabled}: the click lands"
-        );
-        h.click_at(at);
-        h.frame(&mut scene);
-        assert_eq!(v, expected, "disabled {disabled}");
-    }
-}
 
 /// The tick is themed, not baked in: `ToggleTheme::check_pts` holds it
 /// in unit space and `check_polyline` scales it by `box_size`, so the

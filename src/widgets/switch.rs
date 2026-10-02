@@ -178,7 +178,9 @@ fn switch_geom(track_h: f32, inset: f32, border: f32, aspect: f32) -> SwitchGeom
 mod tests {
     use crate::ui::harness::UiHarness;
 
-    use crate::scene::layer::Layer;
+    use crate::Ui;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::widgets::configure::Configure;
     use crate::widgets::switch::{Switch, switch_geom, track_width};
 
     /// The aspect `ToggleTheme::switch` ships; the expected numbers
@@ -258,22 +260,39 @@ mod tests {
     /// the border compensation the knob arranged at (4, 4) — 1 px low and
     /// 1 px right — leaving a 4/2 px top/bottom gap. It must rest `inset`
     /// (3 px) from every edge: offset (3, 3), 18 px of travel to the right.
+    /// Clicked on and settled, it has travelled those 18 px and rests
+    /// 3 px from the right end instead.
     #[test]
-    fn off_knob_is_centred_in_track() {
+    fn knob_rests_inset_from_the_end_it_sits_against() {
         let mut h = UiHarness::new(UVec2::new(400, 400));
+        let id = WidgetId::from_hash("wifi");
         let mut on = false;
-        let root = h.under_outer(|ui| Switch::new(&mut on).label("Wi-Fi").show(ui).node());
-        let tree = h.ui.tree(Layer::Main);
-        let track = tree.children(root).next().unwrap().id;
-        let knob = tree.children(track).next().unwrap().id;
-        let tr = h.ui.arranged_rect(Layer::Main, track);
-        let kr = h.ui.arranged_rect(Layer::Main, knob);
-        let left = kr.min.x - tr.min.x;
-        let top = kr.min.y - tr.min.y;
-        let right = (tr.min.x + tr.size.w) - (kr.min.x + kr.size.w);
-        let bottom = (tr.min.y + tr.size.h) - (kr.min.y + kr.size.h);
-        assert_eq!((left, top), (3.0, 3.0), "knob top-left margin");
-        assert_eq!(top, bottom, "knob vertically centred");
-        assert_eq!(right, 18.0, "off knob rests left with 18 px of travel");
+        let mut record = |ui: &mut Ui| {
+            Switch::new(&mut on).id(id).label("Wi-Fi").show(ui);
+        };
+        // `[left, top, right, bottom]`, the knob's margins in the track.
+        let margins = |h: &UiHarness| {
+            let track = h.arranged(id.with("box"));
+            let knob = h.arranged(id.with("knob"));
+            [
+                knob.min.x - track.min.x,
+                knob.min.y - track.min.y,
+                track.max().x - knob.max().x,
+                track.max().y - knob.max().y,
+            ]
+        };
+        h.frame(&mut record);
+        assert_eq!(
+            margins(&h),
+            [3.0, 3.0, 18.0, 3.0],
+            "off, centred, at the left"
+        );
+
+        h.click_on(id);
+        h.frame(&mut record);
+        let tick = std::time::Duration::from_millis(16);
+        h.frames_until_idle(120, tick, &mut record)
+            .expect("the knob and the look it rides settle inside 2 s");
+        assert_eq!(margins(&h), [18.0, 3.0, 3.0, 3.0], "on, at the right");
     }
 }
