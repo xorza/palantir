@@ -767,7 +767,8 @@ impl PaintSink for ComposeSession<'_> {
         // The face-plane normals ride the neighbor lanes
         // pre-oriented for the shader's keep test
         // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
-        // average of the adjacent colors, taken in linear light.
+        // average of the adjacent colors, taken in linear light and
+        // premultiplied, like every other colour interpolation.
         // Equal sides — a single colour, or the shared point of a
         // per-point run — are the common case, and a colour averaged
         // with itself is itself, so only differing sides pay the unpack.
@@ -779,7 +780,7 @@ impl PaintSink for ComposeSession<'_> {
             let color = if ca == cb {
                 ca
             } else {
-                RgbaF16::from(RgbaF32::from(ca).lerp(cb.into(), 0.5))
+                RgbaF16::from(premultiplied_midpoint(ca.into(), cb.into()))
             };
             self.out.curves.push(CurveInstance {
                 p0: pt(k),
@@ -1291,6 +1292,24 @@ impl ComposeSession<'_> {
     fn discard_composed(&mut self) {
         self.out.discard_scene();
         self.composer.reset_group_scratch(self.out.display.physical);
+    }
+}
+
+/// The straight colour halfway between `a` and `b`, interpolated
+/// premultiplied: opaque red and transparent black meet at half-red with
+/// half alpha, where a straight average would be a darker red. A midpoint
+/// with no alpha has no hue and comes back transparent black.
+fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
+    let alpha = (a.a + b.a) * 0.5;
+    if alpha <= 0.0 {
+        return RgbaF32::TRANSPARENT;
+    }
+    let channel = |x: f32, y: f32| (x * a.a + y * b.a) * 0.5 / alpha;
+    RgbaF32 {
+        r: channel(a.r, b.r),
+        g: channel(a.g, b.g),
+        b: channel(a.b, b.b),
+        a: alpha,
     }
 }
 

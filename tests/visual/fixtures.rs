@@ -8,6 +8,7 @@ mod color;
 mod corners;
 mod damage;
 mod expander;
+mod fade;
 mod format_change;
 mod gpu_view;
 mod gradient;

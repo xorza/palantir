@@ -1,4 +1,9 @@
 //! Gradient-stop interpolation into one linear-f16 LUT row.
+//!
+//! Texels are premultiplied, and so is the interpolation between stops —
+//! CSS Color 4 §12.3: red to transparent passes through half-red at half
+//! alpha, not a darker or bluer colour from the transparent stop's hue.
+//! The shaders filter between texels in the same space.
 
 use crate::animation::animatable::Animatable;
 use crate::primitives::approx;
@@ -22,15 +27,17 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
 
     let mut linear_stops = [RgbaF32::TRANSPARENT; MAX_STOPS];
     for index in 0..count {
-        linear_stops[index] = stops[index].color();
+        linear_stops[index] = premultiplied(stops[index].color());
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     // Only the Oklab ramp reads these, and an empty slice is what says so:
     // a linear bake neither computes nor carries a second colour space.
     let oklab: &[[f32; 3]] = match interp {
         Interp::Oklab => {
+            // From the straight colour: a premultiplied one has no hue
+            // left to convert where its alpha is zero.
             for index in 0..count {
-                let color = linear_stops[index];
+                let color = stops[index].color();
                 oklab_stops[index] = linear_to_oklab(color.r, color.g, color.b);
             }
             &oklab_stops[..count]
@@ -68,8 +75,10 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
 #[derive(Debug)]
 struct RampTexels<'a> {
     stops: &'a GradientStops,
+    /// The stop colours, premultiplied.
     linear: &'a [RgbaF32],
-    /// Oklab coordinates of `linear`, empty under [`Interp::Linear`].
+    /// Oklab coordinates of the straight stop colours, empty under
+    /// [`Interp::Linear`].
     oklab: &'a [[f32; 3]],
     interp: Interp,
     /// Index of the segment's upper stop — the invariant is
@@ -158,6 +167,19 @@ impl Iterator for RampTexels<'_> {
 
 impl ExactSizeIterator for RampTexels<'_> {}
 
+/// `c` with its colour channels multiplied by its alpha.
+const fn premultiplied(c: RgbaF32) -> RgbaF32 {
+    RgbaF32 {
+        r: c.r * c.a,
+        g: c.g * c.a,
+        b: c.b * c.a,
+        a: c.a,
+    }
+}
+
+/// Interpolate two premultiplied stops in Oklab, premultiplied there too:
+/// each stop's Oklab coordinates weigh by its alpha, and the blend divides
+/// the interpolated alpha back out before converting.
 fn lerp_oklab(
     lower: RgbaF32,
     upper: RgbaF32,
@@ -165,25 +187,29 @@ fn lerp_oklab(
     upper_lab: [f32; 3],
     amount: f32,
 ) -> RgbaF32 {
-    let lab = [
-        lower_lab[0] + (upper_lab[0] - lower_lab[0]) * amount,
-        lower_lab[1] + (upper_lab[1] - lower_lab[1]) * amount,
-        lower_lab[2] + (upper_lab[2] - lower_lab[2]) * amount,
-    ];
+    let a = <f32 as Animatable>::lerp(lower.a, upper.a, amount);
+    if a <= 0.0 {
+        return RgbaF32::TRANSPARENT;
+    }
+    let lab = [0, 1, 2].map(|i| {
+        let (l, u) = (lower_lab[i] * lower.a, upper_lab[i] * upper.a);
+        (l + (u - l) * amount) / a
+    });
     let rgb = oklab_to_linear(lab);
     RgbaF32 {
-        r: rgb[0],
-        g: rgb[1],
-        b: rgb[2],
-        a: <f32 as Animatable>::lerp(lower.a, upper.a, amount),
+        r: rgb[0] * a,
+        g: rgb[1] * a,
+        b: rgb[2] * a,
+        a,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::primitives::brush::gradient::Interp;
+    use crate::primitives::brush::gradient::color_ramp::ColorRamp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::{RgbaF16, RgbaF32};
     use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, RampTexels};
 
     /// The bake `zip`s the ramp against a fixed-length row, so a ramp
@@ -203,5 +229,55 @@ mod tests {
 
         assert_eq!(ramp.len(), LUT_ROW_TEXELS);
         assert_eq!(ramp.count(), LUT_ROW_TEXELS);
+    }
+
+    /// Opaque red to transparent blue, baked premultiplied. Texel 51 sits
+    /// at t = 51/255 = 0.2: red at 0.8 alpha, `(0.8, 0, 0, 0.8)` — the
+    /// transparent stop adds no blue, where a straight lerp gave
+    /// `(0.8, 0, 0.2, 0.8)`. Oklab weighs each stop's coordinates by its
+    /// alpha the same way, so its texel is the same red, up to the
+    /// round trip through Oklab.
+    ///
+    /// A hard stop at 0.5 — stored as 128/255, texel 128's own `t`, which
+    /// takes the first stop's colour — bakes texel 128 as opaque red and
+    /// texel 129 as all zeros, so the bilinear filter between them is
+    /// `(0.5, 0, 0, 0.5)`: red at half alpha, not a purple band.
+    #[test]
+    fn the_ramp_is_baked_premultiplied() {
+        let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+        let clear_blue = RgbaF32::new(0.0, 0.0, 1.0, 0.0);
+        let bake = |stops: &GradientStops, interp| {
+            let mut row = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
+            super::row(
+                &ColorRamp {
+                    stops: *stops,
+                    interp,
+                },
+                &mut row,
+            );
+            row
+        };
+        let fade = GradientStops::new([Stop::new(0.0, red), Stop::new(1.0, clear_blue)]);
+        let want = [0.8, 0.0, 0.0, 0.8];
+        for interp in [Interp::Linear, Interp::Oklab] {
+            let got = RgbaF32::from(bake(&fade, interp)[51]);
+            for (channel, (g, w)) in [got.r, got.g, got.b, got.a]
+                .into_iter()
+                .zip(want)
+                .enumerate()
+            {
+                // An f16 step near 0.8 is 2^-11; Oklab's matrices add a
+                // few more in f32.
+                assert!(
+                    (g - w).abs() < 2e-3,
+                    "{interp:?} channel {channel}: {got:?}"
+                );
+            }
+        }
+
+        let hard = GradientStops::new([Stop::new(0.5, red), Stop::new(0.5, clear_blue)]);
+        let row = bake(&hard, Interp::Linear);
+        assert_eq!(row[128], RgbaF16::from(red));
+        assert_eq!(row[129], RgbaF16::TRANSPARENT);
     }
 }

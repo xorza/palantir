@@ -1,4 +1,13 @@
 //! What fills a shape: a solid colour or a gradient.
+//!
+//! **Where colours blend, they blend premultiplied.** Every interpolation
+//! between two colours — a gradient's stops (in linear light, or Oklab
+//! under [`Interp::Oklab`](crate::Interp)), a mesh's vertex colours, a
+//! polyline's per-point colours and the average its joins paint — weighs
+//! each colour by its alpha first, the rule CSS Color 4 §12.3 sets for
+//! gradients. A fade from opaque white to transparent black is therefore
+//! white at half alpha midway: the transparent end's hue contributes
+//! nothing, rather than darkening the blend.
 
 pub(crate) mod gradient;
 

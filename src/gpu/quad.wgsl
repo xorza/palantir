@@ -289,10 +289,11 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
     // holds, and a query keeps this pipeline valid across that resize.
     let v = (f32(in.fill_lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
     let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
-    // `in.fill` multiplies the sample, channel by channel. It is white
-    // for every gradient, with its alpha scaled by a paint animation's
-    // fade. See `BrushSource::gpu_fill`.
-    return c * in.fill;
+    // Texels are premultiplied, so the filter between two of them is too.
+    // `in.fill` multiplies the straight sample, channel by channel. It is
+    // white for every gradient, with its alpha scaled by a paint
+    // animation's fade. See `BrushSource::gpu_fill`.
+    return unpremultiply(c) * in.fill;
 }
 
 // `erf` approximation (Abramowitz & Stegun 7.1.26 form, max error

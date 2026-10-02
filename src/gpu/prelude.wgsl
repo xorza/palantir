@@ -53,6 +53,14 @@ fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
     return vec4<f32>(rgb * alpha, alpha);
 }
 
+// Premultiplied in, straight out — for a colour that was interpolated
+// premultiplied (a gradient texel, a vertex colour) and must meet a
+// straight-alpha multiply. A fully transparent colour has no hue; it
+// comes back black.
+fn unpremultiply(c: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(select(vec3<f32>(0.0), c.rgb / c.a, c.a > 0.0), c.a);
+}
+
 // sRGB-encoded channels → linear light: the exact piecewise transfer
 // function of IEC 61966-2-1, the inverse of what the GPU applies at every
 // sRGB write, so a colour authored as sRGB bytes reaches the screen as

@@ -168,6 +168,53 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(joins[1].p2, d2);
 }
 
+/// A joint between two differently coloured segments paints their
+/// average, taken premultiplied: opaque red beside transparent black
+/// averages to red at half alpha, `(1, 0, 0, 0.5)`. A straight average
+/// was `(0.5, 0, 0, 0.5)`, half as bright.
+#[test]
+fn a_join_between_colours_averages_them_premultiplied() {
+    use crate::primitives::color::RgbaF16;
+    use crate::renderer::render_buffer::curve::CURVE_KIND_JOIN_ROUND;
+
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    let mut commands = PaintCapture::default();
+    let mut store = RecordStore::default();
+    polyline_cmd(
+        &mut commands,
+        &mut store,
+        &[
+            Vec2::new(10.0, 10.0),
+            Vec2::new(60.0, 40.0),
+            Vec2::new(110.0, 10.0),
+            Vec2::new(160.0, 40.0),
+        ],
+        &[red, RgbaF32::TRANSPARENT, red],
+        ColorMode::PerSegment,
+        4.0,
+        LineCap::Round,
+        LineJoin::Round,
+    );
+    let mut composer = composer();
+    let mut buf = render_buffer();
+    composer
+        .begin(
+            params(1.0, UVec2::new(200, 200)),
+            Duration::ZERO,
+            &store,
+            &mut buf,
+        )
+        .replay_from(&commands);
+    let joins: Vec<RgbaF16> = buf
+        .curves
+        .iter()
+        .filter(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .map(|c| c.color0)
+        .collect();
+    let half_red = RgbaF16::from(RgbaF32::new(1.0, 0.0, 0.0, 0.5));
+    assert_eq!(joins, [half_red, half_red]);
+}
+
 /// Miter joins downgrade to bevel chrome past MITER_LIMIT (sharp
 /// bends), keep miter chrome on gentle ones — the SVG convention.
 #[test]
