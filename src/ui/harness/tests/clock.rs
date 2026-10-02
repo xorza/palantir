@@ -66,8 +66,7 @@ fn advance_frames_rejects_a_step_that_would_be_clamped() {
     harness.advance_frames(3, Duration::from_millis(16), button);
     assert_eq!(harness.time, Duration::from_millis(48));
 
-    let clamped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    crate::common::panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
         UiHarness::new(SURFACE).advance_frames(1, Duration::from_millis(500), button);
-    }));
-    assert!(clamped.is_err(), "an over-MAX_ANIM_DT step must panic");
+    });
 }

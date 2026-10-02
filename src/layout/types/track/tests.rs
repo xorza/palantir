@@ -31,30 +31,25 @@ fn bounds_accept_valid_ranges_in_either_order() {
 
 #[test]
 fn bounds_reject_invalid_values_and_inverted_setter_orders() {
+    const MIN: &str = "Track minimum must be finite, non-negative, and not exceed its maximum";
+    const MAX: &str = "Track maximum must be non-negative and not be less than its minimum";
     type Case = (&'static str, fn() -> Track);
 
     let cases: &[Case] = &[
-        ("negative minimum", || Track::HUG.min(-1.0)),
-        ("NaN minimum", || Track::HUG.min(f32::NAN)),
-        ("infinite minimum", || Track::HUG.min(f32::INFINITY)),
-        ("negative maximum", || Track::HUG.max(-1.0)),
-        ("negative infinite maximum", || {
-            Track::HUG.max(f32::NEG_INFINITY)
-        }),
-        ("NaN maximum", || Track::HUG.max(f32::NAN)),
-        ("minimum above existing maximum", || {
-            Track::HUG.max(10.0).min(11.0)
-        }),
-        ("maximum below existing minimum", || {
-            Track::HUG.min(11.0).max(10.0)
-        }),
+        (MIN, || Track::HUG.min(-1.0)),
+        (MIN, || Track::HUG.min(f32::NAN)),
+        (MIN, || Track::HUG.min(f32::INFINITY)),
+        (MAX, || Track::HUG.max(-1.0)),
+        (MAX, || Track::HUG.max(f32::NEG_INFINITY)),
+        (MAX, || Track::HUG.max(f32::NAN)),
+        // Minimum above an existing maximum.
+        (MIN, || Track::HUG.max(10.0).min(11.0)),
+        // Maximum below an existing minimum.
+        (MAX, || Track::HUG.min(11.0).max(10.0)),
     ];
 
-    for &(label, build) in cases {
-        assert!(
-            std::panic::catch_unwind(build).is_err(),
-            "case `{label}` must panic",
-        );
+    for &(expected, build) in cases {
+        crate::common::panic_probe::assert_panics_with(expected, build);
     }
 
     assert_eq!(Track::HUG.max(f32::INFINITY).max, f32::INFINITY);

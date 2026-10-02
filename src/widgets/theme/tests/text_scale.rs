@@ -172,20 +172,19 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 #[test]
 fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::approx::EPS;
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
-    for (label, factor) in [
-        ("zero", 0.0),
-        ("negative", -1.0),
-        ("not a number", f32::NAN),
-        ("infinite", f32::INFINITY),
-        ("overflow", f32::MAX),
-        ("sub-epsilon result", EPS / 32.0),
+    const FACTOR: &str = "text scale factor must be finite and positive";
+    const RESULT: &str = "text scale would make font size or line height invalid";
+    for (label, factor, expected) in [
+        ("zero", 0.0, FACTOR),
+        ("negative", -1.0, FACTOR),
+        ("not a number", f32::NAN, FACTOR),
+        ("infinite", f32::INFINITY, FACTOR),
+        ("overflow", f32::MAX, RESULT),
+        ("sub-epsilon result", EPS / 32.0, RESULT),
     ] {
         let mut theme = Theme::default();
         let before = pretty(&theme);
-        let panic = catch_unwind(AssertUnwindSafe(|| theme.scale_text(factor)));
-        assert!(panic.is_err(), "{label}: invalid factor was accepted");
+        crate::common::panic_probe::assert_panics_with(expected, || theme.scale_text(factor));
         let after = pretty(&theme);
         assert_eq!(after, before, "{label}: theme was partially mutated");
     }

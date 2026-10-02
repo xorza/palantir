@@ -39,21 +39,19 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
         "a second move over bare surface crosses nothing",
     );
 
-    let under = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut harness = UiHarness::new(SURFACE);
-        harness.prime(2, button);
-        harness.press_at(INSIDE);
-        harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0));
-    }));
-    assert!(
-        under.is_err(),
-        "sub-threshold travel must panic, not quietly fail to latch",
+    // Sub-threshold travel must panic, not quietly fail to latch.
+    crate::common::panic_probe::assert_panics_with(
+        "DRAG_THRESHOLD — no drag would latch",
+        || {
+            let mut harness = UiHarness::new(SURFACE);
+            harness.prime(2, button);
+            harness.press_at(INSIDE);
+            harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0));
+        },
     );
-
-    let unpressed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    crate::common::panic_probe::assert_panics_with("drag_to needs a press first", || {
         UiHarness::new(SURFACE).drag_to(INSIDE);
-    }));
-    assert!(unpressed.is_err(), "drag_to needs a press first");
+    });
 
     // `press` latches the same origin as `press_at` — it reads the
     // pointer back out of `InputState` instead of being handed one, so a
@@ -73,16 +71,12 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
 
     // Without a pointer position there is no origin to measure from, so
     // the threshold check must refuse rather than invent one.
-    let never_moved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    crate::common::panic_probe::assert_panics_with("drag_to needs a press on the surface", || {
         let mut harness = UiHarness::new(SURFACE);
         harness.prime(2, button);
         harness.press();
         harness.drag_to(INSIDE);
-    }));
-    assert!(
-        never_moved.is_err(),
-        "a press with the pointer nowhere cannot arm a drag",
-    );
+    });
 }
 
 #[test]

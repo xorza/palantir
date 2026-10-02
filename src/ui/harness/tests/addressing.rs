@@ -89,15 +89,12 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
         "the topmost widget is reachable by id",
     );
 
-    let covered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    // A covered widget must refuse, not silently click the cover.
+    crate::common::panic_probe::assert_panics_with("does not receive the pointer at", || {
         let mut harness = UiHarness::new(SURFACE);
         harness.prime(2, stacked);
         harness.click_on(under);
-    }));
-    assert!(
-        covered.is_err(),
-        "a covered widget must refuse, not silently click the cover",
-    );
+    });
 }
 
 #[test]

@@ -151,9 +151,9 @@ mod tests {
     fn text_ordinal_covers_the_u16_domain_and_rejects_the_next_run() {
         assert_eq!(checked_text_ordinal(0), 0);
         assert_eq!(checked_text_ordinal(usize::from(u16::MAX)), u16::MAX);
-        assert!(
-            std::panic::catch_unwind(|| checked_text_ordinal(usize::from(u16::MAX) + 1)).is_err(),
-            "the 65537th direct text run must exceed the identity key",
+        crate::common::panic_probe::assert_panics_with(
+            "more than 65536 direct ShapeRecord::Text runs on one node",
+            || checked_text_ordinal(usize::from(u16::MAX) + 1),
         );
     }
 

@@ -112,13 +112,19 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
 #[test]
 fn set_mode_refines_a_node_and_never_rekinds_it() {
     let mut grid = Node::new(NodeMode::PendingGrid);
-    assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&grid)).is_err());
+    crate::common::panic_probe::assert_panics_with(
+        "grid node recorded before its definition was installed",
+        || LayoutCore::from_node(&grid),
+    );
     let grid_id = GridDefId::from_index(42);
     grid.set_mode(LayoutMode::Grid(grid_id));
     assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
 
     let mut bars = Node::new(NodeMode::PendingScrollbars);
-    assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&bars)).is_err());
+    crate::common::panic_probe::assert_panics_with(
+        "scrollbar overlay recorded before its definition was installed",
+        || LayoutCore::from_node(&bars),
+    );
     let bars_id = ScrollbarsDefId::from_index(7);
     bars.set_mode(LayoutMode::Scrollbars(bars_id));
     assert_eq!(
@@ -132,30 +138,29 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
         refined.mode,
         NodeMode::Resolved(LayoutMode::Scroll(ScrollAxes::BOTH))
     );
-    assert!(
-        std::panic::catch_unwind(|| Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack))
-            .is_err(),
-        "a pending grid takes only a grid definition",
+    // A pending grid takes only a grid definition.
+    crate::common::panic_probe::assert_panics_with(
+        "ZStack installed on a PendingGrid node",
+        || Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack),
     );
-    assert!(
-        std::panic::catch_unwind(|| {
-            Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
-        })
-        .is_err(),
-        "a pending bar overlay takes only a bar definition",
-    );
-    assert!(
-        std::panic::catch_unwind(|| {
+    // A pending bar overlay takes only a bar definition.
+    crate::common::panic_probe::assert_panics_with("installed on a PendingScrollbars node", || {
+        Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
+    });
+    // A resolved mode is not re-kinded.
+    crate::common::panic_probe::assert_panics_with(
+        "installed on a Resolved(Stack(Y)) node",
+        || {
             Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
                 .set_mode(LayoutMode::Grid(grid_id))
-        })
-        .is_err(),
-        "a resolved mode is not re-kinded",
+        },
     );
 
     let last_grid = GridDefId::from_index(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
-    assert!(std::panic::catch_unwind(|| GridDefId::from_index(65_535)).is_err());
+    crate::common::panic_probe::assert_panics_with("exceeded its 65535 row ceiling", || {
+        GridDefId::from_index(65_535)
+    });
 }
 
 #[test]

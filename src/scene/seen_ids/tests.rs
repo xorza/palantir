@@ -119,11 +119,9 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
     let x = WidgetId::from_hash("x");
     ids.record_endpoint(x, ep(1));
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ids.record_endpoint(x, ep(2));
-    }));
-
-    assert!(result.is_err());
+    crate::common::panic_probe::assert_panics_with("record_endpoint called twice", || {
+        ids.record_endpoint(x, ep(2))
+    });
     assert_eq!(ids.curr[&x], ep(1));
 }
 

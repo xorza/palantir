@@ -26,15 +26,8 @@ harness has `frame_value` and `response_in` for this, but nothing stops a test f
 last pass or reading between frames. In each case below, the bug that the test guards against
 forces pass B, and pass B erases the evidence.
 
-- [ ] `widgets/popup/tests/input_scope.rs:59-79` `outside_pointer_gestures_do_not_leak_to_main`: all four asserts read `h.ui.response_for(bg_id)` after the frame, when `drain_per_frame_queues` already cleared them. The test passes with or without the eater.
-- [ ] `widgets/popup/tests/dismissal.rs:35-38`, `:64-67`, `popup/tests/input_scope.rs:96-99`: `!main_panel_clicked(&h.ui)` reads between frames and is always true.
-- [ ] `widgets/panel/tests.rs:268-301` `disabled_panel_suppresses_clicks_on_descendants`: `*c = r.left.clicked()` in each pass. A leaked click settles the frame, pass B writes `false`, and the assert passes exactly when the bug is present.
-- [ ] `scene/visibility/tests.rs:263` `hidden_button_does_not_click`: the same `=` overwrite, and no visible-button control row.
-- [ ] `input/input_state/tests/scroll_routing.rs:155-156`, `:180`, `:205`, `:238`, `:270-274`, `:308-312`, and `recorder_state.rs:29`: last-pass capture with four different sentinels (`ZERO`, `(1,1)`, `(NAN,NAN)`, `NAN`). If scroll ever starts pass B, every `== ZERO` assert passes. `:39`, `:92`, `:117` hand-roll `frame_value`.
 - [ ] `animation/tests/snap.rs:173-175`: `current = ui.animate(..)` keeps the last pass.
-- [ ] `layout/cache/tests/frames.rs:31-60` `assert_warm_rects_match_cold` pushes into a `Vec` in `h.frame` with no `clear()`. Pass B doubles the list. Its neighbour `:679` clears correctly.
 - [ ] About 10 asserts sit inside the record closure (`animation/tests/duration.rs:31,58,72`, `snap.rs:152,162-163,176,192`, `ui_animate.rs:76-77`). A `PaintOnly` frame skips them silently.
-- [ ] Root fix in the harness: add `frame_passes<R>(record) -> Passes<R>` (values per record pass, warmup excluded, with `a()`, `b()`, `len()`, `count_where`) or `frame_with<R>(record) -> Framed<R> { value, report }`. `frame_value` and `try_frame_value` become thin wrappers.
 - [ ] Then delete the OR-accumulators: 22 `|=` sites in 14 widget files, 22 in `input/input_state/tests/click.rs`, 7 in `keyboard.rs`, the `max` folds in `click.rs:583-596`, `keyboard.rs:364`, `watch.rs:448`, `modal/tests.rs:84,196-203`. Delete the four near-identical `Signals` helpers (`drag_value/tests/support.rs:9-55`, `slider/tests.rs:12-45`, `splitter/tests.rs:24-52`, `text_edit/tests/response.rs:8-35`) and the seven comments that re-derive rule 4. OR accepts a signal from the wrong pass, and the `commits` counters exist only because OR cannot see a double fire.
 - [ ] Replace hand-counted passes (`passes += 1`) with `FrameReport::processing`: `combo_box/tests.rs:130`, `popup/tests/placement.rs:319`, `splitter/tests.rs:48,219`, `tooltip/tests.rs:72,205,215`, `scroll/tests/bars/presence.rs:47`, `cold_mount.rs:47`, `ui/tests/frames/settle.rs:59-66`, `frames/passes.rs:58,175,222,242`, `ui/tests/text.rs:689`, `starting.rs:200`. Keep a counter only where the warmup pass matters.
 - [ ] Remove the reason for between-frame `response_for` reads. 34 widget sites use `h.ui.response_for` because `ui` is a `pub(crate)` field. `h.rect` and `h.layout_rect` cover geometry. Add `h.transform(id)` for the rest.
@@ -76,7 +69,6 @@ Each test below passes when the behaviour it names is broken.
 - [ ] `state_or_default::<S>(id)` inserts `S::default()`. 82 reads in 19 widget test files assert default values (`caret == 0`, `offset == ZERO`) that pass with a wrong id or type: for example `text_edit/tests/context_menu.rs:89-91,106`, `click.rs:316-322,354`, `multi_click.rs:41,73`, `scroll/tests/lifecycle.rs:28-32`, `scroll/tests/support.rs:61-64`. Add `UiHarness::state::<S>(&self, id) -> &S` that panics with "no `S` row for `id`", and stop using `state_or_default` in tests.
 - [ ] `tooltip/tests.rs:238,376,396,462,478,539,612`: `.copied().unwrap_or_default()` has the same hole.
 - [ ] 9 sites start from a `NodeId(0)` placeholder (`intrinsic/tests.rs:28,64,142,342`, `visibility/tests.rs:129,170,208`, `text_wrap/wrapping.rs:197`, `convergence.rs:46`). `NodeId(0)` is the viewport root, so a missed assignment asserts on the wrong node. Return the node from `frame_value`.
-- [ ] Isolation tests query ids that no scene records: `input_state/tests/drag.rs:224`, `:375` (`"other"`), `scroll_routing.rs:164` (`"nope"`). An unknown id returns the default whatever the routing does. Record the other widget.
 
 ## 4. Input aimed by literal coordinates, with no check that it lands
 
@@ -89,10 +81,7 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 
 ## 5. Panic tests accept any panic
 
-- [ ] 55 `catch_unwind(..).is_err()` sites check no message. A panic for a different reason (an index error, an unprimed frame, an overflow in the fixture) passes them, and each prints a backtrace. The harness's own guard tests are among them (`ui/harness/tests/addressing.rs:92-100`, `input.rs:42-56,76-85`, `clock.rs:69-72`). Add one `assert_panics_with(fragment, f)` in a `cfg(test)` subsystem module that silences the hook, downcasts the payload, and asserts `contains`. Migrate all sites.
-- [ ] `animation/anim_spec/tests.rs:90-110` hard-codes both error strings five times. Use `DURATION_ERROR` / `SPRING_ERROR`.
 - [ ] `ui/tests/text.rs:634-665` `interned_handles_do_not_outlive_their_record_pass` documents three cases and tests two. Add the pass-B case.
-- [ ] `widgets/grid.rs:121-139` duplicates `widget/tests.rs:285-324`. Its message "must panic in debug builds" is stale: the check is a release `assert!`.
 
 ## 6. The `alloc` gates can pass while allocating
 
@@ -147,8 +136,6 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 
 ## 10. Two input doors, and input state mirrored outside `InputState`
 
-- [ ] `Ui::inject_input` (`ui/mod.rs:1711-1714`) stamps events with the last frame's time, not the harness clock. 18 of its 19 callers hold a harness: `ui/tests/frames/passes.rs` ×11 (its case table is typed `fn(&mut Ui)`), `input_state/tests/watch.rs:470-471`, `encoder/tests/visibility.rs:118-122`, `text_edit/tests/align.rs:149-161` (leaves Shift held), `drag_value/tests/edit.rs:276-288` (a copy of `UiHarness::key`, called 18 times). Move them to the typed helpers and delete `inject_input`.
-- [ ] `host/winit/tests.rs:117-160` hand-rolls a frame driver because the harness cannot drive an `App`. Add `UiHarness::frame_app(&mut impl App) -> FrameReport` and make `frame` call it.
 - [ ] `pressed_at` mirrors the press origin, against the module doc's own no-mirror rule (`ui/harness/mod.rs:20-23`). It is one slot for every button (press Left, press Middle, release Left → `drag_to` panics), and `on_input` does not update it. Make it per-button and update it inside `on_input`.
 - [ ] `press_button` accepts a press of a button that is already held. `watch.rs:422-439,470-472` press Left twice with no release. Assert the button is up.
 - [ ] Seven sites write `input_mut().focused =` directly (`keyboard.rs:356`, `input_delta.rs:143,151,185,191,237`, `repainting.rs:602`), plus `popup/tests/dismissal.rs:184,196`. Use `h.set_focus` / `h.clear_focus`, with one named made-up id.

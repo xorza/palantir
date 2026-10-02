@@ -28,17 +28,16 @@ fn mesh_vertex_pod_roundtrip() {
 fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
     assert_eq!(checked_vertex_index(u32::MAX as usize), u32::MAX);
     if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
-        assert!(
-            std::panic::catch_unwind(|| checked_vertex_index(overflow)).is_err(),
-            "vertex indices above u32::MAX must panic",
+        crate::common::panic_probe::assert_panics_with(
+            "mesh vertex index exceeds u32 range",
+            || checked_vertex_index(overflow),
         );
     }
 
     assert_eq!(checked_rebased_index(u32::MAX - 1, 1), u32::MAX);
-    assert!(
-        std::panic::catch_unwind(|| checked_rebased_index(u32::MAX, 1)).is_err(),
-        "rebased indices above u32::MAX must panic",
-    );
+    crate::common::panic_probe::assert_panics_with("appended mesh index exceeds u32 range", || {
+        checked_rebased_index(u32::MAX, 1)
+    });
 }
 
 /// An index past the last vertex is refused before either push, so a
@@ -79,10 +78,9 @@ fn triangle_validates_each_index_before_mutating() {
     ] {
         let mut mesh = mesh_with_vertices(3);
         let [a, b, c] = case.indices;
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mesh.triangle(a, b, c);
-        }));
-        assert!(result.is_err(), "{} index must be rejected", case.label);
+        crate::common::panic_probe::assert_panics_with("exceed vertex count 3", || {
+            mesh.triangle(a, b, c)
+        });
         assert!(
             mesh.indices.is_empty(),
             "{} failure must not partially append indices",
