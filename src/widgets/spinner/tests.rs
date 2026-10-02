@@ -39,7 +39,7 @@ fn arc_geometry_insets_by_half_width() {
 /// floor is what a tiny one lands on.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use crate::scene::shapes::record::ShapeRecord;
 
     fn recorded(theme: SpinnerTheme, diameter: f32) -> (f32, f32, f32) {

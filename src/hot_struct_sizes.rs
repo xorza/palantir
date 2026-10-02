@@ -31,7 +31,7 @@ use crate::renderer::render_buffer::image::ImageInstance;
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::mesh::MeshInstance;
 use crate::renderer::render_buffer::text::TextDrawRow;
-use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
 use crate::scene::cascade::entry::{EntryRow, HitRow};
 use crate::scene::cascade::paint::Paint;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
@@ -42,7 +42,9 @@ use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
+use crate::scene::shapes::paint::chrome_row::ChromeRow;
+use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
+use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::node_record::NodeRecord;
@@ -112,7 +114,7 @@ const UI_SIZE: usize = 6440;
 /// cell are zero-sized in a release build, which leaves a shipped
 /// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
 /// the production footprint.
-const FRAME_ENGINES_SIZE: usize = 1768;
+const FRAME_ENGINES_SIZE: usize = 1760;
 
 /// Single source of truth for the per-frame hot-struct inventory.
 /// Each entry is `pin::<Type>("name", expected_size, expected_align)`.

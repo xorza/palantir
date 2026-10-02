@@ -55,30 +55,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Dependencies that could go
 
-## Scene design and simplification
-- [ ] `src/scene/cascade/engine.rs:254-266`: the `layout_hashes` doc says layers with no tree "keep the default" because `iter_paint_order` skips them. It skips nothing: every layer is visited, and the `PerLayer::default()` it overwrites is dead.
-- [ ] `src/scene/damage/mod.rs:97-101`: `DamageEngine::budget_px` is a production field that exists only so a test can change it. Production always uses `DEFAULT_PASS_BUDGET_PX`.
-- [ ] `src/scene/forest.rs:44,443`: `Forest::scratch` is `pub(crate)` but read only inside `forest.rs`. `current_scratch()` hands `ui` (`ui/mod.rs:1135`) the whole recording scratch when it only needs `ancestor_disabled()`.
-- [ ] `src/scene/node/ident.rs:72,86`: the `Ident::Resolved` arms of `raw_id` and `is_explicit` cannot be reached, since `Widget::resolve` short-circuits `Resolved` before `Forest::widget_id`. A `Resolved` id fed back would be re-disambiguated, so a silent passthrough misstates the contract.
-- [ ] Free functions that should be methods:
-  - `src/scene/shapes/hash.rs:36` `compute_record_hash(&ShapeRecord)`
-  - `src/scene/shapes/record/mod.rs:355,383` `mesh_paint_bbox_local` / `text_paint_bbox_local`
-  - `src/scene/cascade/engine.rs:260,288` `layout_hashes(forest, ..)` / `cascade_fingerprint(forest, ..)`. The latter belongs beside `can_update` on `CascadeEngine`, which also closes the two-gate drift above.
-- [ ] More than one major type per file:
-  - `src/scene/shapes/paint.rs` (no `Paint` type in it) holds ten types. `QuadShape`, `ChromeRow`, `ShapeStroke`, `LoweredShadow` and `ImageSource` stand alone.
-  - `src/scene/cascade/mod.rs` holds `Cascade`, `LayerCascade` and `CascadeInputHash` (the last is also used by damage's `NodeSnapshot`).
-  - `src/scene/damage/mod.rs` holds `DamageEngine` beside `Damage`.
-  - `src/scene/tree/paint_anims/mod.rs` holds `PaintMod`, `PaintAnims` and `PaintAnimCursor`.
-  - `src/scene/layer.rs` holds `Layer` beside the generic `PerLayer`.
-- [ ] Missing `const fn`:
-  - `src/scene/tree/node_id.rs:18` `NodeId::idx`
-  - `src/scene/tree/subtree_end.rs:29-78` (all five methods)
-  - `src/scene/cascade/mod.rs:65-72` `CascadeInputHash::{pack, invisible}`
-  - `src/scene/node/node_flags.rs:117-179` getters and setters
-  - `src/scene/node/gaps.rs:133` `Gaps::as_u32`
-  - `src/scene/shapes/paint.rs:74,406` `ShapeBrush::hash_parts`, `LoweredShadow::inset`
-  - `src/scene/damage/mod.rs:252` `Damage::is_partial`
-
 ## Big widgets design and consolidation
 - [ ] `src/widgets/dock/mod.rs:5` vs `dock_state.rs:716-838`: the module doc says the model is "pure data with no `Ui` in sight", but `DockState` carries `scan`, `drag`/`set_drag`, `drop_target` and `content_size`, all of which take `Ui`. That is view code on the model.
 - [ ] `dock_state.rs:835` and `dock_tabs.rs:200`: a size is passed as `Option<Vec2>` where `Size` exists.

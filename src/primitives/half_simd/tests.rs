@@ -115,6 +115,10 @@ fn round_trip_matches_half_slice() {
     assert_eq!(packed, expected);
     let unpacked = f16x4_to_f32x4(packed);
     assert_eq!(unpacked, src);
+    // The `u64` word is the four lanes' bytes in lane order, as a cast of
+    // the array reads them.
+    let lanes = F16x4::from_lanes(src);
+    assert_eq!(lanes.as_u64(), u64::from_ne_bytes(bytemuck::cast(expected)));
 }
 
 #[test]

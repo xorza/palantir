@@ -13,7 +13,7 @@ use crate::common::block_arena::BlockArena;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
-use crate::scene::cascade::LayerCascade;
+use crate::scene::cascade::layer_cascade::LayerCascade;
 use crate::scene::cascade::paint::{Paint, PaintRows};
 use crate::scene::damage;
 use crate::scene::damage::counters::DamageCounters;

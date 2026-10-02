@@ -15,7 +15,7 @@ impl NodeId {
     pub(super) const NONE: Self = Self(u32::MAX);
 
     #[inline]
-    pub(crate) fn idx(self) -> usize {
+    pub(crate) const fn idx(self) -> usize {
         self.0 as usize
     }
 }

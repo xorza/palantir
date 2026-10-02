@@ -15,7 +15,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::CurveBasis;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{BenchmarkId, Criterion, Throughput};

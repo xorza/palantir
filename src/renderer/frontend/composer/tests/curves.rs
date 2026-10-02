@@ -365,7 +365,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
 #[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             // Two curves under one (implicit) scissor group → must
@@ -419,7 +419,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
 #[test]
 fn compose_splits_curve_batches_across_scissor_groups() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             b.draw_curve(
@@ -484,7 +484,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let tint = RgbaF16::from(RgbaF32::new(0.25, 0.5, 1.0, 0.75));
     let buf = run(
         |b, _arena| {
@@ -537,7 +537,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve::CURVE_KIND_ARC;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use std::f32::consts::PI;
     // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
     let sweep = 1.5 * PI;
@@ -590,7 +590,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
 #[test]
 fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use std::f32::consts::{FRAC_PI_2, PI};
     // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
     // rotation = π/2 (clockwise on screen, y-down): (+20, 0) → (0, +20),
@@ -640,7 +640,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 #[test]
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     // Same 800 px span: a straight cubic (CPs on the segment thirds —
     // exactly what Shape::line lowers to) must collapse to one
     // instance; a genuinely curved one must subdivide (800 px polygon
@@ -703,7 +703,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use std::f32::consts::FRAC_PI_2;
     // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
     // screen, y-down) maps an offset (dx, dy) from the pivot to
@@ -766,7 +766,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 fn compose_arc_and_curve_share_one_batch_per_group() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             b.draw_curve(

@@ -103,7 +103,7 @@ impl Align {
     /// Rebuild from the raw packed byte (lower 3 bits HAlign, next 3
     /// VAlign). Used when `Align` is stored inside a larger packed
     /// `u16`/`u32` field (e.g.
-    /// [`PackedLayoutMeta`](crate::layout::types::layout_mode::PackedLayoutMeta))
+    /// [`PackedLayoutMeta`](crate::layout::types::packed_layout_meta::PackedLayoutMeta))
     /// — the caller masks the
     /// slot and hands the 6 valid bits straight back here, no
     /// `HAlign`/`VAlign` round-trip required.

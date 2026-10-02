@@ -41,7 +41,7 @@ impl SubtreeEnd {
 
     /// Exclusive pre-order end, grid flag stripped.
     #[inline]
-    pub(crate) fn end(self) -> u32 {
+    pub(crate) const fn end(self) -> u32 {
         self.0 & SUBTREE_END_MASK
     }
 
@@ -55,14 +55,14 @@ impl SubtreeEnd {
     /// [`Tree::has_children`](crate::scene::tree::Tree::has_children) is
     /// the second entry point onto this one body.
     #[inline]
-    pub(crate) fn has_children(self, i: usize) -> bool {
+    pub(crate) const fn has_children(self, i: usize) -> bool {
         self.end() as usize != i + 1
     }
 
     /// `true` iff the subtree rooted here (inclusive) contains a
     /// `LayoutMode::Grid` node.
     #[inline]
-    pub(crate) fn has_grid(self) -> bool {
+    pub(crate) const fn has_grid(self) -> bool {
         self.0 & SUBTREE_GRID_FLAG != 0
     }
 
@@ -72,8 +72,9 @@ impl SubtreeEnd {
     /// words gives the right end; the high bit is the flag and
     /// `(a | b) & FLAG` unions cleanly.
     #[inline]
-    pub(crate) fn merge_child(&mut self, child: SubtreeEnd) {
-        self.0 = (self.0 & SUBTREE_END_MASK).max(child.0 & SUBTREE_END_MASK)
-            | ((self.0 | child.0) & SUBTREE_GRID_FLAG);
+    pub(crate) const fn merge_child(&mut self, child: SubtreeEnd) {
+        let (own, theirs) = (self.0 & SUBTREE_END_MASK, child.0 & SUBTREE_END_MASK);
+        let end = if own > theirs { own } else { theirs };
+        self.0 = end | ((self.0 | child.0) & SUBTREE_GRID_FLAG);
     }
 }

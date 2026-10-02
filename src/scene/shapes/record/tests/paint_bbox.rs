@@ -4,7 +4,7 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
-use crate::scene::shapes::paint::LoweredShadow;
+use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
 use crate::scene::shapes::record::*;
 use glam::Vec2;
 

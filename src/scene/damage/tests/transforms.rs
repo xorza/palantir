@@ -5,6 +5,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::scene::damage::Damage;
+use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::tests::support::{BLUE, RED};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -144,10 +145,6 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 #[test]
 fn transform_animation_keeps_far_positions_split() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    // Drop the merge budget to strict-overlap-only so the prev/curr
-    // pair (cost 6 400 < default budget) stays split. Pins both
-    // ends of the merge rule against future budget tweaks.
-    h.engines.damage.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
@@ -175,9 +172,16 @@ fn transform_animation_keeps_far_positions_split() {
 
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600.
     // bbox 240×40 = 9600. SAH cost = 6400 — under the default
-    // 20 000 budget, this would merge; the guard above drops the
-    // budget to 0 to pin the strict-overlap-only branch.
-    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    // 20 000 budget, this would merge; collapsing the frame's raw rects
+    // under a budget of 0 pins the strict-overlap-only branch.
+    let rects: Vec<Rect> = DamageRegion::collapse_from(
+        &h.engines.damage.raw_rects,
+        0.0,
+        h.ui.display().logical_rect(),
+    )
+    .region
+    .iter_rects()
+    .collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");

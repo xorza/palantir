@@ -3,7 +3,7 @@
 
 use crate::layout::engine::LayoutEngine;
 use crate::scene::cascade::engine::CascadeEngine;
-use crate::scene::damage::DamageEngine;
+use crate::scene::damage::engine::DamageEngine;
 use crate::ui::resources::UiResources;
 
 /// The three engines [`FrameCycle`](crate::ui::frame_cycle::FrameCycle) runs

@@ -1,9 +1,10 @@
 //! The area ratio that decides partial against full.
 
 use crate::primitives::rect::Rect;
-use crate::scene::damage::region::DamageRegion;
+use crate::scene::damage::Damage;
+use crate::scene::damage::engine::DamageEngine;
+use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame, one_frame};
-use crate::scene::damage::{Damage, DamageEngine};
 use crate::ui::harness::UiHarness;
 
 /// Pin: a single-leaf fill flip stays in the partial-repaint regime —
@@ -132,7 +133,7 @@ fn no_damage_means_skip() {
     assert_eq!(
         Damage::new(DamageRegion::collapse_from(
             &d.raw_rects,
-            d.budget_px,
+            DEFAULT_PASS_BUDGET_PX,
             TEST_SURFACE
         )),
         None,

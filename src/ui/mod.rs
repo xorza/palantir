@@ -936,7 +936,7 @@ impl Ui {
     /// [`Self::gpu_views`], then append a
     /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
     /// sourced from an
-    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView)
+    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::image_source::ImageSource::GpuView)
     /// carrying the row's `epoch` to the active node — the encoder
     /// recovers id and paint from the store by `id`.
     ///
@@ -1143,7 +1143,7 @@ impl Ui {
         let mut state = self.input.response_for(id, &self.cascade, &self.layout);
         // Cascade lags one frame; fold this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
-        state.merge_disabled(self.forest.current_scratch().ancestor_disabled());
+        state.merge_disabled(self.forest.ancestor_disabled());
         state
     }
 

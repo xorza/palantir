@@ -47,7 +47,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     );
 
     use crate::primitives::color::rgba_f16::RgbaF16;
-    use crate::scene::shapes::paint::ShapeBrush;
+    use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);

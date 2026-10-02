@@ -9,7 +9,7 @@ use crate::primitives::lut_row::LutRow;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::scene::shapes::paint::ShapeStroke;
+use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
@@ -242,7 +242,7 @@ mod tests {
     use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
     use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
     use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-    use crate::scene::shapes::paint::ShapeStroke;
+    use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
     use glam::Vec2;
 
     /// Every quad-tier constructor runs one stroke normalization

@@ -42,7 +42,7 @@ impl Gaps {
     /// endianness. It never leaves the process, but a layout-dependent
     /// key is a trap worth not setting.
     #[inline]
-    pub(crate) fn as_u32(self) -> u32 {
+    pub(crate) const fn as_u32(self) -> u32 {
         self.0[0] as u32 | ((self.0[1] as u32) << 16)
     }
 

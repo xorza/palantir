@@ -31,7 +31,8 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use crate::primitives::shadow::Shadow;
     use crate::primitives::size::Size;
     use crate::primitives::stroke::Stroke;
-    use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke};
+    use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
+    use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
     use glam::Vec2;
 
     const N: f32 = f32::NAN;

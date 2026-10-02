@@ -2,9 +2,9 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::primitives::span::Span;
-use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
 
-/// Per-widget snapshot held in [`crate::scene::damage::DamageEngine::prev`], keyed by stable
+/// Per-widget snapshot held in [`crate::scene::damage::engine::DamageEngine::prev`], keyed by stable
 /// [`WidgetId`](crate::primitives::widget_id::WidgetId). Only widgets with
 /// paint rows last frame have an entry
 /// — rowless nodes (e.g. a popup's childless invisible click-eater)
@@ -12,7 +12,7 @@ use crate::scene::cascade::CascadeInputHash;
 /// full-repaint coverage threshold on add or remove.
 ///
 /// **Storage shape.** Per-paint snapshots don't live inline here — they
-/// live in [`DamageEngine::paints`](crate::scene::damage::DamageEngine),
+/// live in [`DamageEngine::paints`](crate::scene::damage::engine::DamageEngine),
 /// one [`BlockArena`](crate::common::block_arena::BlockArena) shared by
 /// every widget, and this struct just holds a `Span` into it. Each row
 /// is chrome (row 0 when present), one direct shape, or a child marker,
@@ -38,7 +38,7 @@ use crate::scene::cascade::CascadeInputHash;
 /// change are recovered from `paint_span`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
-    /// Slice into [`DamageEngine::paints`](crate::scene::damage::DamageEngine)
+    /// Slice into [`DamageEngine::paints`](crate::scene::damage::engine::DamageEngine)
     /// describing this
     /// widget's per-paint snapshots in record order (chrome at row 0
     /// when present, then shapes + child markers). Never empty — the
@@ -55,7 +55,7 @@ pub(crate) struct NodeSnapshot {
     ///
     /// Keyed by `WidgetId` rather than read from the cascade's
     /// node-indexed
-    /// [`arena_hashes`](crate::scene::cascade::LayerCascade), which holds
+    /// [`arena_hashes`](crate::scene::cascade::layer_cascade::LayerCascade), which holds
     /// the same value: a widget outlives the index it occupied, and the
     /// frames where its index moves are the frames a full rebuild
     /// overwrites that column before this walk runs.

@@ -3,8 +3,8 @@
 
 use crate::animation::animatable::Animatable;
 use crate::primitives::approx::FloatHash;
-use crate::scene::tree::paint_anims::PaintMod;
 use crate::scene::tree::paint_anims::curves;
+use crate::scene::tree::paint_anims::paint_mod::PaintMod;
 use std::f32::consts::TAU;
 use std::num::NonZeroU32;
 use std::time::Duration;

@@ -3,7 +3,7 @@
 use crate::primitives::approx::paints_nothing;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::scene::shapes::paint::CurveBasis;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
 use crate::shape::style::LineCap;
 use glam::Vec2;
 

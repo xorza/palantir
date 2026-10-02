@@ -39,7 +39,7 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::CurveBasis;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
