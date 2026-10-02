@@ -233,35 +233,47 @@ struct SampleError {
     at: Vec2,
 }
 
-fn worst_error(model: ColorModel, downsample: u32) -> SampleError {
+/// The downsample factors [`downsample_four_tracks_the_exact_colour`]
+/// compares: exact, the default, and coarse.
+const DOWNSAMPLES: [u32; 3] = [1, 4, 16];
+
+/// The worst channel error of the field at each of [`DOWNSAMPLES`] for one
+/// `hue` slice, drawn at scale 1.5. The exact colour of a pixel is the same
+/// at every factor, so it is converted once and compared three times.
+fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
     const SCALE: f32 = 1.5;
     let pixels = UVec2::new(
         (FIELD.x as f32 * SCALE) as u32,
         (FIELD.y as f32 * SCALE) as u32,
     );
-    let size = UVec2::new(
-        (pixels.x as f32 / downsample as f32).ceil() as u32,
-        (pixels.y as f32 / downsample as f32).ceil() as u32,
-    );
-    let mut image = Image::blank(size);
-    let mut texels = Vec::with_capacity((size.x * size.y) as usize);
-    let mut worst = SampleError::default();
-    for step in 0..12 {
-        let hue = step as f32 / 12.0;
+    let fields = DOWNSAMPLES.map(|downsample| {
+        let size = UVec2::new(
+            (pixels.x as f32 / downsample as f32).ceil() as u32,
+            (pixels.y as f32 / downsample as f32).ceil() as u32,
+        );
+        let mut image = Image::blank(size);
         fill(&mut image, model, hue);
-        texels.clear();
-        texels.extend(image.texels().iter().copied().map(RgbaF32::from_srgba));
-        let slice = model.slice(hue);
-        for row in 0..pixels.y {
-            let v = (row as f32 + 0.5) / pixels.y as f32;
-            for column in 0..pixels.x {
-                let u = (column as f32 + 0.5) / pixels.x as f32;
-                let shown = sample(&texels, size, u, v).to_srgba_u8();
-                let want = slice.color(u, 1.0 - v).to_srgba_u8();
+        let texels: Vec<RgbaF32> = image
+            .texels()
+            .iter()
+            .copied()
+            .map(RgbaF32::from_srgba)
+            .collect();
+        (size, texels)
+    });
+    let slice = model.slice(hue);
+    let mut worst = [(); 3].map(|()| SampleError::default());
+    for row in 0..pixels.y {
+        let v = (row as f32 + 0.5) / pixels.y as f32;
+        for column in 0..pixels.x {
+            let u = (column as f32 + 0.5) / pixels.x as f32;
+            let want = slice.color(u, 1.0 - v).to_srgba_u8();
+            for ((size, texels), worst) in fields.iter().zip(&mut worst) {
+                let shown = sample(texels, *size, u, v).to_srgba_u8();
                 for (a, b) in [(shown.r, want.r), (shown.g, want.g), (shown.b, want.b)] {
                     let error = (f32::from(a) - f32::from(b)).abs();
                     if error > worst.value {
-                        worst = SampleError {
+                        *worst = SampleError {
                             value: error,
                             at: Vec2::new(u, 1.0 - v),
                         };
@@ -285,11 +297,25 @@ fn worst_error(model: ColorModel, downsample: u32) -> SampleError {
 /// [`ColorField::downsample`](crate::ColorField::downsample) for the table.
 #[test]
 fn downsample_four_tracks_the_exact_colour() {
+    // One thread per model and hue slice; each slice's worst is folded in
+    // hue order, so a tie keeps the earlier slice's place.
     let errors = std::thread::scope(|scope| {
         let sweeps = ColorModel::ALL.map(|model| {
-            [1, 4, 16].map(|downsample| scope.spawn(move || worst_error(model, downsample)))
+            std::array::from_fn::<_, 12, _>(|step| {
+                scope.spawn(move || worst_errors(model, step as f32 / 12.0))
+            })
         });
-        sweeps.map(|model| model.map(|sweep| sweep.join().unwrap()))
+        sweeps.map(|slices| {
+            let mut worst = [(); 3].map(|()| SampleError::default());
+            for slice in slices {
+                for (worst, slice) in worst.iter_mut().zip(slice.join().unwrap()) {
+                    if slice.value > worst.value {
+                        *worst = slice;
+                    }
+                }
+            }
+            worst
+        })
     });
     for (model, [exact, sampled, coarse]) in ColorModel::ALL.into_iter().zip(errors) {
         let SampleError { value: worst, at } = sampled;
