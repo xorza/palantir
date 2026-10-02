@@ -563,7 +563,7 @@ fn input_policy_routes_paint_only_gate() {
         // One assertion for what used to need two: the move arrived,
         // and it was not repaint-worthy.
         assert_eq!(
-            h.ui.input.signal_since_last_frame,
+            h.ui.input.signal_since_last_frame(),
             InputSignal::Inert,
             "an inert pointer move registers as Inert",
         );
@@ -576,7 +576,7 @@ fn input_policy_routes_paint_only_gate() {
         );
 
         // PaintOnly path must have drained the input signal and queues.
-        assert_eq!(h.ui.input.signal_since_last_frame, InputSignal::None);
+        assert_eq!(h.ui.input.signal_since_last_frame(), InputSignal::None);
     }
 
     {
@@ -599,11 +599,11 @@ fn input_policy_routes_paint_only_gate() {
         let mut h = UiHarness::new(SURFACE);
         h.ui.set_input_policy(InputPolicy::OnDelta);
         let _ = h.frame(|ui| body(ui, half));
-        h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+        h.ui.input.set_focus(Some(WidgetId::from_hash("editor")));
 
         h.key(Key::Enter);
         assert_eq!(
-            h.ui.input.signal_since_last_frame,
+            h.ui.input.signal_since_last_frame(),
             InputSignal::Repaint,
             "KeyDown with focus held must raise the signal to Repaint",
         );

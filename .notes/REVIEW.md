@@ -69,8 +69,3 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `color_button/mod.rs`: lacks ColorPicker's `swatches(&[RgbaF32])` and `downsample(n)`. Its `history` default (true) also differs from ColorPicker's (Hidden).
 - [ ] Naming: `Tooltip::on(&snapshot)` vs `ContextMenu::attach(ui, &snapshot)` are two names for "attach to a trigger snapshot".
 - [ ] File layout: `TooltipResponse`, `ExpanderResponse`, `ClickOutside` (`popup/mod.rs`) and `SplitHalf` (`splitter/mod.rs`) are standalone public types inside a widget's file, while `ValueResponse`/`SelectResponse`/`OverlayResponse` each get their own file.
-
-## Input and host structure
-- [ ] `src/host/winit/error.rs:63-88`: `WinitHostError::Gpu` and its `From<GpuRequestError>` are never constructed in production (only tests). Device failures surface as `Surface{source: SurfaceError::Device}`, so one failure has two documented routes. Public API: removal needs a go-ahead.
-- [ ] `src/input/input_state/mod.rs:43-131`: `focused`, `modifiers`, `pointer_pos`, `hovered`, `focus_policy`, `input_policy` and `signal_since_last_frame` are `pub(crate)` fields read and written directly from `Ui` and `FrameCycle`, though `set_focus` exists as a method. This contradicts `Ui`'s own "every field is private" rule one layer down.
-- [ ] `src/host/winit/runtime.rs:63`: `bootstrap.config.clone()` deep-copies the whole `WinitHostConfig` (title `String`, icon pixel `Vec`) only to read fields that can be borrowed.

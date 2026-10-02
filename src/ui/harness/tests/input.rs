@@ -95,14 +95,15 @@ fn modifiers_are_sticky_until_set_back() {
     harness.set_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
-        harness.ui.input.modifiers, ctrl,
+        harness.ui.input.modifiers(),
+        ctrl,
         "the key does not consume the chord",
     );
 
     harness.set_modifiers(Modifiers::NONE);
     harness.key(Key::Char('c'));
     assert_eq!(
-        harness.ui.input.modifiers,
+        harness.ui.input.modifiers(),
         Modifiers::NONE,
         "…and it stays cleared once set back",
     );
@@ -113,7 +114,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.on_input(InputEvent::ModifiersChanged(ctrl));
     harness.set_modifiers(Modifiers::NONE);
     assert_eq!(
-        harness.ui.input.modifiers,
+        harness.ui.input.modifiers(),
         Modifiers::NONE,
         "set_modifiers clears a set the raw door installed",
     );

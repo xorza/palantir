@@ -44,8 +44,8 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 #[derive(Debug, Default)]
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
-    pub(crate) pointer_pos: Option<Vec2>,
-    pub(crate) hovered: Option<WidgetId>,
+    pointer_pos: Option<Vec2>,
+    hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
     /// whenever the pointer moves and at `end_frame`. New scroll events
     /// are attributed to this id when they arrive.
@@ -85,23 +85,23 @@ pub(crate) struct InputState {
     /// Latest modifier-key snapshot. Persists across `end_frame` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
-    pub(crate) modifiers: Modifiers,
+    modifiers: Modifiers,
     /// Currently focused widget, or `None`. Set on `PointerPressed(Left)`
     /// when the press lands on a focusable widget. Evicted in
     /// [`Self::end_frame`] when the focused widget vanishes from the
     /// tree (matches the per-id state map's eviction model). Read by
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
-    pub(crate) focused: Option<WidgetId>,
+    focused: Option<WidgetId>,
     /// This pass's scope routing — who owns which key class, and which
     /// layers are cut off. Resolved once per record pass; see
     /// [`Scopes`].
     scopes: Scopes,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
-    pub(crate) focus_policy: FocusPolicy,
+    focus_policy: FocusPolicy,
     /// Which "did input arrive?" signal the frame gate thresholds
     /// against. See [`InputPolicy`].
-    pub(crate) input_policy: InputPolicy,
+    input_policy: InputPolicy,
     /// Whether any event this record pass wrote state that an
     /// earlier-recorded widget could already have read — see
     /// [`EventOutcome::settles`], which is where each arm decides.
@@ -112,7 +112,7 @@ pub(crate) struct InputState {
     /// [`InputPolicy`] in
     /// `FrameRuntime::take_frame_plan`. Cleared with the per-frame event
     /// queues.
-    pub(crate) signal_since_last_frame: InputSignal,
+    signal_since_last_frame: InputSignal,
     /// Wake-gate watches ([`PointerWake`] / [`KeyboardWake`]
     /// flag masks + specific-chord list). Cleared pre-record (in
     /// `FrameCycle::record_pass`); widgets re-assert each active frame. The
@@ -147,6 +147,57 @@ impl InputState {
         self.subs.clear();
         self.scopes.resolve(self.focused, cascade);
         self.snapshot_frame_quiescent();
+    }
+
+    /// The focused widget, or `None`.
+    #[inline]
+    pub(crate) const fn focused(&self) -> Option<WidgetId> {
+        self.focused
+    }
+
+    /// The modifier keys held as of the last `ModifiersChanged`.
+    #[inline]
+    pub(crate) const fn modifiers(&self) -> Modifiers {
+        self.modifiers
+    }
+
+    /// The pointer in logical surface pixels, or `None` off the surface.
+    #[inline]
+    pub(crate) const fn pointer_pos(&self) -> Option<Vec2> {
+        self.pointer_pos
+    }
+
+    /// The widget under the pointer, as last routed.
+    #[inline]
+    pub(crate) const fn hovered(&self) -> Option<WidgetId> {
+        self.hovered
+    }
+
+    #[inline]
+    pub(crate) const fn focus_policy(&self) -> FocusPolicy {
+        self.focus_policy
+    }
+
+    #[inline]
+    pub(crate) const fn set_focus_policy(&mut self, policy: FocusPolicy) {
+        self.focus_policy = policy;
+    }
+
+    #[inline]
+    pub(crate) const fn input_policy(&self) -> InputPolicy {
+        self.input_policy
+    }
+
+    #[inline]
+    pub(crate) const fn set_input_policy(&mut self, policy: InputPolicy) {
+        self.input_policy = policy;
+    }
+
+    /// The strongest input signal since the last frame — what the frame
+    /// gate thresholds against.
+    #[inline]
+    pub(crate) const fn signal_since_last_frame(&self) -> InputSignal {
+        self.signal_since_last_frame
     }
 
     /// Move focus. **Deliberately does not re-route this pass** — see

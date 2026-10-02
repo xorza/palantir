@@ -483,7 +483,7 @@ impl UiHarness {
                     "{button:?} is already held — release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.ui.input.pointer_pos,
+                    at: self.ui.input.pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
