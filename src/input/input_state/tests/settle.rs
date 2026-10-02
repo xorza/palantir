@@ -55,10 +55,11 @@ fn warm(record: fn(&mut Ui)) -> (UiHarness, Rect) {
     (h, rect)
 }
 
-/// Record passes the next frame runs — 1 for no settle, 2 for a settle.
+/// Record passes the next frame, 16 ms on, runs — 1 for no settle, 2 for
+/// a settle.
 fn passes(h: &mut UiHarness, record: fn(&mut Ui)) -> usize {
     let mut n = 0;
-    let _ = h.at(Duration::from_millis(16)).frame(|ui| {
+    let _ = h.advance(Duration::from_millis(16)).frame(|ui| {
         n += 1;
         record(ui);
     });
