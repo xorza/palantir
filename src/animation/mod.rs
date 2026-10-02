@@ -82,13 +82,13 @@ impl AnimMap {
 
     /// Get-or-create the typed map for `T`. Allocates on first call
     /// per `T`; subsequent calls hit the hashmap and downcast.
-    pub(crate) fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {
+    fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {
         self.stores.get_or_default::<AnimMapTyped<T>>()
     }
 
     /// No typed map exists yet — the `Ui::animate` fast path for an app
     /// that has never animated, and again once every map has drained.
-    pub(crate) fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.stores.is_empty()
     }
 

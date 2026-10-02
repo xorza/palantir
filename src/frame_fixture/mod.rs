@@ -56,11 +56,9 @@ use glam::Vec2;
 /// Content multiplier the bench arms record at. The showcase page uses a
 /// far smaller one — this is sized for the bench's tall offscreen target,
 /// not for a window.
-#[cfg(any(test, feature = "internals"))]
 pub const BENCH_SCALE: usize = 32;
 
 /// Device pixel ratio every bench arm renders at.
-#[cfg(any(test, feature = "internals"))]
 pub const BENCH_DPR: f32 = 2.0;
 
 /// One 1440p display, which is what the reported numbers are meant to
@@ -70,7 +68,6 @@ pub const BENCH_DPR: f32 = 2.0;
 /// culled: the CPU arms still record, measure and arrange the whole
 /// tree, while paint and the GPU arms see only the visible part. Raise
 /// it with `--size` to measure the whole fixture painting at once.
-#[cfg(any(test, feature = "internals"))]
 pub const BENCH_SURFACE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
 
 /// Persistent state for widgets that mutate user data (TextEdit needs

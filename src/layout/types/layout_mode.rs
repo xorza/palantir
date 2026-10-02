@@ -87,9 +87,9 @@ impl From<LayoutMode> for PackedLayoutMeta {
             LayoutMode::WrapStack(axis) => (2, axis.bit()),
             LayoutMode::ZStack => (3, 0),
             LayoutMode::Canvas => (4, 0),
-            LayoutMode::Grid(id) => (5, u16::from(id.0)),
+            LayoutMode::Grid(id) => (5, id.0.to_raw()),
             LayoutMode::Scroll(axes) => (6, axes.to_bits()),
-            LayoutMode::Scrollbars(id) => (7, u16::from(id.0)),
+            LayoutMode::Scrollbars(id) => (7, id.0.to_raw()),
         };
         Self(u32::from(payload) | (u32::from(tag) << Self::TAG_SHIFT))
     }
