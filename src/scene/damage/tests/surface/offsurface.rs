@@ -202,7 +202,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     assert!(
         covers_c,
         "curr-extent push must cover the newly revealed node. region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 
     // Still frame: nothing changed — tier 1 skips at the root.
@@ -221,7 +221,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         assert!(
             region.any_intersects(probe),
             "second move must damage c's {label} position; region = {:?}",
-            region.iter_rects().collect::<Vec<_>>(),
+            region,
         );
     }
 

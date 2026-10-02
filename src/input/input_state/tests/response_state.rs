@@ -63,8 +63,7 @@ fn disabled_reflects_cascaded_ancestor_flag() {
                     .show(ui);
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
 
     let parent_state = h.ui.response_for(WidgetId::from_hash("parent"));
     let child_state = h.ui.response_for(WidgetId::from_hash("child"));
@@ -151,8 +150,7 @@ fn disabled_false_when_chain_clean() {
                     .show(ui);
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert!(!h.ui.response_for(WidgetId::from_hash("child")).disabled);
 }
 

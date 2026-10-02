@@ -358,6 +358,7 @@ fn extend_predamaged(
 pub(crate) mod test_support {
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::cascade::paint::Paint;
     use crate::scene::cascade::paint::PaintRows as _;
     use crate::scene::damage::engine::DamageEngine;
 
@@ -370,6 +371,13 @@ pub(crate) mod test_support {
         pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
             let snap = self.prev.get(&wid)?;
             Some(self.paints.slots[snap.paint_span.range()].union_screens())
+        }
+
+        /// The paint rows retained for `wid` last frame, in row order:
+        /// chrome first when the node has any, then its direct shapes.
+        pub(crate) fn prev_paint_rows(&self, wid: WidgetId) -> &[Paint] {
+            let snap = self.prev.get(&wid).expect("the widget painted last frame");
+            &self.paints.slots[snap.paint_span.range()]
         }
     }
 }

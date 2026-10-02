@@ -460,8 +460,7 @@ fn multiline_default_is_top_left() {
         });
     };
     // Two frames: first to warm up the cascade.
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
     let origin = shape_origins(&h.ui, node.unwrap()).text;
     let o = origin.expect("text shape");
     assert_eq!(o.x, PAD_L, "x = {}", o.x);
@@ -501,8 +500,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
         };
         // Two frames: cascade lags one frame, so the second frame is
         // the one whose `response.layout_rect` drives the offset math.
-        h.frame(&mut record);
-        h.frame(&mut record);
+        h.prime(2, &mut record);
         let origin = shape_origins(&h.ui, node.unwrap()).text;
         origin.expect("text shape emitted for non-empty buffer")
     }
@@ -577,8 +575,7 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     };
     // Two frames: the block is placed against the rect arrange has just
     // resolved, and `response.layout_rect` is a frame behind on the first.
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
 
     let field = h.arranged(ed_id());
     assert_eq!(

@@ -242,7 +242,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
         "ancestor-transform shift moves a direct-shape leaf's pixels; \
          damage must still cover the shape area even though the \
          clipped paint_rect is invariant. region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -291,7 +291,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
              (the new diff branch pushes one paint_rect per shifted node; \
              that must not blow past FULL_REPAINT_THRESHOLD on a single tick). \
              dx = {dx}, region = {:?}, damage = {damage:?}",
-            collapsed.region.iter_rects().collect::<Vec<_>>(),
+            collapsed.region,
         );
     }
 }
@@ -346,7 +346,7 @@ fn self_transform_shift_damages_direct_shapes() {
         covered,
         "self-transform shift on a panel with direct shapes must \
          damage both old and new shape positions. region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 

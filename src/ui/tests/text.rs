@@ -675,8 +675,7 @@ fn the_text_clock_ticks_once_per_host_frame() {
         assert_eq!(clock(), start + round, "one tick per round of both windows");
     }
 
-    a.frame(|_| {});
-    a.frame(|_| {});
+    a.prime(2, |_| {});
     b.frame(|_| {});
     assert_eq!(
         clock(),

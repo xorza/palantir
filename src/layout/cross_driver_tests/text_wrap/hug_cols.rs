@@ -5,6 +5,7 @@ use crate::TextStyle;
 use crate::Ui;
 use crate::WidgetId;
 use crate::layout::axis::Axis;
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -28,54 +29,63 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut grid_node = None;
         let mut section_node = None;
-        Panel::vstack().auto_id()
+        Panel::vstack()
+            .auto_id()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Panel::zstack().auto_id()
+                Panel::zstack()
+                    .auto_id()
                     .padding(16.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Panel::vstack().auto_id()
+                        Panel::vstack()
+                            .auto_id()
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                section_node = Some(Panel::vstack().auto_id()
-                                    .size((Sizing::FILL, Sizing::HUG))
-                                    .gap(6.0)
-                                    .show(ui, |ui| {
-                                        Text::new(
-                                            "two Hug columns: paragraph wraps to fit, \
+                                section_node = Some(
+                                    Panel::vstack()
+                                        .auto_id()
+                                        .size((Sizing::FILL, Sizing::HUG))
+                                        .gap(6.0)
+                                        .show(ui, |ui| {
+                                            Text::new(
+                                                "two Hug columns: paragraph wraps to fit, \
                                              label stays natural",
-                                        )
-                                        .id(WidgetId::from_hash("section-title"))
-                                        .font_size(12.0)
-                                        .text_wrap(TextWrap::SingleLine)
-                                        .show(ui);
-                                        grid_node = Some(
-                                            Grid::new()
-                                                .id(WidgetId::from_hash("grid"))
-                                                .cols([Track::HUG, Track::HUG])
-                                                .rows([Track::HUG])
-                                                .show(ui, |ui| {
-                                                    Text::new(
-                                                        "the quick brown fox jumps over the lazy dog",
-                                                    ).auto_id()
-                                                    .font_size(14.0)
-                                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                                    .grid_cell((0, 0))
-                                                    .show(ui);
-                                                    Text::new("right column").auto_id()
-                                                        .style(
-                                                            &TextStyle::default()
-                                                                .with_font_size(14.0),
-                                                        )
-                                                        .text_wrap(TextWrap::SingleLine)
-                                                        .grid_cell((0, 1))
-                                                        .show(ui);
-                                                })
-                                                .response.node(),
-                                        );
-                                    }).response.node());
+                                            )
+                                            .id(WidgetId::from_hash("section-title"))
+                                            .font_size(12.0)
+                                            .text_wrap(TextWrap::SingleLine)
+                                            .show(ui);
+                                            grid_node = Some(
+                                                Grid::new()
+                                                    .id(WidgetId::from_hash("grid"))
+                                                    .cols([Track::HUG, Track::HUG])
+                                                    .rows([Track::HUG])
+                                                    .show(ui, |ui| {
+                                                        Text::new(PARAGRAPH)
+                                                            .auto_id()
+                                                            .font_size(14.0)
+                                                            .text_wrap(TextWrap::WrapWithOverflow)
+                                                            .grid_cell((0, 0))
+                                                            .show(ui);
+                                                        Text::new("right column")
+                                                            .auto_id()
+                                                            .style(
+                                                                &TextStyle::default()
+                                                                    .with_font_size(14.0),
+                                                            )
+                                                            .text_wrap(TextWrap::SingleLine)
+                                                            .grid_cell((0, 1))
+                                                            .show(ui);
+                                                    })
+                                                    .response
+                                                    .node(),
+                                            );
+                                        })
+                                        .response
+                                        .node(),
+                                );
                             });
                     });
             });
@@ -157,7 +167,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 paragraph_node = Some(
-                    Text::new("the quick brown fox jumps over the lazy dog")
+                    Text::new(PARAGRAPH)
                         .auto_id()
                         .font_size(14.0)
                         .text_wrap(TextWrap::WrapWithOverflow)

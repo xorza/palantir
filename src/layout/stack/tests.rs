@@ -1,10 +1,6 @@
 use crate::layout::axis::Axis;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::{
-    align::Align,
-    align::VAlign,
-    sizing::{SizeSpec, Sizing},
-};
+use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -356,10 +352,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
     ] {
         let mut h = UiHarness::new(case.viewport);
         let root = h.frame_value(|ui| {
-            let panel = match case.axis {
-                Axis::X => Panel::hstack(),
-                Axis::Y => Panel::vstack(),
-            };
+            let panel = Panel::stack_on(case.axis);
             panel
                 .auto_id()
                 .size(case.axis.compose_size(200.0, 40.0))
@@ -370,14 +363,8 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                         .size(case.axis.compose_size(20.0, 10.0))
                         .show(ui);
 
-                    let hug_size = match case.axis {
-                        Axis::X => SizeSpec::new(Sizing::HUG, Sizing::fixed(10.0)),
-                        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), Sizing::HUG),
-                    };
-                    let hug = match case.axis {
-                        Axis::X => Panel::hstack(),
-                        Axis::Y => Panel::vstack(),
-                    };
+                    let hug_size = case.axis.compose_sizing(Sizing::HUG, Sizing::fixed(10.0));
+                    let hug = Panel::stack_on(case.axis);
                     hug.id(WidgetId::from_hash((case.label, "hug")))
                         .size(hug_size)
                         .show(ui, |ui| {
@@ -387,10 +374,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                                 .show(ui);
                         });
 
-                    let fill_size = match case.axis {
-                        Axis::X => SizeSpec::new(Sizing::FILL, Sizing::fixed(10.0)),
-                        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), Sizing::FILL),
-                    };
+                    let fill_size = case.axis.compose_sizing(Sizing::FILL, Sizing::fixed(10.0));
                     Block::new()
                         .id(WidgetId::from_hash((case.label, "collapsed-fill")))
                         .size(fill_size)

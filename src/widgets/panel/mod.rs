@@ -117,4 +117,29 @@ impl Configure for Panel {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use crate::layout::axis::Axis;
+    use crate::widgets::panel::Panel;
+
+    impl Panel {
+        /// [`Panel::hstack`] or [`Panel::vstack`], stacking along `axis`.
+        pub(crate) fn stack_on(axis: Axis) -> Self {
+            match axis {
+                Axis::X => Self::hstack(),
+                Axis::Y => Self::vstack(),
+            }
+        }
+
+        /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing
+        /// along `axis`.
+        pub(crate) fn wrap_stack_on(axis: Axis) -> Self {
+            match axis {
+                Axis::X => Self::wrap_hstack(),
+                Axis::Y => Self::wrap_vstack(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

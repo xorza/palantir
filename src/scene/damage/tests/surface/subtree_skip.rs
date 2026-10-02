@@ -7,7 +7,6 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::ui::harness::UiHarness;
@@ -140,21 +139,16 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    let out = h.frame(|ui| {
+    let out = frame(&mut h, |ui| {
         Block::new()
             .id(WidgetId::from_hash("placeholder"))
             .size(10.0)
             .show(ui);
     });
-    let Some(RenderPlan {
-        damage: Damage::Partial(damage),
-        ..
-    }) = out.plan
-    else {
+    let Some(Damage::Partial(damage)) = out else {
         panic!(
-            "popup dismissal escalated to {:?}; eater contributed full-surface \
+            "popup dismissal escalated to {out:?}; eater contributed full-surface \
              rect despite painting nothing",
-            out.plan
         );
     };
     assert!(
@@ -185,21 +179,15 @@ fn click_on_empty_bg_does_not_force_full() {
     // Frame 0 (cold): expect Full. Submit.
     h.frame(build);
     // Frame 1 (warm): nothing changed → Skip.
-    let warm = h.frame(build).plan;
+    let warm = frame(&mut h, build);
     assert!(warm.is_none(), "warm frame must Skip");
 
     // Click on empty background (far from the 50×50 frame at origin).
     h.press_at(Vec2::new(180.0, 180.0));
     h.release();
-    let click_plan = h.frame(build).plan;
+    let click_plan = frame(&mut h, build);
     assert!(
-        !matches!(
-            click_plan,
-            Some(RenderPlan {
-                damage: Damage::Full,
-                ..
-            })
-        ),
+        !matches!(click_plan, Some(Damage::Full)),
         "click on empty bg escalated to Full repaint: {click_plan:?}",
     );
 }

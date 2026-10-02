@@ -16,8 +16,7 @@ pub(super) fn theme() -> ScrollbarTheme {
 /// settles `ScrollState` before the bar-emit check.
 pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> UiHarness {
     let mut h = UiHarness::new(surface);
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     h
 }
 

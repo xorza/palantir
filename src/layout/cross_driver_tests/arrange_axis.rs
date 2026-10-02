@@ -54,10 +54,7 @@ struct ArrangeCase {
 }
 
 fn axis_sizes(axis: Axis, sizing: Sizing) -> SizeSpec {
-    match axis {
-        Axis::X => SizeSpec::new(sizing, Sizing::fixed(10.0)),
-        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), sizing),
-    }
+    axis.compose_sizing(sizing, Sizing::fixed(10.0))
 }
 
 fn add_child(ui: &mut Ui, id: WidgetId, case: ArrangeCase) {
@@ -92,10 +89,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
         Driver::Stack => {
-            let panel = match case.axis {
-                Axis::X => Panel::vstack(),
-                Axis::Y => Panel::hstack(),
-            };
+            let panel = Panel::stack_on(case.axis.other());
             panel
                 .auto_id()
                 .size(parent_size)
@@ -103,10 +97,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
         Driver::WrapStack => {
-            let panel = match case.axis {
-                Axis::X => Panel::wrap_vstack(),
-                Axis::Y => Panel::wrap_hstack(),
-            };
+            let panel = Panel::wrap_stack_on(case.axis.other());
             panel
                 .auto_id()
                 .size(parent_size)

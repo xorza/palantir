@@ -3,7 +3,6 @@
 
 use crate::Ui;
 use crate::layout::axis::Axis;
-use crate::layout::types::sizing::SizeSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::background::Background;
@@ -72,10 +71,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
             Axis::Y => Size::new(10.0, 20.0),
         };
         h.under_outer(|ui| {
-            let panel = match case.axis {
-                Axis::X => Panel::wrap_hstack(),
-                Axis::Y => Panel::wrap_vstack(),
-            };
+            let panel = Panel::wrap_stack_on(case.axis);
             panel
                 .id(WidgetId::from_hash("wrap"))
                 .size((Sizing::HUG, Sizing::HUG))
@@ -190,13 +186,10 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
         for case in &cases {
             let mut h = UiHarness::new(UVec2::new(400, 400));
             h.under_outer(|ui| {
-                let panel = match axis {
-                    Axis::X => Panel::wrap_hstack(),
-                    Axis::Y => Panel::wrap_vstack(),
-                };
+                let panel = Panel::wrap_stack_on(axis);
                 panel
                     .id(WidgetId::from_hash("all-fill-wrap"))
-                    .size(axis_sizes(axis, Sizing::fixed(125.0), Sizing::HUG))
+                    .size(axis.compose_sizing(Sizing::fixed(125.0), Sizing::HUG))
                     .gap(5.0)
                     .line_gap(7.0)
                     .show(ui, |ui| {
@@ -265,13 +258,10 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
     for axis in [Axis::X, Axis::Y] {
         let mut h = UiHarness::new(UVec2::new(400, 400));
         h.under_outer(|ui| {
-            let panel = match axis {
-                Axis::X => Panel::wrap_hstack(),
-                Axis::Y => Panel::wrap_vstack(),
-            };
+            let panel = Panel::wrap_stack_on(axis);
             panel
                 .id(WidgetId::from_hash("mixed-fill-wrap"))
-                .size(axis_sizes(axis, Sizing::fixed(105.0), Sizing::HUG))
+                .size(axis.compose_sizing(Sizing::fixed(105.0), Sizing::HUG))
                 .gap(5.0)
                 .line_gap(7.0)
                 .show(ui, |ui| {
@@ -299,13 +289,10 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     for axis in [Axis::X, Axis::Y] {
         let mut h = UiHarness::new(UVec2::new(400, 400));
         h.under_outer(|ui| {
-            let panel = match axis {
-                Axis::X => Panel::wrap_hstack(),
-                Axis::Y => Panel::wrap_vstack(),
-            };
+            let panel = Panel::wrap_stack_on(axis);
             panel
                 .id(WidgetId::from_hash("bounded-fill-wrap"))
-                .size(axis_sizes(axis, Sizing::fixed(105.0), Sizing::HUG))
+                .size(axis.compose_sizing(Sizing::fixed(105.0), Sizing::HUG))
                 .gap(5.0)
                 .line_gap(5.0)
                 .show(ui, |ui| {
@@ -331,17 +318,10 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     }
 }
 
-fn axis_sizes(axis: Axis, main: Sizing, cross: Sizing) -> SizeSpec {
-    match axis {
-        Axis::X => SizeSpec::new(main, cross),
-        Axis::Y => SizeSpec::new(cross, main),
-    }
-}
-
 fn fill_cross_cell(ui: &mut Ui, id: &'static str, axis: Axis, main: f32, min_cross: f32) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(id))
-        .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
+        .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
         .min_size(axis.compose_size(0.0, min_cross))
         .show(ui)
         .node()
@@ -357,16 +337,12 @@ fn max_capped_fill_cross_cell(
 ) -> NodeId {
     Panel::zstack()
         .id(WidgetId::from_hash(id))
-        .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
+        .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
         .max_size(axis.compose_size(f32::INFINITY, max_cross))
         .show(ui, |ui| {
             Block::new()
                 .id(WidgetId::from_hash("max-capped-content"))
-                .size(axis_sizes(
-                    axis,
-                    Sizing::fixed(0.0),
-                    Sizing::fixed(content_cross),
-                ))
+                .size(axis.compose_sizing(Sizing::fixed(0.0), Sizing::fixed(content_cross)))
                 .show(ui);
         })
         .response

@@ -275,8 +275,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     };
     // Two frames — first warms up `response.rect`, second is the
     // one we inspect.
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
     // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
     // on the node; a multi-line field emits a single text shape, and
     // records it on the block child that carries its alignment.
@@ -329,8 +328,7 @@ fn stable_multiline_holds_constant_per_frame_cost() {
     };
     // Warmup: two frames so `response.rect` lands and every cache
     // is primed.
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
     let a = h.ui.shaper().measure_calls();
     h.frame(&mut record);
     let b = h.ui.shaper().measure_calls();
@@ -381,8 +379,7 @@ fn placeholder_per_line_aligns_under_wrap() {
             );
         });
     };
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
     let node = node.unwrap();
     // (a) `Shape::Text.align` reflects the user's text_align.
     let store = h.ui.record_store();

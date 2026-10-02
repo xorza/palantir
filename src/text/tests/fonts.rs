@@ -143,8 +143,7 @@ fn a_load_reaches_the_cascade_and_the_screen() {
             })
             .show(ui);
     };
-    h.frame(record);
-    h.frame(record);
+    h.prime(2, record);
     let fallback = h.rect(id).expect("the label arranged");
     assert_eq!(
         h.layout_rect(id),

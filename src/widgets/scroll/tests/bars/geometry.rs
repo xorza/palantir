@@ -252,8 +252,7 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
     };
     let surface = UVec2::new(400, 300);
     let mut h = UiHarness::new(surface);
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
 
     // What the compositor actually rasterizes, per `Rect::scaled_by`.
     let snapped = |r: Rect, scale: f32| (r.max().y * scale).round() - (r.min.y * scale).round();
@@ -302,8 +301,7 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
     };
     let surface = UVec2::new(400, 600);
     let mut h = UiHarness::new(surface);
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     let before = thumb_rects(&h.ui, "scroll");
     assert_eq!(before.len(), 1, "one vertical thumb");
 
@@ -352,8 +350,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     let scroll_id = WidgetId::from_hash("scroll");
     let z1_thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
@@ -365,8 +362,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .h;
 
     h.ui.state_or_default::<ScrollState>(scroll_id).zoom = 2.0;
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     let z2_thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
     let v2 = z2_thumbs

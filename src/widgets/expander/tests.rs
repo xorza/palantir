@@ -232,8 +232,7 @@ fn a_bound_flag_is_read_and_written() {
 
     // The caller's own write is read on the next frame.
     open = true;
-    h.frame(|ui| record(ui, &mut open));
-    h.frame(|ui| record(ui, &mut open));
+    h.prime(2, |ui| record(ui, &mut open));
     assert!(h.rect(body()).is_some(), "the caller reopened it");
 }
 
