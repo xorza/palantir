@@ -27,6 +27,31 @@ impl LaneCodec for TestLanes {
     fn expand_two([a, b]: [f32; 2]) -> [f32; 4] {
         [a, a, b, b]
     }
+
+    const LANE_RULE: &'static str = "a test lane must not be negative";
+
+    fn lane_is_valid(lane: f32) -> bool {
+        lane >= 0.0
+    }
+}
+
+/// Every form runs its lanes through the type's rule: one bad lane in a
+/// scalar, a pair, a quad or a table is an error naming the rule.
+#[test]
+fn every_form_rejects_a_lane_the_type_cannot_hold() {
+    for values in [&[-1.0][..], &[1.0, -1.0], &[1.0, 2.0, 3.0, -4.0]] {
+        let error = deserialize_seq(values).unwrap_err().to_string();
+        assert!(
+            error.contains("a test lane must not be negative"),
+            "{values:?}: {error}"
+        );
+    }
+    assert!(
+        deserialize_seq(&[f32::NAN]).is_err(),
+        "NaN fails `lane >= 0`"
+    );
+    let map = MapDeserializer::<_, Error>::new([("c", -2.0_f32)].into_iter());
+    assert!(deserialize_lanes::<TestLanes, _>(map).is_err());
 }
 
 fn deserialize_seq(values: &[f32]) -> Result<TestLanes, Error> {

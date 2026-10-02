@@ -200,10 +200,19 @@ impl<'de> ::serde::Deserialize<'de> for Size {
         }
 
         let raw = RawSize::deserialize(deserializer)?;
-        Ok(Size::new(
+        let size = Size::new(
             raw.w.unwrap_or(f32::INFINITY),
             raw.h.unwrap_or(f32::INFINITY),
-        ))
+        );
+        // A file is untrusted: NaN or a negative axis would reach a bound
+        // assert. Infinity stays, as the unbounded axis it spells.
+        if size.w >= 0.0 && size.h >= 0.0 {
+            Ok(size)
+        } else {
+            Err(::serde::de::Error::custom(format_args!(
+                "a size axis must not be negative or NaN, got {size:?}"
+            )))
+        }
     }
 }
 

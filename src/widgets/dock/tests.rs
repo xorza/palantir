@@ -1042,3 +1042,29 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
         "the chosen tab is the one the pane shows",
     );
 }
+
+/// An app that raised the cap can load the layouts it saved. Five nested
+/// splits exceed the default cap of four; the saved file still loads, and
+/// the loaded state's own cap (the default, until the app sets its own)
+/// refuses a further split there.
+#[test]
+fn a_layout_deeper_than_the_default_cap_loads() {
+    let mut d = DockState::new("deep.dock", Tab::Main).max_depth(6);
+    let mut group = d.primary().id;
+    for n in 1..=5 {
+        d.find_or_insert(viewer(n), group);
+        split_off(&mut d, viewer(n), group, SplitSide::Right);
+        group = d
+            .find_tab(viewer(n))
+            .expect("the split pane holds the tab")
+            .group;
+    }
+    let text = ron::ser::to_string(&d).expect("serialize");
+    let loaded: DockState<Tab> = ron::from_str(&text).expect("a depth-5 layout loads");
+    assert_eq!(loaded.groups().count(), 6);
+    assert!(
+        !loaded.can_split(group),
+        "the default cap applies to new splits on the loaded state",
+    );
+    assert!(loaded.clone().max_depth(6).can_split(group));
+}

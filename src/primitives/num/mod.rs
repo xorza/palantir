@@ -65,16 +65,12 @@ pub trait F32Ext {
 
     /// A length read out of a theme, floored at `min`.
     ///
-    /// One definition because every widget that sizes a node or a corner
-    /// radius from its bundle owes the same guard: the scalar arrived
-    /// from a hand-edited theme file or an app's own bundle, so a
-    /// negative or NaN one is bad data rather than a logic error and
-    /// cannot assert. Both cases land on `min`, since `f32::max` answers
-    /// the other operand for NaN.
-    ///
-    /// `min` is the widget's, not the type's. A rule the theme sets to
-    /// zero is a rule the app wanted invisible, while a grab bar or a
-    /// spinner that thin cannot be grabbed or seen at all.
+    /// The floor is a widget design rule, not validation: a theme file's
+    /// scalars are checked where they are deserialized
+    /// (`primitives::serde::checked`), so what arrives here is a finite,
+    /// non-negative length. `min` is the widget's, not the type's. A rule
+    /// the theme sets to zero is a rule the app wanted invisible, while a
+    /// grab bar or a spinner that thin cannot be grabbed or seen at all.
     fn themed_length(self, min: Self) -> Self;
 }
 

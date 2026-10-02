@@ -128,6 +128,12 @@ impl LaneCodec for Spacing {
     fn expand_two([horizontal, vertical]: [f32; 2]) -> [f32; 4] {
         [horizontal, vertical, horizontal, vertical]
     }
+
+    const LANE_RULE: &'static str = "a spacing lane must be finite and within ±65504";
+
+    fn lane_is_valid(lane: f32) -> bool {
+        lane.is_finite() && lane.abs() <= 65_504.0
+    }
 }
 
 #[cfg(test)]

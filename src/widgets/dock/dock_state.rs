@@ -190,8 +190,10 @@ impl<T: DockTab> DockState<T> {
     ///
     /// On the state rather than on the view because the *model* enforces
     /// it: [`Self::apply`] refuses a deeper split, so a second copy on the
-    /// widget could only fall out of step with this one. A layout read
-    /// from a file is checked against the default cap.
+    /// widget could only fall out of step with this one. It governs new
+    /// splits only: a layout read from a file is checked against what a
+    /// [`DockPath`] addresses, so an app that raised the cap can load the
+    /// layouts it saved, and applies its cap after loading.
     ///
     /// # Panics
     ///
@@ -609,7 +611,10 @@ impl<T: DockTab> DockState<T> {
             Ok(())
         }
         let mut expect = 0;
-        walk(&self.nodes, Self::ROOT, 0, self.max_depth, &mut expect)?;
+        // Structure, not policy: a loaded layout is checked against the
+        // depth a `DockPath` can address, and `max_depth` — which the app
+        // sets after loading — governs only the splits made from then on.
+        walk(&self.nodes, Self::ROOT, 0, DockPath::CAPACITY, &mut expect)?;
         if expect as usize != self.nodes.len() {
             return Err(DockError::UnreachableSlots);
         }
