@@ -17,6 +17,7 @@ use crate::scene::cascade::LayerCascade;
 use crate::scene::cascade::paint::{Paint, PaintRows};
 use crate::scene::damage;
 use crate::scene::damage::counters::DamageCounters;
+use crate::scene::damage::inverted_overlaps::InvertedOverlaps;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
 use crate::scene::damage::row_matcher::RowMatcher;
 use crate::scene::layer::Layer;
@@ -75,6 +76,7 @@ pub(super) struct LayerWalk<'a> {
     /// Per-row screen extents for the order-inversion check. Only filled
     /// on the rare frame a node's row order actually inverted.
     pub(super) order_extents: &'a mut Vec<Rect>,
+    pub(super) inversions: &'a mut InvertedOverlaps,
     pub(super) counters: &'a mut DamageCounters,
     pub(super) surface: Rect,
     /// On a force-full frame the caller discards the region, so the arms
@@ -353,7 +355,7 @@ impl LayerWalk<'_> {
     /// behind [`RowMatcher::has_order_inversion`](crate::scene::damage::row_matcher::RowMatcher::has_order_inversion).
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
-        damage::push_inverted_overlaps(
+        self.inversions.push(
             self.raw_rects,
             self.matcher.matched_positions(),
             self.order_extents,

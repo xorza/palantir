@@ -64,10 +64,11 @@ use crate::scene::cascade::paint::Paint;
 use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::frame_baseline::FrameBaseline;
+use crate::scene::damage::inverted_overlaps::InvertedOverlaps;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
 use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::root_order::RootOrder;
-use crate::scene::damage::row_matcher::{ROW_UNMATCHED, RowMatcher};
+use crate::scene::damage::row_matcher::RowMatcher;
 use crate::scene::damage::walk::LayerWalk;
 use crate::scene::forest::Forest;
 use std::time::Duration;
@@ -76,6 +77,7 @@ use std::time::Duration;
 pub(crate) mod bench;
 pub(crate) mod counters;
 pub(crate) mod frame_baseline;
+pub(crate) mod inverted_overlaps;
 pub(crate) mod node_snapshot;
 pub(crate) mod region;
 pub(crate) mod root_order;
@@ -139,6 +141,9 @@ pub(crate) struct DamageEngine {
     /// capacity persists so that frame allocates nothing.
     order_extents: Vec<Rect>,
 
+    /// Retained scratch for the inversion damage of a node's rows.
+    inversions: InvertedOverlaps,
+
     /// Each layer's root order, which no snapshot holds — see
     /// [`RootOrder`].
     root_order: RootOrder,
@@ -158,6 +163,7 @@ impl Default for DamageEngine {
             matcher: RowMatcher::default(),
             raw_rects: Vec::new(),
             order_extents: Vec::new(),
+            inversions: InvertedOverlaps::default(),
             root_order: RootOrder::default(),
         }
     }
@@ -354,6 +360,7 @@ impl DamageEngine {
                 matcher: &mut self.matcher,
                 raw_rects: &mut self.raw_rects,
                 order_extents: &mut self.order_extents,
+                inversions: &mut self.inversions,
                 counters: &mut self.counters,
                 surface,
                 force_full,
@@ -479,33 +486,6 @@ impl DamageEngine {
 fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
     if !screen.is_paint_empty() {
         out.push(screen);
-    }
-}
-
-/// Damage the overlap of every two items whose relative paint order
-/// flipped: `matched[j]` is item `j`'s position last frame, or
-/// [`ROW_UNMATCHED`] for an item last frame lacked, and `extents[j]` is
-/// what it paints now.
-///
-/// `O(n²)` pair enumeration, reached only on a frame an order changed.
-/// Items that merely shifted because a sibling was added or removed keep
-/// their relative order and contribute nothing. [`push_screen`] drops
-/// degenerate results — a zero-size extent pinned strictly inside a
-/// sibling does pass `intersects`, and a sub-EPS overlap sliver paints
-/// nothing.
-fn push_inverted_overlaps(out: &mut Vec<Rect>, matched: &[u32], extents: &[Rect]) {
-    debug_assert_eq!(matched.len(), extents.len());
-    for j2 in 1..matched.len() {
-        let p2 = matched[j2];
-        if p2 == ROW_UNMATCHED {
-            continue;
-        }
-        for (j1, &p1) in matched.iter().enumerate().take(j2) {
-            if p1 == ROW_UNMATCHED || p1 < p2 {
-                continue;
-            }
-            push_screen(out, extents[j1].clamp_to(extents[j2]));
-        }
     }
 }
 
