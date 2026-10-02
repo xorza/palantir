@@ -751,14 +751,6 @@ true as new inputs are added.
 Keep each CPU oracle test under the 1 s limit by sizing the script. The pixel oracle lives in the
 visual suite.
 
-## D17. Docs, style and dependencies
-
-Mechanical. One step per REVIEW doc or style group; ISSUES.md items go with the files they name.
-Drop `memchr` (one `memchr2` call; `str::contains` covers it) and `rayon` from `golden` (a
-sequential diff scan of 2560×1440 takes milliseconds). Removing a dependency needs no go-ahead.
-
----
-
 # Decisions
 
 - **D-1. Hug children in an overflowing stack: no shrink.** Applied in D14 as a contract and doc
@@ -797,7 +789,6 @@ output, cost, cleanup.
 
 ## Phase 3. Scene identity and bounds (D3, D4)
 
-- [ ] Roots as children of a virtual layer parent in the damage walk.
 - [ ] `ImageFit::resolve` shared; intrinsic size on the record if the cascade lacks it.
 - [ ] No-op rounded-clip row; NaN asserts in `Rect`; mesh `max_index` screen; polyline per-colour
       screen; triangle radius extent; collision overlay in screen space.

@@ -8,6 +8,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
+use crate::scene::layer::Layer;
 use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -138,75 +139,94 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
 /// Regression: raising an **overlapping** painting node (moving it to
 /// the front of the paint order) flips which node shows in the overlap
 /// even though the raised node's own rect / content / ancestor state
-/// are untouched. The reordered child markers flip the canvas's
-/// `node_hash`, routing it to the changed-paints arm, whose row
-/// matcher damages the overlap of each *inverted* pair's painted
-/// extents. A node the raised one doesn't overlap (`c`) stays clean —
-/// the reorder damages overlaps only, never untouched non-overlapping
-/// nodes.
+/// are untouched. A node the raised one doesn't overlap (`c`) stays
+/// clean, and so does the part of `a` outside the overlap — the reorder
+/// damages overlaps only.
+///
+/// Two arrangements, one answer. As canvas children, the reordered child
+/// markers flip the canvas's `node_hash`, and its row matcher damages
+/// each inverted pair's overlap. As roots of one layer, there is no
+/// parent node: `RootOrder` keeps the layer's root list and does the same
+/// for it.
 #[test]
 fn raising_an_overlapping_node_redamages_only_the_overlap() {
     // `a` and `b` overlap; `c` sits far from both.
     const A: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);
     const B: Rect = Rect::new(30.0, 30.0, 40.0, 40.0);
     const OVERLAP: Rect = Rect::new(32.0, 32.0, 4.0, 4.0);
+    const A_ONLY: Rect = Rect::new(12.0, 12.0, 4.0, 4.0);
     const C: Rect = Rect::new(150.0, 150.0, 20.0, 20.0);
 
-    fn node(ui: &mut Ui, key: &str, r: Rect) {
+    fn block(key: &str, size: f32) -> Block {
         Block::new()
             .id(WidgetId::from_hash(key))
-            .position((r.min.x, r.min.y))
-            .size(r.size.w)
+            .size(size)
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
             })
-            .show(ui);
     }
-    let canvas = |ui: &mut Ui, order: [(&str, Rect); 3]| {
+    type Order<'a> = [(&'a str, Rect); 3];
+    let canvas = |ui: &mut Ui, order: Order| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (key, r) in order {
-                    node(ui, key, r);
+                    block(key, r.size.w).position((r.min.x, r.min.y)).show(ui);
                 }
             });
+    };
+    let roots = |ui: &mut Ui, order: Order| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |_| {});
+        for (key, r) in order {
+            ui.layer(Layer::Popup).fixed_at(r.min).show(|ui| {
+                block(key, r.size.w).show(ui);
+            });
+        }
     };
 
     let a = ("a", A);
     let b = ("b", B);
     let c = ("c", C);
-    let mut h = UiHarness::new(DISPLAY.physical);
-    frame(&mut h, |ui| canvas(ui, [a, b, c]));
-    // Raise `a` to the front (drawn last) — same positions + content.
-    frame(&mut h, |ui| canvas(ui, [b, c, a]));
+    type Record<'a> = &'a dyn Fn(&mut Ui, Order);
+    let arrangements: [(&str, Record); 2] = [("canvas children", &canvas), ("layer roots", &roots)];
+    for (label, record) in arrangements {
+        let mut h = UiHarness::new(DISPLAY.physical);
+        frame(&mut h, |ui| record(ui, [a, b, c]));
+        // Raise `a` to the front (drawn last) — same positions + content.
+        frame(&mut h, |ui| record(ui, [b, c, a]));
 
-    let region = h.damage_region();
-    assert!(
-        region.any_intersects(OVERLAP),
-        "raising `a` over `b` must repaint their overlap; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
-    );
-    assert!(
-        !region.any_intersects(C),
-        "the non-overlapping node `c` must stay clean; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
-    );
+        let region = h.damage_region();
+        let rects = region.iter_rects().collect::<Vec<_>>();
+        assert!(
+            region.any_intersects(OVERLAP),
+            "{label}: raising `a` over `b` must repaint their overlap; region = {rects:?}",
+        );
+        assert!(
+            !region.any_intersects(A_ONLY),
+            "{label}: `a` outside the overlap must stay clean; region = {rects:?}",
+        );
+        assert!(
+            !region.any_intersects(C),
+            "{label}: the non-overlapping node `c` must stay clean; region = {rects:?}",
+        );
 
-    // The reorder costs exactly the frame it happens on. Once the
-    // snapshot holds the new order the rows match positionally, so the
-    // changed-paints arm takes its fast path, reports no inversion, and
-    // the O(rows²) overlap scan is never entered again.
-    // Worth pinning: the scan's cost is bearable precisely because it is
-    // one frame per raise rather than one per frame the order stays
-    // flipped.
-    frame(&mut h, |ui| canvas(ui, [b, c, a]));
-    assert!(
-        h.engines.damage.counters.dirty().is_empty(),
-        "a settled reorder must re-damage nothing; dirty = {:?}",
-        h.engines.damage.counters.dirty(),
-    );
+        // The reorder costs exactly the frame it happens on: once the
+        // retained order is the new one, the O(n²) overlap scan is never
+        // entered again. The scan's cost is bearable precisely because
+        // it is one frame per raise rather than one per frame the order
+        // stays flipped.
+        frame(&mut h, |ui| record(ui, [b, c, a]));
+        assert!(
+            h.damage_region().is_empty(),
+            "{label}: a settled reorder must re-damage nothing; region = {:?}",
+            h.damage_region().iter_rects().collect::<Vec<_>>(),
+        );
+    }
 }
 
 /// Regression: two **text**-bearing nodes scrolled fully off the left

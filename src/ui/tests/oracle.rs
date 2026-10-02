@@ -248,10 +248,8 @@ fn image_fit_overflows_its_node() {
     ]);
 }
 
-/// Content-equal roots swapping order change no row's `(hash, screen)`,
-/// so this oracle cannot see the stacking flip — the visual suite's
-/// partial-versus-full comparison can. Run here for the layout and
-/// cascade halves, which must still agree.
+/// Content-equal roots swapping order change no row's `(hash, screen)`:
+/// only the paint order of their overlap flips.
 #[test]
 fn roots_swap_order() {
     run(&[

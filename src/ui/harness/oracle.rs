@@ -49,12 +49,12 @@ impl Oracle {
     }
 
     /// Every paint row that is in one frame and not the other must sit
-    /// inside the damage the frame painted.
+    /// inside the damage the frame painted, and so must the overlap of
+    /// two rows in both frames whose paint order flipped.
     ///
-    /// Rows are compared per owner as a multiset of `(hash, screen)`, so
-    /// a row that only moved within its node's list is not a change: the
-    /// order of overlapping rows is a pixel question, which the visual
-    /// suite's partial-versus-full comparison answers.
+    /// Rows are compared per owner as a multiset of `(hash, screen)`. A
+    /// row's paint order matters only where it overlaps another row, so
+    /// the order check asks about overlaps, not positions.
     fn check_damage(&mut self, h: &UiHarness, report: &FrameReport) {
         self.curr.clear();
         h.ui.cascade.owned_paints(&h.ui.forest, &mut self.curr);
@@ -72,7 +72,8 @@ impl Oracle {
             };
             sort_rows(&mut self.prev);
             sort_rows(&mut self.curr);
-            for (row, side) in changed_rows(&self.prev, &self.curr) {
+            let RowDiff { changed, mut kept } = diff_rows(&self.prev, &self.curr);
+            for (row, side) in changed {
                 let Some(visible) = row.screen.intersect(surface) else {
                     continue;
                 };
@@ -84,6 +85,27 @@ impl Oracle {
                     row.screen,
                     row.hash,
                 );
+            }
+            kept.sort_unstable_by_key(|pair| pair.curr_rank);
+            for (later, b) in kept.iter().enumerate() {
+                for a in &kept[..later] {
+                    if a.prev_rank < b.prev_rank {
+                        continue;
+                    }
+                    let Some(overlap) = a.screen.intersect(b.screen) else {
+                        continue;
+                    };
+                    let Some(visible) = overlap.intersect(surface) else {
+                        continue;
+                    };
+                    assert!(
+                        covered(visible, &damage),
+                        "rows at {:?} and {:?} swapped paint order but their overlap \
+                         {visible:?} lies outside this frame's damage {damage:?}",
+                        a.screen,
+                        b.screen,
+                    );
+                }
             }
         }
         std::mem::swap(&mut self.prev, &mut self.curr);
@@ -164,42 +186,62 @@ fn row_key(row: &OwnedPaint) -> (u64, u64, [u32; 4]) {
     )
 }
 
-/// The rows of two sorted multisets that the other lacks, each tagged
-/// with the frame it came from.
-fn changed_rows<'a>(
-    prev: &'a [OwnedPaint],
-    curr: &'a [OwnedPaint],
-) -> impl Iterator<Item = (&'a OwnedPaint, &'static str)> {
-    let mut out = Vec::new();
+/// A row in both frames, with its place in each frame's paint order.
+#[derive(Debug)]
+struct KeptRow {
+    screen: Rect,
+    prev_rank: u32,
+    curr_rank: u32,
+}
+
+/// What two frames' rows hold in common and what they do not.
+#[derive(Debug)]
+struct RowDiff<'a> {
+    /// Rows one frame lacks, each tagged with the frame it came from.
+    changed: Vec<(&'a OwnedPaint, &'static str)>,
+    kept: Vec<KeptRow>,
+}
+
+/// Merge two sorted multisets of rows.
+fn diff_rows<'a>(prev: &'a [OwnedPaint], curr: &'a [OwnedPaint]) -> RowDiff<'a> {
+    let mut diff = RowDiff {
+        changed: Vec::new(),
+        kept: Vec::new(),
+    };
     let (mut i, mut j) = (0, 0);
     while i < prev.len() || j < curr.len() {
         match (prev.get(i), curr.get(j)) {
             (Some(a), Some(b)) => match row_key(a).cmp(&row_key(b)) {
                 std::cmp::Ordering::Equal => {
+                    diff.kept.push(KeptRow {
+                        screen: b.screen,
+                        prev_rank: a.rank,
+                        curr_rank: b.rank,
+                    });
                     i += 1;
                     j += 1;
                 }
                 std::cmp::Ordering::Less => {
-                    out.push((a, "previous"));
+                    diff.changed.push((a, "previous"));
                     i += 1;
                 }
                 std::cmp::Ordering::Greater => {
-                    out.push((b, "current"));
+                    diff.changed.push((b, "current"));
                     j += 1;
                 }
             },
             (Some(a), None) => {
-                out.push((a, "previous"));
+                diff.changed.push((a, "previous"));
                 i += 1;
             }
             (None, Some(b)) => {
-                out.push((b, "current"));
+                diff.changed.push((b, "current"));
                 j += 1;
             }
             (None, None) => unreachable!("the loop condition admits one side"),
         }
     }
-    out.into_iter()
+    diff
 }
 
 /// Whether `rect` lies inside the union of `cover`. Exact: each covering

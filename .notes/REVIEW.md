@@ -32,15 +32,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/scene/cascade/paint_rect.rs:342-349` **bug**: the `Image`/`Icon` arm bounds the shape by `local_rect.unwrap_or(owner_local)`. `ImageFit::None` (and `IconFit::None`, which maps to it in `shape/icon.rs:39-45`) paints at intrinsic size, centred and uncropped (`encoder/geometry.rs:109-117`, "an image larger than the rect overflows it"). Example: a 100×100 node shows a 300×300 texture with `fit(ImageFit::None)` and no clipping ancestor. Its `Paint.screen` and `subtree_paint_rects` cover only the 100×100 base. Moving or removing it damages only the base, so a 100 px ring of stale pixels stays behind. A neighbour's damage rect that crosses the overflow but not the base makes the encoder cull the image, so the overflow is cleared and never repainted.
 - [ ] `src/scene/cascade/paint_rect.rs:219-234` with `src/scene/tree/mod.rs:490-496`: a no-op chrome that keeps a row only for `ClipMode::Rounded` pushes a paint row whose screen is the full `visible_rect`. A transparent rounded-clip container damages its whole rect on add, remove, or any `cascade_input` change, though it paints nothing. A chromeless `Rect`-clip container emits no row. Over-damage only.
 
-## Paint-row inputs that no hash or gate covers (retained cascade and damage go stale)
-- [ ] `src/scene/cascade/engine.rs:155-199` **bug (plausible)**: `can_update` gates on `static_hash`, `paint_counts` and the layer `rect_hash`. `compute_paint_rect`'s text arm (`paint_rect.rs:256-277`) also reads `layout.text_spans`' shaped `measured`. Only `cascade_fingerprint` folds `font_epoch`.
-  - Example: after `Ui::load_font`, a fixed-width button's label re-measures wider while every rect stays put. The incremental walk skips the button and keeps the old text row and `subtree_paint_rects`.
-  - The epoch frame repaints in full, but later partial frames cull or damage against the stale, narrower extent: glyphs outside it are cleared and not redrawn.
-  - Root cause: two cascade-skip gates with different input lists.
-
-## Damage ignores paint order across roots
-- [ ] `src/scene/damage/walk.rs:131-136,167-171` **bug**: every root's `parent_key` is the layer constant, and root order reaches no node hash, since child markers exist only under a parent. Example: two overlapping popups recorded A then B in one frame and B then A in the next (raise-to-front), with identical rects. Both classify as `SubtreeUnchanged`, nothing is damaged, and the overlap keeps the old stacking.
-
 ## Drop shadows ignore spread when sizing corner radii
 - [ ] `src/gpu/quad.wgsl:324-334` **bug**: the drop-shadow path grows or shrinks the box by `spread`, but it still uses the source `in.radius`. The inset path adjusts its radius (line 359, `max(radius - spread, 0)`). The CSS rule is radius + spread, floored at 0.
   - Negative spread: a 20×20 circle (r=10) with spread −6 gives `shadow_half=4` with r=10 > half-extent. Then `q=|p|+6`, and the coverage boundary sits at x≈2 on the axes and ≈1.5 on the diagonal. The result is a tiny squircle instead of a circle of radius 4.
