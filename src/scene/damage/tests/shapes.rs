@@ -434,8 +434,6 @@ fn node_snapshot_decomposition_matches_cascade() {
                 ));
             });
     });
-
-    let snap = h.engines.damage.prev[&WidgetId::from_hash("multi")];
     let layer = Layer::Main;
     let node_idx = h.ui.cascade().by_id[&WidgetId::from_hash("multi")]
         .node
@@ -451,7 +449,10 @@ fn node_snapshot_decomposition_matches_cascade() {
     );
 
     // Snapshot mirrors the cascade arena slice.
-    let snap_paints = &h.engines.damage.paints.slots[snap.paint_span.range()];
+    let snap_paints = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("multi"));
     assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
     let cascade_paints = &layer_paints[node_span.range()];
     for (ord, p) in snap_paints.iter().enumerate() {
@@ -497,8 +498,10 @@ fn node_snapshot_decomposition_matches_cascade() {
             .background(Background::fill(BLUE))
             .show(ui, |ui| two_lines(ui));
     });
-    let snap2 = h.engines.damage.prev[&WidgetId::from_hash("multi2")];
-    let snap2_paints = &h.engines.damage.paints.slots[snap2.paint_span.range()];
+    let snap2_paints = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("multi2"));
     assert_eq!(
         h.engines.damage.raw_rects.len(),
         3,
@@ -563,13 +566,19 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     let prev_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     let prev_arena_len = h.engines.damage.paints.slots.len();
     // paint_snaps row 0 is chrome; shapes follow at offset 1.
-    let prev_shape2_rect =
-        h.engines.damage.paints.slots[prev_snap.paint_span.range()][1 + 2].screen;
+    let prev_shape2_rect = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"))[1 + 2]
+        .screen;
     frame(&mut h, |ui| build(140.0, ui));
 
     let canvas_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
-    let curr_shape2_rect =
-        h.engines.damage.paints.slots[canvas_snap.paint_span.range()][1 + 2].screen;
+    let curr_shape2_rect = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"))[1 + 2]
+        .screen;
     assert_eq!(
         canvas_snap.paint_span, prev_snap.paint_span,
         "same-count paint changes must refresh the existing arena span",
@@ -590,13 +599,13 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         intersects(prev_shape2_rect),
         "old position of moved shape must be in damage region; \
          prev_rect = {prev_shape2_rect:?}, region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         intersects(curr_shape2_rect),
         "new position of moved shape must be in damage region; \
          curr_rect = {curr_shape2_rect:?}, region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 
     // Sentinel: a rect on the chrome's top edge between shapes 0/1
@@ -610,7 +619,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         !intersects(stale_chrome_band),
         "unchanged chrome interior must not enter damage; \
          stale_band = {stale_chrome_band:?}, region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -631,8 +640,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     };
     frame(&mut h, |ui| build(BLUE, ui));
     frame(&mut h, |ui| build(BLUE, ui)); // settle
-    let snap = h.engines.damage.prev[&WidgetId::from_hash("c")];
-    let snap_rect = h.engines.damage.paints.slots[snap.paint_span.start as usize].screen;
+    let snap_rect = h.engines.damage.prev_paint_rows(WidgetId::from_hash("c"))[0].screen;
 
     frame(&mut h, |ui| build(RED, ui));
     let region = h.damage_region();
@@ -756,8 +764,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // `text_paint_bbox_local`. Expected shaped size scales by the
     // same factor.
     let inflate = 1.0 + TEXT_SCALE_STEP;
-    let prev_snap = h.engines.damage.prev[&leaf_id];
-    let prev_text_rect = h.engines.damage.paints.slots[prev_snap.paint_span.range()][0].screen;
+    let prev_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert_eq!(
         prev_text_rect.size, prev_size_short,
@@ -765,9 +772,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     );
 
     frame(&mut h, |ui| build("abcdef", ui));
-
-    let curr_snap = h.engines.damage.prev[&leaf_id];
-    let curr_text_rect = h.engines.damage.paints.slots[curr_snap.paint_span.range()][0].screen;
+    let curr_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert_eq!(
         curr_text_rect.size, curr_size_long,
@@ -787,7 +792,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         intersects(inside_new_only),
         "probe inside new text but past old text must be in damage; \
          probe = {inside_new_only:?}, region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 
     // Also assert prev's middle gets damaged (so the old glyph
@@ -797,7 +802,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         intersects(inside_old),
         "probe inside old text must be in damage; \
          probe = {inside_old:?}, region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 

@@ -75,7 +75,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
         !region.any_intersects(LINE_PROBE),
         "the canvas's own line shape must not be re-damaged by a sibling \
          removal; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -126,7 +126,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     assert!(
         h.damage_region().is_empty(),
         "reordering nodes must not damage unchanged leaves; region = {:?}",
-        h.damage_region().iter_rects().collect::<Vec<_>>(),
+        h.damage_region(),
     );
 }
 
@@ -215,7 +215,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
         assert!(
             h.damage_region().is_empty(),
             "{label}: a settled reorder must re-damage nothing; region = {:?}",
-            h.damage_region().iter_rects().collect::<Vec<_>>(),
+            h.damage_region(),
         );
     }
 }
@@ -265,7 +265,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
         h.damage_region().is_empty(),
         "off-screen text must not fabricate edge-of-window damage on \
          reorder; region = {:?}",
-        h.damage_region().iter_rects().collect::<Vec<_>>(),
+        h.damage_region(),
     );
 }
 
@@ -306,7 +306,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
         region.any_intersects(Rect::new(0.0, 5.0, 40.0, 5.0))
             && region.any_intersects(Rect::new(0.0, 25.0, 40.0, 5.0)),
         "swapping stack children must damage both slots; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -383,13 +383,13 @@ fn shape_crossing_child_boundary_is_redamaged() {
         region.any_intersects(PROBE),
         "the shape's overlap with the child must be re-damaged when the \
          shape crosses the child z-boundary; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         !region.any_intersects(FAR_PROBE),
         "the stretch of the line outside the child paints identically in \
          either order and must stay clean; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -432,7 +432,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
         region.any_intersects(PROBE),
         "swapping two overlapping direct shapes must damage their \
          overlap; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -484,13 +484,13 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     assert!(
         region.any_intersects(CHILD_B),
         "the inserted child must be damaged; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         !region.any_intersects(LINE_PROBE),
         "an unchanged shape whose relative order is preserved must not \
          be re-damaged by a child insert; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -537,13 +537,13 @@ fn rekeying_a_child_damages_only_the_child() {
     assert!(
         region.any_intersects(CHILD),
         "a re-keyed child must be damaged (evict + re-add); region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         !region.any_intersects(LINE_PROBE),
         "the parent's unchanged sibling shape must not be re-damaged by \
          a child re-key; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -589,9 +589,11 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     // Snapshot the prev rects for shapes 0/1/2 so we can verify the
     // post-delete damage region.
-    let prev = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
-    let prev_shapes = &h.engines.damage.paints.slots[prev.paint_span.range()];
+    let prev_shapes = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"));
     assert_eq!(prev_shapes.len(), 3);
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
@@ -657,8 +659,11 @@ fn shape_added_in_middle_damages_only_new() {
     frame(&mut h, |ui| build(false, ui)); // red + blue
     frame(&mut h, |ui| build(false, ui)); // settle
 
-    let prev = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
-    let prev_shapes: Vec<_> = h.engines.damage.paints.slots[prev.paint_span.range()].to_vec();
+    let prev_shapes: Vec<_> = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"))
+        .to_vec();
     assert_eq!(prev_shapes.len(), 2);
     let prev_red_screen = prev_shapes[0].screen;
     let prev_blue_screen = prev_shapes[1].screen;
@@ -668,7 +673,11 @@ fn shape_added_in_middle_damages_only_new() {
     let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
-    let curr_shapes: Vec<_> = h.engines.damage.paints.slots[post.paint_span.range()].to_vec();
+    let curr_shapes: Vec<_> = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"))
+        .to_vec();
     let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));

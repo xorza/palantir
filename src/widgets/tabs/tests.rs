@@ -524,8 +524,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
 
     // Wide enough for all three: no chip is cut, and no chevron.
     let mut h = UiHarness::new(SURFACE);
-    h.frame(build(SURFACE.x as f32));
-    h.frame(build(SURFACE.x as f32));
+    h.prime(2, build(SURFACE.x as f32));
     let whole = h.arranged(last);
     let strip_left = h.arranged(strip_id()).min.x;
     assert!(
@@ -538,8 +537,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // what the width below is a width of.
     let half_way = whole.min.x + whole.size.w * 0.5 - strip_left;
     let mut h = UiHarness::new(SURFACE);
-    h.frame(build(half_way));
-    h.frame(build(half_way));
+    h.prime(2, build(half_way));
     assert!(
         h.rect(chevron).is_some(),
         "a chip cut in half is a chip the strip cannot show whole",

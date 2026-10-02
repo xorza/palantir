@@ -92,8 +92,7 @@ fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w:
                 );
             });
     };
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
     node.unwrap()
 }
 
@@ -151,8 +150,7 @@ fn stable_editor_uses_one_direct_layout_probe() {
                 .size((Sizing::fixed(240.0), Sizing::fixed(60.0)))
                 .show(ui);
         };
-        h.frame(&mut record);
-        h.frame(&mut record);
+        h.prime(2, &mut record);
         if selected {
             h.set_focus(id);
             let state = h.ui.state_or_default::<TextEditState>(id);

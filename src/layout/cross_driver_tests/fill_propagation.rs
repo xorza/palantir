@@ -2,6 +2,7 @@
 //! propagation must not silently switch to `INFINITY` when the
 //! parent has a finite slot — that would make any nested grid fall
 //! back to max-content and break wrapping under constrained widths.
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
@@ -19,8 +20,6 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-
-const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 /// The paragraph wrapped at a 200 px surface: four 16 px lines in the 93
 /// px the bundled faces break it to, the same on every machine. A grid
@@ -120,7 +119,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                         .grid_cell((0, 0))
                         .show(ui);
                     value_node = Some(
-                        Text::new("the quick brown fox jumps over the lazy dog")
+                        Text::new(PARAGRAPH)
                             .auto_id()
                             .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
@@ -163,7 +162,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                         .grid_cell((0, 0))
                         .show(ui);
                     value_node = Some(
-                        Text::new("the quick brown fox jumps over the lazy dog")
+                        Text::new(PARAGRAPH)
                             .auto_id()
                             .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)

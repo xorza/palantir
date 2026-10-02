@@ -134,8 +134,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
     };
     let surface = UVec2::new(400, 300);
     let mut h = UiHarness::new(surface);
-    h.frame(build(true));
-    h.frame(build(true));
+    h.prime(2, build(true));
     assert_eq!(
         thumb_rects(&h.ui, "scroll").len(),
         1,

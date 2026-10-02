@@ -182,8 +182,7 @@ fn drag_thumb_pans_proportionally() {
                         });
                 });
         };
-        h.frame(build);
-        h.frame(build);
+        h.prime(2, build);
 
         let outer_id = WidgetId::from_hash("scroll");
         let scroll_id = outer_id.with("viewport");
@@ -320,8 +319,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     // records against the stale 800px content (offset stays 600) and
     // arranges the new 300px content; frame 2 records against the fresh
     // 300px content and clamps the stranded offset down.
-    h.frame(|ui| build(ui, 200.0, 300.0));
-    h.frame(|ui| build(ui, 200.0, 300.0));
+    h.prime(2, |ui| build(ui, 200.0, 300.0));
     assert_eq!(
         read_state(&mut h).offset.y,
         100.0,
@@ -359,8 +357,7 @@ fn content_margin_does_not_shift_content_that_fits() {
                     .show(ui);
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert_eq!(
         read_state(&mut h).offset,
         Vec2::ZERO,

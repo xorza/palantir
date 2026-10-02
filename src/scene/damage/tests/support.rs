@@ -20,13 +20,17 @@ pub(super) const DISPLAY: Display = Display {
     refresh_millihertz: None,
 };
 
-/// Drive one frame through the real `Ui::record` path, simulate a
-/// successful `WgpuBackend::submit` so the next frame's auto-rewind
-/// doesn't fire, and return the damage decision for the just-completed
-/// frame. Test sites that care about the damage shape bind the return;
-/// the rest ignore it.
+/// Run one frame of `f` and return its damage, or `None` when the frame
+/// skips. The frame is told its previous output is valid, as a host
+/// tells it after a present, so the damage is incremental against it.
 pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
     h.frame(f).plan.map(|plan| plan.damage)
+}
+
+/// [`frame`] told its previous output is lost, as after a failed
+/// present: the damage starts over from nothing.
+pub(super) fn frame_without_baseline(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
+    h.frame_without_baseline(f).plan.map(|plan| plan.damage)
 }
 
 /// The two fills [`one_frame`] flips between to drive a minimal authoring

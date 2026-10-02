@@ -214,8 +214,7 @@ fn scroll_with_bars_composes_through_warm_cache() {
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
 }
 
 /// Showcase-style nested scroll cards. Pin that the deeper
@@ -257,7 +256,5 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                 }
             });
     };
-    h.frame(build);
-    h.frame(build);
-    h.frame(build);
+    h.prime(3, build);
 }

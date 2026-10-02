@@ -34,8 +34,7 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert_eq!(
         scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
         Size::new(188.0, 200.0),
@@ -64,8 +63,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert_eq!(
         scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
         Size::new(156.0, 168.0)
@@ -139,16 +137,14 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
     };
 
     let mut h = UiHarness::new(surface);
-    h.frame(|ui| build(ui, 800.0));
-    h.frame(|ui| build(ui, 800.0));
+    h.prime(2, |ui| build(ui, 800.0));
     assert_eq!(
         read_viewport(&mut h.ui),
         Size::new(188.0, 200.0),
         "viewport = 200 - (width + gap) when content overflows",
     );
 
-    h.frame(|ui| build(ui, 50.0));
-    h.frame(|ui| build(ui, 50.0));
+    h.prime(2, |ui| build(ui, 50.0));
     assert_eq!(
         read_viewport(&mut h.ui),
         Size::new(188.0, 200.0),
@@ -184,8 +180,7 @@ fn overlay_mode_skips_gutter_reservation() {
                     });
             });
     };
-    h.frame(scene);
-    h.frame(scene);
+    h.prime(2, scene);
     assert_eq!(
         scroll_viewport(&h.ui, scroll_id),
         Size::new(200.0, 200.0),

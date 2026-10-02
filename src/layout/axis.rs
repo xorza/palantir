@@ -131,3 +131,20 @@ impl Axis {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::layout::axis::Axis;
+    use crate::layout::types::sizing::{SizeSpec, Sizing};
+
+    impl Axis {
+        /// Build a `SizeSpec` from main- and cross-axis sizings — the
+        /// [`Axis::compose_size`] of a sizing.
+        pub(crate) const fn compose_sizing(self, main: Sizing, cross: Sizing) -> SizeSpec {
+            match self {
+                Axis::X => SizeSpec::new(main, cross),
+                Axis::Y => SizeSpec::new(cross, main),
+            }
+        }
+    }
+}

@@ -1,7 +1,7 @@
 //! Builders for the recurring widget patterns used by the cross-driver
 //! tests in this directory: chat-message HStacks, two-column grids with
-//! wrapping text. Local helpers — keep narrow, only generalize when a
-//! third caller appears.
+//! wrapping text, and the paragraph they wrap. Local helpers — keep
+//! narrow, only generalize when a third caller appears.
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
@@ -12,6 +12,10 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::scene::tree::node_id::NodeId;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
+
+/// The paragraph the wrapping cases shape: nine words, so every narrow
+/// width breaks it somewhere.
+pub(super) const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 /// Test helper: the leaf's single shaped-text result. Asserts the
 /// span holds exactly one entry — every cross-driver test today builds

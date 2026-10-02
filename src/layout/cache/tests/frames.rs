@@ -565,8 +565,7 @@ fn registering_a_font_forces_the_next_frame_to_remeasure() {
     };
     let dispatches = |h: &UiHarness| h.engines.layout.text.shaper().measure_calls();
 
-    h.frame(record);
-    h.frame(record);
+    h.prime(2, record);
     let warm = dispatches(&h);
     h.frame(record);
     assert_eq!(

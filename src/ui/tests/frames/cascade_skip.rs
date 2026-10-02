@@ -145,8 +145,7 @@ fn the_key_covers_the_font_database() {
             .id(WidgetId::from_hash("label"))
             .show(ui);
     };
-    h.frame(record);
-    h.frame(record);
+    h.prime(2, record);
     assert!(
         !h.engines.cascade.counters.ran(),
         "premise: an unchanged tree skips the cascade",
@@ -185,8 +184,7 @@ fn the_key_covers_layer_and_root_identity() {
     }
     let assert_reruns = |label: &str, base: &dyn Fn(&mut Ui), changed: &dyn Fn(&mut Ui)| {
         let mut h = UiHarness::new(SURFACE);
-        h.frame(|ui| base(ui));
-        h.frame(|ui| base(ui));
+        h.prime(2, |ui| base(ui));
         assert!(
             !h.engines.cascade.counters.ran(),
             "{label}: unchanged frame skips the cascade"

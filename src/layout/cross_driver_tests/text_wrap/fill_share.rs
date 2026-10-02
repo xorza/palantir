@@ -2,8 +2,8 @@
 //! floor under it.
 
 use crate::layout::cross_driver_tests::support;
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::cross_driver_tests::support::chat_message;
-use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use glam::UVec2;

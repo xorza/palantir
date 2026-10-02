@@ -2,7 +2,7 @@
 //! cached alongside its children.
 
 use crate::Ui;
-use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::RgbaF32;

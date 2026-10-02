@@ -2,8 +2,8 @@
 
 use crate::Ui;
 use crate::WidgetId;
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::cross_driver_tests::support::chat_message;
-use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::layout::types::align::Align;
 use crate::primitives::color::RgbaF32;
 use crate::renderer::frontend::capture::PaintCall;
