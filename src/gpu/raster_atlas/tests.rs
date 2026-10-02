@@ -254,10 +254,6 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
 
 /// The escalation ladder in [`RasterAtlas::allocate`], driven against a
 /// real device because growing a side allocates a texture.
-///
-/// Gated on `internals` rather than bare `test` so a default headless
-/// `cargo test` stays GPU-free, matching the text backend's own suite.
-#[cfg(feature = "internals")]
 mod gpu {
     use super::*;
     use crate::gpu::raster_atlas::RasterAtlasConfig;

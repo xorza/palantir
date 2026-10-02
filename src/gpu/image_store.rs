@@ -240,7 +240,7 @@ pub(crate) mod test_support {
     }
 }
 
-#[cfg(all(test, feature = "internals"))]
+#[cfg(test)]
 mod tests {
     use crate::gpu::image_store::{WgpuImageStore, premultiplied_bytes, premultiply_into};
     use crate::gpu::test_gpu;

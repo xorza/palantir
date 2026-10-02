@@ -2,11 +2,8 @@
 //! backend to forget, and when.
 //!
 //! All of it needs a device, because the backend owns a `RasterAtlas` and
-//! that owns textures — so the whole file sits behind `internals`, leaving a
-//! default `cargo test` GPU-free. Same arrangement as the raster atlas's own
-//! suite.
+//! that owns textures.
 
-#[cfg(feature = "internals")]
 mod gpu {
     use crate::gpu::icon::IconBackend;
     use crate::gpu::raster_program::RasterProgram;

@@ -3,3 +3,4 @@
 
 mod frames;
 mod reuse;
+mod workloads;

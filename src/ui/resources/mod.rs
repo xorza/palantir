@@ -117,7 +117,7 @@ impl UiResources {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::common::clipboard::Clipboard;
     use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;

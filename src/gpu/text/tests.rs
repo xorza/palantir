@@ -3,12 +3,6 @@
 //!
 //! The GPU-wire layout pins live with the type they pin, in
 //! `raster_atlas::raster_quad` — both passes draw through it, so neither owns it.
-//!
-//! Gated on `internals` rather than bare `test`, so the default headless
-//! `cargo test` stays GPU-free — matching the visual suite and the atlas
-//! bench.
-
-#![cfg(feature = "internals")]
 
 use wgpu::util::StagingBelt;
 

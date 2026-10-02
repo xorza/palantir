@@ -748,17 +748,14 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
     ContentHash(h.finish())
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    #[cfg(test)]
+#[cfg(test)]
+pub(crate) mod test_support {
     use crate::scene::shapes::record::ShapeRecord;
-    #[cfg(test)]
     use crate::scene::tree::node_id::NodeId;
     use crate::scene::tree::*;
 
     impl Tree {
         /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
-        #[cfg(test)]
         pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
             self.tree_items(node).filter_map(|item| match item {
                 TreeItem::ShapeRecord(_, s) => Some(s),

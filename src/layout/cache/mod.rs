@@ -5,6 +5,8 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod workloads;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
