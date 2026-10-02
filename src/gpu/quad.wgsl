@@ -156,18 +156,28 @@ fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
 // outside (Inigo Quilez's `sdTriangle`). `s` folds in the winding sign so
 // the result is correctly signed for either orientation; subtracting a
 // radius from the caller rounds all three corners uniformly.
+//
+// A degenerate triangle — collinear corners, or coincident ones — has no
+// inside. Its winding sign is 0, so `d.y` is 0 everywhere, and the
+// original `sign(d.y)` made the distance 0 everywhere: a radius then
+// filled the whole quad. Here `d.y == 0` reads as outside, which on a
+// proper triangle happens only on an edge, where the distance is 0
+// either way. A zero-length edge divides 0 by 0 in its projection; the
+// floor keeps that finite, and the edge's zero vector then makes the
+// projection's value irrelevant.
 fn sdf_triangle(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
     let e0 = b - a; let e1 = c - b; let e2 = a - c;
     let v0 = p - a; let v1 = p - b; let v2 = p - c;
-    let pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
-    let pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
-    let pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+    let pq0 = v0 - e0 * clamp(dot(v0, e0) / max(dot(e0, e0), 1e-30), 0.0, 1.0);
+    let pq1 = v1 - e1 * clamp(dot(v1, e1) / max(dot(e1, e1), 1e-30), 0.0, 1.0);
+    let pq2 = v2 - e2 * clamp(dot(v2, e2) / max(dot(e2, e2), 1e-30), 0.0, 1.0);
     let s = sign(e0.x * e2.y - e0.y * e2.x);
     let d = min(min(
         vec2<f32>(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),
         vec2<f32>(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))),
         vec2<f32>(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x)));
-    return -sqrt(d.x) * sign(d.y);
+    let dist = sqrt(d.x);
+    return select(dist, -dist, d.y > 0.0);
 }
 
 // Apply the user-selected spread mode to a parametric `t`. The `Pad`

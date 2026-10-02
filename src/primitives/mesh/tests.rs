@@ -111,6 +111,27 @@ fn triangle_indices_offset_in_append() {
     }
     assert_eq!(a.vertices, expected.vertices);
     assert_eq!(a.content_hash(), expected.content_hash());
+    // The second triangle rebases to 3..=5, so the largest index is 5.
+    assert_eq!(a.max_index, 5);
+    assert!(!a.is_noop());
+}
+
+/// An index past the last vertex is what `triangle`'s debug assert
+/// catches. A release build skips that assert and pushes it, so the
+/// state is built here by hand: the screen then drops the mesh rather
+/// than drawing another mesh's vertices. The in-range control row is the
+/// same mesh with the last index at 2.
+#[test]
+fn an_index_past_the_last_vertex_is_a_noop() {
+    for (last, noop) in [(2, false), (3, true)] {
+        let mut mesh = Mesh::with_capacity(3, 3);
+        for x in 0..3 {
+            mesh.vertex(Vec2::new(x as f32, x as f32 * 2.0), RgbaF32::WHITE);
+        }
+        mesh.indices.extend([0, 1, last]);
+        mesh.max_index = last;
+        assert_eq!(mesh.is_noop(), noop, "last index {last} of 3 vertices");
+    }
 }
 
 #[test]

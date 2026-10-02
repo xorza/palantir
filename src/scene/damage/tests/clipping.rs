@@ -299,3 +299,46 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
          host_rect = {host_rect:?}, shape_rect = {shape_rect:?}",
     );
 }
+
+/// A transparent container with a rounded clip keeps a chrome row only
+/// so the mask can read its corners. The row paints nothing, so adding
+/// the container damages only its child: a 100×100 container at the
+/// origin holding a 20×20 child at its top-left, both added in one
+/// frame, damages exactly the child's 20×20.
+#[test]
+fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
+    use crate::primitives::corners::Corners;
+
+    const CHILD: f32 = 20.0;
+    let build = |ui: &mut Ui, with_host: bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            if !with_host {
+                return;
+            }
+            Panel::zstack()
+                .id(WidgetId::from_hash("rounded-host"))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                .background(Background {
+                    corners: Corners::all(12.0),
+                    ..Default::default()
+                })
+                .clip_rounded()
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("inner"))
+                        .size(CHILD)
+                        .background(Background {
+                            fill: BLUE.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        });
+    };
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| build(ui, false));
+    frame(&mut h, |ui| build(ui, true));
+
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    assert_eq!(rects, [Rect::new(0.0, 0.0, CHILD, CHILD)]);
+}

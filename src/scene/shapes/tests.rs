@@ -49,9 +49,10 @@ impl ColorSource {
 }
 
 /// The colour-cardinality contract is checked where it is consumed —
-/// `lower::polyline` — not by the no-op query that used to open with it. So a
-/// polyline that never lowers (fewer than two points) is dropped in silence
-/// whatever its colour slice says, and one that does lower is checked.
+/// `lower::polyline`. A polyline that never lowers (fewer than two points)
+/// is dropped in silence whatever its colour slice says. A slice of the
+/// wrong length is never a no-op, however transparent, so it lowers and is
+/// checked.
 ///
 /// What lowers stages each colour times the stroke colour, channel by
 /// channel, and a single-colour polyline stages the stroke colour itself.
@@ -93,15 +94,11 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                 );
                 let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &mut store)));
                 // What the no-op gate drops never reaches lowering, and so is
-                // never checked: fewer than two points, or a per-vertex colour
-                // slice with nothing visible in it — which an *empty* slice is,
-                // vacuously. What does lower is checked, and a mismatch panics
-                // in a debug build (the check is `debug_assert`, off the
-                // release paint path).
-                let colors_invisible =
-                    matches!(source, ColorSource::PerPoint | ColorSource::PerSegment)
-                        && colors_len == 0;
-                let lowers = points_len >= 2 && !colors_invisible;
+                // never checked: fewer than two points. A colour slice of the
+                // wrong length is not a no-op however invisible — an empty
+                // one included — so it lowers, and the cardinality assert
+                // panics.
+                let lowers = points_len >= 2;
                 let accepted = !lowers || source.accepts(points_len, colors_len);
 
                 assert_eq!(
@@ -317,6 +314,20 @@ fn the_nan_gate_drops_every_shape_kind() {
         "polyline_point",
         Shape::polyline(&pts_nan, Stroke::new(white, 2.0)),
         Shape::polyline(&pts_ok, Stroke::new(white, 2.0)),
+    );
+    // A NaN channel in one colour of three: the rest are visible, so the
+    // no-op gate passes it and only the colour scan can catch it.
+    let nan_red = RgbaF32::new(N, 0.0, 0.0, 1.0);
+    let colors_nan = [white, nan_red, white];
+    gate(
+        "polyline_point_colour",
+        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_point(&colors_nan),
+        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_point(&[white; 3]),
+    );
+    gate(
+        "polyline_segment_colour",
+        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_segment(&colors_nan[1..]),
+        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_segment(&[white; 2]),
     );
     gate("mesh_vertex", Shape::mesh(&mesh_nan), Shape::mesh(&mesh_ok));
     gate(

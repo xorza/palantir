@@ -244,6 +244,12 @@ impl Cascade {
         self.by_id.get(&id).copied()
     }
 
+    /// The entry row of the node at `endpoint`.
+    #[inline]
+    pub(crate) fn entry_at(&self, endpoint: Endpoint) -> &EntryRow {
+        &self.entries[(self.layers[endpoint.layer].entries_base + endpoint.node.0) as usize]
+    }
+
     /// Both indexes a widget's per-frame rows are reached by, from one
     /// `by_id` probe. `response_for` needs the entry index (for
     /// [`Cascade::entries`]) *and* the endpoint (for the layout

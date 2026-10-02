@@ -26,6 +26,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
         a: Vec2,
         b: Vec2,
         c: Vec2,
+        radius: f32,
         expected_noop: bool,
     }
 
@@ -35,6 +36,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(100.0, 0.0),
             c: Vec2::new(0.0, 100.0),
+            radius: 0.0,
             expected_noop: false,
         },
         Case {
@@ -42,6 +44,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(0.0, 100.0),
             c: Vec2::new(100.0, 0.0),
+            radius: 0.0,
             expected_noop: false,
         },
         Case {
@@ -49,6 +52,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(40.0, 40.0),
             c: Vec2::new(100.0, 100.0),
+            radius: 0.0,
             expected_noop: true,
         },
         Case {
@@ -56,6 +60,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::new(10.0, 20.0),
             b: Vec2::new(10.0, 20.0),
             c: Vec2::new(100.0, 100.0),
+            radius: 0.0,
             expected_noop: true,
         },
         Case {
@@ -63,6 +68,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(1.0, 0.0),
             c: Vec2::new(1.0, 0.00005),
+            radius: 0.0,
             expected_noop: true,
         },
         Case {
@@ -70,6 +76,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(100.0, 0.0),
             c: Vec2::new(100.0, 0.005),
+            radius: 0.0,
             expected_noop: true,
         },
         Case {
@@ -77,6 +84,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(1.0, 0.0),
             c: Vec2::new(1.0, 0.0002),
+            radius: 0.0,
             expected_noop: false,
         },
         Case {
@@ -84,12 +92,49 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             a: Vec2::ZERO,
             b: Vec2::new(100.0, 0.0),
             c: Vec2::new(100.0, 0.02),
+            radius: 0.0,
+            expected_noop: false,
+        },
+        // A radius grows any triangle by itself on every side, so a thin
+        // or collapsed one still paints: a 6 px bar, or a 6 px disc.
+        Case {
+            label: "collinear_rounded",
+            a: Vec2::ZERO,
+            b: Vec2::new(40.0, 40.0),
+            c: Vec2::new(100.0, 100.0),
+            radius: 3.0,
+            expected_noop: false,
+        },
+        Case {
+            label: "near_degenerate_hundred_scale_rounded",
+            a: Vec2::ZERO,
+            b: Vec2::new(100.0, 0.0),
+            c: Vec2::new(50.0, 0.004),
+            radius: 3.0,
+            expected_noop: false,
+        },
+        Case {
+            label: "point",
+            a: Vec2::new(10.0, 10.0),
+            b: Vec2::new(10.0, 10.0),
+            c: Vec2::new(10.0, 10.0),
+            radius: 0.0,
+            expected_noop: true,
+        },
+        Case {
+            label: "point_rounded",
+            a: Vec2::new(10.0, 10.0),
+            b: Vec2::new(10.0, 10.0),
+            c: Vec2::new(10.0, 10.0),
+            radius: 3.0,
             expected_noop: false,
         },
     ];
 
     for case in cases {
-        let shape = Shape::triangle(case.a, case.b, case.c).fill(RgbaF32::WHITE);
+        let shape = Shape::triangle(case.a, case.b, case.c)
+            .fill(RgbaF32::WHITE)
+            .radius(case.radius);
         assert_eq!(shape.fill, RgbaF32::WHITE, "case: {}", case.label);
         assert_eq!(shape.is_noop(), case.expected_noop, "case: {}", case.label);
     }

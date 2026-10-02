@@ -130,7 +130,11 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         !bg.has_nan(),
         "NaN in a Background — it degrades to no rounding and no paint: {bg:?}",
     );
-    let fill_brush = if bg.fill.has_nan() {
+    // A background that paints nothing is kept only for a rounded clip's
+    // corners. Its fill lowers to transparent rather than interning a
+    // gradient no pass draws, which is also what lets
+    // `ChromeRow::paints_nothing` answer from the row alone.
+    let fill_brush = if bg.fill.has_nan() || bg.is_noop() {
         &Brush::TRANSPARENT
     } else {
         &bg.fill
