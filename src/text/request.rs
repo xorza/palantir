@@ -146,6 +146,19 @@ pub(crate) mod test_support {
     }
 
     impl TestShape {
+        /// `font`, unbounded and with its alignment left to the
+        /// paragraph — the face a bench states as a const, and the base
+        /// every test builder overrides.
+        pub(crate) const fn new(font: GlyphFont) -> Self {
+            Self {
+                font,
+                #[cfg(test)]
+                max_width_px: None,
+                #[cfg(test)]
+                halign: HAlign::Auto,
+            }
+        }
+
         /// Fixtures always name text and a usable face, so the
         /// nothing-to-shape boundary is a wiring bug here rather than a
         /// case a test drives — the two crate edges that answer one do

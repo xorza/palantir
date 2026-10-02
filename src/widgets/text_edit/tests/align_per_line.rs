@@ -27,17 +27,15 @@ fn cosmic_ui() -> UiHarness {
 }
 
 fn shape(wrap: f32, halign: HAlign) -> TestShape {
-    TestShape {
-        font: GlyphFont {
-            size_px: FS,
-            line_height_px: LH,
-            family: FontFamily::SANS,
-            weight: FontWeight::REGULAR,
-            slant: FontSlant::Normal,
-        },
-        max_width_px: Some(wrap),
-        halign,
-    }
+    TestShape::new(GlyphFont {
+        size_px: FS,
+        line_height_px: LH,
+        family: FontFamily::SANS,
+        weight: FontWeight::REGULAR,
+        slant: FontSlant::Normal,
+    })
+    .width(wrap)
+    .halign(halign)
 }
 
 const ALL: [HAlign; 3] = [HAlign::Left, HAlign::Center, HAlign::Right];
