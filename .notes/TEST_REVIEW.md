@@ -36,23 +36,7 @@ forces pass B, and pass B erases the evidence.
 
 Each test below passes when the behaviour it names is broken.
 
-- [ ] `widgets/color_button/tests.rs:50`: `advance_past_double_click(|_| {})` records an empty tree, the chip's state row is swept, and "the second click closed it" cannot fail. Root fix: `advance_past_double_click(&mut self) -> &mut Self` with no frame, the peer of `advance` (3 callers).
-- [ ] `widgets/scroll/tests/bars/presence.rs:166-186` `no_bar_when_content_fits_viewport`: `count_positioned` counts shapes on the scroll node, but bars paint through chrome, so the count is always 0. Use `thumb_rects(..).is_empty()` and delete `count_positioned`.
-- [ ] `widgets/scroll/tests/zooming.rs:338-385`: each zoom is compared only with the previous one. If Ctrl+wheel stops zooming, all read 1.0. Assert `step.powf(-1.0)` as `:331` does.
-- [ ] `common/hash/tests.rs:21-27` hashes the same bytes with two hashers. `:124` `empty_hash_is_stable` compares `Hasher::new().finish()` with itself. Pin a literal or delete.
-- [ ] `host/window_driver/tests.rs:346-347`, `:363-364`: writes `output_valid = true`, then asserts it. Exercise the real completion path.
-- [ ] `host/window_driver/tests.rs:101` `direct_adaptive_promote_threshold_is_strict`: no fixture sits on the 0.4 line, so `>=` passes too. `partial(40.0, 100.0)` gives exactly `0.4f32`.
-- [ ] `shape/stroke_bounds/tests.rs:6`: no case has both cap and join factors above 1, so a product passes. Add `(Square, Some(Miter))` → `2.5 · max(√2, 4) = 10.0` (a product gives 14.14), and the `width < 0` / `fringe < 0` clamps.
-- [ ] `primitives/corners/tests.rs:31`, `primitives/spacing/tests.rs:54` `f16_precision_contract`: 4096 = 2¹² is exact in f16, so f32 storage passes. Use `2049.0 → 2048.0` and `4097.0 → 4096.0`.
-- [ ] `AnimMap`'s `Drained::Drop` (`animation/mod.rs:112-118`) is unpinned. Every row count reads `map_or(0, len)`. Add `assert!(map.is_empty())` after the full drain in `animation/tests/eviction.rs:65`.
-- [ ] Hand-listed "exhaustive" tests already missed a variant: `diagnostics/gpu_pass_stats.rs:236` (no `BatchKind::Icon`) and `input/input_event.rs:150-161` (no `SurfaceFocusLost`). Use `BatchKind::iter()` with a `COUNT` check, and an exhaustive `match` with no `_` arm.
-- [ ] `primitives/color/tests.rs:49`, `:78`: assert only `s1 == s2`. A serializer that writes `"#000000"` passes. Assert `parsed == c`.
-- [ ] `primitives/urect/tests.rs:66-72`: the equality assert is skipped for zero-sized results, so the origin of `disjoint_returns_zero_sized` is never checked.
-- [ ] `host/winit/input/tests.rs:131,142,162,168,240,259`: `x = Some(e)` keeps the last event, so a spurious second event passes. Collect into a `Vec` and assert it exactly.
-- [ ] `primitives/half_simd/tests.rs:149`: checks only `got[0]`. Assert all four lanes.
-- [ ] `primitives/background.rs:190`: `with_shadow` checks only `blur`. Assert the whole field.
-- [ ] `scene/tree/tests/node_hash.rs:52`, `:31`: only `assert_eq!` invariances, so a constant hash passes. Add `assert_ne!` for a real move and a real colour change.
-- [ ] `layout/cross_driver_tests/convergence.rs:128` drives 421 frames and asserts nothing. `:105` guards its assert with an `if` that is always true (the loop starts at 260).
+- [ ] `host/window_driver/tests.rs` `output_validity_tests`: the GPU completion that sets `output_valid` (`WindowDriver::gpu_frame`) is stood in for by an assignment. Exercise the real completion path through a GPU-backed frame.
 - [ ] `renderer/frontend/encoder/tests/damage_cull.rs:57-114`, `:149-226`: every assert is zero, so an encoder that draws nothing passes. Add a positive row in the same loop.
 - [ ] `renderer/frontend/encoder/tests/clipping.rs:177-198` `nested_clips_each_emit_their_own_pair`: counts pushes and pops, so sibling clips pass. Add `PaintCapture::kinds()` and assert the sequence. The same count-only shape is in `clipping.rs:22-38`, `:206-217`, `damage_cull.rs:64-112`, and 13 hand-written kind filters.
 - [ ] `renderer/frontend/capture.rs:155-181` `assert_same_capture` compares `Debug` strings, and `GpuPaintRef` prints the constant `"GpuPaint"`. A swapped callback compares equal. Compare `paint` by `PartialEq` too.

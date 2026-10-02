@@ -47,7 +47,7 @@ fn the_chip_toggles_its_panel() {
     click_chip(&mut h, |h| frame(h, &mut color));
     assert!(panel_nodes(&h) > 0, "the click opened the panel");
 
-    h.advance_past_double_click(|_| {});
+    h.advance_past_double_click();
     click_chip(&mut h, |h| frame(h, &mut color));
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
 }

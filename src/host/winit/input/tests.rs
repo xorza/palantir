@@ -157,27 +157,28 @@ fn modifier_normalization_translates_each_bit() {
 
 #[test]
 fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
-    let mut got = None;
+    let mut got = Vec::new();
     translate(
         &wheel(MouseScrollDelta::LineDelta(2.0, 1.0)),
         at(1.0),
-        |event| got = Some(event),
+        |event| got.push(event),
     );
     assert!(matches!(
-        got,
-        Some(InputEvent::ScrollLines(delta)) if delta == Vec2::new(-2.0, -1.0)
+        got.as_slice(),
+        [InputEvent::ScrollLines(delta)] if *delta == Vec2::new(-2.0, -1.0)
     ));
+    got.clear();
 
     translate(
         &wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
             60.0, -120.0,
         ))),
         at(2.0),
-        |event| got = Some(event),
+        |event| got.push(event),
     );
     assert!(matches!(
-        got,
-        Some(InputEvent::ScrollPixels(delta)) if delta == Vec2::new(-30.0, 60.0)
+        got.as_slice(),
+        [InputEvent::ScrollPixels(delta)] if *delta == Vec2::new(-30.0, 60.0)
     ));
 }
 
@@ -188,15 +189,17 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
 /// through.
 #[test]
 fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
-    let mut emitted = None;
-    translate(&pinch(0.5), at(1.0), |event| emitted = Some(event));
-    assert!(matches!(emitted, Some(InputEvent::Zoom(1.5))));
-    assert!(emitted.is_some_and(|event| event.is_valid()));
+    let mut emitted = Vec::new();
+    translate(&pinch(0.5), at(1.0), |event| emitted.push(event));
+    assert!(matches!(emitted.as_slice(), [InputEvent::Zoom(1.5)]));
+    assert!(emitted[0].is_valid());
 
     for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        let mut emitted = None;
-        translate(&pinch(delta), at(1.0), |event| emitted = Some(event));
-        let event = emitted.expect("translation always emits");
+        let mut emitted = Vec::new();
+        translate(&pinch(delta), at(1.0), |event| emitted.push(event));
+        let [event] = emitted.as_slice() else {
+            panic!("translation emits exactly one event, got {emitted:?}");
+        };
         assert!(
             !event.is_valid(),
             "pinch delta {delta:?} produced a usable factor",
@@ -266,14 +269,14 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
 /// division would otherwise destroy.
 #[test]
 fn a_move_emits_logical_and_traces_physical() {
-    let mut emitted = None;
+    let mut emitted = Vec::new();
     let trace = translate(&cursor_moved(300.0, 120.0), at(2.5), |event| {
-        emitted = Some(event)
+        emitted.push(event)
     });
 
     assert!(matches!(
-        emitted,
-        Some(InputEvent::PointerMoved(at)) if at == Vec2::new(120.0, 48.0)
+        emitted.as_slice(),
+        [InputEvent::PointerMoved(at)] if *at == Vec2::new(120.0, 48.0)
     ));
     assert_eq!(trace, PointerTrace::At(Vec2::new(300.0, 120.0)));
 }
@@ -285,12 +288,12 @@ fn a_departure_traces_gone_and_other_events_trace_nothing() {
     let left = WindowEvent::CursorLeft {
         device_id: DeviceId::dummy(),
     };
-    let mut emitted = None;
+    let mut emitted = Vec::new();
     assert_eq!(
-        translate(&left, at(1.0), |event| emitted = Some(event)),
+        translate(&left, at(1.0), |event| emitted.push(event)),
         PointerTrace::Gone,
     );
-    assert!(matches!(emitted, Some(InputEvent::PointerLeft)));
+    assert!(matches!(emitted.as_slice(), [InputEvent::PointerLeft]));
 
     assert_eq!(
         translate(&pinch(0.5), at(1.0), |_| {}),

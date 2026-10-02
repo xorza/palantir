@@ -173,6 +173,7 @@ fn ns_to_ms(ns: u64) -> f32 {
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::gpu_pass_stats::*;
+    use strum::IntoEnumIterator as _;
 
     #[test]
     fn starts_uninit() {
@@ -238,14 +239,12 @@ mod tests {
         // the camel-case, no underscore. Adding a new variant breaks
         // this only if its name uses a multi-word form the lowercase
         // rule would mangle — choose names that round-trip cleanly.
-        assert_eq!(BatchKind::Setup.label(), "setup");
-        assert_eq!(BatchKind::PreClear.label(), "preclear");
-        assert_eq!(BatchKind::Mask.label(), "mask");
-        assert_eq!(BatchKind::Quads.label(), "quads");
-        assert_eq!(BatchKind::Text.label(), "text");
-        assert_eq!(BatchKind::Mesh.label(), "mesh");
-        assert_eq!(BatchKind::Image.label(), "image");
-        assert_eq!(BatchKind::Curve.label(), "curve");
+        let mut labelled = 0;
+        for kind in BatchKind::iter() {
+            assert_eq!(kind.label(), format!("{kind:?}").to_lowercase(), "{kind:?}");
+            labelled += 1;
+        }
+        assert_eq!(labelled, BatchKind::COUNT, "every variant iterated");
     }
 
     #[test]

@@ -25,8 +25,7 @@ fn one_clock_stamps_both_frames_and_input() {
         "with the clock frozen the second click is always a double",
     );
 
-    // Advancing *and* framing separates the runs.
-    harness.advance_past_double_click(button);
+    harness.advance_past_double_click();
     harness.click_at(INSIDE);
     let third = harness.response_in(target(), button);
     assert!(third.left.clicked());

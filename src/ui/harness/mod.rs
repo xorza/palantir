@@ -454,19 +454,17 @@ impl UiHarness {
         }
     }
 
-    /// One frame past `DOUBLE_CLICK_WINDOW`, so the next click starts a
-    /// fresh press run. Without this the clock never moves, every click
+    /// Move the clock past `DOUBLE_CLICK_WINDOW`, so the next click starts
+    /// a fresh press run. Without this the clock never moves, every click
     /// is simultaneous, and a second `click_at` on the same spot always
     /// reports `double_clicked`.
     ///
-    /// No caller outside this module's own tests — the multi-click suite
-    /// uses absolute stamps. Kept as rule 7's remedy: it is where the
-    /// window constant lives. The frame is for whatever the gap was
-    /// meant to let settle, not for the clock, which the `advance`
-    /// already published to input.
-    pub fn advance_past_double_click(&mut self, record: impl FnMut(&mut Ui)) {
-        self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1));
-        self.frame(record);
+    /// The peer of [`Self::advance`], and like it records no frame: a
+    /// press is stamped when it arrives, so the gap separates the runs on
+    /// its own. A frame here would have to record some tree, and one that
+    /// is not the test's own sweeps the state rows the test is about.
+    pub fn advance_past_double_click(&mut self) -> &mut Self {
+        self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1))
     }
 
     /// The raw input door, for events with no typed helper above — a
