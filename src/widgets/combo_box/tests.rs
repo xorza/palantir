@@ -186,12 +186,12 @@ fn trigger_geometry_follows_the_combo_box_theme() {
 
     let (size_a, gap_a) = measure(Vec2::new(10.0, 6.0), 12.0, None);
     assert_eq!(size_a, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
-    assert!((gap_a - 12.0).abs() < 1e-4, "gutter is gap, got {gap_a}",);
+    assert_eq!(gap_a, 12.0, "gutter is gap, got {gap_a}");
 
     // Both knobs move the layout — neither is baked in.
     let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0, None);
     assert_eq!(size_b, Vec2::new(20.0, 14.0));
-    assert!((gap_b - 30.0).abs() < 1e-4, "gutter is gap, got {gap_b}");
+    assert_eq!(gap_b, 30.0, "gutter is gap, got {gap_b}");
     assert_ne!(size_a, size_b);
     assert_ne!(gap_a, gap_b);
 

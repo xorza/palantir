@@ -342,8 +342,9 @@ mod tests {
         let solid = quad(BrushSource::Solid(RgbaF16::new(0.25, 0.5, 0.75, 0.8)));
         assert_eq!(solid.faded(1.0), solid);
         let faded = solid.faded(0.5);
-        assert!((faded.fill.color.unpack().a - 0.4).abs() < 1e-3);
-        assert!((faded.stroke.color.unpack().a - 0.5).abs() < 1e-3);
+        // 0.8 packs to f16 as 1638 steps of 2^-11, and halving it is exact.
+        assert_eq!(faded.fill.color.unpack().a, 1638.0 / 4096.0);
+        assert_eq!(faded.stroke.color.unpack().a, 0.5);
 
         let gradient = quad(BrushSource::Gradient(ResolvedGradient {
             axis: FillAxis::ZERO,
@@ -358,7 +359,7 @@ mod tests {
         let faded = gradient.faded(0.5);
         let multiplier = faded.fill.color.unpack();
         assert_eq!((multiplier.r, multiplier.g, multiplier.b), (1.0, 1.0, 1.0));
-        assert!((multiplier.a - 0.5).abs() < 1e-3);
+        assert_eq!(multiplier.a, 0.5);
         assert_eq!(faded.fill.lut_row, gradient.fill.lut_row);
 
         assert!(!solid.fill.is_noop() && !gradient.fill.is_noop());

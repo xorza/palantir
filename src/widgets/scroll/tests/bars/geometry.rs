@@ -162,13 +162,10 @@ fn thumb_size_and_offset_cases() {
                 assert_eq!(g.track, *viewport, "case: {label} track");
                 assert_eq!(g.max_offset, content - viewport, "case: {label} max_offset");
                 if let Some(s) = want.thumb_size {
-                    assert!((g.thumb_size - s).abs() < 1e-3, "case: {label} thumb_size");
+                    assert_eq!(g.thumb_size, s, "case: {label} thumb_size");
                 }
                 if let Some(o) = want.thumb_offset {
-                    assert!(
-                        (g.thumb_offset - o).abs() < 1e-3,
-                        "case: {label} thumb_offset"
-                    );
+                    assert_eq!(g.thumb_offset, o, "case: {label} thumb_offset");
                 }
             }
             (want, got) => panic!(
@@ -320,10 +317,10 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
         seen.push((now[0].min.y, now[0].size.h));
     }
     for (offset, height) in &seen {
-        assert!(
-            (height - before[0].size.h).abs() < 1e-3,
+        assert_eq!(
+            *height, before[0].size.h,
             "thumb resized while scrolling: {} -> {height} (offsets so far {seen:?})",
-            before[0].size.h,
+            before[0].size.h
         );
         let _ = offset;
     }

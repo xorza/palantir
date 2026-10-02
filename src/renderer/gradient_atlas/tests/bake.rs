@@ -277,10 +277,7 @@ fn linear(r: u8, g: u8, b: u8) -> RgbaF32 {
     RgbaF32::new(lin(r), lin(g), lin(b), 1.0)
 }
 
-/// Assert a baked texel holds `want` at the store's precision. f16 keeps
-/// 11 significant bits, so rounding lands at most `2^-11` of the value
-/// away. The Oklab path's f32 round trip adds noise far below the `1e-6`
-/// slack on top.
+/// Assert a baked texel holds `want` as the f16 store rounds it.
 fn assert_stored(got: RgbaF32, want: RgbaF32, what: &str) {
     for (chan, got, want) in [
         ("r", got.r, want.r),
@@ -288,10 +285,7 @@ fn assert_stored(got: RgbaF32, want: RgbaF32, what: &str) {
         ("b", got.b, want.b),
         ("a", got.a, want.a),
     ] {
-        let tol = want.abs() * 2f32.powi(-11) + 1e-6;
-        assert!(
-            (got - want).abs() <= tol,
-            "{what} {chan}: got {got}, want {want}",
-        );
+        let stored = half::f16::from_f32(want).to_f32();
+        assert_eq!(got, stored, "{what} {chan}: want {want}");
     }
 }

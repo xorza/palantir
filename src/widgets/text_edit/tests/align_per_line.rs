@@ -63,24 +63,19 @@ fn a_single_line_caret_is_halign_independent() {
         })
         .collect();
     for (halign, x) in ALL.iter().zip(&xs) {
-        assert!(
-            (x - xs[0]).abs() < 1e-3,
+        assert_eq!(
+            *x, xs[0],
             "{halign:?} caret {x} must match Left {} on a single line",
-            xs[0],
+            xs[0]
         );
     }
     // …and it is the run's own width, not the wrap target.
     let measured = ui.ui.shaper().measure(text, shape(300.0, HAlign::Right));
-    assert!(
-        (xs[0] - measured.measured.w).abs() <= 1.0,
-        "end-of-line caret {} must sit at the block's right edge {}",
-        xs[0],
-        measured.measured.w,
-    );
-    assert!(
-        xs[0] < 100.0,
-        "\"hi\" is nowhere near the 300 px wrap target"
-    );
+    // The caret sits at the glyphs' own extent, h 9.4609375 + i 3.875,
+    // nowhere near the 300 px wrap target. The block is that extent
+    // ceiled to whole pixels.
+    assert_eq!(xs[0], 9.4609375 + 3.875);
+    assert_eq!(measured.measured.w, xs[0].ceil());
 }
 
 /// Halign *does* move a line that is narrower than the widest one:
@@ -111,26 +106,14 @@ fn a_narrow_line_shifts_within_the_block() {
         caret(HAlign::Right),
     );
     // Left leaves the short line at the block's left edge, so its
-    // end-caret is just the line's own width.
-    assert!(
-        left < block * 0.5,
-        "left-aligned short line stays narrow: {left}"
-    );
-    // Right takes it to the block's right edge — the block, not the
-    // wrap target.
-    assert!(
-        (right - block).abs() <= 1.0,
-        "right-aligned short line must end at the block edge {block}, got {right}",
-    );
-    assert!(
-        block < wrap - 100.0,
-        "the block ({block}) must be much narrower than the wrap target, or this proves nothing",
-    );
-    // Center splits the slack.
-    assert!(
-        (center - (left + right) / 2.0).abs() <= 1.0,
-        "center ({center}) must sit midway between left ({left}) and right ({right})",
-    );
+    // end-caret is the line's own width, the 3.875 px `i`. Right takes it
+    // to the block's right edge — the block, not the 300 px wrap target:
+    // six 13.09375 px `w`s, which the measured block ceils to 79. Center
+    // splits the slack.
+    assert_eq!(left, 3.875);
+    assert_eq!(right, 6.0 * 13.09375);
+    assert_eq!(block, right.ceil());
+    assert_eq!(center, (left + right) / 2.0);
 }
 
 /// Measured width is the glyphs' own extent under every halign. It
@@ -147,16 +130,15 @@ fn measured_width_is_the_content_extent_not_the_wrap_target() {
         .map(|&halign| c.measure("hi\nyo", shape(wrap, halign)).measured.w)
         .collect();
     for (halign, w) in ALL.iter().zip(&widths) {
-        assert!(
-            (w - widths[0]).abs() < 1e-3,
+        assert_eq!(
+            *w, widths[0],
             "{halign:?} measured {w} must match Left {}",
-            widths[0],
+            widths[0]
         );
     }
-    assert!(
-        widths[0] < 60.0,
-        "\"hi\"/\"yo\" is ~13 px of glyphs, not {} (wrap {wrap})",
-        widths[0],
+    assert_eq!(
+        widths[0], 19.0,
+        "the wider line, \"yo\", ceiled — not the {wrap} px wrap target",
     );
 }
 
@@ -168,7 +150,7 @@ fn an_empty_buffer_caret_is_at_the_block_origin() {
     let ui = cosmic_ui();
     for halign in ALL {
         let x = ui.ui.shaper().cursor_xy("", 0, shape(300.0, halign)).x;
-        assert!(x.abs() < 1e-3, "{halign:?} empty caret must be 0, got {x}");
+        assert_eq!(x, 0.0, "{halign:?} empty caret");
     }
 }
 
@@ -470,13 +452,9 @@ fn multiline_widget_right_aligns_each_line() {
             .cursor_xy(&buf, 5, shape(wrap, HAlign::Right))
             .x;
     // "short" is the narrow line, so right-align carries its caret to
-    // the block's right edge rather than leaving it at ~35 px.
-    assert!(
-        (caret_short - block).abs() <= 1.0,
-        "right-aligned 'short' caret must reach the block edge {block}, got {caret_short}",
-    );
-    assert!(
-        caret_short > 100.0,
-        "…and that is far from the line's own ~35 px width (got {caret_short})",
-    );
+    // the block's right edge.
+    // The block edge is the long line's extent, 22727/128 px, which the
+    // measured block ceils to 178 — far from "short"'s own width.
+    assert_eq!(caret_short, 22727.0 / 128.0);
+    assert_eq!(block, caret_short.ceil());
 }

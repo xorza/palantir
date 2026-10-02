@@ -148,10 +148,7 @@ mod tests {
                 other.to_color().to_srgba_u8(),
                 start.to_color().to_srgba_u8(),
             );
-            for (g, w) in [(got.r, want.r), (got.g, want.g), (got.b, want.b)] {
-                let delta = i16::from(g) - i16::from(w);
-                assert!(delta.abs() <= 1, "{model:?}: {want:?} became {got:?}");
-            }
+            assert_eq!(got, want, "{model:?}");
         }
     }
 
@@ -164,11 +161,7 @@ mod tests {
         let round_trip = coords
             .with_model(ColorModel::Hsv)
             .with_model(ColorModel::Okhsv);
-        assert!(
-            (round_trip.hue() - 0.42).abs() < 1e-6,
-            "{}",
-            round_trip.hue()
-        );
+        assert_eq!(round_trip.hue(), 0.42, "{}", round_trip.hue());
     }
 
     /// Switching to the model already in use is the identity, axes included —

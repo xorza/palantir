@@ -348,9 +348,10 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
     assert_eq!(fs, 16.0);
-    assert!(
-        (lh - 16.0 * LINE_HEIGHT_MULT).abs() < 1e-5,
-        "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}",
+    assert_eq!(
+        lh,
+        16.0 * LINE_HEIGHT_MULT,
+        "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}"
     );
 }
 
@@ -561,12 +562,12 @@ fn line_height_override_changes_caret_rect_height() {
         ..TextEditTheme::default()
     }));
     let canonical_default: f32 = (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0;
-    assert!(
-        (default - canonical_default).abs() < 1e-5,
-        "default caret height = canonical font_size * LINE_HEIGHT_MULT, got {default}",
+    assert_eq!(
+        default, canonical_default,
+        "default caret height = canonical font_size * LINE_HEIGHT_MULT, got {default}"
     );
-    assert!(
-        (doubled - 32.0).abs() < 1e-5,
-        "2.0 multiplier yields 32 px caret, got {doubled}",
+    assert_eq!(
+        doubled, 32.0,
+        "2.0 multiplier yields 32 px caret, got {doubled}"
     );
 }

@@ -219,10 +219,7 @@ fn value_to_fraction_maps_and_clamps() {
     ];
     for (v, min, max, want) in cases {
         let got = value_to_fraction(v, min, max);
-        assert!(
-            (got - want).abs() < 1e-6,
-            "v2f({v},{min},{max})={got} want {want}"
-        );
+        assert_eq!(got, want, "v2f({v},{min},{max})={got} want {want}");
     }
     // A NaN anywhere in the triple names no share, and the low end is
     // what this widget reads that as — the same answer `press_fraction`
@@ -246,16 +243,16 @@ fn fraction_to_value_inverts_value_to_fraction() {
     for &v in &[10.0_f64, 12.5, 15.0, 17.5, 20.0] {
         let f = value_to_fraction(v, 10.0, 20.0);
         let back = fraction_to_value(f, 10.0, 20.0);
-        assert!((back - v).abs() < 1e-5, "roundtrip {v} -> {f} -> {back}");
+        assert_eq!(back, v, "roundtrip {v} -> {f} -> {back}");
     }
-    assert!((fraction_to_value(0.25, 10.0, 20.0) - 12.5).abs() < 1e-6);
+    assert_eq!(fraction_to_value(0.25, 10.0, 20.0), 12.5);
     // A reversed range round-trips through the same inverse: 75 sits a
     // quarter of the way from 100 down to 0.
     let f = value_to_fraction(75.0, 100.0, 0.0);
-    assert!((f - 0.25).abs() < 1e-6, "reversed fraction {f}");
-    assert!((fraction_to_value(f, 100.0, 0.0) - 75.0).abs() < 1e-5);
+    assert_eq!(f, 0.25, "reversed fraction {f}");
+    assert_eq!(fraction_to_value(f, 100.0, 0.0), 75.0);
     // Out-of-range fraction clamps before mapping.
-    assert!((fraction_to_value(1.5, 0.0, 100.0) - 100.0).abs() < 1e-6);
+    assert_eq!(fraction_to_value(1.5, 0.0, 100.0), 100.0);
 }
 
 #[test]
@@ -282,9 +279,9 @@ fn pointer_mapping_is_scale_invariant() {
             h.press_in(id, Vec2::new(local_x, 9.0));
             h.frame(|ui| build(ui, &mut value));
 
-            assert!(
-                (value - expected).abs() < 1e-6,
-                "logical x={local_x} at {scale}× produced {value}, expected {expected}",
+            assert_eq!(
+                value, expected,
+                "logical x={local_x} at {scale}× produced {value}, expected {expected}"
             );
         }
     }
@@ -292,14 +289,14 @@ fn pointer_mapping_is_scale_invariant() {
 
 #[test]
 fn snap_to_step_rounds_to_grid() {
-    assert!((snap_to_step(53.0, 0.0, Some(10.0)) - 50.0).abs() < 1e-6);
-    assert!((snap_to_step(57.0, 0.0, Some(10.0)) - 60.0).abs() < 1e-6);
-    assert!((snap_to_step(12.0, 0.0, Some(5.0)) - 10.0).abs() < 1e-6);
-    assert!((snap_to_step(13.0, 0.0, Some(5.0)) - 15.0).abs() < 1e-6);
+    assert_eq!(snap_to_step(53.0, 0.0, Some(10.0)), 50.0);
+    assert_eq!(snap_to_step(57.0, 0.0, Some(10.0)), 60.0);
+    assert_eq!(snap_to_step(12.0, 0.0, Some(5.0)), 10.0);
+    assert_eq!(snap_to_step(13.0, 0.0, Some(5.0)), 15.0);
     // Off-anchor grid: steps of 0.5 from min=1.0.
-    assert!((snap_to_step(2.2, 1.0, Some(0.5)) - 2.0).abs() < 1e-6);
+    assert_eq!(snap_to_step(2.2, 1.0, Some(0.5)), 2.0);
     // A slider with no step passes the value through.
-    assert!((snap_to_step(53.0, 0.0, None) - 53.0).abs() < 1e-6);
+    assert_eq!(snap_to_step(53.0, 0.0, None), 53.0);
 }
 
 /// `None` is the only "off": the builder refuses a step that would be a

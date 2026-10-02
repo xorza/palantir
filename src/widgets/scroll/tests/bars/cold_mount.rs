@@ -58,11 +58,11 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
     assert_eq!(expected, 50.0, "arithmetic guard on the expectation");
     let thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(thumbs.len(), 1, "one vertical thumb, no collapsed peers");
-    assert!(
-        (thumbs[0].size.h - expected).abs() < 1e-3,
+    assert_eq!(
+        thumbs[0].size.h, expected,
         "first-frame thumb must already be sized from the measured \
          content: expected {expected}, got {}",
-        thumbs[0].size.h,
+        thumbs[0].size.h
     );
     assert_eq!(thumbs[0].size.w, theme.thickness);
 }

@@ -87,27 +87,24 @@ fn arc_and_spin_follow_the_spinner_theme() {
     // clear of the floor at 50 px.
     let stock = SpinnerTheme::default();
     let (sweep, width, speed) = recorded(stock.clone(), 50.0);
-    assert!((sweep - stock.sweep).abs() < 1e-4, "sweep is themed");
-    assert!((speed - stock.speed).abs() < 1e-4, "spin rate is themed");
+    assert_eq!(sweep, stock.sweep, "sweep is themed");
+    assert_eq!(speed, stock.speed, "spin rate is themed");
     let expected = 50.0 * stock.thickness_ratio;
-    assert!(
-        (width - expected).abs() < 1e-4,
-        "want {expected}, got {width}"
-    );
+    assert_eq!(width, expected, "want {expected}, got {width}");
 
     // Quarter the diameter and the stroke follows it down, rather
     // than staying put.
     let (_, small, _) = recorded(stock.clone(), 12.5);
     let expected_small = 12.5 * stock.thickness_ratio;
-    assert!((small - expected_small).abs() < 1e-4);
+    assert_eq!(small, expected_small);
     assert_ne!(width, small);
 
     // Below the floor the derived value loses.
     let tiny = stock.min_thickness / stock.thickness_ratio * 0.5;
     let (_, floored, _) = recorded(stock.clone(), tiny);
-    assert!(
-        (floored - stock.min_thickness).abs() < 1e-4,
-        "tiny spinner floors at min_thickness, got {floored}",
+    assert_eq!(
+        floored, stock.min_thickness,
+        "tiny spinner floors at min_thickness, got {floored}"
     );
 
     // Retheme: every one of the three moves.
@@ -118,9 +115,9 @@ fn arc_and_spin_follow_the_spinner_theme() {
         ..SpinnerTheme::default()
     };
     let (sweep_b, width_b, speed_b) = recorded(loud, 50.0);
-    assert!((sweep_b - 1.0).abs() < 1e-4);
-    assert!((speed_b - 9.0).abs() < 1e-4);
-    assert!((width_b - 25.0).abs() < 1e-4);
+    assert_eq!(sweep_b, 1.0);
+    assert_eq!(speed_b, 9.0);
+    assert_eq!(width_b, 25.0);
     assert_ne!(sweep, sweep_b);
     assert_ne!(speed, speed_b);
     assert_ne!(width, width_b);

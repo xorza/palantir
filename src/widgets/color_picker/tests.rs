@@ -1,3 +1,4 @@
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::okhsv::Okhsv;
@@ -48,10 +49,11 @@ fn the_hue_survives_black() {
     // the one the picker held before it passed through black.
     let started = Okhsv::from_color(start, 0.0).h;
     let ended = Okhsv::from_color(color, 0.0).h;
-    assert!(
-        (started - ended).abs() < 1e-3,
-        "hue {started} came back as {ended} ({:?})",
-        color.to_srgba_u8(),
+    assert_close(
+        ended,
+        started,
+        1e-6,
+        "the hue goes through an f32 Okhsv round trip, an ulp at 0.62",
     );
 }
 

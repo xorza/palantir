@@ -1,3 +1,4 @@
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::okhsv::Okhsv;
 use crate::primitives::color::srgba_u8::SrgbaU8;
@@ -33,24 +34,23 @@ const BLUE: usize = 4;
 fn cube_corners_are_the_gamut_edge() {
     for (index, (corner, expected)) in CORNERS.iter().zip(CORNER_HUES).enumerate() {
         let coords = Okhsv::from_color(*corner, 0.0);
-        assert!(
-            (coords.h - expected).abs() < 1e-4,
-            "hue of {:?}: {} vs {expected}",
-            corner.to_srgba_u8(),
+        assert_close(
             coords.h,
+            expected,
+            2e-7,
+            "the reference port's hues are printed to seven decimals, and \
+             the f32 conversion adds up to two ulps",
         );
-        assert!(coords.s > 0.999, "corner saturation {}", coords.s);
-        assert!(coords.v > 0.999, "corner value {}", coords.v);
+        let edge = "the gamut-edge search lands a few f32 ulps under 1";
+        assert_close(coords.s, 1.0, 1e-6, edge);
+        assert_close(coords.v, 1.0, 1e-6, edge);
 
         if index == BLUE {
             continue;
         }
         let back = Okhsv::new(expected, 1.0, 1.0).to_color();
         let (got, want) = (back.to_srgba_u8(), corner.to_srgba_u8());
-        for (g, w) in [(got.r, want.r), (got.g, want.g), (got.b, want.b)] {
-            let delta = i16::from(g) - i16::from(w);
-            assert!(delta.abs() <= 1, "corner {want:?} came back {got:?}");
-        }
+        assert_eq!(got, want, "corner {index}");
     }
 }
 

@@ -66,8 +66,8 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.press_at(Vec2::new(200.5, 50.0));
     h.drag_to(Vec2::new(300.5, 50.0));
     let moved = frame_with(&mut h, &mut ratio);
-    assert!(
-        (ratio - 0.75).abs() < 1e-6,
+    assert_eq!(
+        ratio, 0.75,
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
     // Pass A lays the panes out at the pointer; the binding takes the
@@ -82,14 +82,14 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.drag_to(Vec2::new(999.0, 50.0));
     let held = frame_with(&mut h, &mut ratio);
     assert_eq!(held.len(), 1);
-    assert!(
-        (ratio - 0.75).abs() < 1e-6,
+    assert_eq!(
+        ratio, 0.75,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
     assert_eq!(*held.a(), QUIET, "the binding did not move this frame");
     let rect = h.layout_rect(split_id().with("first")).expect("arranged");
-    assert!(
-        (rect.size.w - 350.0).abs() < 0.5,
+    assert_eq!(
+        rect.size.w, 350.0,
         "min_pane(50) stops the current layout at 350 px, got {}",
         rect.size.w
     );
@@ -97,8 +97,8 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.drag_to(Vec2::new(998.0, 50.0));
     let caught_up = frame_with(&mut h, &mut ratio);
     assert_eq!(caught_up.len(), 1);
-    assert!(
-        (ratio - 0.875).abs() < 1e-6,
+    assert_eq!(
+        ratio, 0.875,
         "the next record writes back the arranged 350/400 ratio, got {ratio}"
     );
     assert_eq!(*caught_up.a(), CHANGED);
@@ -108,10 +108,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.release();
     h.move_to(Vec2::new(100.0, 50.0));
     let released = frame_with(&mut h, &mut ratio);
-    assert!(
-        (ratio - 0.875).abs() < 1e-6,
-        "ratio holds after release, got {ratio}"
-    );
+    assert_eq!(ratio, 0.875, "ratio holds after release, got {ratio}");
     // A release is action input, so the frame records twice; the
     // commit is pass A's edge alone.
     assert_eq!(
@@ -143,10 +140,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.release();
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
-    assert!(
-        (ratio - 0.5).abs() < 1e-6,
-        "the reset writes the centre, got {ratio}"
-    );
+    assert_eq!(ratio, 0.5, "the reset writes the centre, got {ratio}");
     // The same sync as a drag, so the write and its commit land on
     // pass B together.
     assert_eq!(*reset.a(), QUIET, "{reset:?}");
@@ -194,9 +188,9 @@ fn divider_drag_is_scale_invariant() {
         h.move_to(target(300.5));
         frame(&mut h, &mut ratio);
 
-        assert!(
-            (ratio - 0.75).abs() < 1e-6,
-            "logical pointer 300.5 over span 400 at {scale}× produced {ratio}",
+        assert_eq!(
+            ratio, 0.75,
+            "logical pointer 300.5 over span 400 at {scale}× produced {ratio}"
         );
 
         h.move_to(target(380.0));
@@ -212,9 +206,9 @@ fn divider_drag_is_scale_invariant() {
 
         h.move_to(target(381.0));
         frame(&mut h, &mut ratio);
-        assert!(
-            (ratio - 0.875).abs() < 1e-6,
-            "minimum-pane ratio at {scale}× produced {ratio}",
+        assert_eq!(
+            ratio, 0.875,
+            "minimum-pane ratio at {scale}× produced {ratio}"
         );
     }
 }
@@ -291,8 +285,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             "active drag movement must not request a second layout"
         );
 
-        assert!(
-            (ratio - 0.525).abs() < 1e-6,
+        assert_eq!(
+            ratio, 0.525,
             "model keeps the prior arranged ratio for one record"
         );
         let shrinking = h.node_for_widget_id(split_id().with(match rigid_half {
@@ -350,8 +344,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             Vec2::new(50.0, next_pointer)
         });
         assert_eq!(frame(&mut h, &mut ratio), FrameProcessing::SingleLayout);
-        assert!(
-            (ratio - expected_ratio).abs() < 1e-6,
+        assert_eq!(
+            ratio, expected_ratio,
             "{rigid_half:?} next record writes back its content floor"
         );
     }
@@ -475,8 +469,8 @@ fn pointer_to_ratio_maps_center_edges_and_floors() {
     ];
     for (pos, extent, thickness, min_pane, want) in cases {
         let got = pointer_to_ratio(pos, extent, thickness, min_pane);
-        assert!(
-            (got - want).abs() < 1e-6,
+        assert_eq!(
+            got, want,
             "p2r({pos},{extent},{thickness},{min_pane})={got} want {want}"
         );
     }

@@ -197,9 +197,9 @@ fn drag_thumb_pans_proportionally() {
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
         // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
         let offset_y = h.state::<ScrollState>(outer_id).offset.y;
-        assert!(
-            (offset_y - 120.0).abs() < 0.5,
-            "30 logical px at {scale}× should produce offset 120, got {offset_y}",
+        assert_eq!(
+            offset_y, 120.0,
+            "30 logical px at {scale}× should produce offset 120, got {offset_y}"
         );
 
         h.move_to(press + Vec2::new(0.0, 9_999.0 * scale));

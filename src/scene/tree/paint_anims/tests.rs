@@ -1,3 +1,4 @@
+use crate::primitives::approx::test_support::assert_close;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
@@ -192,12 +193,18 @@ fn spin_angle_is_elapsed_times_speed_wrapped() {
     assert_eq!(a.sample(START - Duration::from_secs(1)).rotation, 0.0);
     // 0.25 s in → 1.0 rad, alpha untouched.
     let m = a.sample(START + Duration::from_millis(250));
-    assert!((m.rotation - 1.0).abs() < 1e-5, "rotation {}", m.rotation);
+    assert_eq!(m.rotation, 1.0, "rotation {}", m.rotation);
     assert_eq!(m.alpha, 1.0);
     // 2 s in → 8.0 rad, wrapped into [0, TAU): 8 - TAU ≈ 1.7168.
     let wrapped = a.sample(START + Duration::from_secs(2)).rotation;
     let expect = 8.0_f32.rem_euclid(TAU);
-    assert!((wrapped - expect).abs() < 1e-4, "wrapped {wrapped}");
+    assert_close(
+        wrapped,
+        expect,
+        1e-6,
+        "the sampler reaches 8 rad through the period's f32 seconds, an ulp \
+         off the literal",
+    );
     assert!((0.0..TAU).contains(&wrapped));
 }
 
@@ -279,16 +286,12 @@ fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
         .curve(squared);
 
     let mid = a.sample(START + Duration::from_millis(500));
-    assert!((mid.alpha - 0.4).abs() < 1e-5, "alpha {}", mid.alpha);
-    assert!(
-        (mid.rotation - TAU / 8.0).abs() < 1e-5,
-        "rotation {}",
-        mid.rotation,
-    );
+    assert_eq!(mid.alpha, 0.4, "alpha {}", mid.alpha);
+    assert_eq!(mid.rotation, TAU / 8.0, "rotation {}", mid.rotation);
 
     let end = a.sample(START + Duration::from_secs(1));
-    assert!((end.alpha - 1.0).abs() < 1e-5, "alpha {}", end.alpha);
-    assert!((end.rotation - TAU / 2.0).abs() < 1e-5);
+    assert_eq!(end.alpha, 1.0, "alpha {}", end.alpha);
+    assert_eq!(end.rotation, TAU / 2.0);
     assert_eq!(a.next_wake(START + Duration::from_secs(1)), None);
 
     // A turn of any range makes the damage bound the swept square, and

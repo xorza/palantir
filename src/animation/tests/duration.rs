@@ -8,6 +8,7 @@ use crate::animation::tests::support::{
     AnimUi, SLOT, linear_100ms, next_frame, setup_anim_ui, wid,
 };
 use crate::common::time::MAX_ANIM_DT;
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::block::Block;
@@ -132,16 +133,17 @@ fn one_floor_animates_a_small_change_under_either_motion() {
         let moving = map.tick(id, SLOT, delta, spec, 0.016, next_frame());
         // Linear over 1 s: 0.016 of the way. The spring, released from
         // rest: `delta·(1 − e^(-13t)(cos t + 13 sin t))` at t = 0.016, in
-        // f64. The f32 step's coefficients are each within an ulp of
-        // theirs, so the two agree to ~1e-7 of `delta`, and 1e-10 is that.
+        // f64.
         let expected = match label {
             "duration" => f64::from(delta * 0.016),
             _ => f64::from(delta) * spring_travel,
         };
-        assert!(
-            (f64::from(moving.current) - expected).abs() < 1e-10,
-            "{label}: {} vs {expected}",
+        assert_close(
             moving.current,
+            expected,
+            1e-10,
+            "the f32 step's coefficients are each within an ulp of the \
+             closed form's, ~1e-7 of delta",
         );
     }
 
@@ -153,11 +155,12 @@ fn one_floor_animates_a_small_change_under_either_motion() {
     let moving = colours.tick(id, SLOT, hover, AnimSpec::SPRING, 0.016, next_frame());
     assert!(!moving.settled, "the hover fades over several frames");
     let expected = f64::from(rest.r) + f64::from(hover.r - rest.r) * spring_travel;
-    assert!(
-        (f64::from(moving.current.r) - expected).abs() < 1e-8,
-        "the first step travels the closed form's share, {} vs {expected} \
-         (f32 rounding of a value near 0.007)",
+    assert_close(
         moving.current.r,
+        expected,
+        1e-8,
+        "the first step travels the closed form's share, to f32 rounding \
+         of a value near 0.007",
     );
 }
 

@@ -98,37 +98,18 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     // surface-derived `available` the measure pass received before
     // flooring.
     let widths: [u32; 5] = [400, 300, 250, 200, 150];
-    let mut section_widths = Vec::new();
-    let mut grid_widths = Vec::new();
+    let (mut section_widths, mut grid_widths) = (Vec::new(), Vec::new());
     for w in widths {
         let (g, s) = measure_at(w);
         section_widths.push(s);
         grid_widths.push(g);
     }
-    // Find a pair of surface widths where the section width didn't
-    // change (panel stopped shrinking). Grid width must also be stable
-    // there.
-    for i in 1..section_widths.len() {
-        if (section_widths[i] - section_widths[i - 1]).abs() < 0.5 {
-            let g_prev = grid_widths[i - 1];
-            let g_curr = grid_widths[i];
-            assert!(
-                (g_curr - g_prev).abs() <= 0.5,
-                "section panel stopped shrinking at {} but grid kept shrinking: \
-                 surfaces {} → {}, grid {} → {}",
-                section_widths[i],
-                widths[i - 1],
-                widths[i],
-                g_prev,
-                g_curr,
-            );
-            return;
-        }
-    }
-    panic!(
-        "test setup did not produce a regime where section panel stops shrinking; \
-         widths={widths:?} section_widths={section_widths:?}"
-    );
+    // At 400 the section fills 400 − 2·12 − 2·16 = 344. Below that it
+    // floors at its single-line title, 341 px at 12 px Inter, and the Hug
+    // grid inside fills the section's committed width rather than the
+    // narrower surface-derived `available`.
+    assert_eq!(section_widths, [344.0, 341.0, 341.0, 341.0, 341.0]);
+    assert_eq!(grid_widths, section_widths);
 }
 
 /// Pin: a non-wrapping `Text` reports MinContent on the X axis equal to
@@ -166,10 +147,9 @@ fn nonwrapping_text_minconent_equals_full_width() {
         LenReq::MinContent,
         &interned_text,
     );
-    assert!(
-        (min_w - max_w).abs() <= 0.5,
-        "non-wrapping Text MinContent must equal MaxContent (full width); \
-       max_w={max_w} min_w={min_w}",
+    assert_eq!(
+        min_w, max_w,
+        "non-wrapping Text MinContent must equal MaxContent (full width)",
     );
 }
 

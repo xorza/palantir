@@ -64,9 +64,9 @@ fn empty_editor_width_is_stable_across_focus() {
         w_unfocused > 0.0,
         "unfocused empty editor with a placeholder should have positive width, got {w_unfocused}",
     );
-    assert!(
-        (w_focused - w_unfocused).abs() < 1e-3,
-        "focus must not change desired width; unfocused={w_unfocused} focused={w_focused}",
+    assert_eq!(
+        w_focused, w_unfocused,
+        "focus must not change desired width; unfocused={w_unfocused} focused={w_focused}"
     );
 }
 
@@ -127,9 +127,9 @@ fn fill_width_editor_shrinks_below_text_content() {
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
     let fill_w = h.ui.arranged_rect(Layer::Main, fill).size.w;
-    assert!(
-        (fill_w - NARROW_W).abs() < 0.5,
-        "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}",
+    assert_eq!(
+        fill_w, NARROW_W,
+        "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}"
     );
     assert!(
         fill_w < text_w,

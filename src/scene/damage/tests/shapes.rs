@@ -407,11 +407,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
 
     let pivot = owner.min + Vec2::new(40.0, 20.0);
     let want = Rect::square_about(pivot, (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt()).inflated(1.0);
-    let eps = 1e-3;
-    assert!(
-        (row.min - want.min).length() < eps && (row.size.w - want.size.w).abs() < eps,
-        "damaged {row:?}, swept {want:?}",
-    );
+    assert_eq!(row, want, "the damage is the swept square");
     // The recorded bbox stops at the owner box, so the quarter-turn
     // endpoint is the pixel the old bound left undamaged.
     let quarter_turn = pivot + Vec2::new(-10.0, 30.0);
