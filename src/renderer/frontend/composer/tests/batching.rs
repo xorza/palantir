@@ -238,7 +238,7 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert!(buf.groups.len() >= 2, "distinct scissors → distinct groups");
+    assert_eq!(buf.groups.len(), 2, "distinct scissors → distinct groups");
     assert_eq!(
         buf.text_batches.len(),
         1,
@@ -410,28 +410,14 @@ fn compose_spins_polyline_about_bbox_center() {
         let ci = &out.curves[0];
         (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
     };
-    let (lo0, hi0) = aabb(0.0);
-    let (lor, hir) = aabb(FRAC_PI_2);
-    // Unrotated: a wide AABB (horizontal stroke).
-    assert!(
-        hi0.x - lo0.x > hi0.y - lo0.y,
-        "unrotated stroke should be wide: {lo0:?}..{hi0:?}",
-    );
-    // Spun 90°: a tall AABB (vertical stroke) — proves rotation applied.
-    assert!(
-        hir.y - lor.y > hir.x - lor.x,
-        "90° spin should be tall: {lor:?}..{hir:?}",
-    );
-    // Both stay centred on the pivot — proves the pivot is bbox.center().
-    let c0 = (lo0 + hi0) * 0.5;
-    let cr = (lor + hir) * 0.5;
-    assert!(
-        (c0 - Vec2::splat(50.0)).length() < 2.0,
-        "unrotated centre {c0:?}"
-    );
-    assert!(
-        (cr - Vec2::splat(50.0)).length() < 2.0,
-        "spun centre {cr:?}"
+    // Unrotated, the segment is where it was recorded. Spun 90° about
+    // the box centre (50, 50), its ends turn ±35 px off the pivot onto
+    // the vertical: (50, 15) and (50, 85) — rotation applied, about the
+    // right pivot.
+    assert_eq!(aabb(0.0), (Vec2::new(15.0, 50.0), Vec2::new(85.0, 50.0)));
+    assert_eq!(
+        aabb(FRAC_PI_2),
+        (Vec2::new(50.0, 15.0), Vec2::new(50.0, 85.0))
     );
 }
 
@@ -659,11 +645,11 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             })
             .map(|(i, _)| i as u32)
             .expect("panel quad group");
-        assert!(
-            batch.last_group < quad_group,
-            "closed-batch text (last_group={}) must paint before the overlapping quad \
-             at y={quad_y} (group={quad_group})",
-            batch.last_group,
+        assert_eq!(
+            batch.last_group + 1,
+            quad_group,
+            "closed-batch text must paint in the group just before the overlapping \
+             quad at y={quad_y}",
         );
     }
 }

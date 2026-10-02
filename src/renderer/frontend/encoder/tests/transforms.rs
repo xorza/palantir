@@ -181,19 +181,8 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     let shape_rect = rect_with_fill(&drawn, shape_color).expect("direct shape must paint");
     let child_rect = rect_with_fill(&drawn, child_color).expect("child must paint");
 
-    // Composer rounds rects in 8 decimal places (or so) — accept tiny FP drift.
-    fn approx_eq(a: Rect, b: Rect) {
-        let eps = 1e-3;
-        assert!(
-            (a.min.x - b.min.x).abs() < eps
-                && (a.min.y - b.min.y).abs() < eps
-                && (a.size.w - b.size.w).abs() < eps
-                && (a.size.h - b.size.h).abs() < eps,
-            "expected {a:?}, got {b:?}",
-        );
-    }
-    approx_eq(Rect::new(10.0, 20.0, 60.0, 60.0), shape_rect);
-    approx_eq(Rect::new(110.0, 140.0, 80.0, 80.0), child_rect);
+    assert_eq!(shape_rect, Rect::new(10.0, 20.0, 60.0, 60.0));
+    assert_eq!(child_rect, Rect::new(110.0, 140.0, 80.0, 80.0));
 }
 
 /// Chrome on a transformed panel paints in parent space (unaffected
@@ -226,14 +215,9 @@ fn transformed_panel_chrome_stays_in_parent_space() {
     // Chrome paints at the panel's own layout rect (Sizing::fixed(150.0)
     // inside a 400×400 surface, hstack with one child → top-left at (0,0)
     // by default). The transform must NOT scale chrome to 300×300.
-    assert!(
-        (chrome_rect.size.w - 150.0).abs() < 1e-3,
-        "chrome width must not be scaled by self transform: got {:?}",
-        chrome_rect
-    );
-    assert!(
-        (chrome_rect.size.h - 150.0).abs() < 1e-3,
-        "chrome height must not be scaled by self transform: got {:?}",
-        chrome_rect
+    assert_eq!(
+        chrome_rect,
+        Rect::new(0.0, 0.0, 150.0, 150.0),
+        "chrome is not scaled by its own transform",
     );
 }

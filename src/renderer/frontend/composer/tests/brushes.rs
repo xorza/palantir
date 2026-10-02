@@ -154,7 +154,11 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         .replay_from(&buffer);
     let q = &out.quads[0];
     assert_eq!(q.fill_kind, FillKind::linear(Spread::Reflect));
-    assert!(q.fill_lut_row.0 >= 1, "linear quad must get a real row");
+    assert_eq!(
+        q.fill_lut_row,
+        LutRow(1),
+        "row 0 is the fallback, so the first gradient bakes into row 1"
+    );
     assert_eq!(q.fill_axis, expected_axis);
 }
 
@@ -507,14 +511,11 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     );
     let target = &buf.frame_targets[0];
     assert_eq!(target.full, UVec2::new(100, 100), "the whole view, halved");
-    assert!(
-        target.used.cmple(target.full).all(),
-        "a window larger than the view it is a window onto: {target:?}"
-    );
-    assert!(
-        (target.offset + target.used).cmple(target.full).all(),
-        "a window reaching past the view: {target:?}"
-    );
+    // The clip leaves 45..200 of the view; at the cap's 0.5 that is
+    // 22.5..100, so the window starts on the floor, 22, and ends at the
+    // view's edge, 100 — never wider than the view, never past it.
+    assert_eq!(target.offset, UVec2::splat(22));
+    assert_eq!(target.used, UVec2::splat(100 - 22));
 }
 
 #[test]

@@ -12,6 +12,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
+use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -229,10 +230,11 @@ fn compose_snaps_text_scale_to_discrete_steps() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.texts.len(), 1);
-    let s = buf.texts[0].scale;
-    assert!(
-        (s - 1.015).abs() < 1e-5,
-        "1.013 must snap to 1.015, got {s}",
+    // 1.013 / 0.005 = 202.6, which rounds to rung 203: 1.015.
+    assert_eq!(
+        buf.texts[0].scale,
+        203.0 * TEXT_SCALE_STEP,
+        "1.013 must snap to 1.015",
     );
 }
 
@@ -250,9 +252,11 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
-    // 100*1.013 = 101.3; 50*1.013 = 50.65 — preserved, not snapped.
-    assert!((buf.quads[0].rect.size.w - 101.3).abs() < 1e-4);
-    assert!((buf.quads[0].rect.size.h - 50.65).abs() < 1e-3);
+    // 100 × 1.013 and 50 × 1.013 — preserved, not snapped.
+    assert_eq!(
+        buf.quads[0].rect.size,
+        Size::new(100.0 * 1.013, 50.0 * 1.013)
+    );
 }
 
 #[test]
@@ -418,9 +422,11 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         .into_iter()
         .zip([decode(ax, ay), decode(bx, by), decode(cx, cy)])
     {
+        // Half a unorm16 step of the covering quad, per axis.
+        let half_step = Vec2::new(quad.rect.size.w, quad.rect.size.h) / 65535.0 * 0.5;
         assert!(
-            (want - got).abs().max_element() <= 0.025,
-            "{want} decoded as {got}",
+            (want - got).abs().cmple(half_step).all(),
+            "{want} decoded as {got}, half a step is {half_step}",
         );
     }
     assert_eq!(half::f16::from_bits(radius).to_f32(), 2.0);
