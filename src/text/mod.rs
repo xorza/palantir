@@ -195,6 +195,12 @@ pub(crate) mod internals {
     /// between look like.
     pub const PROBATION_KEEP_FRAMES: u64 =
         crate::text::cosmic::shaped_buffer_cache::PROBATION_KEEP_FRAMES;
+
+    /// Frames one revolution of the shaped-buffer expiry ring takes. A
+    /// text audit warms and measures in whole revolutions, so a cost the
+    /// ring incurs once per revolution lands inside its window.
+    pub const SHAPED_BUFFER_RING_FRAMES: u64 =
+        crate::text::cosmic::shaped_buffer_cache::RING_FRAMES;
 }
 
 #[cfg(test)]

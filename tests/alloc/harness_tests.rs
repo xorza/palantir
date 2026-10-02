@@ -9,7 +9,7 @@
 use crate::allocator::{TRACE_CAP, with_audit};
 use crate::harness;
 use crate::harness::{Audit, user_frames};
-use palantir::{Button, Configure, Sizing, Ui};
+use palantir::{Block, Button, Configure, Sizing, Spinner, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -142,29 +142,55 @@ fn stale_traces_drained_between_audits() {
     assert_eq!(r.traces.len(), 0, "second audit inherited stale traces");
 }
 
+/// Each way an audit fails names itself, frame 0 and the caller. The
+/// spinner animates paint-only, so after its first frame it skips the
+/// scene; the block does not animate, so every frame runs it.
 #[test]
-fn audit_panics_with_diagnostic_message_on_budget_violation() {
-    let result = catch_unwind(AssertUnwindSafe(|| {
+fn audit_panics_with_diagnostic_message() {
+    let over_budget: fn() = || {
         Audit::new().warmup(0).frames(4).run(|_ui: &mut Ui| {
             one_alloc();
         });
-    }));
-    let msg = result
-        .expect_err("the audit should panic when budget exceeded")
-        .downcast::<String>()
-        .map(|s| *s)
-        .unwrap_or_else(|_| String::from("<non-string panic payload>"));
-    assert!(
-        msg.contains("alloc budget exceeded"),
-        "panic message missing diagnostic header: {msg}",
-    );
-    // The fixture names itself by where it is, not by a string it repeats:
-    // `Audit::run` is `#[track_caller]`, so the location is this file and the
-    // line the call above sits on.
-    assert!(
-        msg.contains(file!()),
-        "panic message missing the caller's location: {msg}",
-    );
+    };
+    let skips_scene: fn() = || {
+        Audit::new().warmup(4).frames(4).run(|ui: &mut Ui| {
+            Spinner::new().id_salt("spin").show(ui);
+        });
+    };
+    let records_paint_only: fn() = || {
+        Audit::new()
+            .paint_only()
+            .warmup(4)
+            .frames(4)
+            .run(|ui: &mut Ui| {
+                Block::new().id_salt("still").size(10.0).show(ui);
+            });
+    };
+    for (audit, expected) in [
+        (over_budget, "alloc budget exceeded"),
+        (skips_scene, "frame 0/4 (after 4 warmup) skipped the scene"),
+        (
+            records_paint_only,
+            "frame 0/4 (after 4 warmup) ran the scene",
+        ),
+    ] {
+        let msg = catch_unwind(audit)
+            .expect_err("the audit should panic")
+            .downcast::<String>()
+            .map(|s| *s)
+            .unwrap_or_else(|_| String::from("<non-string panic payload>"));
+        assert!(
+            msg.contains(expected),
+            "panic message missing {expected:?}: {msg}"
+        );
+        // The fixture names itself by where it is, not by a string it
+        // repeats: `Audit::run` is `#[track_caller]`, so the location is
+        // this file.
+        assert!(
+            msg.contains(file!()),
+            "panic message missing the caller's location: {msg}",
+        );
+    }
 }
 
 #[test]

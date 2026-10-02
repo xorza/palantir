@@ -236,9 +236,38 @@ fn horizon_rounds_up_and_indexes_in_range() {
         let wheel = ExpiryWheel::<u32>::with_horizon(horizon);
         assert_eq!(wheel.buckets.len(), slots, "horizon {horizon}");
         assert_eq!(wheel.mask, slots as u64 - 1, "horizon {horizon}");
+        assert_eq!(
+            ExpiryWheel::<u32>::slots_for_horizon(horizon),
+            slots as u64,
+            "horizon {horizon}",
+        );
         assert!(
             horizon <= wheel.mask,
             "horizon {horizon} must fit the schedule assert",
         );
     }
+    // The shaped-buffer cache's keep: 135 + 2 = 137, one spare → 138,
+    // rounded up → 256.
+    assert_eq!(ExpiryWheel::<u32>::with_keep(135).buckets.len(), 256);
+    assert_eq!(ExpiryWheel::<u32>::slots_for_keep(135), 256);
+}
+
+/// A full bucket grows every bucket to the next power of two of its
+/// load, floor 4: one ticket gives 4 everywhere, the fifth in the same
+/// bucket gives 8 everywhere, the empty buckets included.
+#[test]
+fn buckets_grow_together() {
+    let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
+    let capacities =
+        |wheel: &ExpiryWheel<u32>| wheel.buckets.iter().map(Vec::capacity).collect::<Vec<_>>();
+    assert_eq!(capacities(&wheel), [0; 16]);
+
+    wheel.schedule(0, 3);
+    assert_eq!(capacities(&wheel), [4; 16]);
+    for key in 1..4 {
+        wheel.schedule(key, 3);
+    }
+    assert_eq!(capacities(&wheel), [4; 16], "four fit without a growth");
+    wheel.schedule(4, 3);
+    assert_eq!(capacities(&wheel), [8; 16]);
 }

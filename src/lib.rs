@@ -212,7 +212,9 @@ pub mod internals {
     #[cfg(feature = "internals")]
     pub use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     #[cfg(feature = "internals")]
-    pub use crate::text::internals::{PROBATION_KEEP_FRAMES, TEXT_SCALE_STEP};
+    pub use crate::text::internals::{
+        PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES, TEXT_SCALE_STEP,
+    };
     pub use crate::ui::harness::UiHarness;
     pub use crate::ui::harness::passes::Passes;
 }
