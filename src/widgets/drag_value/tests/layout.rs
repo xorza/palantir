@@ -2,8 +2,13 @@
 //! node.
 
 use crate::Ui;
+use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -13,14 +18,6 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn editing_a_long_value_holds_the_field_width() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::drag_value::DragValue;
-    use crate::widgets::panel::Panel;
-    use glam::UVec2;
-
     let surface = UVec2::new(400, 120);
     let id = WidgetId::from_hash("dv-width");
     let mut v = 1.984_573_845_634_985_2_f64;
@@ -72,15 +69,6 @@ fn editing_a_long_value_holds_the_field_width() {
 
 #[test]
 fn editing_under_a_scaled_canvas_does_not_panic() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::translate_scale::TranslateScale;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::drag_value::DragValue;
-    use crate::widgets::panel::Panel;
-    use glam::{UVec2, Vec2};
-
     let surface = UVec2::new(400, 120);
     let id = WidgetId::from_hash("dv-zoom");
     let mut v = 1.984_573_845_634_985_2_f64;
@@ -126,11 +114,6 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
 /// fields added later.
 #[test]
 fn entering_edit_mode_preserves_the_callers_node_placement() {
-    use crate::layout::types::align::Align;
-    use crate::primitives::size::Size;
-    use crate::primitives::spacing::Spacing;
-    use crate::scene::layer::Layer;
-
     const POSITION: Vec2 = Vec2::new(23.0, 11.0);
     let padding = Spacing::all(7.0);
     let margin = Spacing::all(3.0);
@@ -219,14 +202,6 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 /// last rect, so only the vertical padding difference showed.
 #[test]
 fn entering_edit_mode_keeps_the_chips_box() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::drag_value::DragValue;
-    use crate::widgets::panel::Panel;
-    use glam::UVec2;
-
     let id = WidgetId::from_hash("dv-box");
     let mut fps = 120_i64;
     // A `Hug` height is what exposes the difference — a fixed one would pin

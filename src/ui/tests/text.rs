@@ -1,17 +1,32 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
+use crate::InternedStr;
 use crate::Ui;
+use crate::layout::types::align::Align;
+use crate::layout::types::sizing::Sizing;
+use crate::layout::types::track::Track;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
 use crate::scene::layer::Layer;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::paint_anims::curves;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+use crate::shape::Shape;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
+use crate::text::font_family::FontFamily;
+use crate::text::font_slant::FontSlant;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
+use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, ui_with_shared};
 use crate::widgets::configure::Configure;
+use crate::widgets::grid::Grid;
+use crate::widgets::widget::Widget;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 use std::time::Duration;
@@ -21,9 +36,6 @@ use std::time::Duration;
 /// single-line, wrapped, and grid-intrinsic-query paths.
 #[test]
 fn text_reshape_skipped_when_unchanged() {
-    use crate::layout::types::{sizing::Sizing, track::Track};
-    use crate::widgets::{grid::Grid, text::Text};
-
     type Build = fn(&mut Ui);
 
     // First-frame dispatches: a run that fits its slot resolves once,
@@ -93,8 +105,6 @@ fn text_reshape_skipped_when_unchanged() {
 /// drives a fresh measure.
 #[test]
 fn text_reshape_runs_when_content_changes() {
-    use crate::widgets::text::Text;
-
     let render = |content: &'static str| {
         move |ui: &mut Ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
@@ -120,8 +130,6 @@ fn text_reshape_runs_when_content_changes() {
 /// entry is evicted on the same frame.
 #[test]
 fn text_reuse_evicts_disappeared_widgets() {
-    use crate::widgets::text::Text;
-
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -158,9 +166,6 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// it, and a unit test on the method would pass with that call deleted.
 #[test]
 fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
-    use crate::shape::Shape;
-    use crate::widgets::widget::Widget;
-
     let wid = WidgetId::from_hash("multi-run");
     let build = move |runs: usize| {
         move |ui: &mut Ui| {
@@ -192,8 +197,6 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
 
 #[test]
 fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
-    use crate::layout::types::sizing::Sizing;
-
     fn text_window(ui: &mut Ui, content: &'static str, width: f32) {
         Panel::vstack()
             .id(WidgetId::from_hash("shared-root"))
@@ -271,19 +274,6 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 /// separate tick the `PaintOnly` arm owes.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
-    use crate::layout::types::align::Align;
-    use crate::layout::types::sizing::Sizing;
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
-    use crate::shape::Shape;
-    use crate::text::font_family::FontFamily;
-    use crate::text::font_weight::FontWeight;
-
-    use crate::ui::frame_report::FrameProcessing;
-    use crate::ui::resources::UiResources;
-    use crate::widgets::widget::Widget;
-
     const HALF: Duration = Duration::from_millis(500);
 
     // A blinking text boundary is what makes the harness produce
@@ -378,18 +368,6 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 
 #[test]
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
-    use crate::layout::types::align::Align;
-    use crate::layout::types::sizing::Sizing;
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
-    use crate::shape::Shape;
-    use crate::text::font_family::FontFamily;
-    use crate::text::font_weight::FontWeight;
-
-    use crate::ui::frame_report::FrameProcessing;
-    use crate::ui::resources::UiResources;
-    use crate::widgets::widget::Widget;
-
     const HALF: Duration = Duration::from_millis(500);
 
     fn idle_body(ui: &mut Ui) {
@@ -475,9 +453,6 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 /// is preserved — only the *wrap* reshape runs again.
 #[test]
 fn wrap_target_change_preserves_unbounded_cache() {
-    use crate::layout::types::sizing::Sizing;
-    use crate::widgets::text::Text;
-
     let render = |slot_w: f32| {
         move |ui: &mut Ui| {
             Panel::vstack()
@@ -515,10 +490,6 @@ fn wrap_target_change_preserves_unbounded_cache() {
 /// axis overwriting the other. Both default to the theme's.
 #[test]
 fn text_face_hatches_compose_on_the_lowered_record() {
-    use crate::scene::shapes::record::ShapeRecord;
-    use crate::text::font_slant::FontSlant;
-    use crate::text::font_weight::FontWeight;
-
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Text::new("plain").id(WidgetId::from_hash("plain")).show(ui);
@@ -559,8 +530,6 @@ fn text_face_hatches_compose_on_the_lowered_record() {
 
 #[test]
 fn widget_text_inputs_lower_exact_bytes() {
-    use crate::scene::shapes::record::ShapeRecord;
-
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         let borrowed = String::from("borrowed");
@@ -622,8 +591,6 @@ fn widget_text_inputs_lower_exact_bytes() {
 /// the epoch at all.
 #[test]
 fn interned_handles_do_not_outlive_their_record_pass() {
-    use crate::InternedStr;
-
     fn intern_in_own_pass(h: &mut UiHarness) -> InternedStr {
         let mut escaped = None;
         h.frame(|ui| escaped = Some(ui.intern("escapee")));
@@ -683,8 +650,6 @@ fn interned_handles_do_not_outlive_their_record_pass() {
 /// and each run mints its own handle.
 #[test]
 fn interning_per_pass_records_the_expected_bytes() {
-    use crate::scene::shapes::record::ShapeRecord;
-
     let mut h = UiHarness::cold(SURFACE);
     let mut passes = 0;
     h.frame(|ui| {

@@ -50,6 +50,5 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 17. Structure-rule violations
 
-- [ ] Function-local re-imports of names already imported: `drag_value/tests/layout.rs:16-22,73-80,225-231`, `keyboard.rs:396-401,445-449,482-484,525-528`, `repainting.rs:598`, `stack/tests.rs:543-544`; `FrameProcessing` imported in 7 functions. `text_edit/tests/mod.rs:1-51` splits imports around helpers.
 - [ ] Tuple-returning test helpers: `record_two_frames`, `placement`, `shape_origins`, `recorded`, `settle.rs:48` `warm`, `click.rs:583` `probe`. (judgement: whether the rule binds test code)
 - [ ] `TestShape`'s `cfg(test)` fields (`text/request.rs:117-120`) force `#[cfg(test)]` inside a const literal in `text/bench.rs:66-69`. (judgement)
