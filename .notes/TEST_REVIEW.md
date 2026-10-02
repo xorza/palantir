@@ -29,9 +29,8 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 14. Missing coverage for computable logic
 
-- [ ] Host and window: `WindowRequests::drain` has no direct test, and `ui/tests/frames/window_output.rs:115,128` re-implement its formula. `WindowDirectory::add` / `remove` panics, `sanitize_system_scale`, the `scale_factor_is_valid` boundary, `UserScale` stepping near a rung, and the `raster_eq` axes (`physical`, `pixel_snap`, the `refresh_millihertz` exclusion) have no test. `winit/tests.rs:53` never calls `.vsync()` or `.fonts()`.
 - [ ] `runtime.rs:196` `schedule`, `native.rs:125` `position_on_monitor`, and the scale-change resync in `winit/mod.rs` are pure folds behind `ActiveEventLoop`. Extract them as functions over slices and table-test them.
-- [ ] `anim-derive` has no tests: `#[animate(skip)]`, the error arms, an all-snap struct, generics, `zero()` of a snap field. Add a `cfg(test)` probe struct with hand-computed results. `compile_fail` coverage would need `trybuild`, a new dependency.
+- [ ] `anim-derive`'s two error arms (a non-struct input, an unknown `#[animate(..)]` option) have no `compile_fail` test. `trybuild` would cover them at a cost of seconds per run, past the 1 s test budget. (judgement)
 
 ## 15. Duplicated fixtures and setup
 
@@ -74,7 +73,7 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 - [ ] Dead paths: `tests/alloc/gates.rs` (now `gates/mod.rs`) in `bench/mod.rs:16`, `frame_fixture/mod.rs:27`, `tests/alloc/harness/offscreen.rs:3`; `tests/alloc/dock.rs` in `frame_fixture/tests.rs:110`; a removed "alloc bench" in `ui/bench.rs:7-8`, `common/counters.rs:23`, `frame_fixture/specimen.rs:219`, `layout/counters.rs:7`, `renderer/gradient_atlas/counters.rs:10`; "~20 small scenes" (there are 34) in `tests/alloc/main.rs:5`, `gates/mod.rs:78`.
 - [ ] Tests or modules that do not exist: `canvas/tests.rs:73`, `stretch_semantics.rs:106`, `cross_driver_tests/mod.rs:6` (`crate::support::testing`), `icon_rasterizer/tests.rs:21,137` (`leak_from_svgs`; "three fixtures" for two).
-- [ ] Wrong derivations: `stack/tests.rs:162` ("80 between gap"; it is 40 per gap), `encoder/tests/fit.rs:16-18` (wrong crop axis), `encoder/tests/transforms.rs:232-244` (blames the composer in code that never composes), `display/user_scale.rs:156` (says 1.0, asserts 1.1), `convergence.rs:154` (font load in a mono test).
+- [ ] Wrong derivations: `stack/tests.rs:162` ("80 between gap"; it is 40 per gap), `encoder/tests/fit.rs:16-18` (wrong crop axis), `encoder/tests/transforms.rs:232-244` (blames the composer in code that never composes), `convergence.rs:154` (font load in a mono test).
 - [ ] `scene/shapes/tests.rs:100-104` calls the polyline colour check a `debug_assert`. It is a release `assert_eq!` by design (`shape/polyline.rs:98-102`).
 - [ ] `ui/tests/repainting.rs:231-234` narrates history, `:620-627` says the tests build a bare `Ui` (they do not), `:596` is a half-sentence; `input_state/tests/drag.rs:281-285` names `resp` and `post_record`; `damage/tests/support.rs:33-36` puts `one_frame`'s doc on `BLUE`; `color_button/tests.rs:24-30` gives a wrong reason for its press/release frame.
 - [ ] Duplicate asserts: `input_state/tests/drag.rs:240`, `:320`.

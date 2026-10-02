@@ -52,6 +52,7 @@ fn builder_retains_defaults_and_granular_overrides() {
     assert_eq!(defaults.config.power_preference, PowerPreference::LowPower);
     assert!(!defaults.config.collect_gpu_stats);
     assert!(defaults.config.pixel_snap);
+    assert_eq!(defaults.config.fonts, FontScope::System);
 
     let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
         .config(WinitHostConfig {
@@ -66,11 +67,14 @@ fn builder_retains_defaults_and_granular_overrides() {
         .title("title")
         .power_preference(PowerPreference::HighPerformance)
         .collect_gpu_stats(true)
-        .pixel_snap(false);
+        .pixel_snap(false)
+        .vsync(Vsync::On)
+        .fonts(FontScope::System);
 
     assert_eq!(builder.first_token, WindowToken(9));
     assert_eq!(builder.config.window.title, "title");
-    assert_eq!(builder.config.vsync, Vsync::Off);
+    assert_eq!(builder.config.vsync, Vsync::On);
+    assert_eq!(builder.config.fonts, FontScope::System);
     assert_eq!(
         builder.config.power_preference,
         PowerPreference::HighPerformance

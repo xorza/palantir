@@ -1,5 +1,6 @@
 //! Tweens and springs: how a row advances, settles, and is swept.
 
+mod derive;
 mod duration;
 mod eviction;
 mod retarget;
