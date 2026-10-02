@@ -806,4 +806,3 @@ output, cost, cleanup.
 ## Phase 10. Cleanup (D15 rest, D17)
 
 - [ ] ISSUES.md items.
-- [ ] TEST_REVIEW groups 2, 6, 7, 9, 11–18 that no earlier phase closed.
