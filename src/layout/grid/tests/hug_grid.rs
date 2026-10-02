@@ -13,31 +13,26 @@ use glam::UVec2;
 #[test]
 fn grid_hug_grid_collapses_empty_fill_tracks() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
-    let mut grid_node = None;
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                grid_node = Some(
-                    Grid::new()
-                        .id(WidgetId::from_hash("hug-grid"))
-                        .cols([Track::fixed(80.0), Track::FILL])
-                        .rows([Track::fixed(40.0)])
-                        .size((Sizing::HUG, Sizing::HUG))
-                        .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("a"))
-                                .grid_cell((0, 0))
-                                .show(ui);
-                            Block::new()
-                                .id(WidgetId::from_hash("b"))
-                                .grid_cell((0, 1))
-                                .show(ui);
-                        })
-                        .response
-                        .node(),
-                );
+                Grid::new()
+                    .id(WidgetId::from_hash("hug-grid"))
+                    .cols([Track::fixed(80.0), Track::FILL])
+                    .rows([Track::fixed(40.0)])
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Block::new()
+                            .id(WidgetId::from_hash("a"))
+                            .grid_cell((0, 0))
+                            .show(ui);
+                        Block::new()
+                            .id(WidgetId::from_hash("b"))
+                            .grid_cell((0, 1))
+                            .show(ui);
+                    });
             });
     });
     let r = h.arranged(WidgetId::from_hash("hug-grid"));
@@ -48,7 +43,6 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
 #[test]
 fn hug_grid_fill_track_contributes_nested_rigid_floor() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut rigid_node = None;
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -61,13 +55,10 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
                     .grid_cell((0, 0))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        rigid_node = Some(
-                            Block::new()
-                                .id(WidgetId::from_hash("rigid"))
-                                .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
-                                .show(ui)
-                                .node(),
-                        );
+                        Block::new()
+                            .id(WidgetId::from_hash("rigid"))
+                            .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
+                            .show(ui);
                     });
             })
             .response
@@ -85,7 +76,6 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
 #[test]
 fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     let mut h = UiHarness::new(UVec2::new(300, 40));
-    let mut rigid_node = None;
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -102,13 +92,10 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
                             .grid_cell((0, 0))
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                rigid_node = Some(
-                                    Block::new()
-                                        .id(WidgetId::from_hash("rigid"))
-                                        .size((Sizing::fixed(200.0), Sizing::FILL))
-                                        .show(ui)
-                                        .node(),
-                                );
+                                Block::new()
+                                    .id(WidgetId::from_hash("rigid"))
+                                    .size((Sizing::fixed(200.0), Sizing::FILL))
+                                    .show(ui);
                             });
                     });
                 Block::new()

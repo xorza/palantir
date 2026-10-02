@@ -415,48 +415,43 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut grid_node = None;
     let mut kids = Vec::new();
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                grid_node = Some(
-                    Grid::new()
-                        .id(WidgetId::from_hash("multi-row"))
-                        .cols([Track::fixed(50.0)])
-                        .rows([Track::HUG, Track::HUG, Track::HUG])
-                        .size((Sizing::HUG, Sizing::HUG))
-                        .show(ui, |ui| {
-                            kids.push(
-                                Block::new()
-                                    .id(WidgetId::from_hash("short"))
-                                    .size((50.0, 10.0))
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            kids.push(
-                                Block::new()
-                                    .id(WidgetId::from_hash("tall"))
-                                    .size((50.0, 80.0))
-                                    .grid_cell((1, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            kids.push(
-                                Block::new()
-                                    .id(WidgetId::from_hash("med"))
-                                    .size((50.0, 30.0))
-                                    .grid_cell((2, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                        })
-                        .response
-                        .node(),
-                );
+                Grid::new()
+                    .id(WidgetId::from_hash("multi-row"))
+                    .cols([Track::fixed(50.0)])
+                    .rows([Track::HUG, Track::HUG, Track::HUG])
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        kids.push(
+                            Block::new()
+                                .id(WidgetId::from_hash("short"))
+                                .size((50.0, 10.0))
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node(),
+                        );
+                        kids.push(
+                            Block::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((50.0, 80.0))
+                                .grid_cell((1, 0))
+                                .show(ui)
+                                .node(),
+                        );
+                        kids.push(
+                            Block::new()
+                                .id(WidgetId::from_hash("med"))
+                                .size((50.0, 30.0))
+                                .grid_cell((2, 0))
+                                .show(ui)
+                                .node(),
+                        );
+                    });
             });
     });
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[0].idx()].size.h, 10.0);

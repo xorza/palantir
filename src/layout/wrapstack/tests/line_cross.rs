@@ -85,9 +85,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
                     if case.with_normal {
                         cell(ui, "normal", normal_size.w, normal_size.h);
                     }
-                })
-                .response
-                .node()
+                });
         });
 
         let wrap = h.arranged(WidgetId::from_hash("wrap"));
@@ -107,7 +105,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
 #[test]
 fn wrap_hstack_line_height_is_max_child_cross() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _wrap = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -118,9 +116,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
                 cell(ui, "short", 100.0, 20.0);
                 // overflow → new line
                 cell(ui, "next-line", 100.0, 30.0);
-            })
-            .response
-            .node()
+            });
     });
     let tall = h.arranged(WidgetId::from_hash("tall"));
     let short = h.arranged(WidgetId::from_hash("short"));
@@ -136,7 +132,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _ = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(300.0), Sizing::HUG))
@@ -154,9 +150,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                         ..Default::default()
                     })
                     .show(ui);
-            })
-            .response
-            .node()
+            });
     });
     let tall = h.arranged(WidgetId::from_hash("tall"));
     let filler = h.arranged(WidgetId::from_hash("filler"));
@@ -218,9 +212,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                                 *floor,
                             );
                         }
-                    })
-                    .response
-                    .node()
+                    });
             });
 
             let wrap_rect = h.arranged(WidgetId::from_hash("all-fill-wrap"));
@@ -291,9 +283,7 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
                     cell(ui, "mixed-fixed", fixed_size.w, fixed_size.h);
                     let next_size = axis.compose_size(50.0, 10.0);
                     cell(ui, "mixed-next", next_size.w, next_size.h);
-                })
-                .response
-                .node()
+                });
         });
 
         let wrap_rect = h.arranged(WidgetId::from_hash("mixed-fill-wrap"));
@@ -325,9 +315,7 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
                     fill_cross_cell(ui, "min-fill", axis, 50.0, 25.0);
                     max_capped_fill_cross_cell(ui, "max-fill", axis, 50.0, 50.0, 35.0);
                     fill_cross_cell(ui, "next-fill", axis, 50.0, 15.0);
-                })
-                .response
-                .node()
+                });
         });
 
         let wrap_rect = h.arranged(WidgetId::from_hash("bounded-fill-wrap"));

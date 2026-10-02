@@ -29,7 +29,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
     ];
     for (label, count, expected) in cases {
         let mut h = UiHarness::new(UVec2::new(400, 400));
-        let _wrap = h.under_outer(|ui| {
+        h.under_outer(|ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
                 .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -39,9 +39,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                     for i in 0..*count {
                         cell(ui, ["a", "b", "c", "d"][i], 60.0, 20.0);
                     }
-                })
-                .response
-                .node()
+                });
         });
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
             let r = h.arranged(WidgetId::from_hash(["a", "b", "c", "d"][i]));
@@ -59,7 +57,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
 #[test]
 fn wrap_hstack_oversize_child_owns_its_line() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _wrap = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(100.0), Sizing::HUG))
@@ -69,9 +67,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
                 cell(ui, "small", 50.0, 20.0);
                 cell(ui, "wide", 200.0, 20.0);
                 cell(ui, "tail", 50.0, 20.0);
-            })
-            .response
-            .node()
+            });
     });
     let small = h.arranged(WidgetId::from_hash("small"));
     let wide = h.arranged(WidgetId::from_hash("wide"));
@@ -89,7 +85,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 #[test]
 fn wrap_vstack_wraps_columns_when_main_overflows() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _wrap = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_vstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::HUG, Sizing::fixed(100.0)))
@@ -100,9 +96,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
                 cell(ui, "b", 20.0, 40.0);
                 // 40+10+40+10+40 = 140 > 100 → c wraps
                 cell(ui, "c", 20.0, 40.0);
-            })
-            .response
-            .node()
+            });
     });
     let a = h.arranged(WidgetId::from_hash("a"));
     let b = h.arranged(WidgetId::from_hash("b"));
@@ -126,7 +120,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
 fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut wrap_node = None;
-    let _wrap = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         wrap_node = Some(
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
@@ -156,7 +150,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
 #[test]
 fn nested_wrap_hstacks_do_not_trample_scratch() {
     let mut h = UiHarness::new(UVec2::new(600, 400));
-    let _ = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("outer"))
             .size((Sizing::fixed(500.0), Sizing::HUG))
@@ -174,9 +168,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
                         cell(ui, "ib", 50.0, 20.0);
                     });
                 cell(ui, "ob", 100.0, 20.0);
-            })
-            .response
-            .node()
+            });
     });
     let ia = h.arranged(WidgetId::from_hash("ia"));
     let ib = h.arranged(WidgetId::from_hash("ib"));

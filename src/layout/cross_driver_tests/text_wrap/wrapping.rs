@@ -129,29 +129,9 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
     let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
-    let store = h.ui.record_store();
-    let interned_text = store.interned_text();
-    let max_w = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        node,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
-    let min_w = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        node,
-        Axis::X,
-        LenReq::MinContent,
-        &interned_text,
-    );
-    let max_h = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        node,
-        Axis::Y,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let max_w = h.intrinsic(node, Axis::X, LenReq::MaxContent);
+    let min_w = h.intrinsic(node, Axis::X, LenReq::MinContent);
+    let max_h = h.intrinsic(node, Axis::Y, LenReq::MaxContent);
 
     // The unbroken paragraph, its widest word, and one line.
     assert_eq!([max_w, min_w, max_h], [335.0, 48.0, lines_h(1, 16.0)]);

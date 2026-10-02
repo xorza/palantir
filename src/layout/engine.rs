@@ -315,3 +315,36 @@ impl LayoutEngine {
         );
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::layout::axis::Axis;
+    use crate::layout::engine::LayoutEngine;
+    use crate::layout::intrinsic::len_req::{LenReq, SLOT_COUNT};
+    use crate::scene::forest::Forest;
+    use crate::scene::layer::Layer;
+    use crate::scene::tree::node_id::NodeId;
+
+    impl LayoutEngine {
+        /// [`Self::intrinsic`] on `forest`'s main tree, interning its
+        /// text along the way — the whole query a test makes of a frame
+        /// it just ran.
+        pub(crate) fn main_intrinsic(
+            &mut self,
+            forest: &Forest,
+            node: NodeId,
+            axis: Axis,
+            req: LenReq,
+        ) -> f32 {
+            let interned_text = forest.record_store.interned_text();
+            self.intrinsic(&forest.trees[Layer::Main], node, axis, req, &interned_text)
+        }
+
+        /// Drop every cached intrinsic and zero the compute counter, so
+        /// the next query computes from scratch and counts only itself.
+        pub(crate) fn forget_intrinsics(&mut self) {
+            self.scratch.intrinsics.fill([f32::NAN; SLOT_COUNT]);
+            self.scratch.counters.reset_intrinsic_computes();
+        }
+    }
+}

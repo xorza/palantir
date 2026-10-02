@@ -140,11 +140,11 @@
 //! 1. `impl UiHarness` (`pub`) — the surface that leaves the crate
 //!    through `palantir::internals`, addressing widgets by [`WidgetId`]
 //!    and nothing else.
-//! 2. `impl UiHarness` (`pub(crate)`) — construction plus the one knob
-//!    the **benches** read, `damage_region`. Benches compile under
-//!    `internals` without `cfg(test)`, which is why that one method
-//!    cannot drop to tier 3; `from_resources` stays because tier 1's
-//!    constructors call it.
+//! 2. `impl UiHarness` (`pub(crate)`) — construction, with
+//!    `from_resources` there because tier 1's constructors call it. The
+//!    two damage reads the **benches** make, `collapsed_damage` and
+//!    `damage_region`, sit in `mod test_support`: benches compile under
+//!    `bench` without `cfg(test)`, so they cannot drop to tier 3.
 //! 3. `mod unit` (`#[cfg(test)]`) — what only the *in-tree* suite calls:
 //!    the tree/encoder reach-ins, the cold constructor, the
 //!    no-baseline frame driver.
@@ -180,10 +180,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::texture_limit::TextureLimit;
-// Carries `damage_region`'s gate: this whole module is build-gated test
-// support, and under a non-test `internals` build that method is absent.
-#[cfg(any(test, feature = "bench"))]
-use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
@@ -954,26 +950,34 @@ impl UiHarness {
     fn mark_warm(&mut self) {
         self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.frame_display(), self.time));
     }
+}
 
-    /// Collapse this frame's accumulated raw rects the way
-    /// `DamageEngine::finish_region` does — the rects *and* the coverage
-    /// they cover the surface with.
-    ///
-    /// Read by the crate's own damage tests and the `damage` bench; a
-    /// non-test `internals` build has no caller.
-    #[cfg(any(test, feature = "bench"))]
-    pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
-        DamageRegion::collapse_from(
-            &self.engines.damage.raw_rects,
-            DEFAULT_PASS_BUDGET_PX,
-            self.ui.display.logical_rect(),
-        )
-    }
+/// The damage reads the crate's damage tests and the `damage` bench make;
+/// a non-test `internals` build has no caller.
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod test_support {
+    use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
+    use crate::ui::harness::UiHarness;
 
-    /// Just the rects — what most damage assertions are about.
-    #[cfg(any(test, feature = "bench"))]
-    pub(crate) fn damage_region(&self) -> DamageRegion {
-        self.collapsed_damage().region
+    impl UiHarness {
+        /// Collapse this frame's accumulated raw rects the way
+        /// `DamageEngine::finish_region` does — the rects *and* the coverage
+        /// they cover the surface with.
+        ///
+        /// Read by the crate's own damage tests and the `damage` bench; a
+        /// non-test `internals` build has no caller.
+        pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
+            DamageRegion::collapse_from(
+                &self.engines.damage.raw_rects,
+                DEFAULT_PASS_BUDGET_PX,
+                self.ui.display.logical_rect(),
+            )
+        }
+
+        /// Just the rects — what most damage assertions are about.
+        pub(crate) fn damage_region(&self) -> DamageRegion {
+            self.collapsed_damage().region
+        }
     }
 }
 
@@ -990,6 +994,8 @@ impl UiHarness {
 mod unit {
     use crate::animation::animatable::Animatable;
     use crate::app::internals::RecordApp;
+    use crate::layout::axis::Axis;
+    use crate::layout::intrinsic::len_req::LenReq;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
@@ -1035,7 +1041,7 @@ mod unit {
         /// A `FILL`/`FILL` hstack wrapped around `f`, returning the node
         /// `f` produced — the fixture for "arrange this one subtree
         /// against the whole surface".
-        pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(&mut self, mut f: F) -> NodeId {
+        pub(crate) fn under_outer<R>(&mut self, mut f: impl FnMut(&mut Ui) -> R) -> R {
             self.frame_value(|ui| {
                 Panel::hstack()
                     .auto_id()
@@ -1047,6 +1053,14 @@ mod unit {
 
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             self.ui.forest.node_for_widget_id(Layer::Main, id)
+        }
+
+        /// `node`'s main-tree intrinsic on `axis` — the query a layout test
+        /// makes of the frame it just ran.
+        pub(crate) fn intrinsic(&mut self, node: NodeId, axis: Axis, req: LenReq) -> f32 {
+            self.engines
+                .layout
+                .main_intrinsic(&self.ui.forest, node, axis, req)
         }
 
         /// Where `id` recorded last frame, on whichever layer took it.

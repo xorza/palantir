@@ -270,26 +270,20 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
 #[test]
 fn canvas_ignores_child_align() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut child = None;
-    let _panel = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                child = Some(
-                    Block::new()
-                        .id(WidgetId::from_hash("aligned"))
-                        .position((30.0, 40.0))
-                        .size((50.0, 50.0))
-                        // Right/Bottom would matter on Stack/ZStack/Grid;
-                        // Canvas must ignore it.
-                        .align(Align::new(HAlign::Right, VAlign::Bottom))
-                        .show(ui)
-                        .node(),
-                );
-            })
-            .response
-            .node()
+                Block::new()
+                    .id(WidgetId::from_hash("aligned"))
+                    .position((30.0, 40.0))
+                    .size((50.0, 50.0))
+                    // Right/Bottom would matter on Stack/ZStack/Grid;
+                    // Canvas must ignore it.
+                    .align(Align::new(HAlign::Right, VAlign::Bottom))
+                    .show(ui);
+            });
     });
     let r = h.arranged(WidgetId::from_hash("aligned"));
     assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
