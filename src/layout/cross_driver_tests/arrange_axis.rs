@@ -146,7 +146,9 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
 /// stops at its maximum when the slot is larger; a fixed size holds under
 /// stretch alignment, loses to a larger minimum, and a minimum equal to
 /// the maximum pins the extent outright. A hugging node stops at its
-/// maximum below its content, and floors at its minimum above it.
+/// maximum below its content, and floors at its minimum above both its
+/// content and its slot — the slot is below the minimum there because a
+/// stretching driver grows a hugging child to the slot.
 #[test]
 fn sizing_resolves_alike_under_every_driver() {
     #[derive(Debug)]
@@ -192,7 +194,7 @@ fn sizing_resolves_alike_under_every_driver() {
         ),
         row("min equals max", Sizing::FILL, 200.0, 40.0, 40.0, 0.0, 40.0),
         row("hug under max", Sizing::HUG, 100.0, 0.0, 40.0, 60.0, 40.0),
-        row("hug over min", Sizing::HUG, 100.0, 50.0, inf, 30.0, 50.0),
+        row("hug over min", Sizing::HUG, 40.0, 50.0, inf, 30.0, 50.0),
     ];
     for Row {
         label,
