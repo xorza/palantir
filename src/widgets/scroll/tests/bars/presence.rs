@@ -248,15 +248,12 @@ fn both_axes_bars_dont_overlap_at_corner() {
 
 /// Every bar node's arranged rect, collapsed ones included.
 fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
-    let tree = ui.tree(Layer::Main);
     let layout = ui.layout(Layer::Main);
     let scroll_id = WidgetId::from_hash(scroll_key).with("viewport");
-    let widget_ids = tree.records.widget_id();
     let mut out = Vec::new();
     for tag in ["vtrack", "vthumb", "htrack", "hthumb"] {
-        let id = scroll_id.with(tag);
-        if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
-            out.push((tag, layout.rect[idx]));
+        if let Some(bar) = ui.cascade().endpoint(scroll_id.with(tag)) {
+            out.push((tag, layout.rect[bar.node.idx()]));
         }
     }
     out

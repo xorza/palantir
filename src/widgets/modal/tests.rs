@@ -7,7 +7,6 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
@@ -28,16 +27,14 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     });
 
     let panel_id = root_id.with("panel");
+    let panel = h.node_of(panel_id).expect("modal panel node");
+    assert_eq!(panel.layer, Layer::Modal);
     let tree = h.ui.tree(Layer::Modal);
-    let index = tree
-        .records
-        .widget_id()
-        .iter()
-        .position(|id| *id == panel_id)
-        .expect("modal panel node");
-    let node = NodeId(index as u32);
-    assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
-    assert_eq!(tree.bounds(node).min_size, Size::ZERO);
+    assert_eq!(
+        tree.records.layout()[panel.node.idx()].padding,
+        Spacing::ZERO
+    );
+    assert_eq!(tree.bounds(panel.node).min_size, Size::ZERO);
 }
 
 /// A modal takes no placement of its own — it wants the layer's default,
@@ -54,9 +51,12 @@ fn the_backdrop_root_covers_the_whole_surface() {
             .show(ui, |_, _| {});
     });
 
-    let root = h.ui.tree(Layer::Modal).roots[0].first_node.idx();
+    let backdrop = h
+        .node_of(WidgetId::from_hash("modal-full-surface"))
+        .expect("modal backdrop recorded");
+    assert_eq!(backdrop.layer, Layer::Modal);
     assert_eq!(
-        h.ui.layout(Layer::Modal).rect[root],
+        h.ui.layout(Layer::Modal).rect[backdrop.node.idx()],
         Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
     );
 }

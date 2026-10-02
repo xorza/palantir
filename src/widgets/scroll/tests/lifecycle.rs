@@ -49,16 +49,11 @@ fn explicit_no_clip_overrides_scroll_default() {
             .show(ui, |_| {});
     });
 
-    let tree = h.ui.tree(Layer::Main);
     let clip_for = |id: WidgetId| {
-        let viewport_id = id.with("viewport");
-        let index = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|recorded| *recorded == viewport_id)
+        let viewport = h
+            .node_of(id.with("viewport"))
             .expect("scroll viewport node");
-        tree.records.attrs()[index].clip_mode()
+        h.ui.tree(viewport.layer).records.attrs()[viewport.node.idx()].clip_mode()
     };
     assert_eq!(clip_for(unclipped_id), ClipMode::None);
     assert_eq!(clip_for(clipped_id), ClipMode::Rect);

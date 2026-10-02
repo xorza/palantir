@@ -14,7 +14,6 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
@@ -128,16 +127,6 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     );
 }
 
-/// Record index of the bubble node carrying `id`, or `None` when no
-/// node in the tooltip layer has it.
-fn bubble_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
-    h.ui.tree(Layer::Tooltip)
-        .records
-        .widget_id()
-        .iter()
-        .position(|recorded| *recorded == id)
-}
-
 /// The bubble takes its box from [`Configure`] like any other widget —
 /// `Tooltip` used to hand-roll `padding` / `max_size` and offer nothing
 /// else, so `margin` here is a setter it simply did not have.
@@ -172,11 +161,13 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     });
 
     let derived = trigger_id.with("bubble");
-    let index = bubble_node(&h, derived).expect("tooltip bubble node");
+    let bubble = h.node_of(derived).expect("tooltip bubble node");
+    assert_eq!(bubble.layer, Layer::Tooltip);
     let tree = h.ui.tree(Layer::Tooltip);
+    let index = bubble.node.idx();
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(7.0));
-    assert_eq!(tree.bounds(NodeId(index as u32)).max_size, Size::INF);
+    assert_eq!(tree.bounds(bubble.node).max_size, Size::INF);
 
     // Same trigger, caller-set id: the derived one must not appear.
     let explicit = WidgetId::from_hash("my-own-bubble");
@@ -188,12 +179,14 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
             .delay(Duration::ZERO)
             .show(ui);
     });
-    assert!(
-        bubble_node(&h, explicit).is_some(),
+    assert_eq!(
+        h.node_of(explicit).map(|at| at.layer),
+        Some(Layer::Tooltip),
         "an explicit id must reach the recorded bubble",
     );
-    assert!(
-        bubble_node(&h, derived).is_none(),
+    assert_eq!(
+        h.node_of(derived),
+        None,
         "the trigger-derived id must not also be recorded",
     );
 }

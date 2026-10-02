@@ -4,7 +4,6 @@ use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::configure::Configure;
@@ -97,16 +96,12 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     click_chip(&mut h, &mut frame);
 
     let body_id = id.with("panel");
-    let tree = h.ui.tree(Layer::Popup);
-    let body = tree
-        .records
-        .widget_id()
-        .iter()
-        .position(|w| *w == body_id)
-        .expect("popup body recorded");
-    let chrome = tree
-        .chrome(NodeId(body as u32))
-        .expect("the popup body paints chrome");
+    let body = h.node_of(body_id).expect("popup body recorded");
+    assert_eq!(body.layer, Layer::Popup);
+    let chrome =
+        h.ui.tree(body.layer)
+            .chrome(body.node)
+            .expect("the popup body paints chrome");
     let rect = |id: WidgetId| h.rect(id).expect("arranged");
     Opened {
         corners: chrome.corners,
