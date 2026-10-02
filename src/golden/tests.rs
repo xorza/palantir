@@ -1,9 +1,12 @@
 //! Pixel-diff coverage: what counts as differing, and what decides the
-//! verdict.
+//! verdict — and the golden directory's bookkeeping around it.
+
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::path::PathBuf;
 
 use image::{Rgba, RgbaImage};
 
-use crate::golden::Tolerance;
+use crate::golden::{Goldens, Tolerance};
 
 /// A pair covering no pixels differs nowhere, so the verdict is a pass
 /// and the ratio is a real number.
@@ -158,4 +161,72 @@ fn dimension_mismatch_panics() {
     let a = RgbaImage::new(4, 4);
     let e = RgbaImage::new(4, 5);
     let _ = Tolerance::default().diff(&a, &e);
+}
+
+/// A directory of its own under the system temp dir, gone on drop.
+#[derive(Debug)]
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let dir =
+            std::env::temp_dir().join(format!("palantir-golden-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        Self(dir)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// An update run rewrites what is missing or failing and leaves a passing
+/// golden alone; a pass clears an earlier failure's output; without the
+/// flag, a failure panics and writes its artifacts, and a missing golden
+/// is written and failed.
+///
+/// `near` is one step off `base`, inside the 2-step tolerance; `far` is
+/// forty steps off, outside it.
+#[test]
+fn update_rewrites_only_what_fails_and_a_pass_clears_old_output() {
+    let dir = Scratch::new("update");
+    let goldens = Goldens::new(&dir.0).tolerance(Tolerance {
+        per_channel: 2,
+        max_ratio: 0.0,
+    });
+    let solid = |v: u8| RgbaImage::from_pixel(4, 4, Rgba([v, 10, 10, 255]));
+    let (base, near, far) = (solid(10), solid(11), solid(50));
+    let golden = goldens.golden_path("g");
+    let output = dir.0.join("output").join("g");
+    let stored = || image::open(&golden).unwrap().to_rgba8();
+
+    goldens.check("g", &base, true);
+    assert_eq!(stored(), base, "a missing golden is written by an update");
+
+    goldens.check("g", &near, true);
+    assert_eq!(stored(), base, "a passing golden is left as it is");
+
+    std::fs::create_dir_all(&output).unwrap();
+    goldens.check("g", &near, false);
+    assert!(
+        !output.exists(),
+        "a pass clears an earlier failure's output"
+    );
+
+    goldens.check("g", &far, true);
+    assert_eq!(stored(), far, "a failing golden is rewritten by an update");
+
+    let failed = catch_unwind(AssertUnwindSafe(|| goldens.check("g", &base, false)));
+    assert!(failed.is_err(), "a failure panics without the flag");
+    assert!(
+        output.join("actual.png").exists(),
+        "and leaves its artifacts"
+    );
+    assert_eq!(stored(), far, "and keeps the golden");
+
+    let missing = catch_unwind(AssertUnwindSafe(|| goldens.check("h", &base, false)));
+    assert!(missing.is_err(), "a missing golden fails without the flag");
+    assert!(goldens.golden_path("h").exists(), "after it is written");
 }

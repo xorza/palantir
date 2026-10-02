@@ -5,8 +5,8 @@ use image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{Configure, Panel, Rect, RgbaF32, Shadow, Sizing};
 
+use crate::goldens::{assert_same, assert_same_in, crop};
 use crate::harness::Harness;
-use palantir::golden::Tolerance;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
@@ -44,37 +44,9 @@ fn render_shadow(
         .image
 }
 
-fn assert_same_pixels_in_rect(label: &str, actual: &RgbaImage, expected: &RgbaImage, rect: Rect) {
-    let mut differing_pixels = 0;
-    let mut max_channel_delta = 0;
-    for y in rect.min.y as u32..rect.max().y as u32 {
-        for x in rect.min.x as u32..rect.max().x as u32 {
-            let actual = actual.get_pixel(x, y);
-            let expected = expected.get_pixel(x, y);
-            let delta = actual
-                .0
-                .iter()
-                .zip(expected.0)
-                .map(|(a, b)| a.abs_diff(b))
-                .max()
-                .unwrap();
-            max_channel_delta = max_channel_delta.max(delta);
-            differing_pixels += u32::from(delta != 0);
-        }
-    }
-    assert_eq!(
-        differing_pixels, 0,
-        "{label}: channel delta reached {max_channel_delta}",
-    );
-}
-
 #[test]
 fn shifted_drop_bbox_preserves_positive_and_negative_offset_pixels() {
     let source = Rect::new(64.0, 60.0, 72.0, 54.0);
-    let tolerance = Tolerance {
-        per_channel: 0,
-        max_ratio: 0.0,
-    };
 
     for offset in [Vec2::new(17.0, 13.0), Vec2::new(-19.0, -11.0)] {
         let shifted = render_shadow(source, 11.0, offset, 6.0, 4.0, false);
@@ -89,12 +61,8 @@ fn shifted_drop_bbox_preserves_positive_and_negative_offset_pixels() {
             4.0,
             false,
         );
-        let report = tolerance.diff(&shifted, &reference);
-        assert_eq!(
-            report.differing_pixels, 0,
-            "offset {offset:?}: max channel delta {}, differing ratio {}",
-            report.max_channel_delta, report.differing_ratio,
-        );
+        let name = format!("shadow_offset_{}_{}", offset.x, offset.y);
+        assert_same(&name, &shifted, &reference);
     }
 }
 
@@ -105,30 +73,17 @@ fn inset_offset_matches_translated_zero_offset_pixels_inside_source() {
     let shifted = render_shadow(source, 11.0, pixel_offset.as_vec2(), 6.0, 8.0, true);
     let reference = render_shadow(source, 11.0, Vec2::ZERO, 6.0, 8.0, true);
 
-    let mut differing_pixels = 0;
-    let mut max_channel_delta = 0;
-    for y in 50..120 {
-        for x in 60..145 {
-            let actual = shifted.get_pixel(x, y);
-            let expected = reference.get_pixel(
-                (x as i32 - pixel_offset.x) as u32,
-                (y as i32 - pixel_offset.y) as u32,
-            );
-            let delta = actual
-                .0
-                .iter()
-                .zip(expected.0)
-                .map(|(a, b)| a.abs_diff(b))
-                .max()
-                .unwrap();
-            max_channel_delta = max_channel_delta.max(delta);
-            differing_pixels += u32::from(delta != 0);
-        }
-    }
-
-    assert_eq!(
-        differing_pixels, 0,
-        "inset translated-pixel comparison reached channel delta {max_channel_delta}",
+    // The shifted shadow at a region, against the unshifted one at the
+    // same region moved back by the offset.
+    let region = Rect::new(60.0, 50.0, 85.0, 70.0);
+    let unshifted = Rect {
+        min: region.min - pixel_offset.as_vec2(),
+        size: region.size,
+    };
+    assert_same(
+        "shadow_inset_translated",
+        &crop(&shifted, region),
+        &crop(&reference, unshifted),
     );
 }
 
@@ -146,8 +101,8 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
     let deflated_source = drop_source.inflated(spread);
     let drop_reference =
         render_shadow(deflated_source, 11.0 + spread, Vec2::ZERO, blur, 0.0, false);
-    assert_same_pixels_in_rect(
-        "drop negative spread",
+    assert_same_in(
+        "shadow_drop_negative_spread",
         &drop,
         &drop_reference,
         deflated_source.inflated(3.0 * blur),
@@ -163,8 +118,8 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
         0.0,
         true,
     );
-    assert_same_pixels_in_rect(
-        "inset negative spread",
+    assert_same_in(
+        "shadow_inset_negative_spread",
         &inset,
         &inset_reference,
         inset_source.inflated(-12.0),

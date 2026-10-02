@@ -8,7 +8,6 @@
 //! photographable.
 
 use glam::{UVec2, Vec2};
-use palantir::golden::Tolerance;
 use palantir::{
     Configure, DockDrop, DockOp, DockState, DockTabs, DockView, InternedStr, Panel, Sizing,
     SplitSide, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui, WidgetId,
@@ -41,7 +40,7 @@ fn tab_strip_matches_golden() {
             });
     }
     let img = h.size(UVec2::new(360, 76)).settled_frame(2, scene).image;
-    assert_matches_golden("tab_strip", &img, Tolerance::default());
+    assert_matches_golden("tab_strip", &img);
 }
 
 /// A tabbed view: the same strip over a content area, so the selected
@@ -70,7 +69,7 @@ fn tabbed_view_matches_golden() {
         });
     }
     let img = h.size(UVec2::new(360, 140)).settled_frame(2, scene).image;
-    assert_matches_golden("tabbed_view", &img, Tolerance::default());
+    assert_matches_golden("tabbed_view", &img);
 }
 
 /// Three panes: the divider chrome, one strip per pane, and the dimmed
@@ -85,7 +84,7 @@ fn dock_split_panes_matches_golden() {
         });
     }
     let img = h.size(UVec2::new(520, 220)).settled_frame(2, scene).image;
-    assert_matches_golden("dock_split_panes", &img, Tolerance::default());
+    assert_matches_golden("dock_split_panes", &img);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

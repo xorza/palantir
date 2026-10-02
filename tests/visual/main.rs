@@ -15,9 +15,14 @@
 mod fixtures;
 mod goldens;
 mod harness;
+/// The showcase's support module, compiled into this suite so a golden can
+/// render a showcase page itself rather than a copy that drifts from it.
+/// Whole, so only the part those pages call is used here.
+#[allow(dead_code)]
+#[path = "../../examples/showcase/support.rs"]
+mod support;
 
 use glam::UVec2;
-use image::Rgba;
 use palantir::{FramePaint, RgbaF32, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
@@ -45,24 +50,24 @@ fn readback_returns_clear_color_for_empty_scene() {
     h.host.invalidate_target_contents();
     let replayed = h.frame(scene);
     assert_eq!(replayed.paint, FramePaint::Full, "the replay repaints");
-    assert_eq!(replayed.image, img);
+    goldens::assert_same("replay_empty_scene", &replayed.image, &img);
     assert_eq!(img.dimensions(), (size.x, size.y));
 
     // sRGB → linear (in `RgbaF32::srgb`) → sRGB (wgpu's sRGB target) round-trips
-    // to the original 8-bit sRGB values; ±2 covers rounding inside the pipeline.
-    let expected = Rgba([
+    // to the original 8-bit sRGB values.
+    let expected = [
         (sr * 255.0).round() as u8,
         (sg * 255.0).round() as u8,
         (sb * 255.0).round() as u8,
         255,
-    ]);
-    for p in img.pixels() {
-        for c in 0..4 {
-            assert!(
-                p.0[c].abs_diff(expected.0[c]) <= 2,
-                "pixel {p:?} far from expected clear {expected:?}",
-            );
-        }
+    ];
+    for (x, y, p) in img.enumerate_pixels() {
+        fixtures::assert_px(
+            p.0,
+            expected,
+            fixtures::SRGB_ROUND_TRIP,
+            format_args!("clear pixel ({x}, {y})"),
+        );
     }
 }
 

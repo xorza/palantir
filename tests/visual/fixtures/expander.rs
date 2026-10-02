@@ -2,7 +2,6 @@
 //! the body one of them reveals.
 
 use glam::UVec2;
-use palantir::golden::Tolerance;
 use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
 
 use crate::goldens::assert_matches_golden;
@@ -41,5 +40,5 @@ fn expander_open_and_closed_matches_golden() {
             });
     }
     let img = h.size(UVec2::new(280, 124)).settled_frame(2, scene).image;
-    assert_matches_golden("expander_open_and_closed", &img, Tolerance::default());
+    assert_matches_golden("expander_open_and_closed", &img);
 }

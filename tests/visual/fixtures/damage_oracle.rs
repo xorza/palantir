@@ -17,8 +17,8 @@ use palantir::{
     Stroke, Text,
 };
 
+use crate::goldens::assert_same;
 use crate::harness::Harness;
-use palantir::golden::Tolerance;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 
@@ -154,14 +154,10 @@ fn picture(h: &mut Harness) -> ImageHandle {
 }
 
 /// Run `script` after two primed frames, comparing every frame.
-fn run(script: &[Knobs]) {
+fn run(name: &str, script: &[Knobs]) {
     let mut partial = Harness::new();
     let mut full = Harness::new();
     let (partial_picture, full_picture) = (picture(&mut partial), picture(&mut full));
-    let exact = Tolerance {
-        per_channel: 0,
-        max_ratio: 0.0,
-    };
     for (frame, k) in [Knobs::BASE, Knobs::BASE].iter().chain(script).enumerate() {
         let repainted = partial
             .size(SURFACE)
@@ -172,72 +168,79 @@ fn run(script: &[Knobs]) {
             .size(SURFACE)
             .frame(|ui| scene(ui, *k, &full_picture))
             .image;
-        let report = exact.diff(&repainted, &painted);
-        assert_eq!(
-            report.differing_pixels, 0,
-            "frame {frame} ({k:?}): the partial repaint differs from a full one in {} \
-             pixels, by up to {}",
-            report.differing_pixels, report.max_channel_delta,
-        );
+        // Frame `n` is the script's entry `n - 2`, after the two base frames.
+        assert_same(&format!("{name}_frame_{frame}"), &repainted, &painted);
     }
 }
 
 #[test]
 fn colour_and_text_change() {
-    run(&[
-        Knobs {
-            fill: RgbaF32::srgb(0.9, 0.9, 0.1),
-            ..Knobs::BASE
-        },
-        Knobs {
-            label: "status: degraded since this morning",
-            ..Knobs::BASE
-        },
-    ]);
+    run(
+        "damage_oracle_colour_and_text_change",
+        &[
+            Knobs {
+                fill: RgbaF32::srgb(0.9, 0.9, 0.1),
+                ..Knobs::BASE
+            },
+            Knobs {
+                label: "status: degraded since this morning",
+                ..Knobs::BASE
+            },
+        ],
+    );
 }
 
 #[test]
 fn move_add_and_hide() {
-    run(&[
-        Knobs {
-            nudge: 90.0,
-            ..Knobs::BASE
-        },
-        Knobs {
-            extra: true,
-            ..Knobs::BASE
-        },
-        Knobs {
-            hidden: true,
-            ..Knobs::BASE
-        },
-        Knobs::BASE,
-    ]);
+    run(
+        "damage_oracle_move_add_and_hide",
+        &[
+            Knobs {
+                nudge: 90.0,
+                ..Knobs::BASE
+            },
+            Knobs {
+                extra: true,
+                ..Knobs::BASE
+            },
+            Knobs {
+                hidden: true,
+                ..Knobs::BASE
+            },
+            Knobs::BASE,
+        ],
+    );
 }
 
 #[test]
 fn image_overflow_and_root_swap() {
-    run(&[
-        Knobs {
-            fit_none: true,
-            ..Knobs::BASE
-        },
-        Knobs::BASE,
-        Knobs {
-            swap_roots: true,
-            ..Knobs::BASE
-        },
-        Knobs::BASE,
-    ]);
+    run(
+        "damage_oracle_image_overflow_and_root_swap",
+        &[
+            Knobs {
+                fit_none: true,
+                ..Knobs::BASE
+            },
+            Knobs::BASE,
+            Knobs {
+                swap_roots: true,
+                ..Knobs::BASE
+            },
+            Knobs::BASE,
+        ],
+    );
 }
 
 #[test]
 fn shape_becomes_animated() {
-    run(&[
-        Knobs {
-            spin: true,
-            ..Knobs::BASE
-        },
-        Knobs::BASE,
-    ]);
+    run(
+        "damage_oracle_shape_becomes_animated",
+        &[
+            Knobs {
+                spin: true,
+                ..Knobs::BASE
+            },
+            Knobs::BASE,
+        ],
+    );
 }

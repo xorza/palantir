@@ -3,13 +3,12 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Background, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Shadow,
-    Sizing, Stroke, Text, TextStyle, TextWrap, Track,
+    Align, Background, Block, Button, Configure, Corners, FrameFixture, Grid, GridCell, Panel,
+    RgbaF32, Shadow, Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::goldens::assert_matches_golden;
 use crate::harness::{FIXTURE_PALETTE, Harness};
-use palantir::golden::Tolerance;
 
 /// Three rows of `Fill(1)` / `Fill(2)` / `Fill(1)` — should split the
 /// available height in 25/50/25 ratios.
@@ -52,7 +51,7 @@ fn vstack_fill_weights_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("vstack_fill_weights", &img, Tolerance::default());
+    assert_matches_golden("vstack_fill_weights", &img);
 }
 
 /// Grid with mixed track types (fixed / fill), gap, and a spanning
@@ -111,7 +110,7 @@ fn grid_mixed_tracks_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("grid_mixed_tracks", &img, Tolerance::default());
+    assert_matches_golden("grid_mixed_tracks", &img);
 }
 
 /// ZStack: tinted background frame + centered button on top. Tests
@@ -142,7 +141,7 @@ fn zstack_centered_button_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("zstack_centered_button", &img, Tolerance::default());
+    assert_matches_golden("zstack_centered_button", &img);
 }
 
 /// Two `Hug` columns: a wrapping paragraph in col 0 and a bare
@@ -196,9 +195,18 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden(
-        "grid_two_hug_cols_label_not_clipped",
-        &img,
-        Tolerance::default(),
-    );
+    assert_matches_golden("grid_two_hug_cols_label_not_clipped", &img);
+}
+
+/// The frame bench's own tree at scale 1 — the one scene that records
+/// every public widget — so a change to any of them shows here even
+/// when no fixture of its own covers the part that moved.
+#[test]
+fn frame_fixture_matches_golden() {
+    let mut state = FrameFixture::default();
+    let img = Harness::new()
+        .size(UVec2::new(1280, 800))
+        .frame(|ui| state.render(1, ui))
+        .image;
+    assert_matches_golden("frame_fixture", &img);
 }

@@ -9,7 +9,6 @@ use palantir::{
 
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
-use palantir::golden::Tolerance;
 
 /// Complex multi-region scene at scale 2.0. Exercises:
 ///   - header / sidebar / content / footer grid layout,
@@ -176,10 +175,5 @@ fn dashboard_matches_golden() {
                 });
         })
         .image;
-    // Hi-dpi text AA is more sensitive than rect-only scenes.
-    let tol = Tolerance {
-        per_channel: 4,
-        max_ratio: 0.005,
-    };
-    assert_matches_golden("dashboard_hidpi", &img, tol);
+    assert_matches_golden("dashboard_hidpi", &img);
 }

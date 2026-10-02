@@ -24,8 +24,8 @@ use palantir::{
 use std::cell::RefCell;
 use wgpu::TextureFormat;
 
+use crate::goldens::assert_same;
 use crate::harness::Harness;
-use palantir::golden::Tolerance;
 
 /// A scene touching multiple format-dependent pipelines: a bordered,
 /// rounded frame (quad pipeline) wrapping a button with a text label
@@ -95,23 +95,10 @@ fn recreate_backend_on_format_change_renders_identically() {
         .frame(scene)
         .image;
 
-    // Both formats are sRGB: identical perceptual output expected.
-    // A small per-channel tolerance covers BGRA-vs-RGBA rounding in the
-    // encode; allow a few stray pixels along AA edges of the rounded
-    // border where the two formats can round opposite directions.
-    let tol = Tolerance {
-        per_channel: 2,
-        max_ratio: 0.01,
-    };
-    let report = tol.diff(&after, &before);
-    assert!(
-        report.passes(),
-        "recreated backend rendered differently after format change: \
-         {} differing pixels (ratio {:.4}), max channel delta {}",
-        report.differing_pixels,
-        report.differing_ratio,
-        report.max_channel_delta,
-    );
+    // Both formats are 8-bit sRGB on one device: the shaders write the
+    // same linear values and the hardware encodes them the same way, so
+    // the bytes match once the readback is swizzled.
+    assert_same("format_change_scene", &after, &before);
 }
 
 /// Repeated format changes keep working: the lazy per-format pipeline map
@@ -142,18 +129,7 @@ fn repeated_format_changes_keep_rendering() {
         .frame(scene)
         .image;
 
-    let tol = Tolerance {
-        per_channel: 2,
-        max_ratio: 0.01,
-    };
-    let report = tol.diff(&restored, &baseline);
-    assert!(
-        report.passes(),
-        "round-tripping the surface format back to the original changed the render: \
-         {} differing pixels (ratio {:.4})",
-        report.differing_pixels,
-        report.differing_ratio,
-    );
+    assert_same("format_change_round_trip", &restored, &baseline);
 }
 
 /// A 64×64 four-quadrant image (TL red, TR green, BL blue, BR white).
@@ -245,17 +221,7 @@ fn images_survive_format_change_without_reupload() {
         "the new format must have built its own pipeline set",
     );
 
-    let tol = Tolerance {
-        per_channel: 2,
-        max_ratio: 0.01,
-    };
-    let report = tol.diff(&after, &before);
-    assert!(
-        report.passes(),
-        "image rendered differently after format change: {} differing pixels (ratio {:.4})",
-        report.differing_pixels,
-        report.differing_ratio,
-    );
+    assert_same("format_change_image", &after, &before);
 }
 
 /// A unorm target would store the renderer's linear light as is and draw
