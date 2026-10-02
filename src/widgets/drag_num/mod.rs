@@ -143,10 +143,14 @@ impl DragNum<'_> {
 ///
 /// The integer half of the one write every path through [`DragNum`] ends
 /// in — a scrub commit and a typed edit alike. The bounds arrive as `f64`
-/// and cast: an infinite bound becomes `i64::MIN`/`MAX`, so an unbounded
-/// clamp is a no-op.
+/// and close in to the integers inside them: `0.5..=10.0` stores no 0, and
+/// `-10.0..=-0.5` stores no 0 either, where a cast truncating toward zero
+/// let both through. An infinite bound casts to `i64::MIN`/`MAX`, so an
+/// unbounded clamp is a no-op; a range holding no integer at all clamps
+/// to the two either side of it.
 fn store_i64(slot: &mut i64, next: i64, limits: Limits<f64>) -> bool {
-    let next = next.clamp(limits.lo as i64, limits.hi as i64);
+    let (lo, hi) = (limits.lo.ceil() as i64, limits.hi.floor() as i64);
+    let next = next.clamp(lo.min(hi), hi.max(lo));
     let changed = *slot != next;
     *slot = next;
     changed

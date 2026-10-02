@@ -320,6 +320,23 @@ fn step_rejects_a_value_that_cannot_snap() {
     }
 }
 
+/// A slider maps its track onto its range, so an infinite end is refused
+/// where the slider is built: a click would otherwise store `+inf`, or
+/// `NaN` over `-inf..=inf`.
+#[test]
+fn new_rejects_an_infinite_range() {
+    for (lo, hi) in [
+        (0.0, f64::INFINITY),
+        (f64::NEG_INFINITY, 1.0),
+        (f64::NAN, 1.0),
+    ] {
+        crate::common::panic_probe::assert_panics_with("slider range must be finite", || {
+            let mut v = 0.5_f64;
+            let _ = Slider::new(&mut v, lo..=hi);
+        });
+    }
+}
+
 /// The binding is `DragNum`, so the track drives an integer as readily
 /// as a float, and every landing is whole.
 ///

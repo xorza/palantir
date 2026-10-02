@@ -75,6 +75,18 @@ fn commit_drag_snaps_rounds_clamps_and_reports_change() {
     let mut i = 0;
     assert!(DragNum::from(&mut i).commit_value(500.0, 0, 0.0, 100.0));
     assert_eq!(i, 100);
+    // Int: a fractional bound closes in to the integers inside it, so
+    // 0.5..=10 holds no 0 and -10..=-0.5 holds no 0 either.
+    let mut i = 5;
+    assert!(DragNum::from(&mut i).commit_value(-3.0, 0, 0.5, 10.0));
+    assert_eq!(i, 1);
+    let mut i = -5;
+    assert!(DragNum::from(&mut i).commit_value(3.0, 0, -10.0, -0.5));
+    assert_eq!(i, -1);
+    // A range holding no integer clamps between the two either side.
+    let mut i = 5;
+    assert!(DragNum::from(&mut i).commit_value(5.0, 0, 0.2, 0.8));
+    assert_eq!(i, 1);
 }
 
 /// A float drag that reaches a magnitude with no room for `decimals`
