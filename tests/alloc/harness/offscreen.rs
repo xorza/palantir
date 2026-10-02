@@ -16,9 +16,11 @@
 // of the library's own modules.
 #![allow(clippy::disallowed_types)]
 
+use std::time::Duration;
+
 use glam::UVec2;
 use palantir::internals::{HeadlessTestGpuLease, RecordApp};
-use palantir::{FrameReport, OffscreenHost, RgbaF32, Ui};
+use palantir::{FixedClock, FrameReport, OffscreenHost, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.
 #[derive(Debug)]
@@ -29,9 +31,13 @@ pub(crate) struct OffscreenTarget {
 
 impl OffscreenTarget {
     /// The public offscreen path always copies from its backbuffer, so
-    /// what every caller pins excludes the direct-present path.
+    /// what every caller pins excludes the direct-present path. The clock
+    /// stands still, so no frame's work depends on how fast the last one
+    /// ran.
     pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
-        let mut host = OffscreenHost::builder(gpu.handles()).build();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .clock(FixedClock::new(Duration::ZERO))
+            .build();
         host.ui().theme_mut().window_clear = RgbaF32::TRANSPARENT;
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),

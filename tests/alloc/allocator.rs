@@ -120,7 +120,14 @@ pub(crate) struct AuditResult {
 struct AuditGuard;
 
 impl AuditGuard {
+    /// Panics inside an open window: the inner one would drain the outer
+    /// one's traces on entry and clear its flag on exit, so the outer
+    /// window would go on silently counting nothing.
     fn enter() -> Self {
+        assert!(
+            !IN_AUDIT.with(Cell::get),
+            "with_audit called inside an open audit window"
+        );
         IN_AUDIT.with(|f| f.set(true));
         Self
     }
@@ -141,10 +148,10 @@ impl Drop for AuditGuard {
 /// Drains any stale `TRACES` from a previous call on this thread
 /// before entering, so callers don't have to remember.
 pub(crate) fn with_audit<F: FnOnce()>(f: F) -> AuditResult {
+    let guard = AuditGuard::enter();
     TRACES.with(|t| t.borrow_mut().clear());
     let allocs0 = ALLOCS.with(Cell::get);
     let bytes0 = BYTES.with(Cell::get);
-    let guard = AuditGuard::enter();
     f();
     drop(guard);
     AuditResult {

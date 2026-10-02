@@ -9,7 +9,8 @@
 use crate::allocator::{TRACE_CAP, with_audit};
 use crate::harness;
 use crate::harness::{Audit, user_frames};
-use palantir::{Block, Button, Configure, Sizing, Spinner, Ui};
+use palantir::widget::Mesh;
+use palantir::{Block, Configure, Panel, Spinner, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -26,11 +27,7 @@ fn counts_exactly_what_audit_window_allocates() {
         }
     });
     assert_eq!(r.allocs, 5, "expected 5 allocs in the audited window");
-    assert!(
-        r.bytes >= 5 * 8,
-        "bytes should cover 5×u64, got {}",
-        r.bytes
-    );
+    assert_eq!(r.bytes, 5 * 8, "five boxed u64s, 8 bytes each");
 }
 
 #[test]
@@ -113,22 +110,35 @@ fn re_entry_guard_keeps_counter_and_traces_aligned() {
     }
 }
 
+/// If `with_audit`'s body panics, the guard's Drop must clear IN_AUDIT
+/// so a follow-up `with_audit` on this thread starts clean. Without the
+/// guard the flag would stay stuck and the post-panic audit would
+/// inherit allocations from the unwinding path (drop glue, panic
+/// reporting, etc.). A nested window is one such panic: it would drain
+/// the outer window's traces and clear its flag, so it is refused.
 #[test]
 fn audit_guard_clears_in_audit_on_panic() {
-    // If `with_audit`'s body panics, the guard's Drop must clear
-    // IN_AUDIT so a follow-up `with_audit` on this thread starts
-    // clean. Without the guard the flag would stay stuck and the
-    // post-panic audit would inherit allocations from the unwinding
-    // path (drop glue, panic reporting, etc.).
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        with_audit(|| panic!("scene panicked"));
-    }));
-    let r = with_audit(|| {});
-    assert_eq!(
-        r.allocs, 0,
-        "post-panic audit saw {} allocs — IN_AUDIT must have been left set",
-        r.allocs,
-    );
+    let scene_panics: fn() = || panic!("scene panicked");
+    let nests: fn() = || {
+        let _ = with_audit(|| {});
+    };
+    for (body, expected) in [
+        (scene_panics, "scene panicked"),
+        (nests, "with_audit called inside an open audit window"),
+    ] {
+        let msg = catch_unwind(AssertUnwindSafe(|| with_audit(body)))
+            .expect_err("the body panics")
+            .downcast::<&str>()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| String::from("<non-str panic payload>"));
+        assert_eq!(msg, expected);
+        let r = with_audit(|| {});
+        assert_eq!(
+            r.allocs, 0,
+            "post-panic audit saw {} allocs — IN_AUDIT must have been left set",
+            r.allocs,
+        );
+    }
 }
 
 #[test]
@@ -202,34 +212,35 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     //   - exclude every `tests/alloc/` path — including this test
     //     module, since it's harness machinery, not a fixture,
     //   - drop the `alloc::` test-binary-crate prefix.
-    let mut ui = harness::new_ui();
-    // Warm caches so we audit a steady-state alloc, not first-frame init.
-    ui.prime(4, |ui| {
-        Button::new()
-            .auto_id()
-            .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui);
-    });
-    let r = with_audit(|| {
-        let _ = ui.frame(|ui| {
-            Button::new()
-                .auto_id()
-                .label("hello")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui);
+    //
+    // The allocation is one palantir makes by contract, recorded inside a
+    // frame so the stack runs through the frame path as well; the primed
+    // frame around it allocates nothing, so it is the first trace.
+    let scene = |ui: &mut Ui| {
+        Panel::vstack().auto_id().show(ui, |_| {
+            black_box(Mesh::with_capacity(4, 6));
         });
+    };
+    let mut ui = harness::new_ui();
+    ui.prime(4, scene);
+    let r = with_audit(|| {
+        let _ = ui.frame(scene);
     });
-    let mut bt = r
-        .traces
-        .into_iter()
-        .next()
-        .expect("button render should produce at least one captured alloc");
+    assert_eq!(r.allocs, 2, "the mesh's vertex and index buffers");
+    let mut bt = r.traces.into_iter().next().expect("two traces");
     let rendered = user_frames(&mut bt);
 
+    let first_at = rendered
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("at "))
+        .expect("at least one kept frame");
     assert!(
-        rendered.contains("src/"),
-        "rendered frames should include palantir src/ frames:\n{rendered}",
+        first_at.starts_with("src/primitives/mesh/mod.rs:"),
+        "the innermost kept frame is the allocating constructor:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("at src/ui/"),
+        "the frame path above the scene is kept too:\n{rendered}",
     );
     for plumbing in [
         "tests/alloc/allocator.rs",
