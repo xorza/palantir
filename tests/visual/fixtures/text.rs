@@ -4,7 +4,6 @@ use glam::UVec2;
 use image::Rgba;
 use palantir::{Background, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
-use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
@@ -15,38 +14,41 @@ use palantir::golden::Tolerance;
 #[test]
 fn text_paragraph_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(360, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(16.0)
-            .gap(6.0)
-            .show(ui, |ui| {
-                Text::new("Palantir")
-                    .id_salt("title")
-                    .style(
-                        &TextStyle::default()
-                            .with_font_size(20.0)
-                            .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
-                    )
-                    .show(ui);
-                Text::new("Immediate-mode UI with WPF-style layout.")
-                    .id_salt("body")
-                    .style(
-                        &TextStyle::default()
-                            .with_font_size(13.0)
-                            .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
-                    )
-                    .show(ui);
-                Text::new("Rendered headlessly through wgpu.")
-                    .id_salt("body2")
-                    .style(
-                        &TextStyle::default()
-                            .with_font_size(13.0)
-                            .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
-                    )
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(360, 140))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(16.0)
+                .gap(6.0)
+                .show(ui, |ui| {
+                    Text::new("Palantir")
+                        .id_salt("title")
+                        .style(
+                            &TextStyle::default()
+                                .with_font_size(20.0)
+                                .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
+                        )
+                        .show(ui);
+                    Text::new("Immediate-mode UI with WPF-style layout.")
+                        .id_salt("body")
+                        .style(
+                            &TextStyle::default()
+                                .with_font_size(13.0)
+                                .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
+                        )
+                        .show(ui);
+                    Text::new("Rendered headlessly through wgpu.")
+                        .id_salt("body2")
+                        .style(
+                            &TextStyle::default()
+                                .with_font_size(13.0)
+                                .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
+                        )
+                        .show(ui);
+                });
+        })
+        .image;
     let tol = Tolerance {
         per_channel: 4,
         max_ratio: 0.005,
@@ -70,34 +72,37 @@ fn text_row_list_batches_into_one_render() {
         ("Echo", RgbaF32::srgb(0.35, 0.55, 0.55)),
         ("Foxtrot", RgbaF32::srgb(0.65, 0.55, 0.30)),
     ];
-    let img = h.render(UVec2::new(220, 200), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(8.0)
-            .gap(4.0)
-            .show(ui, |ui| {
-                for (label, bg) in rows {
-                    Panel::hstack()
-                        .id_salt(label)
-                        .padding(6.0)
-                        .background(Background {
-                            fill: bg.into(),
-                            ..Default::default()
-                        })
-                        .size((Sizing::fixed(200.0), Sizing::HUG))
-                        .show(ui, |ui| {
-                            Text::new(label)
-                                .auto_id()
-                                .style(
-                                    &TextStyle::default()
-                                        .with_font_size(14.0)
-                                        .with_color(RgbaF32::srgb(0.95, 0.95, 1.00)),
-                                )
-                                .show(ui);
-                        });
-                }
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 200))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(8.0)
+                .gap(4.0)
+                .show(ui, |ui| {
+                    for (label, bg) in rows {
+                        Panel::hstack()
+                            .id_salt(label)
+                            .padding(6.0)
+                            .background(Background {
+                                fill: bg.into(),
+                                ..Default::default()
+                            })
+                            .size((Sizing::fixed(200.0), Sizing::HUG))
+                            .show(ui, |ui| {
+                                Text::new(label)
+                                    .auto_id()
+                                    .style(
+                                        &TextStyle::default()
+                                            .with_font_size(14.0)
+                                            .with_color(RgbaF32::srgb(0.95, 0.95, 1.00)),
+                                    )
+                                    .show(ui);
+                            });
+                    }
+                });
+        })
+        .image;
     let tol = Tolerance {
         per_channel: 4,
         max_ratio: 0.005,
@@ -158,12 +163,12 @@ fn text_row_list_survives_partial_damage_smoke() {
         }
     };
 
-    let f1 = h.render(size, 1.0, DARK_BG, scene(labels_initial));
+    let f1 = h.size(size).frame(scene(labels_initial)).image;
 
     // Flip row 2's text only ("cccc" → "CCCC"). Damage covers just
     // that row. Other rows' labels must still render.
     let labels_changed = ["aaaa", "bbbb", "CCCC", "dddd", "eeee", "ffff"];
-    let f2 = h.render(size, 1.0, DARK_BG, scene(labels_changed));
+    let f2 = h.size(size).frame(scene(labels_changed)).image;
 
     // Glyph-ink heuristic: a row's label region should contain at
     // least a few near-white pixels (the glyph fill) over the dark

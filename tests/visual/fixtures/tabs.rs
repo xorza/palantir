@@ -14,7 +14,6 @@ use palantir::{
     SplitSide, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui, WidgetId,
 };
 
-use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -41,7 +40,7 @@ fn tab_strip_matches_golden() {
                 TabStrip::new(&items).id_salt("strip").selected(1).show(ui);
             });
     }
-    let img = h.render_after_settle(2, UVec2::new(360, 76), 1.0, DARK_BG, scene);
+    let img = h.size(UVec2::new(360, 76)).settled_frame(2, scene).image;
     assert_matches_golden("tab_strip", &img, Tolerance::default());
 }
 
@@ -70,7 +69,7 @@ fn tabbed_view_matches_golden() {
                 });
         });
     }
-    let img = h.render_after_settle(2, UVec2::new(360, 140), 1.0, DARK_BG, scene);
+    let img = h.size(UVec2::new(360, 140)).settled_frame(2, scene).image;
     assert_matches_golden("tabbed_view", &img, Tolerance::default());
 }
 
@@ -85,7 +84,7 @@ fn dock_split_panes_matches_golden() {
             DockView::run(ui, dock, panes);
         });
     }
-    let img = h.render_after_settle(2, UVec2::new(520, 220), 1.0, DARK_BG, scene);
+    let img = h.size(UVec2::new(520, 220)).settled_frame(2, scene).image;
     assert_matches_golden("dock_split_panes", &img, Tolerance::default());
 }
 

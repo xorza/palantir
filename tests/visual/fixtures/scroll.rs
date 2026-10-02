@@ -4,10 +4,10 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Block, Configure, Corners, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing,
+    Background, Block, Configure, Corners, FramePaint, Panel, RgbaF32, Scroll, ScrollbarTheme,
+    Sizing,
 };
 
-use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
@@ -61,7 +61,7 @@ fn scroll_vertical_overflow_matches_golden() {
             });
     }
     let size = UVec2::new(180, 200);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
+    let img = h.size(size).settled_frame(1, scene).image;
     assert_matches_golden("scroll_vertical_overflow", &img, Tolerance::default());
 }
 
@@ -97,7 +97,7 @@ fn scroll_horizontal_overflow_matches_golden() {
             });
     }
     let size = UVec2::new(220, 80);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
+    let img = h.size(size).settled_frame(1, scene).image;
     assert_matches_golden("scroll_horizontal_overflow", &img, Tolerance::default());
 }
 
@@ -131,7 +131,7 @@ fn scroll_xy_overflow_matches_golden() {
             });
     }
     let size = UVec2::new(160, 160);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
+    let img = h.size(size).settled_frame(1, scene).image;
     assert_matches_golden("scroll_xy_overflow", &img, Tolerance::default());
 }
 
@@ -165,7 +165,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
             });
     }
     let size = UVec2::new(160, 160);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
+    let img = h.size(size).settled_frame(1, scene).image;
     assert_matches_golden("scroll_no_bar_when_fits", &img, Tolerance::default());
 }
 
@@ -204,7 +204,7 @@ fn scroll_with_user_padding_matches_golden() {
             });
     }
     let size = UVec2::new(180, 180);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
+    let img = h.size(size).settled_frame(1, scene).image;
     assert_matches_golden("scroll_with_user_padding", &img, Tolerance::default());
 }
 
@@ -219,7 +219,7 @@ fn scroll_with_user_padding_matches_golden() {
 /// from cold-cache encode. Pin frame 3 byte-identical to frame 2.
 /// No golden — pure intra-test invariant.
 #[test]
-fn scroll_warm_cache_matches_cold_encoded_second_frame() {
+fn scroll_warm_cache_repaint_matches_the_cold_encode() {
     let mut h = Harness::new();
     fn scene(ui: &mut palantir::Ui) {
         light_thumb_theme(ui);
@@ -261,25 +261,18 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                 }
             });
     }
-    let size = UVec2::new(280, 200);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let frame_2 = h.render(size, 1.0, DARK_BG, scene);
-    let frame_3 = h.render(size, 1.0, DARK_BG, scene);
-    // Strict byte-equality: same scene, deterministic encode → identical pixels.
-    // If the encoder cache or compose cache corrupts replay, this diverges.
+    // The cold frame encodes everything fresh; the invalidated one repaints
+    // the whole target again with every cache warm. Same scene,
+    // deterministic encode → identical pixels, so a cache that corrupts
+    // replay diverges here. Both paint modes are pinned: an unchanged scene
+    // would otherwise skip and compare two copies of one backbuffer.
+    let cold = h.size(UVec2::new(280, 200)).frame(scene);
+    assert_eq!(cold.paint, FramePaint::Full);
+    h.host.invalidate_target_contents();
+    let warm = h.frame(scene);
+    assert_eq!(warm.paint, FramePaint::Full, "the warm frame repaints");
     assert_eq!(
-        frame_2.dimensions(),
-        frame_3.dimensions(),
-        "frame dimensions must match"
-    );
-    let mut diffs = 0usize;
-    for (p2, p3) in frame_2.pixels().zip(frame_3.pixels()) {
-        if p2 != p3 {
-            diffs += 1;
-        }
-    }
-    assert_eq!(
-        diffs, 0,
-        "warm-cache frame diverged from cold-encoded second frame in {diffs} pixels"
+        warm.image, cold.image,
+        "warm-cache frame diverged from the cold-encoded one"
     );
 }

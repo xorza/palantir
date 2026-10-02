@@ -24,7 +24,6 @@ use palantir::{
 use std::cell::RefCell;
 use wgpu::TextureFormat;
 
-use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
 
@@ -69,7 +68,11 @@ fn recreate_backend_on_format_change_renders_identically() {
     let size = UVec2::new(200, 120);
     let mut h = Harness::new();
 
-    let before = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
+    let before = h
+        .size(size)
+        .format(TextureFormat::Rgba8UnormSrgb)
+        .frame(scene)
+        .image;
 
     // Guard against a vacuous comparison: the scene must actually paint
     // content distinct from the clear color, otherwise two all-clear
@@ -86,7 +89,11 @@ fn recreate_backend_on_format_change_renders_identically() {
     // the target's format changed and forces a full repaint at the new
     // format (building its pipeline set lazily); `render_to_format`
     // swizzles the BGRA readback back into RGBA space for comparison.
-    let after = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
+    let after = h
+        .size(size)
+        .format(TextureFormat::Bgra8UnormSrgb)
+        .frame(scene)
+        .image;
 
     // Both formats are sRGB: identical perceptual output expected.
     // A small per-channel tolerance covers BGRA-vs-RGBA rounding in the
@@ -115,13 +122,25 @@ fn repeated_format_changes_keep_rendering() {
     let size = UVec2::new(160, 100);
     let mut h = Harness::new();
 
-    let baseline = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
+    let baseline = h
+        .size(size)
+        .format(TextureFormat::Rgba8UnormSrgb)
+        .frame(scene)
+        .image;
 
     // Flip to a second format (auto-detected, repaints fully), then back
     // to the original — its pipeline set is still cached from the baseline
     // render above.
-    let _ = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
-    let restored = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
+    let _ = h
+        .size(size)
+        .format(TextureFormat::Bgra8UnormSrgb)
+        .frame(scene)
+        .image;
+    let restored = h
+        .size(size)
+        .format(TextureFormat::Rgba8UnormSrgb)
+        .frame(scene)
+        .image;
 
     let tol = Tolerance {
         per_channel: 2,
@@ -194,13 +213,11 @@ fn images_survive_format_change_without_reupload() {
     let size = UVec2::new(128, 128);
     let mut h = Harness::new();
 
-    let before = h.render_to_format(
-        TextureFormat::Rgba8UnormSrgb,
-        size,
-        1.0,
-        DARK_BG,
-        image_scene,
-    );
+    let before = h
+        .size(size)
+        .format(TextureFormat::Rgba8UnormSrgb)
+        .frame(image_scene)
+        .image;
     assert_eq!(
         h.host.gpu_image_cache_len(),
         1,
@@ -211,13 +228,11 @@ fn images_survive_format_change_without_reupload() {
     // auto-detected and builds the new format's pipeline set lazily; the
     // uploaded image texture (format-independent) must survive untouched —
     // drawn from the surviving cache (count unchanged), pixel-identical.
-    let after = h.render_to_format(
-        TextureFormat::Bgra8UnormSrgb,
-        size,
-        1.0,
-        DARK_BG,
-        image_scene,
-    );
+    let after = h
+        .size(size)
+        .format(TextureFormat::Bgra8UnormSrgb)
+        .frame(image_scene)
+        .image;
     assert_eq!(
         h.host.gpu_image_cache_len(),
         1,
@@ -250,11 +265,9 @@ fn images_survive_format_change_without_reupload() {
 #[should_panic(expected = "render target format Rgba8Unorm does not encode linear light")]
 fn a_unorm_target_is_refused() {
     let mut h = Harness::new();
-    let _ = h.render_to_format(
-        TextureFormat::Rgba8Unorm,
-        UVec2::new(32, 32),
-        1.0,
-        DARK_BG,
-        scene,
-    );
+    let _ = h
+        .size(UVec2::new(32, 32))
+        .format(TextureFormat::Rgba8Unorm)
+        .frame(scene)
+        .image;
 }

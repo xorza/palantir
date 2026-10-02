@@ -42,7 +42,7 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
             });
     };
     for expected in [[RED, BLUE, BLUE, RED], [BLUE, BLUE, RED, RED]] {
-        let out = h.render(size, 1.0, RgbaF32::BLACK, scene);
+        let out = h.size(size).clear(RgbaF32::BLACK).frame(scene).image;
         for y in 0..2 {
             for x in 0..4 {
                 // Sampling at texel centres only incurs the sRGB round trip.
@@ -115,40 +115,44 @@ fn assert_blend(pixel: [u8; 4], label: &str) {
 fn minification_and_magnification_filters_are_independent() {
     let mut h = Harness::new();
     let mut mag_strip: Option<palantir::ImageHandle> = None;
-    let magnified = h.render(UVec2::new(256, 64), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = mag_strip
-            .get_or_insert_with(|| {
-                ui.load_image(&palantir::Image::from_srgba8(
-                    UVec2::new(2, 1),
-                    [RED, BLUE].concat(),
-                ))
-                .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        Panel::canvas()
-            .id_salt("filter_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                strip_pane(
-                    ui,
-                    &handle,
-                    0.0,
-                    Vec2::new(128.0, 64.0),
-                    ImageFit::Fill,
-                    ImageFilter::Nearest,
-                    ImageFilter::Linear,
-                );
-                strip_pane(
-                    ui,
-                    &handle,
-                    128.0,
-                    Vec2::new(128.0, 64.0),
-                    ImageFit::Fill,
-                    ImageFilter::Linear,
-                    ImageFilter::Nearest,
-                );
-            });
-    });
+    let magnified = h
+        .size(UVec2::new(256, 64))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = mag_strip
+                .get_or_insert_with(|| {
+                    ui.load_image(&palantir::Image::from_srgba8(
+                        UVec2::new(2, 1),
+                        [RED, BLUE].concat(),
+                    ))
+                    .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            Panel::canvas()
+                .id_salt("filter_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    strip_pane(
+                        ui,
+                        &handle,
+                        0.0,
+                        Vec2::new(128.0, 64.0),
+                        ImageFit::Fill,
+                        ImageFilter::Nearest,
+                        ImageFilter::Linear,
+                    );
+                    strip_pane(
+                        ui,
+                        &handle,
+                        128.0,
+                        Vec2::new(128.0, 64.0),
+                        ImageFit::Fill,
+                        ImageFilter::Linear,
+                        ImageFilter::Nearest,
+                    );
+                });
+        })
+        .image;
 
     let px = |x: u32| magnified.get_pixel(x, 32).0;
 
@@ -165,40 +169,44 @@ fn minification_and_magnification_filters_are_independent() {
     assert_blend(px(64), "linear magnification seam");
 
     let mut min_strip: Option<palantir::ImageHandle> = None;
-    let minified = h.render(UVec2::new(4, 16), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = min_strip
-            .get_or_insert_with(|| {
-                ui.load_image(&palantir::Image::from_srgba8(
-                    UVec2::new(4, 1),
-                    [RED, BLUE, RED, BLUE].concat(),
-                ))
-                .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        Panel::canvas()
-            .id_salt("min_filter_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                strip_pane(
-                    ui,
-                    &handle,
-                    0.0,
-                    Vec2::new(2.0, 16.0),
-                    ImageFit::Fill,
-                    ImageFilter::Nearest,
-                    ImageFilter::Linear,
-                );
-                strip_pane(
-                    ui,
-                    &handle,
-                    2.0,
-                    Vec2::new(2.0, 16.0),
-                    ImageFit::Fill,
-                    ImageFilter::Linear,
-                    ImageFilter::Nearest,
-                );
-            });
-    });
+    let minified = h
+        .size(UVec2::new(4, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = min_strip
+                .get_or_insert_with(|| {
+                    ui.load_image(&palantir::Image::from_srgba8(
+                        UVec2::new(4, 1),
+                        [RED, BLUE, RED, BLUE].concat(),
+                    ))
+                    .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            Panel::canvas()
+                .id_salt("min_filter_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    strip_pane(
+                        ui,
+                        &handle,
+                        0.0,
+                        Vec2::new(2.0, 16.0),
+                        ImageFit::Fill,
+                        ImageFilter::Nearest,
+                        ImageFilter::Linear,
+                    );
+                    strip_pane(
+                        ui,
+                        &handle,
+                        2.0,
+                        Vec2::new(2.0, 16.0),
+                        ImageFit::Fill,
+                        ImageFilter::Linear,
+                        ImageFilter::Nearest,
+                    );
+                });
+        })
+        .image;
 
     for x in 0..2 {
         assert!(
@@ -245,40 +253,44 @@ fn minification_and_magnification_filters_are_independent() {
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let mut h = Harness::new();
     let mut strip: Option<palantir::ImageHandle> = None;
-    let strips = h.render(UVec2::new(200, 32), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = strip
-            .get_or_insert_with(|| {
-                ui.load_image(&palantir::Image::from_srgba8(
-                    UVec2::new(3, 1),
-                    [RED, BLUE, RED].concat(),
-                ))
-                .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        Panel::canvas()
-            .id_salt("branch_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                strip_pane(
-                    ui,
-                    &handle,
-                    0.0,
-                    Vec2::new(100.0, 32.0),
-                    ImageFit::Fill,
-                    ImageFilter::Linear,
-                    ImageFilter::Linear,
-                );
-                strip_pane(
-                    ui,
-                    &handle,
-                    100.0,
-                    Vec2::new(100.0, 32.0),
-                    ImageFit::Fill,
-                    ImageFilter::Nearest,
-                    ImageFilter::Nearest,
-                );
-            });
-    });
+    let strips = h
+        .size(UVec2::new(200, 32))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = strip
+                .get_or_insert_with(|| {
+                    ui.load_image(&palantir::Image::from_srgba8(
+                        UVec2::new(3, 1),
+                        [RED, BLUE, RED].concat(),
+                    ))
+                    .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            Panel::canvas()
+                .id_salt("branch_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    strip_pane(
+                        ui,
+                        &handle,
+                        0.0,
+                        Vec2::new(100.0, 32.0),
+                        ImageFit::Fill,
+                        ImageFilter::Linear,
+                        ImageFilter::Linear,
+                    );
+                    strip_pane(
+                        ui,
+                        &handle,
+                        100.0,
+                        Vec2::new(100.0, 32.0),
+                        ImageFit::Fill,
+                        ImageFilter::Nearest,
+                        ImageFilter::Nearest,
+                    );
+                });
+        })
+        .image;
 
     let px = |x: u32| strips.get_pixel(x, 16).0;
     assert!(close(px(16), RED), "bilinear left clamp must be RED");
@@ -294,44 +306,48 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     }
 
     let mut tile: Option<palantir::ImageHandle> = None;
-    let tiled = h.render(UVec2::new(200, 16), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = tile
-            .get_or_insert_with(|| {
-                ui.load_image(&palantir::Image::from_srgba8(
-                    UVec2::new(2, 1),
-                    [RED, BLUE].concat(),
-                ))
-                .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        let fit = ImageFit::Tile {
-            offset: Vec2::ZERO,
-            scale: Vec2::new(2.5, 1.0),
-        };
-        Panel::canvas()
-            .id_salt("tile_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                strip_pane(
-                    ui,
-                    &handle,
-                    0.0,
-                    Vec2::new(100.0, 16.0),
-                    fit,
-                    ImageFilter::Linear,
-                    ImageFilter::Linear,
-                );
-                strip_pane(
-                    ui,
-                    &handle,
-                    100.0,
-                    Vec2::new(100.0, 16.0),
-                    fit,
-                    ImageFilter::Nearest,
-                    ImageFilter::Nearest,
-                );
-            });
-    });
+    let tiled = h
+        .size(UVec2::new(200, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = tile
+                .get_or_insert_with(|| {
+                    ui.load_image(&palantir::Image::from_srgba8(
+                        UVec2::new(2, 1),
+                        [RED, BLUE].concat(),
+                    ))
+                    .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            let fit = ImageFit::Tile {
+                offset: Vec2::ZERO,
+                scale: Vec2::new(2.5, 1.0),
+            };
+            Panel::canvas()
+                .id_salt("tile_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    strip_pane(
+                        ui,
+                        &handle,
+                        0.0,
+                        Vec2::new(100.0, 16.0),
+                        fit,
+                        ImageFilter::Linear,
+                        ImageFilter::Linear,
+                    );
+                    strip_pane(
+                        ui,
+                        &handle,
+                        100.0,
+                        Vec2::new(100.0, 16.0),
+                        fit,
+                        ImageFilter::Nearest,
+                        ImageFilter::Nearest,
+                    );
+                });
+        })
+        .image;
 
     let tpx = |x: u32| tiled.get_pixel(x, 8).0;
     // Bilinear over a repeat blends *across* every seam, the draw's own
@@ -424,37 +440,41 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 
     let mut h = Harness::new();
     let mut source: Option<palantir::ImageHandle> = None;
-    let out = h.render(UVec2::new(24, 16), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = source
-            .get_or_insert_with(|| {
-                let texels: Vec<u8> = std::iter::repeat_n([STAR, SKY, SKY], 8)
-                    .flatten()
-                    .flatten()
-                    .collect();
-                ui.load_image(&palantir::Image::from_srgba8(UVec2::new(24, 1), texels))
-                    .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        Panel::canvas()
-            .id_salt("downsample_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for (i, (mode, _, _)) in cases.iter().enumerate() {
-                    let x = i as f32 * PANE.x;
-                    Panel::zstack()
-                        .id_salt(("downsample_pane", i))
-                        .position(Vec2::new(x, 0.0))
-                        .size((Sizing::fixed(PANE.x), Sizing::fixed(PANE.y)))
-                        .show(ui, |ui| {
-                            ui.add_shape(
-                                Shape::image(handle.clone())
-                                    .fit(ImageFit::Fill)
-                                    .downsample(*mode),
-                            );
-                        });
-                }
-            });
-    });
+    let out = h
+        .size(UVec2::new(24, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = source
+                .get_or_insert_with(|| {
+                    let texels: Vec<u8> = std::iter::repeat_n([STAR, SKY, SKY], 8)
+                        .flatten()
+                        .flatten()
+                        .collect();
+                    ui.load_image(&palantir::Image::from_srgba8(UVec2::new(24, 1), texels))
+                        .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            Panel::canvas()
+                .id_salt("downsample_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (i, (mode, _, _)) in cases.iter().enumerate() {
+                        let x = i as f32 * PANE.x;
+                        Panel::zstack()
+                            .id_salt(("downsample_pane", i))
+                            .position(Vec2::new(x, 0.0))
+                            .size((Sizing::fixed(PANE.x), Sizing::fixed(PANE.y)))
+                            .show(ui, |ui| {
+                                ui.add_shape(
+                                    Shape::image(handle.clone())
+                                        .fit(ImageFit::Fill)
+                                        .downsample(*mode),
+                                );
+                            });
+                    }
+                });
+        })
+        .image;
 
     let mut measured = Vec::with_capacity(cases.len());
     for (i, (_, expected, label)) in cases.iter().enumerate() {
@@ -533,39 +553,43 @@ fn downsample_combines_taps_in_premultiplied_space() {
 
     let mut h = Harness::new();
     let mut sources: Option<Vec<palantir::ImageHandle>> = None;
-    let out = h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
-        let handles = sources.get_or_insert_with(|| {
-            cases
-                .iter()
-                .map(|(triple, _, _, _)| {
-                    let texels: Vec<u8> = std::iter::repeat_n(*triple, 8)
-                        .flatten()
-                        .flatten()
-                        .collect();
-                    ui.load_image(&palantir::Image::from_srgba8(UVec2::new(24, 1), texels))
-                        .expect("fixture image fits every supported GPU")
-                })
-                .collect()
-        });
-        Panel::canvas()
-            .id_salt("premultiplied_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for (i, (_, mode, _, _)) in cases.iter().enumerate() {
-                    Panel::zstack()
-                        .id_salt(("premultiplied_pane", i))
-                        .position(Vec2::new(i as f32 * PANE.x, 0.0))
-                        .size((Sizing::fixed(PANE.x), Sizing::fixed(PANE.y)))
-                        .show(ui, |ui| {
-                            ui.add_shape(
-                                Shape::image(handles[i].clone())
-                                    .fit(ImageFit::Fill)
-                                    .downsample(*mode),
-                            );
-                        });
-                }
+    let out = h
+        .size(UVec2::new(16, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handles = sources.get_or_insert_with(|| {
+                cases
+                    .iter()
+                    .map(|(triple, _, _, _)| {
+                        let texels: Vec<u8> = std::iter::repeat_n(*triple, 8)
+                            .flatten()
+                            .flatten()
+                            .collect();
+                        ui.load_image(&palantir::Image::from_srgba8(UVec2::new(24, 1), texels))
+                            .expect("fixture image fits every supported GPU")
+                    })
+                    .collect()
             });
-    });
+            Panel::canvas()
+                .id_salt("premultiplied_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (i, (_, mode, _, _)) in cases.iter().enumerate() {
+                        Panel::zstack()
+                            .id_salt(("premultiplied_pane", i))
+                            .position(Vec2::new(i as f32 * PANE.x, 0.0))
+                            .size((Sizing::fixed(PANE.x), Sizing::fixed(PANE.y)))
+                            .show(ui, |ui| {
+                                ui.add_shape(
+                                    Shape::image(handles[i].clone())
+                                        .fit(ImageFit::Fill)
+                                        .downsample(*mode),
+                                );
+                            });
+                    }
+                });
+        })
+        .image;
 
     for (i, (_, _, expected, label)) in cases.iter().enumerate() {
         let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
@@ -600,26 +624,30 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
 
     let mut h = Harness::new();
     let mut source: Option<palantir::ImageHandle> = None;
-    let out = h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = source
-            .get_or_insert_with(|| {
-                let texels: Vec<u8> = [RED, CLEAR].into_iter().flatten().collect();
-                ui.load_image(&palantir::Image::from_srgba8(UVec2::new(2, 1), texels))
-                    .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        Panel::canvas()
-            .id_salt("fringe_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Panel::zstack()
-                    .id_salt("fringe_pane")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        ui.add_shape(Shape::image(handle.clone()).fit(ImageFit::Fill));
-                    });
-            });
-    });
+    let out = h
+        .size(UVec2::new(16, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = source
+                .get_or_insert_with(|| {
+                    let texels: Vec<u8> = [RED, CLEAR].into_iter().flatten().collect();
+                    ui.load_image(&palantir::Image::from_srgba8(UVec2::new(2, 1), texels))
+                        .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            Panel::canvas()
+                .id_salt("fringe_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id_salt("fringe_pane")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            ui.add_shape(Shape::image(handle.clone()).fit(ImageFit::Fill));
+                        });
+                });
+        })
+        .image;
 
     let pixel = out.get_pixel(7, 8).0;
     assert!(
@@ -653,30 +681,34 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
 fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let mut h = Harness::new();
     let mut source: Option<palantir::ImageHandle> = None;
-    let out = h.render(UVec2::new(8, 16), 1.0, RgbaF32::BLACK, |ui| {
-        let handle = source
-            .get_or_insert_with(|| {
-                ui.load_image(&palantir::Image::from_srgba8(
-                    UVec2::new(4, 1),
-                    [STAR, SKY, SKY, SKY].concat(),
-                ))
-                .expect("fixture image fits every supported GPU")
-            })
-            .clone();
-        Panel::zstack()
-            .id_salt("tiled_downsample_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::image(handle.clone())
-                        .fit(ImageFit::Tile {
-                            offset: Vec2::ZERO,
-                            scale: Vec2::new(24.0, 1.0),
-                        })
-                        .downsample(ImageDownsample::Mean),
-                );
-            });
-    });
+    let out = h
+        .size(UVec2::new(8, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handle = source
+                .get_or_insert_with(|| {
+                    ui.load_image(&palantir::Image::from_srgba8(
+                        UVec2::new(4, 1),
+                        [STAR, SKY, SKY, SKY].concat(),
+                    ))
+                    .expect("fixture image fits every supported GPU")
+                })
+                .clone();
+            Panel::zstack()
+                .id_salt("tiled_downsample_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::image(handle.clone())
+                            .fit(ImageFit::Tile {
+                                offset: Vec2::ZERO,
+                                scale: Vec2::new(24.0, 1.0),
+                            })
+                            .downsample(ImageDownsample::Mean),
+                    );
+                });
+        })
+        .image;
 
     // Every pixel is tile-aligned identically, so a single expected value
     // covers the pane — and a seam that clamped would break exactly that.
@@ -715,33 +747,37 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
 
     let mut h = Harness::new();
     let mut sources: Option<[palantir::ImageHandle; 3]> = None;
-    let out = h.render(UVec2::new(192, 32), 1.0, RgbaF32::BLACK, |ui| {
-        let handles = sources.get_or_insert_with(|| {
-            SOURCES.map(|texel| {
-                ui.load_image(&palantir::Image::from_srgba8(
-                    UVec2::new(1, 1),
-                    texel.to_vec(),
-                ))
-                .expect("fixture image fits every supported GPU")
-            })
-        });
-        Panel::canvas()
-            .id_salt("coalesce_fixture")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for (pane, &source) in PATTERN.iter().enumerate() {
-                    strip_pane(
-                        ui,
-                        &handles[source],
-                        pane as f32 * PANE,
-                        Vec2::new(PANE, 32.0),
-                        ImageFit::Fill,
-                        ImageFilter::Linear,
-                        ImageFilter::Linear,
-                    );
-                }
+    let out = h
+        .size(UVec2::new(192, 32))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            let handles = sources.get_or_insert_with(|| {
+                SOURCES.map(|texel| {
+                    ui.load_image(&palantir::Image::from_srgba8(
+                        UVec2::new(1, 1),
+                        texel.to_vec(),
+                    ))
+                    .expect("fixture image fits every supported GPU")
+                })
             });
-    });
+            Panel::canvas()
+                .id_salt("coalesce_fixture")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (pane, &source) in PATTERN.iter().enumerate() {
+                        strip_pane(
+                            ui,
+                            &handles[source],
+                            pane as f32 * PANE,
+                            Vec2::new(PANE, 32.0),
+                            ImageFit::Fill,
+                            ImageFilter::Linear,
+                            ImageFilter::Linear,
+                        );
+                    }
+                });
+        })
+        .image;
 
     for (pane, &source) in PATTERN.iter().enumerate() {
         let expected = SOURCES[source];

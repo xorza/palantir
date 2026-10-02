@@ -42,25 +42,29 @@ fn swatch_color(i: u32) -> RgbaF32 {
 /// interpolation shift.
 fn render_swatches() -> RgbaImage {
     let mut harness = Harness::new();
-    harness.render(VIEWPORT, 1.0, CLEAR, |ui| {
-        Panel::canvas()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for i in 0..SWATCHES {
-                    let color = swatch_color(i);
-                    let rect = Rect::new(
-                        ((i % COLS) * SWATCH) as f32,
-                        ((i / COLS) * SWATCH) as f32,
-                        SWATCH as f32,
-                        SWATCH as f32,
-                    );
-                    ui.add_shape(
-                        Shape::rect(rect).fill(LinearGradient::two_stop(0.0, color, color)),
-                    );
-                }
-            });
-    })
+    harness
+        .size(VIEWPORT)
+        .clear(CLEAR)
+        .frame(|ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for i in 0..SWATCHES {
+                        let color = swatch_color(i);
+                        let rect = Rect::new(
+                            ((i % COLS) * SWATCH) as f32,
+                            ((i / COLS) * SWATCH) as f32,
+                            SWATCH as f32,
+                            SWATCH as f32,
+                        );
+                        ui.add_shape(
+                            Shape::rect(rect).fill(LinearGradient::two_stop(0.0, color, color)),
+                        );
+                    }
+                });
+        })
+        .image
 }
 
 /// 320 distinct gradients in one frame — past the 255 rows the atlas
@@ -131,16 +135,20 @@ fn a_gradient_samples_its_lut_at_texel_centres() {
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(1024, 16), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::canvas()
-            .id_salt("hard-stop")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 1024.0, 16.0)).fill(
-                    LinearGradient::new(0.0, [Stop::new(0.25, red), Stop::new(0.25, blue)]),
-                ));
-            });
-    });
+    let img = h
+        .size(UVec2::new(1024, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::canvas()
+                .id_salt("hard-stop")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 1024.0, 16.0)).fill(
+                        LinearGradient::new(0.0, [Stop::new(0.25, red), Stop::new(0.25, blue)]),
+                    ));
+                });
+        })
+        .image;
     let [r, g, b, _] = img.get_pixel(258, 8).0;
     assert!(
         r.abs_diff(207) <= 3 && g == 0 && b.abs_diff(163) <= 3,

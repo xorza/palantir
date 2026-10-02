@@ -11,7 +11,6 @@
 use glam::UVec2;
 use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
 
-use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(220, 110);
@@ -45,10 +44,12 @@ fn scene(ui: &mut Ui) {
 
 #[test]
 fn a_target_that_takes_no_copy_presents_the_same_pixels() {
-    let copied = Harness::new().render_after_settle(2, SURFACE, 1.0, DARK_BG, scene);
+    let copied = Harness::new().size(SURFACE).settled_frame(2, scene).image;
     let drawn = Harness::new()
         .without_copy_dst()
-        .render_after_settle(2, SURFACE, 1.0, DARK_BG, scene);
+        .size(SURFACE)
+        .settled_frame(2, scene)
+        .image;
 
     assert_eq!(copied.dimensions(), drawn.dimensions());
     let differing = copied

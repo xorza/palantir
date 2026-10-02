@@ -85,8 +85,9 @@ impl HeadlessTestGpuLease {
     }
 
     /// A new device under this process's GPU lock, which the first device
-    /// takes and every later one shares.
-    fn request() -> Self {
+    /// takes and every later one shares — or why there is none, worded
+    /// for the panic every caller turns it into.
+    fn request() -> Result<Self, String> {
         static PROCESS_LOCK: OnceLock<File> = OnceLock::new();
         PROCESS_LOCK.get_or_init(lock_gpu_process);
         let started = Instant::now();
@@ -110,17 +111,17 @@ impl HeadlessTestGpuLease {
                     thread::sleep(ADAPTER_RETRY_INTERVAL);
                 }
                 Err(error) => {
-                    panic!(
+                    return Err(format!(
                         "lease headless test gpu after {:?}: {error}",
                         started.elapsed()
-                    );
+                    ));
                 }
             }
         };
-        Self {
+        Ok(Self {
             queue: gpu.gpu.queue,
             device: gpu.gpu.device,
-        }
+        })
     }
 }
 
@@ -135,12 +136,18 @@ impl Drop for HeadlessTestGpuLease {
 /// Initialization takes an interprocess OS lock that remains held until the
 /// test process exits, preventing another Palantir test binary from entering
 /// its GPU section concurrently.
+///
+/// A failed request is kept as well: every later lease in the process
+/// panics with the same message at once, instead of each GPU test paying
+/// the adapter retry again.
 pub fn headless_test_gpu() -> HeadlessTestGpuLease {
-    static GPU: OnceLock<HeadlessTestGpuLease> = OnceLock::new();
-    let gpu = GPU.get_or_init(HeadlessTestGpuLease::request);
-    HeadlessTestGpuLease {
-        queue: gpu.queue.clone(),
-        device: gpu.device.clone(),
+    static GPU: OnceLock<Result<HeadlessTestGpuLease, String>> = OnceLock::new();
+    match GPU.get_or_init(HeadlessTestGpuLease::request) {
+        Ok(gpu) => HeadlessTestGpuLease {
+            queue: gpu.queue.clone(),
+            device: gpu.device.clone(),
+        },
+        Err(why) => panic!("{why}"),
     }
 }
 
@@ -152,7 +159,7 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
 /// tests before it left behind. Under the same interprocess lock as
 /// [`headless_test_gpu`].
 pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
-    HeadlessTestGpuLease::request()
+    HeadlessTestGpuLease::request().unwrap_or_else(|why| panic!("{why}"))
 }
 
 fn lock_gpu_process() -> File {

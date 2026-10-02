@@ -28,21 +28,25 @@ fn a_fade_to_transparent_keeps_its_colour_midway() {
     let line = [Vec2::new(0.0, 60.0), Vec2::new(200.0, 60.0)];
 
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(200, 120), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::canvas()
-            .id_salt("fades")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(Shape::mesh(&mesh));
-                ui.add_shape(
-                    Shape::polyline(&line, Stroke::new(white, 20.0)).per_point(&[white, clear]),
-                );
-                ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 90.0, 200.0, 20.0))
-                        .fill(LinearGradient::two_stop(0.0, white, clear)),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(200, 120))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::canvas()
+                .id_salt("fades")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::mesh(&mesh));
+                    ui.add_shape(
+                        Shape::polyline(&line, Stroke::new(white, 20.0)).per_point(&[white, clear]),
+                    );
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 90.0, 200.0, 20.0))
+                            .fill(LinearGradient::two_stop(0.0, white, clear)),
+                    );
+                });
+        })
+        .image;
     for (label, y) in [("mesh", 20), ("polyline", 60), ("gradient", 100)] {
         let [r, g, b, _] = img.get_pixel(99, y).0;
         assert!(

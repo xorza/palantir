@@ -20,24 +20,28 @@ fn render_shadow(
     inset: bool,
 ) -> RgbaImage {
     let mut harness = Harness::new();
-    harness.render(VIEWPORT, 1.0, CLEAR, |ui| {
-        Panel::canvas()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::shadow(Shadow {
-                        color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
-                        offset,
-                        blur,
-                        spread,
-                        inset,
-                    })
-                    .at(source)
-                    .corners(corners),
-                );
-            });
-    })
+    harness
+        .size(VIEWPORT)
+        .clear(CLEAR)
+        .frame(|ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::shadow(Shadow {
+                            color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
+                            offset,
+                            blur,
+                            spread,
+                            inset,
+                        })
+                        .at(source)
+                        .corners(corners),
+                    );
+                });
+        })
+        .image
 }
 
 fn assert_same_pixels_in_rect(label: &str, actual: &RgbaImage, expected: &RgbaImage, rect: Rect) {

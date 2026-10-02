@@ -14,7 +14,6 @@ use glam::UVec2;
 use image::Rgba;
 use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 
-use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 
 /// Clears the off-screen target to opaque red via the app's own render
@@ -58,10 +57,13 @@ fn gpu_view_clear_red_reaches_screen() {
     let size = UVec2::new(64, 64);
     let paint = Rc::new(RefCell::new(RedClear));
     let p = Rc::clone(&paint);
-    let img = h.render(size, 1.0, DARK_BG, |ui| {
-        // Default sizing fills the surface; the whole frame is the view.
-        GpuView::new(&p).show(ui);
-    });
+    let img = h
+        .size(size)
+        .frame(|ui| {
+            // Default sizing fills the surface; the whole frame is the view.
+            GpuView::new(&p).show(ui);
+        })
+        .image;
 
     let expected = Rgba([255u8, 0, 0, 255]);
     // Interior samples (skip the 1px edge to dodge boundary AA).
@@ -236,9 +238,12 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
         last_raster_scale: 0.0,
     }));
     let p = Rc::clone(&paint);
-    let img = h.render(size, 1.0, DARK_BG, |ui| {
-        GpuView::new(&p).show(ui);
-    });
+    let img = h
+        .size(size)
+        .frame(|ui| {
+            GpuView::new(&p).show(ui);
+        })
+        .image;
     let green = Rgba([0u8, 255, 0, 255]);
     // (63,63) is the discriminating pixel: with the correct `used/capacity`
     // crop it samples inside the green sub-rect; with a full-[0,1] UV it
@@ -268,15 +273,19 @@ fn gpu_view_callback_receives_composed_raster_scale() {
         last_raster_scale: 0.0,
     }));
     let p = Rc::clone(&paint);
-    let img = h.render(size, 2.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
-            .transform(TranslateScale::from_scale(1.5))
-            .show(ui, |ui| {
-                GpuView::new(&p).show(ui);
-            });
-    });
+    let img = h
+        .size(size)
+        .scale(2.0)
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
+                .transform(TranslateScale::from_scale(1.5))
+                .show(ui, |ui| {
+                    GpuView::new(&p).show(ui);
+                });
+        })
+        .image;
 
     assert_eq!(paint.borrow().last_size, UVec2::new(96, 96));
     assert_eq!(paint.borrow().last_display_scale, 2.0);

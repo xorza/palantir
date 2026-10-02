@@ -17,7 +17,6 @@ use palantir::{
     Stroke, Text,
 };
 
-use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
 
@@ -164,9 +163,15 @@ fn run(script: &[Knobs]) {
         max_ratio: 0.0,
     };
     for (frame, k) in [Knobs::BASE, Knobs::BASE].iter().chain(script).enumerate() {
-        let repainted = partial.render(SURFACE, 1.0, DARK_BG, |ui| scene(ui, *k, &partial_picture));
+        let repainted = partial
+            .size(SURFACE)
+            .frame(|ui| scene(ui, *k, &partial_picture))
+            .image;
         full.host.invalidate_target_contents();
-        let painted = full.render(SURFACE, 1.0, DARK_BG, |ui| scene(ui, *k, &full_picture));
+        let painted = full
+            .size(SURFACE)
+            .frame(|ui| scene(ui, *k, &full_picture))
+            .image;
         let report = exact.diff(&repainted, &painted);
         assert_eq!(
             report.differing_pixels, 0,

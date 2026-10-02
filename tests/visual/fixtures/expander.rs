@@ -5,7 +5,6 @@ use glam::UVec2;
 use palantir::golden::Tolerance;
 use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
 
-use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -41,6 +40,6 @@ fn expander_open_and_closed_matches_golden() {
                 });
             });
     }
-    let img = h.render_after_settle(2, UVec2::new(280, 124), 1.0, DARK_BG, scene);
+    let img = h.size(UVec2::new(280, 124)).settled_frame(2, scene).image;
     assert_matches_golden("expander_open_and_closed", &img, Tolerance::default());
 }
