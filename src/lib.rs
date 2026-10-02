@@ -203,17 +203,17 @@ pub mod golden;
 /// The two bundled demo surfaces — [`FrameFixture`] and [`demo_swatches`] —
 /// are gated at the crate root instead of here. They reach past nothing:
 /// they are scene code the showcase and the allocation gates both record.
+///
+/// The same feature also adds methods to public types, which a module
+/// cannot re-export: `Ui::theme_mut`, and the offscreen host's
+/// `has_format_pipelines`, `gpu_image_cache_len` and
+/// `invalidate_target_contents`.
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
-    /// Needs a real GPU device, so unlike its neighbours this one is gated
-    /// on the feature rather than on `test`. Under `cargo test` the self
-    /// dev-dependency turns the feature on anyway.
-    #[cfg(feature = "internals")]
     pub use crate::gpu::test_gpu::{
         HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
     };
-    #[cfg(feature = "internals")]
     pub use crate::text::internals::{
         PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES, TEXT_SCALE_STEP,
     };

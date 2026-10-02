@@ -171,11 +171,7 @@ impl TextBackend {
     }
 }
 
-// Both consumers need a real device, so both sit behind `internals`: the
-// `text_atlas` benchmark (`bench` implies it) and the GPU regression suite
-// in `tests.rs`. A plain `cargo test` build has neither, and neither does a
-// non-test `internals` build.
-#[cfg(all(feature = "internals", any(test, feature = "bench")))]
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod test_support {
     use crate::gpu::text::TextBackend;
 

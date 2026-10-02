@@ -19,17 +19,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ---
 
-## 8. The `internals` feature is on in every test build
-
-- [ ] The self dev-dependency (`Cargo.toml:101`, `features = ["internals"]`) merges `internals` into every test target. Seven comments say a plain `cargo test` is GPU-free, and that is false: `lib.rs:209-211`, `text/mod.rs:179-183`, `text/shaper.rs:469-473`, `gpu/icon/tests.rs:4-6`, `gpu/raster_atlas/tests.rs:258-259`, `gpu/text/tests.rs:7-9`, `gpu/text/mod.rs:162-165`. `text/cosmic/mod.rs:921-923` gives the wrong reason for its gate. Choose: accept GPU tests in every run and delete the claims, or add a dedicated `gpu-tests` feature that the dev-dependency does not request. Then the AGENTS.md test line's `--features internals` is redundant or needs a reason.
-- [ ] As a result, `all(test, feature = "internals")` equals `test` (`gpu/text/encode/encoder.rs:168`, `gpu/image_store.rs:241`, `gpu/text/encode/cache/mod.rs:384,388`, `text/shaper.rs:528`).
-- [ ] GPU tests are gated three ways (file `#![cfg]`, nested `mod gpu`, `all(test, internals)`). The last hides the CPU-only `image_store.rs:257` premultiply test. Use one idiom and move that test out.
-- [ ] `internals` modules that hold only test-only items belong in `test_support`: `scene/tree/mod.rs:711-728` (empty under `--features internals`), `text/shaper.rs:396-531` (also a doubled `#[cfg(test)]` at `:399-400`), `ui/mod.rs:1593-1779` (14 cfg'd imports).
-- [ ] AGENTS.md has no rule for an in-crate consumer that is itself `internals`-gated (the harness, `OffscreenHost` peepholes), and the code names it both ways (`scene/cascade/mod.rs:361`, `gpu/image_store.rs:227` vs `ui/resources/mod.rs:120`, `gpu/mod.rs:1169`). Add the rule and rename one pair.
-- [ ] The facade doc (`lib.rs:196-205`) claims to be the whole list, but `internals` also adds `pub` methods to public types: `Ui::theme_mut`, `TextShaper::test_mono` (no outside caller; make it `pub(crate)`), `OffscreenHost::has_format_pipelines` / `gpu_image_cache_len` (a mid-file gated `impl` at `host/offscreen.rs:337-355` with an inline path at `:342`).
-- [ ] Redundant gates on constants in `frame_fixture/mod.rs:59,63,73`, a module that exists only under `internals`.
-- [ ] Six behaviour tests run only under `bench`: `layout/cache/bench.rs:540+` (its `cold_frame` builds a warm harness) and `ui/bench.rs:824-929`. Move them to `cfg(test)`.
-
 ## 9. Stale text-determinism advice, and tolerances with no reason
 
 - [ ] Harness rule 11 (`ui/harness/mod.rs:96-102`) and the `with_text` doc (`:229-232`) say real shaping loads platform fonts, so tests must "assert relations, not exact widths". `TextShaper::new()` is `FontScope::Bundled`: four faces, deterministic, about 6 µs (`text/font_scope.rs:34-41`). Rewrite both. The same false claim justifies headroom in `tests/alloc/gates/on_gpu.rs:114-117`.

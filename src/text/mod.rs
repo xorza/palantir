@@ -177,11 +177,7 @@ pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 /// name the window it waits out, and `cosmic` is private to this module.
 pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
-/// Gated on the feature alone rather than on `any(test, ..)` like its
-/// siblings: the one consumer is the allocation suite's scale ramp, which
-/// needs a device and so exists only under the feature. Wider is dead
-/// code in a plain `cargo test` build, and `-D dead_code` says so.
-#[cfg(feature = "internals")]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     /// The raster-scale quantum, so the allocation suite's scale ramp can
     /// step exactly one rung a frame. A ramp that spelled the number

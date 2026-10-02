@@ -396,7 +396,29 @@ impl TextShaper {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use super::*;
-    #[cfg(test)]
+
+    /// What the integration suites reach through `UiHarness`.
+    impl TextShaper {
+        /// Deterministic mono-fallback shaper for tests and headless
+        /// tools: every glyph measures `font_size_px * 0.5` wide, so a
+        /// layout case states the width it expects as arithmetic rather
+        /// than as whatever the bundled face happens to advance to.
+        ///
+        /// Over the bundled database, like any other shaper: only
+        /// measurement is mono. A case that loads a font, asks which
+        /// families resolve, or lays glyphs out through [`Self::glyphs`]
+        /// gets the real answer.
+        pub(crate) fn test_mono() -> Self {
+            let shaper = Self::new();
+            shaper.shared.inner.borrow_mut().mono = true;
+            shaper
+        }
+    }
+}
+
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod test_support {
+    use super::*;
     #[cfg(test)]
     use crate::layout::shaped_text::ShapedText;
     #[cfg(test)]
@@ -410,11 +432,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::wrap::TextWrap;
 
-    /// What only an assertion asks: probes that shape a fixture face,
-    /// the cache-identity and borrow checks, and the two reach-ins that
-    /// read or clear the shaped-buffer cache wholesale. Split from the
-    /// block below so the module's gate can stay as wide as the
-    /// integration suites need without leaving these dead there.
     #[cfg(test)]
     impl TextShaper {
         /// Everything a layout probe can answer: the extent, and the key
@@ -466,10 +483,6 @@ pub(crate) mod internals {
         /// Hold the shaper's exclusive borrow for the caller's scope, so
         /// the backend can prove an encoded-cache hit never reaches for
         /// the shaper: anything that did would panic on the live borrow.
-        ///
-        /// Its one caller is the text backend's GPU suite, which stays on
-        /// `internals` so a default `cargo test` needs no adapter.
-        #[cfg(feature = "internals")]
         pub(crate) fn hold_borrow(&self) -> ShaperLease<'_> {
             ShaperLease {
                 _inner: self.shared.inner.borrow_mut(),
@@ -497,30 +510,9 @@ pub(crate) mod internals {
         }
     }
 
-    /// What the integration suites reach through `UiHarness`, and what
-    /// the text benches drive.
+    /// What the retention tests and the text benches drive.
     impl TextShaper {
-        /// Deterministic mono-fallback shaper for tests and headless
-        /// tools: every glyph measures `font_size_px * 0.5` wide, so a
-        /// layout case states the width it expects as arithmetic rather
-        /// than as whatever the bundled face happens to advance to.
-        ///
-        /// Over the bundled database, like any other shaper: only
-        /// measurement is mono. A case that loads a font, asks which
-        /// families resolve, or lays glyphs out through [`Self::glyphs`]
-        /// gets the real answer.
-        pub fn test_mono() -> Self {
-            let shaper = Self::new();
-            shaper.shared.inner.borrow_mut().mono = true;
-            shaper
-        }
-
         /// Shaped buffers currently resident.
-        ///
-        /// Narrower than the block: it reads through
-        /// `CosmicMeasure::cache_len`, whose own module is gated to the
-        /// tests and benches that ask.
-        #[cfg(any(test, feature = "bench"))]
         pub(crate) fn cosmic_cache_len(&self) -> usize {
             self.shared.inner.borrow().cosmic.cache_len()
         }
@@ -533,18 +525,13 @@ pub(crate) mod internals {
         /// ever inserts, so without the render half a buffer is never
         /// looked up and the protected window is unreachable — which is
         /// exactly the asymmetry `PROBATION_KEEP_FRAMES` documents.
-        ///
-        /// Narrower than the block, like [`Self::cosmic_cache_len`]: the
-        /// retention tests and the text bench ask, and nothing the
-        /// integration suites reach does.
-        #[cfg(any(test, feature = "bench"))]
         pub(crate) fn render_ensure(&self, request: TextShapeRequest<'_>) {
             self.shared.inner.borrow_mut().cosmic.ensure_buffer(request);
         }
     }
 
     /// Live exclusive borrow minted by [`TextShaper::hold_borrow`].
-    #[cfg(all(test, feature = "internals"))]
+    #[cfg(test)]
     #[derive(Debug)]
     pub(crate) struct ShaperLease<'a> {
         _inner: RefMut<'a, ShaperInner>,

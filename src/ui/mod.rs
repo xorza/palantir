@@ -1589,12 +1589,10 @@ pub(crate) mod harness;
 /// the state through a named method — see the type's own doc for why. The
 /// white-box suites need more than that surface: they assert on tree
 /// contents, measure-cache descriptors, cascade rows and routing state that
-/// no widget has any business reading. They reach it here, in a module that
-/// does not exist in a shipped build.
-///
-/// Two gates, and the narrower one says something the wider cannot — that the
-/// benches, which compile under `internals` without `cfg(test)`, do not use
-/// what it holds.
+/// no widget has any business reading. They reach it in the two modules
+/// below, which do not exist in a shipped build: `internals` for what the
+/// integration suites call from outside the crate, `test_support` for this
+/// crate's own tests and benches.
 ///
 /// None of these carry `#[inline]`, unlike the one-line façade above. Nothing
 /// here reaches an optimized build that would want it: `cfg(test)` compiles
@@ -1603,37 +1601,8 @@ pub(crate) mod harness;
 /// the crate regardless.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-
-    #[cfg(test)]
-    use crate::input::input_state::InputState;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::layout::Layout;
-    #[cfg(test)]
-    use crate::layout::layer_layout::LayerLayout;
-    #[cfg(test)]
-    use crate::primitives::rect::Rect;
-    #[cfg(test)]
-    use crate::scene::cascade::Cascade;
-    #[cfg(test)]
-    use crate::scene::endpoint::Endpoint;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::scene::forest::Forest;
-    #[cfg(test)]
-    use crate::scene::layer::Layer;
-    #[cfg(test)]
-    use crate::scene::tree::Tree;
-    #[cfg(test)]
-    use crate::scene::tree::node_id::NodeId;
-    #[cfg(test)]
-    use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    #[cfg(test)]
-    use crate::ui::frame_runtime::FrameRuntime;
     use crate::widgets::theme::Theme;
-    #[cfg(all(test, feature = "winit"))]
-    use crate::window::window_frame_state::WindowFrameState;
-    #[cfg(test)]
-    use crate::window::window_requests::WindowRequests;
     use std::rc::Rc;
 
     impl Ui {
@@ -1655,16 +1624,41 @@ pub(crate) mod internals {
             Rc::make_mut(&mut self.theme)
         }
     }
+}
 
-    /// The two authored tables the benches read as well as the tests: the
-    /// tree walkers and measure-cache cases take `Self::forest`, and the
-    /// cascade bench runs its engine over both.
-    ///
-    /// `bench` rather than the mod's own `internals`, which is wider than
-    /// either consumer: a build that reaches past the published surface
-    /// without compiling the bench drivers has no caller for these, and
-    /// `-W dead_code` says so.
-    #[cfg(any(test, feature = "bench"))]
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod test_support {
+    #[cfg(test)]
+    use crate::input::input_state::InputState;
+    use crate::layout::Layout;
+    #[cfg(test)]
+    use crate::layout::layer_layout::LayerLayout;
+    #[cfg(test)]
+    use crate::primitives::rect::Rect;
+    #[cfg(test)]
+    use crate::scene::cascade::Cascade;
+    #[cfg(test)]
+    use crate::scene::endpoint::Endpoint;
+    use crate::scene::forest::Forest;
+    #[cfg(test)]
+    use crate::scene::layer::Layer;
+    #[cfg(test)]
+    use crate::scene::tree::Tree;
+    #[cfg(test)]
+    use crate::scene::tree::node_id::NodeId;
+    #[cfg(test)]
+    use crate::text::shaper::TextShaper;
+    use crate::ui::Ui;
+    #[cfg(test)]
+    use crate::ui::frame_runtime::FrameRuntime;
+    #[cfg(all(test, feature = "winit"))]
+    use crate::window::window_frame_state::WindowFrameState;
+    #[cfg(test)]
+    use crate::window::window_requests::WindowRequests;
+
+    /// What the benches read as well as the tests: the tree walkers and
+    /// measure-cache cases take `Self::forest`, and the cascade bench runs
+    /// its engine over both tables.
     impl Ui {
         /// The whole forest, for the callers that re-run a pass over it —
         /// the cascade engine and the measure cache both walk every layer.
@@ -1672,23 +1666,21 @@ pub(crate) mod internals {
             &self.forest
         }
 
-        /// The whole layout table, for the handful of callers that re-run a
-        /// pass over it — the cascade engine and `InputState::response_for`
-        /// both walk every layer, so neither can take one layer's columns.
         /// The font database's epoch, for the tests and benches that
         /// re-compute a reuse key this `Ui` folds it into.
         pub(crate) fn font_epoch(&self) -> u32 {
             self.resources.text().font_epoch()
         }
 
+        /// The whole layout table, for the handful of callers that re-run a
+        /// pass over it — the cascade engine and `InputState::response_for`
+        /// both walk every layer, so neither can take one layer's columns.
         pub(crate) fn layout_tables(&self) -> &Layout {
             &self.layout
         }
     }
 
-    /// Narrower than the mod's own gate: these are `pub(crate)` and only
-    /// this crate's own tests call them, so under `internals` alone they
-    /// would be dead code.
+    /// Only this crate's own tests call these.
     #[cfg(test)]
     impl Ui {
         /// The input machine itself, for tests that assert on routing

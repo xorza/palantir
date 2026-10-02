@@ -88,7 +88,10 @@ Test and bench code that reaches past a file's privates goes in one gated
 - **`test_support`** — from *inside* the crate only (other modules' unit
   tests, `bench.rs` drivers). Its `cfg` is exactly the builds those consumers
   exist in — `test`, `feature = "bench"`, or both — since anything wider is
-  dead code that `-W dead_code` reports.
+  dead code that `-W dead_code` reports. An in-crate consumer that is itself
+  `internals`-gated (the harness, the offscreen host's peepholes) makes it
+  `#[cfg(any(test, feature = "internals"))]`: still inside the crate, so
+  still `test_support`.
 
 Helpers only the file's own `mod tests` uses live in `mod tests`. Support that
 is a subsystem rather than a reach-in — `ui::harness`, `host::test_gpu`,

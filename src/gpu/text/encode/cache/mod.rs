@@ -375,7 +375,7 @@ pub(crate) mod test_support {
     use crate::common::counters::CounterSet;
     #[cfg(test)]
     use crate::gpu::text::encoded_counters::EncodedCounts;
-    #[cfg(all(test, feature = "internals"))]
+    #[cfg(test)]
     use crate::primitives::span::Span;
     use crate::text::key::TextShapeKey;
 
@@ -383,10 +383,7 @@ pub(crate) mod test_support {
     /// which is the resident population and the templates under it.
     /// A key is opaque here — [`EncodedKey`]'s fields stay private to
     /// `encode`, so it serves only to name a row across frames.
-    ///
-    /// Gated on `internals` too, because the GPU text tests that ask
-    /// these carry that gate and nothing else in the crate asks.
-    #[cfg(all(test, feature = "internals"))]
+    #[cfg(test)]
     impl EncodedCache {
         pub(crate) fn rows(&self) -> usize {
             self.map.len()
