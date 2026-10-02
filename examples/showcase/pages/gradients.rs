@@ -58,7 +58,7 @@ pub(crate) fn build(ui: &mut Ui) {
         |ui| {
             tiles(ui, |ui| {
                 demo_cell(ui, "Spread::Reflect — rings mirror out", reflect);
-                demo_cell(ui, "Spread::Repeat — stripes", repeat);
+                demo_cell(ui, "Spread::Repeat — rings", repeat);
                 demo_cell(ui, "Interp::Oklab — perceptual midpoint", oklab);
             });
         },
@@ -186,14 +186,17 @@ fn reflect(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Linear whose stops end at 25% of the axis; the ramp tiles from there.
+/// Radial whose stops end at r = 0.125; past it the ramp starts over, so
+/// the tile shows rings. A linear gradient's axis spans the box exactly,
+/// so its `t` never leaves 0..1 and no spread mode shows on one.
 fn repeat(ui: &mut Ui) {
-    let g = LinearGradient::builder(0.0)
-        .stop(0.0, NAVY)
-        .stop(0.25, BLUE)
-        .with_spread(Spread::Repeat)
-        .build();
-    gradient_frame(ui, filled(Brush::Linear(g)));
+    let g = RadialGradient::new(
+        Vec2::splat(0.5),
+        Vec2::splat(0.125),
+        [Stop::new(0.0, NAVY), Stop::new(1.0, BLUE)],
+    )
+    .with_spread(Spread::Repeat);
+    gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
 /// Red to green in Oklab — no muddy grey through the middle the way a

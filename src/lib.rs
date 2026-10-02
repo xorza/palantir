@@ -171,8 +171,6 @@ pub(crate) mod display;
 /// with no harness dependency, so reaching it costs nothing.
 #[cfg(feature = "internals")]
 pub(crate) mod frame_fixture;
-/// Every wgpu call in the crate. Pipelines, atlases, the device request and
-/// the surface all live here, so no other module names a `wgpu` type.
 pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;

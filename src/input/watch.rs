@@ -60,7 +60,7 @@ flag_set! {
     /// Specific `(Key, Modifiers)` chords use the finer
     /// `Watches::keys` path instead.
     pub struct KeyboardWake {
-        /// Wakes on any [`KeyPress`](crate::KeyPress) regardless of
+        /// Wakes on any [`KeyPress`] regardless of
         /// focus. Hotkey recorder, cheat codes, debug key overlay.
         const KEY = 1 << 0;
         /// Wakes on `ModifiersChanged`. Accel-underline UIs that

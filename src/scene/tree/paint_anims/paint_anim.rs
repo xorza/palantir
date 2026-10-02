@@ -17,7 +17,7 @@ use std::time::Duration;
 /// with no accumulator, so a dropped frame or an irregular `dt` must not
 /// make the animation drift.
 ///
-/// The crate ships [`curves`](crate::widget::curves); anything else is a function
+/// The crate ships [`curves`]; anything else is a function
 /// the caller writes.
 pub type PaintCurve = fn(f32) -> f32;
 
@@ -180,7 +180,7 @@ impl PaintAnim {
         }
     }
 
-    /// One pass of [`curves::linear`](crate::widget::curves::linear) over a
+    /// One pass of [`curves::linear`] over a
     /// one-second period, driving nothing. The builders below name a
     /// channel and adjust the timing.
     fn new(channel: PaintChannel) -> Self {
@@ -267,7 +267,7 @@ impl PaintAnim {
     }
 
     /// The shape of one pass. Any `fn(f32) -> f32` over `0.0..=1.0`,
-    /// including the ones in [`curves`](crate::widget::curves).
+    /// including the ones in [`curves`].
     pub fn curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self

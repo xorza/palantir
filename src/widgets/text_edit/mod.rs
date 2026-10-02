@@ -181,7 +181,7 @@ impl<'a> TextEdit<'a> {
 
     /// Font size in logical px, overriding the resolved look's.
     ///
-    /// Named apart from [`Configure::size`](crate::Configure::size), which
+    /// Named apart from [`Configure::size`], which
     /// is the widget's layout extent.
     pub fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(px);
@@ -269,7 +269,7 @@ impl<'a> TextEdit<'a> {
     /// single-line, `Align::TOP_LEFT` for multi-line. Overflow clamps
     /// the offset to zero on each axis so caret + horizontal scroll
     /// keep working when the text exceeds the inner rect. Distinct
-    /// from [`Configure::align`](crate::Configure::align), which positions the *widget* inside
+    /// from [`Configure::align`], which positions the *widget* inside
     /// its parent's stack slot.
     pub fn text_align(mut self, a: Align) -> Self {
         self.text_align = Some(a);

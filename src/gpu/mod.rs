@@ -1,6 +1,9 @@
 //! The wgpu backend: the one GPU renderer, its per-window attachments,
 //! and the pipeline sets it builds per swapchain format.
 //!
+//! Every wgpu call in the crate. Pipelines, atlases, the device request and
+//! the surface all live here, so no other module names a `wgpu` type.
+//!
 //! # One frame
 //!
 //! [`WgpuBackend::submit`] draws a frame in two halves that cannot
@@ -15,11 +18,10 @@
 //! render loop's arms differ only where the pipelines genuinely do. A
 //! new pipeline is expected to keep those names. The two raster tenants
 //! are the exception: text and icon share one
-//! [`RasterPass`](crate::gpu::raster_pass::RasterPass)
-//! implementation and one
-//! [`RasterProgram`](crate::gpu::raster_program::RasterProgram)
-//! — so one `build_variants` and one pipeline pair serve both, and what
-//! stays per tenant is the atlas and the instance buffer.
+//! [`RasterPass`](raster_pass::RasterPass) implementation and one
+//! [`RasterProgram`] — so one `build_variants` and one pipeline pair
+//! serve both, and what stays per tenant is the atlas and the instance
+//! buffer.
 //!
 //! Quads and text interleave per-group in paint order: each group's
 //! quads draw first, then its text renders on top, before the next group

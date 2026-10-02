@@ -6,10 +6,10 @@ use crate::primitives::color::okhsv::{Okhsv, OkhsvSlice};
 
 /// The colour model a picker's field and hue bar work in.
 ///
-/// Two, not more. [`Okhsv`](crate::Okhsv) is the default because its axes are
+/// Two, not more. [`Okhsv`] is the default because its axes are
 /// perceptual: the hue holds still while the other two move, and one value
 /// reads as one brightness around the whole circle.
-/// [`Hsv`](crate::Hsv) is kept because a number matched against another tool
+/// [`Hsv`] is kept because a number matched against another tool
 /// has to land where that tool says.
 ///
 /// Serialized so a host can persist which one the user last picked in.

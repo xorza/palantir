@@ -1,5 +1,5 @@
 //! The categorical accent swatches the two bundled demo surfaces share:
-//! the benchmark fixture ([`FrameFixture`](crate::FrameFixture)) and the
+//! the benchmark fixture ([`FrameFixture`]) and the
 //! `showcase` example.
 //!
 //! **Colours only, and that boundary is load-bearing.** A font size feeds

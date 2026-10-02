@@ -823,8 +823,8 @@ impl Ui {
     /// **this frame** re-shapes the text on screen, not the next one.
     ///
     /// So it schedules nothing, and needs no `&mut self` to do it. An app
-    /// holds a `Ui` only inside [`App::update`](crate::App::update) and
-    /// [`App::record`](crate::App::record), both of which run on a
+    /// holds a `Ui` only inside [`App::update`] and
+    /// [`App::record`], both of which run on a
     /// recorded frame *before* that frame measures and before it submits
     /// — and measuring and submitting are the two steps that re-read the
     /// font database. Loads are cold events; one remeasured frame is the
@@ -842,9 +842,9 @@ impl Ui {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`](crate::FontLoadError::Io) when the file
+    /// [`FontLoadError::Io`] when the file
     /// cannot be read, and
-    /// [`FontLoadError::NoFaces`](crate::FontLoadError::NoFaces) when the
+    /// [`FontLoadError::NoFaces`] when the
     /// bytes hold no face fontdb can parse.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
@@ -1346,7 +1346,7 @@ impl Ui {
     /// closure [`WinitHostBuilder::build`](crate::WinitHostBuilder::build)
     /// hands a `&mut Ui`, and it runs before the first frame, so the first
     /// window opens at the right size. That is the same place a
-    /// [`Theme`](crate::Theme) is restored, and there is no host setting
+    /// [`Theme`] is restored, and there is no host setting
     /// for either.
     ///
     /// Each distinct scale re-rasterizes every glyph on screen — see

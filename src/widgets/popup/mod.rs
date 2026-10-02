@@ -40,7 +40,7 @@ use std::rc::Rc;
 /// [`ClickOutside::PassThrough`] for an overlay that must not take
 /// either stream.
 ///
-/// Implements [`Configure`](crate::Configure) — use `.id(...)`, `.id_salt(...)`,
+/// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]

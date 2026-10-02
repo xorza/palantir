@@ -3,6 +3,7 @@
 
 use crate::common::hash;
 use crate::layout::types::align::HAlign;
+use crate::primitives::approx::EPS;
 use crate::primitives::num::F32Px;
 use crate::text::RENDERED_RUN_KEEP_SPREAD_MASK;
 use crate::text::font_family::FontFamily;
@@ -213,6 +214,18 @@ impl TextShapeKey {
 
     pub(super) fn line_height_px(self) -> f32 {
         dequantize(self.lh_q)
+    }
+
+    /// `line_height_px` as a key stores it, back in px: the leading the
+    /// shaper lays lines at, the nearest 1/64 px. A value no key accepts —
+    /// non-finite, or at or below the UI epsilon — comes back unchanged,
+    /// so validation still refuses it.
+    pub(crate) fn leading_on_grid(line_height_px: f32) -> f32 {
+        if line_height_px.is_finite() && line_height_px > EPS {
+            dequantize(quantize_metric(line_height_px))
+        } else {
+            line_height_px
+        }
     }
 
     pub(crate) fn max_width_px(self) -> Option<f32> {

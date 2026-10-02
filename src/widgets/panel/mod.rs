@@ -13,7 +13,7 @@ use std::rc::Rc;
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
 /// [`Self::background`]) and/or installs a clip (via
-/// [`Configure::clip_rect`](crate::Configure::clip_rect) / [`Configure::clip_rounded`](crate::Configure::clip_rounded)). Cards,
+/// [`Configure::clip_rect`] / [`Configure::clip_rounded`]). Cards,
 /// rows, columns, and layered overlays all share this one type —
 /// `HStack::new()` / `VStack::new()` / `ZStack::new()` just preselect
 /// the layout.
