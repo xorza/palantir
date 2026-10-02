@@ -378,3 +378,62 @@ pub(crate) mod test_support {
         &host.core.frontend.buffer
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::internals::RecordApp;
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::host::window_driver::PresentPath;
+    use crate::primitives::background::Background;
+    use crate::primitives::color::RgbaF32;
+    use crate::widgets::block::Block;
+    use crate::widgets::configure::Configure;
+    use glam::UVec2;
+
+    /// The CPU half leaves a frame's output pending and the GPU half
+    /// completes it, on a real device: the paint's submit, and the copy
+    /// a still frame re-presents the backbuffer with. Each frame runs the
+    /// two halves of [`OffscreenHost::frame`] apart so the state between
+    /// them can be read.
+    #[test]
+    fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
+        let gpu = headless_test_gpu();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .shaper(TextShaper::test_mono())
+            .build();
+        let texture = gpu.target("palantir.offscreen.validity", UVec2::new(64, 48));
+        let mut app = RecordApp::new(|ui: &mut Ui| {
+            Block::new()
+                .id_salt("tile")
+                .size(10.0)
+                .background(Background::fill(RgbaF32::WHITE))
+                .show(ui);
+        });
+
+        for (frame, paints) in [(0, true), (1, false)] {
+            let target = RenderTarget::from(&texture);
+            let key = TargetKey::of(target);
+            host.driver.note_target(key);
+            let display = host.driver.display(key.physical, 1.0, None);
+            let CpuFrame { mode, .. } = host.core.cpu_frame(&mut host.driver, display, &mut app);
+            assert_eq!(
+                matches!(mode, PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)),
+                paints,
+                "frame {frame}: {mode:?}",
+            );
+            if !paints {
+                assert_eq!(mode, PresentPath::SkipCopy, "a still frame re-presents");
+            }
+            assert!(
+                !host.driver.output_valid(),
+                "frame {frame}: {mode:?} is pending until the GPU half runs",
+            );
+            host.core.submit(&mut host.driver, target, mode);
+            assert!(
+                host.driver.output_valid(),
+                "frame {frame}: {mode:?} is complete once submitted",
+            );
+        }
+    }
+}

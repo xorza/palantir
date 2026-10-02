@@ -7,7 +7,7 @@
 //! What differs between the passes is only which atlas they bind and where
 //! their pixels came from.
 
-use crate::gpu::shader_template::{self, ShaderConstant};
+use crate::gpu::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::viewport::ViewportPush;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::content_type::ContentType;
@@ -84,17 +84,14 @@ impl RasterQuad {
     /// on an unsubstituted one). The flags arrive already shifted down by
     /// [`U_BITS`], which is how the shader reads them.
     pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
-        let wgsl = shader_template::specialize(
-            shader_template::RASTER_ATLAS_WGSL,
-            &[
-                ShaderConstant::uint("U_BITS", U_BITS),
-                ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),
-                ShaderConstant::uint(
-                    "FLAG_COLOR",
-                    (ContentType::Color as u32) << (KIND_SHIFT - U_BITS),
-                ),
-            ],
-        );
+        let wgsl = ShaderBody::RasterAtlas.specialize(&[
+            ShaderConstant::uint("U_BITS", U_BITS),
+            ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),
+            ShaderConstant::uint(
+                "FLAG_COLOR",
+                (ContentType::Color as u32) << (KIND_SHIFT - U_BITS),
+            ),
+        ]);
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(label),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),

@@ -2,7 +2,7 @@
 //! copied into.
 
 use crate::gpu::pipeline_recipe::PipelineRecipe;
-use crate::gpu::shader_template;
+use crate::gpu::shader_body::ShaderBody;
 
 /// The format-independent half of the backbuffer blit: one shader module,
 /// no buffers.
@@ -27,9 +27,7 @@ impl BlitPipeline {
     pub(super) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.blit.shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                shader_template::specialize(shader_template::BLIT_WGSL, &[]).into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(ShaderBody::Blit.specialize(&[]).into()),
         });
         Self {
             shader,

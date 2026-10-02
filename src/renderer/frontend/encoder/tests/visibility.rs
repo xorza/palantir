@@ -6,7 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, translate_scale::TranslateScale};
-use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
+use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -88,34 +88,20 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let cmds = h.encode_paint();
     let drawn = screen_rects_by_fill(&cmds);
 
-    // Encoder stores fills as `RgbaF16` now; encode the expected
-    // colours the same way for bit-exact comparison.
-    use crate::primitives::color::rgba_f16::RgbaF16;
-    let v_color_f16: RgbaF16 = v_color.into();
-    let d_color_f16: RgbaF16 = d_color.into();
-    let h_color_f16: RgbaF16 = h_color.into();
-
     let v_id = WidgetId::from_hash("V");
-    let v_screen = drawn
-        .iter()
-        .find(|(c, _)| *c == v_color_f16)
-        .map(|(_, r)| *r)
-        .expect("visible node should emit a rect quad");
+    let v_screen = rect_with_fill(&drawn, v_color).expect("visible node should emit a rect quad");
     let v_hit = h.ui.response_for(v_id).rect.expect("visible has hit rect");
     assert_eq!(v_screen, v_hit, "encoder vs hit-index rect for V");
 
     let d_id = WidgetId::from_hash("D");
-    let d_screen = drawn
-        .iter()
-        .find(|(c, _)| *c == d_color_f16)
-        .map(|(_, r)| *r)
-        .expect("disabled node should still paint");
+    let d_screen = rect_with_fill(&drawn, d_color).expect("disabled node should still paint");
     let d_hit = h.ui.response_for(d_id).rect.expect("disabled has rect");
     assert_eq!(d_screen, d_hit, "encoder vs hit-index rect for D");
 
     let h_id = WidgetId::from_hash("H");
-    assert!(
-        !drawn.iter().any(|(c, _)| *c == h_color_f16),
+    assert_eq!(
+        rect_with_fill(&drawn, h_color),
+        None,
         "hidden node must not emit a rect quad"
     );
     assert!(h.ui.response_for(h_id).rect.is_some());

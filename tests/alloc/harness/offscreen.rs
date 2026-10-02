@@ -34,22 +34,7 @@ impl OffscreenTarget {
             .clock(FixedClock::new(Duration::ZERO))
             .build();
         host.ui().theme_mut().window_clear = RgbaF32::TRANSPARENT;
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: surface.x,
-                height: surface.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let texture = gpu.target(label, surface);
         Self { host, texture }
     }
 
@@ -66,12 +51,7 @@ impl OffscreenTarget {
         let report = self
             .host
             .frame(&self.texture, dpr, &mut RecordApp::new(record));
-        gpu.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
+        gpu.wait();
         report
     }
 }

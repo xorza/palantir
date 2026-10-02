@@ -1,4 +1,4 @@
-// Shared WGSL prelude. `shader_template::specialize` concatenates it
+// Shared WGSL prelude. `ShaderBody::specialize` concatenates it
 // ahead of every shader in this backend, so everything here has to
 // compile in front of every one of them — nothing may declare a
 // binding, which is the one thing they disagree about.

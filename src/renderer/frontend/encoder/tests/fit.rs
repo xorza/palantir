@@ -2,7 +2,6 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::damage::region::DamageRegion;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -55,15 +54,8 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     });
 
     let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 200.0, 200.0)));
-    let flags: Vec<u32> = cmds
-        .calls
-        .iter()
-        .filter_map(|call| match call {
-            PaintCall::Image { payload, .. } => Some(payload.flags),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(flags.len(), modes.len(), "one image draw per mode");
+    assert_eq!(cmds.kinds(), ["Image"; 3], "one image draw per mode");
+    let flags = cmds.calls.iter().map(|call| call.as_image().unwrap().flags);
     for ((label, _, expected), actual) in modes.into_iter().zip(flags) {
         assert_eq!(actual, expected, "{label} encoded the wrong tap flags");
         assert_eq!(
@@ -130,15 +122,12 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
                 });
         });
         let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 300.0, 300.0)));
-        let draws: Vec<Rect> = cmds
-            .calls
-            .iter()
-            .filter_map(|call| match call {
-                PaintCall::Image { payload, .. } => Some(payload.rect),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(draws, [expected], "{fit:?} draw");
+        assert_eq!(cmds.kinds(), ["Image"], "{fit:?}");
+        assert_eq!(
+            cmds.calls[0].as_image().unwrap().rect,
+            expected,
+            "{fit:?} draw"
+        );
         let mut rows = Vec::new();
         h.ui.cascade().owned_paints(h.ui.forest(), &mut rows);
         let screens: Vec<Rect> = rows

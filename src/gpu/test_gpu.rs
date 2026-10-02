@@ -1,6 +1,7 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
 use crate::gpu::power_preference::PowerPreference;
+use glam::UVec2;
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -9,6 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::gpu::error::GpuRequestError;
+use crate::gpu::render_target;
 use crate::gpu::requested_gpu::Gpu;
 use crate::gpu::requested_gpu::RequestedGpu;
 
@@ -25,9 +27,61 @@ pub struct HeadlessTestGpuLease {
 }
 
 impl HeadlessTestGpuLease {
+    /// What every test driver's target allows: draw into it, and copy
+    /// either way for readback and clears.
+    pub const TARGET_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
+        .union(wgpu::TextureUsages::COPY_DST)
+        .union(wgpu::TextureUsages::COPY_SRC);
+
     /// The device and queue, as a host takes them.
     pub fn handles(&self) -> Gpu {
         Gpu::new(self.device.clone(), self.queue.clone())
+    }
+
+    /// A 2D `Rgba8UnormSrgb` render target of `size`, with
+    /// [`Self::TARGET_USAGES`] — what most tests draw into.
+    ///
+    /// `label` shows up in RenderDoc and in wgpu's validation errors, so it
+    /// should name the test, not the shape.
+    pub fn target(&self, label: &str, size: UVec2) -> wgpu::Texture {
+        self.target_with(
+            label,
+            size,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            Self::TARGET_USAGES,
+        )
+    }
+
+    /// [`Self::target`] in a format and with usages of the caller's
+    /// choosing — for a test about a format, or about what a target
+    /// without one of the usages does.
+    pub fn target_with(
+        &self,
+        label: &str,
+        size: UVec2,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
+    ) -> wgpu::Texture {
+        self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: render_target::extent(size),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    }
+
+    /// Block until every submission on the device has finished.
+    pub fn wait(&self) {
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .expect("wait for the headless test device");
     }
 
     /// A new device under this process's GPU lock, which the first device
@@ -72,12 +126,7 @@ impl HeadlessTestGpuLease {
 
 impl Drop for HeadlessTestGpuLease {
     fn drop(&mut self) {
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("finish headless GPU lease work");
+        self.wait();
     }
 }
 

@@ -80,7 +80,7 @@ impl Harness {
         Self {
             host,
             gpu,
-            target_usages: TARGET_USAGES,
+            target_usages: HeadlessTestGpuLease::TARGET_USAGES,
         }
     }
 
@@ -116,7 +116,12 @@ impl Harness {
         clear: RgbaF32,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        let target = make_target(&self.gpu.device, format, physical, self.target_usages);
+        let target = self.gpu.target_with(
+            "palantir.visual_test.target",
+            physical,
+            format,
+            self.target_usages,
+        );
 
         self.host.ui().theme_mut().window_clear = clear;
         self.host.frame(&target, scale, &mut RecordApp::new(scene));
@@ -175,37 +180,11 @@ impl Harness {
 
 /// Every usage a caller-supplied target normally offers. `COPY_DST` is what
 /// lets the renderer present through a texture copy.
-const TARGET_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
-    .union(wgpu::TextureUsages::COPY_DST)
-    .union(wgpu::TextureUsages::COPY_SRC);
-
 /// What a GLES swapchain image offers: it *is* the default framebuffer, so
 /// nothing can be copied onto it. `COPY_SRC` is the harness's own, for
 /// readback.
 const NO_COPY_DST_USAGES: wgpu::TextureUsages =
-    wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_SRC);
-
-fn make_target(
-    device: &wgpu::Device,
-    format: wgpu::TextureFormat,
-    physical: UVec2,
-    usage: wgpu::TextureUsages,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.visual_test.target"),
-        size: wgpu::Extent3d {
-            width: physical.x,
-            height: physical.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage,
-        view_formats: &[],
-    })
-}
+    HeadlessTestGpuLease::TARGET_USAGES.difference(wgpu::TextureUsages::COPY_DST);
 
 fn readback(
     device: &wgpu::Device,
