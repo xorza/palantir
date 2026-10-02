@@ -23,7 +23,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/input/input_state/mod.rs:270-271` and `:288-289`: the comments "at most two filled" and "never both" are wrong. Release + re-press + re-latch in one batch fills all three slots.
 
 ## Widget identity tracking
-- [ ] `src/scene/seen_ids/mod.rs:162-169,205-207` **bug**: `resolve` only probes `curr`, which `record_endpoint` fills at open time. Two widgets that resolve the same raw id before either records both get `raw_id`. Example: two auto-id buttons from one call site, `.state(ui)` or `.resolve(ui)` on each, then `.show()` on both. The second open hits the release `panic!("record_endpoint called twice")`. `Widget::resolve` is public, and its own doc admits resolve and record can interleave.
 - [ ] `src/scene/cascade/engine.rs:249` with `src/scene/seen_ids/mod.rs:261` **bug (per-frame alloc)**: `curr` and `prev` swap every frame, so `by_id.clone_from(&forest.ids.curr)` alternates between two tables. hashbrown's `clone_from` reallocates whenever bucket counts differ. One frame with a widget-count spike grows only one of the two maps, permanently. From then on, every full cascade rebuild frees and allocates `by_id`.
 
 ## Paint output wrong or missing

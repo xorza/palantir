@@ -322,3 +322,32 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
         );
     });
 }
+
+/// Two widgets from one call site that both resolve before either
+/// records — the shape of reading `.state(ui)` on each, then showing
+/// both. The second resolution sees the first's reservation, so they
+/// get distinct ids and both open instead of the second hitting the
+/// duplicate-record panic.
+#[test]
+fn two_widgets_resolved_before_recording_get_distinct_ids() {
+    use crate::widgets::widget::Widget;
+
+    let mut h = UiHarness::new(SURFACE);
+    let ids = h.frame_value(|ui| {
+        let make = || Widget::leaf().auto_id();
+        let (mut a, mut b) = (make(), make());
+        let ids = [a.resolve(ui), b.resolve(ui)];
+        a.record(ui, None, |_| {});
+        b.record(ui, None, |_| {});
+        ids
+    });
+    assert_ne!(ids[0], ids[1]);
+    assert_eq!(
+        ids[1],
+        ids[0].with(1),
+        "positional, like any auto-id collision"
+    );
+    for id in ids {
+        assert!(h.layout_rect(id).is_some(), "{id:?} recorded");
+    }
+}
