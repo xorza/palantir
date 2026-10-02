@@ -789,7 +789,6 @@ output, cost, cleanup.
 
 ## Phase 4. GPU geometry and colour (D5, D6)
 
-- [ ] Texel-centre `u` helper.
 - [ ] `OffscreenHost` format assert; premultiply table at construction.
 - [ ] Icons above 512 px fill their box; text scissor at ink.
 - [ ] Pixel damage oracle rows for the changed shapes.
