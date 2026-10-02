@@ -60,9 +60,7 @@ glam = { version = "0.33", default-features = false, features = ["std", "i16", "
 etagere = "0.3"
 resvg = { version = "0.48", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
-rayon = { version = "1.12", optional = true }
 half = { version = "2.7", features = ["bytemuck"] }
-memchr = "2.8"
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = "1.0"
@@ -135,7 +133,7 @@ required-features = ["bench"]
 [features]
 default = ["winit"]
 internals = []
-golden = ["dep:image", "dep:rayon"]
+golden = ["dep:image"]
 bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]

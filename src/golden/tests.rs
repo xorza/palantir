@@ -9,7 +9,7 @@ use crate::golden::Tolerance;
 /// and the ratio is a real number.
 ///
 /// Both degenerate shapes fail differently without the early answer: a
-/// zero *width* panics inside `par_chunks_exact`, which rejects a
+/// zero *width* panics inside `chunks_exact`, which rejects a
 /// zero-length chunk, and a zero *height* divides by no pixels and
 /// reports NaN — which `passes` reads as a failure through a comparison
 /// that is false for NaN, printing "0 differing pixels (NaN of the

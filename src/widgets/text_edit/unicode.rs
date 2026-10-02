@@ -18,7 +18,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// pass-through on the common break-free case — no per-keystroke
 /// allocation.
 pub(super) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
-    if memchr::memchr2(b'\n', b'\r', s.as_bytes()).is_none() {
+    if !s.contains(['\n', '\r']) {
         return Cow::Borrowed(s);
     }
     let mut out = String::with_capacity(s.len());

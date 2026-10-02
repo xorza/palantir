@@ -3,8 +3,8 @@
 //!
 //! Kept here rather than in a test directory because more than one crate wants
 //! it — Palantir's own visual suite, and anything drawing through Palantir that
-//! wants the same workflow. Feature-gated so nothing pays for `image` and
-//! `rayon` unless it asks.
+//! wants the same workflow. Feature-gated so nothing pays for `image`
+//! unless it asks.
 
 mod row_stats;
 
@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 
 use crate::golden::row_stats::RowStats;
 use image::RgbaImage;
-use rayon::prelude::*;
 
 /// Per-channel + ratio thresholds for [`Tolerance::diff`]. A pixel
 /// "differs" when any R/G/B/A channel deviates by more than
@@ -39,9 +38,6 @@ impl Tolerance {
     /// Compare two equal-sized RGBA images under these thresholds. The
     /// diff image marks each differing pixel red (alpha 255) and dims the
     /// rest of the `actual` image to 25% so failures pop visually.
-    ///
-    /// Per-row parallel via rayon; rows are independent, so the reduction
-    /// is a trivial `(max, sum)`.
     pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport {
         // For the suites that pair two images themselves —
         // `assert_matches` screens the same mismatch first, with a
@@ -58,9 +54,9 @@ impl Tolerance {
         let mut diff_image = RgbaImage::new(w, h);
 
         // A pair covering no pixels differs nowhere, and the scan below
-        // cannot be asked about one: `par_chunks_exact` rejects a
-        // zero-length chunk, so a zero-width image panics inside rayon
-        // rather than reporting anything. A zero-*height* one reaches the
+        // cannot be asked about one: `chunks_exact` rejects a
+        // zero-length chunk, so a zero-width image panics there rather
+        // than reporting anything. A zero-*height* one reaches the
         // end and divides by no pixels. One early answer covers both.
         if w == 0 || h == 0 {
             return DiffReport {
@@ -76,11 +72,11 @@ impl Tolerance {
         let per_channel = self.per_channel;
         let totals = actual
             .as_raw()
-            .par_chunks_exact(row_bytes)
-            .zip(expected.as_raw().par_chunks_exact(row_bytes))
-            .zip(diff_image.par_chunks_exact_mut(row_bytes))
+            .chunks_exact(row_bytes)
+            .zip(expected.as_raw().chunks_exact(row_bytes))
+            .zip(diff_image.chunks_exact_mut(row_bytes))
             .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row, per_channel))
-            .reduce(RowStats::default, RowStats::merge);
+            .fold(RowStats::default(), RowStats::merge);
 
         // `u64` because the product overflows `u32` past 65 536², and the
         // divisor is nonzero by the guard above.

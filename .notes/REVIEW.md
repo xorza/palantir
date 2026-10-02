@@ -59,8 +59,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/golden/mod.rs:14,45,108,172`: the public `golden` API takes and returns `image::RgbaImage` without re-exporting `image`. A consumer has to keep a semver-identical `image` dependency by hand — the hazard `lib.rs:225-238` cites for re-exporting `wgpu`.
 
 ## Dependencies that could go
-- [ ] `Cargo.toml` `golden = ["dep:image", "dep:rayon"]`: rayon is used only for the row-parallel scan in `golden/mod.rs:77-83`. A sequential scan of a 2560×1440 diff is milliseconds. Dropping it removes rayon-core and crossbeam from `golden` builds.
-- [ ] `Cargo.toml` `memchr`: a direct dependency for a single `memchr2` call (`widgets/text_edit/unicode.rs:21`). It is already transitive via roxmltree, and std `str::contains(['\n','\r'])` covers the use.
 
 ## Renderer design and duplication
 - [ ] `src/renderer/frontend/mod.rs:73` with `composer/mod.rs:91,163-174`: the host holds a `NonZeroU32` or `TextureLimit`, calls `.get()`, and `Composer::new` rewraps it with `.expect(...)`. The round trip adds a panic path and threads the device ceiling as a bare `u32`, which `TextureLimit`'s doc says it exists to prevent.
