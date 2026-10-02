@@ -417,7 +417,7 @@ impl InputState {
         self.pointer_pos.is_some() && self.push_pointer_event(wake, self.pointer_pos, make)
     }
 
-    /// Feed an palantir-native input event. Hit-tests against the
+    /// Feed a palantir-native input event. Hit-tests against the
     /// frozen `Cascade` from this frame's most recent run. Returns an
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active
@@ -472,12 +472,11 @@ impl InputState {
 
     /// Apply one admitted event — the body of [`Self::on_input`].
     fn apply(&mut self, event: InputEvent, cascade: &Cascade, now: Duration) -> InputDelta {
-        // Any host-pushed event that survived the screen above
-        // disqualifies the next frame from the paint-anim-only
-        // short-circuit — the recording closure might observe even a
-        // pointer move (hover styling) or modifier change (shortcut
-        // hint) — so it is at least `Inert`, and the arms below raise it
-        // to `Repaint` by returning `repaint: true`. A refused event
+        // Any host-pushed event that survived the screen above is at
+        // least `Inert` — enough to force a record under
+        // `InputPolicy::Always`, whose app may observe even a pointer
+        // move the hit index ignores — and the arms below raise it to
+        // `Repaint` by returning `repaint: true`. A refused event
         // returns before this on purpose: it mutates nothing, so there is
         // nothing for the closure to observe. Cleared at the top of
         // `frame` after the gate has read it.

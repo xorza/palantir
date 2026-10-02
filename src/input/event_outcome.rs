@@ -13,8 +13,8 @@ pub(super) struct EventOutcome {
     /// The event wrote state that a widget recorded *earlier in the same
     /// pass* may already have read, so the pass has to run again.
     ///
-    /// Set by: a `Click` or `DragStopped` release, a `KeyDown` or `Text`
-    /// (both land in the keyboard queue), a drag latch crossing its
+    /// Set by: a `Click` or `DragStopped` release, a `KeyDown` (it lands
+    /// in the keyboard queue), a drag latch crossing its
     /// threshold during a move, and any event a `PointerWake::BUTTONS`
     /// subscriber saw.
     ///
