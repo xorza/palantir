@@ -279,8 +279,9 @@ impl IconRegistry {
         self.inner.borrow().epoch
     }
 
-    /// The set in table slot `slot` — `None` where the slot is free or
-    /// past the table's end.
+    /// The set in table slot `slot` — `None` where the slot holds no
+    /// table, or lies past the table's end. A released set still answers
+    /// until the drain frees its slot.
     ///
     /// Indexed rather than iterated, because its one caller rasterizes
     /// from each set through `&mut self` and so cannot hold a borrow of
