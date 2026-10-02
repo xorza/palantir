@@ -2,11 +2,9 @@
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::common::clipboard::Clipboard;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
@@ -196,7 +194,6 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
 #[test]
 fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     use crate::layout::types::sizing::Sizing;
-    use crate::text::shaper::TextShaper;
 
     fn text_window(ui: &mut Ui, content: &'static str, width: f32) {
         Panel::vstack()
@@ -209,11 +206,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let shared = UiResources::new(
-        TextShaper::new(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_text();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
@@ -279,7 +272,6 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 /// separate tick the `PaintOnly` arm owes.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
-    use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::scene::tree::paint_anims::curves;
@@ -288,7 +280,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
     use crate::text::font_weight::FontWeight;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
     use crate::widgets::widget::Widget;
@@ -325,11 +317,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         });
     }
 
-    let shared = UiResources::new(
-        TextShaper::new(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_text();
     let mut ui = UiHarness::from_resources(shared.clone(), SURFACE);
     let shaper = ui.ui.resources.text().clone();
 
@@ -391,7 +379,6 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 
 #[test]
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
-    use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::scene::tree::paint_anims::curves;
@@ -399,7 +386,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
     use crate::text::font_weight::FontWeight;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
     use crate::widgets::widget::Widget;
@@ -433,11 +420,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         });
     }
 
-    let shared = UiResources::new(
-        TextShaper::new(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_text();
     let mut idle = UiHarness::from_resources(shared.clone(), SURFACE);
     let mut active = UiHarness::from_resources(shared.clone(), SURFACE);
 
@@ -741,12 +724,7 @@ fn interning_per_pass_records_the_expected_bytes() {
 /// and the sibling's frame after them ticks nothing.
 #[test]
 fn the_text_clock_ticks_once_per_host_frame() {
-    use crate::text::shaper::TextShaper;
-    let shared = UiResources::new(
-        TextShaper::test_mono(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_mono();
     let clock = || shared.text().frame();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);

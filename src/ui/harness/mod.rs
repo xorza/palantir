@@ -163,7 +163,6 @@
 
 use crate::app::App;
 use crate::app::internals::RecordApp;
-use crate::common::clipboard::Clipboard;
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
@@ -179,8 +178,6 @@ use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::texture_limit::TextureLimit;
-use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
@@ -255,14 +252,7 @@ impl UiHarness {
     /// The bundled faces are all it sees, so metrics are identical on every
     /// machine and exact widths are fair to assert.
     pub fn with_text(surface: UVec2) -> Self {
-        Self::from_resources(
-            UiResources::new(
-                TextShaper::new(),
-                Clipboard::memory(),
-                TextureLimit::default(),
-            ),
-            surface,
-        )
+        Self::from_resources(UiResources::isolated_text(), surface)
     }
 
     /// A harness that is never framed — its [`Self::ui`] is a

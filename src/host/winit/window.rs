@@ -553,12 +553,10 @@ mod tests {
 
     use glam::Vec2;
 
-    use crate::common::clipboard::Clipboard;
     use crate::host::window_driver::WindowDriver;
     use crate::host::winit::input::PointerTrace;
     use crate::host::winit::window::{FramePresent, PointerAnchor};
-    use crate::renderer::texture_limit::TextureLimit;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::resources::UiResources;
     use crate::window::cursor_icon::CursorIcon;
     use crate::window::vsync::Vsync;
@@ -614,11 +612,7 @@ mod tests {
 
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let token = WindowToken(17);
         let mut driver = WindowDriver::builder(token, &shared, true).build();
         let opened = WindowToken(18);
@@ -683,11 +677,7 @@ mod tests {
     /// see `Window::set_vsync`.
     #[test]
     fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut driver = WindowDriver::builder(WindowToken(3), &shared, true).build();
         let mut commands = WindowCommands::default();
 

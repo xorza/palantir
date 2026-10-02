@@ -122,16 +122,15 @@ mod present_mode_tests {
 mod output_validity_tests {
     use glam::UVec2;
 
-    use crate::common::clipboard::Clipboard;
     use crate::gpu::render_target::TargetFormat;
     use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::renderer::texture_limit::TextureLimit;
+
     use crate::scene::damage::Damage;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::ui::resources::UiResources;
     use crate::window::cursor_icon::CursorIcon;
@@ -149,11 +148,7 @@ mod output_validity_tests {
     /// output it is allowed to leave inert.
     #[test]
     fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut quiet = driver(WindowToken(1), &shared);
         quiet.ui.keep_open();
         quiet.ui.set_vsync(Vsync::Off);
@@ -176,11 +171,7 @@ mod output_validity_tests {
     #[test]
     #[should_panic(expected = "Ui::open_window(WindowToken(9))")]
     fn deny_window_commands_rejects_an_open() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut opener = driver(WindowToken(1), &shared);
         opener
             .ui
@@ -192,11 +183,7 @@ mod output_validity_tests {
     #[test]
     #[should_panic(expected = "Ui::close_window(WindowToken(4))")]
     fn deny_window_commands_rejects_a_close() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut closer = driver(WindowToken(1), &shared);
         closer.ui.close_window(WindowToken(4));
 
@@ -222,11 +209,7 @@ mod output_validity_tests {
     /// leave the swapchain on the old mode forever.
     #[test]
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
@@ -327,11 +310,7 @@ mod output_validity_tests {
 
     #[test]
     fn output_validity_tracks_pending_and_completion() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         assert!(!driver.output_valid, "first frame has no presented output");
@@ -375,10 +354,9 @@ mod output_validity_tests {
 /// What a driver owns for as long as it exists: its place in the
 /// app-global window directory, and a render-owner id no sibling shares.
 mod lifecycle_tests {
-    use crate::common::clipboard::Clipboard;
+
     use crate::host::window_driver::WindowDriver;
-    use crate::renderer::texture_limit::TextureLimit;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
@@ -392,11 +370,7 @@ mod lifecycle_tests {
     /// have to be remembered on two different close paths.
     #[test]
     fn a_driver_owns_its_directory_entry_from_build_to_drop() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let token = WindowToken(11);
 
         let builder = WindowDriver::builder(token, &shared, true);
@@ -417,11 +391,7 @@ mod lifecycle_tests {
 
     #[test]
     fn window_drivers_have_distinct_render_owners() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
 
@@ -436,7 +406,7 @@ mod record_store_tests {
 
     use crate::app::App;
     use crate::app::internals::RecordApp;
-    use crate::common::clipboard::Clipboard;
+
     use crate::host::clock::FixedClock;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::color::RgbaF32;
@@ -446,9 +416,9 @@ mod record_store_tests {
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
-    use crate::renderer::texture_limit::TextureLimit;
+
     use crate::shape::Shape;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
@@ -522,11 +492,7 @@ mod record_store_tests {
 
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let token = WindowToken(17);
         let mut window = WindowDriver::builder(token, &shared, false)
@@ -555,11 +521,7 @@ mod record_store_tests {
     /// another window's animation-only frame.
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut window_a = WindowDriver::builder(WindowToken(1), &shared, true)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
@@ -649,12 +611,10 @@ mod record_store_tests {
 mod display_tests {
     use glam::UVec2;
 
-    use crate::common::clipboard::Clipboard;
     use crate::display::user_scale::UserScale;
     use crate::host::window_driver::WindowDriver;
     use crate::primitives::size::Size;
-    use crate::renderer::texture_limit::TextureLimit;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
@@ -664,11 +624,7 @@ mod display_tests {
     /// `pixel_snap` rides the same call and is checked beside it.
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, false).build();
 
         let plain = driver.display(UVec2::new(800, 600), 2.0, None);
@@ -690,11 +646,7 @@ mod display_tests {
     /// the same one however the write reached it.
     #[test]
     fn two_windows_mint_the_one_scale() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut first = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
 

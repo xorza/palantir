@@ -137,6 +137,17 @@ pub(crate) mod test_support {
                 TextureLimit::default(),
             )
         }
+
+        /// [`Self::isolated_mono`] with real shaping over the bundled faces,
+        /// through a shaper of its own: metrics identical on every machine,
+        /// and right for anything that sizes to its text.
+        pub(crate) fn isolated_text() -> Self {
+            Self::new(
+                TextShaper::new(),
+                Clipboard::memory(),
+                TextureLimit::default(),
+            )
+        }
     }
 }
 
