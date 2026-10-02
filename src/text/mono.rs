@@ -18,20 +18,18 @@ use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, LineFit, WrapFloor};
 
-/// Width of one byte at `font_size_px`. Mono counts one "char" per byte:
-/// correct for the ASCII every test and bench uses, and an overcount for
-/// multibyte input that no production path meets.
+/// Width of one `char` at `font_size_px`, whatever its UTF-8 length.
 fn glyph_width(font_size_px: f32) -> f32 {
     font_size_px * 0.5
 }
 
-/// Caret-x along a single-line mono layout (0.5×font_size per byte).
-/// Multi-line aware callers should go through `cursor_xy` instead —
-/// this is the cheap path for the mono fallback's degenerate single-
-/// line behaviour.
+/// Caret-x along a single-line mono layout: one glyph width per `char`
+/// before `byte_offset`. Multi-line aware callers should go through
+/// `cursor_xy` instead — this is the cheap path for the mono fallback's
+/// degenerate single-line behaviour.
 pub(super) fn single_line_caret_x(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
-    let clamped = byte_offset.min(text.len());
-    (clamped as f32) * glyph_width(font_size_px)
+    let clamped = text.floor_char_boundary(byte_offset.min(text.len()));
+    text[..clamped].chars().count() as f32 * glyph_width(font_size_px)
 }
 
 /// Inverse of [`single_line_caret_x`]. Picks the char boundary whose
@@ -65,7 +63,7 @@ pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot 
     let glyph_w = glyph_width(request.key.font_size_px());
     TextRoot {
         size: Size::new(
-            request.text.len() as f32 * glyph_w,
+            request.text.chars().count() as f32 * glyph_w,
             request.key.line_height_px(),
         ),
         intrinsic_min: (floor == WrapFloor::Scan)
@@ -86,7 +84,7 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> Size {
     let max = key
         .max_width_px()
         .expect("a bounded resolve commits a width");
-    let chars = request.text.len() as f32;
+    let chars = request.text.chars().count() as f32;
     let unbroken_w = chars * glyph_w;
     match key.fit() {
         // One line capped at the width, which is what the cosmic side's
@@ -120,9 +118,9 @@ fn intrinsic_min_width(text: &str, glyph_w: f32) -> f32 {
     let mut start = 0usize;
     for next in wrap::break_offsets(text) {
         let next = next as usize;
-        widest = widest.max(text[start..next].trim_end().len());
+        widest = widest.max(text[start..next].trim_end().chars().count());
         start = next;
     }
-    widest = widest.max(text[start..].trim_end().len());
+    widest = widest.max(text[start..].trim_end().chars().count());
     (widest as f32 * glyph_w).ceil()
 }

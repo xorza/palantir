@@ -44,14 +44,6 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 const BYTES_PER_PIXEL: u32 = 4;
 
-thread_local! {
-    /// `TextShaper` is `Rc<RefCell<CosmicMeasure>>` — not `Send`, so
-    /// we keep one per worker thread instead of globally. Fonts load
-    /// once per thread; cargo test reuses workers across tests so the
-    /// cost amortizes.
-    static COSMIC: TextShaper = TextShaper::new();
-}
-
 /// What one captured frame drew and how it was painted.
 #[derive(Debug)]
 pub(crate) struct Capture {
@@ -85,7 +77,6 @@ impl Harness {
 
     pub(crate) fn new_with_pixel_snap(pixel_snap: bool) -> Self {
         let gpu = headless_test_gpu();
-        let shaper = COSMIC.with(|c| c.clone());
         // Fresh target texture per frame → must fill the whole target each
         // frame, so use the public backbuffer+copy path.
         // A fixed clock makes goldens reproducible: any animated widget (the
@@ -93,7 +84,7 @@ impl Harness {
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
         let mut host = OffscreenHost::builder(gpu.handles())
-            .shaper(shaper)
+            .shaper(TextShaper::new())
             .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO))
             .build();

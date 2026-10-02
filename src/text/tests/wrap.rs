@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn mono_measure_cases() {
-    // Mono lays every ASCII byte out `font_size * 0.5` wide on a
+    // Mono lays every `char` out `font_size * 0.5` wide on a
     // `line_height` band, so each expected size below is arithmetic.
     //
     // The height column is what pins the wrap arithmetic: a case
@@ -34,6 +34,20 @@ fn mono_measure_cases() {
             Size::new(16.0, 16.0),
         ),
         ("line_height_param_short", "Hi", tall, Size::new(16.0, 24.0)),
+        // Seven chars in fourteen bytes: the width is the chars', 7 × 8.
+        (
+            "multibyte_counts_chars",
+            "ééééééé",
+            base,
+            Size::new(56.0, 16.0),
+        ),
+        // Eight two-byte chars at four per 32 px line: two lines.
+        (
+            "multibyte_wraps_by_chars",
+            "éééééééé",
+            base.width(32.0),
+            Size::new(32.0, 32.0),
+        ),
         (
             "line_height_param_wrapped",
             "12345678",
@@ -69,6 +83,8 @@ fn the_mono_root_reports_one_line_and_a_segment_floor() {
     // One unbroken word is its own floor, and a trailing space still
     // hangs rather than widening it.
     assert_eq!(mono_root("abcdefg ", params).wrap_floor(), 56.0);
+    // A floor counts chars too: "héllo" is five, in six bytes.
+    assert_eq!(mono_root("héllo wörld", params).wrap_floor(), 40.0);
 }
 
 #[test]

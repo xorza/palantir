@@ -15,6 +15,8 @@ fn cursor_xy_x_cases() {
         ("mono_three_chars", "abc", 3, 16.0, 16.0, 24.0),
         ("lh_independent_short", "abc", 2, 16.0, 16.0, 16.0),
         ("lh_independent_tall", "abc", 2, 16.0, 24.0, 16.0),
+        // Byte 3 of "éa" ends after `a`: two chars in, not three bytes.
+        ("multibyte_counts_chars", "éa", 3, 16.0, 16.0, 16.0),
     ];
     let m = TextShaper::test_mono();
     for (label, text, offset, fs, lh_v, expected) in cases {
@@ -108,6 +110,8 @@ fn byte_at_xy_mono_fallback() {
         let got = m.byte_at_xy("hello", *x, 0.0, shape(16.0));
         assert_eq!(got, *expected, "case: {label}");
     }
+    // Two-byte chars: x = 16 is after the second `é`, byte 4, not byte 2.
+    assert_eq!(m.byte_at_xy("ééé", 16.0, 0.0, shape(16.0)), 4);
 }
 
 #[test]
