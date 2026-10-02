@@ -141,6 +141,28 @@ fn audit_guard_clears_in_audit_on_panic() {
     }
 }
 
+/// Frames allocating 2, 1, 2, 3, 1 sort to 1, 1, 2, 2, 3: the worst is
+/// 3, and 1 and 2 tie on two frames each, so the mode is the smaller, 1.
+/// Then one more 2 breaks the tie its way.
+#[test]
+fn report_reads_worst_and_mode() {
+    for (counts, mode) in [(&[2, 1, 2, 3, 1][..], 1), (&[2, 1, 2, 3, 1, 2], 2)] {
+        let mut frame = 0;
+        let report = Audit::new()
+            .warmup(0)
+            .frames(counts.len())
+            .budget(u64::MAX)
+            .run_frames(|| {
+                for _ in 0..counts[frame] {
+                    one_alloc();
+                }
+                frame += 1;
+            });
+        assert_eq!(report.worst, 3, "{counts:?}");
+        assert_eq!(report.mode, mode, "{counts:?}");
+    }
+}
+
 #[test]
 fn stale_traces_drained_between_audits() {
     let _ = with_audit(|| {

@@ -11,6 +11,11 @@
 //! audit window. Gating on the per-thread `IN_AUDIT` flag means only
 //! the auditing thread's audit-window allocs ever increment.
 //!
+//! The price is a blind spot: an allocation on any other thread is never
+//! counted. That holds for now because the frame path spawns no thread —
+//! the crate has no worker pool. Work handed to one would allocate where
+//! no window sees it, and every audit would still read zero.
+//!
 //! `CAPTURING` is a per-thread re-entry guard so the bookkeeping
 //! allocs (Vec growth in `TRACES`, backtrace internals) neither
 //! recurse forever nor get counted.

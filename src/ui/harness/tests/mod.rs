@@ -4,6 +4,7 @@
 mod addressing;
 mod clock;
 mod fixtures;
+mod frontend;
 mod input;
 mod passes;
 mod support;

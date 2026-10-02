@@ -54,12 +54,6 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 
 - [ ] `ui/tests/text.rs:634-665` `interned_handles_do_not_outlive_their_record_pass` documents three cases and tests two. Add the pass-B case.
 
-## 6. The `alloc` gates can pass while allocating
-
-- [ ] The device-driven audits use hand-set ceilings (90, 44, 510) that let about 18 allocations per frame through, and CI skips them by path (`.github/workflows/ci.yml:116`). Encode and compose do not need a device: `src/ui/bench.rs:155-205` `CpuHarness` runs them on `Frontend::for_test()`. Export that as `FrontendHarness` through `palantir::internals`, make the renderer fixtures strict-zero and CI-run, and keep one device gate that calibrates against an empty-scene floor.
-- [ ] `Audit` mirrors `UiHarness`'s builder (`text`, `surface`, `dpr`), and `run_frames` ignores those settings. Let `Audit::run` take the caller's harness. (judgement)
-- [ ] Nothing pins that frame work stays on the auditing thread, which the per-thread counter needs. Note it as a blind spot, or add a cross-thread counter if worker threads enter the frame path. (judgement)
-
 ## 7. The visual suite's tolerance and capture lose information
 
 - [ ] `Tolerance` caps the share of differing pixels but not how far a pixel may differ (`golden/mod.rs:17-36`). The default lets 6 px of `spinner` and 2400 px of `dashboard_hidpi` be completely wrong. The goldens are local and from one adapter, so an unchanged tree diffs at zero. Use WPT-style `{ max_delta, max_pixels }`, default to exact, and require a derivation for each loosening. `format_change.rs:126-129` compares the same format on the same device at 1 %; make it exact.
@@ -130,7 +124,7 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 - [ ] `gpu/text/tests.rs`: `TestGpu` re-clones `lease.queue`; the 4-line setup is copied 6 times; `make_inner_run` takes 9 args with fixed `viewport` and `scale`; `run_one_frame` takes 6 and handles one batch, so two tests rebuild the submit by hand. Add a `TextRig`. `:682-706` derives its frames from 512 and 120, but the constants are 120 and 30; loop to `unallocated_dies_at(0) + 1`.
 - [ ] `gradient_atlas/tests/support.rs:20-36` `distinct_grad(f32)` is distinct only by hash luck. Take `i: u32` and write its bytes. Add `fill_rows()` for the 10 copied loops; drop `register_for`.
 - [ ] Encoder suite: `rect_with_fill()` for the colour lookups in `visibility.rs:88-115` and `transforms.rs:218-230,271-277`. Move `as_shadow` beside `as_rect`. Merge `spun_polyline_*` and `spun_arc_*`.
-- [ ] `HeadlessTestGpuLease` holds `device` / `queue` plus a `&'static ProcessGpu` with the same device. The render-target descriptor is copied 3 times (`tests/alloc/harness/offscreen.rs:36`, `tests/visual/harness.rs:194`, `gpu/bench_gpu.rs:92`) and the `poll(Wait)` drain 4 times. Add `lease.target(..)` and `lease.wait()`, and drop the static field.
+- [ ] The render-target descriptor is copied 3 times (`tests/alloc/harness/offscreen.rs:36`, `tests/visual/harness.rs:194`, `gpu/bench_gpu.rs:92`) and the `poll(Wait)` drain 4 times. Add `lease.target(..)` and `lease.wait()`.
 - [ ] `RasterProgram::new(device)` is rebuilt in 13 GPU tests. One program on the shared device could serve them. (judgement)
 
 ## 13. Slow and environment-dependent tests

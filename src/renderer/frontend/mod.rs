@@ -104,7 +104,7 @@ impl Frontend {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     use crate::renderer::frontend::Frontend;
     use std::num::NonZeroU32;

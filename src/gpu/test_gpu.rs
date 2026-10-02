@@ -15,16 +15,26 @@ use crate::gpu::requested_gpu::RequestedGpu;
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// A headless device and its queue, waited idle when the lease drops.
 #[derive(Debug)]
-struct ProcessGpu {
-    queue: wgpu::Queue,
-    device: wgpu::Device,
-    _process_lock: File,
+pub struct HeadlessTestGpuLease {
+    /// The leased device's queue.
+    pub queue: wgpu::Queue,
+    /// The leased device.
+    pub device: wgpu::Device,
 }
 
-impl ProcessGpu {
-    fn new() -> Self {
-        let process_lock = lock_gpu_process();
+impl HeadlessTestGpuLease {
+    /// The device and queue, as a host takes them.
+    pub fn handles(&self) -> Gpu {
+        Gpu::new(self.device.clone(), self.queue.clone())
+    }
+
+    /// A new device under this process's GPU lock, which the first device
+    /// takes and every later one shares.
+    fn request() -> Self {
+        static PROCESS_LOCK: OnceLock<File> = OnceLock::new();
+        PROCESS_LOCK.get_or_init(lock_gpu_process);
         let started = Instant::now();
         let gpu = loop {
             // The same preference the benches take. A test is worth little
@@ -56,32 +66,13 @@ impl ProcessGpu {
         Self {
             queue: gpu.gpu.queue,
             device: gpu.gpu.device,
-            _process_lock: process_lock,
         }
-    }
-}
-
-/// Borrowed handles to the process-static headless GPU.
-#[derive(Debug)]
-pub struct HeadlessTestGpuLease {
-    /// The leased device's queue.
-    pub queue: wgpu::Queue,
-    /// The leased device.
-    pub device: wgpu::Device,
-    gpu: &'static ProcessGpu,
-}
-
-impl HeadlessTestGpuLease {
-    /// The device and queue, as a host takes them.
-    pub fn handles(&self) -> Gpu {
-        Gpu::new(self.device.clone(), self.queue.clone())
     }
 }
 
 impl Drop for HeadlessTestGpuLease {
     fn drop(&mut self) {
-        self.gpu
-            .device
+        self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: None,
@@ -90,19 +81,29 @@ impl Drop for HeadlessTestGpuLease {
     }
 }
 
-/// Lease the one GPU owned by this process.
+/// Lease the one GPU shared by this process.
 ///
 /// Initialization takes an interprocess OS lock that remains held until the
 /// test process exits, preventing another Palantir test binary from entering
 /// its GPU section concurrently.
 pub fn headless_test_gpu() -> HeadlessTestGpuLease {
-    static GPU: OnceLock<ProcessGpu> = OnceLock::new();
-    let gpu = GPU.get_or_init(ProcessGpu::new);
+    static GPU: OnceLock<HeadlessTestGpuLease> = OnceLock::new();
+    let gpu = GPU.get_or_init(HeadlessTestGpuLease::request);
     HeadlessTestGpuLease {
         queue: gpu.queue.clone(),
         device: gpu.device.clone(),
-        gpu,
     }
+}
+
+/// Lease a device no other test has touched, for a test whose numbers
+/// depend on the device's history.
+///
+/// Part of what wgpu allocates per submission is sized by every resource
+/// the device has seen, so on the shared device a test counts what the
+/// tests before it left behind. Under the same interprocess lock as
+/// [`headless_test_gpu`].
+pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
+    HeadlessTestGpuLease::request()
 }
 
 fn lock_gpu_process() -> File {
