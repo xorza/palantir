@@ -243,3 +243,35 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
     );
     assert!(h.ui.input().focused.is_none(), "focus must be cleared");
 }
+
+/// A bare modifier press — `Key::Other` with no text, which is how a
+/// host reports Shift or Ctrl going down — is nothing a focused widget
+/// acts on: modifier state reaches it through `ModifiersChanged`. So it
+/// neither wakes a frame nor settles one. A typed key, the control row,
+/// does both.
+#[test]
+fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_text::KeyText;
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_hover_target);
+    h.set_focus(WidgetId::from_hash("hot"));
+    h.frame(build_hover_target);
+
+    let modifier = h.on_input(InputEvent::KeyDown {
+        key: Key::Other,
+        repeat: false,
+        physical: Key::Other,
+        text: KeyText::EMPTY,
+    });
+    assert!(!modifier.requests_repaint, "a bare modifier wakes nothing");
+    assert!(!h.ui.input_mut().take_action_flag(), "and settles nothing");
+
+    let typed = h.key(Key::Char('c'));
+    assert!(
+        typed.requests_repaint,
+        "control: a typed key reaches the focus"
+    );
+    assert!(h.ui.input_mut().take_action_flag(), "and settles");
+}

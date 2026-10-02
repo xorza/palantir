@@ -6,5 +6,6 @@ mod response_state;
 mod scroll;
 mod scroll_routing;
 mod settle;
+mod trickle;
 mod watch;
 mod zoom;

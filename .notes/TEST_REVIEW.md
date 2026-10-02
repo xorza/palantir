@@ -130,8 +130,6 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 
 ## 10. Two input doors, and input state mirrored outside `InputState`
 
-- [ ] `pressed_at` mirrors the press origin, against the module doc's own no-mirror rule (`ui/harness/mod.rs:20-23`). It is one slot for every button (press Left, press Middle, release Left → `drag_to` panics), and `on_input` does not update it. Make it per-button and update it inside `on_input`.
-- [ ] `press_button` accepts a press of a button that is already held. `watch.rs:422-439,470-472` press Left twice with no release. Assert the button is up.
 - [ ] Seven sites write `input_mut().focused =` directly (`keyboard.rs:356`, `input_delta.rs:143,151,185,191,237`, `repainting.rs:602`), plus `popup/tests/dismissal.rs:184,196`. Use `h.set_focus` / `h.clear_focus`, with one named made-up id.
 - [ ] The key-to-text match has 8 copies (`ui/harness/mod.rs:614-617`, `input/key_class.rs:216`, `input/shortcut/tests.rs:11`, `drag_value/tests/edit.rs:283-286`, `text_edit/tests/word_nav.rs:94-97`, `text_edit/tests/mod.rs:88-91,119-122,139-142`), and 17 + 6 full `KeyPress` / `KeyDown` literals. Add a crate-private `KeyText::of_key`, plus test-support `KeyPress::with(key, mods)`. Expose the word-nav modifier set from `text_edit/input_pass.rs:322` so tests cannot drift from it.
 - [ ] 24 raw `state.on_input(ev, &cascade, Duration::ZERO)` calls with 9 throwaway `Cascade::default()` (`keyboard.rs`, `scroll.rs`, `zoom.rs`). Add a test-support `InputState::feed(event)`.

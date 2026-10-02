@@ -109,7 +109,17 @@ fn frame_pass_count_matches_action_trigger() {
             },
             1,
         ),
-        ("routed click", |h| h.click_at(Vec2::new(10.0, 10.0)), 2),
+        // The press frame first: a press lands a frame before its
+        // release, and the release frame is the one measured.
+        (
+            "routed click",
+            |h| {
+                h.press_at(Vec2::new(10.0, 10.0));
+                h.frame(build_target);
+                h.release();
+            },
+            2,
+        ),
         ("unrouted click", |h| h.click_at(Vec2::new(150.0, 150.0)), 1),
         (
             "unrouted keydown",
@@ -187,6 +197,9 @@ fn action_effect_runs_once_across_record_replay() {
         let _ = build(ui);
     });
     h.press_at(Vec2::new(10.0, 10.0));
+    h.frame(|ui| {
+        let _ = build(ui);
+    });
     h.release();
 
     let mut passes = 0;

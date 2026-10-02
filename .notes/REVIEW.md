@@ -8,15 +8,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 `F32Ext::themed_length` says theme scalars are hand-edited file data that "cannot assert". Most widgets screen them. These do not, and `SpinnerTheme`/`ToggleTheme`/… derive `Deserialize`:
 - [ ] `src/display/user_scale.rs:27-29,71-77` **bug**: the doc tells apps to read a persisted preference back through `UserScale::new`, which `assert!`s on a non-finite value. A config file containing `nan` crashes the app. Public API: a fallible constructor needs a go-ahead.
 
-## Several gestures in one input batch collapse into contradictory state
-- [ ] `src/input/input_state/mod.rs:893-921` against `src/input/response/button_state.rs:40` **bug**: all before the next frame: drag W past the threshold, release (`Release{W, DragStopped}`), then press W again (fresh press with `drag=None`). `response_for(W)` builds `phase=Down` (the live press wins) and `drag=Stopped` (from the stale release). `ButtonState::new(Down, Stopped)` then fails its debug assert, which allows `Stopped` only with `Up{click:None}`. A panic on reachable input in debug builds, easy to hit when a slow frame batches a quick drag-release-re-press on a slider.
-- [ ] `src/input/input_state/mod.rs:866-872` and `capture.rs:94` (`end_press` overwrites `release`) **bug (plausible)**: same-batch gestures lose clicks.
-  - press/release/press: the widget sees `Down`, and the first click never reaches `response_for`.
-  - press/release/press/release: the second release overwrites the first, so `clicked()` fires once instead of twice. A counter button undercounts on a slow frame.
-  - `pointer_actions()` reports both `Clicked` and `Pressed` in the press/release/press case, so the two collations disagree, against its own doc at :265 ("cannot disagree").
-- [ ] `src/widgets/text_edit/input_pass.rs:134-160` **bug**: caret placement, word select and select-all run only under `resp_state.left.held()`. The router collapses a press and release in the same batch to `Up{click}` (`src/input/input_state/mod.rs:867-890`), so `held()` is false. Scenario: touchpad tap-to-click, synthetic clicks, or a stalled frame. The field gains focus, but the caret stays where it was, and a double-tap selects no word. The press edge (`Up{click: Some(n)}`) is never consulted.
-- [ ] `src/input/input_state/mod.rs:270-271` and `:288-289`: the comments "at most two filled" and "never both" are wrong. Release + re-press + re-latch in one batch fills all three slots.
-
 ## Widget identity tracking
 - [ ] `src/scene/cascade/engine.rs:249` with `src/scene/seen_ids/mod.rs:261` **bug (per-frame alloc)**: `curr` and `prev` swap every frame, so `by_id.clone_from(&forest.ids.curr)` alternates between two tables. hashbrown's `clone_from` reallocates whenever bucket counts differ. One frame with a widget-count spike grows only one of the two maps, permanently. From then on, every full cascade rebuild frees and allocates `by_id`.
 
@@ -112,13 +103,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - Pressing an unselected chip flips it to 13 px while held, because `inactive.active` is `None`.
   - The close glyph resizes on hover.
 
-## A press can leave its capture without a release edge
-- [ ] `src/input/input_state/mod.rs:720-727` with `src/ui/frame_cycle.rs:154` **bug**: eviction calls `abandon_press()` after `drain_per_frame_queues()` and raises no input signal, so nothing schedules the frame that should deliver the `DragStopped` edge. If the next frame is `PaintOnly` (an ANIM-only wake such as a caret blink elsewhere), its `drain_per_frame_queues()` wipes the edge unseen. That reopens the case the comment at :712-719 says this path closes: a Slider that skips one frame mid-drag loses its commit.
-- [ ] `src/input/capture.rs:76` and `src/input/input_state/mod.rs:491` **bug (plausible)**: `begin_press` overwrites a live `press`, and a missed press runs `cap.press = None`. Both drop a press without writing a `Release`, against `end_press`'s stated invariant ("the only way a press leaves a capture"). If a release is lost (the platform swallows the up event without `Focused(false)`), the next press silently kills an `Active` drag and `drag.stopped()` never fires.
-
-## Multi-click run survives intervening presses
-- [ ] `src/input/input_state/mod.rs:491` / `capture.rs:61-76` **bug**: a press that misses every widget, or a press of another button, leaves `run` untouched. Click A at t=0, click empty surface at t=150 ms, click A again at the same spot at t=300 ms: the third press gets `count=2`, so `double_clicked()` fires despite the intervening click. Native platforms reset the run on any intervening down.
-
 ## Input uses clock and scale state that differ from what the layout used
 - [ ] `src/host/winit/window.rs:207` with `mod.rs:393` **bug**: events are converted with `effective_scale()`, which reads the live app-global user scale. `set_user_scale` takes effect on layout only at the next frame. A click queued between the write and the relayout (Ctrl+= then click) is divided by the new scale and hit-tested against a cascade laid out at the old one, so it lands on the wrong widget. The same holds for `ScaleFactorChanged`. The laid-out `ui.display().scale_factor()` is the correct divisor, and the doc on `effective_scale` states the reverse rationale.
 - [ ] `src/host/winit/window.rs:245-252` with `:174-178` **bug**: `clock.skip(hidden)` rewinds the one clock that also stamps input (`Window::on_input`). Press A, hide the window for 5 s, show it, press A again within 500 ms of clock time: `count=2`, a double-click across a 5 s gap. Input stamped while occluded is also later than post-skip `now`, and `saturating_sub` turns that into 0.
@@ -140,7 +124,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## TextEdit editing edge cases
 - [ ] `src/widgets/text_edit/editor.rs:304-315` **bug**: when `max_chars` leaves no room (`max_chars(0)`, or host content already over the cap), typing or pasting over a selection still runs `replace_range(sel, "")`. The rejected insertion deletes the selection, though the doc says over-cap input "is dropped".
-- [ ] `src/widgets/text_edit/input_pass.rs:184-201` **bug**: the drain continues after `Blur` or single-line `submitted`. A batch `[Escape, 'a']` reports `cancelled` with 'a' inserted. A batch `[Enter, 'x']` reports `submitted`, but the caller reads the buffer after `show` and gets `value + "x"`.
 - [ ] `src/widgets/text_edit/edit_state.rs:234-258` (doc at `editor.rs:136-137`) **bug**: `normalize` repairs offsets only to char boundaries, although `Editor::normalize` claims grapheme boundaries. The host sets "e\u{301}" with the caret at 1: the caret stays mid-cluster, and typing 'x' gives "ex\u{301}", which moves the accent onto x.
 - [ ] `src/widgets/text_edit/input_pass.rs:213-235` **bug**: platform conventions are missing. On macOS, Cmd+Left/Right moves one grapheme instead of to the line edge, and Cmd+Backspace deletes one grapheme. Ctrl+Home/End in multiline goes to the visual line, not the document start/end. Shift+click re-anchors instead of extending (`press` always calls `arm_drag`, `editor.rs:149-162`).
 
@@ -250,7 +233,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - To confirm: compare showcase icon box sizes against their SVG view boxes.
 
 ## Input per-event and per-frame cost
-- [ ] `src/input/input_state/mod.rs:606-612`: KeyDown of a bare modifier (Shift/Ctrl/Alt → `Key::Other`, empty text) counts as observable whenever anything is focused. It is queued and `settle`s, so every modifier press while a field is focused costs two record passes (Ctrl+C costs four).
 - [ ] `src/host/winit/mod.rs:427`: `Resized` invalidates all `SystemFacts`. During an interactive resize every frame is preceded by `Resized`, so `outer_position`, `is_maximized` and `current_monitor` (X11 round trips plus a `String` allocation) run per frame — the hot path the cache's doc says it removed. A resize can change only `maximized`; position changes arrive as `Moved`.
 
 ## Small widgets per-frame cost

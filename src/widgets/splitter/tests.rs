@@ -122,9 +122,16 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     // takes the arranged result on the next record, which commits it. A
     // double-click is action input, so that record is the frame's second
     // pass and the reset lands within the one frame.
+    // Each press and release lands in its own frame (`InputQueue`); the
+    // frame measured is the second release's, which is the double-click.
     let seam = Vec2::new(350.5, 50.0);
-    h.click_at(seam);
-    h.click_at(seam);
+    h.press_at(seam);
+    frame_with(&mut h, &mut ratio);
+    h.release();
+    frame_with(&mut h, &mut ratio);
+    h.press_at(seam);
+    frame_with(&mut h, &mut ratio);
+    h.release();
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.passes, 2, "premise: a double-click records twice");
     assert!(
