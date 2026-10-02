@@ -350,7 +350,9 @@ mod output_validity_tests {
             "paint stays pending until acquire and submit complete"
         );
 
-        // Stands in for the GPU submit, which sets it on completion.
+        // The GPU half completes the paint — `offscreen::tests` runs it on
+        // a device. A driver without one has no submit, so the SkipNoop
+        // precondition is set here directly.
         driver.output_valid = true;
 
         let skip = driver.finish_cpu_frame(&mut frontend, report(None));

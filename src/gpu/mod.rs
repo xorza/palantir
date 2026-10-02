@@ -136,7 +136,7 @@ pub(crate) mod requested_gpu;
 // `pub(crate)` only so `bench::driver` — the crate-root facade the
 // external criterion target calls through — can name `schedule::bench`.
 pub(crate) mod schedule;
-mod shader_template;
+mod shader_body;
 mod single_quad_buffer;
 pub(crate) mod stencil;
 mod stencil_variant;

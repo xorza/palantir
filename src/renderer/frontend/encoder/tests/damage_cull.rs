@@ -5,7 +5,6 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
@@ -61,22 +60,17 @@ fn damage_filter_culls_subtree_outside_damage() {
         Clipped,
         Transformed,
     }
-    type Matches = fn(&PaintCall) -> bool;
-    let cases: &[(&str, Wrap, Matches, Matches)] = &[
-        (
-            "clipped",
-            Wrap::Clipped,
-            |call| matches!(call, PaintCall::PushClip(_)),
-            |call| matches!(call, PaintCall::PopClip),
-        ),
+    // The whole stream a region over the subtree keeps: the wrap's
+    // push, the leaf's quad, the wrap's pop.
+    let cases = [
+        ("clipped", Wrap::Clipped, ["PushClip", "Quad", "PopClip"]),
         (
             "transformed",
             Wrap::Transformed,
-            |call| matches!(call, PaintCall::PushTransform(_)),
-            |call| matches!(call, PaintCall::PopTransform),
+            ["PushTransform", "Quad", "PopTransform"],
         ),
     ];
-    for (label, wrap, push_matches, pop_matches) in cases {
+    for (label, wrap, kept) in cases {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -105,30 +99,16 @@ fn damage_filter_culls_subtree_outside_damage() {
             });
         });
         // A region past the subtree culls the push, the pop and the draw;
-        // one over it keeps exactly one of each, so an encoder that drew
-        // nothing at all fails the second row.
-        let regions = [
-            (Rect::new(150.0, 150.0, 50.0, 50.0), 0),
-            (Rect::new(0.0, 0.0, 50.0, 50.0), 1),
-        ];
-        for (region, expected) in regions {
-            let cmds = h.encode_paint_for(DamageRegion::from(region));
-            assert_eq!(
-                cmds.count(push_matches),
-                expected,
-                "case {label}: push, {region:?}"
-            );
-            assert_eq!(
-                cmds.count(pop_matches),
-                expected,
-                "case {label}: pop, {region:?}"
-            );
-            assert_eq!(
-                count_draw_rects(&cmds),
-                expected,
-                "case {label}: draws, {region:?}"
-            );
-        }
+        // one over it keeps all three, so an encoder that drew nothing at
+        // all fails the second row.
+        let past = h.encode_paint_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
+        assert!(
+            past.calls.is_empty(),
+            "case {label}: region past the subtree painted {:?}",
+            past.kinds()
+        );
+        let over = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 50.0, 50.0)));
+        assert_eq!(over.kinds(), kept, "case {label}: region over the subtree");
     }
 }
 

@@ -6,8 +6,6 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, stroke::Stroke};
-use crate::renderer::frontend::capture::PaintCall;
-use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -81,17 +79,8 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         });
     });
     let cmds = h.encode_paint();
-
-    let rounded_clips: Vec<_> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::PushClip(payload) if !payload.corners.approx_zero() => Some(payload),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(rounded_clips.len(), 1);
-    let payload = rounded_clips[0];
+    assert_eq!(cmds.kinds(), ["Quad", "PushClip", "PopClip"]);
+    let payload = cmds.calls[1].as_push_clip().unwrap();
 
     let panel_rect = h
         .layout_rect(WidgetId::from_hash("rounded"))
@@ -122,17 +111,9 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
         });
     });
     let cmds = h.encode_paint();
-    let push_clips: Vec<PushClipPayload> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::PushClip(payload) => Some(*payload),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(push_clips.len(), 1);
+    assert_eq!(cmds.kinds(), ["PushClip", "PopClip"]);
     assert!(
-        push_clips[0].corners.approx_zero(),
+        cmds.calls[0].as_push_clip().unwrap().corners.approx_zero(),
         "no background → no radius → falls back to plain scissor",
     );
 }

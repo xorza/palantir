@@ -20,7 +20,7 @@ pub(crate) mod bench;
 use crate::gpu::dynamic_buffer::DynamicBuffer;
 use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline_recipe::PipelineRecipe;
-use crate::gpu::shader_template::{self, ShaderConstant};
+use crate::gpu::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::stencil_variant::ColorVariantSpec;
 use crate::gpu::stencil_variant::StencilVariant;
 use crate::primitives::fill_kind::FillKind;
@@ -75,22 +75,19 @@ impl CurvePipeline {
     /// [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
-        let wgsl = shader_template::specialize(
-            shader_template::CURVE_WGSL,
-            &[
-                ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
-                ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
-                ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
-                ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
-                ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
-                ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
-                ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
-                ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
-                ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
-                ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
-                ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
-            ],
-        );
+        let wgsl = ShaderBody::Curve.specialize(&[
+            ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
+            ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
+            ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+            ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
+            ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
+            ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
+            ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
+            ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
+            ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
+            ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
+            ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
+        ]);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.curve.shader"),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),

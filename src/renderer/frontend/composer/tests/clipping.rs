@@ -4,8 +4,8 @@ use crate::primitives::span::Span;
 use crate::primitives::{corners::Corners, size::Size, urect::URect};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, composer, curve, draw, image, mesh, params, push_distinct_rounded_clips,
-    rect, render_buffer, run, text,
+    clip, clip_rounded, composer, curve, draw, draw_marked, image, mesh, params,
+    push_distinct_rounded_clips, rect, render_buffer, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -120,13 +120,17 @@ fn cull_drops_drawrect_entirely_outside_active_clip() {
     let buf = run(
         |b, _arena| {
             clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(20.0, 20.0, 30.0, 30.0)); // inside
-            draw(b, rect(200.0, 200.0, 30.0, 30.0)); // entirely outside
+            draw_marked(b, rect(20.0, 20.0, 30.0, 30.0)); // call 1, inside
+            draw_marked(b, rect(200.0, 200.0, 30.0, 30.0)); // call 2, entirely outside
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.quads.len(), 1, "outside-clip rect must be culled");
+    assert_eq!(
+        survivor_calls(&buf),
+        [1],
+        "outside-clip rect must be culled"
+    );
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.groups[0].scissor.is_some());
 }
@@ -142,7 +146,11 @@ fn cull_drops_drawtext_entirely_outside_active_clip() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.texts.len(), 1, "outside-clip text run must be culled");
+    assert_eq!(
+        buf.texts.iter().map(|run| run.origin).collect::<Vec<_>>(),
+        [Vec2::new(10.0, 10.0)],
+        "outside-clip text run must be culled"
+    );
 }
 
 #[test]
@@ -152,12 +160,12 @@ fn cull_keeps_drawrect_partially_inside_active_clip() {
     let buf = run(
         |b, _arena| {
             clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(80.0, 80.0, 50.0, 50.0)); // straddles the clip
+            draw_marked(b, rect(80.0, 80.0, 50.0, 50.0)); // call 1, straddles the clip
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.quads.len(), 1, "straddling rect must still emit");
+    assert_eq!(survivor_calls(&buf), [1], "straddling rect must still emit");
 }
 
 #[test]
@@ -200,14 +208,14 @@ fn cull_handles_culled_text_then_quad_split() {
         |b, _arena| {
             clip(b, rect(0.0, 0.0, 100.0, 100.0));
             text(b, rect(300.0, 300.0, 50.0, 20.0)); // culled
-            draw(b, rect(10.0, 10.0, 30.0, 30.0));
-            draw(b, rect(50.0, 50.0, 30.0, 30.0));
+            draw_marked(b, rect(10.0, 10.0, 30.0, 30.0)); // call 2
+            draw_marked(b, rect(50.0, 50.0, 30.0, 30.0)); // call 3
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.texts.len(), 0);
-    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(survivor_calls(&buf), [2, 3]);
     assert_eq!(
         buf.groups.len(),
         1,

@@ -1,6 +1,7 @@
 //! Reading a `PaintCapture` back: what counts as a rect, a shadow, a clip
 //! pair.
 
+use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::{rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
@@ -22,8 +23,27 @@ pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
     }
 }
 
+/// The shadow half of the same split.
+pub(super) fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
+    match call {
+        PaintCall::Quad(p) if p.fill.kind.is_shadow() => Some(p),
+        _ => None,
+    }
+}
+
 pub(super) fn count_draw_rects(cmds: &PaintCapture) -> usize {
     cmds.calls.iter().filter(|c| as_rect(c).is_some()).count()
+}
+
+/// The screen rect of the rect quad [`screen_rects_by_fill`] found filled
+/// with `color`, compared as the encoder stores it: `RgbaF16`, bit for
+/// bit.
+pub(super) fn rect_with_fill(drawn: &[(RgbaF16, Rect)], color: RgbaF32) -> Option<Rect> {
+    let color = RgbaF16::from(color);
+    drawn
+        .iter()
+        .find(|(fill, _)| *fill == color)
+        .map(|(_, rect)| *rect)
 }
 
 /// Walk a recorded paint stream and return the effective screen-space rect

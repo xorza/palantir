@@ -10,11 +10,11 @@ use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size, stroke::Stroke};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects, quad_rect};
+use crate::renderer::frontend::encoder::tests::support::{
+    as_rect, as_shadow, count_draw_rects, quad_rect,
+};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::scene::layer::Layer;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
@@ -212,30 +212,18 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .iter()
         .filter_map(|command| as_rect(command).map(|p| p.fill.kind))
         .collect();
-    assert!(
-        rect_kinds.contains(&FillKind::SOLID),
-        "rounded rect must emit a plain-solid quad, got kinds {rect_kinds:?}",
-    );
-    assert!(
-        rect_kinds.contains(&FillKind::SOLID.with_window()),
-        "windowed rect must emit a window-tagged quad, got kinds {rect_kinds:?}",
+    assert_eq!(
+        rect_kinds,
+        [FillKind::SOLID, FillKind::SOLID.with_window()],
+        "the rounded rect is plain solid, the windowed one window-tagged",
     );
     // A Line rides the GPU curve pipeline (degenerate cubic), so it
     // emits a DrawCurve — not a DrawPolyline — and never touches the
     // polyline point payloads. The solid line carries its colour; the
     // ramp line carries the ramp kind, a real atlas row, and the stroke
     // colour as the multiplier on the sample.
-    let curves: Vec<_> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::Curve(p) => Some(p.fill),
-            _ => None,
-        })
-        .collect();
-    let [solid, ramp] = curves.as_slice() else {
-        panic!("expected exactly two DrawCurve cmds, got {curves:?}");
-    };
+    assert_eq!(cmds.kinds(), ["Quad", "Quad", "Curve", "Curve"]);
+    let [solid, ramp] = [2, 3].map(|i| cmds.calls[i].as_curve().unwrap().fill);
     assert_eq!(
         (solid.kind, solid.color),
         (FillKind::SOLID, RgbaF32::srgb(1.0, 0.0, 0.0).into()),
@@ -245,14 +233,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         ramp.lut_row,
         LutRow::FALLBACK,
         "the ramp resolved to a baked row"
-    );
-    assert_eq!(
-        cmds.calls
-            .iter()
-            .filter(|command| matches!(command, PaintCall::Polyline(_)))
-            .count(),
-        0,
-        "lines no longer lower to polylines"
     );
     assert_eq!(
         h.ui.forest().record_store.polyline_points.len(),
@@ -346,14 +326,8 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     );
 
     let cmds = h.encode_paint();
-    let payload = cmds
-        .calls
-        .iter()
-        .find_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload),
-            _ => None,
-        })
-        .expect("Text widget must emit a DrawText command");
+    assert_eq!(cmds.kinds(), ["Text"]);
+    let payload = cmds.calls[0].as_text().unwrap();
     let scene = h.ui.frame_scene();
     let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
@@ -378,14 +352,8 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         "layout replay must be allowed to retain an evicted cache key",
     );
     let replayed = h.encode_paint();
-    let payload = replayed
-        .calls
-        .iter()
-        .find_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload),
-            _ => None,
-        })
-        .expect("replayed text must still emit");
+    assert_eq!(replayed.kinds(), ["Text"], "replayed text must still emit");
+    let payload = replayed.calls[0].as_text().unwrap();
     let scene = h.ui.frame_scene();
     let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
@@ -436,14 +404,12 @@ fn encoder_text_alignment_respects_leaf_padding() {
         });
     });
     let cmds = h.encode_paint();
-    let text_rect = cmds
-        .calls
-        .iter()
-        .find_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload.rect),
-            _ => None,
-        })
-        .expect("button must emit one DrawText");
+    assert_eq!(
+        cmds.kinds(),
+        ["Quad", "Text"],
+        "the button's chrome, then its label"
+    );
+    let text_rect = cmds.calls[1].as_text().unwrap().rect;
 
     assert!(
         text_rect.min.x > 20.0 && text_rect.min.x < 180.0,
@@ -456,12 +422,4 @@ fn encoder_text_alignment_respects_leaf_padding() {
         "text x should center within padded area; expected ≈{expected_x_center}, got {}",
         text_rect.min.x
     );
-}
-
-/// The shadow half of the same split.
-fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
-    match call {
-        PaintCall::Quad(p) if p.fill.kind.is_shadow() => Some(p),
-        _ => None,
-    }
 }

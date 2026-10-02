@@ -9,7 +9,7 @@ use crate::gpu::dynamic_buffer::DynamicBuffer;
 use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline_recipe::PipelineRecipe;
 use crate::gpu::schedule::{MaskPlan, build_mask_plan};
-use crate::gpu::shader_template::{self, ShaderConstant};
+use crate::gpu::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::stencil::Stencil;
 use crate::gpu::stencil_variant::ColorVariantSpec;
@@ -196,30 +196,27 @@ impl QuadPipeline {
     /// [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
-        let wgsl = shader_template::specialize(
-            shader_template::QUAD_WGSL,
-            &[
-                ShaderConstant::float("AA_RADIUS", AA_RADIUS),
-                // The family tags, not whole packed words: the shader
-                // compares them against `fill_kind & 0xFF`, and
-                // `FillKind::linear(Spread::Pad).0` only happened to
-                // equal the tag because `Pad` is zero.
-                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::TAG_SOLID),
-                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
-                ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
-                ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::TAG_CONIC),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
-                ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
-                ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-                ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
-                // `Pad` is not pinned: it is `apply_spread`'s fallback,
-                // which is also the right answer for a mode the shader
-                // does not know, so nothing there compares against it.
-                ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
-                ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-            ],
-        );
+        let wgsl = ShaderBody::Quad.specialize(&[
+            ShaderConstant::float("AA_RADIUS", AA_RADIUS),
+            // The family tags, not whole packed words: the shader
+            // compares them against `fill_kind & 0xFF`, and
+            // `FillKind::linear(Spread::Pad).0` only happened to
+            // equal the tag because `Pad` is zero.
+            ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::TAG_SOLID),
+            ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
+            ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
+            ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::TAG_CONIC),
+            ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
+            ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
+            ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
+            ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
+            ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
+            // `Pad` is not pinned: it is `apply_spread`'s fallback,
+            // which is also the right answer for a mode the shader
+            // does not know, so nothing there compares against it.
+            ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
+            ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
+        ]);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),

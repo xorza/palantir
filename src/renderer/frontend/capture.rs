@@ -126,6 +126,40 @@ paint_calls! {
     PopTransform => pop_transform,
 }
 
+/// Typed reads of one call's payload, for a test that has already pinned
+/// the sequence with [`PaintCapture::kinds`] and wants what a call
+/// carried.
+#[cfg(test)]
+impl PaintCall {
+    pub(crate) fn as_push_clip(&self) -> Option<&PushClipPayload> {
+        match self {
+            Self::PushClip(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_text(&self) -> Option<&DrawTextPayload> {
+        match self {
+            Self::Text(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_curve(&self) -> Option<&DrawCurvePayload> {
+        match self {
+            Self::Curve(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_image(&self) -> Option<&DrawImagePayload> {
+        match self {
+            Self::Image { payload, .. } => Some(payload),
+            _ => None,
+        }
+    }
+}
+
 /// Every paint call one encode made, in order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PaintCapture {
@@ -143,13 +177,6 @@ impl PaintCapture {
         for call in &self.calls {
             call.replay_into(sink);
         }
-    }
-
-    /// Number of recorded calls matching `pred` — the shape most
-    /// encoder assertions want ("how many clips did this subtree emit").
-    #[cfg(test)]
-    pub(crate) fn count(&self, pred: impl Fn(&PaintCall) -> bool) -> usize {
-        self.calls.iter().filter(|call| pred(call)).count()
     }
 
     /// The recorded calls' kinds, in order — what an assertion about

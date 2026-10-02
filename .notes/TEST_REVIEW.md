@@ -19,15 +19,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ---
 
-## 2. Asserts that cannot fail
-
-Each test below passes when the behaviour it names is broken.
-
-- [ ] `host/window_driver/tests.rs` `output_validity_tests`: the GPU completion that sets `output_valid` (`WindowDriver::gpu_frame`) is stood in for by an assignment. Exercise the real completion path through a GPU-backed frame.
-- [ ] Encoder tests filter paint calls by kind in 13 hand-written closures. `PaintCapture::kinds()` now exists; assert sequences with it instead.
-- [ ] `renderer/frontend/composer/tests/clipping.rs:121-197`: the cull tests count identical white quads. Use `draw_marked` and `survivor_calls` to name which survived, as the pruning tests now do.
-- [ ] `gpu/shader_template.rs` tests keep their own list of shader sources. Share one array with production, so a new shader cannot skip the check.
-
 ## 7. The visual suite's tolerance and capture lose information
 
 - [ ] `Tolerance` caps the share of differing pixels but not how far a pixel may differ (`golden/mod.rs:17-36`). The default lets 6 px of `spinner` and 2400 px of `dashboard_hidpi` be completely wrong. The goldens are local and from one adapter, so an unchanged tree diffs at zero. Use WPT-style `{ max_delta, max_pixels }`, default to exact, and require a derivation for each loosening. `format_change.rs:126-129` compares the same format on the same device at 1 %; make it exact.
@@ -97,8 +88,7 @@ Each test below passes when the behaviour it names is broken.
 - [ ] `gpu/tests`: 51 `DrawGroup` literals, 20 `collect(.., MaskPlan::default(), false)`, `buf_with_mesh_anchors` equals `buf_with_image_anchors`. Add `group()`, `plain_steps()`, `buf_with_tier_anchors()`, and fold `text_batches.rs` into one table.
 - [ ] `gpu/text/tests.rs`: `TestGpu` re-clones `lease.queue`; the 4-line setup is copied 6 times; `make_inner_run` takes 9 args with fixed `viewport` and `scale`; `run_one_frame` takes 6 and handles one batch, so two tests rebuild the submit by hand. Add a `TextRig`. `:682-706` derives its frames from 512 and 120, but the constants are 120 and 30; loop to `unallocated_dies_at(0) + 1`.
 - [ ] `gradient_atlas/tests/support.rs:20-36` `distinct_grad(f32)` is distinct only by hash luck. Take `i: u32` and write its bytes. Add `fill_rows()` for the 10 copied loops; drop `register_for`.
-- [ ] Encoder suite: `rect_with_fill()` for the colour lookups in `visibility.rs:88-115` and `transforms.rs:218-230,271-277`. Move `as_shadow` beside `as_rect`. Merge `spun_polyline_*` and `spun_arc_*`.
-- [ ] The render-target descriptor is copied 3 times (`tests/alloc/harness/offscreen.rs:36`, `tests/visual/harness.rs:194`, `gpu/bench_gpu.rs:92`) and the `poll(Wait)` drain 4 times. Add `lease.target(..)` and `lease.wait()`.
+- [ ] `gpu/bench_gpu.rs:92` still writes the render-target descriptor `HeadlessTestGpuLease::target_with` now owns, and `gpu/text/tests.rs:122` drains with a hand-written `poll(Wait)` where `lease.wait()` exists.
 - [ ] `RasterProgram::new(device)` is rebuilt in 13 GPU tests. One program on the shared device could serve them. (judgement)
 
 ## 13. Slow and environment-dependent tests
@@ -147,7 +137,7 @@ Each test below passes when the behaviour it names is broken.
 
 ## 17. Structure-rule violations
 
-- [ ] Inline `mod tests` over the limits: `scene/shapes/lower.rs:430` (212 lines), `host/winit/window.rs:471` (182 lines), `gpu/shader_template.rs` (59 %), `primitives/color/hsv.rs:93` (45 %), `input/zoom_factor.rs:121` (42 %), `primitives/color/srgb_transfer.rs:145` (41.7 %), `widgets/color_picker/history.rs:73` (40.8 %).
+- [ ] Inline `mod tests` over the limits: `scene/shapes/lower.rs:430` (212 lines), `host/winit/window.rs:471` (182 lines), `primitives/color/hsv.rs:93` (45 %), `input/zoom_factor.rs:121` (42 %), `primitives/color/srgb_transfer.rs:145` (41.7 %), `widgets/color_picker/history.rs:73` (40.8 %).
 - [ ] `foo.rs` beside `foo/`: `tests/alloc/fixtures.rs` and `tests/visual/fixtures.rs`.
 - [ ] `tests/alloc/harness_tests.rs` is an aggregator; its tests belong at the end of `allocator.rs` and in `harness/tests.rs`. `harness/format.rs:121` has `mod tests` without `#[cfg(test)]`.
 - [ ] Mid-file gated items: `renderer/frontend/capture.rs:146-181` (`count`, `assert_same_capture`), with an orphan comment at `:19-20`.
