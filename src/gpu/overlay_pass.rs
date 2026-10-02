@@ -15,11 +15,7 @@ use crate::gpu::dynamic_buffer::DynamicBuffer;
 use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::viewport::ViewportPush;
-use crate::primitives::{
-    color::{RgbaF16, RgbaF32},
-    corners::Corners,
-    rect::Rect,
-};
+use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;

@@ -9,7 +9,8 @@ pub(crate) mod record;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;

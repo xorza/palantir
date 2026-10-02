@@ -111,7 +111,7 @@ impl Size {
     /// rect. The whole extent from an offset origin overflows by exactly
     /// that offset, which is the bug this exists to make hard to write.
     #[inline]
-    pub(crate) fn room_past(self, offset: Vec2) -> Self {
+    pub(crate) const fn room_past(self, offset: Vec2) -> Self {
         Self {
             w: (self.w - offset.x).max(0.0),
             h: (self.h - offset.y).max(0.0),
@@ -126,7 +126,7 @@ impl Size {
     /// contributing nothing, a canvas axis taking the room past a child.
     /// One body, so the two lanes cannot drift apart.
     #[inline]
-    pub(crate) fn select(self, mask: BVec2, other: Self) -> Self {
+    pub(crate) const fn select(self, mask: BVec2, other: Self) -> Self {
         Self {
             w: if mask.x { self.w } else { other.w },
             h: if mask.y { self.h } else { other.h },

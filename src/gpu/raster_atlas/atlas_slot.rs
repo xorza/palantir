@@ -2,7 +2,7 @@
 //! read on the atlas hit path.
 
 use crate::gpu::raster_atlas::raster_quad::RasterQuad;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::content_type::ContentType;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2};

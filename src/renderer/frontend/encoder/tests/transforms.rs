@@ -215,7 +215,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
         });
     });
 
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     let drawn = screen_rects_by_fill(&h.encode_paint());
     let shape_f16: RgbaF16 = shape_color.into();
     let child_f16: RgbaF16 = child_color.into();
@@ -268,7 +268,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
         });
     });
 
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     let drawn = screen_rects_by_fill(&h.encode_paint());
     let chrome_f16: RgbaF16 = chrome_color.into();
     let (_, chrome_rect) = drawn

@@ -83,7 +83,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     // Encoder stores fills as `RgbaF16` now; encode the expected
     // colours the same way for bit-exact comparison.
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     let v_color_f16: RgbaF16 = v_color.into();
     let d_color_f16: RgbaF16 = d_color.into();
     let h_color_f16: RgbaF16 = h_color.into();

@@ -53,7 +53,7 @@ use crate::gpu::text::TextBackend;
 use crate::gpu::text::encode::cache::test_support::{ChurnBench, SweepBench};
 use crate::gpu::viewport::ViewportPush;
 use crate::layout::types::align::Align;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextDrawRow;

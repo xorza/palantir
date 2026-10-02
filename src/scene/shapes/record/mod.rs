@@ -5,7 +5,7 @@
 use crate::icons::icon_set::IconHandle;
 use crate::layout::types::align::Align;
 use crate::primitives::approx::FloatHash;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::primitives::recorded_text::RecordedText;

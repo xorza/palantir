@@ -1,5 +1,6 @@
 use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};

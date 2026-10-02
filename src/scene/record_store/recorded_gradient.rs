@@ -1,7 +1,7 @@
 //! One interned gradient's retained content.
 
-use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 
 /// Retained gradient content. The physical atlas row is resolved while

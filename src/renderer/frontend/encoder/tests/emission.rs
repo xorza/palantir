@@ -3,10 +3,10 @@
 use crate::Ui;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
-use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size, stroke::Stroke};

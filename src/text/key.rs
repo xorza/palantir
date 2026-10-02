@@ -439,7 +439,7 @@ fn quantize_metric(value: f32) -> u32 {
     quantize(value).max(1)
 }
 
-fn dequantize(value: u32) -> f32 {
+const fn dequantize(value: u32) -> f32 {
     value as f32 / 64.0
 }
 

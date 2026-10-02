@@ -1,6 +1,6 @@
 //! Fills, images and raster targets: what each emits and what rides with it.
 
-use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::span::Span;

@@ -1,6 +1,6 @@
 //! Curve-pipeline wire constants and per-instance GPU data.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use glam::Vec2;

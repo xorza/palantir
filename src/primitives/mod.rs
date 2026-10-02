@@ -101,6 +101,7 @@ pub(crate) mod brush;
 pub(crate) mod color;
 pub(crate) mod content_type;
 pub(crate) mod corners;
+pub(crate) mod fill_axis;
 pub(crate) mod fill_kind;
 pub(crate) mod half_simd;
 pub(crate) mod image;

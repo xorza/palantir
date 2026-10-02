@@ -1,6 +1,6 @@
 //! Which draws share a group and a batch, and what forces a split.
 
-use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
@@ -676,8 +676,8 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
 /// does NOT disqualify (the skip is coverage-based, not opacity-based).
 #[test]
 fn quad_fast_path_flag_cases() {
-    use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
+    use crate::primitives::fill_axis::FillAxis;
     use crate::primitives::fill_kind::FillKind;
     use crate::primitives::lut_row::LutRow;
 

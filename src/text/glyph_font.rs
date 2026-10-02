@@ -48,12 +48,12 @@ impl GlyphFont {
     /// asked for. Takes the two scalars rather than a whole `GlyphFont`
     /// because the theme validates a line height it has just derived
     /// from a scaled size, before any face exists to hold them.
-    pub(crate) fn metrics_are_valid(size_px: f32, line_height_px: f32) -> bool {
+    pub(crate) const fn metrics_are_valid(size_px: f32, line_height_px: f32) -> bool {
         size_px.is_finite() && size_px > EPS && line_height_px.is_finite() && line_height_px > EPS
     }
 
     /// This face's own metrics, per [`Self::metrics_are_valid`].
-    pub(crate) fn metrics_valid(&self) -> bool {
+    pub(crate) const fn metrics_valid(&self) -> bool {
         Self::metrics_are_valid(self.size_px, self.line_height_px)
     }
 

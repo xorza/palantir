@@ -1,9 +1,9 @@
 //! The quad-tier draw: rounded rects, windowed rects, box-shadows and
 //! rounded triangles, which all lower to one `Quad` instance.
 
-use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::rect::Rect;
@@ -237,10 +237,11 @@ impl DrawQuadPayload {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::primitives::corners::Corners;
+    use crate::primitives::fill_axis::FillAxis;
     use crate::primitives::fill_kind::FillKind;
     use crate::primitives::lut_row::LutRow;
     use crate::primitives::rect::Rect;

@@ -46,7 +46,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "interactions must mask on the disable frame"
     );
 
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::scene::shapes::paint::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");

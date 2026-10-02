@@ -2,7 +2,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::primitives::approx::paints_nothing;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::nan::NanCheck;
@@ -602,7 +602,7 @@ mod tests {
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
         assert_eq!(
             solid.payload,
-            crate::primitives::color::RgbaF16::from(RgbaF32::WHITE).as_u64(),
+            crate::primitives::color::rgba_f16::RgbaF16::from(RgbaF32::WHITE).as_u64(),
         );
     }
 }

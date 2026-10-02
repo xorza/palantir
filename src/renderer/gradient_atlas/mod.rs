@@ -38,7 +38,7 @@
 //!   uniform; the CSS Color 4 default.
 
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;

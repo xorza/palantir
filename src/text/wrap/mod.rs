@@ -91,7 +91,7 @@ impl LineFit {
     /// `shape_truncated`'s comes back off a key that was minted from one.
     /// Quantizing again here is how the fit test and the key it decides
     /// about could come to be asking about different widths.
-    pub(super) fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
+    pub(super) const fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
         matches!(self, LineFit::Clip | LineFit::Ellipsis)
             && unbounded.single_line
             && unbounded.size.w <= width_px
@@ -128,7 +128,7 @@ pub enum TextWrap {
 impl TextWrap {
     /// Width-bounded shaping mode, or `None` for the policies that always
     /// keep the unbounded shape (`SingleLine`, `Scroll`).
-    pub(super) fn line_fit(self) -> Option<LineFit> {
+    pub(super) const fn line_fit(self) -> Option<LineFit> {
         match self {
             TextWrap::SingleLine | TextWrap::Scroll => None,
             TextWrap::Truncate => Some(LineFit::Clip),
@@ -144,7 +144,7 @@ impl TextWrap {
     /// over the run plus a binary search per glyph — 8x the cost of the
     /// rest of the measurement on a short label and 25x on a paragraph —
     /// so the other five policies opt out and the floor stays `None`.
-    pub(super) fn floor_scan(self) -> WrapFloor {
+    pub(super) const fn floor_scan(self) -> WrapFloor {
         match self {
             TextWrap::WrapWithOverflow => WrapFloor::Scan,
             TextWrap::SingleLine
@@ -158,7 +158,7 @@ impl TextWrap {
     /// Min-content demand, from the `unbounded` root measurement
     /// (`TextSystem::measure` with no available width) — not a bounded
     /// resolve, whose height already reflects wrapping.
-    pub(crate) fn min_content(self, unbounded: &TextRoot) -> Size {
+    pub(crate) const fn min_content(self, unbounded: &TextRoot) -> Size {
         match self {
             TextWrap::SingleLine => unbounded.size,
             // Scroll owns clipping and panning; truncating and wrapping
@@ -171,7 +171,7 @@ impl TextWrap {
     }
 
     /// Max-content demand, from the `unbounded` root measurement.
-    pub(crate) fn max_content(self, unbounded: &TextRoot) -> Size {
+    pub(crate) const fn max_content(self, unbounded: &TextRoot) -> Size {
         match self {
             // Scroll's full run creates no width demand.
             TextWrap::Scroll => Size::new(0.0, unbounded.size.h),
@@ -241,7 +241,7 @@ impl TextWrap {
     }
 
     /// Layout content contribution of a width-`resolved` extent.
-    pub(crate) fn content_size(self, resolved: Size) -> Size {
+    pub(crate) const fn content_size(self, resolved: Size) -> Size {
         match self {
             TextWrap::Scroll => Size::new(0.0, resolved.h),
             TextWrap::SingleLine

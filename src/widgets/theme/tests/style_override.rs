@@ -1,8 +1,8 @@
 //! What every widget's `style` setter is: the `Option`-taking setter, and the one
 //! naming of a widget's theme slot that resolves it.
 
-use crate::primitives::color::RgbaF16;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;

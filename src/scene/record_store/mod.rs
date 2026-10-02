@@ -19,7 +19,8 @@ pub(crate) mod recorded_gradient;
 pub(crate) mod recorded_gradients;
 pub(crate) mod text_store;
 
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::mesh::Mesh;

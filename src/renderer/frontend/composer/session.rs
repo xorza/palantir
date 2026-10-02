@@ -2,9 +2,10 @@
 
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::approx::{EPS, paints_nothing};
-use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::half_simd::{self, F16x4};
 use crate::primitives::num::{F32Px, Vec2Ext};

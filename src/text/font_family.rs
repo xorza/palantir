@@ -177,6 +177,7 @@ impl<'de> serde::Deserialize<'de> for FontFamily {
 
 /// A visitor rather than `String::deserialize`, so a borrowed name off a
 /// theme file interns without an allocation it would immediately drop.
+#[derive(Debug)]
 struct NameVisitor;
 
 impl serde::de::Visitor<'_> for NameVisitor {

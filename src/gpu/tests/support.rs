@@ -2,7 +2,8 @@
 
 use crate::display::Display;
 use crate::gpu::schedule::{MaskPlan, RenderStep, for_each_step};
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
