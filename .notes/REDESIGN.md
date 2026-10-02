@@ -787,10 +787,6 @@ output, cost, cleanup.
 
 - [ ] Key dumps on Linux and on the macOS test laptop, recorded as the translation test table.
 
-## Phase 4. GPU geometry and colour (D5, D6)
-
-- [ ] Pixel damage oracle rows for the changed shapes.
-
 ## Phase 5. Layout (D14)
 
 - [ ] Quantized `would_wrap` in both passes.
