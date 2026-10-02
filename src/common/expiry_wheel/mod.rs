@@ -154,13 +154,6 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         Self::with_horizon(keep_frames + 2)
     }
 
-    /// The bucket count [`Self::with_keep`] builds for `keep_frames`: the
-    /// frames one revolution of its ring takes, which a test that wants
-    /// every bucket to come due once has to cover.
-    pub(crate) const fn slots_for_keep(keep_frames: u64) -> u64 {
-        Self::slots_for_horizon(keep_frames + 2)
-    }
-
     /// One spare slot beyond the horizon, rounded up to a power of two —
     /// see [`Self::with_horizon`].
     const fn slots_for_horizon(horizon: u64) -> u64 {
@@ -316,11 +309,18 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     use super::*;
 
     impl<K: Copy + Debug> ExpiryWheel<K> {
+        /// The bucket count [`Self::with_keep`] builds for `keep_frames`:
+        /// the frames one revolution of its ring takes, which a test that
+        /// wants every bucket to come due once has to cover.
+        pub(crate) const fn slots_for_keep(keep_frames: u64) -> u64 {
+            Self::slots_for_horizon(keep_frames + 2)
+        }
+
         /// Outstanding tickets across the whole ring.
         ///
         ///
@@ -332,6 +332,7 @@ pub(crate) mod test_support {
         /// expire correctly — just with the ticket count, and the
         /// per-frame drain, growing without bound. `EncodedCache`'s and
         /// `CosmicMeasure`'s tests assert against exactly that.
+        #[cfg(test)]
         pub(crate) fn pending(&self) -> usize {
             self.buckets.iter().map(Vec::len).sum()
         }

@@ -210,12 +210,15 @@ pub mod internals {
     /// on the feature rather than on `test`. Under `cargo test` the self
     /// dev-dependency turns the feature on anyway.
     #[cfg(feature = "internals")]
-    pub use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    pub use crate::gpu::test_gpu::{
+        HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
+    };
     #[cfg(feature = "internals")]
     pub use crate::text::internals::{
         PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES, TEXT_SCALE_STEP,
     };
     pub use crate::ui::harness::UiHarness;
+    pub use crate::ui::harness::frontend_harness::FrontendHarness;
     pub use crate::ui::harness::passes::Passes;
 }
 

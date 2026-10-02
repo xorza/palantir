@@ -1,52 +1,33 @@
-//! The gates whose budget is the driver's rather than palantir's.
+//! The gates whose cost is partly the driver's rather than palantir's.
 //!
-//! Every wgpu submission allocates, so these read a ceiling where the
-//! rest of the suite reads a strict zero. That ceiling was measured on
-//! one adapter and does not transfer: the same scale ramp spends 396
-//! blocks on a GeForce RTX 4090, 1059 on Mesa's lavapipe and 1759 on
-//! Apple's Metal. Validation accounts for none of it — `WGPU_VALIDATION=0`
-//! moves the count by zero.
+//! Every wgpu submission allocates, and how much is the adapter's call:
+//! the scale ramp below spends 396 blocks a frame on a GeForce RTX 4090,
+//! 1059 on Mesa's lavapipe and 1759 on Apple's Metal. Validation
+//! accounts for none of it — `WGPU_VALIDATION=0` moves the count by zero.
 //!
-//! Widening the ceiling to fit every driver would cost the gate its
-//! point: at 1759 a regression of several hundred blocks a frame passes
-//! unseen. So these stay calibrated to the adapter that runs them, and
-//! CI skips this module by name alongside `fixtures/renderer.rs`.
+//! So neither gate reads a strict zero. The still-tree gate needs no
+//! number at all: it measures the adapter's floor on an empty scene in
+//! the same run and pins the tree to it, so CI runs it on every adapter.
+//! The ramp's ceiling was measured on one adapter and does not transfer —
+//! widened to fit every driver it would let several hundred blocks a
+//! frame through unseen — so CI skips that one by name.
 
 use std::rc::Rc;
 
 use glam::UVec2;
-use palantir::internals::{TEXT_SCALE_STEP, headless_test_gpu};
+use palantir::internals::{HeadlessTestGpuLease, TEXT_SCALE_STEP, isolated_headless_test_gpu};
 use palantir::{
     BENCH_DPR, Configure, FrameFixture, Grid, IconId, IconSet, IconTable, Panel, Sizing, Track,
-    TranslateScale,
+    TranslateScale, Ui,
 };
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
-use crate::harness::{Audit, OffscreenTarget};
-
-/// Ceiling over the driver floor on the current wgpu/cosmic-text pin.
-/// All attribution is wgpu_core/wgpu_hal — no palantir-side per-frame
-/// allocs on this path.
-///
-/// **A ceiling over noise, not a pin on the floor.** The floor itself
-/// is flat, the same count on every one of the 256 measured frames.
-/// But wgpu pools its command encoders and tracking vectors, and how
-/// often a call hits that pool depends on state palantir does not own,
-/// so a rare frame lands several blocks above the rest — inside
-/// `create_command_encoder` and `submit`, where palantir allocates
-/// nothing itself. Sized against that spike, because a ceiling set to
-/// the flat value fails on driver noise and reads as a regression.
-///
-/// Which means a regression is not what this catches. A palantir change
-/// worth knowing about, or a wgpu bump, moves the *flat* value — printed
-/// as the mean on every run, beside the worst. That line is the signal;
-/// this constant only keeps the noise quiet.
-const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 44;
+use crate::harness::{Audit, OffscreenTarget, Report};
 
 /// Surface and tree for both GPU gates, deliberately smaller than the
-/// CPU one above: what the first of them pins is the driver's per-frame
-/// floor, which scales with submissions rather than with node count. A
-/// bigger tree would only make the same number slower to reach.
+/// CPU one: what the first of them pins is the driver's per-frame floor,
+/// which scales with submissions rather than with node count. A bigger
+/// tree would only make the same number slower to reach.
 ///
 /// Shared so the ramp's number reads against the still-tree floor: the
 /// ramp draws this tree plus a row of icons, and what it costs over the
@@ -54,35 +35,58 @@ const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 44;
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 const RENDER_NODE_SCALE: usize = 6;
 
-/// **Not** strict zero, and cannot be: every wgpu submission allocates a
-/// `CommandEncoder` Arc, a `CommandBuffer` Arc, the queue's in-flight
-/// `Vec` push, and per-pass scratch from `wgpu_hal`. So the gate catches
-/// *drift* from that floor — a palantir regression, or a wgpu bump worth
-/// looking at.
+/// Offscreen frames of `scene` on a fresh target, warmed and measured
+/// with no ceiling — what they cost is the answer, not the test.
+fn device_frames(gpu: &HeadlessTestGpuLease, mut scene: impl FnMut(&mut Ui)) -> Report {
+    let mut target = OffscreenTarget::new(gpu, "palantir.alloc_gate.floor.target", RENDER_SURFACE);
+    Audit::new()
+        .warmup(WARMUP_FRAMES)
+        .frames(MEASURE_FRAMES)
+        .budget(u64::MAX)
+        .run_frames(|| {
+            let _ = target.frame(gpu, BENCH_DPR, &mut scene);
+        })
+}
+
+/// The adapter's per-frame floor: an empty scene's modal count. Every
+/// submission allocates — a `CommandEncoder` Arc, a `CommandBuffer` Arc,
+/// the queue's in-flight `Vec` push, per-pass scratch from `wgpu_hal` —
+/// and the offscreen path submits its backbuffer copy on every frame.
+fn empty_floor(gpu: &HeadlessTestGpuLease) -> u64 {
+    let floor = device_frames(gpu, |_| {}).mode;
+    // A floor that reads zero has stopped measuring, and only the number
+    // says so.
+    assert!(
+        floor > 0,
+        "an empty frame counted no allocation — the wgpu submission path \
+         allocates, so this gate is no longer watching it",
+    );
+    floor
+}
+
+/// A still tree damages nothing, so its frames must cost the device what
+/// an empty scene's do, on the same adapter: whatever palantir does on
+/// the way to a skipped paint, it does without the heap.
+///
+/// Compared on the mode, not the worst frame. wgpu pools its command
+/// encoders and tracking vectors, and how often a call hits that pool
+/// depends on state palantir does not own, so a rare frame lands a few
+/// blocks above the rest inside `create_command_encoder` and `submit`.
+/// The mode leaves those frames out, so the comparison can be exact: one
+/// more allocation on most frames fails it.
 ///
 /// The leased test device carries no timestamp or pipeline-statistics
 /// features, which matters: the queries an instrumented device runs
 /// allocate per frame, and that is the very thing being counted here.
 #[test]
-fn offscreen_frame_stays_at_driver_floor() {
-    let gpu = headless_test_gpu();
-    let mut target =
-        OffscreenTarget::new(&gpu, "palantir.alloc_gate.render.target", RENDER_SURFACE);
+fn still_tree_frame_costs_the_empty_floor() {
+    let gpu = isolated_headless_test_gpu();
+    let floor = empty_floor(&gpu);
     let mut state = FrameFixture::default();
-    let report = Audit::new()
-        .warmup(WARMUP_FRAMES)
-        .frames(MEASURE_FRAMES)
-        .budget(RENDER_BLOCKS_PER_FRAME_MAX)
-        .run_frames(|| {
-            let _ = target.frame(&gpu, BENCH_DPR, |ui| state.render(RENDER_NODE_SCALE, ui));
-        });
-
-    // A gate that reads zero has stopped measuring, and only the number
-    // says so.
-    assert!(
-        report.worst > 0,
-        "counted no allocation at all across {MEASURE_FRAMES} frames — the wgpu \
-         submission path allocates, so this gate is no longer watching it",
+    let tree = device_frames(&gpu, |ui| state.render(RENDER_NODE_SCALE, ui));
+    assert_eq!(
+        tree.mode, floor,
+        "the still tree's frames over the empty floor"
     );
 }
 
@@ -149,7 +153,7 @@ const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 510;
 /// window a full set of hits and measure the steady state twice.
 #[test]
 fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
-    let gpu = headless_test_gpu();
+    let gpu = isolated_headless_test_gpu();
     let mut target = OffscreenTarget::new(
         &gpu,
         "palantir.alloc_gate.scale_ramp.target",
@@ -162,6 +166,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
     let mut state = FrameFixture::default();
     let mut zoom = 1.0f32;
 
+    let floor = empty_floor(&gpu);
     let report = Audit::new()
         .warmup(WARMUP_FRAMES)
         .frames(RAMP_FRAMES)
@@ -193,13 +198,13 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
             });
         });
 
-    // A ramp that stopped missing would read as the still-tree gate above
-    // and pin nothing this one exists for.
+    // A ramp that stopped missing would cost what a still frame does and
+    // pin nothing this one exists for.
     assert!(
-        report.worst > RENDER_BLOCKS_PER_FRAME_MAX,
-        "counted {} blocks on the worst frame, no more than the still-tree floor \
-         of {RENDER_BLOCKS_PER_FRAME_MAX} — the ramp is no longer missing, so this \
-         gate is not watching the rasterization path",
-        report.worst,
+        report.mode > floor,
+        "most frames counted {} blocks, no more than the empty floor of {floor} \
+         — the ramp is no longer missing, so this gate is not watching the \
+         rasterization path",
+        report.mode,
     );
 }

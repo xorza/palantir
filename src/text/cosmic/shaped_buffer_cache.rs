@@ -77,9 +77,6 @@ const RECYCLE_POOL_CAP: usize = 128;
 /// spread that staggers retirements.
 const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
 
-/// Frames one revolution of the expiry ring takes.
-pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
-
 pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 
 /// A resident shaped buffer paired with the x its glyph block starts at,
@@ -373,6 +370,14 @@ fn recycle_into(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
         pool.push(buffer);
     }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use super::*;
+
+    /// Frames one revolution of the expiry ring takes.
+    pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
 }
 
 #[cfg(test)]

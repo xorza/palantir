@@ -200,7 +200,7 @@ pub(crate) mod internals {
     /// text audit warms and measures in whole revolutions, so a cost the
     /// ring incurs once per revolution lands inside its window.
     pub const SHAPED_BUFFER_RING_FRAMES: u64 =
-        crate::text::cosmic::shaped_buffer_cache::RING_FRAMES;
+        crate::text::cosmic::shaped_buffer_cache::internals::RING_FRAMES;
 }
 
 #[cfg(test)]

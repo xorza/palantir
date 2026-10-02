@@ -1,10 +1,5 @@
-//! The offscreen host every audit that needs the renderer draws through.
-//!
-//! Two callers with different reasons. `gates.rs` renders the whole frame
-//! bench tree to ask what a full-scale frame costs; `fixtures/renderer.rs`
-//! renders one shape kind at a time to ask what that kind costs per
-//! shape. Both need a device, because `Ui::frame` stops at damage and the
-//! encode and compose passes live behind a `Frontend`.
+//! The offscreen host every audit that needs a device draws through:
+//! the gates in `gates/on_gpu.rs`, which ask what the driver costs.
 //!
 //! Written once because every caller has to agree on the target's format,
 //! usage and clear colour. Those decide how much submission work a frame

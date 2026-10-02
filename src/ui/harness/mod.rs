@@ -197,6 +197,7 @@ use glam::{UVec2, Vec2};
 use std::time::Duration;
 use strum::EnumCount as _;
 
+pub(crate) mod frontend_harness;
 #[cfg(test)]
 pub(crate) mod oracle;
 pub(crate) mod passes;
