@@ -3,6 +3,7 @@
 use crate::gpu::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::image_binding::ImageBinding;
 use crate::gpu::render_target;
+use crate::renderer::render_buffer::image::ViewStamp;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use glam::UVec2;
 use std::time::Duration;
@@ -20,6 +21,9 @@ pub(super) struct ViewTarget {
     /// has nothing bound to the old one.
     pub(super) initialized: bool,
     pub(super) last_paint: Option<Duration>,
+    /// The stamp of the draw the target was last painted for, `None`
+    /// until its first paint.
+    pub(super) painted: Option<ViewStamp>,
 }
 
 /// A freshly created target texture, as the two halves a [`ViewTarget`]

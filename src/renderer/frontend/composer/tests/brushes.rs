@@ -16,7 +16,9 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -214,7 +216,7 @@ fn compose_emits_image_batch_for_drawimage() {
                         handle: TextureId(0xc0ffee),
                         flags: 0,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -265,7 +267,10 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
                 b.draw_image(
                     ImageDraw {
                         payload: gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
-                        paint: Some(&gpu_paint()),
+                        view: Some(ViewPaint {
+                            paint: &gpu_paint(),
+                            epoch: 0,
+                        }),
                     },
                     1.0,
                 );
@@ -308,7 +313,10 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
             b.draw_image(
                 ImageDraw {
                     payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
+                    view: Some(ViewPaint {
+                        paint: &gpu_paint(),
+                        epoch: 0,
+                    }),
                 },
                 1.0,
             );
@@ -354,7 +362,10 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
             b.draw_image(
                 ImageDraw {
                     payload: gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
+                    view: Some(ViewPaint {
+                        paint: &gpu_paint(),
+                        epoch: 0,
+                    }),
                 },
                 1.0,
             );
@@ -385,7 +396,10 @@ fn compose_gpu_view_whole_when_nothing_clips_it() {
             b.draw_image(
                 ImageDraw {
                     payload: gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
+                    view: Some(ViewPaint {
+                        paint: &gpu_paint(),
+                        epoch: 0,
+                    }),
                 },
                 1.0,
             );
@@ -431,7 +445,10 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
                             },
                             TextureId(0xc0ffee),
                         ),
-                        paint: Some(&gpu_paint()),
+                        view: Some(ViewPaint {
+                            paint: &gpu_paint(),
+                            epoch: 0,
+                        }),
                     },
                     1.0,
                 );
@@ -474,7 +491,10 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
             b.draw_image(
                 ImageDraw {
                     payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
+                    view: Some(ViewPaint {
+                        paint: &gpu_paint(),
+                        epoch: 0,
+                    }),
                 },
                 1.0,
             );
@@ -509,7 +529,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                         handle: TextureId(1),
                         flags: 0,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -540,7 +560,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         handle: TextureId(1),
                         flags: 0,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -555,7 +575,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         handle: TextureId(2),
                         flags: IMG_FLAG_TILED,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -570,7 +590,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         handle: TextureId(3),
                         flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );

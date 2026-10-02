@@ -244,7 +244,9 @@ impl Cascade {
         self.by_id.get(&id).copied()
     }
 
-    /// The entry row of the node at `endpoint`.
+    /// The entry row of the node at `endpoint`. Gated like its one
+    /// caller, the development-only collision overlay.
+    #[cfg(debug_assertions)]
     #[inline]
     pub(crate) fn entry_at(&self, endpoint: Endpoint) -> &EntryRow {
         &self.entries[(self.layers[endpoint.layer].entries_base + endpoint.node.0) as usize]

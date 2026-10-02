@@ -85,7 +85,7 @@ pub(super) const DRIVERS: &[Driver] = &[
     driver("text_edit", widgets::text_edit::bench::bench),
     driver(
         "text_grid",
-        renderer::frontend::composer::text_grid::bench::bench,
+        renderer::frontend::composer::rect_grid::bench::bench,
     ),
     driver("text_shape", text::bench::bench),
 ];

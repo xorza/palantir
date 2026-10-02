@@ -844,3 +844,109 @@ fn clear_fold_resets_across_frames() {
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);
 }
+
+/// A pixel-aligned opaque quad's cover is its own rect, so quad `i`
+/// survives exactly when no later quad's rect contains it.
+fn brute_force_survivors(rects: &[Rect]) -> Vec<Rect> {
+    rects
+        .iter()
+        .enumerate()
+        .filter(|&(i, r)| !rects[i + 1..].iter().any(|later| later.contains_rect(*r)))
+        .map(|(_, r)| *r)
+        .collect()
+}
+
+/// The indexed prune drops exactly what a scan of every later cover
+/// drops. 400 pseudo-random pixel-aligned rects over a 1280 × 1280
+/// viewport of 20 × 20 tiles: small ones, ones spanning many tiles,
+/// ones past [`LARGE_COVER_TILES`]'s 256 tiles (from 1040 px a side,
+/// 17 × 17 tiles), ones reaching past the viewport, and repeats of
+/// earlier rects so that many quads are covered.
+#[test]
+fn indexed_prune_matches_a_full_scan() {
+    let mut seed = 0x2545_f491_u32;
+    let mut next = |bound: u32| {
+        seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (seed >> 8) % bound
+    };
+    let mut rects = Vec::new();
+    for i in 0..400 {
+        let r = match i % 5 {
+            0 if i > 0 => rects[next(i) as usize],
+            1 => rect(
+                next(1200) as f32,
+                next(1200) as f32,
+                (next(40) + 1) as f32,
+                (next(40) + 1) as f32,
+            ),
+            2 => rect(
+                next(600) as f32,
+                next(600) as f32,
+                (next(500) + 1) as f32,
+                (next(500) + 1) as f32,
+            ),
+            3 => rect(
+                next(200) as f32,
+                next(200) as f32,
+                (1040 + next(400)) as f32,
+                (1040 + next(400)) as f32,
+            ),
+            _ => rect(
+                next(1280) as f32,
+                next(1280) as f32,
+                (next(900) + 1) as f32,
+                (next(900) + 1) as f32,
+            ),
+        };
+        rects.push(r);
+    }
+    let expected = brute_force_survivors(&rects);
+    assert!(
+        expected.len() < rects.len() - 50,
+        "premise: the fixture covers many quads ({} of {} survive)",
+        expected.len(),
+        rects.len(),
+    );
+    let buf = run(
+        |b, _| {
+            for r in &rects {
+                draw(b, *r);
+            }
+        },
+        &params(1.0, UVec2::new(1280, 1280)),
+    );
+    let survivors: Vec<Rect> = buf.quads.iter().map(|q| q.rect).collect();
+    assert_eq!(survivors, expected);
+}
+
+/// The prune's cost is local. A 96 × 96 grid of 8 px cells, one opaque
+/// quad each, fills a 768 × 768 viewport of 12 × 12 tiles with 64 cells
+/// per tile. None covers another. A cell is tested only against the
+/// later cells of its own tile: the cells of a tile come in row-major
+/// order, so its `k`th cell is tested against `63 - k` of them, and a
+/// tile costs `0 + 1 + … + 63 = 2016` tests. A scan of every later cover
+/// costs `9216 × 9215 / 2 = 42 462 720`.
+#[test]
+fn equal_cells_cost_one_tile_each() {
+    let mut recorded = PaintCapture::default();
+    for row in 0..96 {
+        for column in 0..96 {
+            draw(
+                &mut recorded,
+                rect(column as f32 * 8.0, row as f32 * 8.0, 8.0, 8.0),
+            );
+        }
+    }
+    let mut composer = composer();
+    let mut out = render_buffer();
+    composer
+        .begin(
+            params(1.0, UVec2::new(768, 768)),
+            Duration::ZERO,
+            &RecordStore::default(),
+            &mut out,
+        )
+        .replay_from(&recorded);
+    assert_eq!(out.quads.len(), 96 * 96, "no cell covers another");
+    assert_eq!(composer.occlusion.contains_tests(), 144 * 2016);
+}

@@ -270,7 +270,7 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
                 handle: TextureId(1),
                 flags: 0,
             },
-            paint: None,
+            view: None,
         },
         1.0,
     );

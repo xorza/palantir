@@ -4,7 +4,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
@@ -151,7 +153,10 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                     handle,
                     flags: 0,
                 },
-                paint: has_paint.then_some(&paint),
+                view: has_paint.then_some(ViewPaint {
+                    paint: &paint,
+                    epoch: 7,
+                }),
             },
             1.0,
         );
@@ -163,6 +168,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
             PaintCall::Image {
                 payload,
                 paint: got,
+                epoch,
             },
         ] = sink.calls.as_slice()
         else {
@@ -172,6 +178,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
             );
         };
         assert_eq!(got.as_ref(), Some(&paint), "case {label}");
+        assert_eq!(*epoch, 7, "case {label}: the capture keeps the epoch");
         assert_eq!(payload.rect, rect, "case {label}");
         assert_eq!(payload.handle, handle, "case {label}");
         assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
@@ -200,7 +207,7 @@ fn the_gate_sees_the_faded_payload() {
             handle: TextureId(7),
             flags: 0,
         },
-        paint: None,
+        view: None,
     };
 
     let mut faded_out = PaintCapture::default();

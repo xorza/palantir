@@ -10,6 +10,7 @@ use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline_recipe::PipelineRecipe;
 use crate::gpu::schedule::{MaskPlan, build_mask_plan};
 use crate::gpu::shader_template::{self, ShaderConstant};
+use crate::gpu::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::stencil::Stencil;
 use crate::gpu::stencil_variant::ColorVariantSpec;
 use crate::gpu::stencil_variant::StencilVariant;
@@ -63,19 +64,11 @@ pub(super) struct QuadPipeline {
     /// [`build_mask_plan`]); uploaded to `mask_buffer`. Cleared at
     /// the start of each stencil frame; capacity retained.
     masks: Vec<Quad>,
-    /// Single-instance buffer holding the partial-repaint pre-clear quad
-    /// (full-viewport, opaque, clear color). Drawn before regular groups
-    /// inside the damage scissor so `LoadOp::Load` doesn't leak last
-    /// frame's AA-fringe pixels into this frame's blends.
-    clear_buffer: DynamicBuffer<Quad>,
-    /// Last `(viewport, color)` written to `clear_buffer`. `None`
-    /// before the first call to [`Self::upload_clear`]; thereafter
-    /// holds the last upload's inputs so steady-state Partial frames
-    /// can short-circuit the `queue.write_buffer`. [`Self::bind_clear`]
-    /// asserts `Some` — catches a future refactor that decorrelates
-    /// the upload guard in `submit` from the per-pass `PreClear` emit
-    /// in the schedule.
-    last_clear: Option<(Vec2, RgbaF32)>,
+    /// The partial-repaint pre-clear quad (full-viewport, opaque, clear
+    /// color). Drawn before regular groups inside the damage scissor so
+    /// `LoadOp::Load` doesn't leak last frame's AA-fringe pixels into
+    /// this frame's blends.
+    clear: SingleQuadBuffer,
     /// Quad shader module — format-independent; the `build_*` methods
     /// read it to build each format's pipelines.
     shader: wgpu::ShaderModule,
@@ -106,12 +99,6 @@ impl QuadPipeline {
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
     pub(super) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF32) {
-        // Steady state: viewport + clear color match last frame, so
-        // the clear_buffer already holds the right pixels. Skip the
-        // belt write entirely on a match.
-        if self.last_clear == Some((viewport, color)) {
-            return;
-        }
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
             fill: RgbaF32 { a: 1.0, ..color }.into(),
@@ -121,8 +108,7 @@ impl QuadPipeline {
             fill_kind: FillKind::SOLID.with_fast(),
             ..Default::default()
         };
-        self.clear_buffer.upload_instances(ctx, &[q]);
-        self.last_clear = Some((viewport, color));
+        self.clear.upload(ctx, q);
     }
 
     /// Bind the pipeline + clear vertex buffer for the partial-repaint
@@ -143,7 +129,7 @@ impl QuadPipeline {
         gradient_bg: &'a wgpu::BindGroup,
     ) {
         debug_assert!(
-            self.last_clear.is_some(),
+            self.clear.is_uploaded(),
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
@@ -159,7 +145,7 @@ impl QuadPipeline {
             pass,
             pipelines.select(use_stencil),
             gradient_bg,
-            &self.clear_buffer.buffer,
+            self.clear.buffer(),
         );
     }
 
@@ -239,15 +225,12 @@ impl QuadPipeline {
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
 
-        let clear_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.clear", 1);
-
         Self {
             instance_buffer,
             mask_buffer: None,
             mask_indices: MaskPlan::default(),
             masks: Vec::new(),
-            clear_buffer,
-            last_clear: None,
+            clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
             shader,
         }
     }

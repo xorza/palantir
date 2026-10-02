@@ -4,7 +4,7 @@
 
 use crate::primitives::rect::Rect;
 use crate::renderer::render_buffer::RenderBuffer;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 /// One opaque occluder in the in-flight group. See [`OcclusionPruner`]
 /// for the cover-rect contract.
@@ -29,6 +29,23 @@ struct Occluder {
 /// receive full opaque coverage. Only pixel-aligned fast-path quads use
 /// their full rect. Other covers are inset for corners, translucent
 /// inner-edge strokes, and the SDF's half-pixel AA transition.
+///
+/// # Cost
+///
+/// A group of at most [`LINEAR_OCCLUDERS`] occluders is scanned
+/// linearly, which bounds each query at that many tests. A larger one is
+/// indexed: a cover that contains a quad contains the quad's top-left
+/// corner, so it overlaps the tile that corner falls in, and a query
+/// tests only the covers registered in that one tile. A cover spanning
+/// more than [`LARGE_COVER_TILES`] tiles is kept apart and tested by
+/// every query instead, so no cover registers in more tiles than that —
+/// and each such cover is an opaque area of at least that many tiles,
+/// which the GPU pays to fill anyway.
+///
+/// The covers are clamped to the viewport's tiles. A clamped corner
+/// still lands in a clamped cover's tile range, because the clamp is
+/// monotonic. An index miss only keeps a quad the GPU then overdraws, so
+/// the index may be conservative but never has to be complete.
 #[derive(Debug, Default)]
 pub(super) struct OcclusionPruner {
     /// Solid-opaque occluders in the in-flight group, in push order
@@ -37,22 +54,58 @@ pub(super) struct OcclusionPruner {
     /// Indices (relative to the group's quad cursor) marked for removal
     /// by the prune sweep. Sorted ascending by construction.
     drop_indices: Vec<u32>,
-    /// Suffix-max of `cover.size` over the tail of `opaque_in_group`,
-    /// built once per prune. `suffix_max_cover[i]` = elementwise max
-    /// over `opaque_in_group[i..]`. Lets the prune sweep reject an
-    /// occludee with one size compare when no later occluder is large
-    /// enough to contain it — turns the common "nested panels, child
-    /// smaller than parent" case from O(N·K) into O(N + K).
-    suffix_max_cover: Vec<Vec2>,
+    /// The last tile of the viewport on each axis.
+    last_tile: UVec2,
+    /// One key per tile a small cover overlaps: the tile index in the
+    /// high half, the occluder's position in `opaque_in_group` in the
+    /// low half. Sorted, so each tile's covers are one run in occluder
+    /// order.
+    cover_tiles: Vec<u64>,
+    /// Positions in `opaque_in_group` of the covers spanning more than
+    /// [`LARGE_COVER_TILES`] tiles, ascending.
+    large_covers: Vec<u32>,
+    /// `contains_rect` tests this frame.
+    #[cfg(test)]
+    contains_tests: u64,
+}
+
+/// The largest group the prune scans without an index.
+const LINEAR_OCCLUDERS: usize = 16;
+
+/// The most tiles a cover registers in before it is tested by every
+/// query instead.
+const LARGE_COVER_TILES: u32 = 256;
+
+/// Physical-pixel side of one index tile: the size the text grid
+/// measured best for rects of UI scale (`rect_grid::TILE_SIZE`).
+const TILE: f32 = 64.0;
+
+/// The inclusive range of tiles a rect overlaps.
+#[derive(Clone, Copy, Debug)]
+struct TileSpan {
+    min: UVec2,
+    max: UVec2,
 }
 
 impl OcclusionPruner {
-    /// Reset all scratch — called at each group flush and at compose
-    /// start.
+    /// Size the index to `viewport` and reset all scratch. Called at
+    /// compose start.
+    pub(super) fn start_frame(&mut self, viewport: UVec2) {
+        self.last_tile = UVec2::new(
+            viewport.x.div_ceil(TILE as u32).max(1) - 1,
+            viewport.y.div_ceil(TILE as u32).max(1) - 1,
+        );
+        #[cfg(test)]
+        {
+            self.contains_tests = 0;
+        }
+        self.clear();
+    }
+
+    /// Reset the group scratch — called at each group flush.
     pub(super) fn clear(&mut self) {
         self.opaque_in_group.clear();
         self.drop_indices.clear();
-        self.suffix_max_cover.clear();
     }
 
     /// Record a solid-opaque quad's cover rect at its group-slice index
@@ -84,68 +137,41 @@ impl OcclusionPruner {
         if out.quads.len() - start < 2 || self.opaque_in_group.is_empty() {
             return;
         }
-        let slice = &out.quads[start..];
-        let occs = self.opaque_in_group.as_slice();
-
-        // Suffix-max of cover dimensions over the tail of occs. After
-        // this loop, `suffix_max_cover[i]` is the elementwise max
-        // `(w, h)` over `occs[i..]`. Used below as a one-comparison
-        // reject: if the occludee's painted rect is wider or taller
-        // than every remaining cover, no `contains_rect` can succeed.
-        self.suffix_max_cover.clear();
-        self.suffix_max_cover.resize(occs.len(), Vec2::ZERO);
-        let mut acc = Vec2::ZERO;
-        for (i, occ) in occs.iter().enumerate().rev() {
-            acc = acc.max(Vec2::new(occ.cover.size.w, occ.cover.size.h));
-            self.suffix_max_cover[i] = acc;
+        let indexed = self.opaque_in_group.len() > LINEAR_OCCLUDERS;
+        if indexed {
+            self.build_index();
         }
 
         self.drop_indices.clear();
-        // Cursor into `occs` advancing in lockstep with `i`: it's
-        // always positioned at the first occluder with `idx > i`.
-        // Since `i` and `occs[*].idx` are both monotonically
-        // ascending, the cursor only moves forward across the outer
-        // loop — so cursor advancement is O(N + K). The `contains_rect`
-        // inner loop below is still O(K) per surviving occludee (O(N·K)
-        // worst case), but the `suffix_max_cover` size reject keeps it
-        // off the hot path for the dominant nested-panel case (parent
-        // larger than every descendant). Bounded by group size either
-        // way.
+        // Cursor into the occluders advancing in lockstep with `i`: it's
+        // always positioned at the first occluder with `idx > i`. Both
+        // ascend, so the cursor only moves forward.
         let mut cursor = 0;
-        for (i, q) in slice.iter().enumerate() {
+        let occluders = self.opaque_in_group.len();
+        for (i, q) in out.quads[start..].iter().enumerate() {
             // Shadows paint past the stored rect by blur sigma (no
             // closed-form extent we can test cheaply) — never drop.
             if q.fill_kind.is_shadow() {
                 continue;
             }
-            while cursor < occs.len() && occs[cursor].idx as usize <= i {
+            while cursor < occluders && self.opaque_in_group[cursor].idx as usize <= i {
                 cursor += 1;
             }
-            // No later occluder exists for this `i` — and since
-            // subsequent `i` values need even later occluders, none
-            // can be covered. Done.
-            if cursor >= occs.len() {
+            // No later occluder exists for this `i`, nor for any later
+            // one.
+            if cursor >= occluders {
                 break;
             }
             // `q.rect` is the painted extent: quad.wgsl borders are
             // inner-edge, and the shared ½px AA fringe is what every
-            // cover's AA inset answers. Rounded under-quads share their
-            // bounding rect with the painted region, so no
-            // corner-specific handling is needed on this side.
-            //
-            // Cheap reject: no remaining cover is large enough to
-            // contain `q.rect` on at least one axis. This catches
-            // the dominant "nested panels, parent larger than every
-            // descendant" pattern without touching the inner loop.
-            let max = self.suffix_max_cover[cursor];
-            if q.rect.size.w > max.x || q.rect.size.h > max.y {
-                continue;
-            }
-            for occ in &occs[cursor..] {
-                if occ.cover.contains_rect(q.rect) {
-                    self.drop_indices.push(i as u32);
-                    break;
-                }
+            // cover's AA inset answers.
+            let covered = if indexed {
+                self.indexed_covers(q.rect, cursor)
+            } else {
+                (cursor..occluders).any(|at| self.covers(at, q.rect))
+            };
+            if covered {
+                self.drop_indices.push(i as u32);
             }
         }
         if self.drop_indices.is_empty() {
@@ -167,5 +193,99 @@ impl OcclusionPruner {
             write += 1;
         }
         out.quads.truncate(write);
+    }
+
+    /// Register every small cover in the tiles it overlaps, and set the
+    /// large ones apart.
+    fn build_index(&mut self) {
+        self.cover_tiles.clear();
+        self.large_covers.clear();
+        for (at, occluder) in self.opaque_in_group.iter().enumerate() {
+            let span = self.span_of(occluder.cover);
+            let tiles = span.max - span.min + UVec2::ONE;
+            if tiles.x * tiles.y > LARGE_COVER_TILES {
+                self.large_covers.push(at as u32);
+                continue;
+            }
+            for y in span.min.y..=span.max.y {
+                for x in span.min.x..=span.max.x {
+                    self.cover_tiles
+                        .push(u64::from(self.tile_index(UVec2::new(x, y))) << 32 | at as u64);
+                }
+            }
+        }
+        self.cover_tiles.sort_unstable();
+    }
+
+    /// Whether an occluder at position `cursor` or later covers `rect`,
+    /// through the index.
+    fn indexed_covers(&mut self, rect: Rect, cursor: usize) -> bool {
+        let tile = u64::from(self.tile_index(self.tile_of(rect.min)));
+        let first = self
+            .cover_tiles
+            .partition_point(|&key| key < (tile << 32 | cursor as u64));
+        for at in first..self.cover_tiles.len() {
+            let key = self.cover_tiles[at];
+            if key >> 32 != tile {
+                break;
+            }
+            if self.covers(key as u32 as usize, rect) {
+                return true;
+            }
+        }
+        let first = self
+            .large_covers
+            .partition_point(|&at| (at as usize) < cursor);
+        (first..self.large_covers.len()).any(|at| self.covers(self.large_covers[at] as usize, rect))
+    }
+
+    fn covers(&mut self, at: usize, rect: Rect) -> bool {
+        #[cfg(test)]
+        {
+            self.contains_tests += 1;
+        }
+        self.opaque_in_group[at].cover.contains_rect(rect)
+    }
+
+    /// The tiles a quad `rect` contains can start in. A quad has area, so
+    /// its corner lies strictly before the cover's far edges: the span
+    /// ends at the tile holding the last point before them, and a cover
+    /// whose edge sits on a tile boundary stays out of the tile past it.
+    fn span_of(&self, rect: Rect) -> TileSpan {
+        let last =
+            ((rect.max() / TILE).ceil() - Vec2::ONE).clamp(Vec2::ZERO, self.last_tile.as_vec2());
+        let span = TileSpan {
+            min: self.tile_of(rect.min),
+            max: last.as_uvec2(),
+        };
+        debug_assert!(
+            span.min.cmple(span.max).all(),
+            "an empty cover {rect:?} reached the index",
+        );
+        span
+    }
+
+    /// The tile `point` falls in, clamped to the viewport's.
+    fn tile_of(&self, point: Vec2) -> UVec2 {
+        (point / TILE)
+            .floor()
+            .clamp(Vec2::ZERO, self.last_tile.as_vec2())
+            .as_uvec2()
+    }
+
+    const fn tile_index(&self, tile: UVec2) -> u32 {
+        tile.y * (self.last_tile.x + 1) + tile.x
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
+
+    impl OcclusionPruner {
+        /// `contains_rect` tests the prune ran this frame.
+        pub(crate) fn contains_tests(&self) -> u64 {
+            self.contains_tests
+        }
     }
 }

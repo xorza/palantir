@@ -22,7 +22,9 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
@@ -362,14 +364,18 @@ impl LayerCtx<'_> {
                 // target up in `Ui::gpu_views` by the owner node's
                 // `WidgetId` and hands back the app paint callback, which
                 // rides alongside the payload so the sink can list the
-                // off-screen target in `frame_targets`. `epoch` only
-                // affects the shape hash (damage), not the draw.
-                let (handle, paint) = match source {
+                // off-screen target in `frame_targets`, with the epoch that
+                // tells the backend whether the target's pixels are current.
+                let (handle, view) = match source {
                     ImageSource::Texture { id, .. } => (*id, None),
-                    ImageSource::GpuView { epoch: _ } => {
+                    ImageSource::GpuView { epoch } => {
                         let wid = self.tree.records.widget_id()[id.idx()];
                         let view = self.gpu_views.view(wid);
-                        (view.texture_id, Some(&view.paint))
+                        let paint = ViewPaint {
+                            paint: &view.paint,
+                            epoch: *epoch,
+                        };
+                        (view.texture_id, Some(paint))
                     }
                 };
                 let FitRect {
@@ -403,7 +409,7 @@ impl LayerCtx<'_> {
                             handle,
                             flags,
                         },
-                        paint,
+                        view,
                     },
                     alpha,
                 );

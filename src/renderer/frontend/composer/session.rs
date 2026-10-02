@@ -411,7 +411,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn image(&mut self, draw: ImageDraw<'_>) {
-        let ImageDraw { payload: p, paint } = draw;
+        let ImageDraw { payload: p, view } = draw;
         let ScaledRect {
             phys: phys_rect,
             urect: image_urect,
@@ -427,7 +427,7 @@ impl PaintSink for ComposeSession<'_> {
         // the scheduling below. Its UV stays whole, since the target *is* the
         // visible part; every other image keeps the rect and UV the encoder
         // resolved.
-        let seen = paint.and_then(|_| self.seen(phys_rect));
+        let seen = view.and_then(|_| self.seen(phys_rect));
         let composite = seen.unwrap_or(phys_rect);
         self.out.images.push(ImageDrawRow {
             // Just the registration id — the backend looks it
@@ -459,7 +459,7 @@ impl PaintSink for ComposeSession<'_> {
         // the rect would allocate, and ask the app to draw, pixels that are
         // then thrown away: a status line long enough to widen the window's
         // root is enough to do it, which is how this was found.
-        if let Some(paint) = paint {
+        if let Some(view) = view {
             let scale = self.out.display.scale_factor();
             let cap = i64::from(self.composer.max_texture_dim.get());
             let whole = phys_rect.size;
@@ -493,7 +493,8 @@ impl PaintSink for ComposeSession<'_> {
                 display_scale: scale,
                 raster_scale: geometry::phys_scale(self.composer.transform.current(), scale)
                     * downsample,
-                paint: paint.clone(),
+                paint: view.paint.clone(),
+                epoch: view.epoch,
             });
         }
     }
