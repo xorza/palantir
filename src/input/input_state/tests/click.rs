@@ -1,11 +1,11 @@
 use crate::Ui;
+use crate::input::capture::DOUBLE_CLICK_WINDOW;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
-use crate::input::capture::DOUBLE_CLICK_WINDOW;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
