@@ -4,7 +4,7 @@
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{
-    AnimUi, SLOT, next_frame, setup_anim_ui, spring_velocity, wid,
+    AnimUi, SLOT, closed_form_settle_step, next_frame, setup_anim_ui, spring_velocity, wid,
 };
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
@@ -199,7 +199,16 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
             break;
         }
     }
-    assert!(settled_at.is_some(), "the look's color spring must settle");
+    // The text colour moves black → white, √3 in linear RGB; the gradient
+    // snaps. The retarget frame stepped nothing, so loop frame `i` is
+    // step `i + 1`.
+    let step = closed_form_settle_step(170.0, 26.0, 3.0f64.sqrt(), |_| 0.016);
+    assert_eq!(step, 59);
+    assert_eq!(
+        settled_at,
+        Some(step - 1),
+        "the look's color spring settles"
+    );
 
     now += Duration::from_millis(16);
     let after_settle = frame(h.at(now), &target);

@@ -182,7 +182,7 @@ fn lerp_spans_both_endpoints_and_overshoots() {
 
 /// `faded` scales alpha and nothing else.
 ///
-/// Hand-computed: half of `0.8` is `0.4`.
+/// Hand-computed: half of the f16 `0.8` is exactly half of it.
 /// The colour lanes must come back bit-identical, because a fade is an
 /// opacity change and a widget that fades a red shape does not want a
 /// darker red. `by == 1.0` is the identity the emit path leans on.
@@ -192,11 +192,10 @@ fn faded_scales_only_the_alpha_lane() {
     let full = f16.unpack();
     let half = f16.faded(0.5).unpack();
     assert_eq!((half.r, half.g, half.b), (full.r, full.g, full.b));
-    assert!(
-        (half.a - 0.4).abs() < 1e-3,
-        "alpha {} is not half of 0.8",
-        half.a,
-    );
+    // 0.8 packs to f16 as 1638 steps of 2^-11, and halving an f16 is
+    // exact.
+    assert_eq!(full.a, 1638.0 / 2048.0);
+    assert_eq!(half.a, 1638.0 / 4096.0, "alpha is half of the packed 0.8");
     assert_eq!(f16.faded(1.0), f16);
     assert!(f16.faded(0.0).is_noop(), "a zero fade is fully transparent");
 }

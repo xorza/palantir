@@ -49,7 +49,7 @@ fn instant_duration_is_noop_and_drops_row() {
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });
-    assert!(h.anim_row_count::<f32>() > 0);
+    assert_eq!(h.anim_row_count::<f32>(), 1);
 
     // Switching to instant mid-flight: snap and drop.
     let v = h.at(Duration::from_millis(60)).frame_value(|ui| {
@@ -117,6 +117,8 @@ fn target_below_snap_floor_snaps_without_animating() {
 fn one_floor_animates_a_small_change_under_either_motion() {
     let delta = 5.0e-4_f32;
     let duration = AnimSpec::duration(1.0, Easing::Linear);
+    let t = f64::from(0.016f32);
+    let spring_travel = 1.0 - (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
     for (label, spec) in [("spring", AnimSpec::SPRING), ("duration", duration)] {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid(label);
@@ -128,9 +130,17 @@ fn one_floor_animates_a_small_change_under_either_motion() {
         );
         assert!(!start.settled, "{label}: a change above the floor animates");
         let moving = map.tick(id, SLOT, delta, spec, 0.016, next_frame());
+        // Linear over 1 s: 0.016 of the way. The spring, released from
+        // rest: `delta·(1 − e^(-13t)(cos t + 13 sin t))` at t = 0.016, in
+        // f64. The f32 step's coefficients are each within an ulp of
+        // theirs, so the two agree to ~1e-7 of `delta`, and 1e-10 is that.
+        let expected = match label {
+            "duration" => f64::from(delta * 0.016),
+            _ => f64::from(delta) * spring_travel,
+        };
         assert!(
-            moving.current > 0.0 && moving.current < delta,
-            "{label}: moving toward {delta}, got {}",
+            (f64::from(moving.current) - expected).abs() < 1e-10,
+            "{label}: {} vs {expected}",
             moving.current,
         );
     }
@@ -141,10 +151,13 @@ fn one_floor_animates_a_small_change_under_either_motion() {
     let _ = colours.tick(id, SLOT, rest, AnimSpec::SPRING, 0.016, next_frame());
     let _ = colours.tick(id, SLOT, hover, AnimSpec::SPRING, 0.016, next_frame());
     let moving = colours.tick(id, SLOT, hover, AnimSpec::SPRING, 0.016, next_frame());
+    assert!(!moving.settled, "the hover fades over several frames");
+    let expected = f64::from(rest.r) + f64::from(hover.r - rest.r) * spring_travel;
     assert!(
-        !moving.settled && moving.current.r > rest.r && moving.current.r < hover.r,
-        "the hover fades over several frames, got {:?}",
-        moving.current,
+        (f64::from(moving.current.r) - expected).abs() < 1e-8,
+        "the first step travels the closed form's share, {} vs {expected} \
+         (f32 rounding of a value near 0.007)",
+        moving.current.r,
     );
 }
 
@@ -184,11 +197,7 @@ fn duration_settles_in_finite_steps() {
     let r = map.tick(id, SLOT, 1.0, spec, 0.016, next_frame());
     assert_eq!(r.current, 0.0);
     let r = map.tick(id, SLOT, 1.0, spec, 0.05, next_frame());
-    assert!(
-        r.current > 0.4 && r.current < 0.6,
-        "halfway should be ~0.5; got {}",
-        r.current,
-    );
+    assert_eq!(r.current, 0.05 / 0.1, "linear: elapsed over secs");
     assert!(!r.settled, "halfway is not settled");
     let r = map.tick(id, SLOT, 1.0, spec, 0.05, next_frame());
     assert_eq!(r.current, 1.0, "must snap to target on settle");
@@ -210,10 +219,7 @@ fn duration_settles_in_finite_steps() {
             break;
         }
     }
-    assert!(
-        settled.is_some(),
-        "maximum duration did not settle after 60.1 seconds of steps",
-    );
+    assert_eq!(settled, Some(601));
 }
 
 #[test]
@@ -236,10 +242,11 @@ fn vec2_duration_lerps_componentwise() {
     let _ = map.tick(id, SLOT, Vec2::ZERO, spec, 0.0, next_frame());
     let _ = map.tick(id, SLOT, Vec2::new(10.0, 20.0), spec, 0.0, next_frame());
     let r = map.tick(id, SLOT, Vec2::new(10.0, 20.0), spec, 0.05, next_frame());
-    assert!(
-        (r.current.x - 5.0).abs() < 0.01 && (r.current.y - 10.0).abs() < 0.01,
-        "halfway should be (5, 10); got {:?}",
+    let progress = 0.05 / 0.1;
+    assert_eq!(
         r.current,
+        Vec2::new(10.0 * progress, 20.0 * progress),
+        "each component lerps by the same linear progress",
     );
 }
 

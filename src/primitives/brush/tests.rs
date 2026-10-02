@@ -402,10 +402,13 @@ fn conic_axis_packs_start_angle() {
             Stop::new(1.0, RgbaF32::srgb(0.0, 0.0, 1.0)),
         ],
     );
-    let [dx, dy, t0, _] = g.axis().lanes();
-    assert!((dx - 0.4).abs() < 1e-3);
-    assert!((dy - 0.6).abs() < 1e-3);
-    assert!((t0 - FRAC_PI_4).abs() < 1e-3);
+    // The axis packs to f16, 10 mantissa bits: 0.4 is 1638.4 steps of
+    // 2^-12 and rounds to 1638, 0.6 is 1228.8 steps of 2^-11 and rounds to
+    // 1229, and π/4 is 1608.5 steps of 2^-11 and rounds to 1608.
+    assert_eq!(
+        g.axis().lanes(),
+        [1638.0 / 4096.0, 1229.0 / 2048.0, 1608.0 / 2048.0, 0.0],
+    );
 }
 
 #[test]

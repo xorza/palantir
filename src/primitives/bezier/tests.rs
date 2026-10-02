@@ -7,10 +7,13 @@ fn quadratic_to_cubic_promotes_inner_cps() {
     let c = Vec2::new(50.0, 100.0);
     let p2 = Vec2::new(100.0, 0.0);
     let CubicControls { c1: q1, c2: q2 } = quadratic_to_cubic(p0, c, p2);
-    // q1 = p0 + 2/3·(c - p0) = (100/3, 200/3) ≈ (33.33, 66.67).
-    // q2 = p2 + 2/3·(c - p2) = (200/3, 200/3) ≈ (66.67, 66.67).
-    assert!((q1 - Vec2::new(100.0 / 3.0, 200.0 / 3.0)).length() < 1.0e-4);
-    assert!((q2 - Vec2::new(200.0 / 3.0, 200.0 / 3.0)).length() < 1.0e-4);
+    // q1 = p0 + 2/3·(c − p0) = (100/3, 200/3), q2 = p2 + 2/3·(c − p2) =
+    // (200/3, 200/3), each rounded once through the f32 2/3.
+    let two_thirds = 2.0 / 3.0;
+    assert_eq!(q1, p0 + (c - p0) * two_thirds);
+    assert_eq!(q2, p2 + (c - p2) * two_thirds);
+    assert_eq!(q1, Vec2::new(33.333336, 66.66667));
+    assert_eq!(q2, Vec2::new(66.666664, 66.66667));
 }
 
 #[test]
@@ -22,31 +25,35 @@ fn cubic_bbox_is_endpoints_for_monotone_curve() {
     let p2 = Vec2::new(66.0, 0.0);
     let p3 = Vec2::new(100.0, 0.0);
     let bbox = bezier::cubic_bbox(p0, p1, p2, p3);
-    let (lo, hi) = (bbox.min, bbox.max());
-    assert!((lo - Vec2::new(0.0, 0.0)).length() < 1.0e-4);
-    assert!((hi - Vec2::new(100.0, 0.0)).length() < 1.0e-4);
+    assert_eq!((bbox.min, bbox.max()), (p0, p3));
 }
 
+/// S-curve: horizontal endpoints, inner CPs pulled vertically in opposite
+/// directions, so the curve's excursion in y is far inside the control
+/// hull's ±100.
+///
+/// Hand-computed: `y(t) = 300·t(1−t)(1−2t)`, whose derivative
+/// `300(1 − 6t + 6t²)` vanishes at `t = (3 ∓ √3)/6`. There `u = t − ½ =
+/// ∓√3/6`, and `y = 300·(¼ − u²)(−2u) = ±300·√3/18 = ±50/√3 ≈ ±28.87`. The
+/// x extent is the endpoints', since x is monotone.
 #[test]
 fn cubic_bbox_tighter_than_control_hull_for_opposing_tangents() {
-    // S-curve: horizontal endpoints, inner CPs pulled vertically in
-    // opposite directions. The actual curve excursion in y is far
-    // smaller than the control-polygon hull (±100 → ±~38.5).
     let p0 = Vec2::new(0.0, 0.0);
     let p1 = Vec2::new(33.0, 100.0);
     let p2 = Vec2::new(66.0, -100.0);
     let p3 = Vec2::new(100.0, 0.0);
     let bbox = bezier::cubic_bbox(p0, p1, p2, p3);
     let (lo, hi) = (bbox.min, bbox.max());
-    // Hull would give y ∈ [-100, 100]; tight bbox is ±25·√(1/3)·3 ≈ ±25/√3·... .
-    // Don't pin the exact analytic value — just assert "well inside the hull".
-    assert!(lo.y > -50.0, "lo.y = {}", lo.y);
-    assert!(hi.y < 50.0, "hi.y = {}", hi.y);
-    // Symmetric S: lo.y == -hi.y up to fp slop.
-    assert!((lo.y + hi.y).abs() < 1.0e-3);
-    // Endpoints always included.
-    assert!((lo.x - 0.0).abs() < 1.0e-4);
-    assert!((hi.x - 100.0).abs() < 1.0e-4);
+    let extremum = 50.0 / 3.0f64.sqrt();
+    // The root goes through an f32 sqrt and a cubic evaluation, so the
+    // extremum lands a few ulps (1.9e-6 each at 28.9) off the exact one.
+    assert!(
+        (f64::from(hi.y) - extremum).abs() < 1e-5,
+        "hi.y = {} vs 50/√3 = {extremum}",
+        hi.y,
+    );
+    assert_eq!(lo.y, -hi.y, "the S is symmetric");
+    assert_eq!((lo.x, hi.x), (0.0, 100.0), "the endpoints bound x");
 }
 
 #[test]
