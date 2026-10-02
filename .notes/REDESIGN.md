@@ -811,7 +811,6 @@ output, cost, cleanup.
 - [ ] REVIEW design groups that stay internal: `LayerCtx` gradient trio, `RectKind` dispatch,
       `TextureLimit` round trip, `RenderTargetDraw.display_scale`, pipeline layouts in `new`, raster
       tenant methods, `DamageEngine::budget_px`, `Forest::scratch`, `Ident::Resolved` arms,
-      `InputState` field encapsulation, `OffscreenHost` gated impl, `WinitHostConfig` clone,
-      `Index16::to_raw`, `IconId` bound and duplicate-name asserts.
+      `InputState` field encapsulation, `OffscreenHost` gated impl, `WinitHostConfig` clone.
 - [ ] ISSUES.md items.
 - [ ] TEST_REVIEW groups 2, 6, 7, 9, 11–18 that no earlier phase closed.

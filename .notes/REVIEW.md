@@ -28,11 +28,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Smaller widget bugs
 
-## `IconId` is u16 but icon sets are unbounded
-- [ ] `src/icons/icon_set.rs:165` with `icon_table.rs:283` **bug (low)**: `from_svgs` accepts any number of sources, but `by_name` mints `IconId(i as u16)`. In a 70 000-icon set, the name at index 65 540 silently resolves to icon 4. The `gpu/icon` prewarm has the same truncation.
-  - `from_svgs` also neither rejects nor dedupes duplicate names, though `IconDef::name` is documented "unique within a set". `by_name` then picks one arbitrarily.
-- [ ] `src/icons/icon_set.rs:141-143`: the comment says a cross-set id "fails at the call site that mixed them". Only an out-of-range id fails. An in-range id from another set draws the wrong icon silently.
-
 ## Icon prewarm warms keys the frame never asks for
 - [ ] `src/gpu/icon/mod.rs:124` **bug (plausible)**: prewarm keys on `def.view_box * display_scale`. The composer keys on the drawn box `phys_rect.size`, which includes ancestor transforms (`composer/session.rs:381`). So prewarm hits only icons drawn at exactly their view-box size. Any other size still takes the 10-20× filtered raster lazily.
   - Prewarm rasterizes every filtered icon of every loaded set in one frame on each DPI change or set load: a worst-case-frame spike. Those slots are stamped current-frame, so they cannot be evicted while that frame's real draws compete for space.
@@ -139,11 +134,3 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/text/cosmic/mod.rs:128`, `src/text/cosmic/cluster_glyph.rs:44`: `pub(crate)` free functions `warm_matches` and `fitting_prefix` could be methods.
 - [ ] `src/text/font_family.rs:180`: `NameVisitor` has no `#[derive(Debug)]`.
 - [ ] Missing `const fn`: `GlyphFont::metrics_are_valid`/`metrics_valid`, `key::dequantize`, `LineFit::resolves_to_unbounded`, `TextWrap::{line_fit, floor_scan, min_content, max_content, content_size}`, `TextRoot::wrap_floor`, `Rect::{deflated, square_about, spin_pivot}`, `Size::{room_past, select}`.
-
-## Simplifications and style-rule violations (support modules)
-- [ ] `src/animation/anim_map_typed.rs:103-110,208-237`: `row.motion` and `spec.motion` are matched separately: once for `same_motion`, then again with two `unreachable!` arms. One match on the `(&mut row.motion, spec.motion)` pair removes both.
-- [ ] `src/animation/mod.rs:83,90,98`: `typed_mut`, `try_typed_mut` and `is_empty` are `pub(crate)`, but only `animation` and its child test modules call them.
-- [ ] `src/icons/icon_table.rs:202,283`: `IconDef::name: &'static str` forces `from_svgs` to take `&'static str` names. A runtime set built from files on disk has to `Box::leak` every name, which contradicts "owns its buffers, so nothing leaks".
-- [ ] `src/common/index16.rs:236`: `From<Index16> for u16` returns the encoded value (index + 1), not the index. It pairs with `from_raw`, so it should be a named `to_raw()`. `u16::from(idx)` reads as the index.
-- [ ] `src/frame_fixture/mod.rs:59,63,73`: `#[cfg(any(test, feature = "internals"))]` sits inside a module already gated `#[cfg(feature = "internals")]` (`lib.rs:172`), so the `test` arm is dead.
-- [ ] `src/bench/mod.rs:55-59`: `use cli::Cli; use driver::DRIVERS;` are relative paths. The rule is `crate::bench::…`.
