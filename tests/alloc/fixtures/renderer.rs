@@ -24,6 +24,7 @@
 //! `gates::on_gpu::offscreen_frame_stays_at_driver_floor` pins this
 //! floor on a still tree so a drift in the driver reads there first.
 
+use crate::gates::WARMUP_FRAMES;
 use crate::harness::{Audit, OffscreenTarget, SURFACE};
 use palantir::Stroke;
 use palantir::internals::headless_test_gpu;
@@ -33,12 +34,6 @@ use palantir::{
     TranslateScale, Ui,
 };
 use std::rc::Rc;
-
-/// Frames each fixture warms and then measures. Sixteen is the margin the
-/// gates use for the same host; sixty-four is long enough for a
-/// once-every-N-frames allocation to land inside the window.
-const WARMUP: usize = 16;
-const FRAMES: usize = 64;
 
 /// Distinct positions the nudge cycles through. More than one so damage
 /// is full on every frame, few enough that the tree never walks off the
@@ -77,9 +72,10 @@ fn frontend_audit(label: &str, mut scene: impl FnMut(&mut Ui)) {
     let gpu = headless_test_gpu();
     let mut target = OffscreenTarget::new(&gpu, label, SURFACE);
     let mut step = 0u32;
+    // The gates' warmup, for the same host; the measured window is the
+    // audit's default.
     Audit::new()
-        .warmup(WARMUP)
-        .frames(FRAMES)
+        .warmup(WARMUP_FRAMES)
         .budget(FRONTEND_BLOCKS_PER_FRAME_MAX)
         .run_frames(|| {
             step = (step + 1) % NUDGE_POSITIONS;

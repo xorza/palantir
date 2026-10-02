@@ -57,11 +57,6 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 ## 6. The `alloc` gates can pass while allocating
 
 - [ ] The device-driven audits use hand-set ceilings (90, 44, 510) that let about 18 allocations per frame through, and CI skips them by path (`.github/workflows/ci.yml:116`). Encode and compose do not need a device: `src/ui/bench.rs:155-205` `CpuHarness` runs them on `Frontend::for_test()`. Export that as `FrontendHarness` through `palantir::internals`, make the renderer fixtures strict-zero and CI-run, and keep one device gate that calibrates against an empty-scene floor.
-- [ ] Nested `with_audit` goes silent: the inner guard's `Drop` sets `IN_AUDIT = false` (`tests/alloc/allocator.rs:138-150`). Restore the previous value, or assert on entry.
-- [ ] `tests/alloc/harness_tests.rs:179-201` expects frame 5 of a primed `Button` to allocate. That contradicts `button_only_alloc_free` and works only because frame 5 is in the warmup tail. Provoke the allocation with a call that allocates by contract.
-- [ ] `harness_tests.rs:29-33`: `r.bytes >= 5 * 8`. Five `Box<u64>` give exactly 40.
-- [ ] `tests/alloc/harness/offscreen.rs:34` keeps the realtime clock. Pin `FixedClock`, as `tests/visual/harness.rs:76` does.
-- [ ] `fixtures/renderer.rs:40-41` restates `WARMUP_FRAMES` and the default 64 frames. Import them.
 - [ ] `Audit` mirrors `UiHarness`'s builder (`text`, `surface`, `dpr`), and `run_frames` ignores those settings. Let `Audit::run` take the caller's harness. (judgement)
 - [ ] Nothing pins that frame work stays on the auditing thread, which the per-thread counter needs. Note it as a blind spot, or add a cross-thread counter if worker threads enter the frame path. (judgement)
 
