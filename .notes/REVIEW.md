@@ -29,11 +29,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - With `fallback_current` set (after any in-app copy or any successful paste), the error arm returns the stale in-process text. Scenario: paste "foo" from a browser, copy an image in another app, paste into a `TextEdit`: "foo" is inserted.
 - [ ] `src/common/clipboard.rs:101-103,130-132` **bug (plausible)**: one failed primary `set_text` makes `Authority::Fallback` sticky. Every later `text()` skips the system clipboard until the next successful in-app copy, so text copied in other apps meanwhile is invisible. A transient arboard/X11 write failure would confirm it.
 
-## TextEdit editing edge cases
-- [ ] `src/widgets/text_edit/editor.rs:304-315` **bug**: when `max_chars` leaves no room (`max_chars(0)`, or host content already over the cap), typing or pasting over a selection still runs `replace_range(sel, "")`. The rejected insertion deletes the selection, though the doc says over-cap input "is dropped".
-- [ ] `src/widgets/text_edit/edit_state.rs:234-258` (doc at `editor.rs:136-137`) **bug**: `normalize` repairs offsets only to char boundaries, although `Editor::normalize` claims grapheme boundaries. The host sets "e\u{301}" with the caret at 1: the caret stays mid-cluster, and typing 'x' gives "ex\u{301}", which moves the accent onto x.
-- [ ] `src/widgets/text_edit/input_pass.rs:213-235` **bug**: platform conventions are missing. On macOS, Cmd+Left/Right moves one grapheme instead of to the line edge, and Cmd+Backspace deletes one grapheme. Ctrl+Home/End in multiline goes to the visual line, not the document start/end. Shift+click re-anchors instead of extending (`press` always calls `arm_drag`, `editor.rs:149-162`).
-
 ## TabbedView reorder and identity
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
 

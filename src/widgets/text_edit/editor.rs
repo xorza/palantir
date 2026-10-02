@@ -146,8 +146,17 @@ impl<'a> Editor<'a> {
     /// A multi-click leaves the drag disarmed, so a pointer still held
     /// cannot grow the word or line it chose — the range stays locked
     /// until the next press.
-    pub(super) fn press(&mut self, at: usize, clicks: u8) {
+    /// With `extend` — Shift held — a single press moves the caret and
+    /// keeps the selection's anchor, so the drag that follows grows the
+    /// selection from where it began.
+    pub(super) fn press(&mut self, at: usize, clicks: u8, extend: bool) {
         self.state.drag_anchor = None;
+        if extend && clicks <= 1 {
+            let anchor = self.state.selection.unwrap_or(self.state.caret);
+            self.select_range(anchor, at);
+            self.state.drag_anchor = Some(anchor);
+            return;
+        }
         match clicks {
             2 => {
                 let word = word_range_at(self.text, at);
@@ -305,7 +314,10 @@ impl<'a> Editor<'a> {
         self.ensure_history_matches();
         let fit_len = self.capped_prefix(s).len();
         let fit = &s[..fit_len];
-        if self.state.selection.is_none() && fit.is_empty() {
+        // Input the cap leaves no room for is dropped whole — the
+        // selection it would have replaced stays. An empty replacement is
+        // a delete, which still clears a selection.
+        if fit.is_empty() && (!s.is_empty() || self.state.selection.is_none()) {
             return;
         }
         let range = self
@@ -434,6 +446,22 @@ impl<'a> Editor<'a> {
     /// both belong in one undo step, since one press made them.
     pub(super) fn insert_str(&mut self, text: &str) {
         self.replace_selection(text, EditKind::Typing);
+    }
+
+    /// Delete back to the start of the caret's line, or the selection —
+    /// macOS's Cmd+Backspace.
+    pub(super) fn delete_to_line_start(&mut self) {
+        let range = match self.state.sel_range() {
+            Some(range) => range,
+            None => {
+                let caret = self.state.caret;
+                let start = self.text[..caret].rfind('\n').map_or(0, |i| i + 1);
+                start..caret
+            }
+        };
+        if !range.is_empty() {
+            self.replace_range(range, "", EditKind::Delete);
+        }
     }
 
     pub(super) fn delete_backward(&mut self) {

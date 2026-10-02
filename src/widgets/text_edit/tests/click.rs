@@ -593,4 +593,19 @@ fn a_tap_places_the_caret() {
     h.click_at(glam::Vec2::new(inner_left + 14.0, rect.center().y));
     h.frame(editor_at(&mut buf, None));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
+
+    // Shift held, a tap at x = inner.min + 30 — 3.75 glyphs, boundary 4 —
+    // extends from the caret at 2 instead of moving it: selection 2..4.
+    h.set_modifiers(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    });
+    h.click_at(glam::Vec2::new(inner_left + 30.0, rect.center().y));
+    h.frame(editor_at(&mut buf, None));
+    let edit = &h.state::<TextEditState>(ed_id).edit;
+    assert_eq!(
+        (edit.selection, edit.caret),
+        (Some(2), 4),
+        "Shift+tap extends"
+    );
 }
