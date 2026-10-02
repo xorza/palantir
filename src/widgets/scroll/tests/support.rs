@@ -15,6 +15,14 @@ use glam::{UVec2, Vec2};
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 600);
 
+/// A `w × h` block — the content a scroll test pans, zooms or bars over.
+pub(super) fn fixed_block(ui: &mut Ui, id: WidgetId, w: f32, h: f32) {
+    Block::new()
+        .id(id)
+        .size((Sizing::fixed(w), Sizing::fixed(h)))
+        .show(ui);
+}
+
 pub(super) fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
     driven(ui, viewport_h, content_h, Vec2::ZERO);
 }
@@ -31,10 +39,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
                 .pan_by(pan)
                 .size((Sizing::fixed(200.0), Sizing::fixed(viewport_h)))
                 .show(ui, |ui| {
-                    Block::new()
-                        .id(WidgetId::from_hash("content"))
-                        .size((Sizing::fixed(200.0), Sizing::fixed(content_h)))
-                        .show(ui);
+                    fixed_block(ui, WidgetId::from_hash("content"), 200.0, content_h)
                 });
         });
 }
@@ -51,10 +56,7 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
         scroll = scroll.zoom_by(*factor);
     }
     scroll.show(ui, |ui| {
-        Block::new()
-            .id(WidgetId::from_hash("content"))
-            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-            .show(ui);
+        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
     });
 }
 

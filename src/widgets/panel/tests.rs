@@ -107,22 +107,19 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = UiHarness::new(UVec2::new(200, 120));
     h.ui.theme_mut().panel_background = Some(Background::fill(RgbaF32::WHITE));
     h.ui.theme_mut().panel_clip = ClipMode::Rect;
-    let (mut explicit, mut inherited) = (None, None);
-    h.frame(|ui| {
-        explicit = Some(
+    let [explicit, inherited] = h.frame_value(|ui| {
+        [
             Panel::vstack()
                 .background(Background::NONE)
                 .clip(ClipMode::None)
                 .show(ui, |_| {})
                 .response
                 .node(),
-        );
-        inherited = Some(Panel::vstack().show(ui, |_| {}).response.node());
+            Panel::vstack().show(ui, |_| {}).response.node(),
+        ]
     });
 
     let tree = h.ui.tree(Layer::Main);
-    let explicit = explicit.unwrap();
-    let inherited = inherited.unwrap();
     assert_eq!(
         tree.records.attrs()[explicit.idx()].clip_mode(),
         ClipMode::None,

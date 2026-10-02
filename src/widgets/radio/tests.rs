@@ -25,15 +25,14 @@ struct Rows {
 /// `frame_value`, not `frame`: `changed` is a one-frame edge like
 /// `clicked()`, so only the input-observing pass reports it.
 fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
-    let mut local = *sel;
-    let rows = h.frame_value(|ui| {
+    h.frame_value(|ui| {
         let mut rows = Rows {
             rects: [None; 3],
             changed: [false; 3],
         };
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
-                let r = RadioButton::new(&mut local, value)
+                let r = RadioButton::new(&mut *sel, value)
                     .id(WidgetId::from_hash(("rb", format!("{value:?}"))))
                     .label(format!("{value:?}"))
                     .show(ui);
@@ -42,9 +41,7 @@ fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
             }
         });
         rows
-    });
-    *sel = local;
-    rows
+    })
 }
 
 #[test]

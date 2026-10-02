@@ -146,22 +146,21 @@ mod tests {
         theme.looks.normal.background = Background::NONE;
 
         let mut h = UiHarness::new(UVec2::new(200, 120));
-        let (mut explicit, mut inherited) = (None, None);
-        h.frame(|ui| {
-            explicit = Some(
+        let [explicit, inherited] = h.frame_value(|ui| {
+            [
                 Button::new()
                     .style(&theme)
                     .padding(Spacing::ZERO)
                     .margin(Spacing::ZERO)
                     .show(ui)
                     .node(),
-            );
-            inherited = Some(Button::new().style(&theme).show(ui).node());
+                Button::new().style(&theme).show(ui).node(),
+            ]
         });
 
         let layouts = h.ui.tree(Layer::Main).records.layout();
-        let explicit = layouts[explicit.unwrap().idx()];
-        let inherited = layouts[inherited.unwrap().idx()];
+        let explicit = layouts[explicit.idx()];
+        let inherited = layouts[inherited.idx()];
         assert_eq!(explicit.padding, Spacing::ZERO);
         assert_eq!(explicit.margin, Spacing::ZERO);
         assert_eq!(inherited.padding, Spacing::all(8.0));
