@@ -4,6 +4,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::{SizeSpec, Sizing};
 use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
@@ -145,7 +146,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
 /// stops at its maximum when the slot is larger; a fixed size holds under
 /// stretch alignment, loses to a larger minimum, and a minimum equal to
 /// the maximum pins the extent outright. A hugging node stops at its
-/// maximum below its content.
+/// maximum below its content, and floors at its minimum above it.
 #[test]
 fn sizing_resolves_alike_under_every_driver() {
     #[derive(Debug)]
@@ -191,6 +192,7 @@ fn sizing_resolves_alike_under_every_driver() {
         ),
         row("min equals max", Sizing::FILL, 200.0, 40.0, 40.0, 0.0, 40.0),
         row("hug under max", Sizing::HUG, 100.0, 0.0, 40.0, 60.0, 40.0),
+        row("hug over min", Sizing::HUG, 100.0, 50.0, inf, 30.0, 50.0),
     ];
     for Row {
         label,
@@ -300,6 +302,91 @@ fn an_empty_driver_hugs_its_padding() {
             h.arranged(id),
             Rect::new(0.0, 0.0, 10.0, 10.0),
             "{driver:?}"
+        );
+    }
+}
+
+/// A collapsed child takes no room under any driver: it does not grow a
+/// hugging parent, take a gap, or move a sibling, and it arranges to a
+/// zero size. The children are a 20×20 `a`, a collapsed 50×50 `gone`,
+/// and a 30×20 `b`, with a gap of 10. A stack and a wrap put `b` at
+/// 20 + 10 = 30 and hug 30 + 30 = 60 wide. A canvas places `b` there by
+/// hand and `gone` at (100, 100), past both. A grid puts `gone` in `a`'s
+/// cell and `b` in the next column. A zstack overlaps `a` and `b` at the
+/// origin and hugs the wider, 30.
+#[test]
+fn a_collapsed_child_takes_no_room() {
+    let panel_id = WidgetId::from_hash("collapsed-driver");
+    let [a_id, gone_id, b_id] = ["a", "gone", "b"].map(WidgetId::from_hash);
+    for driver in [
+        Driver::Canvas,
+        Driver::Stack,
+        Driver::WrapStack,
+        Driver::ZStack,
+        Driver::Grid,
+    ] {
+        let child = |ui: &mut Ui, id: WidgetId, size: (f32, f32), at: (f32, f32), col: u16| {
+            let mut block = Block::new().id(id).size(size);
+            match driver {
+                Driver::Canvas => block = block.position(at),
+                Driver::Grid => block = block.grid_cell((0, col)),
+                _ => {}
+            }
+            if id == gone_id {
+                block = block.collapsed();
+            }
+            block.show(ui);
+        };
+        let children = |ui: &mut Ui| {
+            child(ui, a_id, (20.0, 20.0), (0.0, 0.0), 0);
+            child(ui, gone_id, (50.0, 50.0), (100.0, 100.0), 0);
+            child(ui, b_id, (30.0, 20.0), (30.0, 0.0), 1);
+        };
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        h.frame(|ui| {
+            let hug = (Sizing::HUG, Sizing::HUG);
+            let panel = match driver {
+                Driver::Root => unreachable!("the root is not a container"),
+                Driver::Canvas => Panel::canvas(),
+                Driver::Stack => Panel::hstack(),
+                Driver::WrapStack => Panel::wrap_hstack(),
+                Driver::ZStack => Panel::zstack(),
+                Driver::Grid => {
+                    Grid::new()
+                        .id(panel_id)
+                        .cols([Track::HUG, Track::HUG])
+                        .rows([Track::HUG])
+                        .size(hug)
+                        .gap(10.0)
+                        .show(ui, children);
+                    return;
+                }
+            };
+            panel.id(panel_id).size(hug).gap(10.0).show(ui, children);
+        });
+        let (b_x, panel_w) = match driver {
+            Driver::ZStack => (0.0, 30.0),
+            _ => (30.0, 60.0),
+        };
+        assert_eq!(
+            h.arranged(panel_id),
+            Rect::new(0.0, 0.0, panel_w, 20.0),
+            "{driver:?}: the panel"
+        );
+        assert_eq!(
+            h.arranged(a_id),
+            Rect::new(0.0, 0.0, 20.0, 20.0),
+            "{driver:?}: a"
+        );
+        assert_eq!(
+            h.arranged(b_id),
+            Rect::new(b_x, 0.0, 30.0, 20.0),
+            "{driver:?}: b"
+        );
+        assert_eq!(
+            h.arranged(gone_id).size,
+            Size::ZERO,
+            "{driver:?}: the collapsed child"
         );
     }
 }

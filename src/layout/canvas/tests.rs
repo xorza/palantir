@@ -232,34 +232,6 @@ fn canvas_measures_a_child_against_the_room_past_its_position() {
     );
 }
 
-#[test]
-fn canvas_collapsed_child_does_not_grow_bbox() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let panel = h.under_outer(|ui| {
-        Panel::canvas()
-            .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .position((0.0, 0.0))
-                    .size((10.0, 10.0))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("collapsed"))
-                    .position((100.0, 100.0))
-                    .size((50.0, 50.0))
-                    .collapsed()
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
-    assert_eq!(r.size.w, 10.0);
-    assert_eq!(r.size.h, 10.0);
-}
-
 /// Pin: Canvas places children at their explicit `.position(...)` and
 /// **ignores `.align(...)`** — children's alignment values do not
 /// participate in placement (Canvas is the "explicit position wins"

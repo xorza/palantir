@@ -175,33 +175,3 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 }
-
-#[test]
-fn zstack_collapsed_child_does_not_grow_panel() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let panel = h.under_outer(|ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .size((20.0, 20.0))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("hidden"))
-                    .size((100.0, 100.0))
-                    .collapsed()
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
-    assert_eq!(r.size.w, 20.0);
-    assert_eq!(r.size.h, 20.0);
-    let kids: Vec<_> = h.main_child_rects(panel);
-    let collapsed = kids[1];
-    assert_eq!(collapsed.size.w, 0.0);
-    assert_eq!(collapsed.size.h, 0.0);
-}

@@ -333,44 +333,6 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     assert_eq!([button_w, root_w], [42.0, 42.0]);
 }
 
-/// Pin: a collapsed child between two active children does not advance
-/// the cursor and does not count toward `total_gap`.
-#[test]
-fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .gap(5.0)
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .size((20.0, 20.0))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("hidden"))
-                    .size((50.0, 20.0))
-                    .collapsed()
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("b"))
-                    .size((30.0, 20.0))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    let kids = h.main_child_rects(root);
-    let a = kids[0];
-    let hidden = kids[1];
-    let b = kids[2];
-
-    assert_eq!((a.min.x, a.size.w), (0.0, 20.0));
-    assert_eq!((hidden.min.x, hidden.size.w), (20.0, 0.0));
-    assert_eq!(hidden.size.h, 0.0);
-    assert_eq!((b.min.x, b.size.w), (25.0, 30.0));
-}
-
 #[test]
 fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
     #[derive(Debug)]
@@ -561,58 +523,6 @@ fn fill_cross_axis_stretches_regardless_of_align() {
             r.min.x,
         );
     }
-}
-
-/// Cross-cutting min/max contract: a `Hug` panel clamps its
-/// content-driven size to `[min_size, max_size]` on each axis — the same
-/// `AxisSlot::resolve` clamp every widget/panel goes through, so this
-/// pins the behavior for all of them. Small content floors at `min_size`;
-/// large content caps at `max_size`.
-#[test]
-fn hug_panel_clamps_to_min_and_max_size() {
-    // Content 60px tall, `min_size` 100 → floors at 100.
-    let mut h = UiHarness::new(UVec2::new(800, 600));
-    let small = h.frame_value(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("small"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .min_size((0.0, 100.0))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("c"))
-                    .size((Sizing::fixed(40.0), Sizing::fixed(60.0)))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    assert_eq!(
-        h.ui.arranged_rect(Layer::Main, small).size.h,
-        100.0,
-        "Hug floors at min_size when content is smaller",
-    );
-
-    // Content 300px tall, `max_size` 120 → caps at 120.
-    let mut h = UiHarness::new(UVec2::new(800, 600));
-    let big = h.frame_value(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("big"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .max_size((f32::INFINITY, 120.0))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("c"))
-                    .size((Sizing::fixed(40.0), Sizing::fixed(300.0)))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    assert_eq!(
-        h.ui.arranged_rect(Layer::Main, big).size.h,
-        120.0,
-        "Hug caps at max_size when content is larger",
-    );
 }
 
 /// 200×100 hstack with `child_align(VAlign::Center)` and two 40×20

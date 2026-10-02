@@ -11,7 +11,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
+use crate::scene::tree::tests::support::{SURFACE, record};
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -43,7 +43,7 @@ fn same_authoring_produces_same_hash() {
             .response
             .node()
     };
-    assert_eq!(record_hash(build), record_hash(build));
+    assert_eq!(record(build).node, record(build).node);
     // The hash is the root's own, so the change is to the root.
     let padded = |ui: &mut Ui| {
         Panel::hstack()
@@ -60,8 +60,8 @@ fn same_authoring_produces_same_hash() {
             .node()
     };
     assert_ne!(
-        record_hash(build),
-        record_hash(padded),
+        record(build).node,
+        record(padded).node,
         "other authoring, other hash"
     );
 }
@@ -85,19 +85,19 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
     assert_ne!(color_a, color_b);
     assert_eq!(RgbaF16::from(color_a), RgbaF16::from(color_b));
 
-    let baseline = record_hash(|ui| build(ui, &base_points, color_a));
+    let baseline = record(|ui| build(ui, &base_points, color_a)).node;
     assert_eq!(
         baseline,
-        record_hash(|ui| build(ui, &noisy_points, color_a)),
+        record(|ui| build(ui, &noisy_points, color_a)).node,
     );
-    assert_eq!(baseline, record_hash(|ui| build(ui, &base_points, color_b)),);
+    assert_eq!(baseline, record(|ui| build(ui, &base_points, color_b)).node,);
     // The same comparison does see a move and a colour change it can show.
     let moved = [Vec2::ZERO, Vec2::new(11.0, 0.0)];
-    assert_ne!(baseline, record_hash(|ui| build(ui, &moved, color_a)));
+    assert_ne!(baseline, record(|ui| build(ui, &moved, color_a)).node);
     let recoloured = RgbaF32::new(0.6, 0.25, 0.75, 1.0);
     assert_ne!(
         baseline,
-        record_hash(|ui| build(ui, &base_points, recoloured))
+        record(|ui| build(ui, &base_points, recoloured)).node
     );
 }
 
@@ -119,51 +119,30 @@ fn changing_fill_color_changes_hash() {
             });
         child.unwrap()
     }
-    let h1 = record_hash(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h2 = record_hash(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
-    assert_ne!(h1, h2);
-    let static_1 = record_cascade_static(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let static_2 = record_cascade_static(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    let blue = record(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
+    let red = record(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    assert_ne!(blue.node, red.node);
     assert_eq!(
-        static_1, static_2,
+        blue.cascade_static, red.cascade_static,
         "paint-only changes must remain eligible for incremental cascade"
     );
 }
 
 #[test]
 fn widget_id_only_affects_cascade_static_hash() {
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("a"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("b"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
-    assert_eq!(h1, h2);
-
-    let static_1 = record_cascade_static(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("a"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
-    let static_2 = record_cascade_static(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("b"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
+    let build = |id: &'static str| {
+        record(move |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash(id))
+                .show(ui, |_| {})
+                .response
+                .node()
+        })
+    };
+    let (a, b) = (build("a"), build("b"));
+    assert_eq!(a.node, b.node);
     assert_ne!(
-        static_1, static_2,
+        a.cascade_static, b.cascade_static,
         "identity changes must rebuild cascade hit IDs and its by-id snapshot",
     );
 }
@@ -289,13 +268,10 @@ fn changing_layout_property_changes_hash() {
         ),
     ];
     for (label, a, b) in cases {
-        let h1 = record_hash(*a);
-        let h2 = record_hash(*b);
-        assert_ne!(h1, h2, "case: {label}");
-        let static_1 = record_cascade_static(*a);
-        let static_2 = record_cascade_static(*b);
+        let (a, b) = (record(*a), record(*b));
+        assert_ne!(a.node, b.node, "case: {label}");
         assert_ne!(
-            static_1, static_2,
+            a.cascade_static, b.cascade_static,
             "cascade-static hash missed layout case: {label}"
         );
     }
@@ -316,8 +292,8 @@ fn changing_text_content_changes_hash() {
         });
         n.unwrap()
     }
-    let h1 = record_hash(|ui| build(ui, "Hello"));
-    let h2 = record_hash(|ui| build(ui, "World"));
+    let h1 = record(|ui| build(ui, "Hello")).node;
+    let h2 = record(|ui| build(ui, "World")).node;
     assert_ne!(h1, h2);
 }
 
@@ -336,8 +312,8 @@ fn child_hash_does_not_affect_parent_hash() {
             .response
             .node()
     }
-    let h1 = record_hash(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h2 = record_hash(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    let h1 = record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).node;
+    let h2 = record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).node;
     assert_eq!(h1, h2, "parent hash captures only its own fields");
 }
 
@@ -477,7 +453,7 @@ fn nesting_alone_changes_cascade_static() {
             .node()
     };
 
-    let siblings = record_cascade_static(|ui| {
+    let siblings = record(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -486,8 +462,9 @@ fn nesting_alone_changes_cascade_static() {
             })
             .response
             .node()
-    });
-    let nested = record_cascade_static(|ui| {
+    })
+    .cascade_static;
+    let nested = record(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -497,7 +474,8 @@ fn nesting_alone_changes_cascade_static() {
             })
             .response
             .node()
-    });
+    })
+    .cascade_static;
 
     assert_ne!(
         siblings, nested,
@@ -532,11 +510,11 @@ fn a_paint_animation_moves_the_node_hash() {
             .node()
     }
     let turn = PaintAnim::turn(0.0, 1.0).period(Duration::from_secs(2));
-    let still = record_hash(|ui| build(ui, None));
-    let spun = record_hash(|ui| build(ui, Some(turn)));
-    let spun_again = record_hash(|ui| build(ui, Some(turn)));
-    let faster = record_hash(|ui| build(ui, Some(turn.period(Duration::from_secs(1)))));
-    let fading = record_hash(|ui| build(ui, Some(PaintAnim::alpha(1.0, 0.0))));
+    let still = record(|ui| build(ui, None)).node;
+    let spun = record(|ui| build(ui, Some(turn))).node;
+    let spun_again = record(|ui| build(ui, Some(turn))).node;
+    let faster = record(|ui| build(ui, Some(turn.period(Duration::from_secs(1))))).node;
+    let fading = record(|ui| build(ui, Some(PaintAnim::alpha(1.0, 0.0)))).node;
     assert_ne!(still, spun, "adding an animation");
     assert_eq!(spun, spun_again, "the same animation");
     assert_ne!(spun, faster, "a different period");

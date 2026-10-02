@@ -46,39 +46,6 @@ fn wrap_hstack_justify_per_line() {
     }
 }
 
-/// Pin: a collapsed child mid-pack contributes nothing — neither main
-/// extent nor cross extent — and doesn't insert a between-line gap or
-/// shift its siblings. The collapsed node still gets a zero-size rect
-/// (anchored at the line's start) so descendant rects don't carry
-/// stale values from prior frames.
-#[test]
-fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    h.under_outer(|ui| {
-        Panel::wrap_hstack()
-            .id(WidgetId::from_hash("w"))
-            .size((Sizing::fixed(200.0), Sizing::HUG))
-            .gap(10.0)
-            .show(ui, |ui| {
-                cell(ui, "a", 60.0, 20.0);
-                Block::new()
-                    .id(WidgetId::from_hash("hidden"))
-                    .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
-                    .collapsed()
-                    .show(ui);
-                cell(ui, "b", 60.0, 20.0);
-            });
-    });
-    let a = h.arranged(WidgetId::from_hash("a"));
-    let hidden = h.arranged(WidgetId::from_hash("hidden"));
-    let b = h.arranged(WidgetId::from_hash("b"));
-    // a at 0, b at 70 — collapsed didn't insert a gap.
-    assert_eq!(a.min.x, 0.0);
-    assert_eq!(b.min.x, 70.0);
-    // Hidden has zero size (cleared/zeroed by the collapsed branch).
-    assert_eq!((hidden.size.w, hidden.size.h), (0.0, 0.0));
-}
-
 /// Pin (today's behavior): `Sizing::fill` on a child's main axis is
 /// treated as `Hug` — measure runs at INF main and the child reports
 /// its content size, no per-row leftover distribution. Future work

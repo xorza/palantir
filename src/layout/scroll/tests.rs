@@ -172,12 +172,12 @@ fn scroll_height(h: &UiHarness, id_salt: &'static str) -> f32 {
     h.arranged(WidgetId::from_hash(id_salt)).size.h
 }
 
-/// Build a `count`-row vertical **Hug** scroll (each row 50px tall)
-/// wrapped in a Hug vstack, with the given min/max heights. Returns the
-/// scroll's arranged height. A Hug scroll sizes to content (the driver
-/// reports content extent on Hug panned axes); the wrapper isolates the
-/// assertion from how the root itself is arranged.
-fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
+/// A harness holding a `count`-row vertical **Hug** scroll (each row
+/// 50px tall) with the given min/max heights, wrapped in a Hug vstack. A
+/// Hug scroll sizes to content (the driver reports content extent on Hug
+/// panned axes); the wrapper isolates the assertion from how the root
+/// itself is arranged.
+fn hug_scroll(count: u32, min_h: f32, max_h: f32) -> UiHarness {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
@@ -199,64 +199,41 @@ fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
                     });
             });
     });
-    scroll_height(&h, "scroll")
+    h
 }
 
 /// A `Hug` scroll sizes to its content, clamped to `[min, max]` — the
 /// same "size to content, then clamp" `Hug` means for every other
 /// widget, rather than collapsing to zero or filling the parent. Below
 /// the cap it tracks content (3 × 50 = 150); under the floor it pins to
-/// `min_size` (1 × 50 floored at 120, the 400 cap left as slack).
+/// `min_size` (1 × 50 floored at 120, the 400 cap left as slack); past
+/// the cap it stops there (8 × 50 = 400 capped at 200) and the content
+/// overflows. The content extent records the rows in full in every case,
+/// so the bar and thumb size against the real content.
 #[test]
 fn hug_scroll_clamps_viewport_to_content() {
     // (label, row_count, min_h, max_h, expected viewport height)
     let cases: &[(&str, u32, f32, f32, f32)] = &[
         ("fits_content_below_max", 3, 0.0, 400.0, 150.0),
         ("floors_at_min", 1, 120.0, 400.0, 120.0),
+        ("caps_at_max", 8, 0.0, 200.0, 200.0),
     ];
-    for (label, count, min_h, max_h, want) in cases {
+    for &(label, count, min_h, max_h, want) in cases {
+        let h = hug_scroll(count, min_h, max_h);
+        assert_eq!(scroll_height(&h, "scroll"), want, "case: {label}");
         assert_eq!(
-            hug_scroll_height(*count, *min_h, *max_h),
-            *want,
-            "case: {label}",
+            layout_for(&h.ui, "scroll").content.h,
+            count as f32 * 50.0,
+            "case: {label}: content extent",
         );
     }
 }
 
-/// Past the cap: 8 × 50 = 400 of content in a `Hug` scroll capped at
-/// `max_size = 200`, so the viewport stops at 200 and the content
-/// overflows (scrollbar engages). Content extent still records the full
-/// 400 so the bar/thumb sizing is correct.
+/// A `Hug` scroll under a fixed 100 px parent takes the parent's bound
+/// as its viewport, while its 8 × 50 = 400 of content keeps its natural
+/// extent and overflows.
 #[test]
-fn hug_scroll_caps_at_max_and_scrolls() {
-    let mut h = UiHarness::new(SURFACE);
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .max_size((f32::INFINITY, 200.0))
-                    .show(ui, |ui| {
-                        for i in 0..8u32 {
-                            Block::new()
-                                .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
-                                .show(ui);
-                        }
-                    });
-            });
-    });
-    assert_eq!(scroll_height(&h, "scroll"), 200.0, "capped at max_size");
-    let st = layout_for(&h.ui, "scroll");
-    assert_eq!(st.content.h, 400.0, "records full content extent");
-    assert!(
-        st.content.h > st.viewport.h,
-        "content past the cap overflows on Y"
-    );
-
+fn hug_scroll_viewport_follows_parent_cap() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
@@ -279,10 +256,6 @@ fn hug_scroll_caps_at_max_and_scrolls() {
     let st = layout_for(&h.ui, "parent-capped-scroll");
     assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
     assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
-    assert!(
-        st.content.h > st.viewport.h,
-        "parent-capped content overflows on Y"
-    );
 }
 
 /// Counterpart guard: a `Fill` scroll keeps the content-independent

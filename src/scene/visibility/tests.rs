@@ -123,46 +123,6 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 }
 
 #[test]
-fn collapsed_child_consumes_no_space_in_hstack() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .gap(10.0)
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .size(40.0)
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("gone"))
-                    .size(40.0)
-                    .collapsed()
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("b"))
-                    .size(40.0)
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-
-    let kids: Vec<_> = h.main_child_rects(root);
-    let a = kids[0];
-    let gone = kids[1];
-    let b = kids[2];
-
-    assert_eq!(a.min.x, 0.0);
-    assert_eq!(a.size.w, 40.0);
-    assert_eq!(gone.size.w, 0.0);
-    assert_eq!(gone.size.h, 0.0);
-    // Only one gap between the two visible siblings: 40 + 10 = 50.
-    assert_eq!(b.min.x, 50.0);
-    assert_eq!(b.size.w, 40.0);
-}
-
-#[test]
 fn collapsed_does_not_consume_fill_weight() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let root = h.frame_value(|ui| {
