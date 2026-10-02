@@ -10,7 +10,7 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
-use crate::ui::tests::support::{SURFACE, measure_calls, ui_with_shared};
+use crate::ui::tests::support::{SURFACE, ui_with_shared};
 use crate::widgets::configure::Configure;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
@@ -75,10 +75,10 @@ fn text_reshape_skipped_when_unchanged() {
     ] {
         let mut h = UiHarness::new(UVec2::new(400, 200));
         h.frame(build);
-        let after_first = measure_calls(&h.ui);
+        let after_first = h.ui.shaper().measure_calls();
         assert_eq!(after_first, first_frame, "{label}: first-frame dispatches");
         h.frame(build);
-        let after_second = measure_calls(&h.ui);
+        let after_second = h.ui.shaper().measure_calls();
         assert_eq!(
             after_second,
             after_first,
@@ -106,9 +106,9 @@ fn text_reshape_runs_when_content_changes() {
     };
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(render("first"));
-    let before = measure_calls(&h.ui);
+    let before = h.ui.shaper().measure_calls();
     h.frame(render("second"));
-    let after = measure_calls(&h.ui);
+    let after = h.ui.shaper().measure_calls();
     assert_eq!(
         after - before,
         1,
@@ -495,13 +495,13 @@ fn wrap_target_change_preserves_unbounded_cache() {
 
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(render(60.0));
-    let after_first = measure_calls(&h.ui);
+    let after_first = h.ui.shaper().measure_calls();
     assert_eq!(
         after_first, 2,
         "first frame measures unbounded, then wraps at the 60 px slot",
     );
     h.frame(render(80.0));
-    let after_second = measure_calls(&h.ui);
+    let after_second = h.ui.shaper().measure_calls();
     let delta = after_second - after_first;
     assert_eq!(
         delta, 1,

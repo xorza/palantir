@@ -179,7 +179,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
                     // to this single Text node's arranged rect.
                     Text::new(fmt!(ui, "Frame {:08}", state.tick))
                         .id_salt("footer-status")
-                        .font_size(12.0)
+                        .style(&TextStyle::default().with_font_size(12.0))
                         .size((Sizing::fixed(120.0), Sizing::HUG))
                         .show(ui);
                     Block::new()

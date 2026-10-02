@@ -46,6 +46,7 @@ use crate::widgets::configure::Configure;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
+use crate::widgets::theme::text_style::TextStyle;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::hint::black_box;
@@ -144,7 +145,7 @@ fn build(ui: &mut Ui) {
                     .show(ui, |ui| {
                         Text::new("Group header")
                             .id_salt(("g-hdr", g))
-                            .font_size(14.0)
+                            .style(&TextStyle::default().with_font_size(14.0))
                             .show(ui);
                         for r in 0..ROWS_PER_GROUP {
                             Panel::hstack()
@@ -158,11 +159,11 @@ fn build(ui: &mut Ui) {
                                         .show(ui);
                                     Text::new("row name")
                                         .id_salt(("name", g, r))
-                                        .font_size(12.0)
+                                        .style(&TextStyle::default().with_font_size(12.0))
                                         .show(ui);
                                     Text::new("meta info")
                                         .id_salt(("meta", g, r))
-                                        .font_size(11.0)
+                                        .style(&TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                 });
                         }
@@ -217,7 +218,7 @@ fn build_heavy(ui: &mut Ui) {
                     .show(ui, |ui| {
                         Text::new("Group header — interesting copy that wraps")
                             .id_salt(("h-g-hdr", g))
-                            .font_size(15.0)
+                            .style(&TextStyle::default().with_font_size(15.0))
                             .show(ui);
                         for r in 0..HEAVY_ROWS_PER_GROUP {
                             Panel::hstack()
@@ -242,11 +243,11 @@ fn build_heavy(ui: &mut Ui) {
                                         });
                                     Text::new("row name with longer text content")
                                         .id_salt(("h-name", g, r))
-                                        .font_size(13.0)
+                                        .style(&TextStyle::default().with_font_size(13.0))
                                         .show(ui);
                                     Text::new("meta info — secondary detail")
                                         .id_salt(("h-meta", g, r))
-                                        .font_size(11.0)
+                                        .style(&TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                 });
                         }

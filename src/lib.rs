@@ -381,6 +381,11 @@ pub use display::user_scale::UserScale;
 /// stand-in of its own.
 #[cfg(feature = "internals")]
 pub use frame_fixture::FrameFixture;
+/// A settled three-pane dock as a recordable scene. Not part of the
+/// supported surface — the allocation gates and the visual suite record
+/// it rather than each keeping a dock of its own.
+#[cfg(feature = "internals")]
+pub use frame_fixture::dock_fixture::DockFixture;
 /// The surface, scale and dpr the benchmark workload is timed at. The
 /// bench target and the allocation gates share them so their numbers stay
 /// comparable.

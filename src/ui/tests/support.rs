@@ -14,10 +14,6 @@ use std::time::Duration;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
 
-pub(super) fn measure_calls(ui: &Ui) -> u64 {
-    ui.resources.text().measure_calls()
-}
-
 pub(super) fn ui_with_shared(shared: &UiResources) -> UiHarness {
     UiHarness::from_resources(shared.clone(), SURFACE)
 }
