@@ -300,13 +300,13 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        h.ui.frame_runtime().cascade_ran(),
+        h.engines.cascade.counters.ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        !h.ui.frame_runtime().cascade_ran(),
+        !h.engines.cascade.counters.ran(),
         "unchanged scroll frame skips the cascade"
     );
 
@@ -316,8 +316,8 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
     assert!(
-        h.ui.frame_runtime().cascade_ran(),
-        "scroll offset change must re-run the cascade (offset is in the fingerprint)",
+        h.engines.cascade.counters.ran(),
+        "scroll offset change must re-run the cascade (it moves the arranged rects)",
     );
 }
 

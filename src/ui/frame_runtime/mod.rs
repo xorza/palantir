@@ -6,7 +6,6 @@
 
 pub(crate) mod wake;
 
-use crate::common::counters::TestOnly;
 use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
@@ -72,17 +71,6 @@ pub(crate) struct FrameRuntime {
     /// first frame. Drives surface-change classification and the
     /// paint-animation damage gate.
     pub(super) prev_stamp: Option<FrameStamp>,
-    /// Fingerprint of the last frame's cascade inputs. A match permits
-    /// reuse of the frozen cascade output; `None` before the first run.
-    /// Read and stamped only through [`Self::cascade_needs_run`].
-    prev_cascade_fp: Option<u64>,
-    /// Whether the most recent `post_record` ran the cascade — pins the
-    /// unchanged-frame skip gate.
-    ///
-    /// A [`TestOnly`] cell, like every other probe in the crate: the gate
-    /// lives in the cell, so [`Self::cascade_needs_run`] notes it while
-    /// deciding, and its call site carries nothing.
-    cascade_ran: TestOnly<bool>,
     /// EMA of `1/raw_dt` across frames; zero before a second timestamp
     /// exists. Uses unclamped wall time so stalls remain visible.
     pub(super) fps_ema: f32,
@@ -140,31 +128,6 @@ impl FrameRuntime {
             text.tick_frame();
         }
         self.text_frame = Some(text.frame());
-    }
-
-    /// Whether the cascade must run for fingerprint `fp`, stamping it
-    /// when it must.
-    ///
-    /// Compare, note the probe, and stamp are one decision: a caller
-    /// that compared without stamping would re-run the cascade every
-    /// frame, and one that stamped without comparing would skip a frame
-    /// that changed. Same principle as the probe structs — the gate
-    /// lives here, so the call site in `FrameCycle::post_record` carries
-    /// none.
-    pub(super) fn cascade_needs_run(&mut self, fp: u64) -> bool {
-        let needed = self.prev_cascade_fp != Some(fp);
-        self.cascade_ran.edit(|noted| *noted = needed);
-        if needed {
-            self.prev_cascade_fp = Some(fp);
-        }
-        needed
-    }
-
-    /// Whether the last `post_record` ran the cascade — pins the
-    /// unchanged-frame skip gate.
-    #[cfg(test)]
-    pub(crate) fn cascade_ran(&self) -> bool {
-        *self.cascade_ran.get()
     }
 
     /// Fold this frame's outcome into [`Self::frame_id`] and the settle

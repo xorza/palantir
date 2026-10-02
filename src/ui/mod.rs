@@ -1673,6 +1673,12 @@ pub(crate) mod internals {
         /// The whole layout table, for the handful of callers that re-run a
         /// pass over it — the cascade engine and `InputState::response_for`
         /// both walk every layer, so neither can take one layer's columns.
+        /// The font database's epoch, for the tests and benches that
+        /// re-compute a reuse key this `Ui` folds it into.
+        pub(crate) fn font_epoch(&self) -> u32 {
+            self.resources.text().font_epoch()
+        }
+
         pub(crate) fn layout_tables(&self) -> &Layout {
             &self.layout
         }
@@ -1699,12 +1705,6 @@ pub(crate) mod internals {
 
         pub(crate) fn cascade(&self) -> &Cascade {
             &self.cascade
-        }
-
-        /// The font database's epoch, for the tests that re-compute a
-        /// reuse key this `Ui` folds it into.
-        pub(crate) fn font_epoch(&self) -> u32 {
-            self.resources.text().font_epoch()
         }
 
         /// One layer's recorded tree — its `records` columns, `rollups`,

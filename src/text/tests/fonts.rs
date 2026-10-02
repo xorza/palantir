@@ -114,7 +114,7 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
 /// rect from the cascade and the arranged rect from `Layout`, on the
 /// stated ground that the cascade is rebuilt whenever an arranged rect
 /// moves — so a load that moves one while the authored tree stands
-/// still has to reach the cascade fingerprint, or the frame answers two
+/// still has to reach the cascade key, or the frame answers two
 /// different arrangements to the same question. And the pixels owe the
 /// same: a glyph redrawn in a new face inside an unmoved rect is a
 /// change no per-widget diff can see, so the frame that carries the

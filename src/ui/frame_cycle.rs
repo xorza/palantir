@@ -28,7 +28,7 @@ use crate::display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade;
+use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::damage::DamageInput;
 use crate::scene::damage::frame_baseline::FrameBaseline;
 use crate::ui::Ui;
@@ -371,26 +371,17 @@ impl<'a> FrameCycle<'a> {
             self.ui.display.logical_rect(),
             &mut self.ui.layout,
         );
-        // O5 stage 0: skip the cascade when nothing feeding it changed.
-        // The cascade is a pure function of subtree authoring + arranged
-        // rects, and the arranged rects are determined by (subtree_hash,
-        // exact surface, scroll offset/zoom) — so a matching fingerprint
-        // means identical cascade output, and last frame's
-        // `Ui::cascade` can be reused verbatim (the tree is rebuilt
-        // with identical structure when `subtree_hash` matches, so its
-        // NodeId-indexed rows still line up).
-        let fp = cascade::engine::cascade_fingerprint(
+        let key = CascadeKey::new(
             &self.ui.forest,
+            &self.ui.layout,
             self.ui.display,
             self.ui.resources.text().font_epoch(),
         );
-        if !self.ui.frame_runtime.cascade_needs_run(fp) {
-            return;
-        }
         self.engines.cascade.run(
             &self.ui.forest,
             &self.ui.layout,
             self.ui.display,
+            &key,
             &mut self.ui.cascade,
         );
     }

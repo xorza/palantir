@@ -98,7 +98,7 @@ pub struct Display {
     /// Read only by repaint-wake coalescing (`coalesce_dt_for_refresh`
     /// turns it into the scheduler's floor); it is *not* a projection
     /// input, so — like `pixel_snap` — it stays out of `logical_rect`
-    /// and the cascade fingerprint and never forces a relayout.
+    /// and the cascade key and never forces a relayout.
     pub refresh_millihertz: Option<u32>,
 }
 

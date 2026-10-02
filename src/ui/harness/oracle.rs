@@ -17,6 +17,7 @@ use crate::layout::{LayerLayout, Layout, ShapedText};
 use crate::primitives::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::Cascade;
+use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::engine::CascadeEngine;
 use crate::scene::cascade::test_support::OwnedPaint;
 use crate::scene::damage::Damage;
@@ -131,8 +132,13 @@ fn assert_layout_matches_cold(h: &UiHarness) {
 /// equals it. Against the frame's layout rather than the cold one so a
 /// layout disagreement is reported once, by the layout oracle.
 fn assert_cascade_matches_cold(h: &UiHarness) {
+    let key = CascadeKey::new(&h.ui.forest, &h.ui.layout, h.ui.display, h.ui.font_epoch());
     let mut cold = Cascade::default();
-    CascadeEngine::default().run(&h.ui.forest, &h.ui.layout, h.ui.display, &mut cold);
+    CascadeEngine::default().run(&h.ui.forest, &h.ui.layout, h.ui.display, &key, &mut cold);
+    assert_eq!(
+        h.ui.cascade.key, cold.key,
+        "the key the cascade was built from"
+    );
     h.ui.cascade.assert_same_as(&cold, &h.ui.forest);
     assert_eq!(
         h.ui.cascade.by_id,

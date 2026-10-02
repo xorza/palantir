@@ -791,51 +791,16 @@ review every diff image before you accept a rewrite. A phase that a user can see
 Order: the harness and the oracles first, because every later test uses them. Then panics, wrong
 output, cost, cleanup.
 
-## Phase 0. Harness and oracles (D15 core, D16)
-
-- [ ] `frame_passes` and `Passes<R>`; rewrite `frame_value` / `try_frame_value` on it.
-- [ ] `state::<S>`, `assert_panics_with`, `point_in` / `click_in` / `press_in`.
-- [ ] Per-button `pressed_at`; `press_button` asserts the button is up; `frame_app`; delete
-      `Ui::inject_input` after moving its 18 callers.
-- [ ] Migrate the TEST_REVIEW 1, 3, 4 and 5 sites (the false-pass tests).
-- [ ] Mutation script and the layout, cascade and CPU damage oracles. They will fail on the current
-      tree for the D3 and D4 bugs: mark those rows `#[ignore = "D3: …"]` with the design id, and
-      remove each `ignore` in the step that fixes it.
-
-## Phase 1. Panics on reachable input
-
-- [ ] D8: theme validators and the mutation walk test.
-- [ ] D8: defaults yield to authored bounds.
-- [ ] D3: id reservation at resolve.
-- [ ] D1: `InputQueue` with both rules, replay before `take_frame_plan`, `frames_until_input_idle`,
-      and the click-site migration, in one step.
-- [ ] D1: one exit for a press; run reset; modifier-only keys; TextEdit's guarded stop.
-- [ ] D11: `load_font` through `try_named`.
-- [ ] D4: `URect::covering` clamp before `ceil_px`.
-
 ## Phase 2. Host and platform input (D2)
 
 - [ ] Key dumps on Linux and on the macOS test laptop, recorded as the translation test table.
-- [ ] `KeyPress::types_text`; `KeyClass::of` and `TextEdit` use it.
-- [ ] Host translation as a pure function over `Platform`: Super, Cmd, synthetic presses.
-- [ ] Shift+wheel swap on Windows and Linux.
-- [ ] Input clock separate from the frame clock.
-- [ ] Convert with the laid-out scale; fix the `effective_scale` doc.
-- [ ] 0×0 resize as occluded; present `Suboptimal`; `Resized` invalidates `maximized` only.
 
 ## Phase 3. Scene identity and bounds (D3, D4)
 
-- [ ] Layout half first, full hash derived; text shape layout hash; measure cache on
-      `layout_subtree`.
-- [ ] `Shapes::fold_paint_anim`.
-- [ ] `CascadeKey` replaces `cascade_fingerprint` and `layout_hashes`.
 - [ ] Roots as children of a virtual layer parent in the damage walk.
-- [ ] `by_id` refill.
 - [ ] `ImageFit::resolve` shared; intrinsic size on the record if the cascade lacks it.
-- [ ] Stable `solve_quadratic`.
 - [ ] No-op rounded-clip row; NaN asserts in `Rect`; mesh `max_index` screen; polyline per-colour
       screen; triangle radius extent; collision overlay in screen space.
-- [ ] Remove the matching `#[ignore]`s from the Phase 0 oracles.
 
 ## Phase 4. GPU geometry and colour (D5, D6)
 

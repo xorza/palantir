@@ -8,10 +8,8 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::engine;
 use crate::scene::cascade::engine::{
-    CascadeContext, CascadePrefixBits, build_cascade_prefix, cascade_fingerprint,
-    finish_cascade_input,
+    CascadeContext, CascadePrefixBits, build_cascade_prefix, finish_cascade_input,
 };
 
 use crate::primitives::stroke::Stroke;
@@ -20,6 +18,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
+use crate::text::font_scope::test_support::INTER;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -303,18 +302,14 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
 
 /// Pin: every cascade input busts **both** gates.
 ///
-/// Two hand-maintained enumerations decide whether cascade output can be
-/// reused. `cascade_fingerprint` is the outer one — a match in
-/// `FrameCycle::post_record` skips `CascadeEngine::run` outright and reuses
-/// last
-/// frame's `Cascade` verbatim. `can_update` is the inner one, choosing
-/// between repairing paint in place and rebuilding every row. Neither
-/// references the other, and both fail silently: the outer one by
-/// serving a stale cascade, the inner by keeping `entries` / `hits` /
-/// `cascade_inputs` that no longer describe the frame.
+/// One `CascadeKey` decides two reuses: an equal key skips the run and
+/// keeps last frame's `Cascade` verbatim, and a key equal in all but paint
+/// repairs paint in place. Both fail silently: the skip by serving a stale
+/// cascade, the repair by keeping `entries` / `hits` / `cascade_inputs`
+/// that no longer describe the frame.
 ///
-/// So for each input, assert it moves the fingerprint *and* forces a
-/// full rebuild. The control case at the end is what stops this passing
+/// So for each input, assert it moves the key *and* forces a full
+/// rebuild. The control case at the end is what stops this passing
 /// vacuously — an unchanged frame must move neither.
 #[test]
 fn every_cascade_input_busts_both_reuse_gates() {
@@ -342,8 +337,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
     /// scene)`.
     type Mutation = (&'static str, fn(&mut UiHarness));
     let mutations: &[Mutation] = &[
-        // Authoring: reaches the fingerprint through the root's
-        // subtree_hash and `can_update` through `cascade_static`.
+        // Authoring: reaches the key through `cascade_static`.
         ("resized child", |h| {
             h.frame(|ui| scene(ui, 120.0, false));
         }),
@@ -351,10 +345,14 @@ fn every_cascade_input_busts_both_reuse_gates() {
         ("root transform", |h| {
             h.frame(|ui| scene(ui, 100.0, true));
         }),
-        // Surface: reaches the fingerprint directly and `can_update`
-        // through the arranged rects it hashes.
+        // Surface: reaches the key through the arranged rects.
         ("surface resize", |h| {
             h.resize(UVec2::new(260, 200));
+            h.frame(|ui| scene(ui, 100.0, false));
+        }),
+        // A face loaded between frames: moves no rect and no authoring.
+        ("font load", |h| {
+            h.ui.load_font(INTER).expect("the bundled Inter loads");
             h.frame(|ui| scene(ui, 100.0, false));
         }),
     ];
@@ -362,16 +360,16 @@ fn every_cascade_input_busts_both_reuse_gates() {
     for &(label, mutate) in mutations {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| scene(ui, 100.0, false));
-        let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch());
+        let base_key = h.ui.cascade().key;
         let rebuilds = h.engines.cascade.counters.full_rebuilds();
         let abandoned = h.engines.cascade.counters.abandoned_incrementals();
 
         mutate(&mut h);
 
         assert_ne!(
-            base_fp,
-            cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch()),
-            "`{label}` left the fingerprint unmoved — the frame would reuse a stale cascade",
+            base_key,
+            h.ui.cascade().key,
+            "`{label}` left the key unmoved — the frame would reuse a stale cascade",
         );
         assert!(
             h.engines.cascade.counters.full_rebuilds() > rebuilds,
@@ -389,14 +387,15 @@ fn every_cascade_input_busts_both_reuse_gates() {
     // assertions above would hold for any frame at all.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, 100.0, false));
-    let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch());
+    let base_key = h.ui.cascade().key;
     let rebuilds = h.engines.cascade.counters.full_rebuilds();
     h.frame(|ui| scene(ui, 100.0, false));
     assert_eq!(
-        base_fp,
-        cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch()),
-        "an unchanged frame must keep its fingerprint",
+        base_key,
+        h.ui.cascade().key,
+        "an unchanged frame must keep its key",
     );
+    assert!(!h.engines.cascade.counters.ran(), "an unchanged key skips");
     assert_eq!(
         h.engines.cascade.counters.full_rebuilds(),
         rebuilds,
@@ -406,18 +405,25 @@ fn every_cascade_input_busts_both_reuse_gates() {
 
 fn assert_cascades_match_full(ui: &Ui, label: &str) {
     use crate::scene::cascade::Cascade;
+    use crate::scene::cascade::cascade_key::CascadeKey;
     use crate::scene::cascade::engine::CascadeEngine;
 
     let mut engine = CascadeEngine::default();
     let mut full = Cascade::default();
-    let layout_hashes = engine::layout_hashes(ui.forest(), ui.layout_tables());
+    let key = CascadeKey::new(
+        ui.forest(),
+        ui.layout_tables(),
+        ui.display(),
+        ui.font_epoch(),
+    );
     engine.run_full(
         ui.forest(),
         ui.layout_tables(),
         ui.display(),
+        &key,
         &mut full,
-        &layout_hashes,
     );
+    assert_eq!(ui.cascade().key, full.key, "{label}: key");
 
     // Whole-row compares: `entries` / `hits` are AoS and `PartialEq`,
     // so this covers every field and keeps covering any field added
@@ -453,10 +459,6 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
         assert_eq!(
             actual.arena_hashes, expected.arena_hashes,
             "{label}: {layer:?} arena hashes"
-        );
-        assert_eq!(
-            actual.static_hash, expected.static_hash,
-            "{label}: {layer:?} static hash"
         );
         assert_eq!(
             actual.subtree_ends, expected.subtree_ends,

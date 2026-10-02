@@ -1,7 +1,6 @@
 //! How a layer root is measured and where it lands afterwards.
 
 use crate::layout::types::anchor::Anchor;
-use crate::primitives::approx::FloatHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -44,34 +43,6 @@ pub(crate) struct Placement {
 }
 
 impl Placement {
-    /// Feed this placement to a hasher under visual canonicalization.
-    ///
-    /// Placement lives outside the node hashes but changes arranged
-    /// rects, so the cascade fingerprint folds it in — here rather than
-    /// there, because what the fields carry is this type's own
-    /// business. Inherent rather than an [`FloatHash`] impl, on the same
-    /// terms as [`Anchor::hash_visual`]: the trait's other half
-    /// is the `Hash`/`PartialEq` agreement, which this type does not have.
-    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self.origin {
-            Origin::Fixed(point) => {
-                state.write_u8(0);
-                point.hash_visual(state);
-            }
-            Origin::Anchored(anchor) => {
-                state.write_u8(1);
-                anchor.hash_visual(state);
-            }
-        }
-        match self.max_size {
-            Some(size) => {
-                state.write_u8(1);
-                size.hash_visual(state);
-            }
-            None => state.write_u8(0),
-        }
-    }
-
     /// Replace the origin with a fixed point, keeping any size cap.
     pub(crate) const fn with_fixed(self, point: Vec2) -> Self {
         Self {
