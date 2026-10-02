@@ -213,6 +213,7 @@ pub mod internals {
     #[cfg(feature = "internals")]
     pub use crate::text::internals::{PROBATION_KEEP_FRAMES, TEXT_SCALE_STEP};
     pub use crate::ui::harness::UiHarness;
+    pub use crate::ui::harness::passes::Passes;
 }
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by

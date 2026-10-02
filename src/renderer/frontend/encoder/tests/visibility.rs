@@ -1,8 +1,6 @@
 //! Disabled and hidden subtrees, against the hit index that mirrors them.
 
 use crate::Ui;
-use crate::input::input_event::InputEvent;
-use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -115,21 +113,13 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
     assert!(h.ui.response_for(h_id).rect.is_some());
 
-    fn press_and_release_at(ui: &mut Ui, p: Vec2) {
-        ui.inject_input(InputEvent::PointerMoved(p));
-        ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
-    }
     // A frame per gesture: one release slot per button, so three
     // uninterrupted gestures would leave only the last one to read, and
     // `D` absorbing its press is exactly what makes that visible.
     let h_hit = h.ui.response_for(h_id).rect.unwrap();
     let mut got = (false, false, false);
     for target in [v_hit, d_hit, h_hit] {
-        press_and_release_at(
-            &mut h.ui,
-            target.min + Vec2::new(target.size.w, target.size.h) * 0.5,
-        );
+        h.click_at(target.min + Vec2::new(target.size.w, target.size.h) * 0.5);
         h.frame(|ui| build(ui, &mut got));
     }
     assert!(got.0, "visible widget should click");

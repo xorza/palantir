@@ -419,8 +419,7 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
         });
     };
     // Two frames: the scope records in the first, resolves in the next.
-    // Counts are read *inside* the record, the only place the queue is
-    // live, and maxed across the double-layout passes.
+    // Counts are read *inside* pass A, the only place the queue is live.
     h.frame(scoped);
     h.press_at(Vec2::new(50.0, 50.0));
     let seen = sample_pointer_layers(&mut h, scoped);
@@ -435,6 +434,7 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
     assert_eq!(seen[Layer::Tooltip.idx()], 1);
 
     // Nothing re-declares it, so the next resolution reopens the stream.
+    h.release();
     h.frame(empty_watch_buttons);
     h.press_at(Vec2::new(50.0, 50.0));
     assert_eq!(
@@ -449,15 +449,15 @@ fn sample_pointer_layers(
     h: &mut UiHarness,
     mut record: impl FnMut(&mut Ui),
 ) -> [usize; Layer::COUNT] {
-    let mut seen = [0usize; Layer::COUNT];
-    h.frame(|ui| {
+    *h.frame_passes(|ui| {
         record(ui);
+        let mut seen = [0usize; Layer::COUNT];
         for layer in Layer::PAINT_ORDER {
-            let n = ui.input().pointer_events(layer).len();
-            seen[layer.idx()] = seen[layer.idx()].max(n);
+            seen[layer.idx()] = ui.input().pointer_events(layer).len();
         }
-    });
-    seen
+        seen
+    })
+    .a()
 }
 
 /// End-to-end, and the distinction an overlay's scope exists to draw: a
@@ -466,10 +466,7 @@ fn sample_pointer_layers(
 #[test]
 fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     let surface = UVec2::new(200, 200);
-    let press = |ui: &mut Ui| {
-        ui.inject_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-        ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
-    };
+    let press_point = Vec2::new(50.0, 50.0);
     let with_modal = |ui: &mut Ui| {
         empty_watch_buttons(ui);
         Modal::new().show(ui, |_, _| {});
@@ -484,7 +481,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     // previous frame left — so each leg records twice.
     let mut h = UiHarness::new(surface);
     h.frame(with_modal);
-    press(&mut h.ui);
+    h.press_at(press_point);
     assert_eq!(
         sample_pointer_layers(&mut h, with_modal)[Layer::Main.idx()],
         0,
@@ -493,16 +490,18 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
 
     // A paint-only overlay on the same layer — a tooltip, a debug HUD —
     // must leave the canvas underneath able to pan and zoom.
+    h.release();
     h.frame(plain_layer);
-    press(&mut h.ui);
+    h.press_at(press_point);
     assert_eq!(
         sample_pointer_layers(&mut h, plain_layer)[Layer::Main.idx()],
         1,
         "a plain layer on the same Layer::Modal declares nothing and blocks nothing",
     );
 
+    h.release();
     h.frame(empty_watch_buttons);
-    press(&mut h.ui);
+    h.press_at(press_point);
     assert_eq!(
         sample_pointer_layers(&mut h, empty_watch_buttons)[Layer::Main.idx()],
         1,
