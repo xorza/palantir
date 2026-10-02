@@ -6,11 +6,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Theme and preference file data reach asserts
 `F32Ext::themed_length` says theme scalars are hand-edited file data that "cannot assert". Most widgets screen them. These do not, and `SpinnerTheme`/`ToggleTheme`/… derive `Deserialize`:
-- [ ] `src/widgets/spinner/mod.rs:120` **bug**: `Duration::from_secs_f32(TAU / speed)` panics when `spinner.speed` is 0 (+inf), negative (a reverse spin) or NaN.
-- [ ] `src/widgets/switch.rs:93` **bug**: `Sizing::fixed(track_h * track_aspect)` asserts, and `track_aspect` is unscreened. A negative or NaN aspect panics.
-- [ ] `src/widgets/combo_box/mod.rs:165-166`, `expander/mod.rs:202` **bug**: `Sizing::fixed(arrow_size.x/.y)` takes raw theme `Vec2`s, so a negative component panics. `expander/mod.rs:196` also feeds `arrow_radius` into `Arrow::rounded`, whose `debug_assert!(2r <= size)` fires on theme data.
-- [ ] `src/widgets/toggle_chrome/mod.rs:110` (with `checkbox:92`, `radio:104`, `src/widgets/switch.rs:88`), `combo_box/mod.rs:141`, `expander/mod.rs:169`, `context_menu/menu_item.rs:125`, `context_menu/mod.rs:176` **bug**: raw theme `gap` goes into `set_gap`, which asserts finite, ≥0 and within the f16 range. ColorPicker is the only sibling that screens its gap (`slot.gap.themed_length(0.0)`).
-- [ ] `src/widgets/theme/`: theme deserialization validates `TextStyle` (`text_style.rs:239-255`) but accepts NaN or negative `caret_width`, scrollbar `thickness`, `close_size`, `edge_fraction` and so on, which reach paint and layout unchecked.
 - [ ] `src/display/user_scale.rs:27-29,71-77` **bug**: the doc tells apps to read a persisted preference back through `UserScale::new`, which `assert!`s on a non-finite value. A config file containing `nan` crashes the app. Public API: a fallible constructor needs a go-ahead.
 
 ## Several gestures in one input batch collapse into contradictory state
@@ -159,9 +154,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/tabs/tab_strip.rs:584-586,637-641` **bug**: neither an overflow-menu pick nor an arrow/Ctrl+Tab move scrolls the band. The newly selected chip can stay fully out of sight, which defeats `TabOverflow::Menu`. The band is never driven with `pan_by`.
 - [ ] `src/widgets/tabs/tab_strip.rs:534-543` **bug (plausible)**: `hidden` compares chips against the band's rect. Scroll content is clipped to that rect deflated by the band's padding (6 px by default), per the comments at `scroll/mod.rs:487-489` and `text_edit/mod.rs:423-427`. A chip cut up to 6 px under the padding reads as visible, and the chevron does not appear.
 - [ ] `src/widgets/tabs/tab_strip.rs:607` **bug**: with no selection, `here = 0`, so ArrowRight activates chip 1 and chip 0 is skipped.
-
-## Dock layout cannot load a layout deeper than the default cap
-- [ ] `src/widgets/dock/dock_state.rs:141,600-601` **bug**: deserialization validates nesting against `DEFAULT_MAX_DEPTH` (4), not the app's cap. An app using `.max_depth(6)` that saves a layout with a depth-5 split cannot load its own file: `Err(SplitNesting)`. The documented "apply the cap after loading" cannot help, because loading already failed.
 
 ## A disabled trigger does not disable what it opened
 - [ ] `src/widgets/combo_box/mod.rs:185-191`, `color_button/mod.rs:116-122` **bug**: the open flag toggles only on `clicked()`, which is empty while disabled, and the popup is recorded whenever `open`. If the trigger becomes disabled while its list or picker is open, the popup stays open and live. Picking a row still writes `*selected`, and the picker still writes the colour. The popup sits in another layer, so the per-layer disabled cascade never reaches it.

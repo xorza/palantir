@@ -160,6 +160,13 @@ impl LaneCodec for Corners {
     fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
         [top, top, bottom, bottom]
     }
+
+    const LANE_RULE: &'static str =
+        "a corner radius must be finite, not negative, and at most 65504";
+
+    fn lane_is_valid(lane: f32) -> bool {
+        lane.is_finite() && (0.0..=65_504.0).contains(&lane)
+    }
 }
 
 #[cfg(test)]

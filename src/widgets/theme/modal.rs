@@ -24,6 +24,7 @@ pub struct ModalTheme {
     pub padding: Spacing,
     /// Minimum panel width in logical px (the panel hugs its content
     /// above this floor).
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub min_width: f32,
 }
 

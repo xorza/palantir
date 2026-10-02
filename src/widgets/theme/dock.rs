@@ -24,18 +24,22 @@ pub struct DockTheme {
     /// Outline around that region.
     pub preview_stroke: Stroke,
     /// Corner radius of the preview.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub preview_corner: f32,
     /// Breadth of the insertion mark drawn between two chips.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub caret_width: f32,
     /// The chip trailing the pointer while a tab is dragged.
     pub ghost: WidgetLook,
     /// Inset between the ghost chip's edges and its label.
     pub ghost_padding: Spacing,
     /// Where the ghost chip sits relative to the pointer.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::finite2")]
     pub ghost_offset: Vec2,
     /// How far in from each edge the split wedges reach, as a fraction
     /// of the pane's content rect. `0.25` leaves the inner half as the
     /// join zone.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::fraction")]
     pub edge_fraction: f32,
 }
 
