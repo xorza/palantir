@@ -35,15 +35,7 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/text_edit/input_pass.rs:213-235` **bug**: platform conventions are missing. On macOS, Cmd+Left/Right moves one grapheme instead of to the line edge, and Cmd+Backspace deletes one grapheme. Ctrl+Home/End in multiline goes to the visual line, not the document start/end. Shift+click re-anchors instead of extending (`press` always calls `arm_drag`, `editor.rs:149-162`).
 
 ## TabbedView reorder and identity
-- [ ] `src/widgets/tabs/tabbed_view.rs:304-310` **bug**: the no-op guard catches only `to == from`. Releasing a chip just right of its own centre gives `insertion_slot == from + 1`, which under the documented "pre-move index" contract is also a no-op. It is still reported as `Reordered{from, to: from+1}`.
-- [ ] `src/widgets/tabs/tabbed_view.rs:342-347` **bug**: `dropped_slot` uses the pointer x wherever the release happens: deep in the page body, or over another widget. Any drag-release reorders by x. DockState drops only when the pointer is inside a pane rect (`dock_state.rs:797-800`).
-- [ ] `src/widgets/tabs/tabbed_view.rs:304-310` **bug**: the view owns `*selected` (it writes it for `Activated`) but leaves it alone on `Reordered`. Pages [A,B,C], selected 0, drag A to the end: the caller moves A as told, `selected` stays 0, and the view now shows B.
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
-
-## TabStrip overflow and keyboard travel
-- [ ] `src/widgets/tabs/tab_strip.rs:584-586,637-641` **bug**: neither an overflow-menu pick nor an arrow/Ctrl+Tab move scrolls the band. The newly selected chip can stay fully out of sight, which defeats `TabOverflow::Menu`. The band is never driven with `pan_by`.
-- [ ] `src/widgets/tabs/tab_strip.rs:534-543` **bug (plausible)**: `hidden` compares chips against the band's rect. Scroll content is clipped to that rect deflated by the band's padding (6 px by default), per the comments at `scroll/mod.rs:487-489` and `text_edit/mod.rs:423-427`. A chip cut up to 6 px under the padding reads as visible, and the chevron does not appear.
-- [ ] `src/widgets/tabs/tab_strip.rs:607` **bug**: with no selection, `here = 0`, so ArrowRight activates chip 1 and chip 0 is skipped.
 
 ## Theme derivations that break their own invariants
 - [ ] `src/widgets/theme/color_picker.rs:195` **bug**: `value.editor = mono_edit(p)` replaces the `from_chip`-derived editor with a TextEditTheme box, against DragValueTheme's "chip and editor are pixel-identical" invariant. The stroke is 1.5 vs the chip's 1.0, folded into padding, so a channel value grows 1 px taller and its text shifts 0.5 px when it becomes editable.
