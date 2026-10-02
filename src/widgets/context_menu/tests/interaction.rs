@@ -83,31 +83,35 @@ fn item_click_dismisses_and_reports_clicked() {
 
 /// Pressing a `MenuItem`'s shortcut while the menu is open fires
 /// the item (its `Response::clicked` is `true`) AND closes the menu,
-/// mirroring native menu behaviour. Disabled items don't intercept.
+/// mirroring native menu behaviour. A hint shows the same chord on the
+/// row and leaves the press alone: the menu stays open and the row does
+/// not click.
 #[test]
-fn shortcut_press_fires_item_and_dismisses() {
-    let mut h = UiHarness::new(SURFACE);
-    h.frame(|ui| {
-        build(ui);
-    });
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
-    h.frame(|ui| {
-        build(ui);
-    });
-    assert!(menu_open(&h.ui));
+fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
+    for hint in [false, true] {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| {
+            build_copy(ui, hint);
+        });
+        ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+        let row = h.frame_value(|ui| build_copy(ui, hint));
+        assert!(menu_open(&h.ui));
+        assert!(
+            h.node_of(row.id.with("shortcut")).is_some(),
+            "hint {hint}: the chord shows on the row",
+        );
 
-    // Inject the primary command modifier + 'C' — matches
-    // `Shortcut::ctrl('C')` on the Copy item. `Modifiers::ctrl` is
-    // platform-normalized (Cmd on macOS, Ctrl elsewhere).
-    let primary_mods = Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    };
-    h.set_modifiers(primary_mods);
-    h.key(Key::Char('C'));
-    let copied = h.frame_value(build);
-    assert!(copied, "shortcut press synthesizes a click on the Copy row");
-    assert!(!menu_open(&h.ui), "shortcut press auto-closes the menu");
+        // The primary command modifier + 'C' — `Modifiers::ctrl` is
+        // platform-normalized (Cmd on macOS, Ctrl elsewhere).
+        h.set_modifiers(Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        });
+        h.key(Key::Char('C'));
+        let row = h.frame_value(|ui| build_copy(ui, hint));
+        assert_eq!(row.clicked, !hint, "hint {hint}: the press clicks the row");
+        assert_eq!(menu_open(&h.ui), hint, "hint {hint}: the menu stays open");
+    }
 }
 
 #[test]
@@ -160,7 +164,22 @@ fn menu_body_width_does_not_span_surface() {
 
 /// The scene, returning whether the Copy row clicked this pass.
 fn build(ui: &mut Ui) -> bool {
-    let mut copy_clicked = false;
+    build_copy(ui, false).clicked
+}
+
+/// What the Copy row reported this pass.
+#[derive(Debug)]
+struct CopyRow {
+    clicked: bool,
+    id: WidgetId,
+}
+
+/// The scene, with Copy's Ctrl+C bound or, under `hint`, only shown.
+fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
+    let mut copy = CopyRow {
+        clicked: false,
+        id: WidgetId::from_hash("unrecorded"),
+    };
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
@@ -173,16 +192,22 @@ fn build(ui: &mut Ui) -> bool {
                 .show(ui)
                 .snapshot();
             ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
-                copy_clicked = MenuItem::new("Copy")
-                    .shortcut(Shortcut::ctrl('C'))
-                    .show(ui, popup)
-                    .left
-                    .clicked();
+                let item = MenuItem::new("Copy");
+                let item = if hint {
+                    item.shortcut_hint(Shortcut::ctrl('C'))
+                } else {
+                    item.shortcut(Shortcut::ctrl('C'))
+                };
+                let row = item.show(ui, popup);
+                copy = CopyRow {
+                    clicked: row.left.clicked(),
+                    id: row.id,
+                };
                 MenuItem::separator().show(ui);
                 MenuItem::new("Paste").show(ui, popup);
             });
         });
-    copy_clicked
+    copy
 }
 
 fn menu_open(ui: &Ui) -> bool {
