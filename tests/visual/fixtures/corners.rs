@@ -19,36 +19,40 @@ use crate::harness::Harness;
 #[test]
 fn oversized_radii_fit_their_box() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(120, 160), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::canvas()
-            .id_salt("radii")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for (y, r) in [(10.0, 30.0), (60.0, 9999.0)] {
-                    ui.add_shape(
-                        Shape::rect(Rect::new(10.0, y, 100.0, 40.0))
-                            .fill(RgbaF32::WHITE)
-                            .corners(r),
-                    );
-                }
-                Panel::zstack()
-                    .id_salt("clip")
-                    .position((10.0, 110.0))
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                    .background(Background {
-                        corners: Corners::all(9999.0),
-                        ..Default::default()
-                    })
-                    .clip_rounded()
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id_salt("clipped")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background::fill(RgbaF32::WHITE))
-                            .show(ui);
-                    });
-            });
-    });
+    let img = h
+        .size(UVec2::new(120, 160))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::canvas()
+                .id_salt("radii")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (y, r) in [(10.0, 30.0), (60.0, 9999.0)] {
+                        ui.add_shape(
+                            Shape::rect(Rect::new(10.0, y, 100.0, 40.0))
+                                .fill(RgbaF32::WHITE)
+                                .corners(r),
+                        );
+                    }
+                    Panel::zstack()
+                        .id_salt("clip")
+                        .position((10.0, 110.0))
+                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                        .background(Background {
+                            corners: Corners::all(9999.0),
+                            ..Default::default()
+                        })
+                        .clip_rounded()
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id_salt("clipped")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(Background::fill(RgbaF32::WHITE))
+                                .show(ui);
+                        });
+                });
+        })
+        .image;
     let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
     let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
     for (label, mid) in [

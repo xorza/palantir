@@ -18,27 +18,31 @@ use crate::harness::Harness;
 #[test]
 fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(100, 70), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::canvas()
-            .id_salt("degenerate")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::triangle(
-                        Vec2::new(10.0, 20.0),
-                        Vec2::new(50.0, 20.0),
-                        Vec2::new(90.0, 20.0),
-                    )
-                    .fill(RgbaF32::WHITE)
-                    .radius(4.0_f32),
-                );
-                ui.add_shape(
-                    Shape::triangle(Vec2::splat(50.0), Vec2::splat(50.0), Vec2::splat(50.0))
+    let img = h
+        .size(UVec2::new(100, 70))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::canvas()
+                .id_salt("degenerate")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::triangle(
+                            Vec2::new(10.0, 20.0),
+                            Vec2::new(50.0, 20.0),
+                            Vec2::new(90.0, 20.0),
+                        )
                         .fill(RgbaF32::WHITE)
-                        .radius(6.0_f32),
-                );
-            });
-    });
+                        .radius(4.0_f32),
+                    );
+                    ui.add_shape(
+                        Shape::triangle(Vec2::splat(50.0), Vec2::splat(50.0), Vec2::splat(50.0))
+                            .fill(RgbaF32::WHITE)
+                            .radius(6.0_f32),
+                    );
+                });
+        })
+        .image;
     let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
     let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
 

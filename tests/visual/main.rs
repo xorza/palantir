@@ -18,7 +18,7 @@ mod harness;
 
 use glam::UVec2;
 use image::Rgba;
-use palantir::{RgbaF32, WindowConfig, WindowToken};
+use palantir::{FramePaint, RgbaF32, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
 
@@ -36,11 +36,16 @@ fn readback_returns_clear_color_for_empty_scene() {
         ui.keep_open();
         ui.request_relayout();
     };
-    let img = h.render(size, 1.0, clear, scene);
+    let first = h.size(size).clear(clear).frame(scene);
+    assert_eq!(first.paint, FramePaint::Full);
+    let img = first.image;
 
-    h.host.ui().request_repaint();
-    let replayed = h.render(size, 1.0, clear, scene);
-    assert_eq!(replayed, img);
+    // Invalidated, so the replay repaints: an unchanged scene would
+    // otherwise skip and present a copy of the backbuffer.
+    h.host.invalidate_target_contents();
+    let replayed = h.frame(scene);
+    assert_eq!(replayed.paint, FramePaint::Full, "the replay repaints");
+    assert_eq!(replayed.image, img);
     assert_eq!(img.dimensions(), (size.x, size.y));
 
     // sRGB → linear (in `RgbaF32::srgb`) → sRGB (wgpu's sRGB target) round-trips
@@ -67,9 +72,11 @@ fn readback_returns_clear_color_for_empty_scene() {
 #[should_panic(expected = "Ui::open_window(WindowToken(1))")]
 fn opening_a_window_offscreen_panics() {
     let mut h = Harness::new();
-    h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
-        ui.open_window(WindowToken(1), WindowConfig::new("unservable"));
-    });
+    h.size(UVec2::new(16, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            ui.open_window(WindowToken(1), WindowConfig::new("unservable"));
+        });
 }
 
 /// Closing is denied on the same grounds as opening.
@@ -77,7 +84,9 @@ fn opening_a_window_offscreen_panics() {
 #[should_panic(expected = "Ui::close_window(WindowToken(2))")]
 fn closing_a_window_offscreen_panics() {
     let mut h = Harness::new();
-    h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
-        ui.close_window(WindowToken(2));
-    });
+    h.size(UVec2::new(16, 16))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            ui.close_window(WindowToken(2));
+        });
 }

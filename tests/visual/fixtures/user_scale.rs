@@ -10,7 +10,6 @@ use glam::UVec2;
 use image::{Rgba, RgbaImage};
 use palantir::{Background, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
-use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(200, 160);
@@ -62,9 +61,9 @@ fn painted_extent(img: &RgbaImage, background: Rgba<u8>) -> UVec2 {
 fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     let mut h = Harness::new();
 
-    let system = h.render(SURFACE, 2.0, DARK_BG, block);
+    let system = h.size(SURFACE).scale(2.0).frame(block).image;
     h.host.ui().set_user_scale(UserScale::new(2.0));
-    let user = h.render(SURFACE, 1.0, DARK_BG, block);
+    let user = h.scale(1.0).frame(block).image;
 
     assert_eq!(system, user);
 }
@@ -79,14 +78,14 @@ fn a_larger_user_scale_paints_a_larger_block() {
     // is sRGB, so what the background *is* in these bytes is what an empty
     // render says it is.
     let background = {
-        let empty = h.render(SURFACE, 1.0, DARK_BG, |_: &mut Ui| {});
+        let empty = h.size(SURFACE).frame(|_: &mut Ui| {}).image;
         *empty.get_pixel(SURFACE.x - 1, SURFACE.y - 1)
     };
 
-    let plain = h.render(SURFACE, 1.0, DARK_BG, block);
+    let plain = h.size(SURFACE).frame(block).image;
     assert_eq!(painted_extent(&plain, background), UVec2::new(40, 24));
 
     h.host.ui().set_user_scale(UserScale::new(2.0));
-    let doubled = h.render(SURFACE, 1.0, DARK_BG, block);
+    let doubled = h.size(SURFACE).frame(block).image;
     assert_eq!(painted_extent(&doubled, background), UVec2::new(80, 48));
 }

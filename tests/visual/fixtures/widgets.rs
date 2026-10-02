@@ -20,13 +20,16 @@ use palantir::golden::Tolerance;
 #[test]
 fn button_hello_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(256, 96), 1.0, DARK_BG, |ui| {
-        Button::new()
-            .auto_id()
-            .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui);
-    });
+    let img = h
+        .size(UVec2::new(256, 96))
+        .frame(|ui| {
+            Button::new()
+                .auto_id()
+                .label("hello")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui);
+        })
+        .image;
     assert_matches_golden("button_hello", &img, Tolerance::default());
 }
 
@@ -35,24 +38,27 @@ fn button_hello_matches_golden() {
 #[test]
 fn frame_filled_with_border_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Block::new()
-                    .id_salt("card")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
-                        border: Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
-                        corners: Corners::all(16.0),
-                        shadow: Shadow::NONE,
-                    })
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 140))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id_salt("card")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
+                            border: Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
+                            corners: Corners::all(16.0),
+                            shadow: Shadow::NONE,
+                        })
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("frame_filled_with_border", &img, Tolerance::default());
 }
 
@@ -64,18 +70,22 @@ fn frame_filled_with_border_matches_golden() {
 #[test]
 fn a_border_paints_inside_the_rect() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(20, 20), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::rect(Rect::new(4.0, 4.0, 12.0, 12.0))
-                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0))
-                        .border(Stroke::new(RgbaF32::WHITE, 2.0)),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(20, 20))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::rect(Rect::new(4.0, 4.0, 12.0, 12.0))
+                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0))
+                            .border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                    );
+                });
+        })
+        .image;
     let clear = Rgba([0, 0, 0, 255]);
     let border = Rgba([255, 255, 255, 255]);
     let fill = Rgba([255, 0, 0, 255]);
@@ -100,27 +110,30 @@ fn a_border_paints_inside_the_rect() {
 #[test]
 fn frame_linear_gradient_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Block::new()
-                    .id_salt("card")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .background(Background {
-                        fill: Brush::Linear(LinearGradient::two_stop(
-                            FRAC_PI_2,
-                            RgbaF32::hex(0x1a1a2e),
-                            RgbaF32::hex(0x4c5cdb),
-                        )),
-                        corners: Corners::all(16.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 140))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id_salt("card")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: Brush::Linear(LinearGradient::two_stop(
+                                FRAC_PI_2,
+                                RgbaF32::hex(0x1a1a2e),
+                                RgbaF32::hex(0x4c5cdb),
+                            )),
+                            corners: Corners::all(16.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("frame_linear_gradient", &img, Tolerance::default());
 }
 
@@ -132,23 +145,26 @@ fn frame_linear_gradient_matches_golden() {
 #[test]
 fn add_shape_rounded_rect_linear_gradient_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 180.0, 100.0))
-                        .corners(12.0)
-                        .fill(LinearGradient::two_stop(
-                            0.0,
-                            RgbaF32::hex(0xff5e44),
-                            RgbaF32::hex(0xfacc15),
-                        )),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 140))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 180.0, 100.0))
+                            .corners(12.0)
+                            .fill(LinearGradient::two_stop(
+                                0.0,
+                                RgbaF32::hex(0xff5e44),
+                                RgbaF32::hex(0xfacc15),
+                            )),
+                    );
+                });
+        })
+        .image;
     assert_matches_golden(
         "add_shape_rounded_rect_linear_gradient",
         &img,
@@ -166,26 +182,29 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
 #[test]
 fn windowed_rect_masks_corners_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let card = Rect::new(0.0, 0.0, 180.0, 100.0);
-                ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
-                    0.0,
-                    RgbaF32::hex(0xff5e44),
-                    RgbaF32::hex(0xfacc15),
-                )));
-                ui.add_shape(
-                    Shape::windowed_rect(card)
-                        .corners(20.0)
-                        .fill(DARK_BG)
-                        .border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 140))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let card = Rect::new(0.0, 0.0, 180.0, 100.0);
+                    ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
+                        0.0,
+                        RgbaF32::hex(0xff5e44),
+                        RgbaF32::hex(0xfacc15),
+                    )));
+                    ui.add_shape(
+                        Shape::windowed_rect(card)
+                            .corners(20.0)
+                            .fill(DARK_BG)
+                            .border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                    );
+                });
+        })
+        .image;
     assert_matches_golden("windowed_rect_masks_corners", &img, Tolerance::default());
 }
 
@@ -199,100 +218,107 @@ fn windowed_rect_masks_corners_matches_golden() {
 fn showcase_gradients_tab_matches_golden() {
     use palantir::{Interp, Spread, Stop};
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
-        let navy = RgbaF32::hex(0x1a1a2e);
-        let blue = RgbaF32::hex(0x4c5cdb);
-        let orange = RgbaF32::hex(0xff7e44);
-        let yellow = RgbaF32::hex(0xfacc15);
-        let red = RgbaF32::hex(0xff5e44);
-        let green = RgbaF32::hex(0x46c46c);
-        let cell = |g: LinearGradient| Background {
-            fill: Brush::Linear(g),
-            corners: Corners::all(8.0),
-            ..Default::default()
-        };
-        Panel::vstack()
-            .auto_id()
-            .gap(16.0)
-            .padding(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Panel::hstack()
-                    .id_salt("row1")
-                    .gap(16.0)
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id_salt("horizontal")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(LinearGradient::two_stop(0.0, navy, blue)))
-                            .show(ui);
-                        Block::new()
-                            .id_salt("vertical")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(LinearGradient::two_stop(FRAC_PI_2, navy, blue)))
-                            .show(ui);
-                        Block::new()
-                            .id_salt("diag")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(LinearGradient::two_stop(FRAC_PI_4, orange, yellow)))
-                            .show(ui);
-                    });
-                Panel::hstack()
-                    .id_salt("row2")
-                    .gap(16.0)
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id_salt("threestop")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(
-                                LinearGradient::builder(0.0)
-                                    .stop(0.0, red)
-                                    .stop(0.5, yellow)
-                                    .stop(1.0, green)
-                                    .build(),
-                            ))
-                            .show(ui);
-                        Panel::vstack()
-                            .id_salt("spread")
-                            .gap(4.0)
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                for (i, sp) in [Spread::Pad, Spread::Repeat, Spread::Reflect]
-                                    .iter()
-                                    .enumerate()
-                                {
-                                    let g = LinearGradient::new(
-                                        0.0,
-                                        [Stop::new(0.0, navy), Stop::new(0.5, blue)],
-                                    )
-                                    .with_spread(*sp);
-                                    Block::new()
-                                        .id_salt(("sp", i))
-                                        .size((Sizing::FILL, Sizing::FILL))
-                                        .background(cell(g))
-                                        .show(ui);
-                                }
-                            });
-                        Panel::vstack()
-                            .id_salt("interp")
-                            .gap(4.0)
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                for (i, ip) in [Interp::Linear, Interp::Oklab].iter().enumerate() {
-                                    let g =
-                                        LinearGradient::two_stop(0.0, red, green).with_interp(*ip);
-                                    Block::new()
-                                        .id_salt(("ip", i))
-                                        .size((Sizing::FILL, Sizing::FILL))
-                                        .background(cell(g))
-                                        .show(ui);
-                                }
-                            });
-                    });
-            });
-    });
+    let img = h
+        .size(UVec2::new(560, 360))
+        .frame(|ui| {
+            let navy = RgbaF32::hex(0x1a1a2e);
+            let blue = RgbaF32::hex(0x4c5cdb);
+            let orange = RgbaF32::hex(0xff7e44);
+            let yellow = RgbaF32::hex(0xfacc15);
+            let red = RgbaF32::hex(0xff5e44);
+            let green = RgbaF32::hex(0x46c46c);
+            let cell = |g: LinearGradient| Background {
+                fill: Brush::Linear(g),
+                corners: Corners::all(8.0),
+                ..Default::default()
+            };
+            Panel::vstack()
+                .auto_id()
+                .gap(16.0)
+                .padding(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id_salt("row1")
+                        .gap(16.0)
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id_salt("horizontal")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(cell(LinearGradient::two_stop(0.0, navy, blue)))
+                                .show(ui);
+                            Block::new()
+                                .id_salt("vertical")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(cell(LinearGradient::two_stop(FRAC_PI_2, navy, blue)))
+                                .show(ui);
+                            Block::new()
+                                .id_salt("diag")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(cell(LinearGradient::two_stop(
+                                    FRAC_PI_4, orange, yellow,
+                                )))
+                                .show(ui);
+                        });
+                    Panel::hstack()
+                        .id_salt("row2")
+                        .gap(16.0)
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id_salt("threestop")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(cell(
+                                    LinearGradient::builder(0.0)
+                                        .stop(0.0, red)
+                                        .stop(0.5, yellow)
+                                        .stop(1.0, green)
+                                        .build(),
+                                ))
+                                .show(ui);
+                            Panel::vstack()
+                                .id_salt("spread")
+                                .gap(4.0)
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui, |ui| {
+                                    for (i, sp) in [Spread::Pad, Spread::Repeat, Spread::Reflect]
+                                        .iter()
+                                        .enumerate()
+                                    {
+                                        let g = LinearGradient::new(
+                                            0.0,
+                                            [Stop::new(0.0, navy), Stop::new(0.5, blue)],
+                                        )
+                                        .with_spread(*sp);
+                                        Block::new()
+                                            .id_salt(("sp", i))
+                                            .size((Sizing::FILL, Sizing::FILL))
+                                            .background(cell(g))
+                                            .show(ui);
+                                    }
+                                });
+                            Panel::vstack()
+                                .id_salt("interp")
+                                .gap(4.0)
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui, |ui| {
+                                    for (i, ip) in
+                                        [Interp::Linear, Interp::Oklab].iter().enumerate()
+                                    {
+                                        let g = LinearGradient::two_stop(0.0, red, green)
+                                            .with_interp(*ip);
+                                        Block::new()
+                                            .id_salt(("ip", i))
+                                            .size((Sizing::FILL, Sizing::FILL))
+                                            .background(cell(g))
+                                            .show(ui);
+                                    }
+                                });
+                        });
+                });
+        })
+        .image;
     assert_matches_golden("showcase_gradients_tab", &img, Tolerance::default());
 }
 
@@ -304,45 +330,49 @@ fn showcase_gradients_tab_matches_golden() {
 #[test]
 fn radial_and_conic_gradient_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(320, 160), 1.0, DARK_BG, |ui| {
-        Panel::hstack()
-            .auto_id()
-            .gap(16.0)
-            .padding(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let r = RadialGradient::two_stop(RgbaF32::hex(0xfacc15), RgbaF32::hex(0x1a1a2e));
-                Block::new()
-                    .id_salt("radial")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .background(Background {
-                        fill: Brush::Radial(r),
-                        corners: Corners::all(8.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                let c = ConicGradient::new(
-                    glam::Vec2::splat(0.5),
-                    0.0,
-                    [
-                        palantir::Stop::new(0.0, RgbaF32::hex(0xff5e44)),
-                        palantir::Stop::new(0.25, RgbaF32::hex(0xfacc15)),
-                        palantir::Stop::new(0.5, RgbaF32::hex(0x46c46c)),
-                        palantir::Stop::new(0.75, RgbaF32::hex(0x4c5cdb)),
-                        palantir::Stop::new(1.0, RgbaF32::hex(0xff5e44)),
-                    ],
-                );
-                Block::new()
-                    .id_salt("conic")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .background(Background {
-                        fill: Brush::Conic(c),
-                        corners: Corners::all(8.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(320, 160))
+        .frame(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .gap(16.0)
+                .padding(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let r =
+                        RadialGradient::two_stop(RgbaF32::hex(0xfacc15), RgbaF32::hex(0x1a1a2e));
+                    Block::new()
+                        .id_salt("radial")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: Brush::Radial(r),
+                            corners: Corners::all(8.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    let c = ConicGradient::new(
+                        glam::Vec2::splat(0.5),
+                        0.0,
+                        [
+                            palantir::Stop::new(0.0, RgbaF32::hex(0xff5e44)),
+                            palantir::Stop::new(0.25, RgbaF32::hex(0xfacc15)),
+                            palantir::Stop::new(0.5, RgbaF32::hex(0x46c46c)),
+                            palantir::Stop::new(0.75, RgbaF32::hex(0x4c5cdb)),
+                            palantir::Stop::new(1.0, RgbaF32::hex(0xff5e44)),
+                        ],
+                    );
+                    Block::new()
+                        .id_salt("conic")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: Brush::Conic(c),
+                            corners: Corners::all(8.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("radial_and_conic_gradient", &img, Tolerance::default());
 }
 
@@ -357,38 +387,41 @@ fn surface_rounded_clips_full_fill_child() {
     let mut h = Harness::new();
     let pink = RgbaF32::srgb(1.0, 0.42, 0.72);
     let black = RgbaF32::srgb(0.0, 0.0, 0.0);
-    let img = h.render(UVec2::new(220, 220), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .padding(20.0)
-            .background(Background {
-                fill: pink.into(),
-                ..Default::default()
-            })
-            .show(ui, |ui| {
-                Panel::zstack()
-                    .id_salt("rounded")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .background(Background {
-                        fill: RgbaF32::TRANSPARENT.into(),
-                        border: Stroke::new(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 5.0),
-                        corners: Corners::new(4.0, 12.0, 20.0, 28.0),
-                        shadow: Shadow::NONE,
-                    })
-                    .clip_rounded()
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id_salt("inner")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
-                                fill: black.into(),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                    });
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 220))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(20.0)
+                .background(Background {
+                    fill: pink.into(),
+                    ..Default::default()
+                })
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id_salt("rounded")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: RgbaF32::TRANSPARENT.into(),
+                            border: Stroke::new(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 5.0),
+                            corners: Corners::new(4.0, 12.0, 20.0, 28.0),
+                            shadow: Shadow::NONE,
+                        })
+                        .clip_rounded()
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id_salt("inner")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(Background {
+                                    fill: black.into(),
+                                    ..Default::default()
+                                })
+                                .show(ui);
+                        });
+                });
+        })
+        .image;
     assert_matches_golden(
         "surface_rounded_clips_full_fill_child",
         &img,
@@ -417,34 +450,37 @@ fn surface_rounded_clips_full_fill_child() {
 #[test]
 fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(120, 90), 1.0, DARK_BG, |ui| {
-        Panel::canvas()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Panel::zstack()
-                    .id_salt("rounded")
-                    .position(Vec2::new(-6.0, -6.0))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
-                    .background(Background {
-                        fill: RgbaF32::TRANSPARENT.into(),
-                        border: Stroke::new(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 4.0),
-                        corners: Corners::all(24.0),
-                        shadow: Shadow::NONE,
-                    })
-                    .clip_rounded()
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id_salt("inner")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                    });
-            });
-    });
+    let img = h
+        .size(UVec2::new(120, 90))
+        .frame(|ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id_salt("rounded")
+                        .position(Vec2::new(-6.0, -6.0))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
+                        .background(Background {
+                            fill: RgbaF32::TRANSPARENT.into(),
+                            border: Stroke::new(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 4.0),
+                            corners: Corners::all(24.0),
+                            shadow: Shadow::NONE,
+                        })
+                        .clip_rounded()
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id_salt("inner")
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .background(Background {
+                                    fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
+                                    ..Default::default()
+                                })
+                                .show(ui);
+                        });
+                });
+        })
+        .image;
 
     // sRGB(0.08, 0.08, 0.10) ≈ (20, 20, 25). "near-black" = all
     // channels well under that; "dark-bg-ish" = R/G near 20.
@@ -518,8 +554,8 @@ fn rounded_clip_survives_surface_resize() {
                     .show(ui, |_| {});
             });
     };
-    let _ = h.render(UVec2::new(120, 120), 1.0, DARK_BG, scene);
-    let _ = h.render(UVec2::new(240, 200), 1.0, DARK_BG, scene);
+    let _ = h.size(UVec2::new(120, 120)).frame(scene).image;
+    let _ = h.size(UVec2::new(240, 200)).frame(scene).image;
     // If `ensure_backbuffer` failed to reset `bb.stencil = None`, the
     // second render would attach a 120×120 stencil to a 240×200 pass
     // and wgpu validation would have already panicked above.
@@ -546,41 +582,45 @@ fn rounded_clip_survives_surface_resize() {
 #[test]
 fn interleaved_shapes_paint_in_record_order() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 60), 1.0, DARK_BG, |ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .padding(0.0)
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                );
-                Block::new()
-                    .id_salt("cyan")
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 1.0).into(),
-                        ..Default::default()
-                    })
-                    .size((Sizing::fixed(60.0), Sizing::FILL))
-                    .show(ui);
-                ui.add_shape(
-                    Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
-                        .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
-                );
-                Block::new()
-                    .id_salt("yellow")
-                    .background(Background {
-                        fill: RgbaF32::srgb(1.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
-                    .size((Sizing::fixed(60.0), Sizing::FILL))
-                    .show(ui);
-                ui.add_shape(
-                    Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0))
-                        .fill(RgbaF32::srgb(0.2, 0.4, 1.0)),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 60))
+        .frame(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(0.0)
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0))
+                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                    );
+                    Block::new()
+                        .id_salt("cyan")
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.0, 1.0, 1.0).into(),
+                            ..Default::default()
+                        })
+                        .size((Sizing::fixed(60.0), Sizing::FILL))
+                        .show(ui);
+                    ui.add_shape(
+                        Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
+                            .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
+                    );
+                    Block::new()
+                        .id_salt("yellow")
+                        .background(Background {
+                            fill: RgbaF32::srgb(1.0, 1.0, 0.0).into(),
+                            ..Default::default()
+                        })
+                        .size((Sizing::fixed(60.0), Sizing::FILL))
+                        .show(ui);
+                    ui.add_shape(
+                        Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0))
+                            .fill(RgbaF32::srgb(0.2, 0.4, 1.0)),
+                    );
+                });
+        })
+        .image;
     assert_matches_golden("interleaved_shapes_paint_order", &img, Tolerance::default());
 }
 
@@ -593,33 +633,36 @@ fn interleaved_shapes_paint_in_record_order() {
 #[test]
 fn line_diagonal_aa_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(160, 120), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(Shape::line(
-                    Vec2::new(10.0, 10.0),
-                    Vec2::new(150.0, 110.0),
-                    Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
-                ));
-                // Hairlines at sub-pixel width — should appear dim
-                // (coverage-faded) rather than vanish or look identical
-                // to the 4 px stroke. Two alignments pin the trapezoid
-                // coverage plateau: on a pixel *boundary* (y = 80) the
-                // 0.4 px line splits 0.2 + 0.2 across two rows; through
-                // a pixel *center* (y = 40.5) it lands 0.4 on one row —
-                // equal total energy, so brightness doesn't pulse as a
-                // hairline drifts across alignments.
-                for y in [80.0, 40.5] {
+    let img = h
+        .size(UVec2::new(160, 120))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
                     ui.add_shape(Shape::line(
-                        Vec2::new(10.0, y),
-                        Vec2::new(150.0, y),
-                        Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 0.4),
+                        Vec2::new(10.0, 10.0),
+                        Vec2::new(150.0, 110.0),
+                        Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
                     ));
-                }
-            });
-    });
+                    // Hairlines at sub-pixel width — should appear dim
+                    // (coverage-faded) rather than vanish or look identical
+                    // to the 4 px stroke. Two alignments pin the trapezoid
+                    // coverage plateau: on a pixel *boundary* (y = 80) the
+                    // 0.4 px line splits 0.2 + 0.2 across two rows; through
+                    // a pixel *center* (y = 40.5) it lands 0.4 on one row —
+                    // equal total energy, so brightness doesn't pulse as a
+                    // hairline drifts across alignments.
+                    for y in [80.0, 40.5] {
+                        ui.add_shape(Shape::line(
+                            Vec2::new(10.0, y),
+                            Vec2::new(150.0, y),
+                            Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 0.4),
+                        ));
+                    }
+                });
+        })
+        .image;
     assert_matches_golden("line_diagonal_aa", &img, Tolerance::default());
 }
 
@@ -632,28 +675,31 @@ fn line_diagonal_aa_matches_golden() {
 #[test]
 fn polyline_gradient_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(160, 140), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let pts = [
-                    Vec2::new(10.0, 10.0),
-                    Vec2::new(50.0, 130.0),
-                    Vec2::new(90.0, 20.0),
-                    Vec2::new(150.0, 130.0),
-                ];
-                let cols = [
-                    RgbaF32::srgb(1.0, 0.2, 0.2),
-                    RgbaF32::srgb(1.0, 0.85, 0.2),
-                    RgbaF32::srgb(0.2, 1.0, 0.4),
-                    RgbaF32::srgb(0.2, 0.6, 1.0),
-                ];
-                ui.add_shape(
-                    Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 5.0)).per_point(&cols),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(160, 140))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let pts = [
+                        Vec2::new(10.0, 10.0),
+                        Vec2::new(50.0, 130.0),
+                        Vec2::new(90.0, 20.0),
+                        Vec2::new(150.0, 130.0),
+                    ];
+                    let cols = [
+                        RgbaF32::srgb(1.0, 0.2, 0.2),
+                        RgbaF32::srgb(1.0, 0.85, 0.2),
+                        RgbaF32::srgb(0.2, 1.0, 0.4),
+                        RgbaF32::srgb(0.2, 0.6, 1.0),
+                    ];
+                    ui.add_shape(
+                        Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 5.0)).per_point(&cols),
+                    );
+                });
+        })
+        .image;
     assert_matches_golden("polyline_gradient", &img, Tolerance::default());
 }
 
@@ -667,26 +713,29 @@ fn polyline_gradient_matches_golden() {
 #[test]
 fn polyline_bevel_join_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
-                let shallow = [
-                    Vec2::new(15.0, 30.0),
-                    Vec2::new(60.0, 60.0),
-                    Vec2::new(105.0, 30.0),
-                ];
-                ui.add_shape(Shape::polyline(&shallow, Stroke::new(cyan, 5.0)));
-                let sharp = [
-                    Vec2::new(15.0, 100.0),
-                    Vec2::new(80.0, 115.0),
-                    Vec2::new(20.0, 130.0),
-                ];
-                ui.add_shape(Shape::polyline(&sharp, Stroke::new(cyan, 5.0)));
-            });
-    });
+    let img = h
+        .size(UVec2::new(180, 140))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
+                    let shallow = [
+                        Vec2::new(15.0, 30.0),
+                        Vec2::new(60.0, 60.0),
+                        Vec2::new(105.0, 30.0),
+                    ];
+                    ui.add_shape(Shape::polyline(&shallow, Stroke::new(cyan, 5.0)));
+                    let sharp = [
+                        Vec2::new(15.0, 100.0),
+                        Vec2::new(80.0, 115.0),
+                        Vec2::new(20.0, 130.0),
+                    ];
+                    ui.add_shape(Shape::polyline(&sharp, Stroke::new(cyan, 5.0)));
+                });
+        })
+        .image;
     assert_matches_golden("polyline_bevel_join", &img, Tolerance::default());
 }
 
@@ -698,27 +747,30 @@ fn polyline_bevel_join_matches_golden() {
 #[test]
 fn polyline_round_caps_match_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for (y, cap, color) in [
-                    (30.0_f32, LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
-                    (70.0, LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
-                    (110.0, LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
-                ] {
-                    ui.add_shape(
-                        Shape::line(
-                            Vec2::new(40.0, y),
-                            Vec2::new(140.0, y),
-                            Stroke::new(color, 10.0),
-                        )
-                        .cap(cap),
-                    );
-                }
-            });
-    });
+    let img = h
+        .size(UVec2::new(180, 140))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (y, cap, color) in [
+                        (30.0_f32, LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
+                        (70.0, LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
+                        (110.0, LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
+                    ] {
+                        ui.add_shape(
+                            Shape::line(
+                                Vec2::new(40.0, y),
+                                Vec2::new(140.0, y),
+                                Stroke::new(color, 10.0),
+                            )
+                            .cap(cap),
+                        );
+                    }
+                });
+        })
+        .image;
     assert_matches_golden("polyline_round_caps", &img, Tolerance::default());
 }
 
@@ -730,26 +782,29 @@ fn polyline_round_caps_match_golden() {
 #[test]
 fn polyline_round_join_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(180, 200), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
-                for (y, join) in [
-                    (30.0_f32, LineJoin::Miter),
-                    (90.0, LineJoin::Bevel),
-                    (150.0, LineJoin::Round),
-                ] {
-                    let pts = [
-                        Vec2::new(20.0, y + 40.0),
-                        Vec2::new(90.0, y),
-                        Vec2::new(160.0, y + 40.0),
-                    ];
-                    ui.add_shape(Shape::polyline(&pts, Stroke::new(cyan, 8.0)).join(join));
-                }
-            });
-    });
+    let img = h
+        .size(UVec2::new(180, 200))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
+                    for (y, join) in [
+                        (30.0_f32, LineJoin::Miter),
+                        (90.0, LineJoin::Bevel),
+                        (150.0, LineJoin::Round),
+                    ] {
+                        let pts = [
+                            Vec2::new(20.0, y + 40.0),
+                            Vec2::new(90.0, y),
+                            Vec2::new(160.0, y + 40.0),
+                        ];
+                        ui.add_shape(Shape::polyline(&pts, Stroke::new(cyan, 8.0)).join(join));
+                    }
+                });
+        })
+        .image;
     assert_matches_golden("polyline_round_join", &img, Tolerance::default());
 }
 
@@ -768,31 +823,35 @@ fn polyline_translucent_joins_have_uniform_coverage() {
     // their concave overlap is covered exactly once — a brighter
     // wedge under a corner means the partition regressed and the
     // strips double-blended.
-    let img = h.render(UVec2::new(180, 160), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for (i, join) in [LineJoin::Miter, LineJoin::Bevel, LineJoin::Round]
-                    .iter()
-                    .enumerate()
-                {
-                    let y = 40.0 + i as f32 * 45.0;
-                    let pts = [
-                        Vec2::new(20.0, y),
-                        Vec2::new(90.0, y - 25.0),
-                        Vec2::new(160.0, y),
-                    ];
-                    ui.add_shape(
-                        Shape::polyline(
-                            &pts,
-                            Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 14.0),
-                        )
-                        .join(*join),
-                    );
-                }
-            });
-    });
+    let img = h
+        .size(UVec2::new(180, 160))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (i, join) in [LineJoin::Miter, LineJoin::Bevel, LineJoin::Round]
+                        .iter()
+                        .enumerate()
+                    {
+                        let y = 40.0 + i as f32 * 45.0;
+                        let pts = [
+                            Vec2::new(20.0, y),
+                            Vec2::new(90.0, y - 25.0),
+                            Vec2::new(160.0, y),
+                        ];
+                        ui.add_shape(
+                            Shape::polyline(
+                                &pts,
+                                Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 14.0),
+                            )
+                            .join(*join),
+                        );
+                    }
+                });
+        })
+        .image;
     // Analytic probe, stronger than the golden: a point 4 px below
     // each apex sits inside the concave overlap wedge of the two
     // strips (behind A's end face, ahead of B's start face, well
@@ -832,22 +891,26 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 fn polyline_translucent_premultiplies_in_stroke_shader() {
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
-    let img = h.render(UVec2::new(120, 120), 1.0, RgbaF32::BLACK, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0))
-                        .fill(RgbaF32::srgb(1.0, 0.0, 1.0)),
-                );
-                let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
-                ui.add_shape(Shape::polyline(
-                    &pts,
-                    Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 24.0),
-                ));
-            });
-    });
+    let img = h
+        .size(UVec2::new(120, 120))
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0))
+                            .fill(RgbaF32::srgb(1.0, 0.0, 1.0)),
+                    );
+                    let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
+                    ui.add_shape(Shape::polyline(
+                        &pts,
+                        Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 24.0),
+                    ));
+                });
+        })
+        .image;
     // Sample the stroke's center (x=60, y=60). RgbaImage is
     // sRGB-encoded after the swapchain target's auto-encode.
     let px = img.get_pixel(60, 60);
@@ -875,46 +938,49 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
 #[test]
 fn curve_caps_match_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 240), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                // Three identical "hill" cubics, one per cap kind.
-                // Symmetric so the cap effect is the only delta.
-                for (i, (cap, color)) in [
-                    (LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
-                    (LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
-                    (LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    let dy = 20.0 + i as f32 * 55.0;
+    let img = h
+        .size(UVec2::new(220, 240))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Three identical "hill" cubics, one per cap kind.
+                    // Symmetric so the cap effect is the only delta.
+                    for (i, (cap, color)) in [
+                        (LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
+                        (LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
+                        (LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
+                    ]
+                    .iter()
+                    .enumerate()
+                    {
+                        let dy = 20.0 + i as f32 * 55.0;
+                        ui.add_shape(
+                            Shape::cubic_bezier(
+                                Vec2::new(30.0, dy + 40.0),
+                                Vec2::new(60.0, dy - 10.0),
+                                Vec2::new(140.0, dy - 10.0),
+                                Vec2::new(170.0, dy + 40.0),
+                                Stroke::new(*color, 8.0),
+                            )
+                            .cap(*cap),
+                        );
+                    }
+                    // Quadratic curve at the bottom — exercises the
+                    // q→cubic promotion path.
                     ui.add_shape(
-                        Shape::cubic_bezier(
-                            Vec2::new(30.0, dy + 40.0),
-                            Vec2::new(60.0, dy - 10.0),
-                            Vec2::new(140.0, dy - 10.0),
-                            Vec2::new(170.0, dy + 40.0),
-                            Stroke::new(*color, 8.0),
+                        Shape::quadratic_bezier(
+                            Vec2::new(30.0, 215.0),
+                            Vec2::new(100.0, 170.0),
+                            Vec2::new(170.0, 215.0),
+                            Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 4.0),
                         )
-                        .cap(*cap),
+                        .cap(LineCap::Round),
                     );
-                }
-                // Quadratic curve at the bottom — exercises the
-                // q→cubic promotion path.
-                ui.add_shape(
-                    Shape::quadratic_bezier(
-                        Vec2::new(30.0, 215.0),
-                        Vec2::new(100.0, 170.0),
-                        Vec2::new(170.0, 215.0),
-                        Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 4.0),
-                    )
-                    .cap(LineCap::Round),
-                );
-            });
-    });
+                });
+        })
+        .image;
     assert_matches_golden("curve_caps", &img, Tolerance::default());
 }
 
@@ -926,54 +992,57 @@ fn curve_caps_match_golden() {
 #[test]
 fn triangle_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(240, 240), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                // Top-left: sharp solid fill.
-                ui.add_shape(
-                    Shape::triangle(
-                        Vec2::new(20.0, 100.0),
-                        Vec2::new(65.0, 15.0),
-                        Vec2::new(110.0, 100.0),
-                    )
-                    .fill(RgbaF32::srgb(1.0, 0.4, 0.4)),
-                );
-                // Top-right: rounded solid fill.
-                ui.add_shape(
-                    Shape::triangle(
-                        Vec2::new(130.0, 100.0),
-                        Vec2::new(175.0, 15.0),
-                        Vec2::new(220.0, 100.0),
-                    )
-                    .radius(12.0_f32)
-                    .fill(RgbaF32::srgb(0.4, 1.0, 0.5)),
-                );
-                // Bottom-left: rounded fill + inner-edge stroke.
-                ui.add_shape(
-                    Shape::triangle(
-                        Vec2::new(20.0, 220.0),
-                        Vec2::new(65.0, 135.0),
-                        Vec2::new(110.0, 220.0),
-                    )
-                    .radius(8.0_f32)
-                    .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                    .border(Stroke::new(RgbaF32::WHITE, 3.0)),
-                );
-                // Bottom-right: stroke-only (transparent fill), CW winding.
-                ui.add_shape(
-                    Shape::triangle(
-                        Vec2::new(220.0, 220.0),
-                        Vec2::new(175.0, 135.0),
-                        Vec2::new(130.0, 220.0),
-                    )
-                    .radius(6.0_f32)
-                    .fill(RgbaF32::TRANSPARENT)
-                    .border(Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
-                );
-            });
-    });
+    let img = h
+        .size(UVec2::new(240, 240))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Top-left: sharp solid fill.
+                    ui.add_shape(
+                        Shape::triangle(
+                            Vec2::new(20.0, 100.0),
+                            Vec2::new(65.0, 15.0),
+                            Vec2::new(110.0, 100.0),
+                        )
+                        .fill(RgbaF32::srgb(1.0, 0.4, 0.4)),
+                    );
+                    // Top-right: rounded solid fill.
+                    ui.add_shape(
+                        Shape::triangle(
+                            Vec2::new(130.0, 100.0),
+                            Vec2::new(175.0, 15.0),
+                            Vec2::new(220.0, 100.0),
+                        )
+                        .radius(12.0_f32)
+                        .fill(RgbaF32::srgb(0.4, 1.0, 0.5)),
+                    );
+                    // Bottom-left: rounded fill + inner-edge stroke.
+                    ui.add_shape(
+                        Shape::triangle(
+                            Vec2::new(20.0, 220.0),
+                            Vec2::new(65.0, 135.0),
+                            Vec2::new(110.0, 220.0),
+                        )
+                        .radius(8.0_f32)
+                        .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
+                        .border(Stroke::new(RgbaF32::WHITE, 3.0)),
+                    );
+                    // Bottom-right: stroke-only (transparent fill), CW winding.
+                    ui.add_shape(
+                        Shape::triangle(
+                            Vec2::new(220.0, 220.0),
+                            Vec2::new(175.0, 135.0),
+                            Vec2::new(130.0, 220.0),
+                        )
+                        .radius(6.0_f32)
+                        .fill(RgbaF32::TRANSPARENT)
+                        .border(Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
+                    );
+                });
+        })
+        .image;
     assert_matches_golden("triangle", &img, Tolerance::default());
 }
 
@@ -982,15 +1051,18 @@ fn triangle_matches_golden() {
 #[test]
 fn progress_bar_half_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(220, 60), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ProgressBar::new(0.5).id_salt("pb").show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 60))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ProgressBar::new(0.5).id_salt("pb").show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("progress_bar_half", &img, Tolerance::default());
 }
 
@@ -1002,27 +1074,30 @@ fn toggle_switch_states_matches_golden() {
     let mut h = Harness::new();
     let mut style = ToggleTheme::switch(&FIXTURE_PALETTE);
     style.defaults.anim = None; // sit at the rest position, no first-frame transient
-    let img = h.render(UVec2::new(220, 110), 1.0, DARK_BG, |ui| {
-        let mut on = true;
-        let mut off = false;
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Switch::new(&mut on)
-                    .id_salt("on")
-                    .label("on")
-                    .style(&style)
-                    .show(ui);
-                Switch::new(&mut off)
-                    .id_salt("off")
-                    .label("off")
-                    .style(&style)
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 110))
+        .frame(|ui| {
+            let mut on = true;
+            let mut off = false;
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Switch::new(&mut on)
+                        .id_salt("on")
+                        .label("on")
+                        .style(&style)
+                        .show(ui);
+                    Switch::new(&mut off)
+                        .id_salt("off")
+                        .label("off")
+                        .style(&style)
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("toggle_switch_states", &img, Tolerance::default());
 }
 
@@ -1035,33 +1110,36 @@ fn toggle_switch_states_matches_golden() {
 fn arc_shapes_match_golden() {
     use std::f32::consts::{FRAC_PI_2, PI};
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(Shape::circle(
-                    Vec2::new(45.0, 70.0),
-                    30.0,
-                    Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
-                ));
-                let comet = ColorRamp::two_stop(
-                    RgbaF32::srgb(1.0, 0.85, 0.2).with_alpha(0.0),
-                    RgbaF32::srgb(1.0, 0.85, 0.2),
-                );
-                ui.add_shape(
-                    Shape::arc(
-                        Vec2::new(130.0, 70.0),
+    let img = h
+        .size(UVec2::new(180, 140))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::circle(
+                        Vec2::new(45.0, 70.0),
                         30.0,
-                        -FRAC_PI_2,
-                        1.5 * PI,
-                        Stroke::new(RgbaF32::WHITE, 8.0),
-                    )
-                    .ramp(comet)
-                    .cap(LineCap::Round),
-                );
-            });
-    });
+                        Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
+                    ));
+                    let comet = ColorRamp::two_stop(
+                        RgbaF32::srgb(1.0, 0.85, 0.2).with_alpha(0.0),
+                        RgbaF32::srgb(1.0, 0.85, 0.2),
+                    );
+                    ui.add_shape(
+                        Shape::arc(
+                            Vec2::new(130.0, 70.0),
+                            30.0,
+                            -FRAC_PI_2,
+                            1.5 * PI,
+                            Stroke::new(RgbaF32::WHITE, 8.0),
+                        )
+                        .ramp(comet)
+                        .cap(LineCap::Round),
+                    );
+                });
+        })
+        .image;
     assert_matches_golden("arc_shapes", &img, Tolerance::default());
 }
 
@@ -1070,15 +1148,18 @@ fn arc_shapes_match_golden() {
 #[test]
 fn spinner_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(80, 80), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Spinner::new().diameter(48.0).id_salt("sp").show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(80, 80))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Spinner::new().diameter(48.0).id_salt("sp").show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("spinner", &img, Tolerance::default());
 }
 
@@ -1087,16 +1168,19 @@ fn spinner_matches_golden() {
 #[test]
 fn slider_thirty_percent_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(240, 60), 1.0, DARK_BG, |ui| {
-        let mut v = 0.3_f64;
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Slider::new(&mut v, 0.0..=1.0).id_salt("sl").show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(240, 60))
+        .frame(|ui| {
+            let mut v = 0.3_f64;
+            Panel::vstack()
+                .auto_id()
+                .padding(20.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Slider::new(&mut v, 0.0..=1.0).id_salt("sl").show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("slider_thirty_percent", &img, Tolerance::default());
 }
 
@@ -1104,21 +1188,24 @@ fn slider_thirty_percent_matches_golden() {
 #[test]
 fn drag_value_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(140, 64), 1.0, DARK_BG, |ui| {
-        let mut v = 42.5_f64;
-        Panel::vstack()
-            .auto_id()
-            .padding(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                DragValue::new(&mut v)
-                    .decimals(1)
-                    .suffix(" px")
-                    .size((Sizing::fixed(100.0), Sizing::HUG))
-                    .id_salt("dv")
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(140, 64))
+        .frame(|ui| {
+            let mut v = 42.5_f64;
+            Panel::vstack()
+                .auto_id()
+                .padding(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    DragValue::new(&mut v)
+                        .decimals(1)
+                        .suffix(" px")
+                        .size((Sizing::fixed(100.0), Sizing::HUG))
+                        .id_salt("dv")
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("drag_value", &img, Tolerance::default());
 }
 
@@ -1129,19 +1216,22 @@ fn drag_value_matches_golden() {
 fn combo_box_closed_matches_golden() {
     let mut h = Harness::new();
     let opts = ["Apple", "Banana", "Cherry"];
-    let img = h.render(UVec2::new(220, 70), 1.0, DARK_BG, |ui| {
-        let mut sel = 1usize;
-        Panel::vstack()
-            .auto_id()
-            .padding(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ComboBox::new(&mut sel, &opts)
-                    .size((Sizing::fixed(160.0), Sizing::HUG))
-                    .id_salt("cb")
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(220, 70))
+        .frame(|ui| {
+            let mut sel = 1usize;
+            Panel::vstack()
+                .auto_id()
+                .padding(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ComboBox::new(&mut sel, &opts)
+                        .size((Sizing::fixed(160.0), Sizing::HUG))
+                        .id_salt("cb")
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("combo_box_closed", &img, Tolerance::default());
 }
 
@@ -1150,22 +1240,25 @@ fn combo_box_closed_matches_golden() {
 #[test]
 fn modal_dialog_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(300, 200), 1.0, DARK_BG, |ui| {
-        // Bright content behind, so the backdrop's dim is visible.
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .background(Background {
-                fill: RgbaF32::srgb(0.35, 0.45, 0.65).into(),
-                border: Stroke::ZERO,
-                corners: Corners::ZERO,
-                shadow: Shadow::NONE,
-            })
-            .show(ui, |_| {});
-        Modal::new().id_salt("m").show(ui, |ui, _| {
-            Text::new("Confirm?").id_salt("mt").show(ui);
-        });
-    });
+    let img = h
+        .size(UVec2::new(300, 200))
+        .frame(|ui| {
+            // Bright content behind, so the backdrop's dim is visible.
+            Panel::vstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: RgbaF32::srgb(0.35, 0.45, 0.65).into(),
+                    border: Stroke::ZERO,
+                    corners: Corners::ZERO,
+                    shadow: Shadow::NONE,
+                })
+                .show(ui, |_| {});
+            Modal::new().id_salt("m").show(ui, |ui, _| {
+                Text::new("Confirm?").id_salt("mt").show(ui);
+            });
+        })
+        .image;
     assert_matches_golden("modal_dialog", &img, Tolerance::default());
 }
 
@@ -1176,30 +1269,33 @@ fn modal_dialog_matches_golden() {
 #[test]
 fn color_field_and_bars_match_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(480, 220), 1.0, DARK_BG, |ui| {
-        Panel::hstack()
-            .auto_id()
-            .padding(12.0)
-            .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for model in ColorModel::ALL {
-                    let mut coords = ColorCoords::new(model, RgbaF32::hex(0x2b7fd4), 0.0);
-                    Panel::vstack()
-                        .id_salt(model.label())
-                        .gap(8.0)
-                        .size((Sizing::HUG, Sizing::HUG))
-                        .show(ui, |ui| {
-                            ColorField::new(&mut coords).id_salt("field").show(ui);
-                            ColorStrip::for_hue(&mut coords).id_salt("hue").show(ui);
-                            let mut translucent = coords.to_color().with_alpha(0.6);
-                            ColorStrip::for_alpha(&mut translucent)
-                                .id_salt("alpha")
-                                .show(ui);
-                        });
-                }
-            });
-    });
+    let img = h
+        .size(UVec2::new(480, 220))
+        .frame(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .padding(12.0)
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for model in ColorModel::ALL {
+                        let mut coords = ColorCoords::new(model, RgbaF32::hex(0x2b7fd4), 0.0);
+                        Panel::vstack()
+                            .id_salt(model.label())
+                            .gap(8.0)
+                            .size((Sizing::HUG, Sizing::HUG))
+                            .show(ui, |ui| {
+                                ColorField::new(&mut coords).id_salt("field").show(ui);
+                                ColorStrip::for_hue(&mut coords).id_salt("hue").show(ui);
+                                let mut translucent = coords.to_color().with_alpha(0.6);
+                                ColorStrip::for_alpha(&mut translucent)
+                                    .id_salt("alpha")
+                                    .show(ui);
+                            });
+                    }
+                });
+        })
+        .image;
     assert_matches_golden("color_field_and_bars", &img, Tolerance::default());
 }
 
@@ -1208,19 +1304,22 @@ fn color_field_and_bars_match_golden() {
 #[test]
 fn color_picker_panel_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(280, 500), 1.0, DARK_BG, |ui| {
-        let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(0.75);
-        Panel::vstack()
-            .auto_id()
-            .padding(12.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ColorPicker::new(&mut color)
-                    .alpha(true)
-                    .history(true)
-                    .id_salt("picker")
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(280, 500))
+        .frame(|ui| {
+            let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(0.75);
+            Panel::vstack()
+                .auto_id()
+                .padding(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ColorPicker::new(&mut color)
+                        .alpha(true)
+                        .history(true)
+                        .id_salt("picker")
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("color_picker_panel", &img, Tolerance::default());
 }

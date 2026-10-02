@@ -7,7 +7,6 @@ use palantir::{
     Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
-use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
 use crate::harness::{FIXTURE_PALETTE, Harness};
 use palantir::golden::Tolerance;
@@ -17,39 +16,42 @@ use palantir::golden::Tolerance;
 #[test]
 fn vstack_fill_weights_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(160, 200), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(8.0)
-            .gap(4.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Block::new()
-                    .id_salt("a")
-                    .size((Sizing::FILL, Sizing::fill(1.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.85, 0.30, 0.30).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Block::new()
-                    .id_salt("b")
-                    .size((Sizing::FILL, Sizing::fill(2.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.30, 0.85, 0.40).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Block::new()
-                    .id_salt("c")
-                    .size((Sizing::FILL, Sizing::fill(1.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.30, 0.50, 0.95).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(160, 200))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(8.0)
+                .gap(4.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id_salt("a")
+                        .size((Sizing::FILL, Sizing::fill(1.0)))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.85, 0.30, 0.30).into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Block::new()
+                        .id_salt("b")
+                        .size((Sizing::FILL, Sizing::fill(2.0)))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.30, 0.85, 0.40).into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Block::new()
+                        .id_salt("c")
+                        .size((Sizing::FILL, Sizing::fill(1.0)))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.30, 0.50, 0.95).into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("vstack_fill_weights", &img, Tolerance::default());
 }
 
@@ -58,54 +60,57 @@ fn vstack_fill_weights_matches_golden() {
 #[test]
 fn grid_mixed_tracks_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(320, 200), 1.0, DARK_BG, |ui| {
-        Grid::new()
-            .id_salt("g")
-            .cols([Track::fixed(80.0), Track::FILL, Track::fixed(60.0)])
-            .rows([Track::fixed(40.0), Track::FILL])
-            .line_gap(6.0)
-            .gap(6.0)
-            .padding(10.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Block::new()
-                    .id_salt("header")
-                    .grid_cell(GridCell::at(0, 0).span(1, 3))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.25, 0.30, 0.45).into(),
-                        corners: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Block::new()
-                    .id_salt("side")
-                    .grid_cell((1, 0))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.35, 0.45, 0.30).into(),
-                        corners: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Block::new()
-                    .id_salt("body")
-                    .grid_cell((1, 1))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.20, 0.20, 0.28).into(),
-                        corners: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Block::new()
-                    .id_salt("aside")
-                    .grid_cell((1, 2))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.50, 0.30, 0.45).into(),
-                        corners: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(320, 200))
+        .frame(|ui| {
+            Grid::new()
+                .id_salt("g")
+                .cols([Track::fixed(80.0), Track::FILL, Track::fixed(60.0)])
+                .rows([Track::fixed(40.0), Track::FILL])
+                .line_gap(6.0)
+                .gap(6.0)
+                .padding(10.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id_salt("header")
+                        .grid_cell(GridCell::at(0, 0).span(1, 3))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.25, 0.30, 0.45).into(),
+                            corners: Corners::all(4.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Block::new()
+                        .id_salt("side")
+                        .grid_cell((1, 0))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.35, 0.45, 0.30).into(),
+                            corners: Corners::all(4.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Block::new()
+                        .id_salt("body")
+                        .grid_cell((1, 1))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.20, 0.20, 0.28).into(),
+                            corners: Corners::all(4.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Block::new()
+                        .id_salt("aside")
+                        .grid_cell((1, 2))
+                        .background(Background {
+                            fill: RgbaF32::srgb(0.50, 0.30, 0.45).into(),
+                            corners: Corners::all(4.0),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("grid_mixed_tracks", &img, Tolerance::default());
 }
 
@@ -115,25 +120,28 @@ fn grid_mixed_tracks_matches_golden() {
 #[test]
 fn zstack_centered_button_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(240, 160), 1.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .padding(12.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .background(Background {
-                fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
-                border: Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
-                corners: Corners::all(10.0),
-                shadow: Shadow::NONE,
-            })
-            .show(ui, |ui| {
-                Button::new()
-                    .id_salt("btn")
-                    .align(Align::CENTER)
-                    .label("centered")
-                    .show(ui);
-            });
-    });
+    let img = h
+        .size(UVec2::new(240, 160))
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .padding(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
+                    border: Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
+                    corners: Corners::all(10.0),
+                    shadow: Shadow::NONE,
+                })
+                .show(ui, |ui| {
+                    Button::new()
+                        .id_salt("btn")
+                        .align(Align::CENTER)
+                        .label("centered")
+                        .show(ui);
+                });
+        })
+        .image;
     assert_matches_golden("zstack_centered_button", &img, Tolerance::default());
 }
 
@@ -146,45 +154,48 @@ fn zstack_centered_button_matches_golden() {
 #[test]
 fn grid_two_hug_cols_label_not_clipped_matches_golden() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(440, 120), 1.0, DARK_BG, |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(12.0)
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
-                Grid::new()
-                    .id_salt("two-hug")
-                    .cols([Track::HUG, Track::HUG])
-                    .rows([Track::HUG])
-                    .line_gap(16.0)
-                    .gap(0.0)
-                    .show(ui, |ui| {
-                        Text::new(
-                            "The quick brown fox jumps over the lazy dog. \
+    let img = h
+        .size(UVec2::new(440, 120))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(12.0)
+                .size((Sizing::FILL, Sizing::HUG))
+                .show(ui, |ui| {
+                    Grid::new()
+                        .id_salt("two-hug")
+                        .cols([Track::HUG, Track::HUG])
+                        .rows([Track::HUG])
+                        .line_gap(16.0)
+                        .gap(0.0)
+                        .show(ui, |ui| {
+                            Text::new(
+                                "The quick brown fox jumps over the lazy dog. \
                              Pack my box with five dozen liquor jugs.",
-                        )
-                        .id_salt("paragraph")
-                        .style(
-                            &TextStyle::default()
-                                .with_font_size(14.0)
-                                .with_color(FIXTURE_PALETTE.text),
-                        )
-                        .text_wrap(TextWrap::WrapWithOverflow)
-                        .grid_cell((0, 0))
-                        .show(ui);
-                        // Bare label — exercises the default wrap mode.
-                        Text::new("right column")
-                            .id_salt("label")
+                            )
+                            .id_salt("paragraph")
                             .style(
                                 &TextStyle::default()
                                     .with_font_size(14.0)
                                     .with_color(FIXTURE_PALETTE.text),
                             )
-                            .grid_cell((0, 1))
+                            .text_wrap(TextWrap::WrapWithOverflow)
+                            .grid_cell((0, 0))
                             .show(ui);
-                    });
-            });
-    });
+                            // Bare label — exercises the default wrap mode.
+                            Text::new("right column")
+                                .id_salt("label")
+                                .style(
+                                    &TextStyle::default()
+                                        .with_font_size(14.0)
+                                        .with_color(FIXTURE_PALETTE.text),
+                                )
+                                .grid_cell((0, 1))
+                                .show(ui);
+                        });
+                });
+        })
+        .image;
     assert_matches_golden(
         "grid_two_hug_cols_label_not_clipped",
         &img,
