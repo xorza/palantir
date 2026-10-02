@@ -122,7 +122,7 @@
 //! come out wrong.
 
 // Re-import `palantir` as a self-alias so proc-macros that emit
-// `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
+// `::palantir::widget::Animatable` paths (from `palantir-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,
 // `Background`). Outside the crate this path resolves naturally.
 
@@ -206,8 +206,9 @@ pub mod golden;
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
-    /// Needs a real GPU device, so unlike its neighbours this one exists
-    /// only under the feature — never in a plain `cargo test` build.
+    /// Needs a real GPU device, so unlike its neighbours this one is gated
+    /// on the feature rather than on `test`. Under `cargo test` the self
+    /// dev-dependency turns the feature on anyway.
     #[cfg(feature = "internals")]
     pub use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     #[cfg(feature = "internals")]
