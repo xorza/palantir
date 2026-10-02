@@ -8,6 +8,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::num::{F32Px, Vec2Ext};
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
@@ -223,7 +224,7 @@ impl PaintSink for ComposeSession<'_> {
             // leaves the viewport.
             let rc = RoundedClip {
                 mask_rect: phys,
-                corners: logical_radius.scaled_by(scale_phys),
+                corners: logical_radius.fit_to(phys.size, scale_phys, 0.0),
             };
             // A rounded push nested in rounded ancestors
             // STACKS: child chain = ancestor chain + own
@@ -870,18 +871,35 @@ impl ComposeSession<'_> {
         let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor());
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
+                let rect = self.scaled_rect(rect);
+                // Live shadow parameters are logical-px scalars; scale
+                // them so the shader's `local` coords line up. A gradient
+                // axis is already unit-space and passes through untouched.
+                let fill_axis = if p.fill.kind.is_shadow() {
+                    p.fill_axis.scaled(scale_phys)
+                } else {
+                    p.fill_axis
+                };
+                // The radii fit the box the shader rounds. For a drop
+                // shadow that is the shadow box inside the blur halo, the
+                // same arithmetic as `quad.wgsl`'s drop arm, and the radii
+                // grow by the spread first; every other quad rounds its
+                // own rect.
+                let corners = if p.fill.kind == FillKind::SHADOW_DROP {
+                    let [_, _, sigma, spread] = fill_axis.lanes();
+                    let halo = 3.0 * sigma + spread.max(0.0);
+                    let shadow = Size::new(
+                        (rect.phys.size.w - 2.0 * halo + 2.0 * spread).max(0.0),
+                        (rect.phys.size.h - 2.0 * halo + 2.0 * spread).max(0.0),
+                    );
+                    corners.fit_to(shadow, scale_phys, spread)
+                } else {
+                    corners.fit_to(rect.phys.size, scale_phys, 0.0)
+                };
                 PackedQuad {
-                    rect: self.scaled_rect(rect),
-                    corners: corners.scaled_by(scale_phys),
-                    // Live shadow parameters are logical-px scalars;
-                    // scale them so the shader's `local` coords line
-                    // up. A gradient axis is already unit-space and
-                    // passes through untouched.
-                    fill_axis: if p.fill.kind.is_shadow() {
-                        p.fill_axis.scaled(scale_phys)
-                    } else {
-                        p.fill_axis
-                    },
+                    rect,
+                    corners,
+                    fill_axis,
                     stroke_width: p.stroke.width * scale_phys,
                 }
             }

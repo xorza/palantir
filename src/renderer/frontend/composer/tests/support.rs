@@ -181,11 +181,13 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
 }
 
 pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32) {
+    // Half-pixel steps keep every radius distinct and below the 200 px a
+    // 400 px box fits, so no two levels fit to the same mask.
     for level in 1..=depth {
         clip_rounded(
             buffer,
             rect(0.0, 0.0, 400.0, 400.0),
-            Corners::all(level as f32),
+            Corners::all(level as f32 * 0.5),
         );
     }
 }

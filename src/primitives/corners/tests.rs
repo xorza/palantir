@@ -47,6 +47,66 @@ fn as_array_and_from_array_round_trip() {
     assert_eq!(rebuilt, original);
 }
 
+/// `f = min(side / sum of its two radii)`, hand-computed per row; every
+/// radius scales by `f` when it is below 1.
+#[test]
+fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
+    let size = Size::new(100.0, 40.0);
+    let rows = [
+        // f = 40 / (9999 + 9999) on the short sides.
+        ("all 9999", Corners::all(9999.0), [20.0; 4]),
+        // f = 40 / 60.
+        ("all 30", Corners::all(30.0), [20.0; 4]),
+        // Sides: top 40 of 100, bottom 0, left 30 of 40, right 10: f ≥ 1.
+        (
+            "tl 30, tr 10",
+            Corners::new(30.0, 10.0, 0.0, 0.0),
+            [30.0, 10.0, 0.0, 0.0],
+        ),
+        // Left side: 40 / (40 + 40) = 0.5.
+        (
+            "tl 40, bl 40",
+            Corners::new(40.0, 0.0, 0.0, 40.0),
+            [20.0, 0.0, 0.0, 20.0],
+        ),
+        ("sharp", Corners::ZERO, [0.0; 4]),
+    ];
+    for (label, corners, want) in rows {
+        assert_eq!(corners.fit_to(size, 1.0, 0.0).as_array(), want, "{label}");
+    }
+    // Scaled first, in f32: 9999 × 8 is past f16's 65504, and still fits
+    // a 100×40 box at 8× (800×320) to 160.
+    assert_eq!(
+        Corners::all(9999.0)
+            .fit_to(Size::new(800.0, 320.0), 8.0, 0.0)
+            .as_array(),
+        [160.0; 4],
+    );
+}
+
+/// CSS `box-shadow` spread on a radius, in a box large enough that the
+/// fit changes nothing: `(r 0, s 10)` stays sharp; `(r 10, s 10)` → 20;
+/// `(r 4, s 10)` → `4 + 10·(1 + (0.4 − 1)³) = 4 + 10·0.784 = 11.84`;
+/// `(r 10, s −6)` → 4; `(r 4, s −6)` → 0.
+#[test]
+fn fit_to_grows_radii_by_the_css_spread_rule() {
+    let size = Size::new(1000.0, 1000.0);
+    for (r, spread, want) in [
+        (0.0, 10.0, 0.0),
+        (10.0, 10.0, 20.0),
+        (4.0, 10.0, 11.84),
+        (10.0, -6.0, 4.0),
+        (4.0, -6.0, 0.0),
+    ] {
+        let got = Corners::all(r).fit_to(size, 1.0, spread).as_array()[0];
+        // f16 packing: 11.84 lands on the nearest step, 2^-7 apart there.
+        assert!(
+            (got - want).abs() <= 1.0 / 256.0,
+            "r {r}, spread {spread}: {got}, want {want}",
+        );
+    }
+}
+
 #[test]
 fn scaled_by_multiplies_each_corner() {
     let c = Corners::new(2.0, 4.0, 6.0, 8.0).scaled_by(1.5);

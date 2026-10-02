@@ -5,6 +5,7 @@
 
 mod blit;
 mod color;
+mod corners;
 mod damage;
 mod expander;
 mod format_change;
