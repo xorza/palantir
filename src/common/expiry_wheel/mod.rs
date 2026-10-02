@@ -323,7 +323,6 @@ pub(crate) mod test_support {
 
         /// Outstanding tickets across the whole ring.
         ///
-        ///
         /// The number that says whether an owner is holding up its end
         /// of the protocol: file on insert, file again only when a
         /// deadline moves *in*, and let a supplanted ticket die rather

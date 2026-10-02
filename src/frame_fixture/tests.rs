@@ -107,7 +107,7 @@ const EXCLUDED: &[(&str, &str)] = &[
     (
         "dock",
         "a whole-window pane tree that takes the space it is handed, so it cannot \
-             sit inside the designed screen — `tests/alloc/dock.rs` measures a \
+             sit inside the designed screen — `tests/alloc/fixtures/dock.rs` measures a \
              steady-state dock frame against a surface of its own",
     ),
     (

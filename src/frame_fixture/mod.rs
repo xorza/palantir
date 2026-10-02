@@ -24,7 +24,7 @@
 //!
 //! It sits at the crate root rather than beside any one driver because no
 //! driver owns it: the frame benches ([`crate::ui::bench`]), the allocation
-//! gates in `tests/alloc/gates.rs` and the cascade bench
+//! gates in `tests/alloc/gates/` and the cascade bench
 //! ([`crate::scene::cascade::bench`]) all record this same tree, and its
 //! node structure is what makes their numbers comparable release to
 //! release. Treat the structure as frozen — retheming is free, but adding

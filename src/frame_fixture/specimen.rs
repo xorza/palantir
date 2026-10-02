@@ -216,8 +216,8 @@ fn add_shadow(ui: &mut Ui) {
 
 /// The gradient triangle, built once into a state row and lent to
 /// `add_shape` from there. Rebuilding it per frame would allocate, which
-/// the `record-only` alloc step forbids; the row is what makes the build
-/// a warmup cost instead.
+/// the allocation suite (`tests/alloc`) forbids; the row is what makes the
+/// build a warmup cost instead.
 fn gradient_mesh(ui: &mut Ui) {
     let id = WidgetId::from_hash("frame_fixture::specimen::gradient-mesh");
     let fresh = ui.state::<Mesh>(id).is_none();

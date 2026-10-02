@@ -29,13 +29,14 @@ pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage>
     h.frame(f).plan.map(|plan| plan.damage)
 }
 
-/// The standard "root with one 50×50 frame" tree used by most damage
-/// tests. RgbaF32 flips between frames to drive minimal authoring
-/// changes.
+/// The two fills [`one_frame`] flips between to drive a minimal authoring
+/// change.
 pub(super) const BLUE: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
 
 pub(super) const RED: RgbaF32 = RgbaF32::srgb(0.9, 0.4, 0.8);
 
+/// The standard "root with one 50×50 frame" tree most damage tests use,
+/// its frame filled with `color`.
 pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
     Panel::hstack()
         .id(WidgetId::from_hash("root"))

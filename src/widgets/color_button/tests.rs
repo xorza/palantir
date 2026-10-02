@@ -19,8 +19,8 @@ fn panel_nodes(h: &UiHarness) -> usize {
     h.ui.layout(Layer::Popup).rect.len()
 }
 
-/// One click on a chip at the surface's corner, with a frame between the
-/// press and the release so the chip sees both edges.
+/// One click on a chip at the surface's corner. The input queue lands a
+/// press a frame before the release behind it, so each takes a frame.
 fn click_chip(h: &mut UiHarness, mut frame: impl FnMut(&mut UiHarness)) {
     h.press_at(Vec2::new(10.0, 10.0));
     frame(h);

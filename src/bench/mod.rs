@@ -13,7 +13,7 @@
 //!
 //! The allocation gates are not here at all: they report counts rather
 //! than times, so they need no criterion and no optimized link, and they
-//! live with the rest of the allocation suite in `tests/alloc/gates.rs`.
+//! live with the rest of the allocation suite in `tests/alloc/gates/`.
 //!
 //! ## Why this owns `main`
 //!
