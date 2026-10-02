@@ -1,7 +1,7 @@
 //! One row's contribution to a pixel diff, and the scan that produces it.
 
 /// A row's `(max delta, differing count)`. Rows are independent, so the
-/// per-row parallel reduction is a trivial merge of these.
+/// image's totals are a fold of these.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct RowStats {
     pub(super) max_delta: u8,

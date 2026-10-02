@@ -813,6 +813,5 @@ output, cost, cleanup.
       tenant methods, `DamageEngine::budget_px`, `Forest::scratch`, `Ident::Resolved` arms,
       `InputState` field encapsulation, `OffscreenHost` gated impl, `WinitHostConfig` clone,
       `Index16::to_raw`, `IconId` bound and duplicate-name asserts.
-- [ ] Drop `memchr` and `rayon`.
 - [ ] ISSUES.md items.
 - [ ] TEST_REVIEW groups 2, 6, 7, 9, 11–18 that no earlier phase closed.
