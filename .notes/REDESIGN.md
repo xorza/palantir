@@ -787,13 +787,6 @@ output, cost, cleanup.
 
 - [ ] Key dumps on Linux and on the macOS test laptop, recorded as the translation test table.
 
-## Phase 6. Animation (D7)
-
-- [ ] From-rest first frame spends 0; in-flight retargets unchanged.
-- [ ] NaN target debug assert; snap on retarget only; one floor (`EPS`) for the spring.
-- [ ] Single match on the motion pair.
-- [ ] Split the 1.9 s spring test (TEST_REVIEW 13).
-
 ## Phase 7. Text (D11)
 
 - [ ] Hebrew and Arabic subset test faces.

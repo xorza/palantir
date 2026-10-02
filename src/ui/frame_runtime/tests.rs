@@ -209,4 +209,18 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
         "a 16 ms frame spends 16 ms; got {}",
         rt.dt,
     );
+
+    // An unthrottled loop at 10 µs a frame spends nothing until its
+    // carry crosses the step: 416 frames carry 4.16 ms, under 1/240 s =
+    // 4.1667 ms, and the 417th spends the 4.17 ms at once.
+    let mut rt = FrameRuntime::default();
+    let mut now = Duration::ZERO;
+    for frame in 1..=416 {
+        now += Duration::from_micros(10);
+        rt.advance_clock(now);
+        assert_eq!(rt.dt, 0.0, "frame {frame} spends nothing");
+    }
+    now += Duration::from_micros(10);
+    rt.advance_clock(now);
+    assert!((rt.dt - 0.00417).abs() < 1e-7, "frame 417 spends {}", rt.dt);
 }

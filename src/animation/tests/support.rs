@@ -41,6 +41,7 @@ pub(super) fn duration_motion<T: Animatable>(row: &AnimRow<T>) -> DurationMotion
     let MotionRow::Duration {
         segment_start,
         elapsed,
+        ..
     } = &row.motion
     else {
         panic!("expected duration motion state");
@@ -52,7 +53,7 @@ pub(super) fn duration_motion<T: Animatable>(row: &AnimRow<T>) -> DurationMotion
 }
 
 pub(super) fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
-    let MotionRow::Spring { velocity } = &row.motion else {
+    let MotionRow::Spring { velocity, .. } = &row.motion else {
         panic!("expected spring motion state");
     };
     velocity

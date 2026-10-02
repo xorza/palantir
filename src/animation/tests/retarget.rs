@@ -13,17 +13,37 @@ fn retarget_mid_flight_starts_new_segment_from_current() {
     let id = wid("a");
     let spec = linear_100ms();
     let _ = map.tick(id, SLOT, 0.0, spec, 0.016, next_frame());
-    let _ = map.tick(id, SLOT, 1.0, spec, 0.0, next_frame());
+    // From rest: the change's frame spends none of its 16 ms.
+    let r = map.tick(id, SLOT, 1.0, spec, 0.016, next_frame());
+    assert_eq!(r.current, 0.0);
     let mid = map.tick(id, SLOT, 1.0, spec, 0.05, next_frame()).current;
     // 50 ms of a 100 ms linear segment: progress 0.5, so lerp(0.0, 1.0, 0.5).
     assert_eq!(mid, 0.5);
 
-    let r = map.tick(id, SLOT, 2.0, spec, 0.0, next_frame());
-    assert_eq!(r.current, mid, "retarget must preserve current");
+    // In flight: the retarget restarts the segment at 0.5 and spends its
+    // 50 ms at once, half of a linear 100 ms segment: lerp(0.5, 2.0, 0.5).
     let r = map.tick(id, SLOT, 2.0, spec, 0.05, next_frame());
-    // The retarget restarted the segment at 0.5, so another half of a
-    // linear 100 ms segment gives lerp(0.5, 2.0, 0.5).
     assert_eq!(r.current, 1.25);
+}
+
+/// A target that moves every frame — an animation following a drag —
+/// keeps moving on every frame: only the first change, from rest, spends
+/// nothing.
+#[test]
+fn a_target_that_moves_every_frame_moves_every_frame() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("follow");
+    let spec = linear_100ms();
+    let _ = map.tick(id, SLOT, 0.0, spec, 0.016, next_frame());
+    let mut last = map.tick(id, SLOT, 10.0, spec, 0.016, next_frame()).current;
+    assert_eq!(last, 0.0, "the first change starts from rest");
+    for frame in 2..=10 {
+        let now = map
+            .tick(id, SLOT, 10.0 * frame as f32, spec, 0.016, next_frame())
+            .current;
+        assert!(now > last, "frame {frame}: {now} after {last}");
+        last = now;
+    }
 }
 
 #[test]
@@ -60,7 +80,8 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("round-trip-spec-switch");
     let duration = AnimSpec::duration(1.0, Easing::Linear);
-    let _ = map.tick(id, SLOT, 0.0, duration, 0.0, next_frame());
+    let _ = map.tick(id, SLOT, 0.0, duration, 0.016, next_frame());
+    let _ = map.tick(id, SLOT, 1.0, duration, 0.016, next_frame());
     let duration_result = map.tick(id, SLOT, 1.0, duration, 0.4, next_frame());
     assert_eq!(duration_result.current, 0.4);
 

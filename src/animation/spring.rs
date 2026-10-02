@@ -4,6 +4,7 @@
 
 use crate::animation::animatable::Animatable;
 use crate::common::time::MAX_ANIM_DT;
+use crate::primitives::approx::EPS;
 
 pub(super) const SPRING_ERROR: &str = "spring parameters must be positive, finite, convergent, and settle without a long velocity tail";
 
@@ -14,13 +15,17 @@ const MIN_DECAY_RATE: f64 = 1.0;
 /// has already become invisible.
 const MAX_VELOCITY_TAIL_SECS: f64 = 4.0;
 
-// Spring settle tolerances, deliberately *loose*: a spring's job is to
-// converge, and the eye cannot see the last 0.01 px of travel. A
-// tighter floor buys nothing at pixel scale — the f32 ULP near
-// `cur ≈ 400` is already ~2.4e-5 — and costs the integrator a frame or
-// two of settle. The duration path's own far tighter floor lives with
-// it, in `animation::duration`.
-const POS_EPS: f32 = 0.01;
+// Spring settle tolerances. The position floor is the duration path's
+// one absolute floor, `EPS = 1e-4`: a spring animates colours as well as
+// pixels, and a pixel-scale floor of 0.01 snapped a dark-theme hover
+// (`#121212 → #1c1c1c`, 0.0056 linear a channel) with no animation at
+// all, and ended every colour fade with a jump of several 8-bit steps
+// near black. The cost is repaint time, not motion: the default spring
+// (stiffness 170, damping 26, near critical) decays at 13/s, so reaching
+// 1e-4 instead of 0.01 takes `ln(100) / 13 ≈ 0.35 s` longer on a pixel
+// travel, painting a motion too small to see. A per-type tolerance would
+// win that time back (API_CHANGES A5).
+const POS_EPS: f32 = EPS;
 const VEL_EPS: f32 = 0.1;
 const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
 const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
@@ -187,7 +192,9 @@ pub(super) fn step<T: Animatable>(
     // `Background` only `Copy` when their fields actually are. For the
     // common scalar/vector animations these clones compile to noops;
     // for the few wide types they're explicit by design.
+    let before = current.clone();
     let displacement = current.sub(target.clone());
+    let displacement_before = displacement.clone();
     let moved = displacement
         .clone()
         .scale(transition.pos_from_pos)
@@ -201,18 +208,35 @@ pub(super) fn step<T: Animatable>(
         .scale(transition.vel_from_vel)
         .add(displacement.scale(transition.vel_from_pos));
     if within_settle_eps(moved.clone(), velocity.clone()) {
-        SpringStep {
+        return SpringStep {
             current: target,
             velocity: T::zero(),
             settled: true,
-        }
-    } else {
-        // `moved` *is* the new displacement, so adding it to `target`
-        // also spares the round trip back through a subtraction.
-        SpringStep {
-            current: target.add(moved),
-            velocity,
-            settled: false,
-        }
+        };
+    }
+    // How far this step meant to move, in displacement space, where the
+    // small numbers keep their precision.
+    let progress = moved.clone().sub(displacement_before).magnitude_squared();
+    // `moved` *is* the new displacement, so adding it to `target` also
+    // spares the round trip back through a subtraction.
+    let next = target.clone().add(moved);
+    // A step that meant to move but left `current` where it was, with the
+    // velocity spent, is a value f32 cannot bring any closer at its
+    // magnitude: near 400 px a step of f32 is 3e-5, and the decay over one
+    // 1/240 s substep is 5 %, so progress stops about 3e-4 short — above
+    // `POS_EPS`. No later step of that length could move it either, so it
+    // settles here. A step with no time to move (`dt = 0`) means nothing
+    // to move, and is not a stall.
+    if progress > 0.0 && next == before && velocity.clone().magnitude_squared() < VEL_EPS_SQ {
+        return SpringStep {
+            current: target,
+            velocity: T::zero(),
+            settled: true,
+        };
+    }
+    SpringStep {
+        current: next,
+        velocity,
+        settled: false,
     }
 }
