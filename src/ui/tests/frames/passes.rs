@@ -320,3 +320,42 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "repaint_requested must reset at the top of frame()",
     );
 }
+
+/// `App::update` reads responses before any record pass of its frame, so
+/// it needs its own quiescence snapshot. Here the last pass ran with the
+/// pointer off the surface, and the press arrived after it: a snapshot
+/// left from that pass would default the whole interaction half out.
+#[test]
+fn update_sees_input_that_arrived_after_a_quiescent_pass() {
+    use crate::app::App;
+    use crate::window::window_token::WindowToken;
+
+    #[derive(Debug)]
+    struct Probe {
+        id: WidgetId,
+        seen: Vec<bool>,
+    }
+
+    impl App for Probe {
+        fn update(&mut self, _win: WindowToken, ui: &Ui) {
+            let response = ui.response_for(self.id);
+            self.seen.push(response.pressed() && response.pointer_over);
+        }
+
+        fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
+            Button::new().id(self.id).size(40.0).show(ui);
+        }
+    }
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut probe = Probe {
+        id: WidgetId::from_hash("update-reads-press"),
+        seen: Vec::new(),
+    };
+    h.frame_app(&mut probe);
+    assert_eq!(probe.seen, [false], "nothing pressed yet");
+
+    h.press_at(Vec2::new(20.0, 20.0));
+    h.frame_app(&mut probe);
+    assert_eq!(probe.seen, [false, true], "the press reaches update");
+}

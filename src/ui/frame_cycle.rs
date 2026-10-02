@@ -130,6 +130,10 @@ impl<'a> FrameCycle<'a> {
             FramePlan::FullRecord { .. } => {
                 {
                     tracy::zone!("Ui::update_user");
+                    // `update` reads responses too, and the input that
+                    // arrived since the last pass may have ended its
+                    // quiescence.
+                    self.ui.input.snapshot_frame_quiescent();
                     app.update(win, self.ui);
                 }
                 if first_frame {
@@ -278,6 +282,11 @@ impl<'a> FrameCycle<'a> {
     ///   [`FocusPolicy`](crate::input::policy::FocusPolicy) would read
     ///   as a press on nothing.
     ///
+    /// The scratch starts with the real focus, and the real input keeps
+    /// what the pass asked of it — `set_focus`, `clear_focus`,
+    /// `release_input_scope` — since an app that asks once, on its first
+    /// record, asks during this pass.
+    ///
     /// Afterwards the real input is restored and its held `pointer_pos`
     /// re-routed against the freshly built cascade, so the visible pass
     /// records against correct hover targets. The pass's
@@ -289,9 +298,11 @@ impl<'a> FrameCycle<'a> {
     /// [`InputState`]: crate::input::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
         tracy::zone!("Ui::record_pass.warmup");
-        let saved_input = std::mem::take(&mut self.ui.input);
+        let scratch = self.ui.input.warmup_scratch();
+        let saved_input = std::mem::replace(&mut self.ui.input, scratch);
         let _ = self.record_pass(win, app);
-        self.ui.input = saved_input;
+        let warmup_input = std::mem::replace(&mut self.ui.input, saved_input);
+        self.ui.input.adopt_warmup(&warmup_input);
         self.ui.input.refresh_pointer_targets(&self.ui.cascade);
         self.ui.frame_runtime.relayout_requested = false;
         self.ui.frame_runtime.repaint_requested = false;

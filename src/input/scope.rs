@@ -180,6 +180,14 @@ impl Scopes {
         }
     }
 
+    /// Take on `other`'s pending withdrawals, as if each had been asked
+    /// of this set.
+    pub(super) fn adopt_closing(&mut self, other: &Scopes) {
+        for &owner in &other.closing {
+            self.close(owner);
+        }
+    }
+
     /// Age this frame's withdrawals into the next one. Called once per
     /// frame, after the last record pass.
     pub(super) fn end_frame(&mut self) {

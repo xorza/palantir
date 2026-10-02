@@ -227,3 +227,77 @@ fn warm_constructors_skip_the_warmup_pass() {
         "the warm constructors seed prev_stamp; frame 1 is single-pass",
     );
 }
+
+/// What the warmup pass asks of the input outlives the pass: an app that
+/// moves focus once, on its first record, does so during warmup. Each row
+/// starts from a focus and makes one request on the first record only.
+/// Both passes then record with the requested focus, and the frame ends
+/// on it.
+#[test]
+fn warmup_keeps_focus_requests() {
+    let target = WidgetId::from_hash("warmup-focus");
+    let cases = [(None, Some(target)), (Some(target), None)];
+    for (before, request) in cases {
+        let mut h = cold_ui();
+        if let Some(id) = before {
+            h.set_focus(id);
+        }
+        let mut records = 0_u32;
+        let mut seen = Vec::new();
+        cold_frame(&mut h, |ui| {
+            if records == 0 {
+                match request {
+                    Some(id) => ui.set_focus(id),
+                    None => ui.clear_focus(),
+                }
+            }
+            records += 1;
+            seen.push(ui.focused_id());
+            Block::new().id(target).size(10.0).show(ui);
+        });
+        assert_eq!(records, 2, "warmup + real");
+        assert_eq!(seen, [request, request], "{before:?} → {request:?}");
+        assert_eq!(h.ui.focused_id(), request, "{before:?} → {request:?}");
+    }
+}
+
+/// A scope withdrawn during warmup is gone for the visible pass. Focus
+/// sits inside `inner`, so with `inner` live the Escape that arrived
+/// before frame 1 is granted to it; withdrawn, the grant falls to `root`.
+#[test]
+fn warmup_keeps_scope_releases() {
+    use crate::input::key_class::KeyFilter;
+    use crate::input::keyboard::key::Key;
+    use crate::layout::types::sizing::Sizing;
+
+    let root = WidgetId::from_hash("warmup-root");
+    let inner = WidgetId::from_hash("warmup-inner");
+    let editor = WidgetId::from_hash("warmup-editor");
+    let mut h = cold_ui();
+    h.set_focus(editor);
+    h.key(Key::Escape);
+
+    let mut records = 0_u32;
+    let mut at_root = false;
+    cold_frame(&mut h, |ui| {
+        Panel::vstack()
+            .id(root)
+            .input_scope(KeyFilter::ALL)
+            .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
+            .show(ui, |ui| {
+                at_root |= ui.escape_pressed();
+                Panel::vstack()
+                    .id(inner)
+                    .input_scope(KeyFilter::ALL)
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui, |ui| {
+                        Block::new().id(editor).size(10.0).show(ui);
+                        if records == 0 {
+                            ui.release_input_scope(inner);
+                        }
+                    });
+            });
+        records += 1;
+    });
+    assert!(at_root, "the withdrawn scope cannot hold the grant");
+}
