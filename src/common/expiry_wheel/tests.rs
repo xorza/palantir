@@ -3,9 +3,17 @@ use super::*;
 /// Keys alone, in fire order: most tests here pin *which* tickets
 /// fire, and serials have their own cases below.
 fn fired(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<u32> {
+    fired_with_serials(wheel, frame)
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect()
+}
+
+/// Each fired key with the serial it came back under, in fire order.
+fn fired_with_serials(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<(u32, TicketSeq)> {
     let mut out = Vec::new();
-    wheel.retire(frame, |key, _| {
-        out.push(key);
+    wheel.retire(frame, |key, seq| {
+        out.push((key, seq));
         None
     });
     out
@@ -50,11 +58,7 @@ fn a_ticket_comes_back_under_the_serial_it_was_filed_with() {
     let second = wheel.schedule(2, 3);
     assert_ne!(first, second, "every filing gets its own serial");
 
-    let mut seen = Vec::new();
-    wheel.retire(3, |key, seq| {
-        seen.push((key, seq));
-        None
-    });
+    let mut seen = fired_with_serials(&mut wheel, 3);
     seen.sort_unstable();
     assert_eq!(seen, vec![(1, first), (2, second)]);
 }
@@ -77,47 +81,6 @@ fn a_refile_keeps_its_serial() {
         None
     });
     assert_eq!(seen, vec![(1, seq), (1, seq)], "one serial, two firings");
-}
-
-/// The two mechanisms that make the *frame* an unusable identity, and
-/// which a serial is immune to: a ticket the clamp moved, and a drain
-/// that aliased every bucket. Either would let an entry stop recognising
-/// its own live ticket.
-#[test]
-fn clamped_and_aliased_tickets_keep_true_serials() {
-    // Horizon 8 rounds to 16 slots, so 200 is far past the ring.
-    let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-    let clamped = wheel.schedule(1, 200);
-    let mut seen = None;
-    for frame in 1..=15 {
-        wheel.retire(frame, |key, seq| {
-            seen = Some((key, seq));
-            None
-        });
-        if seen.is_some() {
-            break;
-        }
-    }
-    assert_eq!(
-        seen,
-        Some((1, clamped)),
-        "a clamped ticket keeps its serial"
-    );
-
-    let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-    let near = wheel.schedule(1, 2);
-    let far = wheel.schedule(2, 9);
-    let mut seen = Vec::new();
-    wheel.retire(100, |key, seq| {
-        seen.push((key, seq));
-        None
-    });
-    seen.sort_unstable();
-    assert_eq!(
-        seen,
-        vec![(1, near), (2, far)],
-        "an aliased drain reports true serials, not its buckets' frames",
-    );
 }
 
 /// A clock that advances by more than one — two windows recording
@@ -144,17 +107,22 @@ fn a_jumping_clock_drains_every_bucket_it_passed() {
 /// A jump wider than the ring aliases every bucket, so everything is
 /// handed back — including tickets that were not really due. Callers
 /// re-file those, so the contract is "never a missed ticket", not
-/// "never an early one".
+/// "never an early one". Each comes back under its own serial, not its
+/// bucket's frame: the aliasing is why a frame is no identity.
 #[test]
 fn a_jump_wider_than_the_ring_hands_back_everything() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
     // Horizon 8 rounds to 16 slots.
-    wheel.schedule(1, 2);
-    wheel.schedule(2, 9);
+    let near = wheel.schedule(1, 2);
+    let far = wheel.schedule(2, 9);
 
-    let mut swept = fired(&mut wheel, 100);
+    let mut swept = fired_with_serials(&mut wheel, 100);
     swept.sort_unstable();
-    assert_eq!(swept, vec![1, 2], "both, though only one was due");
+    assert_eq!(
+        swept,
+        vec![(1, near), (2, far)],
+        "both, though only one was due, under their true serials",
+    );
 
     // And the ring is genuinely empty afterwards — an early-drained
     // ticket must not also be left behind to fire again.
@@ -197,19 +165,21 @@ fn refiling_from_inside_a_drain_defers_without_extra_tickets() {
 /// A ticket filed further out than the ring is wide must fire
 /// *early*, not alias its way into a bucket already drained and fire
 /// a whole ring late. The owner re-files it, so the only cost is one
-/// extra visit.
+/// extra visit. The clamp moves the ticket's frame but not its serial.
 #[test]
 fn a_ticket_past_the_ring_fires_early_rather_than_late() {
     // Horizon 8 rounds to 16 slots, so the furthest safe bucket is
     // 15 frames out; 200 would alias frame 8 (200 % 16 == 8).
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-    wheel.schedule(1, 200);
+    let clamped = wheel.schedule(1, 200);
 
     // Walk the frames a naive `due & mask` would have fired on, plus
     // the whole first ring, and pin that it came back inside it.
     let mut fired_at = None;
     for frame in 1..=15 {
-        if !fired(&mut wheel, frame).is_empty() {
+        let fired = fired_with_serials(&mut wheel, frame);
+        if !fired.is_empty() {
+            assert_eq!(fired, vec![(1, clamped)], "under its own serial");
             fired_at = Some(frame);
             break;
         }
