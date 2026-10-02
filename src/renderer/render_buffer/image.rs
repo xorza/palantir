@@ -10,8 +10,8 @@ use soa_rs::Soars;
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`](crate::renderer::render_buffer::RenderBuffer::frame_targets)):
 /// the view's stable texture `id`, its used
-/// physical size (`used`), where that sits in the view, the display and
-/// effective raster scales, and the app
+/// physical size (`used`), where that sits in the view, the effective
+/// raster scale, and the app
 /// `paint` callback (threaded from `Ui::gpu_views` through the typed image
 /// command, so the backend reaches the renderer without a `Ui`-side registry).
 /// The backend allocates the target to exactly `used` and runs `paint` into it
@@ -32,7 +32,6 @@ pub(crate) struct RenderTargetDraw {
     pub(crate) full: UVec2,
     /// Where `used` begins within `full`, in the same pixels.
     pub(crate) offset: UVec2,
-    pub(crate) display_scale: f32,
     pub(crate) raster_scale: f32,
     pub(crate) paint: GpuPaintRef,
     /// The view's repaint version. See [`ViewStamp`].
@@ -56,13 +55,14 @@ pub(crate) struct ViewStamp {
 }
 
 impl RenderTargetDraw {
-    pub(crate) const fn stamp(&self) -> ViewStamp {
+    /// The stamp of this draw painted at the frame's `display_scale`.
+    pub(crate) const fn stamp(&self, display_scale: f32) -> ViewStamp {
         ViewStamp {
             epoch: self.epoch,
             used: self.used,
             full: self.full,
             offset: self.offset,
-            display_scale: self.display_scale,
+            display_scale,
             raster_scale: self.raster_scale,
         }
     }
@@ -85,6 +85,8 @@ pub(crate) struct FrameViews<'a> {
     /// Every view the frame recorded, painted or not — the retention roster.
     /// A superset of the ids in [`Self::draws`].
     pub(crate) live: &'a [TextureId],
+    /// The frame's display scale, which every draw is painted at.
+    pub(crate) display_scale: f32,
 }
 
 /// One image draw row. Composer pushes one of these per image; the

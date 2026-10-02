@@ -57,7 +57,11 @@ impl GpuViewTargets {
         text: &TextShaper,
     ) {
         tracy::zone!();
-        let FrameViews { draws, live } = views;
+        let FrameViews {
+            draws,
+            live,
+            display_scale,
+        } = views;
         // `live` arrives sorted — see `Frontend::build`.
         debug_assert!(
             draws
@@ -70,7 +74,7 @@ impl GpuViewTargets {
             // A view the frame composites again without asking it to
             // repaint — damage that crosses a `repaint(false)` view —
             // still holds the pixels it was painted with.
-            let stamp = draw.stamp();
+            let stamp = draw.stamp(display_scale);
             if target.painted == Some(stamp) {
                 continue;
             }
@@ -99,7 +103,7 @@ impl GpuViewTargets {
                 size_px: draw.used,
                 full_px: draw.full,
                 offset_px: draw.offset,
-                display_scale: draw.display_scale,
+                display_scale,
                 raster_scale: draw.raster_scale,
                 dt,
             });
@@ -204,7 +208,6 @@ mod tests {
             used: UVec2::new(32, 24),
             full: UVec2::new(32, 24),
             offset: UVec2::ZERO,
-            display_scale: 1.0,
             raster_scale: 1.0,
             paint,
             epoch: 1,
@@ -257,6 +260,7 @@ mod tests {
                 FrameViews {
                     draws: std::slice::from_ref(&draw),
                     live: &[id],
+                    display_scale: 1.0,
                 },
                 owner,
                 Duration::from_millis(16 * at as u64),

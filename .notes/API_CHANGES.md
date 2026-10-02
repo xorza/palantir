@@ -324,8 +324,9 @@ order. Touches `ColorButton`, `ComboBox` and any app that drops its own panel fr
 
 ## A24. `const` on public functions that can take it
 
-**Findings.** REVIEW "Text and primitives style-rule violations": `Rect::deflated` is a public
-`fn` that can be `const`. Adding `const` re-signs an exported item, so it waits here; the
+**Findings.** REVIEW "Text and primitives style-rule violations" and "Renderer design and
+duplication": `Rect::deflated`, `Display::from_physical` and `Display::scale_factor` are public
+`fn`s that can be `const`. Adding `const` re-signs an exported item, so it waits here; the
 crate-internal ones are done.
 
 **Recommendation.** Make it `const`, and sweep the rest of the public surface for the same in

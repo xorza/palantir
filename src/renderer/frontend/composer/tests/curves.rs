@@ -85,7 +85,7 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
 #[test]
 fn compose_polyline_emits_segments_and_join_chrome() {
     use crate::renderer::render_buffer::curve::{
-        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, cap_lanes,
+        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance,
     };
     let pts = [
         Vec2::new(10.0, 10.0),
@@ -141,18 +141,18 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(segs[0].p3, pts[1]);
     assert_eq!(segs[0].p1, Vec2::ZERO, "no clip plane at a cap end");
     assert_eq!(segs[0].p2, d0 + d1, "end bisector plane rides p2");
-    assert_eq!(segs[0].cap, cap_lanes(round, 0));
+    assert_eq!(segs[0].cap, CurveInstance::cap_lanes(round, 0));
     // Interior segment: butt both ends, planes on both lanes. The
     // start plane must be the bit-exact negation of the previous
     // segment's end plane — the overlap-partition contract.
-    assert_eq!(segs[1].cap, cap_lanes(0, 0));
+    assert_eq!(segs[1].cap, CurveInstance::cap_lanes(0, 0));
     assert_eq!(
         segs[1].p1, -segs[0].p2,
         "shared joint planes negate exactly"
     );
     assert_eq!(segs[1].p2, d1 + d2);
     // Last segment: butt at joint, user cap at the true end.
-    assert_eq!(segs[2].cap, cap_lanes(0, round));
+    assert_eq!(segs[2].cap, CurveInstance::cap_lanes(0, round));
     assert_eq!(
         segs[2].p1, -segs[1].p2,
         "shared joint planes negate exactly"

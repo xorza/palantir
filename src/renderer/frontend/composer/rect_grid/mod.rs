@@ -1,8 +1,8 @@
 //! Spatial index over paint-rect AABBs, used by the composer's
 //! paint-order overlap checks: the text batches' rects, and the
-//! higher-kind tiers' once they outgrow a short scan. Replaces a flat
-//! `Vec<URect>` linear scan that dominated compose time in text-dense
-//! UIs.
+//! higher-kind tiers' once they outgrow a short scan. A flat scan of a
+//! `Vec<URect>` costs every query the whole batch, which dominates
+//! compose time in text-dense UIs.
 //!
 //! **The shape of the real workload**, from instrumenting the
 //! `frame/*_cpu` arms (25–63 M queries each): ~70–80 rects live at query
@@ -119,11 +119,9 @@ pub(super) struct RectGrid {
     /// pushes to the same tile skip the record. Capacity is retained
     /// across frames.
     ///
-    /// Profiling motivation: the compose pass was spending ~37% of its
-    /// self-time clearing all ~4500 tiles every frame (4K viewport
-    /// / 64-px tiles), even though only ~100-300 actually held
-    /// anything in the bench fixture. Tracking touches drops the
-    /// per-frame clear walk to the tiles we genuinely touched.
+    /// Clearing every tile instead costs ~37% of the compose pass's
+    /// self-time at a 4K viewport (~4500 64-px tiles), where the bench
+    /// fixture fills only ~100-300.
     touched: Vec<u32>,
     /// All rects inserted into the current batch, in insertion order.
     rects: Vec<URect>,
@@ -152,9 +150,9 @@ impl RectGrid {
         // into `lens`/`slots`, so `clear` works the same regardless of
         // how `cols × rows` map onto positions inside the vecs.
         //
-        // Profiling motivation: the resize-arm bench cycles through
-        // 4 different viewports per frame, so an unconditional clear +
-        // resize sweep over every tile is paid four times a frame.
+        // A viewport that changes every frame — a resize drag — would
+        // otherwise pay a clear and resize sweep over every tile each
+        // time.
         if want > self.lens.len() {
             self.lens.resize(want, 0);
             self.slots.resize(want, [0; TILE_CAP]);

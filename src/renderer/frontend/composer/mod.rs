@@ -160,7 +160,7 @@ struct OpenBatch {
 impl Composer {
     /// New composer capped at the device's `max_texture_dimension_2d` (the
     /// `GpuView` target-size ceiling). All scratch starts empty.
-    pub(crate) fn new(max_texture_dim: u32) -> Self {
+    pub(crate) fn new(max_texture_dim: NonZeroU32) -> Self {
         Self {
             clip: ClipStack::default(),
             transform: TransformStack::default(),
@@ -169,8 +169,7 @@ impl Composer {
             higher_kinds: HigherKindRects::default(),
             cursors: GroupCursors::default(),
             occlusion: OcclusionPruner::default(),
-            max_texture_dim: NonZeroU32::new(max_texture_dim)
-                .expect("composer texture dimension limit must be positive"),
+            max_texture_dim,
         }
     }
 

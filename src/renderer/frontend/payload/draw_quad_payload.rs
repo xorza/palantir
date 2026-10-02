@@ -10,6 +10,7 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::scene::shapes::paint::ShapeStroke;
+use crate::shape::rect::RectKind;
 use glam::Vec2;
 
 /// The geometry half of a [`DrawQuadPayload`] — everything the composer
@@ -117,34 +118,25 @@ impl DrawQuadPayload {
         fill: BrushSource,
         stroke: ShapeStroke,
     ) -> Self {
-        Self::rect_impl(rect, corners, fill, stroke, false)
+        Self::rect_of_kind(RectKind::Rounded, rect, corners, fill, stroke)
     }
 
-    /// Windowed sibling of [`Self::rect`]: same payload, but the
+    /// [`Self::rect`] of either kind. A [`RectKind::Windowed`] rect's
     /// `FillKind` carries the window bit, so the shader inverts the fill
     /// coverage (fill outside the rounded boundary, transparent window
     /// inside the stroke). The bit also keeps the composer's opaque-cover
     /// checks (`fill_kind == FillKind::SOLID`) from treating the quad as
     /// an occluder — its interior is a hole.
-    pub(crate) fn rect_window(
+    pub(crate) fn rect_of_kind(
+        kind: RectKind,
         rect: Rect,
         corners: Corners,
         fill: BrushSource,
         stroke: ShapeStroke,
-    ) -> Self {
-        Self::rect_impl(rect, corners, fill, stroke, true)
-    }
-
-    fn rect_impl(
-        rect: Rect,
-        corners: Corners,
-        fill: BrushSource,
-        stroke: ShapeStroke,
-        window: bool,
     ) -> Self {
         // Stroke stays solid-only — gradient strokes are a non-goal.
         let mut lanes = fill.gpu_fill();
-        if window {
+        if kind == RectKind::Windowed {
             lanes.kind = lanes.kind.with_window();
         }
         Self {

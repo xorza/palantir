@@ -232,6 +232,7 @@ impl RenderBuffer {
         FrameViews {
             draws: &self.frame_targets,
             live: &self.live_targets,
+            display_scale: self.display.scale_factor(),
         }
     }
 

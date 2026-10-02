@@ -3,7 +3,6 @@
 use crate::primitives::span::Span;
 use crate::primitives::{corners::Corners, size::Size, urect::URect};
 use crate::renderer::frontend::capture::PaintCapture;
-use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, composer, curve, draw, image, mesh, params, push_distinct_rounded_clips,
     rect, render_buffer, run, text,
@@ -13,12 +12,6 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
-
-#[test]
-#[should_panic(expected = "composer texture dimension limit must be positive")]
-fn composer_rejects_zero_texture_limit() {
-    let _ = Composer::new(0);
-}
 
 #[test]
 fn compose_with_no_clip_emits_one_unscissored_group() {

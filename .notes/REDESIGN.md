@@ -808,8 +808,7 @@ output, cost, cleanup.
 - [ ] REVIEW doc groups, one commit per subsystem.
 - [ ] REVIEW style groups: `const fn`, one major type per file, free functions to methods,
       `macro_rules! rebind`, gated items to end-of-file modules, relative `use` paths.
-- [ ] REVIEW design groups that stay internal: `LayerCtx` gradient trio, `RectKind` dispatch,
-      `TextureLimit` round trip, `RenderTargetDraw.display_scale`, pipeline layouts in `new`, raster
+- [ ] REVIEW design groups that stay internal: pipeline layouts in `new`, raster
       tenant methods, `DamageEngine::budget_px`, `Forest::scratch`, `Ident::Resolved` arms,
       `InputState` field encapsulation, `OffscreenHost` gated impl, `WinitHostConfig` clone.
 - [ ] ISSUES.md items.

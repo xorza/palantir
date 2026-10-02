@@ -16,7 +16,7 @@ use crate::primitives::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
-use crate::renderer::frontend::encoder::GradientResolver;
+use crate::renderer::frontend::encoder::GradientPass;
 use crate::renderer::frontend::encoder::geometry;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -33,14 +33,12 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED,
 };
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::paint::{
     CurveRamp, ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush,
@@ -50,7 +48,6 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
-use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
 use std::time::Duration;
 
@@ -58,14 +55,12 @@ use std::time::Duration;
 /// bundled so [`Self::encode_node`]'s recursion carries one `&mut self`
 /// instead of a long argument list.
 #[derive(Debug)]
-pub(super) struct LayerCtx<'a> {
+pub(super) struct LayerCtx<'a, 'g> {
     pub(super) tree: &'a Tree,
     pub(super) layout: &'a LayerLayout,
     pub(super) cascade_inputs: &'a [CascadeInputHash],
     pub(super) subtree_paint_rects: &'a [Rect],
-    pub(super) gradients: &'a [RecordedGradient],
-    pub(super) gradient_atlas: &'a SharedGradientAtlas,
-    pub(super) gradient_resolver: &'a mut GradientResolver,
+    pub(super) gradients: &'a mut GradientPass<'g>,
     pub(super) paint_anim_cursor: PaintAnimCursor<'a>,
     /// Live `GpuView`s by `WidgetId`, one map across every layer. An
     /// `ImageSource::GpuView` carries only its epoch; the arm looks the
@@ -82,18 +77,15 @@ pub(super) struct LayerCtx<'a> {
     pub(super) now: Duration,
 }
 
-impl LayerCtx<'_> {
+impl LayerCtx<'_, '_> {
     #[inline]
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
-        self.gradient_resolver
-            .source(self.gradients, self.gradient_atlas, brush)
+        self.gradients.source(brush)
     }
 
     /// The atlas row an interned ramp resolved to this pass.
     fn gradient_row(&mut self, id: GradientId) -> LutRow {
-        self.gradient_resolver
-            .resolve(self.gradients, self.gradient_atlas, id)
-            .lut_row
+        self.gradients.resolve(id).lut_row
     }
 
     /// Emit one of a node's shapes. Pulled out of `encode_node` so the
@@ -163,15 +155,10 @@ impl LayerCtx<'_> {
                 } => {
                     let r = geometry::resolve_local_rect(owner_rect, *local_rect);
                     let src = self.brush_source(*fill);
-                    match kind {
-                        RectKind::Rounded => {
-                            out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *border), alpha)
-                        }
-                        RectKind::Windowed => out.draw_quad(
-                            DrawQuadPayload::rect_window(r, *corners, src, *border),
-                            alpha,
-                        ),
-                    }
+                    out.draw_quad(
+                        DrawQuadPayload::rect_of_kind(*kind, r, *corners, src, *border),
+                        alpha,
+                    );
                 }
                 QuadShape::Shadow {
                     local_rect,
