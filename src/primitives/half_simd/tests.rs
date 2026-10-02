@@ -100,40 +100,29 @@ fn scaled_is_bit_identical_to_the_composed_round_trip() {
     }
 }
 
+/// Packing matches `half`'s scalar round-to-nearest-even bit for bit.
+/// The first row is exact in f16 (zero, normal positive, normal negative,
+/// sub-integer: |x| < 2048 and the mantissa fits), so it also unpacks to
+/// itself. The second is not: 1.1 has no f16 form.
 #[test]
-fn round_trip_matches_half_slice() {
-    // Hand-picked: zero, normal positive, normal negative, sub-integer.
-    let src = [0.0f32, 1.0, -2.5, 0.125];
-    let packed = f16x4_from_f32x4(src);
-    // f16 represents all four values exactly (|x| < 2048, mantissa fits).
-    let expected = [
-        f16::from_f32(src[0]).to_bits(),
-        f16::from_f32(src[1]).to_bits(),
-        f16::from_f32(src[2]).to_bits(),
-        f16::from_f32(src[3]).to_bits(),
-    ];
-    assert_eq!(packed, expected);
-    let unpacked = f16x4_to_f32x4(packed);
-    assert_eq!(unpacked, src);
-    // The `u64` word is the four lanes' bytes in lane order, as a cast of
-    // the array reads them.
-    let lanes = F16x4::from_lanes(src);
-    assert_eq!(lanes.as_u64(), u64::from_ne_bytes(bytemuck::cast(expected)));
-}
-
-#[test]
-fn lossy_values_match_scalar_quantization() {
-    // 1.1 is not f16-representable; quantization must match the scalar
-    // round-to-nearest-even path bit-for-bit.
-    let src = [1.1f32, 1.2, 1.3, 1.4];
-    let packed = f16x4_from_f32x4(src);
-    let expected = [
-        f16::from_f32(src[0]).to_bits(),
-        f16::from_f32(src[1]).to_bits(),
-        f16::from_f32(src[2]).to_bits(),
-        f16::from_f32(src[3]).to_bits(),
-    ];
-    assert_eq!(packed, expected);
+fn packing_matches_scalar_quantization() {
+    for (src, exact) in [
+        ([0.0f32, 1.0, -2.5, 0.125], true),
+        ([1.1, 1.2, 1.3, 1.4], false),
+    ] {
+        let packed = f16x4_from_f32x4(src);
+        let expected = src.map(|x| f16::from_f32(x).to_bits());
+        assert_eq!(packed, expected, "{src:?}");
+        assert_eq!(f16x4_to_f32x4(packed) == src, exact, "{src:?} round trip");
+        // The `u64` word is the four lanes' bytes in lane order, as a
+        // cast of the array reads them.
+        let lanes = F16x4::from_lanes(src);
+        assert_eq!(
+            lanes.as_u64(),
+            u64::from_ne_bytes(bytemuck::cast(expected)),
+            "{src:?}"
+        );
+    }
 }
 
 #[test]

@@ -248,31 +248,35 @@ mod tests {
     use super::*;
     use crate::primitives::approx::EPS;
 
+    /// A transform is the identity when its bits are, or when each part
+    /// is within `EPS` of it. `-0.0` has other bits than `0.0`, so it
+    /// takes the `EPS` fallback, as does the drift a lerp leaves behind.
+    /// One pixel, or a 1.5 scale, is past the fallback.
     #[test]
-    fn identity_is_noop_via_fast_path() {
-        assert!(TranslateScale::IDENTITY.is_identity());
-        assert!(TranslateScale::new(Vec2::ZERO, 1.0).is_identity());
-    }
-
-    #[test]
-    fn negative_zero_translation_is_noop_via_fallback() {
-        // `-0.0.to_bits() != 0.0.to_bits()`, so this misses the bitwise
-        // fast path and must fall through to `approx_zero`.
-        let t = TranslateScale::new(Vec2::new(-0.0, -0.0), 1.0);
-        assert_ne!(t.translation.x.to_bits(), 0.0f32.to_bits());
-        assert!(t.is_identity());
-    }
-
-    #[test]
-    fn sub_eps_drift_is_noop_via_fallback() {
-        let t = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
-        assert!(t.is_identity());
-    }
-
-    #[test]
-    fn visible_translation_or_scale_is_not_noop() {
-        assert!(!TranslateScale::from_translation(Vec2::new(1.0, 0.0)).is_identity());
-        assert!(!TranslateScale::from_scale(1.5).is_identity());
+    fn is_identity_within_eps() {
+        let cases = [
+            ("IDENTITY", TranslateScale::IDENTITY, true),
+            ("new zero, 1", TranslateScale::new(Vec2::ZERO, 1.0), true),
+            (
+                "negative zero",
+                TranslateScale::new(Vec2::new(-0.0, -0.0), 1.0),
+                true,
+            ),
+            (
+                "half-EPS drift",
+                TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5),
+                true,
+            ),
+            (
+                "one pixel",
+                TranslateScale::from_translation(Vec2::new(1.0, 0.0)),
+                false,
+            ),
+            ("scale 1.5", TranslateScale::from_scale(1.5), false),
+        ];
+        for (label, t, identity) in cases {
+            assert_eq!(t.is_identity(), identity, "{label}");
+        }
     }
 
     /// The door a caller builds a transform at, screened in every build.

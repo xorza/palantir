@@ -205,32 +205,51 @@ mod tests {
     /// The product is what layout divides by, and the system factor alone
     /// is what the window manager is told. At 2× and 125% a 1000-px
     /// surface is 400 logical px to the UI and 500 to the platform.
-    #[test]
-    fn the_two_spaces_divide_by_different_factors() {
-        let display = Display {
-            user_scale: UserScale::new(1.25),
-            ..Display::from_physical(UVec2::new(1000, 600), 2.0)
-        };
-        assert_eq!(display.scale_factor(), 2.5);
-        assert_eq!(display.logical_size(), Size::new(400.0, 240.0));
-        assert_eq!(display.system_logical_size(), Size::new(500.0, 300.0));
-        assert_eq!(display.logical_rect(), Rect::new(0.0, 0.0, 400.0, 240.0));
-    }
-
     /// `from_physical` leaves the user scale at `ONE`, so the two spaces
     /// coincide until something sets it.
     #[test]
-    fn without_a_user_scale_the_two_spaces_are_one() {
-        let display = Display::from_physical(UVec2::new(800, 600), 2.0);
-        assert_eq!(display.user_scale, UserScale::ONE);
-        assert_eq!(display.scale_factor(), 2.0);
-        assert_eq!(display.logical_size(), display.system_logical_size());
+    fn the_two_spaces_divide_by_different_factors() {
+        let surface = UVec2::new(1000, 600);
+        for (label, display, product, logical, system_logical) in [
+            (
+                "2× at 125%",
+                Display {
+                    user_scale: UserScale::new(1.25),
+                    ..Display::from_physical(surface, 2.0)
+                },
+                2.5,
+                Size::new(400.0, 240.0),
+                Size::new(500.0, 300.0),
+            ),
+            (
+                "2× with no user scale",
+                Display::from_physical(surface, 2.0),
+                2.0,
+                Size::new(500.0, 300.0),
+                Size::new(500.0, 300.0),
+            ),
+        ] {
+            assert_eq!(display.scale_factor(), product, "{label}");
+            assert_eq!(display.logical_size(), logical, "{label}");
+            assert_eq!(display.system_logical_size(), system_logical, "{label}");
+            assert_eq!(
+                display.logical_rect(),
+                Rect::new(0.0, 0.0, logical.w, logical.h),
+                "{label}"
+            );
+        }
+        assert_eq!(
+            Display::from_physical(surface, 2.0).user_scale,
+            UserScale::ONE
+        );
     }
 
     /// Every axis that moves the raster fails `raster_eq` and forces the
     /// full repaint that follows from it — the surface, either scale, the
-    /// pixel snap. The refresh rate paces frames and paints nothing, so a
-    /// monitor move that changes only it compares equal.
+    /// pixel snap. 1× at 200% shares 2× at 100%'s `scale_factor`, and so
+    /// its painted pixels, but not its window-manager space. The refresh
+    /// rate paces frames and paints nothing, so a monitor move that
+    /// changes only it compares equal.
     #[test]
     fn raster_eq_compares_every_raster_axis_and_only_those() {
         let base = Display::from_physical(UVec2::new(800, 600), 2.0);
@@ -265,6 +284,14 @@ mod tests {
                 Display {
                     pixel_snap: false,
                     ..base
+                },
+                false,
+            ),
+            (
+                "same product",
+                Display {
+                    user_scale: UserScale::new(2.0),
+                    ..Display::from_physical(UVec2::new(800, 600), 1.0)
                 },
                 false,
             ),
@@ -315,23 +342,5 @@ mod tests {
         ] {
             assert_eq!(sanitize_system_scale(reported), kept, "{reported}");
         }
-    }
-
-    /// Same painted pixels, different window-manager space: 2× at 100%
-    /// and 1× at 200% share a `scale_factor` and must still compare
-    /// unequal, because `system_logical_size` differs.
-    #[test]
-    fn raster_eq_splits_two_displays_that_share_a_product() {
-        let retina = Display::from_physical(UVec2::new(800, 600), 2.0);
-        let scaled_up = Display {
-            user_scale: UserScale::new(2.0),
-            ..Display::from_physical(UVec2::new(800, 600), 1.0)
-        };
-        assert_eq!(retina.scale_factor(), scaled_up.scale_factor());
-        assert!(!retina.raster_eq(&scaled_up));
-        assert_ne!(
-            retina.system_logical_size(),
-            scaled_up.system_logical_size()
-        );
     }
 }
