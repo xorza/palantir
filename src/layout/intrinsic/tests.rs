@@ -25,9 +25,8 @@ use glam::UVec2;
 #[test]
 fn intrinsic_cache_populated_after_run() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -38,7 +37,7 @@ fn intrinsic_cache_populated_after_run() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let child =
@@ -61,9 +60,8 @@ fn intrinsic_cache_populated_after_run() {
 #[test]
 fn intrinsic_query_short_circuits_on_cache_hit() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -74,7 +72,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let child =
@@ -139,12 +137,11 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 #[test]
 fn parent_intrinsic_query_populates_descendant_cache() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
     // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
     // Then clear *just the queried slot* on every node so we can
     // observe which nodes the parent query repopulates.
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
@@ -152,7 +149,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
                 Text::new("defgh").id_salt("b").show(ui);
             })
             .response
-            .node();
+            .node()
     });
     // Drop the measure-cache snapshots so `engine.intrinsic` can't
     // answer the root query from last frame's cached intrinsic — this
@@ -339,9 +336,8 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
     const EXPECT_Y: f32 = 30.0;
 
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -359,7 +355,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let leaf =

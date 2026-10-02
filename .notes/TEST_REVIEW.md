@@ -64,12 +64,6 @@ Each test below passes when the behaviour it names is broken.
 - [ ] `scene/damage/tests/clipping.rs:164`: clamps to `TEST_SURFACE` (100×100) while the surface is 200×200. It passes only because the card ends before 100. `damage/tests/support.rs` holds both constants; derive one from the other.
 - [ ] `tests/alloc` renderer fixtures (`fixtures/renderer.rs`) never check that the frame painted. If the nudge stops damaging, encode and compose walk nothing and the gate passes. `OffscreenTarget::frame` drops the `FrameReport`; return it and assert `paint() == Full`.
 
-## 3. Reads that create the state they observe
-
-- [ ] `state_or_default::<S>(id)` inserts `S::default()`. 82 reads in 19 widget test files assert default values (`caret == 0`, `offset == ZERO`) that pass with a wrong id or type: for example `text_edit/tests/context_menu.rs:89-91,106`, `click.rs:316-322,354`, `multi_click.rs:41,73`, `scroll/tests/lifecycle.rs:28-32`, `scroll/tests/support.rs:61-64`. Add `UiHarness::state::<S>(&self, id) -> &S` that panics with "no `S` row for `id`", and stop using `state_or_default` in tests.
-- [ ] `tooltip/tests.rs:238,376,396,462,478,539,612`: `.copied().unwrap_or_default()` has the same hole.
-- [ ] 9 sites start from a `NodeId(0)` placeholder (`intrinsic/tests.rs:28,64,142,342`, `visibility/tests.rs:129,170,208`, `text_wrap/wrapping.rs:197`, `convergence.rs:46`). `NodeId(0)` is the viewport root, so a missed assignment asserts on the wrong node. Return the node from `frame_value`.
-
 ## 4. Input aimed by literal coordinates, with no check that it lands
 
 The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass them.

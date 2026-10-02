@@ -5,7 +5,6 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -126,9 +125,8 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 #[test]
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
@@ -147,7 +145,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let kids: Vec<_> = h.main_child_rects(root);
@@ -167,9 +165,8 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 #[test]
 fn collapsed_does_not_consume_fill_weight() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -188,7 +185,7 @@ fn collapsed_does_not_consume_fill_weight() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let kids: Vec<_> = h.main_child_rects(root);
@@ -205,9 +202,8 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     use crate::renderer::frontend::capture::PaintCall;
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
@@ -238,7 +234,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let kids: Vec<_> = h.main_child_rects(root);
