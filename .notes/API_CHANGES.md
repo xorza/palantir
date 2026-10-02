@@ -279,3 +279,33 @@ true about the result, but it names the wrong cause.
 **Recommendation.** Add `FontLoadError::FamilyTableFull` (check whether the enum is
 `#[non_exhaustive]` first) and return it when no loaded family could be interned.
 
+
+## A22. Wheel sense per axis
+
+**Findings.** REVIEW "Wheel routing" / REDESIGN D9: `hit_test_targets` sends the whole wheel delta
+to the topmost `Sense::SCROLL` row. Every `TextEdit` senses `SCROLL` and a tab strip band is a
+horizontal scroll, so a vertical wheel over either is swallowed and the page under it does not
+scroll. Routing each axis to the nearest row that can pan along it (browser scroll chaining, CSS
+Overscroll Behavior §2) needs each row to say which axes it pans *this frame* — a `Scroll` only
+where its content overflows its viewport or its zoom is above 1, a single-line `TextEdit` only
+along x and only when its text overflows. The cascade cannot infer that: the row that senses the
+wheel is a `Scroll`'s outer frame, not the viewport node layout knows the extent of, and a
+`TextEdit` pans inside one leaf. Widgets reach only the public API, so the declaration has to be
+public.
+
+**Options.**
+
+1. `Sense::SCROLL_X` and `Sense::SCROLL_Y`, with `SCROLL = SCROLL_X | SCROLL_Y`. A widget senses the
+   axes it can pan this frame; `hit_test_targets` keeps the topmost row per axis, and the wheel
+   delta splits by axis (after the Shift swap) before delivery.
+2. A separate `pan_axes(ScrollAxes)` configure setter beside `sense`. More explicit, but a second
+   knob that has to agree with the `SCROLL` bit.
+
+**Recommendation.** Option 1: the axes are what the sense means, and existing `Sense::SCROLL`
+callers keep their behaviour. `Scroll` senses its declared axes intersected with the axes it can
+pan (from last frame's `ScrollGeometry`), and `TextEdit` senses `SCROLL_X` while its text
+overflows; the y→x wheel mapping then moves into routing — a horizontal-only row takes a pure-y
+delta only when no row under the pointer pans y. Touches `Sense`, `Scroll`, `TextEdit`,
+`TabStrip`, `Cascade::hit_test_targets` and `InputState::on_scroll`. Tests: wheel y over a field in
+a `Scroll::vertical()` scrolls the page; an overflowing tab strip pans on wheel x and Shift+wheel y
+(Linux) and passes wheel y to the page; a lone field with overflowing text pans on wheel y.

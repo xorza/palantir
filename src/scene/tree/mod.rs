@@ -469,6 +469,12 @@ impl Tree {
             });
         }
         let mut cols = node.columns(widget_id);
+        // A root raised from a disabled scope is disabled, as a child of
+        // that scope's node would be — set on the record so the cascade
+        // disables the whole overlay, not only what records against it.
+        if parent_frame.is_none() && scratch.owner_disabled {
+            cols.attrs.set_disabled(true);
+        }
         // A rounded clip with no radius to round is a plain scissor.
         // Applied to the recorded flags rather than to the node, because
         // this is the only hop that sees both the node's request and the

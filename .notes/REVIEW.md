@@ -57,10 +57,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/tabs/tab_strip.rs:534-543` **bug (plausible)**: `hidden` compares chips against the band's rect. Scroll content is clipped to that rect deflated by the band's padding (6 px by default), per the comments at `scroll/mod.rs:487-489` and `text_edit/mod.rs:423-427`. A chip cut up to 6 px under the padding reads as visible, and the chevron does not appear.
 - [ ] `src/widgets/tabs/tab_strip.rs:607` **bug**: with no selection, `here = 0`, so ArrowRight activates chip 1 and chip 0 is skipped.
 
-## A disabled trigger does not disable what it opened
-- [ ] `src/widgets/combo_box/mod.rs:185-191`, `color_button/mod.rs:116-122` **bug**: the open flag toggles only on `clicked()`, which is empty while disabled, and the popup is recorded whenever `open`. If the trigger becomes disabled while its list or picker is open, the popup stays open and live. Picking a row still writes `*selected`, and the picker still writes the colour. The popup sits in another layer, so the per-layer disabled cascade never reaches it.
-- [ ] `src/widgets/expander/mod.rs:178`, `color_picker/mod.rs:186` **bug**: the caller's `.disabled(true)` lands on the outer vstack. The interactive children read it only through the cascade, one frame late. On the first disabled frame a click or Space still toggles the Expander, and drags still write the colour. `Widget::response`'s own-flag fold exists to prevent this lag, but neither widget folds `authored_disabled()` into its children.
-
 ## ColorPicker history fills with non-picks
 - [ ] `src/widgets/color_field/mod.rs:126`, `color_strip/mod.rs:138` → `color_picker/mod.rs:381` **bug**: every keyboard nudge sets `committed`, and `apply` pushes on every commit. 16 ArrowRight presses (or a held key) evict all 16 presets with near-identical shades, against the dedupe rationale in `History::push`.
 - [ ] `src/widgets/color_picker/mod.rs:451-456` **bug (plausible)**: hex `lost_focus` with an unchanged, valid buffer still commits. Tabbing through the hex field reorders history and reports `committed`.
@@ -185,7 +181,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `color_button/mod.rs`: lacks ColorPicker's `swatches(&[RgbaF32])` and `downsample(n)`. Its `history` default (true) also differs from ColorPicker's (Hidden).
 - [ ] `color_picker/mod.rs:93-97`: `written: RgbaF32` + `seeded: bool` is one fact stored twice.
 - [ ] `color_picker/mod.rs:427-500`: the value grid offers H and S but no V. With alpha off, cell (0,2) is empty.
-- [ ] `overlay_scope.rs:103`: the `owner` argument duplicates the root's resolved id at every call site, and Tooltip passes the wrong one: `tooltip/mod.rs:239` passes `bubble_id` even when the caller set an explicit `.id()` on the bubble.
 - [ ] Naming: `Tooltip::on(&snapshot)` vs `ContextMenu::attach(ui, &snapshot)` are two names for "attach to a trigger snapshot".
 - [ ] File layout: `TooltipResponse`, `ExpanderResponse`, `ClickOutside` (`popup/mod.rs`) and `SplitHalf` (`splitter/mod.rs`) are standalone public types inside a widget's file, while `ValueResponse`/`SelectResponse`/`OverlayResponse` each get their own file.
 

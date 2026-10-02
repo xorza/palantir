@@ -93,3 +93,43 @@ fn a_fixed_layer_stays_where_it_was_put() {
     });
     assert_eq!(rect.min, Vec2::new(20.0, 250.0));
 }
+
+/// A side layer raised inside a disabled scope is disabled with it: a
+/// button in a popup raised from a disabled panel reads disabled on the
+/// first frame, and its cascade row is disabled too, so a click on it does
+/// nothing. A popup raised from an enabled panel stays live.
+#[test]
+fn a_layer_raised_from_a_disabled_scope_is_disabled() {
+    use crate::widgets::button::Button;
+
+    for disabled in [true, false] {
+        let mut h = UiHarness::new(SURFACE);
+        let record = |h: &mut UiHarness| {
+            h.frame_value(|ui| {
+                let mut read = false;
+                Panel::vstack()
+                    .id(WidgetId::from_hash("owner"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .disabled(disabled)
+                    .show(ui, |ui| {
+                        ui.layer(Layer::Popup)
+                            .fixed_at(Vec2::new(40.0, 40.0))
+                            .show(|ui| {
+                                let response = Button::new()
+                                    .id(WidgetId::from_hash("in-popup"))
+                                    .label("go")
+                                    .show(ui);
+                                read = response.disabled;
+                            });
+                    });
+                read
+            })
+        };
+        assert_eq!(record(&mut h), disabled, "first frame, disabled {disabled}");
+        assert_eq!(
+            record(&mut h),
+            disabled,
+            "through the cascade, disabled {disabled}"
+        );
+    }
+}

@@ -236,7 +236,7 @@ impl<'a> Tooltip<'a> {
             // interrupts, and it is recorded every frame it is up — a
             // scope would cut off every layer below it for as long.
             let scope = OverlayScope::claim(
-                bubble_id,
+                ui,
                 Layer::Tooltip,
                 Some(anchor),
                 Backdrop::None,

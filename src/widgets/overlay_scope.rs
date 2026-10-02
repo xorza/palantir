@@ -92,15 +92,17 @@ pub(super) struct OverlayScope {
 }
 
 impl OverlayScope {
-    /// Claim `layer` for `owner`, stamping `root` as the node that takes
-    /// the layer's entire key scope when the overlay has a backdrop.
+    /// Claim `layer` for `root`, stamping it as the node that takes the
+    /// layer's entire key scope when the overlay has a backdrop. The owner
+    /// is the root's own resolved id, so a caller-set id on the root is
+    /// the owner too — not an id the caller derived beside it.
     ///
     /// [`KeyFilter::ALL`] rather than something narrower because an
     /// overlay *owns* input while it is up: it does not merely outrank
     /// the layers below it, it cuts them off. That is what stops a popup
     /// underneath a modal from dismissing alongside it on one Escape.
     pub(super) fn claim(
-        owner: WidgetId,
+        ui: &mut Ui,
         layer: Layer,
         anchor: Option<Anchor>,
         backdrop: Backdrop,
@@ -109,6 +111,7 @@ impl OverlayScope {
         if backdrop.owns_input() {
             root.configure().input_scope(KeyFilter::ALL);
         }
+        let owner = root.resolve(ui);
         Self {
             owner,
             layer,

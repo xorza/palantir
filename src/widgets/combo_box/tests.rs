@@ -265,3 +265,40 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
         2.0 * 11.0 + 7.0,
     );
 }
+
+/// Disabling an open ComboBox closes it: the next frame records no list,
+/// and a click where a row used to be picks nothing.
+#[test]
+fn disabling_an_open_trigger_closes_its_list() {
+    let combo = WidgetId::from_hash("combo");
+    let list = combo.with("list");
+    let options = ["One", "Two", "Three"];
+    let mut selected = 0;
+    let record = |h: &mut UiHarness, disabled: bool, selected: &mut usize| {
+        h.frame(|ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                ComboBox::new(selected, &options)
+                    .id(combo)
+                    .disabled(disabled)
+                    .show(ui);
+            });
+        });
+    };
+    let mut h = UiHarness::new(SURFACE);
+    record(&mut h, false, &mut selected);
+    record(&mut h, false, &mut selected);
+    let at = h.center_of(combo);
+    h.click_at(at);
+    record(&mut h, false, &mut selected);
+    let rows = h.rect(list).expect("premise: the click opened the list");
+    let last_row = Vec2::new(rows.min.x + rows.size.w * 0.5, rows.max().y - 4.0);
+
+    record(&mut h, true, &mut selected);
+    assert!(
+        h.rect(list).is_none(),
+        "the disabled trigger's list is gone"
+    );
+    h.click_at(last_row);
+    record(&mut h, true, &mut selected);
+    assert_eq!(selected, 0, "a click where a row was picks nothing");
+}
