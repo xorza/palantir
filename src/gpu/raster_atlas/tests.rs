@@ -1,3 +1,6 @@
+//! The raster atlas's wire metadata, its expiry of empty entries, and
+//! growth under the byte budget.
+
 use super::*;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2, UVec2};

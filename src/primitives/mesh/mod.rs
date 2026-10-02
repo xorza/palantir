@@ -302,7 +302,7 @@ fn checked_rebased_index(base: u32, index: u32) -> u32 {
 }
 
 // Deliberately *not* fused into the copy loops in
-// `scene/shapes/lower.rs`. Fusing the AABB pass into the copy pass
+// `scene/shapes/lower/`. Fusing the AABB pass into the copy pass
 // reads like the win and measures as the opposite: splitting them is
 // ~3x faster past a handful of points, because each half then gets to be
 // the fast version of itself — the fold vectorizes when nothing else
