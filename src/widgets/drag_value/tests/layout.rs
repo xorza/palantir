@@ -60,7 +60,9 @@ fn editing_a_long_value_holds_the_field_width() {
     h.frame(|ui| node = Some(render(ui, &mut v)));
     let edit_w = h.layout_rect(id).expect("arranged").size.w;
 
-    assert!(display_w >= 40.0, "min_size floor honored ({display_w})");
+    // "1.985": five 8 px mono chars, 2 × 12 padding, 2 × 1 border — above
+    // the 40 px floor.
+    assert_eq!(display_w, 40.0 + 24.0 + 2.0);
     assert_eq!(
         display_w, edit_w,
         "editing the full-precision value must not resize the field \

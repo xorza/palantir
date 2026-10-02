@@ -86,9 +86,16 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
                     });
             });
     });
-    assert!(
-        !thumb_rects(&ui.ui, "scroll").is_empty(),
-        "vertical overflow should emit at least one bar thumb"
+    // One vertical thumb at the far edge, 8 px thick, its length the
+    // viewport's share of the content times the track: 200 / 800 × 200.
+    assert_eq!(
+        thumb_rects(&ui.ui, "scroll"),
+        [Rect::new(
+            200.0 - theme().thickness,
+            0.0,
+            theme().thickness,
+            50.0
+        )],
     );
 }
 
@@ -232,18 +239,11 @@ fn both_axes_bars_dont_overlap_at_corner() {
         .iter()
         .find(|r| r.min.y == outer_far)
         .expect("H bar at bottom edge");
-    assert!(
-        v.max().y <= inner,
-        "V bar must not extend into the H bar's reserved strip; \
-         v.max.y={}, inner={inner}",
-        v.max().y,
-    );
-    assert!(
-        h.max().x <= inner,
-        "H bar must not extend into the V bar's reserved strip; \
-         h.max.x={}, inner={inner}",
-        h.max().x,
-    );
+    // Each track is the 188 px inner span, kept out of the other bar's
+    // reserved strip; each thumb is 188 / 800 of it, 44.18, snapped to 44.
+    assert_eq!(inner, 188.0);
+    assert_eq!(*v, Rect::new(outer_far, 0.0, theme.thickness, 44.0));
+    assert_eq!(*h, Rect::new(0.0, outer_far, 44.0, theme.thickness));
 }
 
 /// Every bar node's arranged rect, collapsed ones included.

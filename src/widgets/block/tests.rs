@@ -2,9 +2,11 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -37,9 +39,20 @@ fn frame_paints_a_single_rounded_rect() {
             .next()
             .is_none()
     );
+    let chrome =
+        h.ui.tree(Layer::Main)
+            .chrome(frame_node)
+            .expect("frame chrome recorded in chrome table");
+    let want = RgbaF16::from(RgbaF32::srgb(0.2, 0.4, 0.8));
     assert!(
-        h.ui.tree(Layer::Main).chrome(frame_node).is_some(),
-        "frame chrome recorded in chrome table",
+        matches!(chrome.fill, ShapeBrush::Solid(fill) if fill == want),
+        "the fill it was given, got {:?}",
+        chrome.fill,
+    );
+    assert_eq!(
+        chrome.corners,
+        Corners::all(6.0),
+        "the rounding it was given"
     );
 
     // Default sense is None — frame is not a hit-test target.
