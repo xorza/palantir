@@ -13,7 +13,7 @@ use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 use std::hash::{Hash, Hasher};
 
-/// What a [`Widget::scrollbars`](crate::widget::Widget::scrollbars) overlay
+/// What a scrollbars overlay (the crate-internal `Widget::scrollbars`)
 /// places its bars from.
 ///
 /// Everything here is known while recording except the viewport's content
@@ -21,9 +21,8 @@ use std::hash::{Hash, Hasher};
 /// viewport, and its layout reads the extent then. That is what lets a
 /// scroll widget record its bars on its first frame, with no second pass.
 ///
-/// Install it with
-/// [`Widget::scrollbar_def`](crate::widget::Widget::scrollbar_def). A
-/// widget reads the same numbers through [`Self::thumb`] to map a thumb
+/// Installed with the crate-internal `Widget::scrollbar_def`. A widget
+/// reads the same numbers through [`Self::thumb`] to map a thumb
 /// drag or a track click onto an offset, so the bar the user grabs is the
 /// bar that was drawn.
 #[derive(Clone, Copy, Debug, PartialEq)]

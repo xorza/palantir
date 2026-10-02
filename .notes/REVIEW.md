@@ -26,8 +26,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## TabbedView reorder and identity
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
 
-## Smaller widget bugs
-
 ## Icon prewarm warms keys the frame never asks for
 - [ ] `src/gpu/icon/mod.rs:124` **bug (plausible)**: prewarm keys on `def.view_box * display_scale`. The composer keys on the drawn box `phys_rect.size`, which includes ancestor transforms (`composer/session.rs:381`). So prewarm hits only icons drawn at exactly their view-box size. Any other size still takes the 10-20× filtered raster lazily.
   - Prewarm rasterizes every filtered icon of every loaded set in one frame on each DPI change or set load: a worst-case-frame spike. Those slots are stamped current-frame, so they cannot be evicted while that frame's real draws compete for space.
@@ -53,19 +51,13 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/diagnostics/gpu_pass_stats.rs:32`: public `BatchKind` derives strum's `EnumIter`/`EnumCount`, so iterating it requires the caller to depend on the same strum major. `PointerButton` hides this behind an inherent `iter()`, and `flag_set` removed bitflags for exactly this reason.
 - [ ] `src/golden/mod.rs:14,45,108,172`: the public `golden` API takes and returns `image::RgbaImage` without re-exporting `image`. A consumer has to keep a semver-identical `image` dependency by hand — the hazard `lib.rs:225-238` cites for re-exporting `wgpu`.
 
-## Dependencies that could go
-
 ## Big widgets design and consolidation
 - [ ] `src/widgets/dock/mod.rs:5` vs `dock_state.rs:716-838`: the module doc says the model is "pure data with no `Ui` in sight", but `DockState` carries `scan`, `drag`/`set_drag`, `drop_target` and `content_size`, all of which take `Ui`. That is view code on the model.
 - [ ] `dock_state.rs:835` and `dock_tabs.rs:200`: a size is passed as `Option<Vec2>` where `Size` exists.
 - [ ] ButtonTheme/TextEditTheme/TabsTheme/ToggleTheme/MenuItemTheme each have a public `pick` that duplicates `ThemeSlot::look`, while ExpanderTheme has none: two entry points with an asymmetric set.
-- [ ] `src/widgets/scroll/state.rs:21-27`: TextEdit's `ViewState.scroll` carries `zoom` and the thumb `drag_anchor`, which a text viewport never uses. The shared type is wider than TextEdit needs, and that width forces the `pub(crate)` reach-in.
-- [ ] Stale docs: `text_edit/mod.rs:86,98-99` and `unicode.rs:13` claim an "IME/text commit" insertion path that does not exist (`KeyText` caps at 14 bytes and carries no IME commit). `view_state.rs:35-38` speaks of a host that "assigns `EditState::caret`", which the host cannot do (the field is private). `scrollbars_def.rs:17,25` link `Widget::scrollbars` / `scrollbar_def` as public API.
-- [ ] `src/widgets/text_edit/mod.rs:351`: `pass` re-resolves the id that `show` already resolved.
 
 ## Small widgets design and consolidation
 - [ ] `color_button/mod.rs:46` vs `combo_box/mod.rs:28`: `ChipState`/`ComboState` are identical `{open}` structs. The "probe flag → toggle on click → `Popup::below(rect)` → close on `closed()` → write back on flip" block is duplicated verbatim.
 - [ ] Keyboard support differs across siblings. ColorField/ColorStrip and Expander are focusable and key-driven. Slider, Checkbox, Radio and Switch are not focusable and have no key path.
 - [ ] `color_button/mod.rs`: lacks ColorPicker's `swatches(&[RgbaF32])` and `downsample(n)`. Its `history` default (true) also differs from ColorPicker's (Hidden).
 - [ ] Naming: `Tooltip::on(&snapshot)` vs `ContextMenu::attach(ui, &snapshot)` are two names for "attach to a trigger snapshot".
-- [ ] File layout: `TooltipResponse`, `ExpanderResponse`, `ClickOutside` (`popup/mod.rs`) and `SplitHalf` (`splitter/mod.rs`) are standalone public types inside a widget's file, while `ValueResponse`/`SelectResponse`/`OverlayResponse` each get their own file.

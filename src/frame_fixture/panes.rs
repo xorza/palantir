@@ -15,7 +15,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::splitter::{SplitHalf, Splitter};
+use crate::widgets::splitter::Splitter;
+use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::text::Text;
 
 pub(super) fn panes_card(state: &mut FrameFixture, ui: &mut Ui) {

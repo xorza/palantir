@@ -8,7 +8,8 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::{ClickOutside, Popup};
+use crate::widgets::popup::Popup;
+use crate::widgets::popup::click_outside::ClickOutside;
 use crate::{Sense, Ui};
 use glam::{UVec2, Vec2};
 

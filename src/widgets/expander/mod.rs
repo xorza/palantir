@@ -17,27 +17,13 @@ use crate::ui::Ui;
 use crate::widgets::arrow::Arrow;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::expander::expander_response::ExpanderResponse;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::expander::ExpanderTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
-
-/// What one pass over an [`Expander`] produced.
-#[derive(Debug)]
-pub struct ExpanderResponse<'a, R> {
-    /// The header's response — the whole row is the hit target.
-    pub response: Response<'a>,
-    /// What the body closure returned, or `None` on a frame the body did
-    /// not record. A collapsed [`Expander::keep_body`] section still
-    /// records, so it still answers `Some`.
-    pub inner: Option<R>,
-    /// The header was activated this frame, by click or by key.
-    pub toggled: bool,
-    /// `0.0` closed, `1.0` open, in between while the reveal animates.
-    pub openness: f32,
-}
 
 /// A header that reveals or hides a body — `<details>` / `<summary>` in
 /// HTML, an `Expander` in WPF and GTK, a `CollapsingHeader` in egui.
@@ -330,5 +316,6 @@ fn activation_key(ui: &mut Ui, header: WidgetId) -> bool {
     space || enter
 }
 
+pub(crate) mod expander_response;
 #[cfg(test)]
 mod tests;

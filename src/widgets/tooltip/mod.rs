@@ -17,6 +17,7 @@ use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use crate::widgets::tooltip::tooltip_response::TooltipResponse;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
 use std::time::Duration;
@@ -44,19 +45,6 @@ struct TooltipGlobal {
 /// hovered trigger asks for it at all.
 fn global_state_id() -> WidgetId {
     WidgetId::from_hash("palantir.tooltip.global")
-}
-
-/// What one pass over a [`Tooltip`] produced.
-///
-/// No [`Response`](crate::Response) here, unlike the other widget results:
-/// the bubble senses nothing and does not record at all on the frames it is
-/// down, so there is no node an application would ask about. Whether it is
-/// up is the whole answer — for a trigger that wants to paint differently
-/// while its hint is showing.
-#[derive(Debug, Clone, Copy)]
-pub struct TooltipResponse {
-    /// The bubble recorded this frame.
-    pub visible: bool,
 }
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
@@ -282,3 +270,4 @@ impl Configure for Tooltip<'_> {
 
 #[cfg(test)]
 mod tests;
+pub(crate) mod tooltip_response;
