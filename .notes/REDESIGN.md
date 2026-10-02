@@ -789,7 +789,6 @@ output, cost, cleanup.
 
 ## Phase 4. GPU geometry and colour (D5, D6)
 
-- [ ] Premultiplied LUT with a scalar fade; mesh `vs`; curve `mix`; join average; document the space.
 - [ ] Texel-centre `u` helper.
 - [ ] `OffscreenHost` format assert; premultiply table at construction.
 - [ ] Icons above 512 px fill their box; text scissor at ink.
