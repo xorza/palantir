@@ -11,36 +11,38 @@ use crate::widgets::{block::Block, grid::Grid, panel::Panel};
 use glam::UVec2;
 
 /// Pin: empty grid (zero rows or zero cols) measures + arranges to zero
-/// without panicking; child rects are zeroed at parent anchor.
+/// without panicking; child rects are zeroed at parent anchor. The other
+/// dimension's one 50 px track does not survive: a grid with no cells in
+/// one direction has none at all.
 #[test]
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let empty: [Track; 0] = [];
-    h.frame(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Grid::new()
-                    .id(WidgetId::from_hash("empty-grid"))
-                    .cols([Track::fixed(50.0)])
-                    .rows(empty)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("ghost"))
-                            .size((20.0, 20.0))
-                            .show(ui);
-                    });
-            });
-    });
-    let r = h.arranged(WidgetId::from_hash("empty-grid"));
-    assert_eq!(r.size.w, 0.0);
-    assert_eq!(r.size.h, 0.0);
-
-    let ghost = h.arranged(WidgetId::from_hash("ghost"));
-    assert_eq!(ghost.size.w, 0.0);
-    assert_eq!(ghost.size.h, 0.0);
+    let empty: &[Track] = &[];
+    let one: &[Track] = &[Track::fixed(50.0)];
+    for (label, cols, rows) in [("no rows", one, empty), ("no cols", empty, one)] {
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        h.frame(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Grid::new()
+                        .id(WidgetId::from_hash("empty-grid"))
+                        .cols(cols)
+                        .rows(rows)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id(WidgetId::from_hash("ghost"))
+                                .size((20.0, 20.0))
+                                .show(ui);
+                        });
+                });
+        });
+        let grid = h.arranged(WidgetId::from_hash("empty-grid"));
+        assert_eq!(grid.size, Size::ZERO, "{label}: the grid");
+        let ghost = h.arranged(WidgetId::from_hash("ghost"));
+        assert_eq!(ghost.size, Size::ZERO, "{label}: its child");
+    }
 }
 
 /// Pin: a grid whose own slot resolves to zero extent still gives its

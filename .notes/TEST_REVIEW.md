@@ -29,7 +29,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 14. Missing coverage for computable logic
 
-- [ ] Layout: no driver is tested with zero children; `grid/tests/degenerate.rs:16` builds zero rows but not zero cols; `arrange_axis` lacks `Fixed` × `min > fixed`, `Hug` × `max < content`, and `min == max` rows, and its margin sweep never affects an asserted value.
 - [ ] Host and window: `WindowRequests::drain` has no direct test, and `ui/tests/frames/window_output.rs:115,128` re-implement its formula. `WindowDirectory::add` / `remove` panics, `sanitize_system_scale`, the `scale_factor_is_valid` boundary, `UserScale` stepping near a rung, and the `raster_eq` axes (`physical`, `pixel_snap`, the `refresh_millihertz` exclusion) have no test. `winit/tests.rs:53` never calls `.vsync()` or `.fonts()`.
 - [ ] `runtime.rs:196` `schedule`, `native.rs:125` `position_on_monitor`, and the scale-change resync in `winit/mod.rs` are pure folds behind `ActiveEventLoop`. Extract them as functions over slices and table-test them.
 - [ ] Diagnostics: `GpuSegment`'s `Display` and `clear_kinds` keeping the other fields.
@@ -56,7 +55,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 16. Table merges and misplaced tests
 
-- [ ] `cross_driver_tests/arrange_axis.rs:131,152,173`: three identical triple loops; make one `CASES` table.
 - [ ] `wrapstack/tests/bounds.rs:98,142,186,236`: one copied fixture, four tests.
 - [ ] Collapsed child per driver (`stack/tests.rs:342`, `visibility/tests.rs:127` (a near-duplicate), `zstack/tests.rs:179`, `canvas/tests.rs:236`, `wrapstack/tests/packing.rs:62`; none for grid): fold into the cross-driver sweep.
 - [ ] `stack/tests.rs:586`, `scroll/tests.rs:238` vs `:187,218`; `record_hash` / `record_cascade_static` / `record_subtree_hash` are one function; `text_wrap/wrapping.rs:44-55` vs `:80-88`.
