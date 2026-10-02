@@ -55,9 +55,9 @@ impl WindowSurface {
     /// Point the swapchain config at `vsync`, and answer whether that changed
     /// it.
     ///
-    /// The comparison runs against what the surface resolved the policy to,
-    /// so a control that writes its own state back every frame reconfigures
-    /// nothing.
+    /// The comparison runs against the config's own present mode, read as
+    /// one of the two states, so a control that writes its own state back
+    /// every frame reconfigures nothing.
     pub(crate) fn set_vsync(&mut self, vsync: Vsync) -> bool {
         if self.vsync() == vsync {
             return false;

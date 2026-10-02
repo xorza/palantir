@@ -8,8 +8,9 @@
 //! - **Scissor does the clipping.** No per-glyph CPU clip; composer
 //!   group scissor crops; cheap y-range pre-cull keeps off-screen
 //!   lines out of the atlas cache.
-//! - **One bind group, one atlas struct.** RgbaF32 + mask textures
-//!   side by side; content_type bit selects in the shader.
+//! - **One bind group, one atlas struct.** An `Rgba8UnormSrgb` colour
+//!   texture and an `R8Unorm` mask texture side by side; the content
+//!   type bits select in the shader.
 //! - **GPU-blit on atlas grow.** `copy_texture_to_texture` from old
 //!   to new; etagere preserves rects so the cache map stays intact —
 //!   no re-rasterization.
@@ -19,7 +20,8 @@
 //!   *after* any grow blit — encoder ordering is load-bearing
 //!   (`queue.write_texture` runs before all encoder commands in a
 //!   submit, so it could be clobbered by the blit).
-//! - **20-byte instances.** content_type packed into the uv high bit.
+//! - **28-byte [`RasterQuad`](crate::gpu::raster_atlas::raster_quad::RasterQuad) instances.** The content type and the
+//!   desaturate flag sit above `u` in `uv_and_kind`.
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
 //!   region as two `u32`s, pushed per batch — no uniform buffer.
 
@@ -50,7 +52,7 @@ impl TextBackend {
     /// Build the format-independent text resources (glyph atlas, shaper,
     /// caches, shader, vertex buffer). The render pipelines are built per
     /// format by [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
-    /// from [`RasterPass::build_variants`].
+    /// from [`RasterProgram::build_variants`].
     pub(super) fn new(device: &wgpu::Device, program: &RasterProgram, shaper: TextShaper) -> Self {
         Self {
             shaper,
@@ -89,8 +91,7 @@ impl TextBackend {
 
     /// Append-mode prepare. Encoded-cache hits bypass shaping; the
     /// first miss opens the exclusive glyph lease, and each miss
-    /// extracts and rasterizes its glyphs in place. Rebinds the atlas
-    /// bind group if it grew.
+    /// extracts and rasterizes its glyphs in place.
     pub(super) fn prepare_batch(
         &mut self,
         ctx: &mut GpuCtx<'_>,

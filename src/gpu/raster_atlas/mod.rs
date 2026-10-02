@@ -310,9 +310,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// atlas path — including the comment explaining why the viewport is
     /// pushed here.
     ///
-    /// Both halves of the shared immediate region get written because
-    /// either tenant can be the first pipeline bound in a pass, so no
-    /// earlier step is guaranteed to have pushed the viewport.
+    /// Only the params half of the shared immediate region is written
+    /// here. The viewport half is the backend's, pushed when it binds a
+    /// pass.
     pub(super) fn draw_span<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
