@@ -63,7 +63,7 @@ impl<'a> Response<'a> {
     /// `response_for`. Used by widgets that don't otherwise consume
     /// the response state during `.show()` (decorative widgets:
     /// Text, Block, Panel, Grid). External widget authors reach this
-    /// through [`Widget::response`](crate::widget::Widget::response).
+    /// through [`Widget::show`](crate::widget::Widget::show).
     #[inline]
     pub(super) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {

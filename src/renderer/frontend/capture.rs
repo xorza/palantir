@@ -23,7 +23,9 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
@@ -57,6 +59,7 @@ macro_rules! paint_calls {
             Image {
                 payload: DrawImagePayload,
                 paint: Option<GpuPaintRef>,
+                epoch: u64,
             },
         }
 
@@ -79,9 +82,9 @@ macro_rules! paint_calls {
                 match self {
                     $( Self::$variant(payload) => sink.$method(*payload), )*
                     $( Self::$unit => sink.$unit_method(), )*
-                    Self::Image { payload, paint } => sink.image(ImageDraw {
+                    Self::Image { payload, paint, epoch } => sink.image(ImageDraw {
                         payload: *payload,
-                        paint: paint.as_ref(),
+                        view: paint.as_ref().map(|paint| ViewPaint { paint, epoch: *epoch }),
                     }),
                 }
             }
@@ -101,7 +104,8 @@ macro_rules! paint_calls {
             fn image(&mut self, draw: ImageDraw<'_>) {
                 self.calls.push(PaintCall::Image {
                     payload: draw.payload,
-                    paint: draw.paint.cloned(),
+                    paint: draw.view.map(|view| view.paint.clone()),
+                    epoch: draw.view.map_or(0, |view| view.epoch),
                 });
             }
         }

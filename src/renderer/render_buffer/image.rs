@@ -35,6 +35,37 @@ pub(crate) struct RenderTargetDraw {
     pub(crate) display_scale: f32,
     pub(crate) raster_scale: f32,
     pub(crate) paint: GpuPaintRef,
+    /// The view's repaint version. See [`ViewStamp`].
+    pub(crate) epoch: u64,
+}
+
+/// Everything a painted target's pixels depend on besides the callback,
+/// which keys the target itself: the view's repaint version and the
+/// geometry the paint was asked for. A target whose last paint carries
+/// the same stamp holds this frame's pixels, so compositing it again
+/// needs no paint — the case of a `repaint(false)` view under a partial
+/// repaint that crosses it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ViewStamp {
+    epoch: u64,
+    used: UVec2,
+    full: UVec2,
+    offset: UVec2,
+    display_scale: f32,
+    raster_scale: f32,
+}
+
+impl RenderTargetDraw {
+    pub(crate) const fn stamp(&self) -> ViewStamp {
+        ViewStamp {
+            epoch: self.epoch,
+            used: self.used,
+            full: self.full,
+            offset: self.offset,
+            display_scale: self.display_scale,
+            raster_scale: self.raster_scale,
+        }
+    }
 }
 
 /// The frame's two views of its `GpuView`s, handed to the backend together

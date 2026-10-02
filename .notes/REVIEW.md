@@ -27,7 +27,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
 
 ## Smaller widget bugs
-- [ ] `src/widgets/response.rs:65`: says external authors reach `Response::lazy` "through `Widget::response`". That returns a `ResponseState`. The lazy route is `Widget::show`.
 
 ## `IconId` is u16 but icon sets are unbounded
 - [ ] `src/icons/icon_set.rs:165` with `icon_table.rs:283` **bug (low)**: `from_svgs` accepts any number of sources, but `by_name` mints `IconId(i as u16)`. In a 70 000-icon set, the name at index 65 540 silently resolves to icon 4. The `gpu/icon` prewarm has the same truncation.
@@ -37,22 +36,11 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Composer worst-case per-frame cost
 - [ ] `src/renderer/frontend/composer/occlusion.rs:140-149` **bug (perf)**: the prune is O(N·K) whenever covers equal quad sizes. Sharp, pixel-aligned opaque quads (the default under `pixel_snap`) record their full rect as the cover (`aa_inset` is 0). `q.rect.size > suffix_max` is then never true, and every quad scans all later occluders. A 100×100 grid of equal cells stays in one group: about 5·10⁷ `contains_rect` calls per full frame.
 - [ ] `src/renderer/frontend/composer/higher_kind.rs:221-232,300-302` **bug (perf, plausible)**: the module doc's bound ("a query that survives the union pre-reject flushes, so a scan happens once per group") is false. `any_overlap` can scan every rect, find no hit, and not flush. Curve-after-curve never flushes, so curves accumulate. 2000 short `Shape::line` strokes plus 500 labels in the gaps costs about 10⁶ rect tests per frame.
-- [ ] `src/renderer/gpu_paint/gpu_views.rs:117-121,138-143` with `session.rs:446-481` **bug (contract)**: `repaint(false)` is documented to cull the view and skip its GPU paint. Any partial damage that intersects the view makes the encoder re-emit it, the composer unconditionally pushes a `RenderTargetDraw`, and the backend calls `GpuPaint::paint` again. A hover over a static 3D view re-runs the app's render every frame, though recompositing the retained target would do. `RenderTargetDraw` carries no epoch, so the backend cannot tell the two cases apart.
-
-## Damage worst-case-per-frame spike
-- [ ] `src/scene/damage/walk.rs:362-378`: `emit_inverted_overlaps` pushes one rect per inverted overlapping pair into `raw_rects`, so the push count is O(rows²). Reversing the order of N fully overlapping children (a card deck, a canvas z-sort) pushes about N²/2 rects (N=1000 gives about 500k). Each goes through `DamageRegion::add`'s 8-slot scan and grows `raw_rects` to a new high-water mark.
-
-## GPU per-frame cost and worst-case spikes
-- [ ] `src/gpu/overlay_pass.rs:83-90`: the dim quad is re-uploaded through the belt on every Partial frame, although its content changes only with the viewport. `QuadPipeline::upload_clear` (`quad_pipeline.rs:108-126`) caches the same shape with `last_clear`. Two full-viewport single-quad buffers with different caching should share one mechanism.
-- [ ] `src/gpu/viewport.rs:38`: a release `assert!` on the per-frame path (`PartialScissors::new`). Per-frame contract checks are `debug_assert!`.
 
 ## Icon prewarm warms keys the frame never asks for
 - [ ] `src/gpu/icon/mod.rs:124` **bug (plausible)**: prewarm keys on `def.view_box * display_scale`. The composer keys on the drawn box `phys_rect.size`, which includes ancestor transforms (`composer/session.rs:381`). So prewarm hits only icons drawn at exactly their view-box size. Any other size still takes the 10-20× filtered raster lazily.
   - Prewarm rasterizes every filtered icon of every loaded set in one frame on each DPI change or set load: a worst-case-frame spike. Those slots are stamped current-frame, so they cannot be evicted while that frame's real draws compete for space.
   - To confirm: compare showcase icon box sizes against their SVG view boxes.
-
-## Small widgets per-frame cost
-- [ ] `src/widgets/gpu_view/mod.rs:109-114`: an eager `response_for` probe on a widget that senses nothing by default and needs nothing before record. `Widget::show` (lazy) covers it.
 
 ## Big widgets reach `pub(crate)` internals ("widgets use only the public API")
 - [ ] TextEdit: `src/widgets/text_edit/mod.rs:29,140` (`ScrollAxes`, `Widget::scroll`), `mod.rs:417` (`TextStyle::metrics_valid`), `mod.rs:431` (`Background::border_inset`), `text_geometry.rs:107` (`Align::place_in`), `view_state.rs:9` and `paint_input.rs:13` (`ScrollState`/`ScrollBounds` with `apply_wheel_pan`, `clamp_to_natural`, `transform`).

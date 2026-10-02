@@ -137,6 +137,7 @@ pub(crate) mod requested_gpu;
 // external criterion target calls through — can name `schedule::bench`.
 pub(crate) mod schedule;
 mod shader_template;
+mod single_quad_buffer;
 pub(crate) mod stencil;
 mod stencil_variant;
 pub(crate) mod submission;

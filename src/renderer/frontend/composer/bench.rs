@@ -257,7 +257,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 handle: TextureId(1),
                 flags: 0,
             },
-            paint: None,
+            view: None,
         },
         1.0,
     );

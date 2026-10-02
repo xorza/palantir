@@ -843,7 +843,7 @@ fn images_between_labels_coalesce_text_the_same_way() {
                 buf.draw_image(
                     ImageDraw {
                         payload: gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
-                        paint: None,
+                        view: None,
                     },
                     1.0,
                 );
@@ -914,7 +914,7 @@ fn text_batch_drains_past_a_non_overlapping_image() {
             buf.draw_image(
                 ImageDraw {
                     payload: gpu_view_payload(rect(100.0, 0.0, 16.0, 16.0), TextureId(1)),
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );

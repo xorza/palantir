@@ -8,8 +8,8 @@ use crate::display::Display;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
 use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
+use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::frontend::composer::session::ComposeSession;
-use crate::renderer::frontend::composer::text_grid::TextRectGrid;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -26,8 +26,8 @@ mod higher_kind;
 mod occlusion;
 pub(crate) mod session;
 // `pub(crate)` only so `bench::driver` — the crate-root facade the
-// external criterion target calls through — can name `text_grid::bench`.
-pub(crate) mod text_grid;
+// external criterion target calls through — can name `rect_grid::bench`.
+pub(crate) mod rect_grid;
 mod transform_stack;
 
 /// The retained half of the CPU compose engine: every buffer and stack a
@@ -103,8 +103,8 @@ struct PolylineScratch {
 #[derive(Debug, Default)]
 struct BatchState {
     open: Option<OpenBatch>,
-    open_grid: TextRectGrid,
-    closed_grid: TextRectGrid,
+    open_grid: RectGrid,
+    closed_grid: RectGrid,
     /// First finalized text batch not yet indexed in `closed_grid`.
     pending_batch_cursor: usize,
 }
@@ -207,10 +207,10 @@ impl Composer {
         self.batch.open_grid.start_frame(viewport_phys);
         self.batch.closed_grid.start_frame(viewport_phys);
         self.batch.pending_batch_cursor = 0;
-        self.higher_kinds.clear();
+        self.higher_kinds.start_frame(viewport_phys);
         self.cursors = GroupCursors::default();
         self.batch.open = None;
-        self.occlusion.clear();
+        self.occlusion.start_frame(viewport_phys);
     }
 }
 

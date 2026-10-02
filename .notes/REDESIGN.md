@@ -687,8 +687,14 @@ Local causes, one step each in phase 8.
 - **Damage inversions** (`damage/walk.rs:362-378`): union inverted pairs per row before pushing.
 - **GPU view `repaint(false)`**: `RenderTargetDraw` carries the view's epoch; the backend
   recomposites the retained target unless the epoch moved.
-- **Icon prewarm**: prewarm last frame's requested keys, rescaled, under a fixed per-frame raster
-  budget.
+- **Icon prewarm** (shelved): a prewarm does not bound the frame. The frame that first draws N
+  filtered icons rasterizes them lazily in `prepare_batch` whether or not a prewarm ran first, and
+  a budgeted prewarm of last frame's keys only reorders that work. What bounds the frame is a
+  budget on the lazy path, with a fallback for an icon over budget (an existing raster of the same
+  icon at another size, resampled) and a repaint so the exact raster follows. The backend has no
+  channel to ask for that repaint, and the crate ships no filtered icon to measure against. Exact
+  rescaled keys also need the logical box, which the rows do not carry: rescaling a snapped key
+  lands a pixel off the key the composer asks for.
 - **Single-quad cache** shared by the overlay dim quad and `upload_clear`.
 - **Per-frame `assert!`** to `debug_assert!` (`gpu/viewport.rs:38`); lazy `gpu_view` probe.
 

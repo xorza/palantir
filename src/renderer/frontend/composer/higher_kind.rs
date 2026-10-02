@@ -1,35 +1,29 @@
 //! Per-group overlap tracking for the replay tiers above text — every
 //! [`PaintTier`].
 //!
-//! **Why a union pre-reject plus a linear scan, and not the tiled index
-//! [`text_grid`] uses.** That module's own doc measures this exact shape
-//! at 56.7 µs against its grid's 7.0 — but it is measuring a different
-//! access pattern, and the difference is what makes the cheap structure
-//! right here. A text batch spans groups, so its rect list is long-lived
-//! and every quad queries it; the tiles are what stop that from being
-//! O(n) per quad.
+//! A query that finds nothing does not flush, so nothing clears a tier's
+//! list between queries: a canvas of 2000 short wires with 500 labels in
+//! the gaps between them keeps every wire for every label, and a flat
+//! scan there costs each label the whole wire list. So a tier scans its
+//! list only while it holds at most [`LINEAR_RECTS`]; past that, a query
+//! indexes the rects no earlier query indexed into a [`RectGrid`] and
+//! tests only the ones in its tiles.
 //!
-//! These lists are group-scoped, and the first query that *survives* the
-//! union pre-reject flushes the group — which clears them. So a scan can
-//! only ever happen once per group transition, never once per draw.
-//! Measured on the `FrameFixture` workload: max occupancy **2**, and
-//! **zero** tier scans across eight frames, because the aggregate union
-//! rejects every query before it reaches a tier. Measured on a synthetic
-//! 400-wire node-graph canvas (the adversarial case, since
-//! [`HigherKindRects::conflicts`] never flushes on curve-after-curve, so
-//! wires accumulate unbounded): occupancy tracks the wire count exactly,
-//! yet the whole compose does **one** 400-rect scan — the first
-//! overlapping quad pays it, flushes, and every later quad scans an empty
-//! list.
+//! The index is built by queries, not pushes, because most tiers are
+//! never queried at length: a run of curves only pushes, and indexing
+//! each push would pay the tile walk for a query that never comes. Each
+//! rect is indexed at most once a group, so a frame's indexing is
+//! bounded by its rect count.
 //!
-//! A tiled index would add a per-frame build to save a scan that happens
-//! once per group. Re-measure before changing this; don't re-derive it
-//! from the neighbouring module's numbers.
-//!
-//! [`text_grid`]: crate::renderer::frontend::composer::text_grid
+//! [`RectGrid`]: crate::renderer::frontend::composer::rect_grid::RectGrid
 
 use crate::primitives::urect::URect;
+use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use glam::UVec2;
+
+/// The most rects a tier scans without its index.
+const LINEAR_RECTS: usize = 32;
 
 #[derive(Debug, Default)]
 pub(super) struct HigherKindRects {
@@ -48,6 +42,9 @@ pub(super) struct HigherKindRects {
 struct TierRects {
     rects: Vec<URect>,
     union: URect,
+    /// The rects `rects[..indexed]`, by tile.
+    grid: RectGrid,
+    indexed: usize,
 }
 
 impl TierRects {
@@ -56,17 +53,47 @@ impl TierRects {
         self.union = self.union.union(rect);
     }
 
-    fn any_overlap(&self, rect: URect) -> bool {
-        self.union.intersects(rect) && self.rects.iter().any(|r| r.intersects(rect))
+    /// The union reject inline, since every higher-kind draw asks it of
+    /// each tier above its own; the scan behind it out of line.
+    #[inline]
+    fn any_overlap(&mut self, rect: URect) -> bool {
+        self.union.intersects(rect) && self.any_overlap_inside(rect)
+    }
+
+    #[inline(never)]
+    fn any_overlap_inside(&mut self, rect: URect) -> bool {
+        if self.rects.len() <= LINEAR_RECTS {
+            return self.rects.iter().any(|r| r.intersects(rect));
+        }
+        for &unindexed in &self.rects[self.indexed..] {
+            self.grid.push(unindexed);
+        }
+        self.indexed = self.rects.len();
+        self.grid.any_overlap(rect)
     }
 
     fn clear(&mut self) {
         self.rects.clear();
         self.union = URect::ZERO;
+        if self.indexed > 0 {
+            self.grid.clear();
+            self.indexed = 0;
+        }
     }
 }
 
 impl HigherKindRects {
+    /// Size every tier's grid to `viewport` and drop what they hold.
+    /// Called at compose start.
+    pub(super) fn start_frame(&mut self, viewport: UVec2) {
+        for tier in &mut self.tiers {
+            tier.grid.start_frame(viewport);
+            tier.indexed = 0;
+            tier.clear();
+        }
+        self.union = URect::ZERO;
+    }
+
     pub(super) fn push(&mut self, tier: PaintTier, rect: URect) {
         self.tiers[tier.idx()].push(rect);
         self.union = self.union.union(rect);
@@ -81,15 +108,15 @@ impl HigherKindRects {
     /// on top". Reading that off `Ord` rather than restating it as a
     /// matrix is what keeps this end and the schedule's drain order from
     /// drifting.
-    pub(super) fn conflicts(&self, incoming: PaintTier, rect: URect) -> bool {
+    pub(super) fn conflicts(&mut self, incoming: PaintTier, rect: URect) -> bool {
         PaintTier::ALL
             .iter()
             .filter(|&&recorded| incoming < recorded)
             .any(|&recorded| self.tiers[recorded.idx()].any_overlap(rect))
     }
 
-    pub(super) fn any_overlap(&self, rect: URect) -> bool {
-        self.union.intersects(rect) && self.tiers.iter().any(|t| t.any_overlap(rect))
+    pub(super) fn any_overlap(&mut self, rect: URect) -> bool {
+        self.union.intersects(rect) && self.tiers.iter_mut().any(|t| t.any_overlap(rect))
     }
 
     pub(super) fn clear(&mut self) {
@@ -119,6 +146,7 @@ mod tests {
 
         for recorded in tiers {
             let mut rects = HigherKindRects::default();
+            rects.start_frame(glam::UVec2::new(64, 64));
             rects.push(recorded, recorded_rect);
             assert!(rects.any_overlap(recorded_rect), "recorded={recorded:?}");
             assert!(!rects.any_overlap(disjoint), "recorded={recorded:?}");
@@ -138,5 +166,29 @@ mod tests {
             rects.clear();
             assert!(!rects.any_overlap(recorded_rect));
         }
+    }
+
+    /// A query tests only the rects in its own tiles. 2000 wires, 4 px
+    /// square on a 16 px lattice, fill 800 × 640 px: every whole 64 px
+    /// tile holds a 4 × 4 block of them, 8 in its row and 8 chained. 500
+    /// labels sit in the gaps, each inside one whole tile, so each tests
+    /// that tile's 16 wires, finds nothing, and does not flush: 8000
+    /// tests, where a scan of every wire costs `500 × 2000 = 10⁶`.
+    #[test]
+    fn labels_between_wires_test_only_their_tile() {
+        let mut rects = HigherKindRects::default();
+        rects.start_frame(glam::UVec2::new(800, 640));
+        for i in 0..50 {
+            for j in 0..40 {
+                rects.push(PaintTier::Curve, URect::new(16 * i + 2, 16 * j + 2, 4, 4));
+            }
+        }
+        for i in 0..25 {
+            for j in 0..20 {
+                assert!(!rects.any_overlap(URect::new(16 * i + 9, 16 * j + 9, 6, 6)));
+            }
+        }
+        let tests: u64 = rects.tiers.iter().map(|t| t.grid.intersect_tests()).sum();
+        assert_eq!(tests, 500 * 16);
     }
 }
