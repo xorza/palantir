@@ -337,11 +337,14 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
     assert_eq!(fs, 16.0);
+    // 16 × 1.2 = 19.2, on the shaper's 1/64-px grid: 1228.8 64ths round
+    // to 1229.
     assert_eq!(
         lh,
-        16.0 * LINE_HEIGHT_MULT,
-        "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}"
+        (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0,
+        "default line_height_px is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
     );
+    assert_eq!(lh, 19.203125);
 }
 
 #[test]

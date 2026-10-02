@@ -313,8 +313,10 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let node = frame(&mut h, &mut buf, None, None);
     let caret_origin = shape_origins(&h.ui, node).caret;
     let c = caret_origin.expect("focused empty editor still paints caret");
-    let authored_line_height = 16.0 * LINE_HEIGHT_MULT;
-    let dy = (INNER_H - authored_line_height) * 0.5;
+    // The shaper's 1/64-px leading: 16 × 1.2 = 19.2 rounds to 1229/64.
+    let line_height = 1229.0 / 64.0;
+    assert_eq!(line_height, (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0);
+    let dy = (INNER_H - line_height) * 0.5;
     assert_eq!(c.x, PAD_L, "caret.x = {}", c.x);
     assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }

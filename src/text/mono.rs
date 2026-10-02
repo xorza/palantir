@@ -101,9 +101,8 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> Size {
 }
 
 /// Widest unbreakable segment of `text` under a uniform `glyph_w` — the
-/// twin of
-/// [`geometry::intrinsic_min_width`](crate::text::cosmic::geometry::intrinsic_min_width),
-/// which answers the same question off a shaped buffer's glyph widths.
+/// twin of `cosmic::geometry::intrinsic_min_width`, which answers the
+/// same question off a shaped buffer's glyph widths.
 ///
 /// Segments come from [`wrap::break_offsets`], the rule both twins
 /// measure against, and each drops its trailing whitespace for the same

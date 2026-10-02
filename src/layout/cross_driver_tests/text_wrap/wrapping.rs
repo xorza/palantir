@@ -20,8 +20,8 @@ use crate::widgets::{button::Button, panel::Panel, text::Text};
 use glam::UVec2;
 
 /// The measured height of `lines` lines of `font_px` text: the default
-/// style's line height per line, ceiled to whole pixels as the measurer
-/// does. Widths have no such formula — they are the bundled faces' glyph
+/// style's line height per line, on the shaper's 1/64-px grid, ceiled to
+/// whole pixels as the measurer does. Widths have no such formula — they are the bundled faces' glyph
 /// advances, the same on every machine.
 fn lines_h(lines: u32, font_px: f32) -> f32 {
     (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
@@ -229,8 +229,8 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
     });
     let node = text_node.unwrap();
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
-    // Five lines inside the 300 px column. 97 rather than `lines_h(5)`'s
-    // 96: cosmic's accumulated `line_top` lands the fifth line's bottom at
-    // 96.00001, which ceils up (see ISSUES).
-    assert_eq!(shaped.measured, Size::new(285.0, 97.0));
+    // Five lines inside the 300 px column: five 19.203125 px lines end at
+    // 96.015625, which ceils to 97.
+    assert_eq!(shaped.measured, Size::new(285.0, lines_h(5, 16.0)));
+    assert_eq!(lines_h(5, 16.0), 97.0);
 }

@@ -87,7 +87,7 @@ impl ContextMenuTheme {
     }
 
     /// The popup panel, holding a [`MenuItemTheme`] and the menu spelling of
-    /// [`SeparatorTheme`](crate::SeparatorTheme).
+    /// [`SeparatorTheme`].
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             panel: p.popup_panel(),

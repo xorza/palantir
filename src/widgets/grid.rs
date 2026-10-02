@@ -80,7 +80,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     }
 
     /// Record the grid and its `body`. Children name their own slot with
-    /// [`Configure::grid_cell`](crate::Configure::grid_cell).
+    /// [`Configure::grid_cell`].
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
     where
         Rows: AsRef<[Track]>,

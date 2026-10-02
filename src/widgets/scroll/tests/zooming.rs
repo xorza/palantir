@@ -1,5 +1,6 @@
 //! What a pinch, a wheel and a modifier do to the scale.
 
+use crate::TextStyle;
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -286,8 +287,8 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // The wheel-step refactor split lines vs pixels at the input
     // layer; the zoom path must combine them so a touchpad gesture
     // under ctrl still zooms — pre-split it did, and regressing that
-    // breaks touchpad pinch-via-modifier. With line_px = 19.2 (default
-    // 16 × 1.2), 38.4 px of touchpad scroll = 2 virtual notches.
+    // breaks touchpad pinch-via-modifier. Two lines' worth of touchpad
+    // pixels is two virtual notches.
     let mut h = UiHarness::new(SURFACE);
     let build_zoom = |ui: &mut Ui| {
         Panel::vstack()
@@ -315,7 +316,8 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
         ctrl: true,
         ..Modifiers::NONE
     });
-    h.scroll_pixels(Vec2::new(0.0, 38.4));
+    let line_px = TextStyle::default().line_height_for(16.0);
+    h.scroll_pixels(Vec2::new(0.0, 2.0 * line_px));
     h.frame(build_zoom);
 
     let after_zoom = h.state::<ScrollState>(scroll_id).zoom;
@@ -374,11 +376,12 @@ fn wheel_zoom_step_is_font_independent() {
 
 #[test]
 fn line_wheel_step_scales_with_theme_font_size() {
-    // Pin: a `ScrollLines(0, 1)` event lands `font_size * line_height_mult`
-    // pixels of pan — not the legacy 40 px constant. Two themes, two
-    // expected pixel offsets.
+    // Pin: a `ScrollLines(0, 1)` event lands one laid-out line of pan —
+    // `font_size * line_height_mult` on the shaper's 1/64-px grid — not
+    // the legacy 40 px constant. 16 × 1.2 = 19.2 is 1228.8 64ths, which
+    // rounds to 1229: 19.203125. 24 × 1.5 = 36 is on the grid.
     let cases: &[(&str, f32, f32, f32)] = &[
-        ("default_16px_text", 16.0, 1.2, 19.2),
+        ("default_16px_text", 16.0, 1.2, 1229.0 / 64.0),
         ("larger_24px_text", 24.0, 1.5, 36.0),
     ];
     for (label, font_size, line_height_mult, expected_px) in cases {

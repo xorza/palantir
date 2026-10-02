@@ -6,6 +6,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::key::TextShapeKey;
 use crate::widgets::theme::palette::Palette;
 
 /// Default [`TextStyle::line_height_mult`]: the leading widgets resolve
@@ -162,9 +163,13 @@ impl TextStyle {
     /// `font_size * line_height_mult` inline so the formula can evolve
     /// (font-dependent leading, etc.) without a sweep through every
     /// text-rendering widget.
+    ///
+    /// The shaper lays lines on the 1/64-px grid its cache keys hold, so
+    /// this answers on that grid too: 16 px at 1.2 leads at 19.203125, not
+    /// 19.2, and five lines of it measure 96.015625 px.
     #[inline]
     pub fn line_height_for(&self, font_size_px: f32) -> f32 {
-        font_size_px * self.line_height_mult
+        TextShapeKey::leading_on_grid(font_size_px * self.line_height_mult)
     }
 
     /// Chainable single-axis tweak. Lets callers write
