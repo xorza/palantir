@@ -48,7 +48,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                              label stays natural",
                                         )
                                         .id(WidgetId::from_hash("section-title"))
-                                        .style(&TextStyle::default().with_font_size(12.0))
+                                        .font_size(12.0)
                                         .text_wrap(TextWrap::SingleLine)
                                         .show(ui);
                                         grid_node = Some(
@@ -60,7 +60,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                     Text::new(
                                                         "the quick brown fox jumps over the lazy dog",
                                                     ).auto_id()
-                                                    .style(&TextStyle::default().with_font_size(14.0))
+                                                    .font_size(14.0)
                                                     .text_wrap(TextWrap::WrapWithOverflow)
                                                     .grid_cell((0, 0))
                                                     .show(ui);
@@ -126,7 +126,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
     let label_node = h.frame_value(|ui| {
         Text::new("right column")
             .auto_id()
-            .style(&TextStyle::default().with_font_size(14.0))
+            .font_size(14.0)
             .text_wrap(TextWrap::SingleLine)
             .show(ui)
             .node()
@@ -159,7 +159,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                 paragraph_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui)
@@ -168,7 +168,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                 label_node = Some(
                     Text::new("right column")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .text_wrap(TextWrap::SingleLine)
                         .grid_cell((0, 1))
                         .show(ui)
@@ -219,14 +219,14 @@ fn two_hug_cols_default_label_hugs_full_width() {
           .show(ui, |ui| {
               Text::new("the quick brown fox jumps over the lazy dog. pack my box with five dozen liquor jugs")
                   .auto_id()
-                  .style(&TextStyle::default().with_font_size(14.0))
+                  .font_size(14.0)
                   .text_wrap(TextWrap::WrapWithOverflow)
                   .grid_cell((0, 0))
                   .show(ui);
               // No `.text_wrap(...)` — exercises the default.
               Text::new("right column")
                   .auto_id()
-                  .style(&TextStyle::default().with_font_size(14.0))
+                  .font_size(14.0)
                   .grid_cell((0, 1))
                   .show(ui)
                   .node()

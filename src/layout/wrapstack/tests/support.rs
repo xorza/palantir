@@ -15,10 +15,7 @@ pub(super) fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(id))
         .size((Sizing::fixed(w), Sizing::fixed(h)))
-        .background(Background {
-            fill: RgbaF32::WHITE.into(),
-            ..Default::default()
-        })
+        .background(Background::fill(RgbaF32::WHITE))
         .show(ui)
         .node()
 }

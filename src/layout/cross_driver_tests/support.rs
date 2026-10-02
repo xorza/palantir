@@ -5,7 +5,6 @@
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::TextStyle;
 use crate::Ui;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::shaped_text::ShapedText;
@@ -43,7 +42,7 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
             text_node = Some(
                 Text::new(paragraph)
                     .auto_id()
-                    .style(&TextStyle::default().with_font_size(16.0))
+                    .font_size(16.0)
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((0, 0))
                     .show(ui)
@@ -51,7 +50,7 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
             );
             Text::new("right column")
                 .auto_id()
-                .style(&TextStyle::default().with_font_size(16.0))
+                .font_size(16.0)
                 .grid_cell((0, 1))
                 .show(ui);
         });
@@ -75,7 +74,7 @@ pub(super) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
                 message_node = Some(
                     Text::new(text)
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(text_px))
+                        .font_size(text_px)
                         .size((Sizing::FILL, Sizing::HUG))
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)

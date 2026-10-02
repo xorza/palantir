@@ -22,18 +22,12 @@ fn subtree_hash_stable_across_frames() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(30.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.9, 0.1, 0.1).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.9, 0.1, 0.1)))
                     .show(ui);
             })
             .response
@@ -51,10 +45,7 @@ fn subtree_hash_changes_when_descendant_changes() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background {
-                        fill: fill.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(fill))
                     .show(ui);
             })
             .response
@@ -72,20 +63,14 @@ fn subtree_hash_changes_on_sibling_reorder() {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         };
         let b = |ui: &mut Ui| {
             Block::new()
                 .id(WidgetId::from_hash("b"))
                 .size(30.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.9, 0.1, 0.1).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.9, 0.1, 0.1)))
                 .show(ui);
         };
         Panel::hstack()
@@ -300,10 +285,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
                 Block::new()
                     .id(WidgetId::from_hash("a-leaf"))
                     .size(50.0)
-                    .background(Background {
-                        fill: root_a_color.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(root_a_color))
                     .show(ui);
             });
         let b_first = ui.tree(Layer::Main).records.len() as u32;

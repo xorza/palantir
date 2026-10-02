@@ -74,10 +74,7 @@ fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: RgbaF
             Block::new()
                 .id(WidgetId::from_hash((panel_id, "leaf")))
                 .size(frame_size)
-                .background(Background {
-                    fill: fill.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(fill))
                 .show(ui);
         });
 }
@@ -269,8 +266,6 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
 
 #[test]
 fn changing_available_remeasures_wrapping_text() {
-    use crate::TextStyle;
-
     let mut h = UiHarness::with_text(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -283,7 +278,7 @@ fn changing_available_remeasures_wrapping_text() {
                 )
                 .id(WidgetId::from_hash("fill"))
                 .size((Sizing::FILL, Sizing::HUG))
-                .style(&TextStyle::default().with_font_size(16.0))
+                .font_size(16.0)
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
             });

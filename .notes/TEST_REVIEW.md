@@ -34,7 +34,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 ## 15. Duplicated fixtures and setup
 
 - [ ] Dock scene in `tests/alloc/fixtures/dock.rs:19-93` and `tests/visual/fixtures/tabs.rs:92-170` (plus the showcase and `widgets/dock/tests.rs:843`). Add a `DockFixture` beside `FrameFixture`.
-- [ ] `Background { fill, ..Default::default() }` written 64 times (49 scene/layout, 15 encoder) while `Background::fill` has 0 uses there. The "id + fixed size + fill" leaf is re-declared 7+ times (`wrapstack/tests/support.rs:24`, `damage/tests/support.rs:39`, `cache/tests/reuse.rs:70`, `cascade/tests/incremental.rs:65`, `tree/tests/node_hash.rs:80`, `tree/tests/subtree_hash.rs:47`, `damage/tests/tree.rs` ×5). 60 `.style(&TextStyle::default().with_font_size(x))` beside `Text::font_size`.
 - [ ] Std-hash helper spelled 7 ways (`color/tests.rs:6`, `size.rs:224`, `rect/tests.rs:7`, `track/tests.rs:8`, `sizing.rs:330`, `brush/tests.rs:20`, `approx/tests.rs:6`, plus `stops/tests.rs` closures). Signed-zero hash agreement is pinned 4 times, once per type; make it one table over every `FloatHash` type.
 - [ ] Lane serde is tested three times (`serde/tests.rs`, `corners/tests.rs:161-198`, `spacing/tests.rs:310-343`) with identical `ser`/`de` helpers. Add a generic `ron_round_trip<T>`.
 - [ ] HSV and Okhsv suites are parallel copies (`hsv.rs:136,154,161` vs `okhsv/tests.rs:96,133,163`, `color_coords.rs:150` vs `okhsv/tests.rs:52`). Sweep `ColorModel::ALL`.

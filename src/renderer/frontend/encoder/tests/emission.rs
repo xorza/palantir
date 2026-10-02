@@ -105,10 +105,7 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {

@@ -45,10 +45,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                 Block::new()
                                     .id(WidgetId::from_hash("overflow"))
                                     .size(child_size)
-                                    .background(Background {
-                                        fill: fill.into(),
-                                        ..Default::default()
-                                    })
+                                    .background(Background::fill(fill))
                                     .show(ui)
                                     .node(),
                             );
@@ -93,10 +90,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(BLUE))
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::shadow(Shadow {
@@ -195,10 +189,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("card"))
                                 .size((Sizing::fixed(card), Sizing::fixed(card)))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::shadow(Shadow {
@@ -259,10 +250,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
             Panel::hstack()
                 .id(host_id)
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(BLUE))
                 .clip_rect()
                 .show(ui, |ui| {
                     ui.add_shape(
@@ -327,10 +315,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(CHILD)
-                        .background(Background {
-                            fill: BLUE.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(BLUE))
                         .show(ui);
                 });
         });

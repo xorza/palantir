@@ -158,10 +158,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                         .id(WidgetId::from_hash("child"))
                         .position((50.0, 60.0))
                         .size(40.0)
-                        .background(Background {
-                            fill: child_color.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(child_color))
                         .show(ui);
                 });
         });
@@ -191,10 +188,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(150.0))
                 .transform(xform)
-                .background(Background {
-                    fill: chrome_color.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(chrome_color))
                 .show(ui, |_| {});
         });
     });

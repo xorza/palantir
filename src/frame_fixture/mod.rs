@@ -143,10 +143,7 @@ impl FrameFixture {
             .gap(10.0)
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
-            .background(Background {
-                fill: tokens::APP_BG.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(tokens::APP_BG))
             .show(ui, |ui| {
                 chrome::app_bar(ui);
 

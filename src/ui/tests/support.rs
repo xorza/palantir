@@ -26,10 +26,7 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(salt))
         .size(50.0)
-        .background(Background {
-            fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-            ..Default::default()
-        })
+        .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
         .show(ui)
         .node()
 }

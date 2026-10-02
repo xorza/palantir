@@ -106,10 +106,7 @@ fn prev_frame_updates_on_authoring_change() {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background {
-                    fill: fill.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(fill))
                 .show(ui);
         }
     };

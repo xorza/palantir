@@ -115,10 +115,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                 Block::new()
                     .id_salt("s-rule")
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
-                    .background(Background {
-                        fill: tokens::BORDER.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(tokens::BORDER))
                     .grid_cell(GridCell::at(1, 0).span(1, 2))
                     .show(ui);
 

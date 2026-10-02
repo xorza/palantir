@@ -56,10 +56,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                         .id(WidgetId::from_hash(("child", i)))
                         .position((10.0 + i as f32 * 50.0, 10.0))
                         .size(20.0)
-                        .background(Background {
-                            fill: RED.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RED))
                         .show(ui);
                 }
             });
@@ -104,10 +101,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
                 // node, so it collides across nodes and is disambiguated.
                 Block::new()
                     .size(10.0)
-                    .background(Background {
-                        fill: RED.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RED))
                     .show(ui);
             });
     }
@@ -161,10 +155,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size(size)
-            .background(Background {
-                fill: BLUE.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(BLUE))
     }
     type Order<'a> = [(&'a str, Rect); 3];
     let canvas = |ui: &mut Ui, order: Order| {
@@ -289,10 +280,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-            .background(Background {
-                fill: fill.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(fill))
             .show(ui);
     }
     let stack = |ui: &mut Ui, order: [(&str, RgbaF32); 2]| {
@@ -360,10 +348,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
             .id(WidgetId::from_hash("child"))
             .position((CHILD.min.x, CHILD.min.y))
             .size(CHILD.size.w)
-            .background(Background {
-                fill: RED.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RED))
             .show(ui);
     };
     // `over`: line recorded after the child → paints on top. `under`:
@@ -469,10 +454,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
             .id(WidgetId::from_hash(key))
             .position((r.min.x, r.min.y))
             .size(r.size.w)
-            .background(Background {
-                fill: BLUE.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(BLUE))
             .show(ui);
     }
     let canvas = |ui: &mut Ui, with_b: bool| {
@@ -535,10 +517,7 @@ fn rekeying_a_child_damages_only_the_child() {
                     .id(WidgetId::from_hash(key))
                     .position((CHILD.min.x, CHILD.min.y))
                     .size(CHILD.size.w)
-                    .background(Background {
-                        fill: BLUE.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(BLUE))
                     .show(ui);
                 ui.add_shape(
                     Shape::line(
@@ -731,10 +710,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
         Block::new()
             .id(WidgetId::from_hash("L"))
             .size(30.0)
-            .background(Background {
-                fill: BLUE.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(BLUE))
             .show(ui);
     };
     let parent = |ui: &mut Ui, id: &'static str, holds_leaf: bool| {
@@ -874,19 +850,13 @@ fn a_hidden_container_takes_no_snapshot() {
                     Block::new()
                         .id(hidden_child)
                         .size(20.0)
-                        .background(Background {
-                            fill: BLUE.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(BLUE))
                         .show(ui);
                 });
                 Block::new()
                     .id(shown)
                     .size(20.0)
-                    .background(Background {
-                        fill: RED.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RED))
                     .show(ui);
             });
     });
@@ -927,18 +897,12 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
                         Panel::zstack()
                             .id(child)
                             .size(50.0)
-                            .background(Background {
-                                fill: BLUE.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(BLUE))
                             .show(ui, |ui| {
                                 Block::new()
                                     .id(grandchild)
                                     .size(20.0)
-                                    .background(Background {
-                                        fill: RED.into(),
-                                        ..Default::default()
-                                    })
+                                    .background(Background::fill(RED))
                                     .show(ui);
                             });
                     });
@@ -989,10 +953,7 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
                         .id(WidgetId::from_hash(("card", card)))
                         .position((CARD.min.x, CARD.min.y))
                         .size(CARD.size.w)
-                        .background(Background {
-                            fill: BLUE.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(BLUE))
                         .show(ui);
                 }
             });

@@ -34,10 +34,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background {
-                                fill: fill.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(fill))
                             .show(ui)
                             .node(),
                     );
@@ -88,10 +85,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -156,10 +150,7 @@ fn transform_animation_keeps_far_positions_split() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -385,10 +376,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
                                 Block::new()
                                     .id(WidgetId::from_hash(key))
                                     .size(40.0)
-                                    .background(Background {
-                                        fill: BLUE.into(),
-                                        ..Default::default()
-                                    })
+                                    .background(Background::fill(BLUE))
                                     .show(ui);
                             }
                         });
@@ -457,18 +445,12 @@ fn content_change_under_constant_transform_stays_row_tight() {
                             Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size(40.0)
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui);
                             Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size(40.0)
-                                .background(Background {
-                                    fill: BLUE.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(BLUE))
                                 .show(ui);
                         });
                 });

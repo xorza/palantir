@@ -83,10 +83,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                     Block::new()
                         .id(WidgetId::from_hash("fill-child"))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                     Block::new()
                         .id(WidgetId::from_hash("fixed-child"))
@@ -119,13 +116,13 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 .show(ui, |ui| {
                     Text::new("Label:")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .grid_cell((0, 0))
                         .show(ui);
                     value_node = Some(
                         Text::new("the quick brown fox jumps over the lazy dog")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 1))
                             .show(ui)
@@ -162,13 +159,13 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                 .show(ui, |ui| {
                     Text::new("Label:")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .grid_cell((0, 0))
                         .show(ui);
                     value_node = Some(
                         Text::new("the quick brown fox jumps over the lazy dog")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 1))
                             .show(ui)
@@ -209,7 +206,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     .show(ui, |ui| {
                         Text::new("Title:")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .grid_cell((0, 0))
                             .show(ui);
                         Text::new(
@@ -218,18 +215,18 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                                  vexingly quick daft zebras jump",
                         )
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 1))
                         .show(ui);
                         Text::new("Tags:")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .grid_cell((1, 0))
                             .show(ui);
                         Text::new("layout, grid, intrinsic, wrapping, css")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((1, 1))
                             .show(ui);
@@ -266,7 +263,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                             .show(ui, |ui| {
                                 Text::new("Label:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui);
                                 Text::new(
@@ -274,7 +271,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                                          pack my box with five dozen liquor jugs",
                                 )
                                 .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
+                                .font_size(14.0)
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .grid_cell((0, 1))
                                 .show(ui);

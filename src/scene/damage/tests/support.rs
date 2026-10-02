@@ -43,10 +43,7 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background {
-                    fill: color.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(color))
                 .show(ui);
         });
 }

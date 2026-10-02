@@ -38,7 +38,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
                 text_node = Some(
                     Text::new(PARAGRAPH)
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(16.0))
+                        .font_size(16.0)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
                         .node(),
@@ -167,7 +167,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
                              How vexingly quick daft zebras jump!",
                         )
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                     })
@@ -225,7 +225,7 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
                     text_node = Some(
                         Text::new(&paragraph)
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(16.0))
+                            .font_size(16.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .show(ui)
                             .node(),

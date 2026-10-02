@@ -61,19 +61,13 @@ fn interleaved_shapes_record_correct_order() {
                 ui.add_shape(pos_rect(0));
                 Block::new()
                     .id(WidgetId::from_hash("c0"))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(1));
                 Block::new()
                     .id(WidgetId::from_hash("c1"))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(2));
@@ -142,10 +136,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                     child_id = Some(
                         Block::new()
                             .id(WidgetId::from_hash("only-child"))
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                             .show(ui)
                             .node(),
