@@ -151,7 +151,7 @@ impl InputPass<'_> {
                 .byte_at(local_x, if ctx.multiline { local_y } else { 0.0 });
             let clicks = resp_state.left.press_count();
             if clicks > 0 {
-                ed.press(hit, clicks);
+                ed.press(hit, clicks, ui.peek_modifiers().shift);
             } else {
                 ed.drag_to(hit);
             }
@@ -233,11 +233,27 @@ fn stop_after(events: &[KeyPress], terminal: usize) {
 
 pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
     let extend = keypress.mods.shift;
+    let line_nav = is_line_nav(keypress.mods);
     match keypress.key {
+        Key::Backspace if line_nav => editor.delete_to_line_start(),
         Key::Backspace => editor.delete_backward(),
         Key::Delete => editor.delete_forward(),
         Key::ArrowLeft if is_word_nav(keypress.mods) => editor.move_word_left(extend),
         Key::ArrowRight if is_word_nav(keypress.mods) => editor.move_word_right(extend),
+        Key::ArrowLeft if line_nav && editor.multiline() => {
+            return KeyOutcome::LineEdge { end: false, extend };
+        }
+        Key::ArrowRight if line_nav && editor.multiline() => {
+            return KeyOutcome::LineEdge { end: true, extend };
+        }
+        Key::ArrowLeft if line_nav => editor.move_caret(0, extend),
+        Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), extend),
+        // The document's ends: Ctrl+Home / Ctrl+End everywhere, and
+        // Cmd+Up / Cmd+Down on macOS.
+        Key::Home | Key::ArrowUp if is_document_nav(keypress) => editor.move_caret(0, extend),
+        Key::End | Key::ArrowDown if is_document_nav(keypress) => {
+            editor.move_caret(editor.text().len(), extend);
+        }
         Key::ArrowLeft => editor.move_grapheme_left(extend),
         Key::ArrowRight => editor.move_grapheme_right(extend),
         Key::ArrowUp if editor.multiline() => {
@@ -338,6 +354,27 @@ fn resolve_line_edge(
         let x = if end { probe.size().w + 1.0 } else { -1.0 };
         probe.byte_at(x, y)
     });
+}
+
+/// macOS's line chords: Cmd+Left / Right to the line's edges, and
+/// Cmd+Backspace to its start. `Modifiers::ctrl` is Cmd there. Elsewhere
+/// Home / End say this, and Ctrl+Arrow is the word chord.
+fn is_line_nav(modifiers: Modifiers) -> bool {
+    PLATFORM == Platform::Mac && modifiers.ctrl && !modifiers.alt
+}
+
+/// The chord that jumps to the document's start or end: Ctrl with Home or
+/// End on every platform, and Cmd with Up or Down on macOS.
+fn is_document_nav(keypress: KeyPress) -> bool {
+    let mods = keypress.mods;
+    if !mods.ctrl || mods.alt {
+        return false;
+    }
+    match keypress.key {
+        Key::Home | Key::End => true,
+        Key::ArrowUp | Key::ArrowDown => PLATFORM == Platform::Mac,
+        _ => false,
+    }
 }
 
 fn is_word_nav(modifiers: Modifiers) -> bool {

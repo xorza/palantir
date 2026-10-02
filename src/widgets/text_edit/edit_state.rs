@@ -5,6 +5,7 @@
 use crate::text::probe::TextProbe;
 use std::collections::VecDeque;
 use std::num::NonZeroU64;
+use unicode_segmentation::GraphemeCursor;
 
 /// Semantic state for the host-owned text buffer.
 ///
@@ -236,12 +237,17 @@ impl EditState {
         while !text.is_char_boundary(offset) {
             offset -= 1;
         }
-        offset
+        let mut cursor = GraphemeCursor::new(offset, text.len(), true);
+        match cursor.is_boundary(text, 0) {
+            Ok(true) => offset,
+            _ => cursor.prev_boundary(text, 0).ok().flatten().unwrap_or(0),
+        }
     }
 
     /// Repair every persisted byte offset against the current host-owned
     /// buffer. Offsets beyond the end clamp to `len`; offsets inside a
-    /// UTF-8 code point walk backward to its start (at most three bytes).
+    /// grapheme cluster walk back to its start, so a caret the host left
+    /// between `e` and its combining accent cannot type between them.
     /// Then collapse an empty selection. Safe both before input, when the
     /// application may have replaced the buffer, and after our mutations.
     pub(super) fn normalize(&mut self, text: &str) {
@@ -288,6 +294,29 @@ mod tests {
         // The mapped case, driven directly: a raw zero is the one input
         // where the two spellings part company.
         assert_eq!(TextShapeKey::content_hash(0).get(), 1);
+    }
+
+    /// A caret the host left inside a grapheme cluster moves to its start:
+    /// between `e` and its combining acute, a typed `x` would take the
+    /// accent. A caret inside one code point steps back too, and one past
+    /// the end clamps.
+    #[test]
+    fn normalize_repairs_offsets_to_grapheme_starts() {
+        for (text, offset, repaired) in [
+            ("e\u{301}", 1, 0),
+            ("ae\u{301}b", 2, 1),
+            ("\u{1f44d}\u{1f3fd}", 4, 0),
+            ("é", 1, 0),
+            ("abc", 9, 3),
+            ("abc", 2, 2),
+        ] {
+            let mut state = EditState {
+                caret: offset,
+                ..EditState::default()
+            };
+            state.normalize(text);
+            assert_eq!(state.caret, repaired, "{text:?} at {offset}");
+        }
     }
 
     /// A frame whose probe hashed nothing must leave the history rule
