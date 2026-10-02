@@ -600,15 +600,6 @@ fn input_policy_routes_paint_only_gate() {
     }
 }
 
-//
-// Pin the first-frame behavior added to `Ui::frame`: when the
-// recorder has never run before, do a blackout record pass (input
-// swapped for `InputState::default()`) to build the cascade, then
-// re-route the held `pointer_pos` against it before the user-visible
-// pass. Tests below intentionally construct a bare `Ui` to exercise true
-// cold-start; `UiHarness::new(SURFACE)` pre-marks the recorder warm to keep the
-// rest of the test suite on single-record semantics.
-
 /// The fps EMA reads the TRUE frame delta — the MAX_DT clamp is for
 /// the animation integrator only. Hand-computed: sample 1 at 1 s →
 /// inst 1.0 seeds the EMA; sample 2 after a 2 s stall → inst 0.5,

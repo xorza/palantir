@@ -1,7 +1,7 @@
 //! Per-frame allocation audit suite.
 //!
 //! Two halves, and which one to reach for matters. `fixtures/` audits
-//! ~20 small scenes a frame at a time with backtrace capture, so a
+//! small scenes a frame at a time with backtrace capture, so a
 //! failure names the line that allocated — start there when a number
 //! moves. `gates/` holds the three coarse checks only it can make,
 //! each of them over the full tree. Add a gate only for something the

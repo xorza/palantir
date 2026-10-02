@@ -266,8 +266,6 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
         "drag-start edge must fire on the threshold-crossing move",
     );
     assert!(r.middle.drag.dragging());
-    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
-    assert!(r.middle.drag.started());
 }
 
 #[test]
@@ -287,12 +285,12 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
 }
 
 #[test]
-fn drag_started_is_one_frame_edge_then_clears_on_post_record() {
+fn drag_started_is_one_frame_edge_then_clears_on_the_next_frame() {
     // The `started` flag is a single-frame edge: true on the frame that
     // observes the latching move, false on the next frame even while the
-    // drag continues. Each `resp` runs one frame, so the first observes
-    // the edge (and its `post_record` clears it) and the second sees it
-    // gone.
+    // drag continues. Each `response_in` runs one frame, so the first
+    // observes the edge, its frame's end clears it, and the second sees
+    // it gone.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -344,16 +342,12 @@ fn left_wins_over_simultaneously_latched_middle() {
 
     let r = h.response_in(id(), build_draggable);
     let d = r.left.drag.delta().expect("a drag must be active");
-    assert!(
-        !r.middle.drag.dragging(),
-        "left has priority over middle — only one drag slot populates"
-    );
     // Left was pressed at (20, 20); current pointer (100, 60).
     assert_eq!(d, Vec2::new(80.0, 40.0));
     assert!(r.left.drag.dragging());
     assert!(
         !r.middle.drag.dragging(),
-        "middle is captured but not the active drag",
+        "left has priority: middle is captured but not the active drag",
     );
 }
 

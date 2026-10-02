@@ -4,9 +4,9 @@
 //!
 //! Test-only rather than the wider gate because
 //! [`LayoutCounters::cache_hits`] pushes to a `Vec` on *every* cache hit,
-//! which in steady state is every subtree root — the alloc bench requires
-//! `bench` and asserts steady-state frames allocate nothing, so it would
-//! end up measuring this probe instead of the frame.
+//! which in steady state is every subtree root — the allocation suite
+//! (`tests/alloc`) asserts steady-state frames allocate nothing, so it
+//! would end up measuring this probe instead of the frame.
 //!
 //! [`PhaseTimings`] rides a [`BenchOnly`] cell like everything else
 //! here. What lets it is [`PhaseSpan::elapsed_ns`] answering zero

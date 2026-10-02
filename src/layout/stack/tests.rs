@@ -158,9 +158,10 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 #[test]
 fn hstack_justify_distributes_leftover() {
     use crate::layout::types::justify::Justify;
-    // 200-wide parent, 40-wide children, no gap.
-    // Center: 60 leading. End: 200-40=160. SpaceBetween: 80 between gap.
-    // SpaceAround: 30/60/30 pads.
+    // 200-wide parent, 40-wide children, no gap. Two children leave 120:
+    // Center leads with 60, End starts the last child at 200 − 40 = 160,
+    // SpaceAround pads 30 / 60 / 30. Three children leave 80, which
+    // SpaceBetween splits into two 40 px gaps.
     let cases: &[(&str, Justify, &[f32])] = &[
         ("center", Justify::Center, &[60.0, 100.0]),
         ("end", Justify::End, &[120.0, 160.0]),

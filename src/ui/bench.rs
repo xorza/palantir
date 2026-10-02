@@ -4,8 +4,8 @@
 //!
 //! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
-//!   wgpu device at all** (same deviceless path as the alloc bench's
-//!   `record-only` step). Each
+//!   wgpu device at all** (the same deviceless path as the allocation
+//!   suite's fixtures). Each
 //!   iter runs record → measure → arrange → cascade → damage → encode +
 //!   compose and acks the present; nothing touches the GPU. This is the
 //!   clean signal: no queue submit, no `device.poll` ioctl, no

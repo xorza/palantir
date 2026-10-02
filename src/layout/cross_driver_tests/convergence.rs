@@ -143,7 +143,8 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // direction shows up. Step 1 px to guarantee we hit whatever
     // discrete width tips the toolbar's wrap count past a threshold.
     //
-    // Reuse one `Ui` across sweep — recreating it would re-load fonts (~120 ms each).
+    // One harness across the sweep: each step is a resize, the path under
+    // test, rather than a fresh recorder that starts cold.
     let mut h = UiHarness::new(UVec2::new(480, 600));
     for w in (480u32..=900).step_by(1) {
         h.resize(UVec2::new(w, 600));

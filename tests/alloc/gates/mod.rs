@@ -1,7 +1,7 @@
 //! Coarse gates over the whole pipeline, the counterpart to the
 //! fine-grained fixtures next door.
 //!
-//! Those audit ~20 small scenes, most of them GPU-less, so a failure can
+//! Those audit small scenes one at a time, most of them GPU-less, so a failure can
 //! name the line that allocated. These three answer what a small scene
 //! cannot:
 //! whether the pipeline allocates at all at *full* scale, whether the
