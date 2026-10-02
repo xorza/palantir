@@ -291,17 +291,14 @@ fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             if depth == BROAD_DEPTH {
+                // The change is to layout authoring — one leaf's fill
+                // weight, which an only child's geometry ignores. A colour
+                // would be paint, which the measure cache does not key on,
+                // and the whole tree would hit at the root.
+                let weight = if changed && key == 0 { 2.0 } else { 1.0 };
                 Block::new()
                     .id_salt(("broad-leaf", key))
-                    .size((Sizing::FILL, Sizing::fixed(1.0)))
-                    .background(Background {
-                        fill: if changed && key == 0 {
-                            RgbaF32::srgb(0.5, 0.25, 0.75).into()
-                        } else {
-                            RgbaF32::TRANSPARENT.into()
-                        },
-                        ..Default::default()
-                    })
+                    .size((Sizing::fill(weight), Sizing::fixed(1.0)))
                     .show(ui);
                 return;
             }
