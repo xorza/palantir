@@ -13,7 +13,7 @@
 /// surface is dropped; a press records when it hits a sense target,
 /// changes focus, or a `BUTTONS` watcher is live — a press on
 /// fully inert surface is observably a no-op and stays on the
-/// paint-anim path. Keys / IME route through focus and record.
+/// paint-anim path. Keys route through focus and record.
 ///
 /// Default is [`OnDelta`](Self::OnDelta) — the right behavior for
 /// almost every app. Use [`Always`](Self::Always) only for telemetry,
@@ -65,13 +65,14 @@ pub(crate) enum InputSignal {
     None,
     /// Events arrived, none of which could change what is on screen: a
     /// pointer move over inert surface, scroll with no scroll target, a
-    /// press that hit nothing and moved no focus. Enough to disqualify
-    /// the paint-anim-only short-circuit, since the app's record closure
-    /// may observe raw input the hit index knows nothing about.
+    /// press that hit nothing and moved no focus. Forces a record only
+    /// under [`InputPolicy::Always`], for an app whose record closure
+    /// observes raw input the hit index knows nothing about; under the
+    /// default `OnDelta` the frame stays on the paint-anim path.
     Inert,
     /// At least one event could change what is on screen — a hover or
-    /// scroll-target change, a capture-active move, a click, a key, IME
-    /// text, a modifier change.
+    /// scroll-target change, a capture-active move, a click, a key, a
+    /// modifier change.
     Repaint,
 }
 
