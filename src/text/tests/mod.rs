@@ -51,17 +51,13 @@ mod wrap;
 /// Override with the `TestShape` builders, so the one thing a case is
 /// about reads on one line: `shape(16.0).width(32.0).halign(HAlign::Right)`.
 fn shape(font_size_px: f32) -> TestShape {
-    TestShape {
-        font: GlyphFont {
-            size_px: font_size_px,
-            line_height_px: font_size_px,
-            family: FontFamily::SANS,
-            weight: FontWeight::REGULAR,
-            slant: FontSlant::Normal,
-        },
-        max_width_px: None,
-        halign: HAlign::Auto,
-    }
+    TestShape::new(GlyphFont {
+        size_px: font_size_px,
+        line_height_px: font_size_px,
+        family: FontFamily::SANS,
+        weight: FontWeight::REGULAR,
+        slant: FontSlant::Normal,
+    })
 }
 
 /// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]) — what the real
