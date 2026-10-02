@@ -232,19 +232,15 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
                     .show(ui);
             });
     };
-    let node_for = |ui: &Ui, layer: Layer, id: WidgetId| {
-        let index = ui.forest.trees[layer]
-            .records
-            .widget_id()
-            .iter()
-            .position(|widget_id| *widget_id == id)
-            .unwrap();
-        NodeId(index as u32)
+    let node_for = |h: &UiHarness, layer: Layer, id: WidgetId| {
+        let at = h.node_of(id).expect("recorded");
+        assert_eq!(at.layer, layer);
+        at.node
     };
 
     h.frame(&mut record);
-    let main_node = node_for(&h.ui, Layer::Main, main_id);
-    let popup_node = node_for(&h.ui, Layer::Popup, popup_id);
+    let main_node = node_for(&h, Layer::Main, main_id);
+    let popup_node = node_for(&h, Layer::Popup, popup_id);
     let cold_main = h.ui.layout[Layer::Main].rect[main_node.idx()];
     let cold_popup = h.ui.layout[Layer::Popup].rect[popup_node.idx()];
     assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
@@ -265,8 +261,8 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
         !h.engines.layout.scratch.counters.cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
-    let main_node = node_for(&h.ui, Layer::Main, main_id);
-    let popup_node = node_for(&h.ui, Layer::Popup, popup_id);
+    let main_node = node_for(&h, Layer::Main, main_id);
+    let popup_node = node_for(&h, Layer::Popup, popup_id);
     assert_eq!(h.ui.layout[Layer::Main].rect[main_node.idx()], cold_main);
     assert_eq!(h.ui.layout[Layer::Popup].rect[popup_node.idx()], cold_popup);
     assert_eq!(

@@ -12,7 +12,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
@@ -331,11 +330,13 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     });
 
     let derived = trigger_id().with("body");
-    let index = popup_node(&h, derived).expect("context menu body node");
+    let menu = h.node_of(derived).expect("context menu body node");
+    assert_eq!(menu.layer, Layer::Menu);
     let tree = h.ui.tree(Layer::Menu);
+    let index = menu.node.idx();
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(5.0));
-    assert_eq!(tree.bounds(NodeId(index as u32)).min_size, Size::ZERO);
+    assert_eq!(tree.bounds(menu.node).min_size, Size::ZERO);
 
     // Same trigger, caller-set id: the derived one must not appear.
     let explicit = WidgetId::from_hash("my-own-menu-body");
@@ -346,23 +347,16 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
             .id(explicit)
             .show(ui, |_, _| {});
     });
-    assert!(
-        popup_node(&h, explicit).is_some(),
+    assert_eq!(
+        h.node_of(explicit).map(|at| at.layer),
+        Some(Layer::Menu),
         "an explicit id must reach the recorded menu body",
     );
-    assert!(
-        popup_node(&h, derived).is_none(),
+    assert_eq!(
+        h.node_of(derived),
+        None,
         "the trigger-derived id must not also be recorded",
     );
-}
-
-/// Record index of the popup-layer node carrying `id`, if any.
-fn popup_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
-    h.ui.tree(Layer::Menu)
-        .records
-        .widget_id()
-        .iter()
-        .position(|recorded| *recorded == id)
 }
 
 /// Every widget constructor is `#[track_caller]`, the separator included:

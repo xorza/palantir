@@ -33,22 +33,15 @@ fn context_menu_cut_copy_paste_clear() {
     /// — a fixed row pitch would silently start clicking the neighbour
     /// the moment the theme's row padding moved.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
-        let body_id = editor_id().with("body");
-        let tree = h.ui.tree(Layer::Menu);
-        let body_idx = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|id| *id == body_id)
+        let menu = h
+            .node_of(editor_id().with("body"))
             .expect("context menu body recorded");
-        let ends = tree.records.subtree_end();
-        let body_end = ends[body_idx].end() as usize;
-        let mut row = body_idx + 1;
-        for _ in 0..row_idx {
-            row = ends[row].end() as usize;
-            assert!(row < body_end, "menu has no row {row_idx}");
-        }
-        let row_id = tree.records.widget_id()[row];
+        let tree = h.ui.tree(menu.layer);
+        let row = tree
+            .children(menu.node)
+            .nth(row_idx)
+            .unwrap_or_else(|| panic!("menu has no row {row_idx}"));
+        let row_id = tree.records.widget_id()[row.id.idx()];
         h.click_on(row_id);
         h.frame(|ui| body(ui, buf));
     }

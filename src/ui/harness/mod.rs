@@ -991,6 +991,7 @@ mod unit {
     use crate::renderer::render_plan::RenderPlan;
     use crate::scene::damage::Damage;
     use crate::scene::damage::region::DamageRegion;
+    use crate::scene::endpoint::Endpoint;
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
     use crate::ui::Ui;
@@ -1038,6 +1039,11 @@ mod unit {
 
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             self.ui.forest.node_for_widget_id(Layer::Main, id)
+        }
+
+        /// Where `id` recorded last frame, on whichever layer took it.
+        pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
+            self.ui.cascade().endpoint(id)
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {

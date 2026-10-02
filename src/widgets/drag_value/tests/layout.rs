@@ -164,15 +164,10 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     /// node policy and comparing them would pin theme configuration rather
     /// than this fix.
     fn placement(ui: &Ui, id: WidgetId) -> (Spacing, Align, Vec2, Size) {
+        let node = ui.cascade().endpoint(id).expect("drag value node").node;
         let tree = ui.tree(Layer::Main);
-        let index = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|w| *w == id)
-            .expect("drag value node");
-        let layout = tree.records.layout()[index];
-        let bounds = tree.bounds(NodeId(index as u32));
+        let layout = tree.records.layout()[node.idx()];
+        let bounds = tree.bounds(node);
         (
             layout.margin,
             layout.meta.align(),

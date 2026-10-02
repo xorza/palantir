@@ -22,36 +22,27 @@ pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(
     let mut h = UiHarness::new(surface);
     h.frame(build);
     h.frame(build);
-    let scroll_id = WidgetId::from_hash("scroll");
-    let idx =
-        h.ui.tree(Layer::Main)
-            .records
-            .widget_id()
-            .iter()
-            .position(|w| *w == scroll_id)
-            .expect("scroll widget recorded");
-    (h, NodeId(idx as u32))
+    let node = h
+        .node_of(WidgetId::from_hash("scroll"))
+        .expect("scroll widget recorded")
+        .node;
+    (h, node)
 }
 
 /// Thumb rects (in *outer-local* coords) for `scroll_key`. Thumbs
 /// are real `Sense::DRAG` leaf nodes under an overlay Canvas.
 /// Returns 0–2 rects (V and/or H) in vertical-then-horizontal order.
 pub(super) fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
-    let tree = ui.tree(Layer::Main);
     let layout = ui.layout(Layer::Main);
     let outer_id = WidgetId::from_hash(scroll_key);
     let scroll_id = outer_id.with("viewport");
-    let widget_ids = tree.records.widget_id();
-    let outer_idx = widget_ids
-        .iter()
-        .position(|w| *w == outer_id)
-        .expect("scroll outer recorded");
-    let outer_origin = layout.rect[outer_idx].min;
+    let node = |id: WidgetId| ui.cascade().endpoint(id).map(|at| at.node);
+    let outer = node(outer_id).expect("scroll outer recorded");
+    let outer_origin = layout.rect[outer.idx()].min;
     let mut out = Vec::new();
     for tag in ["vthumb", "hthumb"] {
-        let id = scroll_id.with(tag);
-        if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
-            let r = layout.rect[idx];
+        if let Some(thumb) = node(scroll_id.with(tag)) {
+            let r = layout.rect[thumb.idx()];
             // Both thumbs are recorded every frame — `layout::scrollbars`
             // collapses the ones with nothing to show to zero extent
             // rather than dropping them, so their ids and state rows
