@@ -969,3 +969,38 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
         }
     }
 }
+
+/// Reversing a deck costs one damage rect per card, not one per pair.
+/// 200 equal cards at one rect on a canvas, then the same cards in the
+/// reverse order: every card after the first now paints over cards that
+/// painted over it, so each of those 199 pushes its whole rect once —
+/// where a rect per inverted pair pushed `200 × 199 / 2 = 19 900`.
+#[test]
+fn reversing_a_deck_pushes_one_rect_per_card() {
+    const CARD: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);
+    let deck = |ui: &mut Ui, reversed: bool| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("deck"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for i in 0..200u32 {
+                    let card = if reversed { 199 - i } else { i };
+                    Block::new()
+                        .id(WidgetId::from_hash(("card", card)))
+                        .position((CARD.min.x, CARD.min.y))
+                        .size(CARD.size.w)
+                        .background(Background {
+                            fill: BLUE.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                }
+            });
+    };
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| deck(ui, false));
+    frame(&mut h, |ui| deck(ui, true));
+    let raw = &h.engines.damage.raw_rects;
+    assert_eq!(raw.len(), 199, "{raw:?}");
+    assert!(raw.iter().all(|&r| r == CARD));
+}

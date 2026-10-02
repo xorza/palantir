@@ -3,7 +3,7 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::LayerCascade;
-use crate::scene::damage;
+use crate::scene::damage::inverted_overlaps::InvertedOverlaps;
 use crate::scene::damage::row_matcher::ROW_UNMATCHED;
 use crate::scene::layer::{Layer, PerLayer};
 use crate::scene::tree::Tree;
@@ -31,6 +31,7 @@ pub(crate) struct RootOrder {
     matched: Vec<u32>,
     /// Scratch: each current root's painted extent.
     extents: Vec<Rect>,
+    inversions: InvertedOverlaps,
 }
 
 impl RootOrder {
@@ -68,7 +69,7 @@ impl RootOrder {
                 self.extents
                     .push(cascade.subtree_paint_rects[slot.first_node.idx()]);
             }
-            damage::push_inverted_overlaps(out, &self.matched, &self.extents);
+            self.inversions.push(out, &self.matched, &self.extents);
         }
         prev.clear();
         prev.extend(curr);
