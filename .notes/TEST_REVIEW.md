@@ -35,4 +35,3 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 - [ ] Bare size pins outside `hot_struct_sizes.rs` `PINS`; `MeshVertex = 12` is pinned twice. (judgement)
 - [ ] Widgets: the explicit-size trio ×4 (`progress_bar`, `separator`, `spinner`, `slider`); scroll-over-`Block` ×37 (add a `ScrollFixture`); 31 `Option` out-vars; copy-in/copy-out of the bound value in `radio/tests.rs` `frame_rows`.
-- [ ] Animation: `Block::new().id(from_hash(salt)).show(ui)` ×21 while `AnimUi` holds the id; `eviction.rs` re-implements the row count a third time; 70 `map.tick(.., next_frame())`.

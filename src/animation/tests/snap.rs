@@ -4,7 +4,7 @@
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{
-    AnimUi, SLOT, closed_form_settle_step, next_frame, setup_anim_ui, spring_velocity, wid,
+    AnimUi, SLOT, closed_form_settle_step, setup_anim_ui, spring_velocity, wid,
 };
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
@@ -34,14 +34,7 @@ fn spring_snap_fields_carry_target_immediately() {
     };
     // First touch: snaps current = start, returns settled. No motion
     // started yet.
-    let _ = map.tick(
-        id,
-        SLOT,
-        start.clone(),
-        AnimSpec::SPRING,
-        0.016,
-        next_frame(),
-    );
+    let _ = map.step(id, SLOT, start.clone(), AnimSpec::SPRING, 0.016);
 
     // Retarget to a new fill (animated) and a new radius (snap). From
     // rest, the change's own frame steps nothing and shows the start,
@@ -52,23 +45,9 @@ fn spring_snap_fields_carry_target_immediately() {
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
-    let r = map.tick(
-        id,
-        SLOT,
-        target.clone(),
-        AnimSpec::SPRING,
-        0.016,
-        next_frame(),
-    );
+    let r = map.step(id, SLOT, target.clone(), AnimSpec::SPRING, 0.016);
     assert_eq!(r.current, start, "the change's frame shows the start");
-    let r = map.tick(
-        id,
-        SLOT,
-        target.clone(),
-        AnimSpec::SPRING,
-        0.016,
-        next_frame(),
-    );
+    let r = map.step(id, SLOT, target.clone(), AnimSpec::SPRING, 0.016);
     assert!(
         !r.settled,
         "spring with a real fill diff must remain in flight after one step",
@@ -107,16 +86,9 @@ fn gradient_snap_clears_only_its_background_velocity() {
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = map.step(id, SLOT, start, AnimSpec::SPRING, 0.0);
     for _ in 0..3 {
-        let _ = map.tick(
-            id,
-            SLOT,
-            moving.clone(),
-            AnimSpec::SPRING,
-            0.016,
-            next_frame(),
-        );
+        let _ = map.step(id, SLOT, moving.clone(), AnimSpec::SPRING, 0.016);
     }
     let stroke_velocity = spring_velocity(&map.rows[&(id, SLOT)]).border.width;
     assert!(
@@ -135,7 +107,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let result = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.0, next_frame());
+    let result = map.step(id, SLOT, target, AnimSpec::SPRING, 0.0);
     let row = &map.rows[&(id, SLOT)];
     let velocity = spring_velocity(row);
     assert_eq!(result.current.fill, gradient);
