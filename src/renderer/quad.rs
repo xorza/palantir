@@ -24,8 +24,9 @@ pub(crate) const AA_RADIUS: f32 = 0.5;
 /// **Linear-gradient fill:** `fill_kind` low byte = 1, bits 8..16 carry
 /// the `Spread` enum, `fill_lut_row` indexes the gradient atlas texture
 /// row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the object-space
-/// projection axis and parametric range. `fill` is unused (set to zero
-/// by the composer).
+/// projection axis and parametric range. `fill` is white, the multiplier
+/// the shader applies to the ramp's colour (`c * in.fill`), so its alpha
+/// carries a fade.
 ///
 /// **Stroke** is stored as inline `stroke_color` + `stroke_width`
 /// fields rather than an embedded `Stroke` so the user-facing `Stroke`

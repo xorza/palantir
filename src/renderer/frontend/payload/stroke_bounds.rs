@@ -75,8 +75,9 @@ impl Default for StrokeBounds {
 
 impl StrokeBounds {
     /// Pair a lowered centerline bbox with the spin it will be drawn
-    /// under — **the producing end of the spin pivot contract** (stated
-    /// in the payload module doc).
+    /// under — **the producing end of the spin pivot contract**: a shape
+    /// spins about its owner box's centre, and the composer rotates about
+    /// the pivot this records.
     ///
     /// A spun shape sweeps a disc about its owner box's centre, so what it
     /// is culled against is that disc's bounding square, which is

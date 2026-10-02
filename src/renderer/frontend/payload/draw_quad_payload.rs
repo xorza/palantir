@@ -223,9 +223,9 @@ impl DrawQuadPayload {
     /// the "no visible effect" cases.
     ///
     /// A gradient fill is never a no-op here. [`BrushSource::gpu_fill`]
-    /// zeroes its colour lane — the atlas row supplies the colour — so
-    /// judging it by that lane would read every gradient as transparent
-    /// and drop the draw. Nor does it need to be: `Brush::is_noop`
+    /// sets its colour lane to white — the atlas row supplies the colour,
+    /// and the lane only multiplies it — so that lane says nothing about
+    /// whether the ramp paints. Nor does it need to be: `Brush::is_noop`
     /// filters the all-transparent-stops case *before* lowering, and one
     /// slipping past that gate would paint a useless transparent quad
     /// whose alpha blend produces nothing visible.

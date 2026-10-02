@@ -10,13 +10,10 @@ use glam::Vec2;
 /// Native GPU stroke payload — a cubic or an arc, per [`CurveBasis`].
 /// The composer adds `origin` and the active push-transform stack
 /// before scaling to physical px and pushing the resulting
-/// `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is the
-/// owner-local centerline AABB; the composer applies the shared
-/// stroke/cap/AA bound in physical space for culling and overlap.
-/// `rotation` carries the spin angle under the pivot contract in the
-/// module doc; the composer rotates about that pivot exactly — a Bézier
-/// by affine invariance, a circle by moving its centre and shifting
-/// both angles.
+/// `CurveInstance`(s) onto `RenderBuffer.curves`. `bounds` holds the
+/// owner-local centerline AABB, or the spin and its pivot; the composer
+/// applies the shared stroke/cap/AA bound in physical space for culling
+/// and overlap.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) basis: CurveBasis,

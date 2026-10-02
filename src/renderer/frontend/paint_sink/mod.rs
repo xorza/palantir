@@ -55,16 +55,13 @@
 //! `PaintCapture::replay` is the one place that does, and only because
 //! its input already passed.
 //!
-//! Exception: [`PaintSink::draw_polyline`] gates on nothing, and
-//! *asserts* instead. Its colours live in spans (`PerSegment` can mix
-//! one solid stop with N transparent), so an O(n) read on every emit
-//! would dominate the per-call cost — those are caught by
-//! `Shape::Polyline::is_noop` at tier 2. Its geometry conditions are
-//! caught there too, and unlike every other payload's they are
-//! authoring-derived, so nothing between the two tiers can invalidate
-//! them. That makes a degenerate polyline here a broken contract rather
-//! than a value to filter, which is what an assert says and a silent
-//! `return` does not.
+//! Exception: [`PaintSink::draw_polyline`] *asserts* its geometry
+//! before it gates. Its geometry conditions are caught by
+//! `Shape::Polyline::is_noop` at tier 2, and unlike every other
+//! payload's they are authoring-derived, so nothing between the two
+//! tiers can invalidate them: a degenerate polyline here is a broken
+//! contract, which is what an assert says and a silent `return` does
+//! not. The gate after it still drops the payload's own no-op cases.
 //!
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
