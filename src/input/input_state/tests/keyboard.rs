@@ -435,11 +435,13 @@ fn focus_policy_routing() {
         let mut h = UiHarness::new(surface);
         h.ui.set_focus_policy(*policy);
         h.frame(build);
-        h.click_at(glam::Vec2::new(50.0, 20.0));
+        h.click_on(editable_id);
         assert_eq!(h.focused_id(), Some(editable_id), "{label}: initial focus");
 
         h.frame(build);
-        h.press_at(glam::Vec2::new(180.0, 5.0));
+        let miss = glam::Vec2::new(180.0, 5.0);
+        assert_eq!(h.hit_at(miss), None, "{label}: the press misses everything");
+        h.press_at(miss);
         h.release();
         let expected = if *expect_focus {
             Some(editable_id)
@@ -480,11 +482,12 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
         });
     };
     h.frame(build);
-    h.click_at(glam::Vec2::new(50.0, 20.0));
+    h.click_on(WidgetId::from_hash("editable"));
     assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editable")));
 
     h.frame(build);
-    h.click_at(glam::Vec2::new(150.0, 20.0));
+    // Checked: a click that missed `plain` would keep focus too.
+    h.click_on(WidgetId::from_hash("plain"));
     assert_eq!(
         h.focused_id(),
         Some(WidgetId::from_hash("editable")),
@@ -544,11 +547,18 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 
     #[derive(Debug)]
     enum Mode {
+        Shown,
         Hidden,
         Disabled,
     }
-    let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
-    for (label, mode) in cases {
+    // `Shown` is the control: the same click on the same spot focuses it.
+    let editable = WidgetId::from_hash("editable");
+    let cases: &[(&str, Mode, Option<WidgetId>)] = &[
+        ("shown", Mode::Shown, Some(editable)),
+        ("hidden", Mode::Hidden, None),
+        ("disabled", Mode::Disabled, None),
+    ];
+    for (label, mode, expected) in cases {
         let mut h = UiHarness::new(glam::UVec2::new(200, 80));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -557,13 +567,14 @@ fn invisible_or_disabled_focusable_refuses_focus() {
                     .focusable(true)
                     .size((Sizing::fixed(100.0), Sizing::fixed(40.0)));
                 match mode {
+                    Mode::Shown => b.show(ui),
                     Mode::Hidden => b.visibility(Visibility::Hidden).show(ui),
                     Mode::Disabled => b.disabled(true).show(ui),
                 };
             });
         });
         h.click_at(glam::Vec2::new(50.0, 20.0));
-        assert_eq!(h.focused_id(), None, "case {label}");
+        assert_eq!(h.focused_id(), *expected, "case {label}");
     }
 }
 

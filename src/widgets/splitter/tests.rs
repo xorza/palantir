@@ -6,6 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::ui::harness::passes::Passes;
 use crate::widgets::block::Block;
@@ -184,17 +185,13 @@ fn divider_drag_is_scale_invariant() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let divider =
-            h.ui.response_for(split_id().with("divider"))
-                .rect
-                .expect("divider arranged");
-        h.press_at(divider.center());
-        let splitter = h.ui.response_for(split_id());
-        let layout = splitter.layout_rect.expect("splitter arranged");
-        let pointer = splitter
-            .transform
-            .apply_point(layout.min + Vec2::new(300.5, 50.0));
-        h.move_to(pointer);
+        h.press_on(split_id().with("divider"));
+        // Drag targets along the splitter's own x, read before the drag
+        // moves anything. Unchecked: the pane under one need not sense.
+        let layout = h.layout_rect(split_id()).expect("splitter arranged");
+        let transform = h.transform(split_id());
+        let target = |x: f32| transform.apply_point(layout.min + Vec2::new(x, 50.0));
+        h.move_to(target(300.5));
         frame(&mut h, &mut ratio);
 
         assert!(
@@ -202,10 +199,7 @@ fn divider_drag_is_scale_invariant() {
             "logical pointer 300.5 over span 400 at {scale}× produced {ratio}",
         );
 
-        let beyond_limit = splitter
-            .transform
-            .apply_point(layout.min + Vec2::new(380.0, 50.0));
-        h.move_to(beyond_limit);
+        h.move_to(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
             h.layout_rect(split_id().with("first"))
@@ -216,10 +210,7 @@ fn divider_drag_is_scale_invariant() {
             "50 px second-pane minimum at {scale}×",
         );
 
-        let next = splitter
-            .transform
-            .apply_point(layout.min + Vec2::new(381.0, 50.0));
-        h.move_to(next);
+        h.move_to(target(381.0));
         frame(&mut h, &mut ratio);
         assert!(
             (ratio - 0.875).abs() < 1e-6,
@@ -239,9 +230,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let mut h = UiHarness::new(SURFACE);
         let mut ratio = 0.5;
         let frame = |h: &mut UiHarness, ratio: &mut f32| {
-            let mut passes = 0;
             h.frame(|ui| {
-                passes += 1;
                 let splitter = if horizontal {
                     Splitter::horizontal(ratio)
                 } else {
@@ -267,8 +256,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                                 .show(ui);
                         }
                     });
-            });
-            passes
+            })
+            .processing
         };
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
@@ -298,7 +287,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         });
         assert_eq!(
             frame(&mut h, &mut ratio),
-            1,
+            FrameProcessing::SingleLayout,
             "active drag movement must not request a second layout"
         );
 
@@ -331,10 +320,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             "rigid content remains laid out"
         );
         let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
-        let divider_rect =
-            h.ui.response_for(split_id().with("divider"))
-                .rect
-                .expect("divider arranged");
+        let divider_rect = h
+            .rect(split_id().with("divider"))
+            .expect("divider arranged");
         let divider_center = if horizontal {
             divider_rect.center().x
         } else {
@@ -361,7 +349,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             Vec2::new(50.0, next_pointer)
         });
-        assert_eq!(frame(&mut h, &mut ratio), 1);
+        assert_eq!(frame(&mut h, &mut ratio), FrameProcessing::SingleLayout);
         assert!(
             (ratio - expected_ratio).abs() < 1e-6,
             "{rigid_half:?} next record writes back its content floor"
@@ -456,10 +444,9 @@ fn divider_requests_the_resize_cursor() {
         frame(&mut h, &mut ratio);
 
         let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
-        let divider_rect =
-            h.ui.response_for(split_id().with("divider"))
-                .rect
-                .expect("divider arranged");
+        let divider_rect = h
+            .rect(split_id().with("divider"))
+            .expect("divider arranged");
         assert_eq!(divider_rect.size.w, grab_thickness);
         assert_eq!(
             divider_rect.center().x,

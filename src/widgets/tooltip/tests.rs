@@ -4,6 +4,7 @@
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
 use crate::layout::types::anchor::Anchor;
+use crate::ui::frame_report::FrameProcessing;
 
 use crate::input::response::response_state::ResponseState;
 use crate::layout::types::sizing::Sizing;
@@ -67,15 +68,17 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     };
     let bubble_id = trigger_id.with("bubble");
     let frame = |h: &mut UiHarness, text: &str| {
-        let mut passes = 0;
-        h.frame(|ui| {
-            passes += 1;
+        let report = h.frame(|ui| {
             Tooltip::on(&snapshot)
                 .label(text)
                 .delay(Duration::ZERO)
                 .show(ui);
         });
-        assert_eq!(passes, 1, "tooltip placement must be single-pass");
+        assert_eq!(
+            report.processing,
+            FrameProcessing::SingleLayout,
+            "tooltip placement must be single-pass"
+        );
         h.rect(bubble_id).expect("tooltip bubble arranged")
     };
 
@@ -104,7 +107,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         "averylongtooltiptokenwithoutanybreakpointsaverylongtooltiptoken",
     );
     let bubble_id = WidgetId::from_hash("edge-trigger").with("bubble");
-    let bubble = ui.ui.response_for(bubble_id).rect.expect("tooltip bubble");
+    let bubble = ui.rect(bubble_id).expect("tooltip bubble");
     let shaped = ui
         .ui
         .layout(Layer::Tooltip)
@@ -200,25 +203,18 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
             ..ResponseState::default()
         },
     };
-    let mut passes = 0;
-    h.frame(|ui| {
-        passes += 1;
-        Tooltip::on(&snapshot)
-            .label(text)
-            .delay(Duration::ZERO)
-            .show(ui);
-    });
-
-    assert_eq!(passes, 1, "measured placement resolves in the layout pass");
-    passes = 0;
-    h.frame(|ui| {
-        passes += 1;
-        Tooltip::on(&snapshot)
-            .label(text)
-            .delay(Duration::ZERO)
-            .show(ui);
-    });
-    assert_eq!(passes, 1, "a measured tooltip stays single-pass");
+    for why in [
+        "measured placement resolves in the layout pass",
+        "a measured tooltip stays single-pass",
+    ] {
+        let report = h.frame(|ui| {
+            Tooltip::on(&snapshot)
+                .label(text)
+                .delay(Duration::ZERO)
+                .show(ui);
+        });
+        assert_eq!(report.processing, FrameProcessing::SingleLayout, "{why}");
+    }
     h
 }
 
@@ -466,9 +462,12 @@ fn hover_clears_after_tooltip_visible() {
     t += 0.1;
     record_at_secs(&mut h, t, &mut captured);
 
-    let pointer_over = h.ui.response_for(trigger_id).pointer_over;
     let state = *h.state::<TooltipState>(trigger_id);
-    assert!(!pointer_over, "the pointer left the trigger");
+    assert_ne!(
+        h.hit_at(away),
+        Some(trigger_id),
+        "the pointer left the trigger"
+    );
     assert!(!state.visible, "tooltip must hide after move-away");
 }
 

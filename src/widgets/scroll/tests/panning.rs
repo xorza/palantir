@@ -48,7 +48,9 @@ fn wheel_delta_advances_offset_with_clamp() {
     for (label, viewport_h, content_h, pushes, expected) in cases {
         let mut h = UiHarness::new(SURFACE);
         h.frame(|ui| build(ui, *viewport_h, *content_h));
-        h.move_to(Vec2::new(50.0, 50.0));
+        // Checked aim: a wheel that missed the scroll would also leave
+        // the non-overflowing rows at zero.
+        h.move_onto(WidgetId::from_hash("scroll"));
         for wheel_y in *pushes {
             h.scroll_pixels(Vec2::new(0.0, *wheel_y));
             h.frame(|ui| build(ui, *viewport_h, *content_h));
@@ -256,14 +258,11 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             let outer_id = WidgetId::from_hash(*scroll_key);
             let scroll_id = outer_id.with("viewport");
             let track_id = scroll_id.with(*track_suffix);
-            let track = h.ui.response_for(track_id);
-            let layout = track.layout_rect.expect("track arranged");
             let (forward_local, back_local) = match axis {
                 AxisCase::V => (Vec2::new(6.0, 196.0), Vec2::new(6.0, 4.0)),
                 AxisCase::H => (Vec2::new(196.0, 6.0), Vec2::new(4.0, 6.0)),
             };
-            let forward_press = track.transform.apply_point(layout.min + forward_local);
-            let back_press = track.transform.apply_point(layout.min + back_local);
+            let forward_press = h.point_in(track_id, forward_local);
 
             h.press_at(forward_press);
             h.release();
@@ -278,6 +277,9 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                 "case: {label} at {scale}× — click past thumb pages forward",
             );
 
+            // Aimed after the forward page: before it, the thumb sat
+            // over this end of the track.
+            let back_press = h.point_in(track_id, back_local);
             h.press_at(back_press);
             h.release();
             h.frame(build_axis);

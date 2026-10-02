@@ -512,7 +512,7 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
     h.frame(|ui| show(ui, 2.0, Vec2::ZERO));
-    let gutter = 200.0 - 2.0 * 10.0 - h.ui.response_for(content_id).rect.unwrap().size.w;
+    let gutter = 200.0 - 2.0 * 10.0 - h.rect(content_id).unwrap().size.w;
     let shown = 200.0 - gutter - 2.0 * 10.0;
 
     for (pan, offset, edge) in [
@@ -525,10 +525,10 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
             h.state::<ScrollState>(scroll_id).offset,
             Vec2::splat(offset)
         );
-        let r = h.ui.response_for(content_id);
-        let laid = r.layout_rect.unwrap();
-        let start = r.transform.apply_point(laid.min);
-        let end = r.transform.apply_point(laid.max());
+        let laid = h.layout_rect(content_id).unwrap();
+        let transform = h.transform(content_id);
+        let start = transform.apply_point(laid.min);
+        let end = transform.apply_point(laid.max());
         let reached = if offset == 0.0 { start } else { end };
         assert_eq!(reached, Vec2::splat(edge), "panned by {pan:?}");
     }

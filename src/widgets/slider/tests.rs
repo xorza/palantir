@@ -279,12 +279,7 @@ fn pointer_mapping_is_scale_invariant() {
             };
             h.frame(|ui| build(ui, &mut value));
 
-            let response = h.ui.response_for(id);
-            let layout = response.layout_rect.expect("slider arranged");
-            let pointer = response
-                .transform
-                .apply_point(layout.min + Vec2::new(local_x, 9.0));
-            h.press_at(pointer);
+            h.press_in(id, Vec2::new(local_x, 9.0));
             h.frame(|ui| build(ui, &mut value));
 
             assert!(

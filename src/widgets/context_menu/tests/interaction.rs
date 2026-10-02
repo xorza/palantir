@@ -13,7 +13,7 @@ use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::ContextMenuState;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::tests::support::{SURFACE, trigger_id};
+use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::{Sense, Ui};
@@ -29,59 +29,54 @@ fn close_before_open_does_not_create_state() {
 #[test]
 fn secondary_click_opens_menu_at_pointer() {
     let mut h = UiHarness::new(SURFACE);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(!menu_open(&h.ui), "menu starts closed");
 
     h.right_click_at(Vec2::new(60.0, 20.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(menu_open(&h.ui), "secondary click on trigger opens menu");
 }
 
 #[test]
 fn outside_click_dismisses_menu() {
     let mut h = UiHarness::new(SURFACE);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     h.right_click_at(Vec2::new(60.0, 20.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(menu_open(&h.ui));
 
     // Click far from both trigger and any plausible menu body location.
     h.click_at(Vec2::new(380.0, 380.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(!menu_open(&h.ui), "outside click closes the menu");
 }
 
 #[test]
 fn item_click_dismisses_and_reports_clicked() {
     let mut h = UiHarness::new(SURFACE);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     // Open the menu at a known anchor.
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(menu_open(&h.ui));
 
-    // The menu's container starts at anchor (60, 60). With theme
-    // padding (~4) plus row padding, the first item (Copy) sits a
-    // few px inside that. Click a couple px past the top-left
-    // corner — well inside any plausible row layout.
-    h.click_at(Vec2::new(90.0, 80.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    let copy_row = menu_rows(&h, trigger_id())[0].id;
+    h.click_on(copy_row);
+    let copied = h.frame_value(build);
     assert!(copied, "clicking the Copy row reports clicked()");
     assert!(!menu_open(&h.ui), "item click auto-closes the menu");
 }
@@ -92,13 +87,13 @@ fn item_click_dismisses_and_reports_clicked() {
 #[test]
 fn shortcut_press_fires_item_and_dismisses() {
     let mut h = UiHarness::new(SURFACE);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(menu_open(&h.ui));
 
     // Inject the primary command modifier + 'C' — matches
@@ -110,9 +105,7 @@ fn shortcut_press_fires_item_and_dismisses() {
     };
     h.set_modifiers(primary_mods);
     h.key(Key::Char('C'));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    let copied = h.frame_value(build);
     assert!(copied, "shortcut press synthesizes a click on the Copy row");
     assert!(!menu_open(&h.ui), "shortcut press auto-closes the menu");
 }
@@ -120,20 +113,20 @@ fn shortcut_press_fires_item_and_dismisses() {
 #[test]
 fn escape_dismisses_menu() {
     let mut h = UiHarness::new(SURFACE);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(menu_open(&h.ui));
 
     // Inject an Escape press.
     h.key(Key::Escape);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     assert!(!menu_open(&h.ui), "Esc closes the menu");
 }
 
@@ -144,13 +137,13 @@ fn escape_dismisses_menu() {
 #[test]
 fn menu_body_width_does_not_span_surface() {
     let mut h = UiHarness::new(SURFACE);
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
-    let mut copied = false;
-    let mut dismissed = false;
-    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     let body_id = trigger_id().with("body");
     let rect =
@@ -170,7 +163,9 @@ fn menu_body_width_does_not_span_surface() {
     );
 }
 
-fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
+/// The scene, returning whether the Copy row clicked this pass.
+fn build(ui: &mut Ui) -> bool {
+    let mut copy_clicked = false;
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
@@ -183,18 +178,16 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 .show(ui)
                 .snapshot();
             ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
-                if MenuItem::new("Copy")
+                copy_clicked = MenuItem::new("Copy")
                     .shortcut(Shortcut::ctrl('C'))
                     .show(ui, popup)
                     .left
-                    .clicked()
-                {
-                    *clicked_copy = true;
-                }
+                    .clicked();
                 MenuItem::separator().show(ui);
                 MenuItem::new("Paste").show(ui, popup);
             });
         });
+    copy_clicked
 }
 
 fn menu_open(ui: &Ui) -> bool {

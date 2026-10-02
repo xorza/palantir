@@ -197,7 +197,7 @@ fn the_style_reaches_the_field_and_the_swatches() {
                 .id(id)
                 .show(ui);
         });
-        let rect = |id: WidgetId| h.ui.response_for(id).rect.expect("arranged");
+        let rect = |id: WidgetId| h.rect(id).expect("arranged");
         Measured {
             field: rect(id.with("field")).size.h,
             swatch: rect(id.with("swatch").with(0_usize)).size.w,
@@ -231,7 +231,7 @@ fn the_readouts_and_channel_edits_start_from_the_bound_colour() {
     assert_eq!(h.state::<PickerState>(id).hex, "#0000FF");
 
     let r_value = h.center_of(id.with("R").with("value"));
-    h.press_at(r_value);
+    h.press_on(id.with("R").with("value"));
     frame(&mut h, id, &mut color);
     h.drag_to(r_value + Vec2::new(30.0, 0.0));
     frame(&mut h, id, &mut color);

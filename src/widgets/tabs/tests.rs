@@ -156,8 +156,7 @@ fn a_close_click_reports_a_close_and_not_a_click() {
     strip_frame(&mut h, 0, TabBadge::None);
     strip_frame(&mut h, 0, TabBadge::None);
 
-    let at = h.center_of(TabStrip::close_id(strip_id(), 20));
-    h.click_at(at);
+    h.click_on(TabStrip::close_id(strip_id(), 20));
     let hit = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
@@ -177,8 +176,7 @@ fn a_chip_click_reports_its_slot() {
     strip_frame(&mut h, 0, TabBadge::None);
     strip_frame(&mut h, 0, TabBadge::None);
 
-    let at = h.center_of(TabStrip::chip_id(strip_id(), 30));
-    h.click_at(at);
+    h.click_on(TabStrip::chip_id(strip_id(), 30));
     let hit = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
@@ -300,8 +298,8 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
             .rect(strip_id().with("band"))
             .unwrap()
             .deflated_by(padding);
-        let chip = h.ui.response_for(TabStrip::chip_id(strip_id(), 30));
-        let full = chip.transform.apply_rect(chip.layout_rect.unwrap());
+        let chip = TabStrip::chip_id(strip_id(), 30);
+        let full = h.transform(chip).apply_rect(h.layout_rect(chip).unwrap());
         full.min.x >= clip.min.x - EPS && full.max().x <= clip.max().x + EPS
     };
     assert!(!in_clip(&mut h), "premise: the last chip is out of sight");
@@ -383,8 +381,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     assert_eq!((page, drawn), (0, 0));
 
     let strip = view.with("strip");
-    let at = h.center_of(TabStrip::chip_id(strip, 2));
-    h.click_at(at);
+    h.click_on(TabStrip::chip_id(strip, 2));
     let action = h.frame_value(|ui| record(ui, &mut page, &mut drawn));
     assert_eq!(action, Some(TabsAction::Activated { index: 2 }));
     assert_eq!(
@@ -467,7 +464,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
         h.prime(2, |ui| {
             record(ui, &mut page);
         });
-        h.press_at(h.center_of(TabStrip::chip_id(strip, 0)));
+        h.press_on(TabStrip::chip_id(strip, 0));
         h.drag_to(release(&h, strip));
         h.frame(|ui| {
             record(ui, &mut page);
@@ -551,9 +548,9 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // The hidden chip is one pick away: the chevron opens the menu, and
     // its row reports the chip as a menu pick, which `activated` merges
     // with a click and a keyboard move.
-    h.click_at(h.center_of(chevron));
+    h.click_on(chevron);
     h.frame(build(half_way));
-    h.click_at(h.center_of(strip_id().with("overflow_menu").with(30u64)));
+    h.click_on(strip_id().with("overflow_menu").with(30u64));
     let picked = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items)

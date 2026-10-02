@@ -941,8 +941,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
         d.strip_id(d.primary().id),
         DockState::<Tab>::tab_key(Tab::Prefs),
     );
-    let at = h.center_of(chip);
-    h.click_at(at);
+    h.click_on(chip);
     let content = h.frame_value(|ui| {
         DockView::run(ui, &mut d, &mut tabs);
         ui.response_for(d.content_id(d.primary().id)).rect
@@ -967,8 +966,7 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
 
     let strip = d.strip_id(d.primary().id);
     let close = TabStrip::close_id(strip, DockState::<Tab>::tab_key(Tab::Prefs));
-    let at = h.center_of(close);
-    h.click_at(at);
+    h.click_on(close);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
 
     assert_eq!(
@@ -1026,14 +1024,14 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     );
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
-    h.click_at(h.center_of(chevron));
+    h.click_on(chevron);
     frame(&mut h, &mut d, &mut tabs);
 
     let entry = strip
         .with("overflow_menu")
         .with(DockState::<Tab>::tab_key(viewer(1)));
     assert!(h.rect(entry).is_some(), "the menu lists every tab");
-    h.click_at(h.center_of(entry));
+    h.click_on(entry);
     frame(&mut h, &mut d, &mut tabs);
 
     assert_eq!(

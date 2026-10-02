@@ -2,6 +2,7 @@
 //! stability across frames.
 
 use crate::layout::types::anchor::Anchor;
+use crate::ui::frame_report::FrameProcessing;
 
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
@@ -158,11 +159,10 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     // The cascade-backed response rect is what the encoder paints. It
     // must agree with the layout — a mismatch means the flip didn't
     // propagate to paint (the reported clipping bug).
-    let painted_min =
-        h.ui.response_for(body_id)
-            .rect
-            .expect("popup body has a cascade rect after the opening frame")
-            .min;
+    let painted_min = h
+        .rect(body_id)
+        .expect("popup body has a cascade rect after the opening frame")
+        .min;
     assert_eq!(
         painted_min, flipped_min,
         "painted (cascade) popup position must match the flipped layout, \
@@ -314,9 +314,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
         let mut h = UiHarness::new(EDGE_SURFACE);
         let body_id = WidgetId::from_hash("dynamic-popup");
         let frame = |h: &mut UiHarness, size: Size| {
-            let mut passes = 0;
-            h.frame(|ui| {
-                passes += 1;
+            let report = h.frame(|ui| {
                 let popup = match edge {
                     Edge::Top => Popup::above(anchor),
                     Edge::Right => Popup::right_of(anchor),
@@ -334,10 +332,12 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
                             .show(ui, |_| {});
                     });
             });
-            assert_eq!(passes, 1, "{edge:?} must converge in one pass");
-            h.ui.response_for(body_id)
-                .rect
-                .expect("popup body arranged")
+            assert_eq!(
+                report.processing,
+                FrameProcessing::SingleLayout,
+                "{edge:?} must converge in one pass"
+            );
+            h.rect(body_id).expect("popup body arranged")
         };
 
         let small = frame(&mut h, Size::new(80.0, 40.0));

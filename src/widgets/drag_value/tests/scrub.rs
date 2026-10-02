@@ -85,15 +85,8 @@ fn scrub_distance_is_scale_invariant() {
         };
         h.frame(|ui| build(ui, &mut value));
 
-        let response = h.ui.response_for(id);
-        let layout = response.layout_rect.expect("drag value arranged");
-        let press = response
-            .transform
-            .apply_point(layout.min + Vec2::new(50.0, 20.0));
-        let drag = response
-            .transform
-            .apply_point(layout.min + Vec2::new(70.0, 20.0));
-        h.press_at(press);
+        let drag = h.point_in(id, Vec2::new(70.0, 20.0));
+        h.press_in(id, Vec2::new(50.0, 20.0));
         h.move_to(drag);
         h.frame(|ui| build(ui, &mut value));
 
@@ -230,24 +223,30 @@ fn an_exact_integer_survives_a_scrub_that_moves_it_nowhere() {
 #[test]
 fn non_left_drags_do_not_scrub() {
     // A right-button drag over the chip is someone else's gesture
-    // (context menu, breaker) — it must neither write nor commit.
+    // (context menu, breaker) — it must neither write nor commit. The
+    // left row is the control: the same aim and travel scrubs 20 steps
+    // and commits them, so the right row's silence is the button.
     let id = WidgetId::from_hash("dv-right-drag");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
-    let mut canonical = 10.0_f64;
-    deferred_frame(&mut h, id, &mut canonical, false, false);
+    for (button, scrubs) in [(PointerButton::Left, true), (PointerButton::Right, false)] {
+        let mut h = UiHarness::new(UVec2::new(300, 100));
+        let mut canonical = 10.0_f64;
+        deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    h.press_button_at(PointerButton::Right, Vec2::new(50.0, 20.0));
-    h.drag_to(Vec2::new(70.0, 20.0));
-    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(
-        !s.a().changed && !s.a().committed,
-        "right drag must not scrub"
-    );
+        let press = h.point_in(id, Vec2::new(50.0, 20.0));
+        h.press_button_at(button, press);
+        h.drag_to(press + Vec2::new(20.0, 0.0));
+        let s = deferred_frame(&mut h, id, &mut canonical, false, false);
+        assert_eq!(
+            (s.a().changed, s.a().committed),
+            (scrubs, false),
+            "{button:?} drag",
+        );
 
-    h.release_button(PointerButton::Right);
-    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.a().committed, "right release must not commit");
-    assert_eq!(canonical, 10.0);
+        h.release_button(button);
+        let s = deferred_frame(&mut h, id, &mut canonical, false, false);
+        assert_eq!(s.a().committed, scrubs, "{button:?} release");
+        assert_eq!(canonical, if scrubs { 30.0 } else { 10.0 }, "{button:?}");
+    }
 }
 
 /// The sense the widget needs is folded over the caller's at `show`,

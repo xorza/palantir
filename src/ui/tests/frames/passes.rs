@@ -202,17 +202,13 @@ fn action_effect_runs_once_across_record_replay() {
     });
     h.release();
 
-    let mut passes = 0;
-    let mut effects = 0;
-    let _ = h.at(Duration::from_millis(16)).frame(|ui| {
-        passes += 1;
-        if build(ui) {
-            effects += 1;
-        }
-    });
-
-    assert_eq!(passes, 2, "action input must request a replay pass");
-    assert_eq!(effects, 1, "the action edge must not replay");
+    let clicks = h.at(Duration::from_millis(16)).frame_passes(build);
+    assert_eq!(clicks.len(), 2, "action input must request a replay pass");
+    assert_eq!(
+        (*clicks.a(), clicks.b()),
+        (true, Some(&false)),
+        "the action edge shows in pass A and does not replay"
+    );
 }
 
 /// A relayout request forces a second record pass, exactly as pending

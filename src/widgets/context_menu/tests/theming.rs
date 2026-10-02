@@ -7,7 +7,6 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -18,7 +17,9 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::tests::support::{SURFACE, trigger_id};
+use crate::widgets::context_menu::tests::support::{
+    MenuRow, SURFACE, menu_body, menu_rows, trigger_id,
+};
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -368,45 +369,6 @@ fn assert_close(actual: f32, expected: f32, what: &str) {
         (actual - expected).abs() < 1e-3,
         "{what}: expected {expected}, got {actual}",
     );
-}
-
-fn menu_body(h: &UiHarness, for_id: WidgetId) -> NodeId {
-    let body_id = for_id.with("body");
-    let index =
-        h.ui.tree(Layer::Menu)
-            .records
-            .widget_id()
-            .iter()
-            .position(|id| *id == body_id)
-            .expect("context menu body recorded");
-    NodeId(index as u32)
-}
-
-#[derive(Clone, Copy, Debug)]
-struct MenuRow {
-    node: NodeId,
-    rect: Rect,
-}
-
-/// The open menu's direct children in record order (separators
-/// included), each with the rect arrange gave it. Walks `subtree_end`
-/// so a row's own label / shortcut leaves are skipped.
-fn menu_rows(h: &UiHarness, for_id: WidgetId) -> Vec<MenuRow> {
-    let body = menu_body(h, for_id).idx();
-    let tree = h.ui.tree(Layer::Menu);
-    let ends = tree.records.subtree_end();
-    let body_end = ends[body].end() as usize;
-    let rects = &h.ui.layout(Layer::Menu).rect;
-    let mut rows = Vec::new();
-    let mut i = body + 1;
-    while i < body_end {
-        rows.push(MenuRow {
-            node: NodeId(i as u32),
-            rect: rects[i],
-        });
-        i = ends[i].end() as usize;
-    }
-    rows
 }
 
 /// Record index of the popup-layer node carrying `id`, if any.

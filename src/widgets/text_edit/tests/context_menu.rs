@@ -44,13 +44,13 @@ fn context_menu_cut_copy_paste_clear() {
             .expect("context menu body recorded");
         let ends = tree.records.subtree_end();
         let body_end = ends[body_idx].end() as usize;
-        let rects = &h.ui.layout(Layer::Menu).rect;
         let mut row = body_idx + 1;
         for _ in 0..row_idx {
             row = ends[row].end() as usize;
             assert!(row < body_end, "menu has no row {row_idx}");
         }
-        h.click_at(rects[row].center());
+        let row_id = tree.records.widget_id()[row];
+        h.click_on(row_id);
         h.frame(|ui| body(ui, buf));
     }
 

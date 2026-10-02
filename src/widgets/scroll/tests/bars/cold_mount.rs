@@ -42,13 +42,11 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
             });
     };
     let mut h = UiHarness::new(UVec2::new(400, 600));
-    let mut passes = 0;
-    let report = h.at(Duration::from_millis(16)).frame(|ui| {
-        passes += 1;
-        build(ui);
-    });
-    assert_eq!(passes, 1, "a cold-mounted scroll must not re-record");
-    assert_eq!(report.processing, FrameProcessing::SingleLayout);
+    assert_eq!(
+        h.at(Duration::from_millis(16)).frame(build).processing,
+        FrameProcessing::SingleLayout,
+        "a cold-mounted scroll must not re-record"
+    );
 
     // The vertical bar's gutter comes out of the *cross* axis (width),
     // so its own main extent is the full 200 — only a horizontal bar
