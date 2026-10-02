@@ -68,4 +68,37 @@ fn advance_frames_rejects_a_step_that_would_be_clamped() {
     crate::common::panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
         UiHarness::new(SURFACE).advance_frames(1, Duration::from_millis(500), button);
     });
+    crate::common::panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
+        UiHarness::new(SURFACE).frames_until_idle(1, Duration::from_millis(500), button);
+    });
+}
+
+#[test]
+fn frames_until_idle_counts_the_frames_a_motion_takes() {
+    use crate::animation::anim_slot::AnimSlot;
+    use crate::animation::anim_spec::AnimSpec;
+    use crate::animation::easing::Easing;
+
+    // A 50 ms linear tween from rest: the retarget frame spends nothing,
+    // then 16, 32 and 48 ms are in flight and 64 ms passes the end, so
+    // the fourth frame after it is idle.
+    let slot = AnimSlot::new("idle-count");
+    let tween = Some(AnimSpec::duration(0.05, Easing::Linear));
+    let mut harness = UiHarness::new(SURFACE);
+    let to = std::cell::Cell::new(0.0_f32);
+    let mut record = |ui: &mut Ui| {
+        let _ = ui.animate(target(), slot, to.get(), tween);
+        button(ui);
+    };
+    harness.frame(&mut record);
+    to.set(1.0);
+    harness.frame(&mut record);
+    let tick = Duration::from_millis(16);
+    assert_eq!(harness.frames_until_idle(10, tick, &mut record), Some(4));
+    assert_eq!(harness.time, tick * 4);
+
+    // Still moving when `max` runs out reports none.
+    to.set(0.0);
+    harness.frame(&mut record);
+    assert_eq!(harness.frames_until_idle(2, tick, &mut record), None);
 }

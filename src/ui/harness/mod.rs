@@ -84,8 +84,9 @@
 //! 9. **A frame can run no record pass.** `FrameProcessing::PaintOnly`
 //!    fires when a paint-anim wake is the frame's only cause. A focused
 //!    `TextEdit` is enough — its caret blink re-queues an `ANIM` wake
-//!    every frame for 30 s. Hence
-//!    [`try_frame_value`](UiHarness::try_frame_value).
+//!    every frame for 30 s. [`frame_value`](UiHarness::frame_value)
+//!    panics on such a frame; [`frame_passes`](UiHarness::frame_passes)
+//!    reports it as no passes.
 //!
 //! ## Coordinates, text, routing
 //!
@@ -152,12 +153,13 @@
 //! stops all of this leaving the crate. It is the only way to say "the
 //! benches don't use this": under `--features bench` alone, tier 3
 //! simply isn't compiled, so nothing is spuriously unused and a
-//! genuinely dead method still gets reported.
+//! genuinely dead method in tiers 2 and 3 still gets reported.
 //!
 //! No block here carries a lint allow. `palantir::internals` is gated on
 //! `any(test, feature = "internals")` — the same condition as this
-//! module — so tier 1 is reachable in every build that compiles it, and
-//! `unreachable_pub` / `dead_code` stay live on all three tiers.
+//! module — so tier 1 is reachable in every build that compiles it. Being
+//! `pub`, a tier-1 method nobody calls is invisible to `dead_code`, so
+//! one is pruned when its last caller goes.
 
 use crate::app::App;
 use crate::app::internals::RecordApp;
@@ -182,7 +184,6 @@ use crate::renderer::texture_limit::TextureLimit;
 // support, and under a non-test `internals` build that method is absent.
 #[cfg(any(test, feature = "bench"))]
 use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
-use crate::scene::endpoint::Endpoint;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
@@ -222,7 +223,9 @@ pub struct UiHarness {
     pub(crate) engines: FrameEngines,
     /// What every frame stamps with — the harness owns it so no caller
     /// has to rebuild one. `physical` is in physical pixels; pointer
-    /// positions are logical (see [`Self::scale`]).
+    /// positions are logical (see [`Self::scale`]). Its `user_scale` is
+    /// not read: a frame takes [`Ui::user_scale`], as the window driver
+    /// does.
     display: Display,
     /// Absolute; each frame stamps with it. Only moves on
     /// [`Self::advance`] / [`Self::at`].
@@ -280,21 +283,17 @@ impl UiHarness {
     pub fn scale(mut self, dpr: f32) -> Self {
         self.display.system_scale = dpr;
         self.sync_display();
-        self.mark_warm();
+        self.rewarm();
         self
     }
 
     /// The app's own scale on top of [`Self::scale`], multiplying into the
-    /// same logical space.
-    ///
-    /// Writes both homes the value has — the harness stamps its `Display`
-    /// directly, so the shared setting `Ui::user_scale` reads back would
-    /// otherwise disagree with the frame that ran.
+    /// same logical space — [`Ui::set_user_scale`], which every frame
+    /// reads.
     pub fn user_scale(mut self, scale: UserScale) -> Self {
         self.ui.set_user_scale(scale);
-        self.display.user_scale = scale;
         self.sync_display();
-        self.mark_warm();
+        self.rewarm();
         self
     }
 
@@ -302,16 +301,7 @@ impl UiHarness {
     pub fn refresh_millihertz(mut self, mhz: u32) -> Self {
         self.display.refresh_millihertz = Some(mhz);
         self.sync_display();
-        self.mark_warm();
-        self
-    }
-
-    /// Whether layout rounds to physical pixels, as
-    /// [`Display::pixel_snap`](crate::Display) reports it.
-    pub fn pixel_snap(mut self, on: bool) -> Self {
-        self.display.pixel_snap = on;
-        self.sync_display();
-        self.mark_warm();
+        self.rewarm();
         self
     }
 
@@ -329,8 +319,11 @@ impl UiHarness {
     /// Swap the whole display between frames, for the changes
     /// [`Self::resize`] cannot express — a DPI move (physical *and*
     /// scale together), a pixel-snap flip. Same no-re-warm contract.
+    /// Its `user_scale` lands on [`Ui::set_user_scale`], the one home
+    /// a frame reads it from.
     pub fn set_display(&mut self, display: Display) -> &mut Self {
         self.display = display;
+        self.ui.set_user_scale(display.user_scale);
         self.sync_display();
         self
     }
@@ -399,19 +392,14 @@ impl UiHarness {
 
     /// The value from the **input-observing** pass — pass A, the one
     /// that sees one-frame edges (`clicked`, `drag.started()`). Panics
-    /// if the frame ran no record pass at all; see [`Self::try_frame_value`].
+    /// if the frame ran no record pass at all; [`Self::frame_passes`]
+    /// reports that instead.
     pub fn frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> R {
-        self.try_frame_value(record).expect(
+        self.frame_passes(record).into_a().expect(
             "the frame ran no record pass — FrameProcessing::PaintOnly. A paint-anim \
              wake was the frame's only cause (a focused TextEdit's caret blink is \
-             enough). Feed an input, request a repaint, or use `try_frame_value`.",
+             enough). Feed an input, request a repaint, or use `frame_passes`.",
         )
-    }
-
-    /// [`Self::frame_value`] without the `PaintOnly` panic, for callers
-    /// deliberately driving paint-anim frames.
-    pub fn try_frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> Option<R> {
-        self.frame_passes(record).into_a()
     }
 
     /// `n` discarded frames. Two is the usual minimum: one to lay out,
@@ -447,21 +435,39 @@ impl UiHarness {
 
     /// `n` frames stepping `dt` each — the correct way to move an
     /// animation, since a single large jump is clamped to `MAX_ANIM_DT`.
-    ///
-    /// No caller yet: the animation suite drives absolute stamps through
-    /// [`Self::at`]. Kept because the assert below is the crate's only
-    /// guard on rule 8, and a test that trips it fails silently — it
-    /// under-integrates rather than panicking.
+    /// A `dt` past that clamp panics: a test stepping it would
+    /// under-integrate silently rather than fail.
     pub fn advance_frames(&mut self, n: u32, dt: Duration, mut record: impl FnMut(&mut Ui)) {
+        Self::assert_anim_step(dt);
+        for _ in 0..n {
+            self.advance(dt);
+            self.frame(&mut record);
+        }
+    }
+
+    /// Frames stepping `dt` each until one requests no repaint, at most
+    /// `max` of them: how many frames that took, the idle one included,
+    /// or `None` if the last was still asking for another. The `dt`
+    /// bound is [`Self::advance_frames`]'s.
+    pub fn frames_until_idle(
+        &mut self,
+        max: u32,
+        dt: Duration,
+        mut record: impl FnMut(&mut Ui),
+    ) -> Option<u32> {
+        Self::assert_anim_step(dt);
+        (1..=max).find(|_| {
+            self.advance(dt);
+            !self.frame(&mut record).repaint_requested
+        })
+    }
+
+    fn assert_anim_step(dt: Duration) {
         assert!(
             dt.as_secs_f32() <= MAX_ANIM_DT,
             "a {dt:?} step exceeds MAX_ANIM_DT ({MAX_ANIM_DT}s) and would silently \
              under-integrate the animation; use more, smaller frames",
         );
-        for _ in 0..n {
-            self.advance(dt);
-            self.frame(&mut record);
-        }
     }
 
     /// Move the clock past `DOUBLE_CLICK_WINDOW`, so the next click starts
@@ -642,11 +648,6 @@ impl UiHarness {
     /// checked and why.
     pub fn click_on(&mut self, id: WidgetId) {
         self.click_at(self.hit_center_of(id));
-    }
-
-    /// [`Self::click_on`] with the right button.
-    pub fn right_click_on(&mut self, id: WidgetId) {
-        self.right_click_at(self.hit_center_of(id));
     }
 
     /// Press `id` at its center, checked the same way
@@ -835,43 +836,11 @@ impl UiHarness {
         self.ui.focus_within(ancestor)
     }
 
-    /// [`Ui::hover_within`].
-    pub fn hover_within(&self, ancestor: WidgetId) -> bool {
-        self.ui.hover_within(ancestor)
-    }
-
-    /// [`Ui::pointer_pos`].
-    pub fn pointer_pos(&mut self) -> Option<Vec2> {
-        self.ui.pointer_pos()
-    }
-
-    /// [`Ui::escape_pressed`].
-    pub fn escape_pressed(&mut self) -> bool {
-        self.ui.escape_pressed()
-    }
-
     /// Topmost widget the pointer would hit at `pos`, by the same filter
     /// hover routing uses. Turns "the press didn't land and I don't know
     /// why" into one assertion.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
         self.ui.cascade.hit_test(pos, Sense::hovers)
-    }
-
-    /// Explicit-id collisions recorded last frame, as the colliding
-    /// pairs. These otherwise surface only as a magenta runtime overlay,
-    /// which no test can see.
-    pub fn collisions(&self) -> Vec<(WidgetId, WidgetId)> {
-        self.ui
-            .forest
-            .collisions
-            .iter()
-            .map(|record| {
-                let id_of = |endpoint: Endpoint| {
-                    self.ui.forest.trees[endpoint.layer].records.widget_id()[endpoint.node.idx()]
-                };
-                (id_of(record.first), id_of(record.second))
-            })
-            .collect()
     }
 
     /// # Panics
@@ -939,25 +908,43 @@ impl UiHarness {
     /// `pub(crate)`, so the harness drives it directly rather than
     /// through a test method on `Ui`.
     fn drive(&mut self, damage_baseline_valid: bool, app: &mut impl App) -> FrameReport {
+        let stamp = FrameStamp::new(self.frame_display(), self.time);
         self.ui.frame(
             &mut self.engines,
-            FrameInput::new(
-                FrameStamp::new(self.display, self.time),
-                damage_baseline_valid,
-            ),
+            FrameInput::new(stamp, damage_baseline_valid),
             WindowToken(0),
             app,
         )
     }
 
+    /// The display a frame runs at: the harness's surface and scale under
+    /// the app's [`Ui::user_scale`], derived as the window driver derives
+    /// it, so a setting changed inside a frame lands on the next.
+    fn frame_display(&self) -> Display {
+        Display {
+            user_scale: self.ui.user_scale(),
+            ..self.display
+        }
+    }
+
     fn sync_display(&mut self) {
-        self.ui.display = self.display;
+        self.ui.display = self.frame_display();
+    }
+
+    /// Re-seed `prev_stamp` after a builder moved the display, so the
+    /// move does not read as a display change on frame 1 — but only on a
+    /// warm harness: seeding a cold one would skip the warmup pass it
+    /// exists for.
+    fn rewarm(&mut self) {
+        if self.ui.frame_runtime.prev_stamp.is_some() {
+            self.mark_warm();
+        }
     }
 
     /// Seed `prev_stamp` so frame 1 skips the cold-start warmup pass and
     /// runs one record pass like every later frame.
     fn mark_warm(&mut self) {
-        self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, self.time));
+        self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.frame_display(), self.time));
     }
 
     /// Collapse this frame's accumulated raw rects the way
