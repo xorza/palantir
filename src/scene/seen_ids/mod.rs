@@ -265,4 +265,19 @@ impl SeenIds {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use crate::primitives::widget_id::WidgetIdMap;
+    use crate::scene::endpoint::Endpoint;
+    use crate::scene::seen_ids::SeenIds;
+
+    impl SeenIds {
+        /// The ids the last finished frame recorded — `curr` until
+        /// `rollover`, `prev` after it.
+        pub(crate) fn last_frame(&self) -> &WidgetIdMap<Endpoint> {
+            &self.prev
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

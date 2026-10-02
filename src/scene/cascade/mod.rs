@@ -359,10 +359,26 @@ impl Cascade {
 // answers its whole question in one pass.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
+    #[cfg(test)]
+    use crate::common::content_hash::ContentHash;
     use crate::input::sense::Sense;
+    #[cfg(test)]
+    use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::cascade::Cascade;
+    #[cfg(test)]
+    use crate::scene::forest::Forest;
     use glam::Vec2;
+
+    /// One paint row with the widget that owns it — what the damage
+    /// oracle diffs between two frames.
+    #[cfg(test)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub(crate) struct OwnedPaint {
+        pub(crate) owner: WidgetId,
+        pub(crate) screen: Rect,
+        pub(crate) hash: ContentHash,
+    }
 
     impl Cascade {
         /// Every interactive row's widget, in paint order — the raw
@@ -374,6 +390,74 @@ pub(crate) mod test_support {
         #[cfg(test)]
         pub(crate) fn hit_ids(&self) -> impl Iterator<Item = WidgetId> + '_ {
             self.hits.iter().map(|row| row.widget_id)
+        }
+
+        /// Append every paint row with the widget that owns it, layer by
+        /// layer in paint order and node by node in pre-order — the rows
+        /// the encoder draws and damage diffs.
+        #[cfg(test)]
+        pub(crate) fn owned_paints(&self, forest: &Forest, out: &mut Vec<OwnedPaint>) {
+            for (layer, tree) in forest.trees.iter_paint_order() {
+                let arena = &self.layers[layer].paint_arena;
+                let ids = tree.records.widget_id();
+                for (node, owner) in ids.iter().enumerate() {
+                    out.extend(arena.rows_of(node).iter().map(|row| OwnedPaint {
+                        owner: *owner,
+                        screen: row.screen,
+                        hash: row.hash,
+                    }));
+                }
+            }
+        }
+
+        /// Assert that this cascade — however it was reached, full or
+        /// incremental — equals `cold`, a full rebuild over the same
+        /// forest and layout. Compares every column a reader consumes,
+        /// per node, so a retained row that went stale is named. The id
+        /// lookup is not among them: it snapshots the live seen-id table,
+        /// which a rebuild after the frame no longer finds.
+        #[cfg(test)]
+        pub(crate) fn assert_same_as(&self, cold: &Cascade, forest: &Forest) {
+            assert_eq!(self.entries, cold.entries, "entry rows");
+            assert_eq!(self.hits, cold.hits, "hit rows");
+            let scopes = |cascade: &Cascade| {
+                cascade
+                    .scopes
+                    .iter()
+                    .map(|row| (row.layer, row.id, row.filter))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(scopes(self), scopes(cold), "scope rows");
+            for (layer, tree) in forest.trees.iter_paint_order() {
+                let (warm, full) = (&self.layers[layer], &cold.layers[layer]);
+                for (node, id) in tree.records.widget_id().iter().enumerate() {
+                    let at = || format!("{layer:?} node {node} ({id:?})");
+                    assert_eq!(
+                        warm.cascade_inputs[node],
+                        full.cascade_inputs[node],
+                        "cascade input of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.subtree_paint_rects[node],
+                        full.subtree_paint_rects[node],
+                        "subtree paint rect of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.subtree_ends[node],
+                        full.subtree_ends[node],
+                        "subtree end of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.paint_arena.rows_of(node),
+                        full.paint_arena.rows_of(node),
+                        "paint rows of {}",
+                        at(),
+                    );
+                }
+            }
         }
 
         /// Topmost entry under `pos` whose `Sense` passes `filter`.
