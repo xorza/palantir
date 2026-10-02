@@ -2,7 +2,7 @@
 //! and [`Background`] chrome into the [`ShapeRecord`] / [`ChromeRow`]
 //! forms the tree stores. Bulk payload bytes (polyline points/colors,
 //! gradients) append to the window's [`RecordStore`]; functions that
-//! never touch the store (e.g. [`solid_brush`]) don't take it.
+//! never touch the store don't take it.
 //!
 //! **What lives here is what touches the store.** A shape whose record
 //! is a repacking of its own fields builds it in its own `Lower` impl,

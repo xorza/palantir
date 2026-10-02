@@ -227,7 +227,7 @@ pub(crate) trait CounterSet {
 /// forces three separate lists to grow together, and the omission reads as
 /// a counter that never fires.
 ///
-/// The set reaches its snapshot through [`CounterSet`], which is the one
+/// The set reaches its snapshot through `CounterSet`, which is the one
 /// declaration a reader has to follow — the snapshot's own name is written
 /// here and nowhere else.
 ///
@@ -236,9 +236,9 @@ pub(crate) trait CounterSet {
 ///
 /// - `cells` picks [`TestOnly`] or [`BenchOnly`] — which builds retain the
 ///   values at all. The rule for choosing is in this module's doc.
-/// - `reads` is the `cfg` the snapshot and the [`CounterSet`] impl are
+/// - `reads` is the `cfg` the snapshot and the `CounterSet` impl are
 ///   compiled under, and it must name **exactly** the builds that call
-///   [`CounterSet::counts`].
+///   `CounterSet::counts`.
 ///   Wider and the accessor is dead in some build combination, which is
 ///   how a set ends up carrying a blanket `allow(dead_code)`; narrower and
 ///   it does not compile. It must also imply `cells`, since `counts()`

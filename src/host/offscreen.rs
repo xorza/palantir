@@ -163,7 +163,7 @@ impl OffscreenHostBuilder {
         self
     }
 
-    /// Back this host's [`Clipboard`](crate::Clipboard) with the OS
+    /// Back this host's [`Clipboard`] with the OS
     /// clipboard instead of the in-process buffer.
     ///
     /// Off by default, and deliberately: a thumbnailer or a server-side

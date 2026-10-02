@@ -111,10 +111,14 @@ fn dropping_the_last_set_frees_its_slot_for_the_next_load() {
         reg.epoch() > loaded_epoch,
         "a release moves the epoch as much as a load does",
     );
+    assert!(
+        resident(&reg).is_empty(),
+        "a released set is not resident, so no prewarm rasterizes from it",
+    );
     assert_eq!(
-        resident(&reg),
-        vec![id],
-        "the slot still holds the atlas until the drain frees it",
+        reg.get(id).icons()[0].name,
+        "a",
+        "but the slot still holds the atlas until the drain frees it",
     );
     assert_eq!(drain(&reg), vec![id], "and the drain reports it once");
     assert!(resident(&reg).is_empty(), "the slot is empty now");

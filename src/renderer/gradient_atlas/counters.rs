@@ -2,7 +2,7 @@
 //! module doc explains the gated-cell pattern and why the two gates exist.
 //!
 //! On the wider cell gate rather than test-only because
-//! [`gradient_atlas`](crate::renderer::gradient_atlas::bench) benches
+//! `gradient_atlas` benches
 //! the register path and asserts each arm actually exercised what its
 //! name claims — a "steady-state hit" arm that quietly started baking
 //! would otherwise read as a plausible slowdown rather than a broken
