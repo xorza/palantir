@@ -1,10 +1,12 @@
 use crate::layout::axis::Axis;
+use crate::layout::types::justify::Justify;
 use crate::layout::types::{
     align::Align,
     align::VAlign,
     sizing::{SizeSpec, Sizing},
 };
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
@@ -157,7 +159,6 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 
 #[test]
 fn hstack_justify_distributes_leftover() {
-    use crate::layout::types::justify::Justify;
     // 200-wide parent, 40-wide children, no gap. Two children leave 120:
     // Center leads with 60, End starts the last child at 200 − 40 = 160,
     // SpaceAround pads 30 / 60 / 30. Three children leave 80, which
@@ -195,7 +196,6 @@ fn hstack_justify_distributes_leftover() {
 
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
-    use crate::layout::types::justify::Justify;
     let mut h = UiHarness::new(UVec2::new(200, 100));
     let root = h.frame_value(|ui| {
         Panel::hstack()
@@ -465,8 +465,6 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
 /// in the arrange freeze loop.)
 #[test]
 fn hstack_fill_max_size_caps_arranged_share() {
-    use crate::primitives::size::Size;
-
     let mut h = UiHarness::new(UVec2::new(400, 100));
     h.frame(|ui| {
         Panel::hstack()
@@ -496,8 +494,6 @@ fn hstack_fill_max_size_caps_arranged_share() {
 /// `inner_avail` from raw `available` ignoring `bounds.max_size`.
 #[test]
 fn parent_max_size_clamps_children_available() {
-    use crate::primitives::size::Size;
-
     let mut h = UiHarness::new(UVec2::new(1000, 200));
     let parent_node = h.under_outer(|ui| {
         Panel::vstack()
@@ -533,9 +529,6 @@ fn parent_max_size_clamps_children_available() {
 /// children, which actually have room to be offset inside their slot.
 #[test]
 fn fill_cross_axis_stretches_regardless_of_align() {
-    use crate::Sizing;
-    use crate::layout::types::align::Align;
-
     for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
         let mut h = UiHarness::new(UVec2::new(400, 100));
         let mut child = None;

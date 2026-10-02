@@ -2,12 +2,24 @@
 
 use crate::Ui;
 use crate::diagnostics::DebugOverlayConfig;
+use crate::input::keyboard::key::Key;
+use crate::input::policy::InputPolicy;
+use crate::input::policy::InputSignal;
 use crate::primitives::background::Background;
+use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::color::srgba_u8::SrgbaU8;
+use crate::primitives::lut_row::LutRow;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
+use crate::renderer::frontend::capture::PaintCall;
+use crate::renderer::frontend::encoder;
+use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
+use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
+use crate::shape::Shape;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
@@ -15,6 +27,7 @@ use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
+use std::collections::HashSet;
 use std::time::Duration;
 
 /// Pin: enabling `frame_stats` records a Debug-layer text widget,
@@ -324,9 +337,6 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 /// PaintOnly on frame 1, then re-runs the encoder.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
-    use crate::primitives::brush::Brush;
-    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-
     let half = Duration::from_millis(500);
 
     fn body(ui: &mut Ui, half: Duration) {
@@ -396,19 +406,6 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
-    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::color::srgba_u8::SrgbaU8;
-
-    use crate::primitives::lut_row::LutRow;
-
-    use crate::renderer::frontend::capture::PaintCall;
-    use crate::renderer::frontend::encoder;
-    use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
-    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    use crate::shape::Shape;
-
-    use std::collections::HashSet;
-
     fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
         let plan = RenderPlan {
             clear: ui.theme.window_clear,
@@ -517,9 +514,6 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    use crate::input::keyboard::key::Key;
-    use crate::input::policy::{InputPolicy, InputSignal};
-
     let half = Duration::from_millis(500);
 
     // Body declares an inert Frame *and* an anim shape so the next

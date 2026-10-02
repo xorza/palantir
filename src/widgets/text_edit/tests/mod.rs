@@ -8,6 +8,24 @@ use crate::widgets::text_edit::unicode::{
     word_range_at,
 };
 
+use crate::Spacing;
+use crate::Ui;
+use crate::common::clipboard::Clipboard;
+use crate::common::platform::{PLATFORM, Platform};
+use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::modifiers::Modifiers;
+use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::node_id::NodeId;
+use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
+use crate::widgets::panel::Panel;
+use crate::widgets::text_edit::TextEdit;
+use glam::{UVec2, Vec2};
+
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     let clipboard = Clipboard::memory();
     apply_key_with_clipboard(text, state, kp, &clipboard)
@@ -30,23 +48,6 @@ fn apply_key_with_clipboard(
     ed.observe_text();
     blur
 }
-use crate::Spacing;
-use crate::Ui;
-use crate::common::clipboard::Clipboard;
-use crate::common::platform::{PLATFORM, Platform};
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::layer::Layer;
-use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
-use crate::widgets::configure::Configure;
-use crate::widgets::panel::Panel;
-use crate::widgets::text_edit::TextEdit;
-use glam::{UVec2, Vec2};
 
 /// Every shape a widget paints, its descendants' included.
 ///

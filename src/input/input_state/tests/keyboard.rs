@@ -10,9 +10,11 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use crate::scene::layer::Layer;
+use crate::scene::visibility::Visibility;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
+use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use strum::EnumCount as _;
@@ -369,13 +371,6 @@ fn popup_with_scope(ui: &mut Ui) {
 
 #[test]
 fn focus_policy_routing() {
-    use crate::FocusPolicy;
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::{button::Button, panel::Panel};
-
     // (label, policy, expect_focus_after_outside_press).
     let cases: &[(&str, FocusPolicy, bool)] = &[
         ("preserve_keeps_focus", FocusPolicy::PreserveOnMiss, true),
@@ -420,12 +415,6 @@ fn focus_policy_routing() {
 
 #[test]
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::{button::Button, panel::Panel};
-
     let surface = glam::UVec2::new(400, 80);
     let mut h = UiHarness::new(surface);
     h.ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
@@ -458,10 +447,6 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
-    use crate::layout::types::sizing::Sizing;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::{button::Button, panel::Panel};
-
     let surface = glam::UVec2::new(200, 80);
     let mut h = UiHarness::new(surface);
     h.frame(|ui| {
@@ -500,11 +485,6 @@ fn set_focus_bypasses_policy() {
 fn invisible_or_disabled_focusable_refuses_focus() {
     // Cascade combines `disabled || invisible`; pin both axes so a
     // future split doesn't keep one alive.
-
-    use crate::layout::types::sizing::Sizing;
-    use crate::scene::visibility::Visibility;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::{button::Button, panel::Panel};
 
     #[derive(Debug)]
     enum Mode {
