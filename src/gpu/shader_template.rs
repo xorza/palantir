@@ -122,6 +122,13 @@ mod tests {
     fn every_pinned_shader_constant_is_read() {
         for (file, source) in SHADERS {
             let code = strip_comments(source);
+            // Every marker is on a `const` line the name scan reads, so a
+            // scan that stopped matching cannot pass by checking nothing.
+            assert_eq!(
+                source.lines().filter_map(pinned_const_name).count(),
+                source.matches("/*{").count(),
+                "{file}: a marker sits where the const-name scan does not see it",
+            );
             for name in source.lines().filter_map(pinned_const_name) {
                 let uses = code
                     .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')

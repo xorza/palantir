@@ -29,7 +29,7 @@ use palantir::Stroke;
 use palantir::internals::headless_test_gpu;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Configure, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
+    Block, Configure, FramePaint, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
     TranslateScale, Ui,
 };
 use std::rc::Rc;
@@ -83,7 +83,7 @@ fn frontend_audit(label: &str, mut scene: impl FnMut(&mut Ui)) {
         .budget(FRONTEND_BLOCKS_PER_FRAME_MAX)
         .run_frames(|| {
             step = (step + 1) % NUDGE_POSITIONS;
-            target.frame(&gpu, 1.0, |ui| {
+            let report = target.frame(&gpu, 1.0, |ui| {
                 Panel::zstack()
                     .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))
@@ -93,6 +93,15 @@ fn frontend_audit(label: &str, mut scene: impl FnMut(&mut Ui)) {
                     )))
                     .show(ui, |ui| scene(ui));
             });
+            // The nudge has to keep the tree damaged, or encode and compose
+            // walk an empty region and the budget measures nothing. A small
+            // scene repaints partially, which still encodes every shape the
+            // nudge moved.
+            assert_ne!(
+                report.paint(),
+                FramePaint::Skip,
+                "{label}: the frame repaints"
+            );
         });
 }
 

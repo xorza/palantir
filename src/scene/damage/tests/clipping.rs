@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size};
-use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame};
+use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -161,7 +161,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         // damage is the visible portion of `prev_rect`.
         assert_eq!(
             rects,
-            vec![prev_rect.clamp_to(TEST_SURFACE)],
+            vec![prev_rect.clamp_to(DISPLAY.logical_rect())],
             "[{label}] damage region",
         );
     }

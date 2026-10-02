@@ -37,16 +37,9 @@ forces pass B, and pass B erases the evidence.
 Each test below passes when the behaviour it names is broken.
 
 - [ ] `host/window_driver/tests.rs` `output_validity_tests`: the GPU completion that sets `output_valid` (`WindowDriver::gpu_frame`) is stood in for by an assignment. Exercise the real completion path through a GPU-backed frame.
-- [ ] `renderer/frontend/encoder/tests/damage_cull.rs:57-114`, `:149-226`: every assert is zero, so an encoder that draws nothing passes. Add a positive row in the same loop.
-- [ ] `renderer/frontend/encoder/tests/clipping.rs:177-198` `nested_clips_each_emit_their_own_pair`: counts pushes and pops, so sibling clips pass. Add `PaintCapture::kinds()` and assert the sequence. The same count-only shape is in `clipping.rs:22-38`, `:206-217`, `damage_cull.rs:64-112`, and 13 hand-written kind filters.
-- [ ] `renderer/frontend/capture.rs:155-181` `assert_same_capture` compares `Debug` strings, and `GpuPaintRef` prints the constant `"GpuPaint"`. A swapped callback compares equal. Compare `paint` by `PartialEq` too.
-- [ ] `renderer/frontend/composer/tests/support.rs:61-71` `draw()` makes identical white quads, so the pruning and cull tests (`pruning.rs:20-31`, `:556-576`, `clipping.rs:121-197`) cannot say which quad survived. Give each quad a distinct fill, add `survivors(buf) -> Vec<Rect>`, and rewrite `pruning.rs:473-513` (its comment says "wait, are B and D inside E?").
-- [ ] `gpu/shader_template.rs:113-129`: iterates a hand list of shaders and asserts nothing if the marker match stops. Assert the found-name count equals the `/*{` count per file, and share one shader array with production.
-- [ ] `gpu/tests/mesh_image.rs:134-179`: hand-lists the tiers twice, and the order and damage pins cover only Mesh and Image. Sweep `PaintTier::ALL`.
-- [ ] `gpu/tests/support.rs:62-69` `simplify` maps a quad span to the first group with an equal span. Debug-check that non-empty spans are unique.
-- [ ] `gpu/tests/text_batches.rs:155-158`, `:187-190`: `contains(&Text(0))` accepts doubled or misordered steps. The two tests also build the same fixture.
-- [ ] `scene/damage/tests/clipping.rs:164`: clamps to `TEST_SURFACE` (100×100) while the surface is 200×200. It passes only because the card ends before 100. `damage/tests/support.rs` holds both constants; derive one from the other.
-- [ ] `tests/alloc` renderer fixtures (`fixtures/renderer.rs`) never check that the frame painted. If the nudge stops damaging, encode and compose walk nothing and the gate passes. `OffscreenTarget::frame` drops the `FrameReport`; return it and assert `paint() == Full`.
+- [ ] Encoder tests filter paint calls by kind in 13 hand-written closures. `PaintCapture::kinds()` now exists; assert sequences with it instead.
+- [ ] `renderer/frontend/composer/tests/clipping.rs:121-197`: the cull tests count identical white quads. Use `draw_marked` and `survivor_calls` to name which survived, as the pruning tests now do.
+- [ ] `gpu/shader_template.rs` tests keep their own list of shader sources. Share one array with production, so a new shader cannot skip the check.
 
 ## 4. Input aimed by literal coordinates, with no check that it lands
 

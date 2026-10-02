@@ -143,10 +143,9 @@ fn higher_kind_replay_follows_paint_tier_order() {
         items: Span::new(0, 1),
         last_group: 0,
     };
-    buf.batches_mut(PaintTier::Mesh).push(anchored);
-    buf.batches_mut(PaintTier::Image).push(anchored);
-    buf.batches_mut(PaintTier::Icon).push(anchored);
-    buf.batches_mut(PaintTier::Curve).push(anchored);
+    for tier in PaintTier::ALL {
+        buf.batches_mut(tier).push(anchored);
+    }
 
     let emitted: Vec<PaintTier> = simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false))
         .into_iter()
@@ -159,12 +158,7 @@ fn higher_kind_replay_follows_paint_tier_order() {
         })
         .collect();
 
-    let mut expected = vec![
-        PaintTier::Mesh,
-        PaintTier::Image,
-        PaintTier::Icon,
-        PaintTier::Curve,
-    ];
+    let mut expected = PaintTier::ALL.to_vec();
     expected.sort();
     assert_eq!(
         emitted.len(),

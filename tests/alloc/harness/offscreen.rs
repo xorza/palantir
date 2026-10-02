@@ -18,7 +18,7 @@
 
 use glam::UVec2;
 use palantir::internals::{HeadlessTestGpuLease, RecordApp};
-use palantir::{OffscreenHost, RgbaF32, Ui};
+use palantir::{FrameReport, OffscreenHost, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.
 #[derive(Debug)]
@@ -61,8 +61,9 @@ impl OffscreenTarget {
         gpu: &HeadlessTestGpuLease,
         dpr: f32,
         record: impl FnMut(&mut Ui),
-    ) {
-        self.host
+    ) -> FrameReport {
+        let report = self
+            .host
             .frame(&self.texture, dpr, &mut RecordApp::new(record));
         gpu.device
             .poll(wgpu::PollType::Wait {
@@ -70,5 +71,6 @@ impl OffscreenTarget {
                 timeout: None,
             })
             .expect("device poll");
+        report
     }
 }

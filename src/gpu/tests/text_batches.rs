@@ -123,11 +123,16 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
 /// removes their text. The batch scissor (`TextBatch::scissor`,
 /// set before the Text step) clips the merged text, so emitting
 /// late is paint-safe.
+///
+/// The skipped group is also the final one, so the batch can only come
+/// out of the trailing drain after the per-group loop: the in-group
+/// drain fires only on reaching a later group that is not skipped, and
+/// there is none.
 #[test]
-fn text_batch_anchored_in_damage_skipped_group_still_emits() {
+fn text_batch_anchored_in_trailing_skipped_group_still_emits() {
     // Two groups in distinct scissors. Both contribute text to one
-    // batch (last_group = 1). Damage rect covers group 0's scissor
-    // only, so group 1 is filtered out by the damage intersect.
+    // batch (last_group = 1). Damage covers group 0's scissor only, so
+    // group 1 is filtered out by the damage intersect.
     let buf = buf_with_batches(
         vec![
             DrawGroup {
@@ -143,51 +148,14 @@ fn text_batch_anchored_in_damage_skipped_group_still_emits() {
         ],
         vec![text_batch(Span::new(0, 2), 1)],
     );
-    // Damage rect: covers only group 0.
     let damage = URect::new(0, 0, 50, 50);
-    let steps = simplify(
-        &buf,
-        &collect(&buf, Some(damage), &MaskPlan::default(), false),
-    );
-    // Must include Text(0) — group 0's text lives in batch 0, and
-    // batch 0 anchored at the skipped group 1 must still emit.
-    assert!(
-        steps.contains(&DrawOp::Text(0)),
-        "batch anchored at damage-skipped group must still render; got {steps:?}",
-    );
-}
-
-/// Pin: when the batch's `last_group` is the **final** group AND that
-/// group is damage-skipped, the trailing drain after the per-group
-/// loop must still emit the batch. Without it the in-group drain
-/// (which only triggers when reaching a later non-skipped group)
-/// never fires, and the text vanishes.
-#[test]
-fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
-    let buf = buf_with_batches(
-        vec![
-            DrawGroup {
-                scissor: Some(URect::new(0, 0, 50, 50)),
-                rounded_clips: Span::default(),
-                quads: Span::new(0, 1),
-            },
-            DrawGroup {
-                // Final group, outside damage.
-                scissor: Some(URect::new(60, 0, 40, 50)),
-                rounded_clips: Span::default(),
-                quads: Span::new(1, 1),
-            },
-        ],
-        vec![text_batch(Span::new(0, 2), 1)],
-    );
-    let damage = URect::new(0, 0, 50, 50);
-    let steps = simplify(
-        &buf,
-        &collect(&buf, Some(damage), &MaskPlan::default(), false),
-    );
-    assert!(
-        steps.contains(&DrawOp::Text(0)),
-        "trailing drain must emit batch when last_group is tail-skipped; got {steps:?}",
+    assert_eq!(
+        simplify(
+            &buf,
+            &collect(&buf, Some(damage), &MaskPlan::default(), false)
+        ),
+        vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0)],
+        "group 0's quads, then the batch once, from the trailing drain",
     );
 }
 

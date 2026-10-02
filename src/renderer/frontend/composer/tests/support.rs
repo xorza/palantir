@@ -71,6 +71,36 @@ pub(super) fn draw(buf: &mut PaintCapture, r: Rect) {
     );
 }
 
+/// [`draw`] with a fill unique to the quad's place in the capture — the
+/// n-th call's red channel is `n / 255` — so a test can name which quads
+/// survived a prune, not only how many.
+pub(super) fn draw_marked(buf: &mut PaintCapture, r: Rect) {
+    let nth = buf.calls.len() as f32;
+    buf.draw_quad(
+        DrawQuadPayload::rect(
+            r,
+            Corners::default(),
+            BrushSource::Solid(RgbaF32::new(nth / 255.0, 1.0, 1.0, 1.0).into()),
+            Stroke::ZERO.into(),
+        ),
+        1.0,
+    );
+}
+
+/// The surviving quads' rects, in buffer order.
+pub(super) fn survivors(buf: &RenderBuffer) -> Vec<Rect> {
+    buf.quads.iter().map(|q| q.rect).collect()
+}
+
+/// The surviving quads' capture positions, read back off the fill
+/// [`draw_marked`] gave each: what tells apart two survivors over one rect.
+pub(super) fn survivor_calls(buf: &RenderBuffer) -> Vec<u32> {
+    buf.quads
+        .iter()
+        .map(|q| (q.fill.unpack().r * 255.0).round() as u32)
+        .collect()
+}
+
 pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
     buf.draw_text(
         DrawTextPayload {
