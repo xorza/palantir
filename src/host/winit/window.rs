@@ -3,7 +3,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use glam::{IVec2, Vec2};
+use glam::{IVec2, UVec2, Vec2};
+use winit::keyboard::ModifiersState;
 use winit::window::Window as WinitWindow;
 
 use crate::app::App;
@@ -106,6 +107,31 @@ pub(super) struct Window {
     /// Time at which the window became hidden. The render core remains
     /// untouched while hidden, then its clock skips the elapsed gap on resume.
     occluded_at: Option<Instant>,
+    /// The platform reported the window occluded. One of the two reasons
+    /// it is hidden; [`Self::minimized`] is the other.
+    occluded: bool,
+    /// The window was resized to zero — how Windows reports a minimize,
+    /// where winit sends no `Occluded`.
+    minimized: bool,
+    /// The modifiers winit last reported. A key event carries none of its
+    /// own, and translating one reads them.
+    pub(super) modifiers: ModifiersState,
+    /// Origin of the input clock. Input is stamped from it rather than
+    /// from the frame clock, which `Clock::skip` rewinds over a hidden
+    /// span: two presses either side of the span must stay that far
+    /// apart, or they read as a double-click.
+    input_epoch: Instant,
+    /// A resize can change whether the window is maximized and nothing
+    /// else the cached facts hold — position changes arrive as `Moved`.
+    /// So a resize marks that one fact stale rather than dropping all of
+    /// them, and an interactive resize does not re-ask the windowing
+    /// system for the position and monitor every frame.
+    maximized_stale: bool,
+    /// The surface size a suboptimal acquire last reconfigured for. A
+    /// suboptimal frame is still presented; the swapchain is rebuilt once
+    /// per size, because a suboptimal state that a resize event is about
+    /// to resolve would otherwise rebuild it every frame.
+    suboptimal_handled: Option<UVec2>,
     /// This window's Tracy frame set. Zero-sized without the profiler.
     frame_set: FrameSet,
     /// See [`SystemFacts`]. `None` until the next frame asks.
@@ -149,6 +175,12 @@ impl Window {
             close_requested: false,
             cursor: CursorIcon::default(),
             occluded_at: None,
+            occluded: false,
+            minimized: false,
+            modifiers: ModifiersState::empty(),
+            input_epoch: Instant::now(),
+            maximized_stale: false,
+            suboptimal_handled: None,
             frame_set: FrameSet::claim(),
             system_facts: None,
             pointer: None,
@@ -160,8 +192,22 @@ impl Window {
         // Stamped here, where the event actually arrived: the frame clock
         // it would otherwise carry stands still between frames, and an
         // event-driven host can idle for seconds between two of them.
-        let now = self.driver.now();
+        let now = self.input_epoch.elapsed();
         self.driver.ui.on_input(event, now)
+    }
+
+    /// The scale an event's position is divided by: the one the current
+    /// cascade was laid out at, which is what the event is hit-tested
+    /// against. A user-scale write takes effect at the next frame, so the
+    /// live scale would land a click queued before that frame on the
+    /// wrong widget; `resync_pointer` restates the pointer when the frame
+    /// moves the scale. Before the first frame there is no layout yet,
+    /// and the live scale is the one it will use.
+    pub(super) fn translation_scale(&self) -> f32 {
+        self.driver
+            .ui
+            .laid_out_scale()
+            .unwrap_or_else(|| self.effective_scale())
     }
 
     /// Retain what an event said about the pointer, against the scale it
@@ -189,21 +235,18 @@ impl Window {
         if let Some(anchor) = &mut self.pointer
             && let Some(logical) = anchor.restate_at(scale)
         {
-            let now = self.driver.now();
+            let now = self.input_epoch.elapsed();
             self.driver
                 .ui
                 .on_input(InputEvent::PointerMoved(logical), now);
         }
     }
 
-    /// Physical pixels per logical pixel *as the app sees them* — what a
-    /// pointer position must be divided by to land in the space the frame
-    /// laid its widgets out in.
-    ///
-    /// Read per event rather than cached beside [`Self::system_scale`]:
-    /// the user scale is written from inside a frame, and a cached copy
-    /// would hit-test the frame after that write against the scale before
-    /// it.
+    /// Physical pixels per logical pixel *as the app sees them* — the
+    /// platform's factor times the app's, which the next frame lays out
+    /// at. Read live, because the user scale is written from inside a
+    /// frame; events between frames divide by
+    /// [`Self::translation_scale`] instead.
     pub(super) fn effective_scale(&self) -> f32 {
         self.driver.ui.user_scale().applied_to(self.system_scale)
     }
@@ -211,9 +254,13 @@ impl Window {
     /// This frame's [`SystemFacts`], asking the windowing system only
     /// when an event has invalidated them.
     fn system_facts(&mut self) -> SystemFacts {
-        if let Some(facts) = self.system_facts {
-            return facts;
+        if let Some(facts) = &mut self.system_facts {
+            if std::mem::take(&mut self.maximized_stale) {
+                facts.placement.maximized = self.window.is_maximized();
+            }
+            return *facts;
         }
+        self.maximized_stale = false;
         let facts = SystemFacts {
             placement: WindowPlacement {
                 position: self
@@ -242,8 +289,29 @@ impl Window {
         self.system_facts = None;
     }
 
+    /// A resize happened: the one cached fact it can change is stale.
+    pub(super) fn note_resized(&mut self) {
+        self.maximized_stale = true;
+    }
+
+    /// The platform reported the window occluded or visible again.
     pub(super) fn set_occluded(&mut self, occluded: bool) {
-        match (occluded, self.occluded_at) {
+        self.occluded = occluded;
+        self.update_hidden();
+    }
+
+    /// The window was resized to zero (minimized, on Windows) or back.
+    /// Returns whether that changed anything.
+    pub(super) fn set_minimized(&mut self, minimized: bool) -> bool {
+        let changed = self.minimized != minimized;
+        self.minimized = minimized;
+        self.update_hidden();
+        changed
+    }
+
+    fn update_hidden(&mut self) {
+        let hidden = self.occluded || self.minimized;
+        match (hidden, self.occluded_at) {
             (true, None) => self.occluded_at = Some(Instant::now()),
             (false, Some(at)) => {
                 self.occluded_at = None;
@@ -368,10 +436,21 @@ impl Window {
                     frame.present(gpu);
                     report.repaint_requested
                 }
-                Acquired::Suboptimal => {
-                    tracing::warn!("surface acquire: suboptimal");
-                    self.reconfigure(gpu);
-                    true
+                // Still presentable, which wgpu documents: present it, then
+                // rebuild the swapchain to match the surface — once per
+                // size, so a suboptimal state that persists until a
+                // pending resize lands does not rebuild every frame.
+                Acquired::Suboptimal(frame) => {
+                    core.submit(&mut self.driver, frame.target(), mode);
+                    self.window.pre_present_notify();
+                    frame.present(gpu);
+                    let size = self.surface.size();
+                    if self.suboptimal_handled != Some(size) {
+                        tracing::warn!("surface acquire: suboptimal");
+                        self.suboptimal_handled = Some(size);
+                        self.reconfigure(gpu);
+                    }
+                    report.repaint_requested
                 }
                 Acquired::Outdated => {
                     tracing::warn!("surface acquire: outdated / lost");

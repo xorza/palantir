@@ -75,6 +75,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::WindowId;
 
 use crate::app::App;
+use crate::common::platform::PLATFORM;
 use crate::display;
 use crate::gpu::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
@@ -389,9 +390,17 @@ where
         };
         let win = runtime.window(slot);
 
+        if let WindowEvent::ModifiersChanged(modifiers) = &event {
+            win.modifiers = modifiers.state();
+        }
         let mut wants_repaint = false;
-        let scale = win.effective_scale();
-        let trace = input::translate(&event, scale, |ev| {
+        let scale = win.translation_scale();
+        let at = input::Translation {
+            scale_factor: scale,
+            modifiers: win.modifiers,
+            platform: PLATFORM,
+        };
+        let trace = input::translate(&event, at, |ev| {
             wants_repaint |= win.on_input(ev).requests_repaint;
         });
         win.note_pointer(trace, scale);
@@ -423,8 +432,17 @@ where
             // app asks for, and the monitor under the window is what the
             // driver paces by. Both are cached — see `WindowFacts`.
             WindowEvent::Moved(_) => win.invalidate_system_facts(),
+            // Windows reports a minimize as a resize to zero, and winit
+            // sends no `Occluded` there: treat it as hidden, so the window
+            // stops laying out and painting a 1×1 surface.
+            WindowEvent::Resized(new) if new.width == 0 || new.height == 0 => {
+                win.set_minimized(true);
+            }
             WindowEvent::Resized(new) => {
-                win.invalidate_system_facts();
+                if win.set_minimized(false) {
+                    win.next = FramePresent::Immediate;
+                }
+                win.note_resized();
                 let size = SurfaceManager::clamp_extent(
                     max_texture_dim,
                     UVec2::new(new.width, new.height),

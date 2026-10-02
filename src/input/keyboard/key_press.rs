@@ -1,6 +1,7 @@
 //! One key-down as the input queue carries it: which key, which
 //! modifiers, and whether it repeated.
 
+use crate::common::platform::PLATFORM;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -53,5 +54,12 @@ impl KeyPress {
     /// what `Ctrl+Z` is.
     pub(crate) fn layout_retry(self) -> Option<Key> {
         matches!(self.key, Key::Char(c) if !c.is_ascii()).then_some(self.physical)
+    }
+
+    /// Whether this press typed its [`Self::text`] — the one rule the
+    /// key classifier and a text field both read, so they cannot disagree
+    /// about what a press wrote.
+    pub(crate) fn types_text(self) -> bool {
+        !self.text.is_empty() && self.mods.compose_text(PLATFORM)
     }
 }

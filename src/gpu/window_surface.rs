@@ -92,8 +92,7 @@ impl WindowSurface {
             // texture is still alive, and that failure is a panic, because
             // surface configuration reports through the device error sink.
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
-                drop(frame);
-                Acquired::Suboptimal
+                Acquired::Suboptimal(SurfaceFrame(frame))
             }
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 Acquired::Outdated
@@ -110,9 +109,11 @@ impl WindowSurface {
 pub(crate) enum Acquired {
     /// A frame to render into, and then present.
     Ready(SurfaceFrame),
-    /// The swapchain still works but no longer matches the surface. Rebuild
-    /// it and paint again.
-    Suboptimal,
+    /// A frame that still presents, from a swapchain that no longer
+    /// matches the surface: present it, then rebuild the swapchain. The
+    /// frame must be presented or dropped before the rebuild —
+    /// `configure` fails while an acquired texture is alive.
+    Suboptimal(SurfaceFrame),
     /// The swapchain is gone. Rebuild it and paint again.
     Outdated,
     /// The acquire timed out. Paint again.

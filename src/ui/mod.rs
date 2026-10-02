@@ -269,6 +269,15 @@ impl Ui {
     /// other, and the second could never be a double click. A host that
     /// wants reproducible input timing hands over a clock it controls,
     /// exactly as it does for frames.
+    /// The scale the current cascade was laid out at — what a host
+    /// divides an event's position by, since that cascade is what the
+    /// event is hit-tested against. `None` before the first frame.
+    pub(crate) fn laid_out_scale(&self) -> Option<f32> {
+        self.frame_runtime
+            .prev_stamp
+            .map(|stamp| stamp.display.scale_factor())
+    }
+
     #[inline]
     pub(crate) fn on_input(&mut self, event: InputEvent, now: Duration) -> InputDelta {
         self.input.on_input(event, &self.cascade, now)

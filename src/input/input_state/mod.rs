@@ -452,18 +452,6 @@ impl InputState {
         self.signal_since_last_frame != InputSignal::None || !self.queue.is_empty()
     }
 
-    /// Whether events are held for a later frame.
-    pub(crate) fn has_held_input(&self) -> bool {
-        !self.queue.is_empty()
-    }
-
-    /// The modifier set once every held event has landed — the state a
-    /// feeder compares against before sending a change, since the live
-    /// [`Self::modifiers`] lags behind what it already sent.
-    pub(crate) fn modifiers_after_held_input(&self) -> Modifiers {
-        self.queue.last_held_modifiers().unwrap_or(self.modifiers)
-    }
-
     /// Apply one admitted event — the body of [`Self::on_input`].
     fn apply(&mut self, event: InputEvent, cascade: &Cascade, now: Duration) -> InputDelta {
         // Any host-pushed event that survived the screen above
@@ -1019,6 +1007,28 @@ impl InputState {
             .map(|(pointer, layout)| pointer_in_widget_space(pointer, layout.min, transform));
 
         state
+    }
+}
+
+// Read by the frame harness, which feeds input the way a host does and
+// has to know what it already fed.
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::input::input_state::InputState;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    impl InputState {
+        /// Whether events are held for a later frame.
+        pub(crate) fn has_held_input(&self) -> bool {
+            !self.queue.is_empty()
+        }
+
+        /// The modifier set once every held event has landed — the state
+        /// a feeder compares against before sending a change, since the
+        /// live `modifiers` lags behind what it already sent.
+        pub(crate) fn modifiers_after_held_input(&self) -> Modifiers {
+            self.queue.last_held_modifiers().unwrap_or(self.modifiers)
+        }
     }
 }
 
