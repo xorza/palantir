@@ -224,7 +224,6 @@ fn hide_and_show() {
 }
 
 #[test]
-#[ignore = "D3: a PaintAnim reaches no hash, so the cascade keeps the unspun bounds"]
 fn shape_becomes_animated() {
     run(&[
         Knobs {

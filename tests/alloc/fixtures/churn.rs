@@ -241,3 +241,28 @@ fn reinterned_text_alloc_free() {
             .show(ui, |_ui| {});
     });
 }
+
+/// One frame with many widgets, then a small scene whose layout moves
+/// every frame, so every cascade run is a full rebuild. The seen-id
+/// tables swap each frame, so the spike grows one of the two for good;
+/// the cascade's own id table must not follow them back and forth
+/// through a reallocation on each rebuild.
+#[test]
+fn a_widget_count_spike_leaves_full_rebuilds_alloc_free() {
+    let mut step = 0u32;
+    Audit::new().warmup(16).run(move |ui| {
+        step += 1;
+        let rows = if step == 1 { 256 } else { ROWS };
+        Panel::vstack()
+            .id_salt("spike-root")
+            .size((Sizing::fixed(200.0 + (step % 32) as f32), Sizing::FILL))
+            .show(ui, |ui| {
+                for row in 0..rows {
+                    Panel::hstack()
+                        .id_salt(row)
+                        .size((Sizing::FILL, Sizing::fixed(4.0)))
+                        .show(ui, |_ui| {});
+                }
+            });
+    });
+}

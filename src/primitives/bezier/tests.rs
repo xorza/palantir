@@ -89,3 +89,52 @@ fn quadratic_to_cubic_matches_midpoint() {
     let c_mid = 0.125 * p0 + 0.375 * q1 + 0.375 * q2 + 0.125 * p2;
     assert!((q_mid - c_mid).length() < 1.0e-5);
 }
+
+/// Every quadratic, promoted to a cubic, keeps its extremum inside the
+/// cubic bbox. The promotion's `2/3` blend leaves the cubic's `a`
+/// coefficient at rounding residue rather than zero, which is where a
+/// textbook root formula loses the small root.
+///
+/// The worked case: `p0 = 7, c = 49, p2 = 8` peaks at
+/// `t* = (p0 − c)/(p0 − 2c + p2) = −42/−83 = 0.506`, where
+/// `B(t*) = 7(1−t*)² + 98·t*(1−t*) + 8t*² = 28.253`.
+#[test]
+fn promoted_quadratics_keep_their_extremum_in_the_bbox() {
+    let peak = |p0: f64, c: f64, p2: f64| {
+        let t = (p0 - c) / (p0 - 2.0 * c + p2);
+        let u = 1.0 - t;
+        u * u * p0 + 2.0 * t * u * c + t * t * p2
+    };
+    let worked = |p0: f32, c: f32, p2: f32| {
+        let (a, z) = (Vec2::new(0.0, p0), Vec2::new(1.0, p2));
+        let ctl = bezier::quadratic_to_cubic(a, Vec2::new(0.5, c), z);
+        bezier::cubic_bbox(a, ctl.c1, ctl.c2, z)
+    };
+    let bbox = worked(7.0, 49.0, 8.0);
+    assert!(
+        (bbox.max().y as f64 - peak(7.0, 49.0, 8.0)).abs() < 1e-3,
+        "worked case: {} vs {}",
+        bbox.max().y,
+        peak(7.0, 49.0, 8.0),
+    );
+
+    // A sweep over integer quadratics: every sampled point inside.
+    let values: Vec<f32> = (0..800).step_by(53).map(|v| v as f32).collect();
+    for &p0 in &values {
+        for &c in &values {
+            for &p2 in &values {
+                let bbox = worked(p0, c, p2);
+                for i in 0..=64 {
+                    let t = i as f32 / 64.0;
+                    let u = 1.0 - t;
+                    let y = u * u * p0 + 2.0 * t * u * c + t * t * p2;
+                    let slack = 1e-3 * y.abs().max(1.0);
+                    assert!(
+                        y >= bbox.min.y - slack && y <= bbox.max().y + slack,
+                        "({p0}, {c}, {p2}) at t={t}: {y} outside {bbox:?}",
+                    );
+                }
+            }
+        }
+    }
+}

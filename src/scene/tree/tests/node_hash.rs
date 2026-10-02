@@ -494,3 +494,40 @@ fn nesting_alone_changes_cascade_static() {
          `subtree_end` in the fold these two hash the same",
     );
 }
+
+/// A paint animation is part of what a shape paints, so it moves the
+/// node hash: adding one, dropping one, and changing what it animates
+/// each read as a change, and the same animation twice reads the same.
+#[test]
+fn a_paint_animation_moves_the_node_hash() {
+    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use std::time::Duration;
+
+    fn build(ui: &mut Ui, anim: Option<PaintAnim>) -> NodeId {
+        Panel::canvas()
+            .id(WidgetId::from_hash("spinner"))
+            .show(ui, |ui| {
+                let line = Shape::line(
+                    Vec2::new(0.0, 10.0),
+                    Vec2::new(40.0, 10.0),
+                    Stroke::new(RgbaF32::WHITE, 2.0),
+                );
+                match anim {
+                    Some(anim) => ui.add_shape_animated(line, anim),
+                    None => ui.add_shape(line),
+                }
+            })
+            .response
+            .node()
+    }
+    let turn = PaintAnim::turn(0.0, 1.0).period(Duration::from_secs(2));
+    let still = record_hash(|ui| build(ui, None));
+    let spun = record_hash(|ui| build(ui, Some(turn)));
+    let spun_again = record_hash(|ui| build(ui, Some(turn)));
+    let faster = record_hash(|ui| build(ui, Some(turn.period(Duration::from_secs(1)))));
+    let fading = record_hash(|ui| build(ui, Some(PaintAnim::alpha(1.0, 0.0))));
+    assert_ne!(still, spun, "adding an animation");
+    assert_eq!(spun, spun_again, "the same animation");
+    assert_ne!(spun, faster, "a different period");
+    assert_ne!(spun, fading, "a different channel");
+}

@@ -2,6 +2,7 @@
 //! written in.
 
 use crate::animation::animatable::Animatable;
+use crate::primitives::approx::FloatHash;
 use crate::scene::tree::paint_anims::PaintMod;
 use crate::scene::tree::paint_anims::curves;
 use std::f32::consts::TAU;
@@ -140,6 +141,45 @@ pub struct PaintAnim {
 }
 
 impl PaintAnim {
+    /// Feed what this animation paints into `h`: the channel and the
+    /// timing, everything the sampled modifier at a given time depends
+    /// on except the easing curve. A function pointer has no stable
+    /// identity to hash, so a change of curve alone is the one edit this
+    /// misses.
+    pub(crate) fn hash_static(&self, h: &mut impl std::hash::Hasher) {
+        let PaintChannel { alpha, turn } = self.channel;
+        for range in [alpha, turn] {
+            match range {
+                Some((from, to)) => {
+                    h.write_u8(1);
+                    from.hash_eq(h);
+                    to.hash_eq(h);
+                }
+                None => h.write_u8(0),
+            }
+        }
+        let PaintTiming {
+            started_at,
+            period,
+            repeat,
+            steps,
+        } = self.timing;
+        h.write_u128(started_at.as_nanos());
+        h.write_u128(period.as_nanos());
+        match repeat {
+            PaintRepeat::Once => h.write_u8(0),
+            PaintRepeat::Forever => h.write_u8(1),
+            PaintRepeat::Settle(after) => {
+                h.write_u8(2);
+                h.write_u128(after.as_nanos());
+            }
+        }
+        match steps {
+            PaintSteps::Continuous => h.write_u32(0),
+            PaintSteps::Steps(n) => h.write_u32(n.get()),
+        }
+    }
+
     /// One pass of [`curves::linear`](crate::widget::curves::linear) over a
     /// one-second period, driving nothing. The builders below name a
     /// channel and adjust the timing.
