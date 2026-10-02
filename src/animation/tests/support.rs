@@ -16,17 +16,6 @@ const SURFACE: UVec2 = UVec2::new(100, 100);
 
 pub(super) const SLOT: AnimSlot = AnimSlot::new("test");
 
-/// Process-global counter handed to `AnimMapTyped::tick` for tests
-/// that don't care about pass A/B semantics — every call gets a
-/// fresh id, so the multi-pass guard never short-circuits unless a
-/// test deliberately reuses an id. Tests that *do* exercise the
-/// multi-pass guard pass an explicit `render_frame_id` literal instead.
-pub(super) fn next_frame() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    COUNTER.fetch_add(1, Ordering::Relaxed) + 1
-}
-
 pub(super) fn wid(s: &'static str) -> WidgetId {
     WidgetId::from_hash(s)
 }
@@ -60,12 +49,10 @@ pub(super) fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
 }
 
 /// Common prelude for tests that drive an animated widget through
-/// [`Ui::frame`]: spin up a `Ui`, pre-record the widget once so
-/// its state row exists, return the `Ui` and the widget's id. Per-frame
-/// bodies still need to re-record the
-/// widget (`Block::new().id(WidgetId::from_hash(salt)).show(ui)`) so the
-/// persistent
-/// state survives end-of-frame sweeps.
+/// [`Ui::frame`]: spin up a `Ui`, pre-record the widget once so its state
+/// row exists, return the `Ui` and the widget's id. Per-frame bodies
+/// still re-record the widget (`Block::new().id(id).show(ui)`) so the
+/// persistent state survives end-of-frame sweeps.
 #[derive(Debug)]
 pub(super) struct AnimUi {
     pub(super) h: UiHarness,
@@ -76,7 +63,7 @@ pub(super) fn setup_anim_ui(salt: &'static str) -> AnimUi {
     let mut h = UiHarness::new(SURFACE);
     let id = wid(salt);
     h.frame(|ui| {
-        Block::new().id(WidgetId::from_hash(salt)).show(ui);
+        Block::new().id(id).show(ui);
     });
     AnimUi { h, id }
 }

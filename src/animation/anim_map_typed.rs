@@ -198,18 +198,44 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
     }
 }
 
-/// Reach-in for `UiHarness::anim_row_count`: the resident row count the
-/// eviction tests assert the sweep drives to zero. `cfg(test)` alone,
-/// because that harness rung is `cfg(test)` too — the benches compile
-/// under `internals` without it.
+/// Reach-ins for the animation tests: the resident row count the
+/// eviction tests assert the sweep drives to zero, and a tick on a fresh
+/// render frame. `cfg(test)` alone, because the harness rung that reads
+/// the count is `cfg(test)` too — the benches compile under `internals`
+/// without it.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::animation::anim_map_typed::AnimMapTyped;
+    use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
+    use crate::animation::anim_slot::AnimSlot;
+    use crate::animation::anim_spec::AnimSpec;
     use crate::animation::animatable::Animatable;
+    use crate::primitives::widget_id::WidgetId;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// A render frame id no earlier call returned, so the multi-pass
+    /// guard never short-circuits a [`AnimMapTyped::step`].
+    fn next_frame() -> u64 {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        COUNTER.fetch_add(1, Ordering::Relaxed) + 1
+    }
 
     impl<T: Animatable> AnimMapTyped<T> {
         pub(crate) fn len(&self) -> usize {
             self.rows.len()
+        }
+
+        /// [`Self::tick`] on a render frame of its own — for a test that
+        /// does not care about pass A/B. A test of the multi-pass guard
+        /// passes its frame ids to `tick` itself.
+        pub(crate) fn step(
+            &mut self,
+            id: WidgetId,
+            slot: AnimSlot,
+            target: T,
+            spec: AnimSpec,
+            dt: f32,
+        ) -> TickResult<T> {
+            self.tick(id, slot, target, spec, dt, next_frame())
         }
     }
 }

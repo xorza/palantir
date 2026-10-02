@@ -120,4 +120,17 @@ impl AnimMap {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use crate::animation::AnimMap;
+    use crate::animation::animatable::Animatable;
+
+    impl AnimMap {
+        /// Rows resident in the `T` map, zero when it has none.
+        pub(crate) fn row_count<T: Animatable>(&mut self) -> usize {
+            self.try_typed_mut::<T>().map_or(0, |rows| rows.len())
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

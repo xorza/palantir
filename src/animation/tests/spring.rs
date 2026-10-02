@@ -6,7 +6,7 @@ use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::{AnimMotion, AnimSpec};
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{
-    SLOT, closed_form_settle_step, duration_motion, next_frame, spring_velocity, wid,
+    SLOT, closed_form_settle_step, duration_motion, spring_velocity, wid,
 };
 use crate::animation::*;
 use crate::common::time::ANIM_SUBSTEP_DT;
@@ -47,10 +47,10 @@ fn validated_springs_remain_finite_and_settle() {
         );
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid(label);
-        let _ = map.tick(id, SLOT, 400.0, spec, dts[0], next_frame());
+        let _ = map.step(id, SLOT, 400.0, spec, dts[0]);
         let mut settled_at = None;
         for i in 0..4_000 {
-            let result = map.tick(id, SLOT, -100.0, spec, dts[i % dts.len()], next_frame());
+            let result = map.step(id, SLOT, -100.0, spec, dts[i % dts.len()]);
             let row = &map.rows[&(id, SLOT)];
             let velocity = *spring_velocity(row);
             assert!(
@@ -189,17 +189,15 @@ fn spring_parameters_change_trajectory() {
     let mut custom_map = AnimMapTyped::<f32>::default();
     let id = wid("spring-parameters");
     let custom = AnimSpec::spring(100.0, 15.0);
-    let _ = default_map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
-    let _ = custom_map.tick(id, SLOT, 0.0, custom, 0.016, next_frame());
+    let _ = default_map.step(id, SLOT, 0.0, AnimSpec::SPRING, 0.016);
+    let _ = custom_map.step(id, SLOT, 0.0, custom, 0.016);
     // The change's frame starts from rest and moves neither.
-    let _ = default_map.tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
-    let _ = custom_map.tick(id, SLOT, 1.0, custom, 0.016, next_frame());
+    let _ = default_map.step(id, SLOT, 1.0, AnimSpec::SPRING, 0.016);
+    let _ = custom_map.step(id, SLOT, 1.0, custom, 0.016);
     let default = default_map
-        .tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame())
+        .step(id, SLOT, 1.0, AnimSpec::SPRING, 0.016)
         .current;
-    let custom = custom_map
-        .tick(id, SLOT, 1.0, custom, 0.016, next_frame())
-        .current;
+    let custom = custom_map.step(id, SLOT, 1.0, custom, 0.016).current;
     assert_ne!(default, custom);
 }
 
@@ -214,12 +212,12 @@ fn spring_parameters_change_trajectory() {
 fn spring_step_at_max_dt_stays_bounded() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("a");
-    let _ = map.tick(id, SLOT, 400.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id, SLOT, 400.0, AnimSpec::SPRING, 0.016);
     // From rest, the change's frame steps nothing; the next one spends
     // the whole clamp.
-    let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1, next_frame());
+    let r = map.step(id, SLOT, 80.0, AnimSpec::SPRING, 0.1);
     assert_eq!(r.current, 400.0);
-    let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1, next_frame());
+    let r = map.step(id, SLOT, 80.0, AnimSpec::SPRING, 0.1);
     // Closed form, released from rest 320 px out: `(170, 26)` has h = 13
     // and ω = 1, so `80 + 320·e^(-1.3)(cos 0.1 + 13 sin 0.1)` ≈ 279.96,
     // inside [80, 400].
@@ -309,28 +307,28 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     // Aligned: moving toward 1.0, retarget further along the same
     // direction (2.0). Velocity should survive — that's the fling.
     let id_aligned = wid("aligned");
-    let _ = map.tick(id_aligned, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id_aligned, SLOT, 0.0, AnimSpec::SPRING, 0.016);
     for _ in 0..3 {
-        let _ = map.tick(id_aligned, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
+        let _ = map.step(id_aligned, SLOT, 1.0, AnimSpec::SPRING, 0.016);
     }
     let v_before = *spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert!(v_before > 0.0, "precondition: moving toward 1.0");
-    let _ = map.tick(id_aligned, SLOT, 2.0, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = map.step(id_aligned, SLOT, 2.0, AnimSpec::SPRING, 0.0);
     let v_after = *spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert_eq!(v_after, v_before, "aligned retarget must preserve velocity");
 
     // Opposed: moving toward 1.0, retarget backward to -1.0. Velocity
     // points away from the new target — zero it.
     let id_opposed = wid("opposed");
-    let _ = map.tick(id_opposed, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id_opposed, SLOT, 0.0, AnimSpec::SPRING, 0.016);
     for _ in 0..3 {
-        let _ = map.tick(id_opposed, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
+        let _ = map.step(id_opposed, SLOT, 1.0, AnimSpec::SPRING, 0.016);
     }
     assert!(
         *spring_velocity(&map.rows[&(id_opposed, SLOT)]) > 0.0,
         "precondition: moving toward 1.0"
     );
-    let _ = map.tick(id_opposed, SLOT, -1.0, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = map.step(id_opposed, SLOT, -1.0, AnimSpec::SPRING, 0.0);
     assert_eq!(
         *spring_velocity(&map.rows[&(id_opposed, SLOT)]),
         0.0,
@@ -353,24 +351,10 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
 fn a_spring_at_the_substep_settles_on_its_target() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("substep");
-    let _ = map.tick(
-        id,
-        SLOT,
-        80.0,
-        AnimSpec::SPRING,
-        ANIM_SUBSTEP_DT,
-        next_frame(),
-    );
+    let _ = map.step(id, SLOT, 80.0, AnimSpec::SPRING, ANIM_SUBSTEP_DT);
     let mut settled_at = None;
     for step in 0..600 {
-        let r = map.tick(
-            id,
-            SLOT,
-            400.0,
-            AnimSpec::SPRING,
-            ANIM_SUBSTEP_DT,
-            next_frame(),
-        );
+        let r = map.step(id, SLOT, 400.0, AnimSpec::SPRING, ANIM_SUBSTEP_DT);
         if r.settled {
             assert_eq!(r.current, 400.0);
             settled_at = Some(step);
@@ -386,11 +370,11 @@ fn color_spring_converges_to_target() {
     let id = wid("a");
     let start = RgbaF32::srgb(0.0, 0.0, 0.0);
     let target = RgbaF32::srgb(1.0, 0.5, 0.25);
-    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id, SLOT, start, AnimSpec::SPRING, 0.016);
     let mut last = start;
     let mut settled_at = None;
     for i in 0..600 {
-        let r = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.016, next_frame());
+        let r = map.step(id, SLOT, target, AnimSpec::SPRING, 0.016);
         last = r.current;
         if r.settled {
             settled_at = Some(i);
@@ -416,33 +400,18 @@ fn solid_brush_spring_matches_color_trajectory() {
     let brush_id = wid("solid-brush-trajectory");
     let start = RgbaF32::srgba(0.1, 0.2, 0.3, 0.4);
     let target = RgbaF32::srgba(0.9, 0.7, 0.5, 0.8);
-    let _ = color_map.tick(color_id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
-    let _ = brush_map.tick(
-        brush_id,
-        SLOT,
-        Brush::Solid(start),
-        AnimSpec::SPRING,
-        0.0,
-        next_frame(),
-    );
+    let _ = color_map.step(color_id, SLOT, start, AnimSpec::SPRING, 0.0);
+    let _ = brush_map.step(brush_id, SLOT, Brush::Solid(start), AnimSpec::SPRING, 0.0);
 
     let mut settled_at = None;
     for i in 0..600 {
-        let color = color_map.tick(
-            color_id,
-            SLOT,
-            target,
-            AnimSpec::SPRING,
-            0.016,
-            next_frame(),
-        );
-        let brush = brush_map.tick(
+        let color = color_map.step(color_id, SLOT, target, AnimSpec::SPRING, 0.016);
+        let brush = brush_map.step(
             brush_id,
             SLOT,
             Brush::Solid(target),
             AnimSpec::SPRING,
             0.016,
-            next_frame(),
         );
         assert_eq!(brush.current.as_solid(), Some(color.current));
         assert_eq!(brush.settled, color.settled);

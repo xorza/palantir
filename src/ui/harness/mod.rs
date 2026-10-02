@@ -1073,10 +1073,7 @@ mod unit {
         }
 
         pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
-            self.ui
-                .anim
-                .try_typed_mut::<T>()
-                .map_or(0, |rows| rows.len())
+            self.ui.anim.row_count::<T>()
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {
