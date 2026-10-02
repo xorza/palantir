@@ -801,8 +801,7 @@ output, cost, cleanup.
 
 ## Phase 9. Worst-case cost (D13)
 
-- [ ] Occlusion and higher-kind tile grid; damage per-row union.
-- [ ] GPU view epoch; icon prewarm budget; single-quad cache; per-frame asserts; lazy probe.
+- [ ] Icon prewarm, shelved: see D13 for what a budget on the lazy path needs first.
 
 ## Phase 10. Cleanup (D15 rest, D17)
 
