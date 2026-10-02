@@ -101,11 +101,9 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
 }
 
 /// **Pin (the darkroom canvas node case):** a Hug-sized VStack
-/// positioned inside a Fill canvas hugs to its content, even when its
-/// internal layout uses Fill rows and Fill columns. Companion to
-/// `fill_propagation::hug_node_in_canvas_with_fill_row_does_not_balloon`
-/// — that test asserts the Hug node doesn't balloon; this one extends
-/// to checking the children arrange correctly inside the hugged width.
+/// positioned inside a Fill canvas hugs to its content rather than
+/// ballooning to the surface, even when its internal layout uses a Fill
+/// row — and that row arranges to the hugged width.
 #[test]
 fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let surface = UVec2::new(1600, 800);

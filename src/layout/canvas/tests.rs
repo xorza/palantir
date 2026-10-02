@@ -70,7 +70,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 /// `Damage::Full` flicker on every drag-the-node-past-the-edge tick
 /// (the darkroom graph-view bug). Hug canvas behavior is unchanged
 /// (verified by `canvas_places_child_at_position_within_inner_rect` and
-/// `canvas_two_children_take_bbox_max_position_plus_size`).
+/// `canvas_hugs_to_bounding_box_of_placed_children`).
 #[test]
 fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
     let mut h = UiHarness::new(UVec2::new(200, 200));

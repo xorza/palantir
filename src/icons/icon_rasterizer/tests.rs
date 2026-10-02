@@ -17,7 +17,7 @@ const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8
 /// the colour path's fixture.
 const HALF: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#ff0000"/><rect x="4" width="4" height="8" fill="#0000ff" fill-opacity="0.5"/></svg>"##;
 
-/// The three fixtures as a set. `leak_from_svgs` derives each one's
+/// The two fixtures as a set. `IconTable::from_svgs` derives each one's
 /// viewBox and tintability by parsing it, which is also what makes the
 /// ids below the *name-sorted* order rather than the listed one.
 fn fixtures() -> IconTable {
@@ -132,7 +132,7 @@ fn colour_icon_rasterizes_to_straight_srgb_rgba() {
     );
 }
 
-/// `leak_from_svgs` drops a source that will not parse, so reaching this
+/// `IconTable::from_svgs` drops a source that will not parse, so reaching this
 /// path takes a hand-built set — which a baked one effectively is. The
 /// rasterizer still has to fail *once* rather than once per frame.
 #[test]
