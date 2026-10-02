@@ -532,3 +532,33 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
         assert_eq!(reached, Vec2::splat(edge), "panned by {pan:?}");
     }
 }
+
+/// `zoomable_with` carries its range to the zoom: one 0.25× pinch lands
+/// at 0.25 under the default 0.1..=10 range, and clamps to the floor of a
+/// 0.5..=2 one.
+#[test]
+fn zoomable_with_clamps_to_its_own_range() {
+    let id = WidgetId::from_hash("ranged");
+    for (config, want) in [
+        (ZoomConfig::default(), 0.25),
+        (ZoomConfig::new(0.5..=2.0, 1.25), 0.5),
+    ] {
+        let mut h = UiHarness::new(SURFACE);
+        let build = |ui: &mut Ui| {
+            Scroll::both()
+                .id(id)
+                .zoomable_with(config.clone())
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("ranged-content"))
+                        .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                        .show(ui);
+                });
+        };
+        h.frame(build);
+        h.pinch_at(Vec2::new(50.0, 50.0), 0.25);
+        h.frame(build);
+        assert_eq!(h.state::<ScrollState>(id).zoom, want);
+    }
+}

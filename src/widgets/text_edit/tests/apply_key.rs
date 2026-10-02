@@ -281,6 +281,47 @@ fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>)
     apply_editor_key(&mut Editor::new(s, state, false, max), press(Key::Char(c)));
 }
 
+/// The cap reaches the widget, not only the editor: through `show`,
+/// typed keys stop at `max_chars`, and a paste is truncated to what
+/// fits — "ab" capped at 5 takes "cd" typed, then one char of "xyz".
+#[test]
+fn max_chars_caps_typing_and_paste_through_show() {
+    let id = WidgetId::from_hash("capped");
+    let record = |ui: &mut Ui, buf: &mut String| {
+        TextEdit::new(buf)
+            .id(id)
+            .max_chars(5)
+            .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+            .show(ui);
+    };
+    let mut h = ui_at_no_cosmic(SMALL);
+    let mut buf = String::from("ab");
+    h.frame(|ui| record(ui, &mut buf));
+    h.click_on(id);
+    h.frame(|ui| record(ui, &mut buf));
+    h.ui.state_or_default::<TextEditState>(id).edit.caret = 2;
+
+    for c in ['c', 'd'] {
+        h.key(Key::Char(c));
+        h.frame(|ui| record(ui, &mut buf));
+    }
+    assert_eq!(buf, "abcd", "typing below the cap lands");
+
+    h.set_clipboard_text("xyz");
+    h.set_modifiers(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    });
+    h.key(Key::Char('v'));
+    h.frame(|ui| record(ui, &mut buf));
+    assert_eq!(buf, "abcdx", "the paste is cut to the one char that fits");
+
+    h.set_modifiers(Modifiers::NONE);
+    h.key(Key::Char('q'));
+    h.frame(|ui| record(ui, &mut buf));
+    assert_eq!(buf, "abcdx", "at the cap a typed key is dropped");
+}
+
 #[test]
 fn max_chars_caps_typed_input() {
     // Cap at 3: the first three land, the fourth is dropped.

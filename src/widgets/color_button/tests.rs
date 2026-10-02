@@ -54,6 +54,38 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
 }
 
+/// The panel's picker shows its swatch row by default — a chip has no
+/// room for a preset row of its own — and `history(false)` hides it.
+#[test]
+fn history_reaches_the_picker_in_the_panel() {
+    let id = WidgetId::from_hash("color-button-history");
+    for (history, shown) in [(None, true), (Some(false), false)] {
+        let mut h = harness();
+        let mut color = RgbaF32::hex(0x4cd3ff);
+        let mut frame = |h: &mut UiHarness| {
+            h.frame(|ui| {
+                let chip = ColorButton::new(&mut color).id(id);
+                match history {
+                    Some(on) => chip.history(on),
+                    None => chip,
+                }
+                .show(ui);
+            });
+        };
+        frame(&mut h);
+        click_chip(&mut h, &mut frame);
+        assert!(
+            h.rect(id.with("panel")).is_some(),
+            "premise: the panel opened"
+        );
+        assert_eq!(
+            h.node_of(id.with("picker").with("swatches")).is_some(),
+            shown,
+            "history {history:?}",
+        );
+    }
+}
+
 /// Opening the panel does not touch the colour. Only a gesture inside it
 /// does.
 #[test]

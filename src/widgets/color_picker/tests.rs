@@ -244,6 +244,33 @@ fn the_readouts_and_channel_edits_start_from_the_bound_colour() {
     assert_eq!((got.g, got.b), (0, 255), "G and B kept: {got:?}");
 }
 
+/// The swatch row shows only on request: hidden by default, the sixteen
+/// presets (twelve hues and four neutrals) under `history(true)`, and
+/// hidden again when a later `history(false)` takes it back.
+#[test]
+fn history_shows_the_preset_row_only_when_asked() {
+    let id = WidgetId::from_hash("picker-history");
+    for (label, history, swatches) in [
+        ("default", None, None),
+        ("on", Some(&[true][..]), Some(16)),
+        ("on then off", Some(&[true, false][..]), None),
+    ] {
+        let mut h = harness();
+        let mut color = RgbaF32::hex(0x4cd3ff);
+        h.frame(|ui| {
+            let mut picker = ColorPicker::new(&mut color).id(id);
+            for &on in history.unwrap_or_default() {
+                picker = picker.history(on);
+            }
+            picker.show(ui);
+        });
+        let row = h
+            .node_of(id.with("swatches"))
+            .map(|row| h.ui.tree(row.layer).children(row.node).count());
+        assert_eq!(row, swatches, "{label}");
+    }
+}
+
 /// Keyboard nudges commit, but the history keeps only picks: a click on
 /// the field puts its colour at the front, and sixteen arrow presses
 /// after it — each a commit — leave the row as it was, where each used to

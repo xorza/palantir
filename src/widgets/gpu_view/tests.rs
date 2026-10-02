@@ -58,6 +58,34 @@ fn records_one_gpu_view_shape_at_committed_size() {
     assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
 }
 
+/// `repaint(false)` keeps the epoch the view last painted at, so the
+/// backend skips it, where the default re-stamps it with every frame's
+/// render id. The first frame paints either way: the target is new.
+#[test]
+fn repaint_false_holds_the_epoch_of_the_last_paint() {
+    let paint = scene();
+    for (repaint, want_second) in [(true, 2), (false, 1)] {
+        let mut h = UiHarness::new(UVec2::new(200, 120));
+        let mut epochs = Vec::new();
+        for _ in 0..2 {
+            let node = h.frame_value(|ui| GpuView::new(&paint).repaint(repaint).show(ui).node());
+            let epoch =
+                h.ui.tree(Layer::Main)
+                    .shapes_of(node)
+                    .find_map(|shape| match shape {
+                        ShapeRecord::Image {
+                            source: ImageSource::GpuView { epoch },
+                            ..
+                        } => Some(*epoch),
+                        _ => None,
+                    })
+                    .expect("the view records its shape");
+            epochs.push(epoch);
+        }
+        assert_eq!(epochs, [1, want_second], "repaint {repaint}");
+    }
+}
+
 /// Default sizing fills the parent — a viewport has no intrinsic size.
 #[test]
 fn default_fills_parent() {
