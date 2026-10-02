@@ -1,4 +1,6 @@
+use crate::primitives::size::Size;
 use crate::ui::harness::UiHarness;
+use crate::widgets::size_trio::SizeTrio;
 use std::f32::consts::TAU;
 
 use crate::layout::types::sizing::Sizing;
@@ -174,35 +176,24 @@ fn comet_fades_tail_to_head() {
     assert_eq!(base.tinted(tail.color()), base.with_alpha(0.0));
 }
 
+/// The layout size and the drawn diameter are separate: an explicit size
+/// or `HUG` replaces the box, and an untouched spinner is the diameter
+/// square.
 #[test]
 fn explicit_layout_size_is_independent_from_diameter() {
-    let mut h = UiHarness::new(UVec2::new(200, 120));
-    let (mut sized, mut hug, mut default) = (None, None, None);
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            sized = Some(
-                Spinner::new()
-                    .diameter(12.0)
-                    .size((Sizing::fixed(30.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .node(),
-            );
-            hug = Some(
-                Spinner::new()
-                    .diameter(12.0)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui)
-                    .node(),
-            );
-            default = Some(Spinner::new().diameter(12.0).show(ui).node());
-        });
+    let trio = SizeTrio::of((Sizing::fixed(30.0), Sizing::fixed(40.0)), |ui, size| {
+        let mut spinner = Spinner::new().diameter(12.0);
+        if let Some(size) = size {
+            spinner = spinner.size(size);
+        }
+        spinner.show(ui).node()
     });
-
-    let rects = &h.ui.layout(Layer::Main).rect;
-    let sized = rects[sized.unwrap().idx()];
-    let hug = rects[hug.unwrap().idx()];
-    let default = rects[default.unwrap().idx()];
-    assert_eq!((sized.size.w, sized.size.h), (30.0, 40.0));
-    assert_eq!((hug.size.w, hug.size.h), (0.0, 0.0));
-    assert_eq!((default.size.w, default.size.h), (12.0, 12.0));
+    assert_eq!(
+        trio,
+        SizeTrio {
+            sized: Size::new(30.0, 40.0),
+            hug: Size::ZERO,
+            default: Size::new(12.0, 12.0),
+        }
+    );
 }

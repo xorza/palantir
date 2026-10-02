@@ -9,7 +9,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::{DragValue, DragValueState};
@@ -26,35 +25,28 @@ fn editing_a_long_value_holds_the_field_width() {
     // condition where the width-cap matters. The chip shows "1.985"; the
     // editor seeds the full-precision value on entry and must scroll it
     // inside the chip's width rather than grow the row.
-    let render = |ui: &mut Ui, v: &mut f64| -> NodeId {
-        let mut node = None;
+    let render = |ui: &mut Ui, v: &mut f64| {
         Panel::hstack()
             .id(WidgetId::from_hash("dv-row"))
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                node = Some(
-                    DragValue::new(v)
-                        .editable(true)
-                        .decimals(3)
-                        .size((Sizing::fill(1.0), Sizing::HUG))
-                        .min_size((40.0, 0.0))
-                        .id(id)
-                        .show(ui)
-                        .response
-                        .node(),
-                );
+                DragValue::new(v)
+                    .editable(true)
+                    .decimals(3)
+                    .size((Sizing::fill(1.0), Sizing::HUG))
+                    .min_size((40.0, 0.0))
+                    .id(id)
+                    .show(ui);
             });
-        node.unwrap()
     };
 
     let mut h = UiHarness::new(surface);
-    let mut node = None;
-    h.frame(|ui| node = Some(render(ui, &mut v)));
+    h.frame(|ui| render(ui, &mut v));
     let display_w = h.arranged(id).size.w;
 
     // Enter edit mode; entry seeds the full-precision text.
     h.set_focus(id);
-    h.frame(|ui| node = Some(render(ui, &mut v)));
+    h.frame(|ui| render(ui, &mut v));
     let edit_w = h.arranged(id).size.w;
 
     // "1.985": five 8 px mono chars, 2 × 12 padding, 2 × 1 border — above

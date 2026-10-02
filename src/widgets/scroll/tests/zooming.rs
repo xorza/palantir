@@ -9,7 +9,9 @@ use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
-use crate::widgets::scroll::tests::support::{SURFACE, build, read_state, zoom_driven};
+use crate::widgets::scroll::tests::support::{
+    SURFACE, build, fixed_block, read_state, zoom_driven,
+};
 use crate::widgets::scroll::zoom_config::ZoomConfig;
 use glam::{UVec2, Vec2};
 
@@ -28,10 +30,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
                     .id(inner_id)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
                     });
             });
     };
@@ -123,10 +122,12 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("content"))
-                                .size((Sizing::fixed(content_size), Sizing::fixed(content_size)))
-                                .show(ui);
+                            fixed_block(
+                                ui,
+                                WidgetId::from_hash("content"),
+                                content_size,
+                                content_size,
+                            )
                         });
                 });
         };
@@ -219,10 +220,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
                     });
             });
     };
@@ -263,10 +261,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
             .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("content"))
-                    .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-                    .show(ui);
+                fixed_block(ui, WidgetId::from_hash("content"), 100.0, 100.0)
             });
     };
     h.frame(build);
@@ -303,10 +298,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0)
                     });
             });
     };
@@ -354,10 +346,7 @@ fn wheel_zoom_step_is_font_independent() {
                         .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("content"))
-                                .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                                .show(ui);
+                            fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0)
                         });
                 });
         };
@@ -501,12 +490,7 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
             .pan_by(pan)
             .padding(10.0)
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(content_id)
-                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                    .show(ui);
-            });
+            .show(ui, |ui| fixed_block(ui, content_id, 400.0, 400.0));
     };
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
@@ -550,10 +534,7 @@ fn zoomable_with_clamps_to_its_own_range() {
                 .zoomable_with(config.clone())
                 .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .show(ui, |ui| {
-                    Block::new()
-                        .id(WidgetId::from_hash("ranged-content"))
-                        .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-                        .show(ui);
+                    fixed_block(ui, WidgetId::from_hash("ranged-content"), 100.0, 100.0)
                 });
         };
         h.frame(build);

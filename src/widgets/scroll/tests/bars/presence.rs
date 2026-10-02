@@ -14,7 +14,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::bars::support::{record_two_frames, theme, thumb_rects};
-use crate::widgets::scroll::tests::support::scroll_viewport;
+use crate::widgets::scroll::tests::support::{fixed_block, scroll_viewport};
 use glam::UVec2;
 use glam::Vec2;
 
@@ -30,10 +30,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
             .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("hidden-content"))
-                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                    .show(ui);
+                fixed_block(ui, WidgetId::from_hash("hidden-content"), 400.0, 400.0)
             });
     };
 
@@ -79,10 +76,7 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     });
@@ -169,10 +163,7 @@ fn no_bar_when_content_fits_viewport() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("short"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("short"), 180.0, 50.0)
                     });
             });
     });
@@ -192,10 +183,7 @@ fn both_axes_overflow_emits_two_thumbs() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 800.0, 800.0)
                     });
             });
     });
@@ -218,10 +206,7 @@ fn both_axes_bars_dont_overlap_at_corner() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 800.0, 800.0)
                     });
             });
     });

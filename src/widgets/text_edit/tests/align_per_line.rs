@@ -258,10 +258,10 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     use crate::scene::layer::Layer;
     let mut h = cosmic_ui();
     let mut buf = String::from("hi\nyo");
-    let mut node = None;
     let mut record = |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            node = Some(
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("fits-ml"))
                     .multiline(true)
@@ -269,17 +269,18 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
                     .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     };
     // Two frames — first warms up `response.rect`, second is the
     // one we inspect.
-    h.prime(2, &mut record);
+    h.frame_value(&mut record);
+    let node = h.frame_value(&mut record);
     // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
     // on the node; a multi-line field emits a single text shape, and
     // records it on the block child that carries its alignment.
-    let node = block_of(&h.ui, node.unwrap());
+    let node = block_of(&h.ui, node);
     let main = h.ui.layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
@@ -363,10 +364,10 @@ fn placeholder_per_line_aligns_under_wrap() {
     use crate::scene::shapes::record::ShapeRecord;
     let mut h = cosmic_ui();
     let mut buf = String::new();
-    let mut node = None;
     let mut record = |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            node = Some(
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ph-ml"))
                     .multiline(true)
@@ -375,12 +376,12 @@ fn placeholder_per_line_aligns_under_wrap() {
                     .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     };
-    h.prime(2, &mut record);
-    let node = node.unwrap();
+    h.frame_value(&mut record);
+    let node = h.frame_value(&mut record);
     // (a) `Shape::Text.align` reflects the user's text_align.
     let store = h.ui.record_store();
     let interned_text = store.interned_text();

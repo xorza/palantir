@@ -17,6 +17,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
+use crate::widgets::scroll::tests::support::fixed_block;
 use glam::UVec2;
 use glam::Vec2;
 
@@ -292,10 +293,7 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     };
@@ -343,10 +341,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 400.0, 400.0)
                     });
             });
     };

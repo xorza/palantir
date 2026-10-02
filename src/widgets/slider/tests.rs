@@ -1,12 +1,13 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::ui::harness::passes::Passes;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
+use crate::widgets::size_trio::SizeTrio;
 use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
 use crate::widgets::value_response::test_support::ValueEdges;
 use glam::{UVec2, Vec2};
@@ -126,39 +127,26 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
 
 /// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
 /// default, and an untouched slider still gets that default
-/// (400-wide FILL column → 400 × knob_size 18).
+/// (400-wide FILL column → 400 × knob_size 18). Hugged, the slider is
+/// the knob alone.
 #[test]
 fn explicit_size_overrides_fill_default() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
     let mut v = 0.5_f64;
-    let (mut sized, mut hug, mut default) = (None, None, None);
-    h.frame(|ui| {
-        let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
-        col.show(ui, |ui| {
-            sized = Some(
-                Slider::new(&mut v, 0.0..=1.0)
-                    .size((Sizing::fixed(120.0), Sizing::fixed(30.0)))
-                    .show(ui)
-                    .response
-                    .node(),
-            );
-            hug = Some(
-                Slider::new(&mut v, 0.0..=1.0)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui)
-                    .response
-                    .node(),
-            );
-            default = Some(Slider::new(&mut v, 0.0..=1.0).show(ui).response.node());
-        });
+    let trio = SizeTrio::of((Sizing::fixed(120.0), Sizing::fixed(30.0)), |ui, size| {
+        let mut slider = Slider::new(&mut v, 0.0..=1.0);
+        if let Some(size) = size {
+            slider = slider.size(size);
+        }
+        slider.show(ui).response.node()
     });
-    let rects = &h.ui.layout(Layer::Main).rect;
-    let s = rects[sized.unwrap().idx()];
-    assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
-    let h = rects[hug.unwrap().idx()];
-    assert_eq!((h.size.w, h.size.h), (18.0, 18.0), "explicit hug");
-    let d = rects[default.unwrap().idx()];
-    assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
+    assert_eq!(
+        trio,
+        SizeTrio {
+            sized: Size::new(120.0, 30.0),
+            hug: Size::new(18.0, 18.0),
+            default: Size::new(400.0, 18.0),
+        }
+    );
 }
 
 /// Each endpoint collapses one track segment to a zero-extent `Fixed`, and an
