@@ -1,10 +1,11 @@
 //! Mesh and image batches: ordering within a group, and dropping with it.
 
 use crate::gpu::schedule::MaskPlan;
-use crate::gpu::tests::support::{DrawOp, buf_with, buf_with_image_anchors, collect, simplify};
+use crate::gpu::tests::support::{
+    DrawOp, buf_with, buf_with_tier_anchors, collect, group, plain_steps, simplify,
+};
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -14,23 +15,22 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 /// adjacent mesh groups → two emit steps, in order.
 #[test]
 fn mesh_batches_emit_per_group_in_order() {
-    let buf = buf_with_mesh_anchors(
+    let buf = buf_with_tier_anchors(
         vec![
             DrawGroup {
                 scissor: None,
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
             DrawGroup {
                 scissor: None,
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
         ],
+        PaintTier::Mesh,
         &[0, 1],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
+        simplify(&buf, &plain_steps(&buf)),
         vec![DrawOp::Meshes(0), DrawOp::Meshes(1)],
     );
 }
@@ -42,19 +42,18 @@ fn mesh_batches_emit_per_group_in_order() {
 /// its own batch.
 #[test]
 fn mesh_batch_in_damage_skipped_group_drops_silently() {
-    let buf = buf_with_mesh_anchors(
+    let buf = buf_with_tier_anchors(
         vec![
             DrawGroup {
                 scissor: Some(URect::new(0, 0, 50, 100)),
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
             DrawGroup {
                 scissor: Some(URect::new(50, 0, 50, 100)),
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
         ],
+        PaintTier::Mesh,
         &[0, 1],
     );
     let damage = Some(URect::new(50, 0, 50, 100));
@@ -70,23 +69,22 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
 /// cursor wires through both stencil and non-stencil paths.
 #[test]
 fn image_batch_emits_after_group_quads_in_non_stencil_path() {
-    let buf = buf_with_image_anchors(
+    let buf = buf_with_tier_anchors(
         vec![
             DrawGroup {
                 scissor: None,
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
             DrawGroup {
                 scissor: None,
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
         ],
+        PaintTier::Image,
         &[0, 1],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
+        simplify(&buf, &plain_steps(&buf)),
         vec![DrawOp::Images(0), DrawOp::Images(1)],
     );
 }
@@ -94,19 +92,18 @@ fn image_batch_emits_after_group_quads_in_non_stencil_path() {
 /// Pin: image batch in a damage-skipped group is silently dropped.
 #[test]
 fn image_batch_in_damage_skipped_group_drops_silently() {
-    let buf = buf_with_image_anchors(
+    let buf = buf_with_tier_anchors(
         vec![
             DrawGroup {
                 scissor: Some(URect::new(0, 0, 50, 100)),
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
             DrawGroup {
                 scissor: Some(URect::new(50, 0, 50, 100)),
-                rounded_clips: Span::default(),
-                quads: Span::default(),
+                ..group(Span::default())
             },
         ],
+        PaintTier::Image,
         &[0, 1],
     );
     let damage = Some(URect::new(50, 0, 50, 100));
@@ -134,8 +131,7 @@ fn image_batch_in_damage_skipped_group_drops_silently() {
 fn higher_kind_replay_follows_paint_tier_order() {
     let mut buf = buf_with(vec![DrawGroup {
         scissor: None,
-        rounded_clips: Span::default(),
-        quads: Span::default(),
+        ..group(Span::default())
     }]);
     // One batch of every tier anchored in the single group, so the emit
     // sequence is entirely the drain order.
@@ -147,7 +143,7 @@ fn higher_kind_replay_follows_paint_tier_order() {
         buf.batches_mut(tier).push(anchored);
     }
 
-    let emitted: Vec<PaintTier> = simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false))
+    let emitted: Vec<PaintTier> = simplify(&buf, &plain_steps(&buf))
         .into_iter()
         .filter_map(|op| match op {
             DrawOp::Meshes(_) => Some(PaintTier::Mesh),
@@ -170,19 +166,4 @@ fn higher_kind_replay_follows_paint_tier_order() {
         "backend replay order must match PaintTier's Ord — the composer's \
          flush arbitration is only sound while the two agree",
     );
-}
-
-/// Adds one mesh-tier batch per entry in `anchors`, each anchored at the
-/// group index listed. Span values are stub indices into a parallel
-/// `meshes.draws` vec — the schedule only reads `last_group`, so the
-/// span content doesn't matter for these tests.
-fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
-    let mut buf = buf_with(groups);
-    for (i, &g) in anchors.iter().enumerate() {
-        buf.batches_mut(PaintTier::Mesh).push(GroupBatch {
-            items: Span::new(i as u32, 1),
-            last_group: g,
-        });
-    }
-    buf
 }

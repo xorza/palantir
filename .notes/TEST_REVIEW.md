@@ -19,42 +19,12 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ---
 
-## 9. Stale text-determinism advice, and tolerances with no reason
-
-- [ ] Animation and primitives: seven settle loops assert only `is_some()` (`duration.rs:196`, `spring.rs:47,334,357,413`, `snap.rs:187`, `ui_animate.rs:55`); FAST at 16 ms settles at `Some(6)`. Also `duration.rs:53,131,172,222`, `ui_animate.rs:105,194`, `spring.rs:216,250`, `primitives/bezier/tests.rs:38` (the comment's 38.5 is wrong; the extremum is `50/√3 ≈ 28.87`), `brush/tests.rs:396-398`, `color/tests.rs:187`, `diagnostics/gpu_pass_stats.rs:192-216`. `ui_animate.rs:83,115` use `assert!(x == 0)`, which hides the value.
-- [ ] Tolerances with no stated reason: 112 inline in widgets with six epsilons, 32 × 0.5 px in layout, 26 hand-written rect checks in the renderer. Add `assert_close(actual, expected, tol, why)` and `assert_rect_near(.., why)` with a mandatory reason, and one `LAYOUT_SNAP_TOLERANCE` only where pixel snap is on. Use `assert_eq!` everywhere else.
-
 ## 10. Two input doors, and input state mirrored outside `InputState`
 
-- [ ] Seven sites write `input_mut().focused =` directly (`keyboard.rs:356`, `input_delta.rs:143,151,185,191,237`, `repainting.rs:602`), plus `popup/tests/dismissal.rs:184,196`. Use `h.set_focus` / `h.clear_focus`, with one named made-up id.
-- [ ] The key-to-text match has 8 copies (`ui/harness/mod.rs:614-617`, `input/key_class.rs:216`, `input/shortcut/tests.rs:11`, `drag_value/tests/edit.rs:283-286`, `text_edit/tests/word_nav.rs:94-97`, `text_edit/tests/mod.rs:88-91,119-122,139-142`), and 17 + 6 full `KeyPress` / `KeyDown` literals. Add a crate-private `KeyText::of_key`, plus test-support `KeyPress::with(key, mods)`. Expose the word-nav modifier set from `text_edit/input_pass.rs:322` so tests cannot drift from it.
-- [ ] 24 raw `state.on_input(ev, &cascade, Duration::ZERO)` calls with 9 throwaway `Cascade::default()` (`keyboard.rs`, `scroll.rs`, `zoom.rs`). Add a test-support `InputState::feed(event)`.
 - [ ] 50 `Modifiers { ctrl: true, ..Modifiers::NONE }` literals. Add `Modifiers::CTRL` / `SHIFT` / `ALT`. **(API)**
-
-## 11. Harness API: hazards, gaps, and dead surface
-
-- [ ] `UiHarness::pointer_pos` and `escape_pressed` (`ui/harness/mod.rs:726,731`) forward to record-time APIs that register wake watches, which contradicts their "no protocol hazard" doc. Neither has a caller. Delete them.
-- [ ] No callers: `hover_within` (`:721`), `right_click_on` (`:527`), the `pixel_snap` builder (`:282`), `try_frame_value`. `collisions` (`:745`) is used only by the harness's own test and returns a tuple vec. The doc's promise that dead tier-1 methods get reported (`:145-154`) cannot hold for `pub` items. Replace it with "prune at zero callers".
-- [ ] `user_scale` has two homes. Production derives it from the setting (`host/window_driver/mod.rs:392`); the harness stamps `self.display` and never reads it. A `ui.set_user_scale` inside a frame has no effect, and `set_display` leaves `Ui::user_scale()` disagreeing. Derive it in `drive` as the driver does.
-- [ ] `UiHarness::cold(s).scale(2.0)` is silently warm: every builder calls `mark_warm`. Re-warm only when already warm. `try_frame_value` keeps the warmup pass's value on a cold harness; skip the warmup.
-- [ ] `advance_frames` returns nothing, so every animation settle loop hand-rolls `now += 16ms; h.at(now)` (`spring.rs:317`, `snap.rs:171`, `ui_animate.rs:41`, `duration.rs`). Add `frames_until_idle(max, dt, record) -> Option<u32>`.
-- [ ] `node_for_widget_id` is Main-only, so 10 tests hand-roll an `id → node` scan (`color_button/tests.rs:99-104`, `modal/tests.rs:32-37`, `tooltip/tests.rs:124-129`, `text_edit/tests/context_menu.rs:38-43`, `context_menu/tests/theming.rs:373-381,413-418`, `drag_value/tests/layout.rs:165-171`, `scroll/tests/bars/support.rs:26-33`, `presence.rs:280-285`, `lifecycle.rs:55-60`, `ui/tests/ids.rs:205-213`) and 4 use magic `roots[i]` (`popup/tests/placement.rs:66,109,154`, `modal/tests.rs:57`). `Cascade::endpoint(id)` already answers this. Add `node_of(id)` and `child_rects(id)` for any layer.
-- [ ] Six ways to read an arranged rect: `ui.arranged_rect` (43), `layout_rect().expect` (24), `main_child_rects` (38), wrapstack's local `rect_of` (39), raw `.rect[idx]` (16 + 19), and `response_for(id).rect`. The last is the visible rect, which the harness doc forbids for layout, yet `cross_driver_tests/arrange_axis.rs:127` and `stretch_semantics.rs` (×10) use it. Promote `rect_of` to `UiHarness::arranged(key) -> Rect` and move the rest to it.
-- [ ] 61 sites smuggle a `NodeId` out of the record closure; 10 of them are never read (`canvas/tests.rs:273`, `fill_propagation.rs:214,276`, `grid/tests/degenerate.rs:18,121`, `grid/tests/hug_grid.rs:16,53,92`, `grid/tests/tracks.rs:418`, `stack/tests.rs:285`). 11 of 29 `under_outer` callers discard its `NodeId`. Make `under_outer` generic over its return, like `frame_value`.
-- [ ] Intrinsic queries take a 5-arg call plus an interning dance at 14 sites (`intrinsic/tests.rs`, `text_wrap/wrapping.rs`, `hug_cols.rs`), and the NaN-fill cache reset is copied 4 times. Add `UiHarness::intrinsic(node, axis, req)` and `LayoutEngine::forget_intrinsics`.
-- [ ] Stale harness doc lines: `:219-221` vs `:151` (lint allows), `:376` "No caller yet" and `:397` "No caller outside this module" (both have callers), `:136-140` "the one knob" (there are two).
-- [ ] Mid-file gates in the harness itself: `:173-176` (cfg'd import at the top) and `:847-860`. Move them to an end-of-file tier module.
 
 ## 12. Renderer and GPU test rigs are hand-rolled per test
 
-- [ ] Composer tests never compose with pixel snapping on, but production does. `composer/tests/support.rs:87-95` `params()` sets `pixel_snap: false` for about 112 calls, and the snap branch of `Rect::scaled_by` (`primitives/rect/mod.rs:407-410`) has no unit test anywhere. Build from `Display::from_physical`, opt out only where needed, and add a snap on/off sweep.
-- [ ] 8 hand-written compose loops (`brushes.rs:44-55,141-150,184-193`, `curves.rs:108-117`, `batching.rs:397-406`, `pruning.rs:564-575,819-844`, `clipping.rs:47-61`); `pruning.rs:570` makes a new `RenderBuffer` each frame, so buffer reuse is never tested. The texture cap is `16_384` twice in `support.rs` against `TEST_MAX_TEXTURE_DIM = 8192`. Add a `ComposeRig`.
-- [ ] 22 hand-built `DrawQuadPayload`, 9 `DrawImagePayload`, 6 gpu-view draws in `brushes.rs`. Add a quad builder and `gpu_view(b, rect, handle)`. Drop the `rect()` and `render_buffer()` aliases.
-- [ ] No-op `GpuPaint` defined 4 times (`composer/tests/support.rs:120-129`, `paint_sink/tests.rs:111-118`, `renderer/gpu_paint/gpu_views.rs:129-138`, `widgets/gpu_view/tests.rs:23`). Add `GpuPaintRef::noop()` in `test_support`.
-- [ ] `gpu/tests`: 51 `DrawGroup` literals, 20 `collect(.., MaskPlan::default(), false)`, `buf_with_mesh_anchors` equals `buf_with_image_anchors`. Add `group()`, `plain_steps()`, `buf_with_tier_anchors()`, and fold `text_batches.rs` into one table.
-- [ ] `gpu/text/tests.rs`: `TestGpu` re-clones `lease.queue`; the 4-line setup is copied 6 times; `make_inner_run` takes 9 args with fixed `viewport` and `scale`; `run_one_frame` takes 6 and handles one batch, so two tests rebuild the submit by hand. Add a `TextRig`. `:682-706` derives its frames from 512 and 120, but the constants are 120 and 30; loop to `unallocated_dies_at(0) + 1`.
-- [ ] `gradient_atlas/tests/support.rs:20-36` `distinct_grad(f32)` is distinct only by hash luck. Take `i: u32` and write its bytes. Add `fill_rows()` for the 10 copied loops; drop `register_for`.
-- [ ] `gpu/bench_gpu.rs:92` still writes the render-target descriptor `HeadlessTestGpuLease::target_with` now owns, and `gpu/text/tests.rs:122` drains with a hand-written `poll(Wait)` where `lease.wait()` exists.
 - [ ] `RasterProgram::new(device)` is rebuilt in 13 GPU tests. One program on the shared device could serve them. (judgement)
 
 ## 13. Slow and environment-dependent tests

@@ -89,3 +89,33 @@ pub(crate) fn extent(size: UVec2) -> wgpu::Extent3d {
         depth_or_array_layers: 1,
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    use crate::gpu::render_target;
+    use glam::UVec2;
+
+    /// A single-sample 2D render target of `size` — the one descriptor the
+    /// test device and the bench device both mint targets from.
+    ///
+    /// `label` shows up in RenderDoc and in wgpu's validation errors, so
+    /// it should name the test or driver, not the shape.
+    pub(crate) fn texture(
+        device: &wgpu::Device,
+        label: &str,
+        size: UVec2,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
+    ) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: render_target::extent(size),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    }
+}

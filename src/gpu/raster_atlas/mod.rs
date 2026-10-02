@@ -838,7 +838,7 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
 /// what the wheel files under. One expression, read by the filing in
 /// [`RasterAtlas::insert_unallocated`] and by the re-file in
 /// [`retire_unallocated`], so the two cannot name different frames.
-const fn unallocated_dies_at(last_use: u64) -> u64 {
+pub(super) const fn unallocated_dies_at(last_use: u64) -> u64 {
     last_use + UNALLOCATED_KEEP_FRAMES + 1
 }
 
