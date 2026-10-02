@@ -427,8 +427,13 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // not baked in as a const: the atlas texture grows when one
         // frame registers more distinct gradients than it holds, and a
         // query keeps this pipeline valid across that resize.
-        let lut_v = (f32(in.lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
-        let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
+        let dims = vec2<f32>(textureDimensions(gradient_tex));
+        let lut_v = (f32(in.lut_row) + 0.5) / dims.y;
+        let c = textureSample(
+            gradient_tex,
+            gradient_sampler,
+            vec2<f32>(lut_u(in.curve_t, dims.x), lut_v),
+        );
         // The stroke colour multiplies the sample, channel by channel —
         // the same rule as a mesh tint, on the straight colours. See
         // `GpuFill::curve`.

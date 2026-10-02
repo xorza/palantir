@@ -113,3 +113,37 @@ fn overflowing_gradient_atlas_matches_golden() {
         Tolerance::default(),
     );
 }
+
+/// The LUT is sampled at texel centres: a ramp parameter `t` reads the
+/// point `t · 255` between texel centres, the inverse of how the bake
+/// placed them.
+///
+/// A hard stop from red to blue at 0.25 is stored at 64/255, so texel 64
+/// is red and texel 65 blue, and the filter blends them over one texel.
+/// Across a 1024 px rect, pixel 258 sits at `t = 258.5 / 1024`, which
+/// reads `255 · t − 64 = 0.373` of the way to blue: red 0.627 and blue
+/// 0.373 linear, sRGB 207 and 163. Sampled at `u = t`, it read
+/// `256 · t − 64.5 = 0.125`: sRGB 240 and 99.
+#[test]
+fn a_gradient_samples_its_lut_at_texel_centres() {
+    use palantir::Stop;
+
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(1024, 16), 1.0, RgbaF32::BLACK, |ui| {
+        Panel::canvas()
+            .id_salt("hard-stop")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 1024.0, 16.0)).fill(
+                    LinearGradient::new(0.0, [Stop::new(0.25, red), Stop::new(0.25, blue)]),
+                ));
+            });
+    });
+    let [r, g, b, _] = img.get_pixel(258, 8).0;
+    assert!(
+        r.abs_diff(207) <= 3 && g == 0 && b.abs_diff(163) <= 3,
+        "pixel 258 is {r}, {g}, {b}; texel centres put it at 207, 0, 163",
+    );
+}

@@ -287,8 +287,9 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
     // Row count is queried, not baked in as a const: the atlas texture
     // grows when one frame registers more distinct gradients than it
     // holds, and a query keeps this pipeline valid across that resize.
-    let v = (f32(in.fill_lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
-    let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
+    let dims = vec2<f32>(textureDimensions(gradient_tex));
+    let v = (f32(in.fill_lut_row) + 0.5) / dims.y;
+    let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(lut_u(t, dims.x), v));
     // Texels are premultiplied, so the filter between two of them is too.
     // `in.fill` multiplies the straight sample, channel by channel. It is
     // white for every gradient, with its alpha scaled by a paint
