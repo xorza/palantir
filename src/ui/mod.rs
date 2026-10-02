@@ -1592,8 +1592,7 @@ pub(crate) mod harness;
 /// the crate regardless.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    #[cfg(test)]
-    use crate::input::input_event::InputEvent;
+
     #[cfg(test)]
     use crate::input::input_state::InputState;
     #[cfg(test)]
@@ -1697,20 +1696,6 @@ pub(crate) mod internals {
         /// reuse key this `Ui` folds it into.
         pub(crate) fn font_epoch(&self) -> u32 {
             self.resources.text().font_epoch()
-        }
-
-        /// Deliver `event` as though it arrived now, for a case that
-        /// drives a bare `Ui` rather than a [`UiHarness`].
-        ///
-        /// [`Self::on_input`] is the host's door and takes the arrival
-        /// time the host read. A test synthesizing an event has no such
-        /// clock, and the frame's own time is the honest answer for
-        /// something that arrives during it.
-        ///
-        /// [`UiHarness`]: crate::ui::harness::UiHarness
-        pub(crate) fn inject_input(&mut self, event: InputEvent) {
-            let now = self.now();
-            self.on_input(event, now);
         }
 
         /// One layer's recorded tree — its `records` columns, `rollups`,

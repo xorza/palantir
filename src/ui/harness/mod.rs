@@ -153,6 +153,7 @@
 //! module — so tier 1 is reachable in every build that compiles it, and
 //! `unreachable_pub` / `dead_code` stay live on all three tiers.
 
+use crate::app::App;
 use crate::app::internals::RecordApp;
 use crate::common::clipboard::Clipboard;
 use crate::common::time::MAX_ANIM_DT;
@@ -181,10 +182,14 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
+use crate::ui::harness::passes::Passes;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
+use strum::EnumCount as _;
+
+pub(crate) mod passes;
 
 /// Surface for [`UiHarness::arena`]. Never framed, so the value only has
 /// to be non-degenerate.
@@ -212,8 +217,18 @@ pub struct UiHarness {
     /// Absolute; each frame stamps with it. Only moves on
     /// [`Self::advance`] / [`Self::at`].
     time: Duration,
-    /// Press origin, solely so `drag_to` can check `DRAG_THRESHOLD`.
-    pressed_at: Option<Vec2>,
+    /// Which buttons this harness has pressed and not released, with the
+    /// pointer position each press landed at. Per button, and written
+    /// only in [`Self::on_input`], so a press fed through the raw door
+    /// counts the same as one fed through a typed helper.
+    held: [Option<PressOrigin>; PointerButton::COUNT],
+}
+
+/// Where a held button went down: `None` when the pointer was off the
+/// surface at the press.
+#[derive(Clone, Copy, Debug)]
+struct PressOrigin {
+    at: Option<Vec2>,
 }
 
 /// Tier 1 — the surface that leaves the crate. See the module doc for
@@ -309,7 +324,34 @@ impl UiHarness {
     /// Run one frame and report what it did. The record closure runs
     /// once, twice, or not at all — see the module doc.
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.drive(true, record)
+        self.frame_app(&mut RecordApp::new(record))
+    }
+
+    /// Run one frame of a whole [`App`] — `update` once, then `record`
+    /// per pass — the way a host drives it.
+    pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport {
+        self.drive(true, app)
+    }
+
+    /// Run one frame and keep what each record pass returned, warmup
+    /// excluded. See [`Passes`] for which pass sees what.
+    pub fn frame_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
+        // A cold recorder runs the input-blind warmup pass first; it is
+        // not one of the passes a caller asks about.
+        let mut warmup = self.ui.frame_runtime.prev_stamp.is_none();
+        let mut values = Vec::new();
+        self.frame(|ui| {
+            // `record` runs on *every* pass — it is the scene, and a pass
+            // that skipped it would record an empty tree and wipe the
+            // cascade the next frame reads.
+            let value = record(ui);
+            if warmup {
+                warmup = false;
+            } else {
+                values.push(value);
+            }
+        });
+        Passes::new(values)
     }
 
     /// The value from the **input-observing** pass — pass A, the one
@@ -325,18 +367,8 @@ impl UiHarness {
 
     /// [`Self::frame_value`] without the `PaintOnly` panic, for callers
     /// deliberately driving paint-anim frames.
-    pub fn try_frame_value<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Option<R> {
-        let mut first = None;
-        self.frame(|ui| {
-            // `record` runs on *every* pass — it is the scene, and a pass
-            // that skipped it would record an empty tree and wipe the
-            // cascade the next frame reads. Only the value is pass A's.
-            let value = record(ui);
-            if first.is_none() {
-                first = Some(value);
-            }
-        });
-        first
+    pub fn try_frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> Option<R> {
+        self.frame_passes(record).into_a()
     }
 
     /// `n` discarded frames. Two is the usual minimum: one to lay out,
@@ -411,19 +443,32 @@ impl UiHarness {
     /// emits exactly one event hands back that event's [`InputDelta`] so
     /// nothing is given up by using it.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+        match event {
+            InputEvent::PointerPressed(button) => {
+                assert!(
+                    self.held[button.idx()].is_none(),
+                    "{button:?} is already held — release it before pressing it again",
+                );
+                self.held[button.idx()] = Some(PressOrigin {
+                    at: self.ui.input.pointer_pos,
+                });
+            }
+            InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
+            _ => {}
+        }
         self.ui.on_input(event, self.time)
     }
 
     /// Returns the move's [`InputDelta`] — `on_input`'s value, so a
     /// repaint-hint assertion has no reason to build the event by hand.
     pub fn move_to(&mut self, pos: Vec2) -> InputDelta {
-        self.ui.on_input(InputEvent::PointerMoved(pos), self.time)
+        self.on_input(InputEvent::PointerMoved(pos))
     }
 
     /// The pointer leaves the surface. Returns the event's
     /// [`InputDelta`], like [`Self::move_to`].
     pub fn pointer_left(&mut self) -> InputDelta {
-        self.ui.on_input(InputEvent::PointerLeft, self.time)
+        self.on_input(InputEvent::PointerLeft)
     }
 
     /// Press wherever the pointer already is — the peer of
@@ -438,9 +483,7 @@ impl UiHarness {
 
     /// [`Self::press`] with the button named.
     pub fn press_button(&mut self, button: PointerButton) -> InputDelta {
-        self.pressed_at = self.ui.input.pointer_pos;
-        self.ui
-            .on_input(InputEvent::PointerPressed(button), self.time)
+        self.on_input(InputEvent::PointerPressed(button))
     }
 
     /// Move to `pos`, then [`Self::press`].
@@ -462,9 +505,7 @@ impl UiHarness {
 
     /// [`Self::release`] with the button named.
     pub fn release_button(&mut self, button: PointerButton) -> InputDelta {
-        self.pressed_at = None;
-        self.ui
-            .on_input(InputEvent::PointerReleased(button), self.time)
+        self.on_input(InputEvent::PointerReleased(button))
     }
 
     /// Press and release the left button at `pos`, in one frame's
@@ -506,15 +547,46 @@ impl UiHarness {
     /// pinch target — which is one of the main reasons to aim at all.
     fn hit_center_of(&self, id: WidgetId) -> Vec2 {
         let center = self.center_of(id);
+        self.assert_reaches(id, center);
+        center
+    }
+
+    fn assert_reaches(&self, id: WidgetId, pos: Vec2) {
         let senses_anything = |sense: Sense| sense != Sense::NONE;
-        let hit = self.ui.cascade.hit_test(center, senses_anything);
+        let hit = self.ui.cascade.hit_test(pos, senses_anything);
         assert_eq!(
             hit,
             Some(id),
-            "{id:?} does not receive the pointer at its own center {center:?} — \
-             {hit:?} is on top there. Aim by position if that is intended.",
+            "{id:?} does not receive the pointer at {pos:?} — {hit:?} is on top there. \
+             Aim by position if that is intended.",
         );
-        center
+    }
+
+    /// The screen position of `local`, a point in `id`'s arranged space
+    /// measured from its layout origin — through every ancestor
+    /// transform, the way a pointer has to reach it. **Checked** like
+    /// [`Self::click_on`]: panics unless the pointer would reach `id`
+    /// there.
+    pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2 {
+        let response = self.ui.response_for(id);
+        let layout = response.layout_rect.unwrap_or_else(|| {
+            panic!("{id:?} has no arranged rect — it did not record, or nothing primed the frame")
+        });
+        let pos = response.transform.apply_point(layout.min + local);
+        self.assert_reaches(id, pos);
+        pos
+    }
+
+    /// Click `id` at [`Self::point_in`]`(id, local)`.
+    pub fn click_in(&mut self, id: WidgetId, local: Vec2) {
+        let pos = self.point_in(id, local);
+        self.click_at(pos);
+    }
+
+    /// Press `id` at [`Self::point_in`]`(id, local)`.
+    pub fn press_in(&mut self, id: WidgetId, local: Vec2) -> InputDelta {
+        let pos = self.point_in(id, local);
+        self.press_at(pos)
     }
 
     /// Click `id` at its center. See `Self::hit_center_of` for what is
@@ -547,8 +619,12 @@ impl UiHarness {
     /// sub-threshold move is [`Self::move_to`].
     pub fn drag_to(&mut self, pos: Vec2) -> InputDelta {
         let origin = self
-            .pressed_at
-            .expect("drag_to needs a press first — no button is down");
+            .held
+            .iter()
+            .find_map(|held| *held)
+            .expect("drag_to needs a press first — no button is down")
+            .at
+            .expect("drag_to needs a press on the surface — the pointer was off it");
         let travel = origin.distance(pos);
         assert!(
             travel >= DRAG_THRESHOLD,
@@ -564,17 +640,17 @@ impl UiHarness {
     /// aimed it — the `_at` peers below are the same events with the aim
     /// inlined. Positive `y` means the content scrolls down.
     pub fn scroll_lines(&mut self, delta: Vec2) -> InputDelta {
-        self.ui.on_input(InputEvent::ScrollLines(delta), self.time)
+        self.on_input(InputEvent::ScrollLines(delta))
     }
 
     /// [`Self::scroll_lines`] in pixels rather than lines.
     pub fn scroll_pixels(&mut self, delta: Vec2) -> InputDelta {
-        self.ui.on_input(InputEvent::ScrollPixels(delta), self.time)
+        self.on_input(InputEvent::ScrollPixels(delta))
     }
 
     /// A pinch-zoom step, aimed like [`Self::scroll_lines`].
     pub fn pinch(&mut self, factor: f32) -> InputDelta {
-        self.ui.on_input(InputEvent::Zoom(factor), self.time)
+        self.on_input(InputEvent::Zoom(factor))
     }
 
     /// Aim, then scroll — the delta returned is the scroll's, not the
@@ -602,22 +678,19 @@ impl UiHarness {
     /// that needs a real physical position builds the event through
     /// [`Self::on_input`].
     pub fn key(&mut self, key: Key) -> InputDelta {
-        self.ui.on_input(
-            InputEvent::KeyDown {
-                key,
-                repeat: false,
-                physical: Key::Other,
-                // What a window reports beside the key: a printable one
-                // carries its character, and a named one carries
-                // nothing. The command gate is the *field's*, not this
-                // one's — a platform reports text under Ctrl too.
-                text: match key {
-                    Key::Char(c) => KeyText::from_char(c),
-                    _ => KeyText::EMPTY,
-                },
+        self.on_input(InputEvent::KeyDown {
+            key,
+            repeat: false,
+            physical: Key::Other,
+            // What a window reports beside the key: a printable one
+            // carries its character, and a named one carries
+            // nothing. The command gate is the *field's*, not this
+            // one's — a platform reports text under Ctrl too.
+            text: match key {
+                Key::Char(c) => KeyText::from_char(c),
+                _ => KeyText::EMPTY,
             },
-            self.time,
-        )
+        })
     }
 
     /// Emits `ModifiersChanged` only when the set actually changes —
@@ -634,8 +707,7 @@ impl UiHarness {
     /// would have cleared it, leaving a chord silently held.
     pub fn set_modifiers(&mut self, mods: Modifiers) {
         if self.ui.input.modifiers != mods {
-            self.ui
-                .on_input(InputEvent::ModifiersChanged(mods), self.time);
+            self.on_input(InputEvent::ModifiersChanged(mods));
         }
     }
 
@@ -775,6 +847,22 @@ impl UiHarness {
             .expect("the memory clipboard is always available");
     }
 
+    /// `id`'s cross-frame state row of type `S`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when no such row exists. Unlike `Ui::state_or_default`, a
+    /// read here never inserts the default it would then assert on, so a
+    /// wrong id or a wrong type fails instead of passing.
+    pub fn state<S: 'static>(&self, id: WidgetId) -> &S {
+        self.ui.state::<S>(id).unwrap_or_else(|| {
+            panic!(
+                "no `{}` row for {id:?} — wrong id, wrong type, or it never recorded",
+                std::any::type_name::<S>(),
+            )
+        })
+    }
+
     /// Escape hatch. Reading `response_for` off this between frames sees
     /// the previous frame's input — prefer [`Self::response_in`].
     pub fn ui(&mut self) -> &mut Ui {
@@ -793,7 +881,7 @@ impl UiHarness {
             ui: Ui::new(resources),
             display: Display::from_physical(surface, 1.0),
             time: Duration::ZERO,
-            pressed_at: None,
+            held: [None; PointerButton::COUNT],
         };
         harness.sync_display();
         harness.mark_warm();
@@ -815,8 +903,7 @@ impl UiHarness {
     /// The one place a frame is actually entered. `Ui::frame` is
     /// `pub(crate)`, so the harness drives it directly rather than
     /// through a test method on `Ui`.
-    fn drive(&mut self, damage_baseline_valid: bool, record: impl FnMut(&mut Ui)) -> FrameReport {
-        let mut app = RecordApp::new(record);
+    fn drive(&mut self, damage_baseline_valid: bool, app: &mut impl App) -> FrameReport {
         self.ui.frame(
             &mut self.engines,
             FrameInput::new(
@@ -824,7 +911,7 @@ impl UiHarness {
                 damage_baseline_valid,
             ),
             WindowToken(0),
-            &mut app,
+            app,
         )
     }
 
@@ -872,6 +959,7 @@ impl UiHarness {
 #[cfg(test)]
 mod unit {
     use crate::animation::animatable::Animatable;
+    use crate::app::internals::RecordApp;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
@@ -910,7 +998,7 @@ mod unit {
             &mut self,
             record: impl FnMut(&mut Ui),
         ) -> FrameReport {
-            self.drive(false, record)
+            self.drive(false, &mut RecordApp::new(record))
         }
 
         /// A `FILL`/`FILL` hstack wrapped around `f`, returning the node

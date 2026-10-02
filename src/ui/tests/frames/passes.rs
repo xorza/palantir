@@ -3,7 +3,6 @@
 
 use crate::Ui;
 use crate::common::time::MAX_ANIM_DT;
-use crate::input::keyboard::key_text::KeyText;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -79,7 +78,7 @@ fn frame_pass_count_matches_action_trigger() {
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::modifiers::Modifiers;
-    use crate::input::pointer::PointerButton;
+
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use glam::Vec2;
@@ -93,70 +92,44 @@ fn frame_pass_count_matches_action_trigger() {
             .show(ui, |_| {});
     }
 
-    type Prime = fn(&mut Ui);
+    type Prime = fn(&mut UiHarness);
     let cases: &[(&str, Prime, usize)] = &[
         ("idle", |_ui| {}, 1),
         (
             "hover only",
-            |ui| {
-                ui.inject_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+            |h| {
+                h.move_to(Vec2::new(10.0, 10.0));
             },
             1,
         ),
         (
             "modifiers only",
-            |ui| {
-                ui.inject_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            |h| {
+                h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
             },
             1,
         ),
-        (
-            "routed click",
-            |ui| {
-                ui.inject_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-                ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
-            },
-            2,
-        ),
-        (
-            "unrouted click",
-            |ui| {
-                ui.inject_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
-                ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
-            },
-            1,
-        ),
+        ("routed click", |h| h.click_at(Vec2::new(10.0, 10.0)), 2),
+        ("unrouted click", |h| h.click_at(Vec2::new(150.0, 150.0)), 1),
         (
             "unrouted keydown",
-            |ui| {
-                ui.inject_input(InputEvent::KeyDown {
-                    key: Key::Enter,
-                    repeat: false,
-                    physical: Key::Other,
-                    text: KeyText::EMPTY,
-                });
+            |h| {
+                h.key(Key::Enter);
             },
             1,
         ),
         (
             "routed keydown",
-            |ui| {
-                ui.set_focus(WidgetId::from_hash("root"));
-                ui.inject_input(InputEvent::KeyDown {
-                    key: Key::Enter,
-                    repeat: false,
-                    physical: Key::Other,
-                    text: KeyText::EMPTY,
-                });
+            |h| {
+                h.set_focus(WidgetId::from_hash("root"));
+                h.key(Key::Enter);
             },
             2,
         ),
         (
             "scroll",
-            |ui| {
-                ui.inject_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+            |h| {
+                h.scroll_pixels(Vec2::new(0.0, 10.0));
             },
             1,
         ),
@@ -167,7 +140,7 @@ fn frame_pass_count_matches_action_trigger() {
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
         h.frame(build_target);
-        prime(&mut h.ui);
+        prime(&mut h);
 
         let count = Cell::new(0u32);
         let render_frame_before = h.ui.frame_runtime.render_frame_id;

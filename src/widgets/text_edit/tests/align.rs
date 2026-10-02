@@ -10,7 +10,6 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
-use crate::input::keyboard::key_text::KeyText;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
@@ -143,20 +142,6 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
         }
     }
     (text_origin, caret_origin)
-}
-
-/// Emit Shift+ArrowRight as the focused widget would see it.
-fn shift_arrow_right(ui: &mut Ui) {
-    ui.inject_input(InputEvent::ModifiersChanged(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    }));
-    ui.inject_input(InputEvent::KeyDown {
-        key: Key::ArrowRight,
-        repeat: false,
-        physical: Key::Other,
-        text: KeyText::EMPTY,
-    });
 }
 
 /// **The first frame an editor exists on aligns like the ones after it.**
@@ -407,8 +392,13 @@ fn selection_rects_offset_matches_text() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click_at(glam::Vec2::new(260.0, 20.0));
     h.key(Key::Home);
-    shift_arrow_right(&mut h.ui);
-    shift_arrow_right(&mut h.ui);
+    h.set_modifiers(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    });
+    h.key(Key::ArrowRight);
+    h.key(Key::ArrowRight);
+    h.set_modifiers(Modifiers::NONE);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
 
     // Selection wash is emitted *before* the text shape; pick the

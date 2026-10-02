@@ -34,7 +34,6 @@ use crate::Spacing;
 use crate::Ui;
 use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
-use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::key_text::KeyText;

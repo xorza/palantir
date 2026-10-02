@@ -1,9 +1,7 @@
 //! Click-to-edit: the draft buffer, and every way it can end.
 
 use crate::Ui;
-use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_text::KeyText;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -32,13 +30,13 @@ fn click_to_edit_types_and_commits_on_enter() {
     assert_eq!(edit_buffer(&mut h.ui, id), "5.0", "seeded on entry");
 
     // First keystroke replaces the select-all'd seed; second appends.
-    key(&mut h.ui, Key::Char('7'));
+    h.key(Key::Char('7'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('2'));
+    h.key(Key::Char('2'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 5.0, "typing is a live draft, not a commit");
 
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(s.committed && s.commits == 1, "Enter commits once");
     assert_eq!(canonical, 72.0);
@@ -56,16 +54,16 @@ fn escape_blur_commits_pending_draft_once() {
 
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('4'));
+    h.key(Key::Char('4'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('2'));
+    h.key(Key::Char('2'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Escape blurs the editor (typing left no selection, so one Escape).
     // The pending draft resolves on the first chip record after the blur —
     // the same frame when it re-records, the next frame otherwise — with
     // exactly one commit either way.
-    key(&mut h.ui, Key::Escape);
+    h.key(Key::Escape);
     let a = deferred_frame(&mut h, id, &mut canonical, true, false);
     let b = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(a.committed || b.committed, "blur commits the draft");
@@ -89,11 +87,11 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     // First session commits 42 and leaves "42" in the buffer state.
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('4'));
+    h.key(Key::Char('4'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('2'));
+    h.key(Key::Char('2'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 42.0);
 
@@ -103,7 +101,7 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(edit_buffer(&mut h.ui, id), "99.0");
 
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 99.0, "no stale-buffer revert to 42");
 }
@@ -140,7 +138,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // + Enter: the draft wins, exactly one commit — the stale scrubbed 30
     // must not overwrite it from the same-frame chip pass.
     *edit_buffer(&mut h.ui, id) = "42".to_string();
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(s.committed && s.commits == 1);
     assert_eq!(canonical, 42.0, "typed value, not the stale scrub");
@@ -183,7 +181,7 @@ fn disabling_mid_edit_discards_the_draft() {
 
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('9'));
+    h.key(Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // The widget is disabled while the user edits: focus is kicked, the
@@ -214,9 +212,9 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
 
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('9'));
-    key(&mut h.ui, Key::Char('9'));
-    key(&mut h.ui, Key::Char('9'));
+    h.key(Key::Char('9'));
+    h.key(Key::Char('9'));
+    h.key(Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Rendered read-only mid-edit: the pending draft is discarded.
@@ -271,20 +269,6 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
         focused_of(&mut h, &mut value),
         "the response must report the focus the click just took",
     );
-}
-
-/// One key press, reported the way a window reports one: a printable
-/// key carries the text it produced, and a named key carries none.
-fn key(ui: &mut Ui, k: Key) {
-    ui.inject_input(InputEvent::KeyDown {
-        key: k,
-        repeat: false,
-        physical: Key::Other,
-        text: match k {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    });
 }
 
 fn edit_buffer(ui: &mut Ui, id: WidgetId) -> &mut String {
