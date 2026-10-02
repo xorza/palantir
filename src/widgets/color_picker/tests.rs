@@ -213,3 +213,86 @@ fn the_style_reaches_the_field_and_the_swatches() {
     assert_ne!(styled.field, plain.field);
     assert_ne!(styled.swatch, plain.swatch);
 }
+
+/// The readouts show the bound colour, not the axes' clamped reading of
+/// it: `#0000ff` seeds Okhsv at s = v = 1, which is `#0037ff`, but the hex
+/// field reads `#0000FF`. And an edit to one channel keeps the others:
+/// dragging R up from 0 leaves G at 0 and B at 255, where rebuilding from
+/// the axes' reading wrote G = 55.
+#[test]
+fn the_readouts_and_channel_edits_start_from_the_bound_colour() {
+    use crate::widgets::color_picker::PickerState;
+
+    let id = WidgetId::from_hash("picker-bound-readout");
+    let mut h = harness();
+    let mut color = RgbaF32::hex(0x0000ff);
+    frame(&mut h, id, &mut color);
+    frame(&mut h, id, &mut color);
+    assert_eq!(h.state::<PickerState>(id).hex, "#0000FF");
+
+    let r_value = h.center_of(id.with("R").with("value"));
+    h.press_at(r_value);
+    frame(&mut h, id, &mut color);
+    h.drag_to(r_value + Vec2::new(30.0, 0.0));
+    frame(&mut h, id, &mut color);
+    h.release();
+    frame(&mut h, id, &mut color);
+    let got = color.to_srgba_u8();
+    assert!(got.r > 0, "R moved: {got:?}");
+    assert_eq!((got.g, got.b), (0, 255), "G and B kept: {got:?}");
+}
+
+/// Keyboard nudges commit, but the history keeps only picks: a click on
+/// the field puts its colour at the front, and sixteen arrow presses
+/// after it — each a commit — leave the row as it was, where each used to
+/// push and evict a preset.
+#[test]
+fn keyboard_nudges_leave_the_history_alone() {
+    use crate::input::keyboard::key::Key;
+    use crate::widgets::color_picker::PickerState;
+
+    let id = WidgetId::from_hash("picker-nudges");
+    let mut h = harness();
+    let mut color = RgbaF32::hex(0x4cd3ff);
+    let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
+        h.frame_value(|ui| {
+            ColorPicker::new(color)
+                .history(true)
+                .id(id)
+                .show(ui)
+                .committed
+        })
+    };
+    frame(&mut h, &mut color);
+    frame(&mut h, &mut color);
+    h.click_at(Vec2::new(100.0, 60.0));
+    frame(&mut h, &mut color);
+    let row = h.state::<PickerState>(id).history.peek().to_vec();
+    assert_eq!(row[0], color, "the click is a pick");
+
+    let mut committed = 0;
+    for _ in 0..16 {
+        h.key(Key::ArrowRight);
+        committed += usize::from(frame(&mut h, &mut color));
+    }
+    assert!(committed > 0, "premise: a nudge commits");
+    assert_eq!(h.state::<PickerState>(id).history.peek(), &row[..]);
+}
+
+/// Tabbing through the hex field with its text unchanged is no edit: the
+/// picker reports no commit.
+#[test]
+fn an_unchanged_hex_field_commits_nothing_on_blur() {
+    let id = WidgetId::from_hash("picker-hex-blur");
+    let mut h = harness();
+    let mut color = RgbaF32::hex(0x4cd3ff);
+    frame(&mut h, id, &mut color);
+    h.set_focus(id.with("hex"));
+    frame(&mut h, id, &mut color);
+    h.clear_focus();
+    let (changed, committed) = frame(&mut h, id, &mut color);
+    assert!(
+        !changed && !committed,
+        "changed {changed}, committed {committed}"
+    );
+}

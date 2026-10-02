@@ -8,14 +8,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 `F32Ext::themed_length` says theme scalars are hand-edited file data that "cannot assert". Most widgets screen them. These do not, and `SpinnerTheme`/`ToggleTheme`/… derive `Deserialize`:
 - [ ] `src/display/user_scale.rs:27-29,71-77` **bug**: the doc tells apps to read a persisted preference back through `UserScale::new`, which `assert!`s on a non-finite value. A config file containing `nan` crashes the app. Public API: a fallible constructor needs a go-ahead.
 
-## ColorPicker readout and edits read the clamped Okhsv coords, not the bound colour
-- [ ] `src/widgets/color_picker/mod.rs:406,309` **bug**: the hex text, the R/G/B values and the preview chip are built from `state.coords.to_color()`. Seeding from `#0000ff` in Okhsv (the default model) clamps to s=v=1, which is `#0037ff`. The hex field reads `#0037FF`, G reads 55 and the preview shows `#0037ff`, while the bound colour is still `#0000ff`.
-- [ ] `src/widgets/color_picker/mod.rs:482-489` **bug**: R/G/B edits rebuild `exact` from the same coords-derived `rgb[]`. Nudging R by 1 on `#0000ff` writes `(1, 55, 255)`: G jumps 0→55 although the user never touched it. The type doc promises this "quietly shift #0000ff to #0037ff" never happens.
-
-## Hue wraps at exactly 1.0, so the clamped right end reads as the left
-- [ ] `src/widgets/color_strip/mod.rs:194,255` **bug**: `press_fraction` clamps to 0..=1, and `ColorCoords::set_hue` does `rem_euclid(1.0)`. Dragging the hue bar to (or past) its right edge stores hue 0.0, and the marker (`:142`, `read() * size.w`) jumps to the left edge. `End` sets 1.0, which is 0.0, so End behaves exactly like Home. At hue 0, both report `changed == false`.
-- [ ] `src/widgets/color_picker/mod.rs:472` **bug**: same root cause. Setting H to 360 in the value cell stores hue 0, and the cell reads back 0.
-
 ## Numeric widgets mishandle range ends
 - [ ] `src/widgets/slider/mod.rs:220-222` **bug**: `fraction_to_value(f, 0.0, INFINITY)` is `f*inf`, which is +inf for any f > 0. `store_f64` clamps that to `hi = inf`, so any click right of the left edge stores `+inf` into the bound `f64`. For `-inf..=inf`, `0.5*inf - inf` is NaN, and `Limits::clamp` maps NaN to `lo = -inf`. `value_to_fraction` claims to handle unbounded ranges, but the write path does not, and the knob is then drawn at 0 while the value is ±inf.
 - [ ] `src/widgets/drag_num/mod.rs:149` **bug**: `store_i64` clamps to `lo as i64` / `hi as i64`, which truncate toward zero. `DragValue::new(&mut i).range(0.5..=10.0)` scrubbed down stores 0 (< 0.5). `range(-10.0..=-0.5)` lets 0 through (> -0.5). Typed entry via `parse_from` behaves the same.
@@ -57,10 +49,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/tabs/tab_strip.rs:534-543` **bug (plausible)**: `hidden` compares chips against the band's rect. Scroll content is clipped to that rect deflated by the band's padding (6 px by default), per the comments at `scroll/mod.rs:487-489` and `text_edit/mod.rs:423-427`. A chip cut up to 6 px under the padding reads as visible, and the chevron does not appear.
 - [ ] `src/widgets/tabs/tab_strip.rs:607` **bug**: with no selection, `here = 0`, so ArrowRight activates chip 1 and chip 0 is skipped.
 
-## ColorPicker history fills with non-picks
-- [ ] `src/widgets/color_field/mod.rs:126`, `color_strip/mod.rs:138` → `color_picker/mod.rs:381` **bug**: every keyboard nudge sets `committed`, and `apply` pushes on every commit. 16 ArrowRight presses (or a held key) evict all 16 presets with near-identical shades, against the dedupe rationale in `History::push`.
-- [ ] `src/widgets/color_picker/mod.rs:451-456` **bug (plausible)**: hex `lost_focus` with an unchanged, valid buffer still commits. Tabbing through the hex field reorders history and reports `committed`.
-
 ## Theme derivations that break their own invariants
 - [ ] `src/widgets/theme/color_picker.rs:195` **bug**: `value.editor = mono_edit(p)` replaces the `from_chip`-derived editor with a TextEditTheme box, against DragValueTheme's "chip and editor are pixel-identical" invariant. The stroke is 1.5 vs the chip's 1.0, folded into padding, so a channel value grows 1 px taller and its text shifts 0.5 px when it becomes editable.
 - [ ] `src/widgets/theme/color_picker.rs:126`: `ambient()` re-derives `Theme::from_palette`'s `text` (`mod.rs:306`) — a second source of truth.
@@ -101,7 +89,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - To confirm: compare showcase icon box sizes against their SVG view boxes.
 
 ## Small widgets per-frame cost
-- [ ] `src/widgets/color_picker/mod.rs:197` with `history.rs:68`: `with_state` does `mem::take`, which runs `PickerState::default()` → `History::presets()`. That is 16 Okhsv→RGB conversions per picker per frame, to build a placeholder that is immediately overwritten.
 - [ ] `src/widgets/gpu_view/mod.rs:109-114`: an eager `response_for` probe on a widget that senses nothing by default and needs nothing before record. `Widget::show` (lazy) covers it.
 
 ## Big widgets reach `pub(crate)` internals ("widgets use only the public API")
@@ -179,8 +166,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] Keyboard support differs across siblings. ColorField/ColorStrip and Expander are focusable and key-driven. Slider, Checkbox, Radio and Switch are not focusable and have no key path.
 - [ ] Escape differs across siblings. In DragValue edit mode (`drag_value/mod.rs:367-386`) Escape commits the typed text (the buffer is parsed live). The picker's hex field (`color_picker/mod.rs:451`) treats Escape (`cancelled`) as revert.
 - [ ] `color_button/mod.rs`: lacks ColorPicker's `swatches(&[RgbaF32])` and `downsample(n)`. Its `history` default (true) also differs from ColorPicker's (Hidden).
-- [ ] `color_picker/mod.rs:93-97`: `written: RgbaF32` + `seeded: bool` is one fact stored twice.
-- [ ] `color_picker/mod.rs:427-500`: the value grid offers H and S but no V. With alpha off, cell (0,2) is empty.
 - [ ] Naming: `Tooltip::on(&snapshot)` vs `ContextMenu::attach(ui, &snapshot)` are two names for "attach to a trigger snapshot".
 - [ ] File layout: `TooltipResponse`, `ExpanderResponse`, `ClickOutside` (`popup/mod.rs`) and `SplitHalf` (`splitter/mod.rs`) are standalone public types inside a widget's file, while `ValueResponse`/`SelectResponse`/`OverlayResponse` each get their own file.
 

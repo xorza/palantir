@@ -97,9 +97,12 @@ impl ColorCoords {
         }
     }
 
-    /// Set the hue. Wraps, so a drag past either end continues round.
+    /// Set the hue, clamped to `0..=1`. Both ends name red, and both are
+    /// kept: a hue bar dragged to its right edge reads 1 and draws its
+    /// marker there, where a wrap to 0 jumped it to the left. A caller
+    /// stepping round the circle wraps its own arithmetic.
     pub fn set_hue(&mut self, h: f32) {
-        let h = h.rem_euclid(1.0);
+        let h = h.clamp(0.0, 1.0);
         match self {
             Self::Okhsv(c) => c.h = h,
             Self::Hsv(c) => c.h = h,
@@ -177,14 +180,23 @@ mod tests {
         assert_eq!(coords.with_model(ColorModel::Okhsv), coords);
     }
 
+    /// Every setter clamps, the hue included: 1.0 stays 1.0 — red, as 0.0
+    /// is — rather than wrapping to 0.0, and 1.25 clamps to it.
     #[test]
-    fn setters_wrap_the_hue_and_clamp_the_rest() {
+    fn setters_clamp() {
         let mut coords = ColorCoords::default();
+        coords.set_hue(1.0);
+        assert_eq!(coords.hue(), 1.0);
         coords.set_hue(1.25);
         coords.set_sat(2.0);
         coords.set_val(-1.0);
-        assert!((coords.hue() - 0.25).abs() < 1e-6);
+        assert_eq!(coords.hue(), 1.0);
         assert_eq!(coords.sat(), 1.0);
         assert_eq!(coords.val(), 0.0);
+        assert_eq!(
+            coords.to_color().to_srgba_u8(),
+            ColorCoords::default().to_color().to_srgba_u8(),
+            "hue 1 is the colour hue 0 is",
+        );
     }
 }
