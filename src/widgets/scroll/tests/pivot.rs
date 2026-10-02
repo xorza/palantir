@@ -13,12 +13,16 @@ use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::support::SURFACE;
 use glam::Vec2;
 
+/// The content point under the pointer holds still. Measured from the
+/// content's origin, past `padding`, the pointer sits at `pointer - padding`;
+/// held there through a 1.5× step from offset 0, the offset becomes
+/// `(pointer - padding) × 1.5 - (pointer - padding)`, half of it.
 #[test]
 fn pointer_zoom_pivot_is_scale_invariant() {
     let id = WidgetId::from_hash("scaled-scroll");
     let logical_pointer = Vec2::new(50.0, 70.0);
 
-    for scale in [0.5, 1.0, 2.0] {
+    for (scale, padding) in [(0.5, 0.0), (1.0, 0.0), (2.0, 0.0), (1.0, 10.0), (2.0, 10.0)] {
         let mut h = UiHarness::new(SURFACE);
         let build = |ui: &mut Ui| {
             Panel::zstack()
@@ -29,6 +33,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                     Scroll::both()
                         .id(id)
                         .zoomable()
+                        .padding(padding)
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Block::new()
@@ -47,11 +52,11 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         h.frame(build);
 
         let state = *h.state::<ScrollState>(id);
-        assert_eq!(state.zoom, 1.5, "zoom at {scale}×");
+        assert_eq!(state.zoom, 1.5, "zoom at {scale}×, padding {padding}");
         assert_eq!(
             state.offset,
-            logical_pointer * 0.5,
-            "pointer pivot at {scale}×",
+            (logical_pointer - padding) * 0.5,
+            "pointer pivot at {scale}×, padding {padding}",
         );
     }
 }

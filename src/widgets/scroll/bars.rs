@@ -31,7 +31,7 @@ struct BarAxis {
 
 impl BarAxis {
     /// Emit this axis's two nodes onto the overlay: a track leaf with
-    /// `Sense::CLICK` (paging on press) and a thumb leaf with
+    /// `Sense::CLICK` (one page per click, on release) and a thumb leaf with
     /// `Sense::DRAG` painted on top. Neither carries a size or a
     /// position — the overlay is a [`Widget::scrollbars`] container,
     /// and its layout assigns both rects once measure has

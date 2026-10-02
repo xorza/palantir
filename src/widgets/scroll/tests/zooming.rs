@@ -481,3 +481,55 @@ fn zoom_by_rejects_a_factor_that_cannot_scale() {
         );
     }
 }
+
+/// The offset band reaches both ends of zoomed content inside padding.
+///
+/// 200 × 200 viewport, padding 10, content 400 × 400, zoom 2. Each axis
+/// shows `200 - gutter - 2 × 10` px, and the content spans `400 × 2 = 800`.
+/// Panned to either end, the content's own edge sits exactly on the
+/// viewport's — the start on the padding's inner edge at offset 0, the end
+/// on the far edge at offset `800 - shown`. Scaled about the node's corner
+/// instead, the padding grew to 20 and both ends missed by 10.
+#[test]
+fn zoomed_padding_keeps_both_content_ends_reachable() {
+    let scroll_id = WidgetId::from_hash("scroll");
+    let content_id = WidgetId::from_hash("content");
+    let show = |ui: &mut Ui, zoom: f32, pan: Vec2| {
+        Scroll::both()
+            .id(scroll_id)
+            .zoomable()
+            .zoom_by(zoom)
+            .pan_by(pan)
+            .padding(10.0)
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(content_id)
+                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+                    .show(ui);
+            });
+    };
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
+    h.frame(|ui| show(ui, 2.0, Vec2::ZERO));
+    let gutter = 200.0 - 2.0 * 10.0 - h.ui.response_for(content_id).rect.unwrap().size.w;
+    let shown = 200.0 - gutter - 2.0 * 10.0;
+
+    for (pan, offset, edge) in [
+        (Vec2::splat(-1e4), 0.0, 10.0),
+        (Vec2::splat(1e4), 800.0 - shown, 10.0 + shown),
+    ] {
+        h.frame(|ui| show(ui, 1.0, pan));
+        h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
+        assert_eq!(
+            h.state::<ScrollState>(scroll_id).offset,
+            Vec2::splat(offset)
+        );
+        let r = h.ui.response_for(content_id);
+        let laid = r.layout_rect.unwrap();
+        let start = r.transform.apply_point(laid.min);
+        let end = r.transform.apply_point(laid.max());
+        let reached = if offset == 0.0 { start } else { end };
+        assert_eq!(reached, Vec2::splat(edge), "panned by {pan:?}");
+    }
+}
