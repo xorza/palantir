@@ -114,10 +114,10 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
             lr.max().x + gaps.1,
             "case: {label_id}: the right cell starts one gap past the left",
         );
-        if *label_id == "two_hug_columns" {
-            // The wrapping column takes what the right one leaves.
-            assert_eq!(lr.size.w, 800.0 - 84.0, "case: {label_id}");
-        }
+        // The wrapping column takes what the right one leaves: all of it
+        // past the label and the gap. A Fill column's floor is its
+        // min-content, reserved before the Hug column grows.
+        assert_eq!(lr.size.w, 800.0 - gaps.1 - 84.0, "case: {label_id}");
     }
 }
 
