@@ -77,6 +77,20 @@ impl ScrollGeometry {
         }
     }
 
+    /// Where the content starts inside the viewport node: past its
+    /// leading padding.
+    fn content_inset(&self) -> Vec2 {
+        let [left, top, _, _] = self.bars.padding.as_array();
+        Vec2::new(left, top)
+    }
+
+    /// Where the content starts inside the outer box: past the leading
+    /// gutter as well. The origin a widget-local pivot is measured from.
+    fn content_origin(&self) -> Vec2 {
+        let [left, top, _, _] = self.bars.reserve.as_array();
+        self.content_inset() + Vec2::new(left, top)
+    }
+
     /// The bar on `axis` at `state`'s offset and zoom — the same answer
     /// the overlay's layout places it by.
     fn thumb(&self, axis: Axis, state: &ScrollState) -> Option<BarGeometry> {
@@ -454,7 +468,7 @@ impl<'a> Scroll<'a> {
             state.apply_zoom(
                 *cfg.range.start(),
                 *cfg.range.end(),
-                pivot,
+                pivot - geom.content_origin(),
                 input.zoom_delta,
             );
         }
@@ -511,7 +525,7 @@ impl<'a> Scroll<'a> {
             .margin(geom.bars.reserve)
             // Raw pan/zoom, from the one place a viewport's transform is
             // derived — `TextEdit`'s text block reads the same method.
-            .transform(state.transform());
+            .transform(state.transform(geom.content_inset()));
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
         // can replace it with rounded clipping or no clipping. Nothing can
         // unset it, so the `None` arm never runs.

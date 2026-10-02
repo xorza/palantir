@@ -372,3 +372,68 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
     assert_eq!(t.arrow_angle(1.0), t.arrow_open_angle);
     assert!(t.arrow_angle(2.0).abs() <= t.arrow_closed_angle.abs());
 }
+
+/// The height a reveal clips against is the body's whole height, on the
+/// frame the tween settles too. A settled tween asks for no further frame,
+/// so a height read off a clipped body there is the one the next collapse
+/// clips against, and the body jumps.
+#[test]
+fn a_settling_reveal_stores_the_whole_height() {
+    let base = ExpanderTheme::default();
+    let theme = ExpanderTheme {
+        defaults: SlotDefaults {
+            anim: Some(AnimSpec::MEDIUM),
+            ..base.defaults
+        },
+        ..base
+    };
+    let mut h = UiHarness::new(SURFACE);
+    let mut record = |ui: &mut Ui| {
+        Expander::new("section")
+            .id(root())
+            .style(&theme)
+            .show(ui, |ui| {
+                Text::new("body").id(label()).show(ui);
+            })
+            .openness
+    };
+    h.prime(2, |ui| {
+        record(ui);
+    });
+    let tick = std::time::Duration::from_millis(16);
+    let toggle = |h: &mut UiHarness, record: &mut dyn FnMut(&mut Ui) -> f32| {
+        h.advance_past_double_click(|ui| {
+            record(ui);
+        });
+        let at = h.center_of(header());
+        h.click_at(at);
+        h.frame_value(&mut *record);
+    };
+
+    toggle(&mut h, &mut record);
+    h.advance_frames(2, tick, |ui| {
+        record(ui);
+    });
+    let whole = h.layout_rect(body()).expect("open").size.h;
+    assert!(whole > 0.0);
+    toggle(&mut h, &mut record);
+    while h.frame_value(&mut record) > 0.0 {
+        h.advance(tick);
+    }
+
+    toggle(&mut h, &mut record);
+    let mut openness = 0.0;
+    while openness < 1.0 {
+        h.advance(tick);
+        openness = h.frame_value(&mut record);
+        if openness < 1.0 {
+            assert_eq!(
+                h.layout_rect(body()).expect("revealing").size.h,
+                whole,
+                "the body lays out whole under the clip at {openness}",
+            );
+        }
+    }
+    let row = h.ui().state::<ExpanderState>(header()).copied().unwrap();
+    assert_eq!(row.height, Some(whole), "the settle frame stored {row:?}");
+}

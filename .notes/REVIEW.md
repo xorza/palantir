@@ -26,12 +26,7 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## TabbedView reorder and identity
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
 
-## Scroll reach and paging
-- [ ] `src/widgets/scroll/state.rs:174-181` **bug (plausible)**: the offset band is `content*zoom - viewport`, where viewport is the outer box less gutter and padding (`scrollbars_def.rs:62`). Padding sits inside the zoomed transform, so at zoom z the last `pad_left*(z-1)` px of content is unreachable. Confirm with a zoomable `Scroll::both().padding(10)` at zoom 2, scrolled to the end.
-- [ ] `src/widgets/scroll/bars.rs:33-36` vs `:126`: the doc says the track pages "on press", but `drive` pages on `clicked()`, i.e. on release, once per click.
-
 ## Smaller widget bugs
-- [ ] `src/widgets/expander/mod.rs:247-253` **bug (plausible)**: on the frame the reveal tween settles, `response_for(body_id)` returns the previous frame's clipped rect (`max_size = openness_prev * full`), and that is stored as `height`. A settled `animate` requests no repaint. If the next interaction is keyboard-only (Space on the focused header), the collapse tween clips against e.g. 0.97×full and the body visibly jumps.
 - [ ] `src/widgets/response.rs:65`: says external authors reach `Response::lazy` "through `Widget::response`". That returns a `ResponseState`. The lazy route is `Widget::show`.
 
 ## `IconId` is u16 but icon sets are unbounded

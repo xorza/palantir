@@ -201,6 +201,9 @@ impl ScrollState {
         }
     }
 
+    /// Scale by `zoom_delta`, clamped, holding the content point under
+    /// `pivot` still. `pivot` is measured from the content's origin, the
+    /// point [`Self::transform`] scales about.
     pub(super) fn apply_zoom(
         &mut self,
         min_zoom: f32,
@@ -253,11 +256,19 @@ impl ScrollState {
 
     /// The transform a viewport applies to carry its content: the offset,
     /// negated — scrolling right shifts content left — at the current
-    /// zoom. Cascade anchors the scale at the node's own `layout_rect.min`
-    /// (`TranslateScale::anchored_at`), so nothing here pre-bakes an
-    /// origin.
-    pub(crate) fn transform(&self) -> TranslateScale {
-        TranslateScale::new(-self.offset, self.zoom)
+    /// zoom, scaled about `content_origin`.
+    ///
+    /// Cascade anchors the scale at the node's own `layout_rect.min`
+    /// (`TranslateScale::anchored_at`), but the content starts inside the
+    /// node's padding, at `content_origin` from there. Scaled about the
+    /// node's corner, that padding grows with the zoom: offset 0 left a
+    /// gap of `padding * (zoom - 1)` before the content, and the band's
+    /// far end stopped the same distance short of the content's end.
+    /// Scaling about the content's own origin keeps offset 0 at the
+    /// content's start at every zoom, which is what the offset band and
+    /// the bars assume.
+    pub(crate) fn transform(&self, content_origin: Vec2) -> TranslateScale {
+        TranslateScale::new(content_origin * (1.0 - self.zoom) - self.offset, self.zoom)
     }
 
     pub(super) fn apply_thumb_drag(
