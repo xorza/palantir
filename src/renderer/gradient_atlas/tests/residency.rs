@@ -26,24 +26,6 @@ fn row_zero_reserved_as_magenta_fallback() {
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
 
-/// First real `register` goes through the probe path. The atlas
-/// is already dirty from magenta init; registering should keep it
-/// dirty so the GPU upload includes the new row.
-#[test]
-fn register_returns_nonzero_row_and_marks_dirty() {
-    let mut atlas = CpuGradientAtlas::default();
-    let g = distinct_grad(10);
-    let row = atlas.register(&g.ramp);
-    assert_real_row(&atlas, row);
-    // The magenta row 0 is still waiting from construction, so the span
-    // runs from it to the new row.
-    assert_eq!(
-        atlas.dirty.map(|d| (d.first, d.last)),
-        Some((0, row.0)),
-        "register must mark its row dirty",
-    );
-}
-
 /// Same gradient registered twice returns the same row and does
 /// not re-mark dirty after a flush.
 #[test]
@@ -90,25 +72,11 @@ fn near_identical_keys_never_share_a_row() {
     assert_ne!(first, second);
 }
 
-/// Distinct gradients get distinct rows; both leave the atlas
-/// dirty for upload.
-#[test]
-fn register_distinct_gradients_get_distinct_rows() {
-    let mut atlas = CpuGradientAtlas::default();
-    let _ = atlas.flush();
-    let ra = atlas.register(&distinct_grad(10).ramp);
-    let rb = atlas.register(&distinct_grad(20).ramp);
-    assert_ne!(ra, rb);
-    // Flushed first, so the span covers exactly the two new rows.
-    assert_eq!(
-        atlas.dirty.map(|d| (d.first, d.last)),
-        Some((ra.0.min(rb.0), ra.0.max(rb.0))),
-    );
-}
-
 /// Filling the atlas one distinct gradient at a time hands out every
 /// real row exactly once — no key aliases another's row, and no row is
-/// skipped, so the whole table is reachable.
+/// skipped, so the whole table is reachable. Each registration marks
+/// its row dirty, and the magenta row 0 still waits from construction,
+/// so the dirty span runs from row 0 to the last row.
 #[test]
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
@@ -122,6 +90,10 @@ fn register_many_distinct_gradients_all_unique_rows() {
         assert_real_row(&atlas, row);
     }
     assert_eq!(seen.len(), INITIAL_ATLAS_ROWS as usize - 1);
+    assert_eq!(
+        atlas.dirty.map(|d| (d.first, d.last)),
+        Some((0, INITIAL_ATLAS_ROWS - 1)),
+    );
 }
 
 /// The atlas keys on the ramp alone, so a linear gradient, a radial

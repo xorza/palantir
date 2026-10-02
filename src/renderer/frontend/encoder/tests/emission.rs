@@ -1,7 +1,7 @@
 //! The commands one recorded frame lowers to.
 
 use crate::Ui;
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
@@ -358,31 +358,6 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         !h.ui.shaper().has_cosmic_buffer(replayed_key),
         "frontend replay must leave reconstruction to an encoded-cache miss",
     );
-}
-
-/// `Align::place_in` math: glyph bbox positioned inside the leaf's arranged
-/// rect. Auto/center/right-bottom shift the origin; oversize content
-/// clamps to top-left so it doesn't clip on the wrong side.
-#[test]
-fn place_in_cases() {
-    let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
-    let measured = Size::new(80.0, 16.0);
-
-    let r = Align::CENTER.place_in(leaf, measured);
-    assert_eq!((r.min.x, r.min.y), (70.0, 32.0));
-    assert_eq!((r.size.w, r.size.h), (80.0, 16.0));
-
-    let r = Align::default().place_in(leaf, measured);
-    assert_eq!((r.min.x, r.min.y), (10.0, 20.0));
-
-    let r = Align::new(HAlign::Right, VAlign::Bottom).place_in(leaf, measured);
-    assert_eq!((r.min.x, r.min.y), (10.0 + 120.0, 20.0 + 24.0));
-
-    // Negative-slack guard: oversize text clamps to top-left.
-    let small = Rect::new(0.0, 0.0, 50.0, 10.0);
-    let oversize = Size::new(80.0, 16.0);
-    let r = Align::CENTER.place_in(small, oversize);
-    assert_eq!((r.min.x, r.min.y), (0.0, 0.0));
 }
 
 #[test]

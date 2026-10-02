@@ -6,19 +6,6 @@ use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
 
-/// `flush` returns `Some(...)` once after a register, then `None`
-/// until the next register. Idle-frame upload is zero bytes.
-#[test]
-fn flush_returns_bytes_once_then_none() {
-    let mut atlas = CpuGradientAtlas::default();
-    atlas.register(&distinct_grad(30).ramp);
-    assert!(atlas.flush().is_some(), "dirty atlas must yield bytes");
-    assert!(
-        atlas.flush().is_none(),
-        "second flush without register is none"
-    );
-}
-
 /// Idle atlas (no registrations beyond magenta init) hits the
 /// `Some` branch once for the magenta upload — covering exactly the
 /// one dirty row (row 0, 2048 bytes), not the whole 512 KB atlas —

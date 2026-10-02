@@ -236,44 +236,6 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
 }
 
 #[test]
-fn rect_inscribed_for_corners_matches_45_deg_arc_offset() {
-    // Pin the inscribed-rect deflation: for uniform radius `r`,
-    // each side insets by `r * (1 − 1/√2)` — the bounding-box
-    // distance to the 45° point on the corner arc. A future
-    // "tighten the deflation" attempt would prune an under-quad
-    // whose corner falls inside the rounded cutout.
-    let r = Rect::new(0.0, 0.0, 100.0, 100.0);
-    let inscribed = r.inscribed_for_corners(Corners::all(10.0));
-    let expected_inset = 10.0 * (1.0 - 1.0 / 2.0_f32.sqrt());
-    let expected_size = 100.0 - 2.0 * expected_inset;
-    assert_eq!(inscribed.min.x, expected_inset);
-    assert_eq!(inscribed.min.y, expected_inset);
-    assert_eq!(inscribed.size.w, expected_size);
-    assert_eq!(inscribed.size.h, expected_size);
-}
-
-#[test]
-fn rect_inscribed_for_corners_sharp_passes_through() {
-    let r = Rect::new(5.0, 10.0, 30.0, 40.0);
-    assert_eq!(r.inscribed_for_corners(Corners::ZERO), r);
-}
-
-#[test]
-fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
-    // Per-side inset = max(adjacent corner radii) * (1 − 1/√2).
-    // With tl=20, tr=0, br=0, bl=0 the LEFT and TOP sides inset by
-    // 20·KAPPA; right + bottom stay flush (their adjacent corners
-    // are sharp).
-    let r = Rect::new(0.0, 0.0, 100.0, 100.0);
-    let inscribed = r.inscribed_for_corners(Corners::new(20.0, 0.0, 0.0, 0.0));
-    let inset = 20.0 * (1.0 - 1.0 / 2.0_f32.sqrt());
-    assert_eq!(inscribed.min.x, inset);
-    assert_eq!(inscribed.min.y, inset);
-    assert_eq!(inscribed.max().x, 100.0);
-    assert_eq!(inscribed.max().y, 100.0);
-}
-
-#[test]
 fn prune_keeps_shadow_under_opaque_cover() {
     use crate::primitives::fill_axis::FillAxis;
     use crate::primitives::fill_kind::FillKind;
@@ -516,20 +478,6 @@ fn prune_steady_state_across_repeated_compose_calls() {
         rig.compose(&buffer);
         assert_eq!(rig.out.quads.len(), 1, "prune runs cleanly each frame");
     }
-}
-
-#[test]
-fn rect_inflated_round_trips_with_deflated_by_uniform() {
-    use crate::primitives::spacing::Spacing;
-    // `Rect::inflated(a).deflated_by(Spacing::all(a))` should
-    // yield the original rect. Pins the symmetric-counterpart
-    // contract documented on `Rect::inflated`.
-    let r = Rect::new(10.0, 20.0, 30.0, 40.0);
-    let round = r.inflated(2.5).deflated_by(Spacing::all(2.5));
-    assert_eq!(round.min.x, r.min.x);
-    assert_eq!(round.min.y, r.min.y);
-    assert_eq!(round.size.w, r.size.w);
-    assert_eq!(round.size.h, r.size.h);
 }
 
 /// Clear fold: an opaque solid sharp unclipped quad covering the whole

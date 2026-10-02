@@ -82,4 +82,11 @@ fn wheel_notches_negate_into_the_factor() {
     assert_eq!(ZoomFactor::from_wheel(1.25, 1.0).get(), 0.8);
     assert_eq!(ZoomFactor::from_wheel(1.25, -2.0).get(), 1.5625);
     assert_eq!(ZoomFactor::from_wheel(1.25, 0.0), ZoomFactor::ONE);
+    // 10 000 notches of 1.03 is e^(10 000 · ln 1.03) ≈ e^295.6 either
+    // way, far past f32's range, so the factor saturates at its ends.
+    assert_eq!(ZoomFactor::from_wheel(1.03, -10_000.0).get(), f32::MAX);
+    assert_eq!(
+        ZoomFactor::from_wheel(1.03, 10_000.0).get(),
+        f32::MIN_POSITIVE
+    );
 }
