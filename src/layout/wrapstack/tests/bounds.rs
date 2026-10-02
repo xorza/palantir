@@ -213,3 +213,51 @@ fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
         );
     }
 }
+
+/// The stack contract (REDESIGN decision D-1): a stack measures every
+/// non-`Fill` child against its whole main extent and shrinks none of
+/// them, so the Hug wrap under a header above overflows the cap by the
+/// header's 15 px. A wrap meant to take what the header leaves is `Fill`
+/// on the main axis: the column hands it the 100 − 15 = 85 px left, two
+/// cells no longer fit (40 + 10 + 40 = 90 > 85), so each cell takes a
+/// column of its own, 50 + 12 apart. The column hugs that one row, so the
+/// wrap ends at 15 + 40 = 55, inside the cap.
+#[test]
+fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    h.frame(|ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("cols"))
+            .size((Sizing::HUG, Sizing::HUG))
+            .max_size((f32::INFINITY, 100.0))
+            .show(ui, |ui| {
+                hug_vstack("cat").show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("hdr"))
+                        .size((Sizing::fixed(60.0), Sizing::fixed(15.0)))
+                        .show(ui);
+                    Panel::wrap_vstack()
+                        .id(WidgetId::from_hash("wrap"))
+                        .size((Sizing::HUG, Sizing::FILL))
+                        .gap(10.0)
+                        .line_gap(12.0)
+                        .show(ui, |ui| {
+                            for i in 0..5u32 {
+                                Block::new()
+                                    .id(WidgetId::from_hash(("f", i)))
+                                    .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
+                                    .show(ui);
+                            }
+                        });
+                });
+            });
+    });
+    for i in 0..5u32 {
+        assert_eq!(
+            h.arranged(WidgetId::from_hash(("f", i))).min,
+            Vec2::new(i as f32 * 62.0, 15.0),
+            "cell {i}"
+        );
+    }
+    assert_eq!(h.arranged(WidgetId::from_hash("wrap")).max().y, 55.0);
+}
