@@ -2,7 +2,7 @@
 //! their joins.
 
 use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::RgbaF16, color::RgbaF32};
+use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
@@ -174,7 +174,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
 /// was `(0.5, 0, 0, 0.5)`, half as bright.
 #[test]
 fn a_join_between_colours_averages_them_premultiplied() {
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::renderer::render_buffer::curve::CURVE_KIND_JOIN_ROUND;
 
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);

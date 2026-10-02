@@ -1,6 +1,6 @@
 //! One textured-quad draw, and the pair a sink takes it as.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;

@@ -18,7 +18,7 @@ use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::text::encode::EncodedRunKey;
 use crate::gpu::text::encode::cache::{EncodedCache, EncodedGlyph};
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use glam::IVec2;
 
 /// The glyph-shaped half of the text pass: the encoded-run cache and the

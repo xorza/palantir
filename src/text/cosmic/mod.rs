@@ -25,7 +25,7 @@ use crate::primitives::num::F32Px;
 use crate::primitives::raster_image::RasterImage;
 use crate::primitives::size::Size;
 use crate::text::cosmic::cache_entry::CachedExtent;
-use crate::text::cosmic::cluster_glyph::{ClusterGlyph, fitting_prefix};
+use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{
     SegmentScratch, ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
@@ -304,7 +304,7 @@ pub(super) struct CosmicMeasure {
     /// allocates nothing per miss.
     break_scratch: SegmentScratch,
     /// Retained snapshot of the truncation probe's first layout run, in
-    /// the run's own visual order — [`fitting_prefix`] is what sorts it
+    /// the run's own visual order — [`ClusterGlyph::fitting_prefix`] is what sorts it
     /// logically, in place. Copied out of the cache once per miss so the
     /// back-off rounds need no cache borrow: the shaping between them
     /// takes the measurer mutably, which a live borrow would forbid.
@@ -748,7 +748,7 @@ impl CosmicMeasure {
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
     /// cluster-precise: the cached unbounded shape gives per-glyph advances,
-    /// [`fitting_prefix`] cuts after the last fully paid-for cluster, then we
+    /// [`ClusterGlyph::fitting_prefix`] cuts after the last fully paid-for cluster, then we
     /// shape the (possibly truncated) prefix on one **natural** line — no
     /// per-line align. The committed width only decides the cut; the encoder
     /// positions/aligns the single line, so the measured extent is the glyph
@@ -768,7 +768,7 @@ impl CosmicMeasure {
     /// # Why not `Buffer::set_ellipsize`
     ///
     /// Cosmic 0.19 can do this itself, and delegating to it deletes
-    /// roughly 290 lines: this function, [`fitting_prefix`],
+    /// roughly 290 lines: this function, [`ClusterGlyph::fitting_prefix`],
     /// [`ClusterGlyph`], the ellipsis memo, and three retained scratch
     /// fields. That was written, measured, and reverted — **4.9x slower**
     /// on `text_shape/resize_drag_frame` (1.42 µs -> 7.13 µs per run per
@@ -783,7 +783,7 @@ impl CosmicMeasure {
     ///
     /// **So the dependency on the cached unbounded probe is the point,
     /// not a wart.** It is what a drag reuses: the full-string shape is
-    /// paid once, [`fitting_prefix`] finds the cut by scanning glyphs
+    /// paid once, [`ClusterGlyph::fitting_prefix`] finds the cut by scanning glyphs
     /// that are already there, and only the short prefix is reshaped per
     /// frame. Anything that revisits this has to keep the full-string
     /// shape cached across widths — cosmic allows that (`set_size`
@@ -827,12 +827,12 @@ impl CosmicMeasure {
         // would measure the aligned glyph position, inflating a fits-anyway
         // label toward the box width.
         let mut buffer = self.acquire_buffer(metrics_of(key), None);
-        let size = if fits_whole {
+        let geometry = if fits_whole {
             // Re-shaping the identical text reproduces the probe, so this
             // branch cannot overrun `width`.
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch).size
+            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
         } else {
             // The cut spends advances measured in the *whole* run's shaping,
             // but the prefix reshapes in its own context: a joining script's
@@ -853,7 +853,7 @@ impl CosmicMeasure {
             }
             let mut max_end = usize::MAX;
             loop {
-                let cut = fitting_prefix(&mut self.cut_glyphs, avail, max_end);
+                let cut = ClusterGlyph::fitting_prefix(&mut self.cut_glyphs, avail, max_end);
                 self.truncate_scratch.clear();
                 self.truncate_scratch
                     .push_str(request.text[..cut].trim_end());
@@ -869,19 +869,21 @@ impl CosmicMeasure {
                     None,
                 );
                 buffer.shape_until_scroll(&mut self.font_system, false);
-                let size = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch).size;
-                if size.w <= width || cut == 0 {
-                    break size;
+                let geometry = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch);
+                if geometry.size.w <= width || cut == 0 {
+                    break geometry;
                 }
                 max_end = cut;
             }
         };
 
-        // The prefix reshapes on an unbounded buffer with no per-line
-        // align, so its block already starts at 0.
-        self.cache
-            .insert(key, buffer, CachedExtent::Bounded(size), 0.0);
-        size
+        self.cache.insert(
+            key,
+            buffer,
+            CachedExtent::Bounded(geometry.size),
+            geometry.left,
+        );
+        geometry.size
     }
 
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for

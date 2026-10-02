@@ -10,7 +10,7 @@ use crate::icons::icon_table::IconId;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
-    color::RgbaF16, color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke,
+    color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect, stroke::Stroke,
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;

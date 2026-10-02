@@ -12,7 +12,8 @@
 //! it instead of becoming dead weight behind `#[cfg]`s.
 
 use crate::layout::Layout;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;

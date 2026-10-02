@@ -213,7 +213,7 @@ impl Rect {
 
     /// The axis-aligned square of half-extent `half` about `center`.
     #[inline]
-    pub(crate) fn square_about(center: Vec2, half: f32) -> Self {
+    pub(crate) const fn square_about(center: Vec2, half: f32) -> Self {
         Self {
             min: Vec2::new(center.x - half, center.y - half),
             size: Size::new(2.0 * half, 2.0 * half),
@@ -228,7 +228,7 @@ impl Rect {
     /// to put it in the payload the composer turns points by, the cascade
     /// to cover the disc the shape sweeps.
     #[inline]
-    pub(crate) fn spin_pivot(self) -> Vec2 {
+    pub(crate) const fn spin_pivot(self) -> Vec2 {
         Vec2::new(self.size.w * 0.5, self.size.h * 0.5)
     }
 

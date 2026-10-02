@@ -1,6 +1,6 @@
 //! One shaped-text run draw.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::text::shaped_ref::ShapedTextRef;
 

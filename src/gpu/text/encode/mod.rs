@@ -57,7 +57,7 @@ pub(crate) struct EncodedKey {
     /// 4-bin subpixel resolution, so distinct quantized scales are the
     /// only ones that produce distinct cosmic cache keys.
     scale_q: u32,
-    /// The run's [`RgbaF16`](crate::primitives::color::RgbaF16) colour, as
+    /// The run's [`RgbaF16`](crate::primitives::color::rgba_f16::RgbaF16) colour, as
     /// its bits: the colour lanes are floats, and a key needs `Eq`.
     area_color: u64,
     /// Packed subpixel bins of the run origin, exactly as produced by
@@ -115,7 +115,8 @@ impl EncodedRunKey {
 #[cfg(test)]
 mod tests {
     use crate::gpu::text::encode::EncodedRunKey;
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextDrawRow;

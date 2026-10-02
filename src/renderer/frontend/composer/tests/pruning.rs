@@ -308,7 +308,7 @@ fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
 
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
-    use crate::primitives::brush::gradient::FillAxis;
+    use crate::primitives::fill_axis::FillAxis;
     use crate::primitives::fill_kind::FillKind;
     // A shadow's blur fringe extends past the stored rect — even if
     // a later opaque solid fully contains its rect, the visible
@@ -597,9 +597,9 @@ fn rect_inflated_round_trips_with_deflated_by_uniform() {
 /// prior scene.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
-    use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
+    use crate::primitives::fill_axis::FillAxis;
     use crate::primitives::fill_kind::FillKind;
 
     let vp = UVec2::new(200, 200);
@@ -772,7 +772,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
 /// cover lands survives the discard (its pops are still ahead).
 #[test]
 fn clear_fold_discards_hidden_underlay_mid_stream() {
-    use crate::primitives::color::RgbaF16;
+    use crate::primitives::color::rgba_f16::RgbaF16;
 
     let vp = UVec2::new(200, 200);
 

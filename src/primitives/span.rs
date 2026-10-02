@@ -65,6 +65,6 @@ impl From<Span> for Range<u32> {
 impl From<Span> for Range<usize> {
     #[inline]
     fn from(s: Span) -> Self {
-        s.start as usize..(s.start + s.len) as usize
+        s.range()
     }
 }

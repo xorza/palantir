@@ -432,7 +432,8 @@ mod record_store_tests {
     use crate::common::clipboard::Clipboard;
     use crate::host::clock::FixedClock;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::stroke::Stroke;
     use crate::primitives::widget_id::WidgetId;

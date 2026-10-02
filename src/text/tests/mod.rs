@@ -12,7 +12,7 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::CosmicMeasure;
-use crate::text::cosmic::cluster_glyph::{self, ClusterGlyph};
+use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;

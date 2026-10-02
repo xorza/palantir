@@ -1,6 +1,6 @@
 //! Shaped text records consumed by the native text backend.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::urect::URect;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;

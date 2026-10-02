@@ -16,7 +16,7 @@ use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster_pass::RasterPass;
 use crate::gpu::text::encode::{EncodedKey, EncodedRunKey};
 use crate::gpu::text::encoded_counters::EncodedCounters;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::span::Span;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::render::GlyphRasterKey;

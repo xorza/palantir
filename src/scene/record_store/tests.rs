@@ -1,7 +1,7 @@
-use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::RgbaF32;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;

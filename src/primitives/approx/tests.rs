@@ -25,7 +25,8 @@ fn finish_hash(write: impl FnOnce(&mut DefaultHasher)) -> u64 {
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use crate::primitives::brush::Brush;
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::size::Size;

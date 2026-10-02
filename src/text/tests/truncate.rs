@@ -252,7 +252,7 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
                 advance,
             })
             .collect();
-        let cut = cluster_glyph::fitting_prefix(&mut glyphs, avail, max_end);
+        let cut = ClusterGlyph::fitting_prefix(&mut glyphs, avail, max_end);
         assert_eq!(cut, expected, "avail={avail} max_end={max_end}: {why}");
         // Every bounded cut falls strictly below its bound, so feeding the
         // previous answer back always makes progress — that is what makes

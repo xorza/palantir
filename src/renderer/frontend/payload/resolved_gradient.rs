@@ -1,6 +1,6 @@
 //! The gradient identity an encode pass resolved a brush down to.
 
-use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 

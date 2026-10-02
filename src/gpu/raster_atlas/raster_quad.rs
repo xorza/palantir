@@ -9,7 +9,7 @@
 
 use crate::gpu::shader_template::{self, ShaderConstant};
 use crate::gpu::viewport::ViewportPush;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::content_type::ContentType;
 
 /// One per-instance vertex record. 28 bytes, `Pod`.

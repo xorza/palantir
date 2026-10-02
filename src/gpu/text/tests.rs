@@ -17,7 +17,7 @@ use crate::gpu::raster_program::RasterProgram;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::gpu::text::TextBackend;
 use crate::layout::types::align::Align;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextDrawRow;

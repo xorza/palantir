@@ -10,7 +10,9 @@ use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
-use crate::primitives::color::{RgbaF16, RgbaF32, linear_to_oklab, oklab_to_linear};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::oklab;
+use crate::primitives::color::rgba_f16::RgbaF16;
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
 pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
@@ -38,7 +40,7 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
             // left to convert where its alpha is zero.
             for index in 0..count {
                 let color = stops[index].color();
-                oklab_stops[index] = linear_to_oklab(color.r, color.g, color.b);
+                oklab_stops[index] = oklab::from_linear(color.r, color.g, color.b);
             }
             &oklab_stops[..count]
         }
@@ -195,7 +197,7 @@ fn lerp_oklab(
         let (l, u) = (lower_lab[i] * lower.a, upper_lab[i] * upper.a);
         (l + (u - l) * amount) / a
     });
-    let rgb = oklab_to_linear(lab);
+    let rgb = oklab::to_linear(lab);
     RgbaF32 {
         r: rgb[0] * a,
         g: rgb[1] * a,
@@ -209,7 +211,8 @@ mod tests {
     use crate::primitives::brush::gradient::Interp;
     use crate::primitives::brush::gradient::color_ramp::ColorRamp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, RampTexels};
 
     /// The bake `zip`s the ramp against a fixed-length row, so a ramp

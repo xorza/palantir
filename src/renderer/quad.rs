@@ -3,10 +3,10 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::RgbaF16, corners::Corners, rect::Rect};
+use crate::primitives::{color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
 
 /// Half-width of the quad SDF's physical-pixel antialiasing transition.

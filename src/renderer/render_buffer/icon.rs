@@ -1,7 +1,7 @@
 //! Composited icon draw records consumed by the icon backend.
 
 use crate::icons::icon_raster_key::IconRasterKey;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use glam::{IVec2, U16Vec2};
 
 /// One icon draw, placed in physical-pixel space.
