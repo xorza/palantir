@@ -118,6 +118,7 @@ fn user_relative(path: &str) -> Option<String> {
     Some(rel.trim_start_matches("./").to_owned())
 }
 
+#[cfg(test)]
 mod tests {
     use super::{FrameKind, classify, user_relative};
     use std::path::{MAIN_SEPARATOR_STR, Path};

@@ -1,3 +1,6 @@
+//! The paint sink's no-op gate: what it drops, what it passes, and the
+//! faded payload it judges.
+
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;

@@ -1,3 +1,6 @@
+//! The rect grid's overlap queries: empty and zero-area inputs, one tile,
+//! tile boundaries, long chains, and a linear scan as the oracle.
+
 use crate::primitives::urect::URect;
 use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP};
 use glam::UVec2;

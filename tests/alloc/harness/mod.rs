@@ -313,3 +313,6 @@ impl Audit {
         );
     }
 }
+
+#[cfg(test)]
+mod tests;

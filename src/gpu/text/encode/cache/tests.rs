@@ -1,3 +1,6 @@
+//! The encoded-glyph cache: rows aging out past the keep window, and a
+//! re-encoded row reclaiming its own block.
+
 use super::*;
 use crate::common::counters::CounterSet;
 use crate::gpu::text::encode::EncodedKey;

@@ -16,7 +16,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::RgbaF32, corners::Corners, stroke::Stroke, translate_scale::TranslateScale,
 };
-use crate::renderer::frontend::capture::assert_same_capture;
+use crate::renderer::frontend::capture::test_support::assert_same_capture;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;

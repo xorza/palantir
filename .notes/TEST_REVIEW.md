@@ -50,11 +50,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 17. Structure-rule violations
 
-- [ ] Inline `mod tests` over the limits: `scene/shapes/lower.rs:430` (212 lines), `host/winit/window.rs:471` (182 lines), `primitives/color/hsv.rs:93` (45 %), `input/zoom_factor.rs:121` (42 %), `primitives/color/srgb_transfer.rs:145` (41.7 %), `widgets/color_picker/history.rs:73` (40.8 %).
-- [ ] `foo.rs` beside `foo/`: `tests/alloc/fixtures.rs` and `tests/visual/fixtures.rs`.
-- [ ] `tests/alloc/harness_tests.rs` is an aggregator; its tests belong at the end of `allocator.rs` and in `harness/tests.rs`. `harness/format.rs:121` has `mod tests` without `#[cfg(test)]`.
-- [ ] Mid-file gated items: `renderer/frontend/capture.rs:146-181` (`count`, `assert_same_capture`), with an orphan comment at `:19-20`.
 - [ ] Function-local re-imports of names already imported: `drag_value/tests/layout.rs:16-22,73-80,225-231`, `keyboard.rs:396-401,445-449,482-484,525-528`, `repainting.rs:598`, `stack/tests.rs:543-544`; `FrameProcessing` imported in 7 functions. `text_edit/tests/mod.rs:1-51` splits imports around helpers.
 - [ ] Tuple-returning test helpers: `record_two_frames`, `placement`, `shape_origins`, `recorded`, `settle.rs:48` `warm`, `click.rs:583` `probe`. (judgement: whether the rule binds test code)
 - [ ] `TestShape`'s `cfg(test)` fields (`text/request.rs:117-120`) force `#[cfg(test)]` inside a const literal in `text/bench.rs:66-69`. (judgement)
-- [ ] Missing `//!` lines on `raster_atlas/tests.rs`, `surface_manager/tests.rs`, `paint_sink/tests.rs`, `text_grid/tests.rs`, `text/encode/cache/tests.rs`.

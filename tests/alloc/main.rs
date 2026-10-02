@@ -28,4 +28,3 @@ mod allocator;
 mod fixtures;
 mod gates;
 mod harness;
-mod harness_tests;

@@ -16,9 +16,6 @@
 //! equal therefore means the two encodes agreed on every painted
 //! operation, in order.
 
-// Test-support surface: which parts are live depends on whether the
-// build enables `test`, `internals`, or both.
-
 use crate::primitives::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
@@ -126,40 +123,6 @@ paint_calls! {
     PopTransform => pop_transform,
 }
 
-/// Typed reads of one call's payload, for a test that has already pinned
-/// the sequence with [`PaintCapture::kinds`] and wants what a call
-/// carried.
-#[cfg(test)]
-impl PaintCall {
-    pub(crate) fn as_push_clip(&self) -> Option<&PushClipPayload> {
-        match self {
-            Self::PushClip(payload) => Some(payload),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_text(&self) -> Option<&DrawTextPayload> {
-        match self {
-            Self::Text(payload) => Some(payload),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_curve(&self) -> Option<&DrawCurvePayload> {
-        match self {
-            Self::Curve(payload) => Some(payload),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_image(&self) -> Option<&DrawImagePayload> {
-        match self {
-            Self::Image { payload, .. } => Some(payload),
-            _ => None,
-        }
-    }
-}
-
 /// Every paint call one encode made, in order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PaintCapture {
@@ -178,51 +141,94 @@ impl PaintCapture {
             call.replay_into(sink);
         }
     }
-
-    /// The recorded calls' kinds, in order — what an assertion about
-    /// nesting or order compares, where a count of each kind would let
-    /// two siblings pass for a parent and its child.
-    #[cfg(test)]
-    pub(crate) fn kinds(&self) -> Vec<&'static str> {
-        self.calls.iter().map(PaintCall::kind).collect()
-    }
 }
 
-/// Assert two encodes painted the same sequence, reporting the first
-/// divergence by index and kind instead of dumping both call lists.
 #[cfg(test)]
-pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
-    for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
-        // Compare rendered `Debug`, not `PartialEq`: the payloads are
-        // full of `f32`, and derived equality gets both float edge cases
-        // wrong here. `NaN != NaN` would fail two byte-identical frames
-        // (a NaN stroke width is a documented pass-through, not a noop),
-        // and `-0.0 == 0.0` would hide a sign-of-zero drift between
-        // them. `Debug` distinguishes signed zeros and prints `NaN` for
-        // every NaN, so it is the bitwise-shaped comparison this check
-        // wants — no fast path, since the `PartialEq` one would
-        // reintroduce the signed-zero hole.
-        let (ls, rs) = (format!("{l:?}"), format!("{r:?}"));
-        assert!(
-            ls == rs,
-            "paint call {i} differs: {} vs {}\n  left:  {ls}\n  right: {rs}",
-            l.kind(),
-            r.kind(),
-        );
-        // A view's callback prints as a constant, so `Debug` cannot tell
-        // two of them apart; identity is what decides.
-        if let (PaintCall::Image { paint: lp, .. }, PaintCall::Image { paint: rp, .. }) = (l, r) {
-            assert!(
-                lp == rp,
-                "paint call {i}: the image draws name different view callbacks"
-            );
+pub(crate) mod test_support {
+    use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+    use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+
+    /// Typed reads of one call's payload, for a test that has already pinned
+    /// the sequence with [`PaintCapture::kinds`] and wants what a call
+    /// carried.
+    impl PaintCall {
+        pub(crate) fn as_push_clip(&self) -> Option<&PushClipPayload> {
+            match self {
+                Self::PushClip(payload) => Some(payload),
+                _ => None,
+            }
+        }
+
+        pub(crate) fn as_text(&self) -> Option<&DrawTextPayload> {
+            match self {
+                Self::Text(payload) => Some(payload),
+                _ => None,
+            }
+        }
+
+        pub(crate) fn as_curve(&self) -> Option<&DrawCurvePayload> {
+            match self {
+                Self::Curve(payload) => Some(payload),
+                _ => None,
+            }
+        }
+
+        pub(crate) fn as_image(&self) -> Option<&DrawImagePayload> {
+            match self {
+                Self::Image { payload, .. } => Some(payload),
+                _ => None,
+            }
         }
     }
-    assert_eq!(
-        left.calls.len(),
-        right.calls.len(),
-        "paint call counts differ ({} vs {}); the common prefix matched",
-        left.calls.len(),
-        right.calls.len(),
-    );
+
+    impl PaintCapture {
+        /// The recorded calls' kinds, in order — what an assertion about
+        /// nesting or order compares, where a count of each kind would let
+        /// two siblings pass for a parent and its child.
+        pub(crate) fn kinds(&self) -> Vec<&'static str> {
+            self.calls.iter().map(PaintCall::kind).collect()
+        }
+    }
+
+    /// Assert two encodes painted the same sequence, reporting the first
+    /// divergence by index and kind instead of dumping both call lists.
+    pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
+        for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
+            // Compare rendered `Debug`, not `PartialEq`: the payloads are
+            // full of `f32`, and derived equality gets both float edge cases
+            // wrong here. `NaN != NaN` would fail two byte-identical frames
+            // (a NaN stroke width is a documented pass-through, not a noop),
+            // and `-0.0 == 0.0` would hide a sign-of-zero drift between
+            // them. `Debug` distinguishes signed zeros and prints `NaN` for
+            // every NaN, so it is the bitwise-shaped comparison this check
+            // wants — no fast path, since the `PartialEq` one would
+            // reintroduce the signed-zero hole.
+            let (ls, rs) = (format!("{l:?}"), format!("{r:?}"));
+            assert!(
+                ls == rs,
+                "paint call {i} differs: {} vs {}\n  left:  {ls}\n  right: {rs}",
+                l.kind(),
+                r.kind(),
+            );
+            // A view's callback prints as a constant, so `Debug` cannot tell
+            // two of them apart; identity is what decides.
+            if let (PaintCall::Image { paint: lp, .. }, PaintCall::Image { paint: rp, .. }) = (l, r)
+            {
+                assert!(
+                    lp == rp,
+                    "paint call {i}: the image draws name different view callbacks"
+                );
+            }
+        }
+        assert_eq!(
+            left.calls.len(),
+            right.calls.len(),
+            "paint call counts differ ({} vs {}); the common prefix matched",
+            left.calls.len(),
+            right.calls.len(),
+        );
+    }
 }
