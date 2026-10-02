@@ -189,6 +189,8 @@ use glam::{UVec2, Vec2};
 use std::time::Duration;
 use strum::EnumCount as _;
 
+#[cfg(test)]
+pub(crate) mod oracle;
 pub(crate) mod passes;
 
 /// Surface for [`UiHarness::arena`]. Never framed, so the value only has
