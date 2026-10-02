@@ -31,10 +31,7 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 - [ ] Host and window: `WindowRequests::drain` has no direct test, and `ui/tests/frames/window_output.rs:115,128` re-implement its formula. `WindowDirectory::add` / `remove` panics, `sanitize_system_scale`, the `scale_factor_is_valid` boundary, `UserScale` stepping near a rung, and the `raster_eq` axes (`physical`, `pixel_snap`, the `refresh_millihertz` exclusion) have no test. `winit/tests.rs:53` never calls `.vsync()` or `.fonts()`.
 - [ ] `runtime.rs:196` `schedule`, `native.rs:125` `position_on_monitor`, and the scale-change resync in `winit/mod.rs` are pure folds behind `ActiveEventLoop`. Extract them as functions over slices and table-test them.
-- [ ] Diagnostics: `GpuSegment`'s `Display` and `clear_kinds` keeping the other fields.
 - [ ] `anim-derive` has no tests: `#[animate(skip)]`, the error arms, an all-snap struct, generics, `zero()` of a snap field. Add a `cfg(test)` probe struct with hand-computed results. `compile_fail` coverage would need `trybuild`, a new dependency.
-- [ ] `primitives/rect/aabb.rs` `Aabb::of` / `of_iter` NaN contract; `approx::share_of` and `vec2_approx_eq`.
-- [ ] Mesh cache: whether `clear` and `append` invalidate `cached_hash` is unpinned; a `mutation × {hash, bbox}` table in `mesh/tests.rs` would show it.
 
 ## 15. Duplicated fixtures and setup
 
@@ -58,7 +55,7 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 - [ ] `wrapstack/tests/bounds.rs:98,142,186,236`: one copied fixture, four tests.
 - [ ] Collapsed child per driver (`stack/tests.rs:342`, `visibility/tests.rs:127` (a near-duplicate), `zstack/tests.rs:179`, `canvas/tests.rs:236`, `wrapstack/tests/packing.rs:62`; none for grid): fold into the cross-driver sweep.
 - [ ] `stack/tests.rs:586`, `scroll/tests.rs:238` vs `:187,218`; `record_hash` / `record_cascade_static` / `record_subtree_hash` are one function; `text_wrap/wrapping.rs:44-55` vs `:80-88`.
-- [ ] `mesh/tests.rs` nine cache tests; `common/expiry_wheel/tests.rs:87`; `brush/tests.rs:146,294,419` and `:230,361,372`, `:427`; `common/time/tests.rs:76`; `translate_scale.rs:251-275`; `half_simd/tests.rs:104,121`; `display/mod.rs:229,243`.
+- [ ] `common/expiry_wheel/tests.rs:87`; `brush/tests.rs:146,294,419` and `:230,361,372`, `:427`; `common/time/tests.rs:76`; `translate_scale.rs:251-275`; `half_simd/tests.rs:104,121`; `display/mod.rs:229,243`.
 - [ ] `composer/tests/clipping.rs:121-197` cull tests: one sweep over draw kinds. `gradient_atlas/tests/residency.rs:35,92` are covered by `:105`; `upload.rs:14` by `:43`.
 - [ ] Misplaced: `encoder/tests/emission.rs:398-418` tests `Align::place_in`; `composer/tests/pruning.rs:271-307,578-590` test `Rect`; `input_state/tests/zoom.rs:62-80` tests `ZoomFactor` and duplicates `zoom_factor.rs`; `host/winit/window.rs:528,600` test only `WindowDriver::drain_window_output`.
 
