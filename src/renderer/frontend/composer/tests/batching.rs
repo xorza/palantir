@@ -8,9 +8,11 @@ use crate::primitives::{
     color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, urect::URect,
 };
 use crate::renderer::frontend::capture::PaintCapture;
+use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, composer, curve, draw, gpu_view_payload, icon, icon_ref, image, mesh,
-    params, params_unsnapped, polyline_cmd, rect, render_buffer, run, text,
+    clip, clip_rounded, curve, draw, gpu_view_payload, icon, icon_ref, image, mesh, params,
+    params_unsnapped, polyline_cmd, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -26,7 +28,6 @@ use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
-use std::time::Duration;
 
 /// Pin: a `Quad → Text → Quad` paint sequence inside a single scissor
 /// produces TWO groups so the second quad renders *after* the text.
@@ -37,9 +38,9 @@ use std::time::Duration;
 fn compose_splits_group_on_text_to_quad_transition() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            text(b, rect(10.0, 10.0, 80.0, 20.0));
-            draw(b, rect(20.0, 20.0, 60.0, 40.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
+            draw(b, Rect::new(20.0, 20.0, 60.0, 40.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -67,9 +68,9 @@ fn compose_splits_group_on_text_to_quad_transition() {
 fn compose_does_not_split_consecutive_texts() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            text(b, rect(10.0, 10.0, 80.0, 20.0));
-            text(b, rect(10.0, 35.0, 80.0, 20.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
+            text(b, Rect::new(10.0, 35.0, 80.0, 20.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -94,15 +95,15 @@ fn compose_does_not_split_consecutive_texts() {
 fn compose_same_clip_push_pop_preserves_overlap_state() {
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 200.0, 200.0));
-            draw(b, rect(0.0, 0.0, 100.0, 28.0)); // node A bg
-            text(b, rect(4.0, 4.0, 90.0, 20.0)); //  node A label
+            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A bg
+            text(b, Rect::new(4.0, 4.0, 90.0, 20.0)); //  node A label
             // Redundant nested clip — same rect, no narrowing.
-            clip(b, rect(0.0, 0.0, 200.0, 200.0));
+            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             b.pop_clip();
             // Overlapping bg after the redundant clip: must still
             // flush against node A's label.
-            draw(b, rect(40.0, 10.0, 100.0, 28.0)); // node B bg, overlaps A's label
+            draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B bg, overlaps A's label
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -129,8 +130,8 @@ fn compose_batches_disjoint_row_units_into_one_group() {
         |b, _arena| {
             for i in 0..5 {
                 let y = (i as f32) * 40.0;
-                draw(b, rect(0.0, y, 100.0, 28.0));
-                text(b, rect(4.0, y + 4.0, 90.0, 20.0));
+                draw(b, Rect::new(0.0, y, 100.0, 28.0));
+                text(b, Rect::new(4.0, y + 4.0, 90.0, 20.0));
             }
         },
         &params(1.0, UVec2::new(200, 400)),
@@ -156,10 +157,10 @@ fn compose_batches_disjoint_row_units_into_one_group() {
 fn compose_flushes_when_later_quad_overlaps_prior_text() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(0.0, 0.0, 100.0, 28.0)); // node A chrome
-            text(b, rect(4.0, 4.0, 90.0, 20.0)); //  node A label
-            draw(b, rect(40.0, 10.0, 100.0, 28.0)); // node B chrome, overlaps A's label
-            text(b, rect(44.0, 14.0, 90.0, 20.0)); // node B label
+            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A chrome
+            text(b, Rect::new(4.0, 4.0, 90.0, 20.0)); //  node A label
+            draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B chrome, overlaps A's label
+            text(b, Rect::new(44.0, 14.0, 90.0, 20.0)); // node B label
         },
         &params(1.0, UVec2::new(400, 200)),
     );
@@ -175,11 +176,11 @@ fn compose_flushes_when_later_quad_overlaps_prior_text() {
 #[test]
 fn compose_shadow_outer_halo_after_text_splits_group() {
     let sigma = 4.0;
-    let source = rect(50.0, 50.0, 50.0, 50.0);
+    let source = Rect::new(50.0, 50.0, 50.0, 50.0);
     let shadow_rect = source.inflated(3.0 * sigma);
     let buf = run(
         |b, _arena| {
-            text(b, rect(39.0, 60.0, 2.0, 10.0));
+            text(b, Rect::new(39.0, 60.0, 2.0, 10.0));
             b.draw_quad(
                 DrawQuadPayload::shadow(
                     shadow_rect,
@@ -206,9 +207,9 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
 fn compose_keeps_quads_then_text_in_one_group() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(2.0, 2.0, 96.0, 96.0));
-            text(b, rect(10.0, 10.0, 80.0, 20.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            draw(b, Rect::new(2.0, 2.0, 96.0, 96.0));
+            text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -227,13 +228,13 @@ fn compose_keeps_quads_then_text_in_one_group() {
 fn compose_coalesces_text_across_distinct_scissor_groups() {
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 30.0));
-            draw(b, rect(0.0, 0.0, 100.0, 28.0));
-            text(b, rect(4.0, 4.0, 90.0, 20.0));
+            clip(b, Rect::new(0.0, 0.0, 100.0, 30.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0));
+            text(b, Rect::new(4.0, 4.0, 90.0, 20.0));
             b.pop_clip();
-            clip(b, rect(0.0, 40.0, 100.0, 30.0));
-            draw(b, rect(0.0, 40.0, 100.0, 28.0));
-            text(b, rect(4.0, 44.0, 90.0, 20.0));
+            clip(b, Rect::new(0.0, 40.0, 100.0, 30.0));
+            draw(b, Rect::new(0.0, 40.0, 100.0, 28.0));
+            text(b, Rect::new(4.0, 44.0, 90.0, 20.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -257,13 +258,13 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
     let buf = run(
         |b, _arena| {
             // Wide outer text — unclipped, full bbox.
-            text(b, rect(0.0, 0.0, 200.0, 20.0));
+            text(b, Rect::new(0.0, 0.0, 200.0, 20.0));
             // Narrow clip (20px wide) wrapping a wide text run (100px).
             // The run's intended visible region is 20px, but its
             // measured rect is 100px — the clip is the only thing
             // keeping the glyphs inside.
-            clip(b, rect(40.0, 40.0, 20.0, 20.0));
-            text(b, rect(40.0, 40.0, 100.0, 20.0));
+            clip(b, Rect::new(40.0, 40.0, 20.0, 20.0));
+            text(b, Rect::new(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(300, 300)),
@@ -291,14 +292,14 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
 /// all the same width).
 #[test]
 fn compose_strict_text_with_matching_clip_coalesces() {
-    let clip_rect = rect(40.0, 40.0, 20.0, 20.0);
+    let clip_rect = Rect::new(40.0, 40.0, 20.0, 20.0);
     let buf = run(
         |b, _arena| {
             clip(b, clip_rect);
-            text(b, rect(40.0, 40.0, 100.0, 20.0));
+            text(b, Rect::new(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
             clip(b, clip_rect);
-            text(b, rect(40.0, 40.0, 100.0, 20.0));
+            text(b, Rect::new(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(300, 300)),
@@ -321,11 +322,11 @@ fn compose_strict_text_with_matching_clip_coalesces() {
 fn compose_rounded_clip_change_splits_text_batch() {
     let buf = run(
         |b, _arena| {
-            clip_rounded(b, rect(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
-            text(b, rect(4.0, 4.0, 90.0, 20.0));
+            clip_rounded(b, Rect::new(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
+            text(b, Rect::new(4.0, 4.0, 90.0, 20.0));
             b.pop_clip();
-            clip_rounded(b, rect(0.0, 40.0, 100.0, 30.0), Corners::all(8.0));
-            text(b, rect(4.0, 44.0, 90.0, 20.0));
+            clip_rounded(b, Rect::new(0.0, 40.0, 100.0, 30.0), Corners::all(8.0));
+            text(b, Rect::new(4.0, 44.0, 90.0, 20.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -372,7 +373,7 @@ fn compose_spins_polyline_about_bbox_center() {
                 // Pivot is the 100x100 box centre, which `stroke_bounds`
                 // derives from the owner rect on the production path.
                 bounds: if rotation == 0.0 {
-                    StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0))
+                    StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0))
                 } else {
                     StrokeBounds::Spun {
                         spin: Spin {
@@ -394,20 +395,13 @@ fn compose_spins_polyline_about_bbox_center() {
             },
             1.0,
         );
-        let mut composer = composer();
-        let mut out = render_buffer();
-        composer
-            .begin(
-                params(1.0, UVec2::new(200, 200)),
-                Duration::ZERO,
-                &store,
-                &mut out,
-            )
-            .replay_from(&buffer);
+        let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
+        rig.store = store;
+        rig.compose(&buffer);
         // GPU path: the polyline emits one segment instance whose
         // p0/p3 lanes carry the transformed (spun) endpoints.
-        assert_eq!(out.curves.len(), 1, "one segment instance");
-        let ci = &out.curves[0];
+        assert_eq!(rig.out.curves.len(), 1, "one segment instance");
+        let ci = &rig.out.curves[0];
         (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
     };
     // Unrotated, the segment is where it was recorded. Spun 90° about
@@ -429,16 +423,16 @@ fn compose_spins_polyline_about_bbox_center() {
 /// whole, at the coordinates of the first label.
 #[test]
 fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
-    let label = rect(0.0, 0.0, 100.0, 20.0);
+    let label = Rect::new(0.0, 0.0, 100.0, 20.0);
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 400.0, 400.0));
+            clip(b, Rect::new(0.0, 0.0, 400.0, 400.0));
             text(b, label);
             b.pop_clip();
-            clip(b, rect(0.0, 200.0, 100.0, 100.0));
+            clip(b, Rect::new(0.0, 200.0, 100.0, 100.0));
             mesh(b, label); // covers the label, but the clip discards it
             b.pop_clip();
-            text(b, rect(0.0, 40.0, 100.0, 20.0));
+            text(b, Rect::new(0.0, 40.0, 100.0, 20.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -457,12 +451,12 @@ fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
 fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
     let buf = run(
         |b, _arena| {
-            text(b, rect(0.0, 0.0, 100.0, 30.0)); // text A
+            text(b, Rect::new(0.0, 0.0, 100.0, 30.0)); // text A
             // Push a clip to force a fresh group; quad inside overlaps text A.
-            clip(b, rect(0.0, 0.0, 200.0, 200.0));
-            draw(b, rect(10.0, 10.0, 50.0, 20.0)); // overlaps A → must close batch
+            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+            draw(b, Rect::new(10.0, 10.0, 50.0, 20.0)); // overlaps A → must close batch
             b.pop_clip();
-            text(b, rect(0.0, 40.0, 100.0, 30.0)); // text B
+            text(b, Rect::new(0.0, 40.0, 100.0, 30.0)); // text B
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -498,8 +492,8 @@ fn tight_curve_bound_avoids_false_group_split() {
     for case in cases {
         let buf = run(
             |b, _| {
-                curve(b, rect(0.0, 0.0, 20.0, 20.0));
-                image(b, rect(case.image_x, 0.0, 10.0, 10.0));
+                curve(b, Rect::new(0.0, 0.0, 20.0, 20.0));
+                image(b, Rect::new(case.image_x, 0.0, 10.0, 10.0));
             },
             &params(1.0, UVec2::new(100, 100)),
         );
@@ -513,8 +507,8 @@ fn tight_curve_bound_avoids_false_group_split() {
 fn compose_mesh_then_overlapping_curve_keeps_one_group() {
     let buf = run(
         |b, _| {
-            mesh(b, rect(10.0, 10.0, 30.0, 30.0));
-            curve(b, rect(0.0, 0.0, 100.0, 100.0));
+            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0));
+            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -530,8 +524,8 @@ fn compose_mesh_then_overlapping_curve_keeps_one_group() {
 fn compose_mesh_image_record_order_gates_group_split() {
     let buf = run(
         |b, _| {
-            mesh(b, rect(10.0, 10.0, 30.0, 30.0));
-            image(b, rect(20.0, 20.0, 30.0, 30.0)); // overlaps the mesh
+            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0));
+            image(b, Rect::new(20.0, 20.0, 30.0, 30.0)); // overlaps the mesh
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -541,8 +535,8 @@ fn compose_mesh_image_record_order_gates_group_split() {
 
     let buf = run(
         |b, _| {
-            image(b, rect(20.0, 20.0, 30.0, 30.0));
-            mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // overlaps the image
+            image(b, Rect::new(20.0, 20.0, 30.0, 30.0));
+            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // overlaps the image
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -565,9 +559,9 @@ fn compose_mesh_image_record_order_gates_group_split() {
 fn compose_disjoint_mixed_kinds_share_one_group() {
     let buf = run(
         |b, _| {
-            curve(b, rect(0.0, 0.0, 20.0, 20.0));
-            mesh(b, rect(40.0, 40.0, 20.0, 20.0));
-            image(b, rect(80.0, 80.0, 20.0, 20.0));
+            curve(b, Rect::new(0.0, 0.0, 20.0, 20.0));
+            mesh(b, Rect::new(40.0, 40.0, 20.0, 20.0));
+            image(b, Rect::new(80.0, 80.0, 20.0, 20.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -593,7 +587,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
         |b, store| {
             // First node label.
-            text(b, rect(0.0, 0.0, 300.0, 20.0));
+            text(b, Rect::new(0.0, 0.0, 300.0, 20.0));
             // A polyline over the label's far end closes the text batch
             // (curve-tier) without flushing the group, and clears the
             // quad below in x (so it can't be what forces the flush).
@@ -608,10 +602,10 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 LineJoin::Miter,
             );
             // Panel chrome quad, overlapping the (now closed-batch) label.
-            draw(b, rect(0.0, 0.0, 100.0, 60.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 60.0));
             // Repeat after the first closed batch has been indexed and
             // flushed. The new pending tail must be discovered independently.
-            text(b, rect(0.0, 100.0, 300.0, 20.0));
+            text(b, Rect::new(0.0, 100.0, 300.0, 20.0));
             polyline_cmd(
                 b,
                 store,
@@ -622,7 +616,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 LineCap::Butt,
                 LineJoin::Miter,
             );
-            draw(b, rect(0.0, 100.0, 100.0, 60.0));
+            draw(b, Rect::new(0.0, 100.0, 100.0, 60.0));
         },
         &params(1.0, UVec2::new(600, 600)),
     );
@@ -679,7 +673,7 @@ fn quad_fast_path_flag_cases() {
     let cases: &[(&str, Rect, Corners, Stroke, BrushSource, f32, bool)] = &[
         (
             "aligned sharp strokeless solid",
-            rect(10.0, 10.0, 20.0, 20.0),
+            Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
             solid(opaque),
@@ -688,7 +682,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "translucent still qualifies",
-            rect(10.0, 10.0, 20.0, 20.0),
+            Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
             solid(RgbaF32::srgba(0.5, 0.5, 0.5, 0.5)),
@@ -697,7 +691,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "fractional logical rect aligned at DPR 2",
-            rect(10.5, 10.5, 20.0, 20.0),
+            Rect::new(10.5, 10.5, 20.0, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
             solid(opaque),
@@ -706,7 +700,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "fractional rect disqualifies",
-            rect(10.25, 10.0, 20.0, 20.0),
+            Rect::new(10.25, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
             solid(opaque),
@@ -715,7 +709,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "fractional size disqualifies",
-            rect(10.0, 10.0, 20.5, 20.0),
+            Rect::new(10.0, 10.0, 20.5, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
             solid(opaque),
@@ -724,7 +718,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "corners disqualify",
-            rect(10.0, 10.0, 20.0, 20.0),
+            Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::all(4.0),
             Stroke::ZERO,
             solid(opaque),
@@ -733,7 +727,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "stroke disqualifies",
-            rect(10.0, 10.0, 20.0, 20.0),
+            Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Stroke::new(RgbaF32::WHITE, 1.0),
             solid(opaque),
@@ -742,7 +736,7 @@ fn quad_fast_path_flag_cases() {
         ),
         (
             "gradient disqualifies",
-            rect(10.0, 10.0, 20.0, 20.0),
+            Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
             gradient,
@@ -754,10 +748,11 @@ fn quad_fast_path_flag_cases() {
     for (name, r, corners, stroke, brush, dpr, expect_fast) in cases {
         let buf = run(
             |b, _arena| {
-                b.draw_quad(
-                    DrawQuadPayload::rect(*r, *corners, *brush, (*stroke).into()),
-                    1.0,
-                )
+                QuadBuilder::new(*r)
+                    .corners(*corners)
+                    .brush(*brush)
+                    .stroke(*stroke)
+                    .draw(b)
             },
             &params_unsnapped(*dpr, UVec2::new(400, 400)),
         );
@@ -795,8 +790,8 @@ fn labelled_toolbar_costs_one_icon_batch_and_one_text_batch() {
         |buf, _| {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
-                icon(buf, rect(x, 0.0, 16.0, 16.0), icon_ref(i as u16));
-                text(buf, rect(x + 20.0, 0.0, 60.0, 16.0));
+                icon(buf, Rect::new(x, 0.0, 16.0, 16.0), icon_ref(i as u16));
+                text(buf, Rect::new(x + 20.0, 0.0, 60.0, 16.0));
             }
         },
         &params(1.0, UVec2::new(1024, 64)),
@@ -828,12 +823,12 @@ fn images_between_labels_coalesce_text_the_same_way() {
                 let x = i as f32 * 100.0;
                 buf.draw_image(
                     ImageDraw {
-                        payload: gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
+                        payload: gpu_view_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1)),
                         view: None,
                     },
                     1.0,
                 );
-                text(buf, rect(x + 20.0, 0.0, 60.0, 16.0));
+                text(buf, Rect::new(x + 20.0, 0.0, 60.0, 16.0));
             }
         },
         &params(1.0, UVec2::new(1024, 64)),
@@ -870,9 +865,9 @@ fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
     ] {
         let out = run(
             |buf, _| {
-                text(buf, rect(0.0, 0.0, 60.0, 16.0));
-                icon(buf, rect(40.0, 0.0, 16.0, 16.0), icon_ref(0));
-                text(buf, rect(case.trailing_x, 0.0, 60.0, 16.0));
+                text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
+                icon(buf, Rect::new(40.0, 0.0, 16.0, 16.0), icon_ref(0));
+                text(buf, Rect::new(case.trailing_x, 0.0, 60.0, 16.0));
             },
             &params(1.0, UVec2::new(1024, 64)),
         );
@@ -896,16 +891,16 @@ fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
 fn text_batch_drains_past_a_non_overlapping_image() {
     let out = run(
         |buf, _| {
-            text(buf, rect(0.0, 0.0, 60.0, 16.0));
+            text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
             buf.draw_image(
                 ImageDraw {
-                    payload: gpu_view_payload(rect(100.0, 0.0, 16.0, 16.0), TextureId(1)),
+                    payload: gpu_view_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1)),
                     view: None,
                 },
                 1.0,
             );
             // Over the image, so this run flushes the group.
-            text(buf, rect(110.0, 0.0, 60.0, 16.0));
+            text(buf, Rect::new(110.0, 0.0, 60.0, 16.0));
         },
         &params(1.0, UVec2::new(1024, 64)),
     );
@@ -930,7 +925,7 @@ fn text_batch_drains_past_a_non_overlapping_image() {
 fn a_text_scissor_covers_the_snapped_glyph_block() {
     let mut display = params(1.0, UVec2::new(200, 100));
     display.pixel_snap = true;
-    let buf = run(|b, _| text(b, rect(10.0, 10.0, 100.4, 20.0)), &display);
+    let buf = run(|b, _| text(b, Rect::new(10.0, 10.0, 100.4, 20.0)), &display);
     assert_eq!(buf.text_batches.len(), 1);
     assert_eq!(buf.texts[0].origin, Vec2::new(10.0, 10.0));
     assert_eq!(buf.text_batches[0].scissor, URect::new(9, 9, 102, 22));

@@ -1,4 +1,3 @@
-use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
@@ -9,11 +8,8 @@ use crate::renderer::frontend::payload::draw_image_payload::{
     DrawImagePayload, ImageDraw, ViewPaint,
 };
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use glam::Vec2;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[test]
 fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
@@ -111,14 +107,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
 /// `paint.is_some()` and nothing else would notice if it stopped.
 #[test]
 fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
-    #[derive(Debug)]
-    struct NoopGpuPaint;
-
-    impl GpuPaint for NoopGpuPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-    }
-
-    let paint = GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)));
+    let paint = GpuPaintRef::noop();
     let live = Rect::new(1.0, 2.0, 10.0, 10.0);
     let cases = [
         (

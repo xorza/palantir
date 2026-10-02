@@ -2,29 +2,26 @@
 //! back through.
 
 use crate::display::Display;
-use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::IconId;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
-use crate::primitives::{
-    color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect, stroke::Stroke,
-};
+use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
 use crate::renderer::frontend::capture::PaintCapture;
-use crate::renderer::frontend::composer::Composer;
+use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordStore;
@@ -33,22 +30,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
-use std::cell::RefCell;
 use std::num::NonZeroU32;
-use std::rc::Rc;
-use std::time::Duration;
-
-pub(super) fn composer() -> Composer {
-    Composer::new(NonZeroU32::new(16_384).unwrap())
-}
-
-pub(super) fn render_buffer() -> RenderBuffer {
-    RenderBuffer::new()
-}
-
-pub(super) fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
-    Rect::new(x, y, w, h)
-}
 
 pub(super) fn clip(buf: &mut PaintCapture, r: Rect) {
     buf.push_clip(PushClipPayload::rect(r));
@@ -59,15 +41,7 @@ pub(super) fn clip_rounded(buf: &mut PaintCapture, r: Rect, corners: Corners) {
 }
 
 pub(super) fn draw(buf: &mut PaintCapture, r: Rect) {
-    buf.draw_quad(
-        DrawQuadPayload::rect(
-            r,
-            Corners::default(),
-            BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-            Stroke::ZERO.into(),
-        ),
-        1.0,
-    );
+    QuadBuilder::new(r).draw(buf);
 }
 
 /// [`draw`] with a fill unique to the quad's place in the capture — the
@@ -75,15 +49,9 @@ pub(super) fn draw(buf: &mut PaintCapture, r: Rect) {
 /// survived a prune, not only how many.
 pub(super) fn draw_marked(buf: &mut PaintCapture, r: Rect) {
     let nth = buf.calls.len() as f32;
-    buf.draw_quad(
-        DrawQuadPayload::rect(
-            r,
-            Corners::default(),
-            BrushSource::Solid(RgbaF32::new(nth / 255.0, 1.0, 1.0, 1.0).into()),
-            Stroke::ZERO.into(),
-        ),
-        1.0,
-    );
+    QuadBuilder::new(r)
+        .solid(RgbaF32::new(nth / 255.0, 1.0, 1.0, 1.0))
+        .draw(buf);
 }
 
 /// The surviving quads' rects, in buffer order.
@@ -133,7 +101,7 @@ pub(super) fn run(
     build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
     display: &Display,
 ) -> RenderBuffer {
-    run_with_texture_cap(build, display, 16_384)
+    run_in(ComposeRig::new(*display), build)
 }
 
 pub(super) fn run_with_texture_cap(
@@ -141,26 +109,20 @@ pub(super) fn run_with_texture_cap(
     display: &Display,
     max_texture_dim: u32,
 ) -> RenderBuffer {
+    let cap = NonZeroU32::new(max_texture_dim).unwrap();
+    run_in(ComposeRig::with_texture_cap(*display, cap), build)
+}
+
+/// One frame of `rig`, recorded by `build` into a fresh capture and the
+/// rig's store.
+fn run_in(
+    mut rig: ComposeRig,
+    build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
+) -> RenderBuffer {
     let mut recorded = PaintCapture::default();
-    let mut store = RecordStore::default();
-    build(&mut recorded, &mut store);
-    let mut composer = Composer::new(NonZeroU32::new(max_texture_dim).unwrap());
-    let mut out = render_buffer();
-    composer
-        .begin(*display, Duration::ZERO, &store, &mut out)
-        .replay_from(&recorded);
-    out
-}
-
-#[derive(Debug)]
-struct NoopGpuPaint;
-
-impl GpuPaint for NoopGpuPaint {
-    fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-}
-
-pub(super) fn gpu_paint() -> GpuPaintRef {
-    GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)))
+    build(&mut recorded, &mut rig.store);
+    rig.compose(&recorded);
+    rig.out
 }
 
 /// The payload the encoder builds for a `GpuView`: the view's full
@@ -175,6 +137,21 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayloa
         handle,
         flags: 0,
     }
+}
+
+/// Draw a `GpuView` at `rect` — [`gpu_view_payload`] under a no-op
+/// paint, at full alpha.
+pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
+    buf.draw_image(
+        ImageDraw {
+            payload: gpu_view_payload(rect, handle),
+            view: Some(ViewPaint {
+                paint: &GpuPaintRef::noop(),
+                epoch: 0,
+            }),
+        },
+        1.0,
+    );
 }
 
 /// The payload the encoder builds for an icon: a fit-resolved logical rect,
@@ -221,7 +198,7 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     for level in 1..=depth {
         clip_rounded(
             buffer,
-            rect(0.0, 0.0, 400.0, 400.0),
+            Rect::new(0.0, 0.0, 400.0, 400.0),
             Corners::all(level as f32 * 0.5),
         );
     }

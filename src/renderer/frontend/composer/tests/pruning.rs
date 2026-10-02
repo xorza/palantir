@@ -5,17 +5,16 @@ use crate::primitives::{
     color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::PaintCapture;
+use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, composer, draw, draw_marked, params, params_unsnapped, rect, render_buffer, run,
-    survivor_calls, survivors, text,
+    clip, draw, draw_marked, params, params_unsnapped, run, survivor_calls, survivors, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::scene::record_store::RecordStore;
 use glam::UVec2;
-use std::time::Duration;
 
 #[test]
 fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
@@ -23,8 +22,8 @@ fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
     // second, so prune drops it and the second survives.
     let buf = run(
         |b, _| {
-            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0));
+            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -47,17 +46,17 @@ fn prune_non_fast_cover_insets_exact_half_pixel_aa_fringe() {
     let cases = [
         Case {
             label: "identical_fractional_edges",
-            under: rect(10.25, 10.25, 100.0, 100.0),
+            under: Rect::new(10.25, 10.25, 100.0, 100.0),
             expected_quads: 2,
         },
         Case {
             label: "touches_full_coverage_boundary",
-            under: rect(10.75, 10.75, 99.0, 99.0),
+            under: Rect::new(10.75, 10.75, 99.0, 99.0),
             expected_quads: 1,
         },
         Case {
             label: "crosses_full_coverage_boundary",
-            under: rect(10.74, 10.75, 99.0, 99.0),
+            under: Rect::new(10.74, 10.75, 99.0, 99.0),
             expected_quads: 2,
         },
     ];
@@ -66,7 +65,7 @@ fn prune_non_fast_cover_insets_exact_half_pixel_aa_fringe() {
         let buf = run(
             |b, _| {
                 draw(b, case.under);
-                draw(b, rect(10.25, 10.25, 100.0, 100.0));
+                draw(b, Rect::new(10.25, 10.25, 100.0, 100.0));
             },
             &params_unsnapped(1.0, UVec2::new(200, 200)),
         );
@@ -80,8 +79,8 @@ fn prune_keeps_quad_not_fully_covered_by_smaller_later_quad() {
     // `Rect::contains_rect` is asymmetric.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(10.0, 10.0, 50.0, 50.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -94,9 +93,9 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     // can't reach back to prune the earlier group's quad.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            clip(b, rect(0.0, 0.0, 200.0, 200.0));
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -111,19 +110,14 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
 #[test]
 fn prune_drops_bordered_quad_under_solid_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
+
     let buf = run(
         |b, _| {
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::default(),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 0.0, 0.0).into()),
-                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 2.0).into(),
-                ),
-                1.0,
-            );
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid on top
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .solid(RgbaF32::srgb(1.0, 0.0, 0.0))
+                .stroke(Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 2.0))
+                .draw(b);
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // solid on top
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -143,19 +137,13 @@ fn prune_rounded_on_top_uses_deflated_cover() {
     // a sharp opaque quad on top exactly covers a rounded under,
     // the under is dropped (sharp cover == its own bounding rect,
     // which contains the rounded's bounding rect).
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
+
     let buf_rounded_on_top = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid sharp under
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::all(10.0),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::ZERO.into(),
-                ),
-                1.0,
-            );
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // solid sharp under
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .corners(Corners::all(10.0))
+                .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -167,16 +155,10 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 
     let buf_sharp_on_top = run(
         |b, _| {
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::all(10.0),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::ZERO.into(),
-                ),
-                1.0,
-            );
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // sharp opaque on top
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .corners(Corners::all(10.0))
+                .draw(b);
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // sharp opaque on top
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -189,21 +171,13 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 
 #[test]
 fn prune_keeps_transparent_solid_as_non_occluder() {
-    use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
     // alpha=0.5 quad on top doesn't occlude anything beneath.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::default(),
-                    BrushSource::Solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5).into()),
-                    Stroke::ZERO.into(),
-                ),
-                1.0,
-            );
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5))
+                .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -218,19 +192,13 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
     // gives a cover deflation of ≈3.43 per side.
     // An under-quad at (10,10,80,80) is well inside cover and
     // should be dropped.
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
+
     let buf = run(
         |b, _| {
-            draw(b, rect(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::all(10.0),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::ZERO.into(),
-                ),
-                1.0,
-            );
+            draw(b, Rect::new(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .corners(Corners::all(10.0))
+                .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -250,19 +218,13 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
     // Rounded r=20 ⇒ inset ≈ 5.86. An under at (0,0,5,5) lies
     // entirely inside the [0,20]×[0,20] corner-cutout zone and is
     // never covered.
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
+
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::all(20.0),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::ZERO.into(),
-                ),
-                1.0,
-            );
+            draw(b, Rect::new(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .corners(Corners::all(20.0))
+                .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -322,7 +284,7 @@ fn prune_keeps_shadow_under_opaque_cover() {
         |b, _| {
             b.draw_quad(
                 DrawQuadPayload::shadow(
-                    rect(20.0, 20.0, 60.0, 60.0),
+                    Rect::new(20.0, 20.0, 60.0, 60.0),
                     Corners::default(),
                     RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).into(),
                     FillKind::SHADOW_DROP,
@@ -331,7 +293,7 @@ fn prune_keeps_shadow_under_opaque_cover() {
                 ),
                 1.0,
             );
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // opaque cover on top
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // opaque cover on top
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -351,9 +313,9 @@ fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
     // logic handles two consecutive drops.
     let buf = run(
         |b, _| {
-            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // A
-            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // B
-            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // C
+            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // A
+            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // B
+            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // C
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -369,19 +331,13 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     // (Translucent strokes shrink the cover — see
     // `prune_occluder_stroke_translucency_gates_cover`.)
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
+
     let buf = run(
         |b, _| {
-            draw(b, rect(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::default(),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 2.0).into(),
-                ),
-                1.0,
-            );
+            draw(b, Rect::new(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .stroke(Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 2.0))
+                .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -413,7 +369,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
 #[test]
 fn prune_occluder_stroke_translucency_gates_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::brush_source::BrushSource;
+
     #[derive(Debug)]
     struct Case {
         label: &'static str,
@@ -424,31 +380,31 @@ fn prune_occluder_stroke_translucency_gates_cover() {
     let cases = [
         Case {
             label: "no_stroke_full_cover",
-            under: rect(0.0, 0.0, 100.0, 100.0),
+            under: Rect::new(0.0, 0.0, 100.0, 100.0),
             stroke: Stroke::ZERO,
             pruned: true,
         },
         Case {
             label: "opaque_stroke_aa_edge_not_covered",
-            under: rect(0.0, 0.0, 100.0, 100.0),
+            under: Rect::new(0.0, 0.0, 100.0, 100.0),
             stroke: Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 4.0),
             pruned: false,
         },
         Case {
             label: "translucent_stroke_ring_not_covered",
-            under: rect(0.0, 0.0, 100.0, 100.0),
+            under: Rect::new(0.0, 0.0, 100.0, 100.0),
             stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
             pruned: false,
         },
         Case {
             label: "translucent_stroke_interior_covered",
-            under: rect(10.0, 10.0, 50.0, 50.0),
+            under: Rect::new(10.0, 10.0, 50.0, 50.0),
             stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
             pruned: true,
         },
         Case {
             label: "stroke_wider_than_half_rect_no_cover",
-            under: rect(10.0, 10.0, 50.0, 50.0),
+            under: Rect::new(10.0, 10.0, 50.0, 50.0),
             stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 60.0),
             pruned: false,
         },
@@ -457,15 +413,9 @@ fn prune_occluder_stroke_translucency_gates_cover() {
         let buf = run(
             |b, _| {
                 draw(b, case.under);
-                b.draw_quad(
-                    DrawQuadPayload::rect(
-                        rect(0.0, 0.0, 100.0, 100.0),
-                        Corners::default(),
-                        BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                        (&case.stroke).into(),
-                    ),
-                    1.0,
-                );
+                QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                    .stroke(case.stroke)
+                    .draw(b);
             },
             &params(1.0, UVec2::new(200, 200)),
         );
@@ -480,11 +430,11 @@ fn prune_compacts_preserving_non_contiguous_survivors() {
     // only E survives.
     let buf = run(
         |b, _| {
-            draw_marked(b, rect(0.0, 0.0, 10.0, 10.0)); // A, inside C
-            draw_marked(b, rect(50.0, 50.0, 5.0, 5.0)); // B, inside E
-            draw_marked(b, rect(0.0, 0.0, 30.0, 30.0)); // C, covers A, inside E
-            draw_marked(b, rect(80.0, 80.0, 5.0, 5.0)); // D, inside E
-            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // E, covers the rest
+            draw_marked(b, Rect::new(0.0, 0.0, 10.0, 10.0)); // A, inside C
+            draw_marked(b, Rect::new(50.0, 50.0, 5.0, 5.0)); // B, inside E
+            draw_marked(b, Rect::new(0.0, 0.0, 30.0, 30.0)); // C, covers A, inside E
+            draw_marked(b, Rect::new(80.0, 80.0, 5.0, 5.0)); // D, inside E
+            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // E, covers the rest
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -495,10 +445,10 @@ fn prune_compacts_preserving_non_contiguous_survivors() {
     // order.
     let buf = run(
         |b, _| {
-            draw_marked(b, rect(0.0, 0.0, 10.0, 10.0)); // A, inside C
-            draw_marked(b, rect(150.0, 150.0, 5.0, 5.0)); // B
-            draw_marked(b, rect(0.0, 0.0, 30.0, 30.0)); // C
-            draw_marked(b, rect(170.0, 170.0, 5.0, 5.0)); // D
+            draw_marked(b, Rect::new(0.0, 0.0, 10.0, 10.0)); // A, inside C
+            draw_marked(b, Rect::new(150.0, 150.0, 5.0, 5.0)); // B
+            draw_marked(b, Rect::new(0.0, 0.0, 30.0, 30.0)); // C
+            draw_marked(b, Rect::new(170.0, 170.0, 5.0, 5.0)); // D
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -506,9 +456,9 @@ fn prune_compacts_preserving_non_contiguous_survivors() {
     assert_eq!(
         survivors(&buf),
         [
-            rect(150.0, 150.0, 5.0, 5.0),
-            rect(0.0, 0.0, 30.0, 30.0),
-            rect(170.0, 170.0, 5.0, 5.0),
+            Rect::new(150.0, 150.0, 5.0, 5.0),
+            Rect::new(0.0, 0.0, 30.0, 30.0),
+            Rect::new(170.0, 170.0, 5.0, 5.0),
         ],
     );
 }
@@ -522,8 +472,8 @@ fn prune_edge_tangent_under_is_dropped_under_inclusive_containment() {
     // leak the tangent under-quad through.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 50.0, 50.0)); // under, max=(50,50)
-            draw(b, rect(0.0, 0.0, 50.0, 50.0)); // occluder, same extent
+            draw(b, Rect::new(0.0, 0.0, 50.0, 50.0)); // under, max=(50,50)
+            draw(b, Rect::new(0.0, 0.0, 50.0, 50.0)); // occluder, same extent
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -538,8 +488,8 @@ fn prune_lower_index_occluder_does_not_drop_higher_index_under() {
     // respect paint order: only `occ.idx > i` qualifies.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // big "occluder" but painted FIRST
-            draw(b, rect(10.0, 10.0, 30.0, 30.0)); // small quad painted SECOND
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // big "occluder" but painted FIRST
+            draw(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // small quad painted SECOND
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -558,17 +508,13 @@ fn prune_steady_state_across_repeated_compose_calls() {
     // entry would either panic on index OOB after the slice shrinks
     // or leak across-frame drops.
     let mut buffer = PaintCapture::default();
-    let mut composer = composer();
-    let display = params(1.0, UVec2::new(200, 200));
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     for _ in 0..5 {
         buffer.calls.clear();
-        draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
-        draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
-        let mut out = render_buffer();
-        composer
-            .begin(display, Duration::ZERO, &RecordStore::default(), &mut out)
-            .replay_from(&buffer);
-        assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
+        draw(&mut buffer, Rect::new(0.0, 0.0, 100.0, 100.0));
+        draw(&mut buffer, Rect::new(0.0, 0.0, 100.0, 100.0));
+        rig.compose(&buffer);
+        assert_eq!(rig.out.quads.len(), 1, "prune runs cleanly each frame");
     }
 }
 
@@ -611,8 +557,8 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "qualifying root folds, later quad stays",
             |b| {
-                draw(b, rect(0.0, 0.0, 200.0, 200.0));
-                draw(b, rect(10.0, 10.0, 20.0, 20.0));
+                draw(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+                draw(b, Rect::new(10.0, 10.0, 20.0, 20.0));
             },
             1,
             Some(RgbaF32::srgb(1.0, 1.0, 1.0)),
@@ -620,15 +566,9 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "rounded corners disqualify",
             |b| {
-                b.draw_quad(
-                    DrawQuadPayload::rect(
-                        rect(0.0, 0.0, 200.0, 200.0),
-                        Corners::all(4.0),
-                        BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                        Stroke::ZERO.into(),
-                    ),
-                    1.0,
-                );
+                QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                    .corners(Corners::all(4.0))
+                    .draw(b);
             },
             1,
             None,
@@ -636,15 +576,9 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "stroke disqualifies",
             |b| {
-                b.draw_quad(
-                    DrawQuadPayload::rect(
-                        rect(0.0, 0.0, 200.0, 200.0),
-                        Corners::default(),
-                        BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                        Stroke::new(RgbaF32::WHITE, 2.0).into(),
-                    ),
-                    1.0,
-                );
+                QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                    .stroke(Stroke::new(RgbaF32::WHITE, 2.0))
+                    .draw(b);
             },
             1,
             None,
@@ -652,15 +586,9 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "translucent fill disqualifies",
             |b| {
-                b.draw_quad(
-                    DrawQuadPayload::rect(
-                        rect(0.0, 0.0, 200.0, 200.0),
-                        Corners::default(),
-                        BrushSource::Solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5).into()),
-                        Stroke::ZERO.into(),
-                    ),
-                    1.0,
-                );
+                QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                    .solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5))
+                    .draw(b);
             },
             1,
             None,
@@ -668,26 +596,20 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "gradient fill disqualifies",
             |b| {
-                b.draw_quad(
-                    DrawQuadPayload::rect(
-                        rect(0.0, 0.0, 200.0, 200.0),
-                        Corners::default(),
-                        BrushSource::Gradient(ResolvedGradient {
-                            axis: FillAxis::ZERO,
-                            lut_row: LutRow::FALLBACK,
-                            kind: FillKind::linear(Spread::Pad),
-                        }),
-                        Stroke::ZERO.into(),
-                    ),
-                    1.0,
-                );
+                QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                    .brush(BrushSource::Gradient(ResolvedGradient {
+                        axis: FillAxis::ZERO,
+                        lut_row: LutRow::FALLBACK,
+                        kind: FillKind::linear(Spread::Pad),
+                    }))
+                    .draw(b);
             },
             1,
             None,
         ),
         (
             "one pixel short of coverage disqualifies",
-            |b| draw(b, rect(0.0, 0.0, 200.0, 199.0)),
+            |b| draw(b, Rect::new(0.0, 0.0, 200.0, 199.0)),
             1,
             None,
         ),
@@ -697,8 +619,8 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 // Straddles the viewport edge so it isn't the per-group
                 // occlusion pruner doing the work — the fold's discard
                 // must drop it.
-                draw(b, rect(-10.0, -10.0, 20.0, 20.0));
-                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+                draw(b, Rect::new(-10.0, -10.0, 20.0, 20.0));
+                draw(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             },
             0,
             Some(RgbaF32::srgb(1.0, 1.0, 1.0)),
@@ -706,8 +628,8 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "active clip disqualifies",
             |b| {
-                clip(b, rect(0.0, 0.0, 150.0, 150.0));
-                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+                clip(b, Rect::new(0.0, 0.0, 150.0, 150.0));
+                draw(b, Rect::new(0.0, 0.0, 200.0, 200.0));
                 b.pop_clip();
             },
             1,
@@ -716,16 +638,10 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "second qualifying cover re-folds over the first",
             |b| {
-                draw(b, rect(0.0, 0.0, 200.0, 200.0));
-                b.draw_quad(
-                    DrawQuadPayload::rect(
-                        rect(0.0, 0.0, 200.0, 200.0),
-                        Corners::default(),
-                        BrushSource::Solid(RgbaF32::srgb(0.14, 0.16, 0.22).into()),
-                        Stroke::ZERO.into(),
-                    ),
-                    1.0,
-                );
+                draw(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+                QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                    .solid(RgbaF32::srgb(0.14, 0.16, 0.22))
+                    .draw(b);
             },
             0,
             Some(RgbaF32::srgb(0.14, 0.16, 0.22)),
@@ -747,15 +663,9 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     // covers the full physical viewport and folds.
     let buf = run(
         |b, _arena| {
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    Corners::default(),
-                    BrushSource::Solid(bg.into()),
-                    Stroke::ZERO.into(),
-                ),
-                1.0,
-            );
+            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+                .solid(bg)
+                .draw(b);
         },
         &params(2.0, vp),
     );
@@ -776,18 +686,18 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
     let buf = run(
         |b, _arena| {
             // Hidden underlay: a text run and a quad inside a clipped group.
-            text(b, rect(10.0, 10.0, 50.0, 20.0));
-            clip(b, rect(0.0, 0.0, 150.0, 150.0));
-            draw(b, rect(10.0, 10.0, 20.0, 20.0));
+            text(b, Rect::new(10.0, 10.0, 50.0, 20.0));
+            clip(b, Rect::new(0.0, 0.0, 150.0, 150.0));
+            draw(b, Rect::new(10.0, 10.0, 20.0, 20.0));
             b.pop_clip();
             // The cover lands under an active 2x transform: its world rect
             // (0,0)-(200,200) covers the viewport, so it folds — and the
             // transform must keep applying to the survivor below.
             b.push_transform(TranslateScale::from_scale(2.0));
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(5.0, 5.0, 10.0, 10.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            draw(b, Rect::new(5.0, 5.0, 10.0, 10.0));
             b.pop_transform();
-            text(b, rect(30.0, 30.0, 40.0, 10.0));
+            text(b, Rect::new(30.0, 30.0, 40.0, 10.0));
         },
         &params(1.0, vp),
     );
@@ -799,7 +709,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
     assert_eq!(buf.quads.len(), 1, "underlay quads discarded");
     assert_eq!(
         buf.quads[0].rect,
-        rect(10.0, 10.0, 20.0, 20.0),
+        Rect::new(10.0, 10.0, 20.0, 20.0),
         "survivor keeps the in-flight 2x transform",
     );
     assert_eq!(buf.texts.len(), 1, "underlay text discarded");
@@ -812,34 +722,25 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
 /// steady-state cover re-folds every frame.
 #[test]
 fn clear_fold_resets_across_frames() {
-    let display = params(1.0, UVec2::new(200, 200));
-    let mut composer = composer();
-    let mut out = render_buffer();
-    let store = RecordStore::default();
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
 
     let mut covered = PaintCapture::default();
-    draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
-    draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
+    draw(&mut covered, Rect::new(0.0, 0.0, 200.0, 200.0));
+    draw(&mut covered, Rect::new(10.0, 10.0, 20.0, 20.0));
 
-    composer
-        .begin(display, Duration::ZERO, &store, &mut out)
-        .replay_from(&covered);
-    assert!(out.clear_override.is_some(), "frame 1 folds");
-    assert_eq!(out.quads.len(), 1);
+    rig.compose(&covered);
+    assert!(rig.out.clear_override.is_some(), "frame 1 folds");
+    assert_eq!(rig.out.quads.len(), 1);
 
-    composer
-        .begin(display, Duration::ZERO, &store, &mut out)
-        .replay_from(&covered);
-    assert!(out.clear_override.is_some(), "steady state re-folds");
-    assert_eq!(out.quads.len(), 1);
+    rig.compose(&covered);
+    assert!(rig.out.clear_override.is_some(), "steady state re-folds");
+    assert_eq!(rig.out.quads.len(), 1);
 
     let mut uncovered = PaintCapture::default();
-    draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
-    composer
-        .begin(display, Duration::ZERO, &store, &mut out)
-        .replay_from(&uncovered);
-    assert_eq!(out.clear_override, None, "no cover, no override");
-    assert_eq!(out.quads.len(), 1);
+    draw(&mut uncovered, Rect::new(10.0, 10.0, 20.0, 20.0));
+    rig.compose(&uncovered);
+    assert_eq!(rig.out.clear_override, None, "no cover, no override");
+    assert_eq!(rig.out.quads.len(), 1);
 }
 
 /// A pixel-aligned opaque quad's cover is its own rect, so quad `i`
@@ -870,25 +771,25 @@ fn indexed_prune_matches_a_full_scan() {
     for i in 0..400 {
         let r = match i % 5 {
             0 if i > 0 => rects[next(i) as usize],
-            1 => rect(
+            1 => Rect::new(
                 next(1200) as f32,
                 next(1200) as f32,
                 (next(40) + 1) as f32,
                 (next(40) + 1) as f32,
             ),
-            2 => rect(
+            2 => Rect::new(
                 next(600) as f32,
                 next(600) as f32,
                 (next(500) + 1) as f32,
                 (next(500) + 1) as f32,
             ),
-            3 => rect(
+            3 => Rect::new(
                 next(200) as f32,
                 next(200) as f32,
                 (1040 + next(400)) as f32,
                 (1040 + next(400)) as f32,
             ),
-            _ => rect(
+            _ => Rect::new(
                 next(1280) as f32,
                 next(1280) as f32,
                 (next(900) + 1) as f32,
@@ -930,20 +831,12 @@ fn equal_cells_cost_one_tile_each() {
         for column in 0..96 {
             draw(
                 &mut recorded,
-                rect(column as f32 * 8.0, row as f32 * 8.0, 8.0, 8.0),
+                Rect::new(column as f32 * 8.0, row as f32 * 8.0, 8.0, 8.0),
             );
         }
     }
-    let mut composer = composer();
-    let mut out = render_buffer();
-    composer
-        .begin(
-            params(1.0, UVec2::new(768, 768)),
-            Duration::ZERO,
-            &RecordStore::default(),
-            &mut out,
-        )
-        .replay_from(&recorded);
-    assert_eq!(out.quads.len(), 96 * 96, "no cell covers another");
-    assert_eq!(composer.occlusion.contains_tests(), 144 * 2016);
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(768, 768)));
+    rig.compose(&recorded);
+    assert_eq!(rig.out.quads.len(), 96 * 96, "no cell covers another");
+    assert_eq!(rig.composer.occlusion.contains_tests(), 144 * 2016);
 }

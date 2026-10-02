@@ -118,22 +118,14 @@ impl GpuViews {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
+
     use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
-    use crate::renderer::gpu_paint::GpuPaint;
+
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use crate::renderer::gpu_paint::gpu_views::GpuViews;
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    #[derive(Debug)]
-    struct NoopPaint;
-    impl GpuPaint for NoopPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-    }
 
     fn renderer() -> GpuPaintRef {
-        GpuPaintRef(Rc::new(RefCell::new(NoopPaint)))
+        GpuPaintRef::noop()
     }
 
     /// One callback keeps one target, and a different one takes its own.
