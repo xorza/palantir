@@ -234,9 +234,9 @@ fn shape_becomes_animated() {
     ]);
 }
 
-/// The rows here agree warm and cold, and both bound the image by its
-/// node: an extent drawn past every row is invisible to a row diff. The
-/// visual suite's partial-versus-full comparison is what sees it.
+/// A 100 px image in a 40 px node switches to `ImageFit::None` and back:
+/// its row grows past the node, and the damage covers the overflow both
+/// ways.
 #[test]
 fn image_fit_overflows_its_node() {
     run(&[

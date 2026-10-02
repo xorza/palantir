@@ -8,6 +8,8 @@
 
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::nan::NanCheck;
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use glam::{UVec2, Vec2};
 
 /// How an image's intrinsic size maps onto its paint rect. Same
@@ -219,6 +221,80 @@ fn rgba8_len(width: u32, height: u32) -> usize {
         .expect("RGBA8 dimensions overflow addressable byte length")
 }
 
+/// Where a fitted image paints, and which part of the texture shows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FitRect {
+    pub(crate) rect: Rect,
+    pub(crate) uv_min: Vec2,
+    pub(crate) uv_size: Vec2,
+}
+
+impl FitRect {
+    const fn whole(rect: Rect) -> Self {
+        Self {
+            rect,
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+        }
+    }
+}
+
+impl ImageFit {
+    /// Fit an image of `intrinsic` logical px into `base`. The one
+    /// resolver: the encoder draws with the answer and the cascade bounds
+    /// the shape's damage by its `rect`, so the two cannot disagree about
+    /// where an overflowing image paints.
+    ///
+    /// An empty `intrinsic` or `base` — an image with no registry entry,
+    /// an app GPU view — paints `base` at full UV.
+    pub(crate) const fn resolve(self, base: Rect, intrinsic: Vec2) -> FitRect {
+        let (iw, ih) = (intrinsic.x, intrinsic.y);
+        let (bw, bh) = (base.size.w, base.size.h);
+        if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
+            return FitRect::whole(base);
+        }
+        match self {
+            Self::Fill => FitRect::whole(base),
+            Self::Contain => {
+                let scale = (bw / iw).min(bh / ih);
+                FitRect::whole(centered_in(base, iw * scale, ih * scale))
+            }
+            Self::Cover => {
+                // The larger axis ratio decides the scale, so the image
+                // overhangs `base`; the UV crops the overhang, centred.
+                let scale = (bw / iw).max(bh / ih);
+                let uv_w = bw / (iw * scale);
+                let uv_h = bh / (ih * scale);
+                FitRect {
+                    rect: base,
+                    uv_min: Vec2::new((1.0 - uv_w) * 0.5, (1.0 - uv_h) * 0.5),
+                    uv_size: Vec2::new(uv_w, uv_h),
+                }
+            }
+            Self::None => FitRect::whole(centered_in(base, iw, ih)),
+            // The shader wraps the raw UV with `fract`; `scale` and
+            // `offset` already say the repeat count and phase.
+            Self::Tile { offset, scale } => FitRect {
+                rect: base,
+                uv_min: offset,
+                uv_size: scale,
+            },
+        }
+    }
+}
+
+/// A `w`x`h` box centred inside `base` — where every aspect-preserving
+/// fit puts the leftover space.
+const fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
+    Rect {
+        min: Vec2::new(
+            base.min.x + (base.size.w - w) * 0.5,
+            base.min.y + (base.size.h - h) * 0.5,
+        ),
+        size: Size { w, h },
+    }
+}
+
 impl NanCheck for ImageFit {
     #[inline]
     fn has_nan(&self) -> bool {
@@ -232,8 +308,62 @@ impl NanCheck for ImageFit {
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::srgba_u8::SrgbaU8;
-    use crate::primitives::image::Image;
-    use glam::UVec2;
+    use crate::primitives::image::{Image, ImageFit};
+    use crate::primitives::rect::Rect;
+    use glam::{UVec2, Vec2};
+
+    /// A 100×50 image in a 200×200 rect, per fit:
+    /// - `Fill` keeps the full 200×200 rect (image stretched).
+    /// - `Contain` scales by min(200/100, 200/50) = 2 → 200×100, centred.
+    /// - `Cover` scales by max(200/100, 200/50) = 4 → 400×200, painted at
+    ///   200×200 over the centred half of the width: `uv_size.x = 0.5`,
+    ///   `uv_min.x = 0.25`.
+    /// - `None` paints the intrinsic 100×50, centred.
+    /// - `Tile` takes the raw UV and the full rect.
+    #[test]
+    fn image_fit_modes_resolve_to_expected_rects_and_uv() {
+        let base = Rect::new(0.0, 0.0, 200.0, 200.0);
+        let img = Vec2::new(100.0, 50.0);
+        let tile = ImageFit::Tile {
+            offset: Vec2::new(0.5, 0.25),
+            scale: Vec2::new(3.0, 2.0),
+        };
+        let rows = [
+            (ImageFit::Fill, img, base, Vec2::ZERO, Vec2::ONE),
+            (
+                ImageFit::Contain,
+                img,
+                Rect::new(0.0, 50.0, 200.0, 100.0),
+                Vec2::ZERO,
+                Vec2::ONE,
+            ),
+            (
+                ImageFit::Cover,
+                img,
+                base,
+                Vec2::new(0.25, 0.0),
+                Vec2::new(0.5, 1.0),
+            ),
+            (
+                ImageFit::None,
+                img,
+                Rect::new(50.0, 75.0, 100.0, 50.0),
+                Vec2::ZERO,
+                Vec2::ONE,
+            ),
+            (tile, img, base, Vec2::new(0.5, 0.25), Vec2::new(3.0, 2.0)),
+            // No intrinsic size: the base rect at full UV.
+            (ImageFit::Contain, Vec2::ZERO, base, Vec2::ZERO, Vec2::ONE),
+        ];
+        for (fit, intrinsic, rect, uv_min, uv_size) in rows {
+            let got = fit.resolve(base, intrinsic);
+            assert_eq!(
+                (got.rect, got.uv_min, got.uv_size),
+                (rect, uv_min, uv_size),
+                "{fit:?} over {intrinsic}",
+            );
+        }
+    }
 
     #[test]
     fn image_stores_valid_rgba8_dimensions_and_pixels() {

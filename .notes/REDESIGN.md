@@ -789,7 +789,6 @@ output, cost, cleanup.
 
 ## Phase 3. Scene identity and bounds (D3, D4)
 
-- [ ] `ImageFit::resolve` shared; intrinsic size on the record if the cascade lacks it.
 - [ ] No-op rounded-clip row; NaN asserts in `Rect`; mesh `max_index` screen; polyline per-colour
       screen; triangle radius extent; collision overlay in screen space.
 

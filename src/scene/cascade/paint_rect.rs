@@ -339,14 +339,31 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     shape_transform,
                     shape_clip,
                 ),
-                ShapeRecord::Image { local_rect, .. } | ShapeRecord::Icon { local_rect, .. } => {
-                    lift_to_screen(
-                        local_rect.unwrap_or(owner_local),
-                        layout_rect.min,
-                        shape_transform,
-                        shape_clip,
-                    )
-                }
+                // Bounded by the rect the encoder draws, which overflows
+                // the base under `ImageFit::None`.
+                ShapeRecord::Image {
+                    local_rect,
+                    source,
+                    fit,
+                    ..
+                } => lift_to_screen(
+                    fit.resolve(local_rect.unwrap_or(owner_local), source.intrinsic())
+                        .rect,
+                    layout_rect.min,
+                    shape_transform,
+                    shape_clip,
+                ),
+                ShapeRecord::Icon {
+                    local_rect,
+                    handle,
+                    fit,
+                    ..
+                } => lift_to_screen(
+                    fit.resolve(local_rect.unwrap_or(owner_local), handle.view_box()),
+                    layout_rect.min,
+                    shape_transform,
+                    shape_clip,
+                ),
             };
             push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }
