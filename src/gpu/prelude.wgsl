@@ -8,7 +8,7 @@
 // writes valid after a switch to another:
 //   offset 0: viewport size, written once per pass by the backend.
 //   offset 8: atlas sizes (color, mask), written per text batch by
-//   `TextBackend::render_batch` and read by the raster-atlas shader alone.
+//   `RasterAtlas::draw_span` and read by the raster-atlas shader alone.
 //
 // **Flat members, no nested structs.** HLSL constant-buffer rules start a
 // *struct* member on the next 16-byte register, so a nested
