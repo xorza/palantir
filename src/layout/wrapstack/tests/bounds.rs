@@ -10,7 +10,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// Pin issue 2: showcase tab-toolbar pattern. A `Sizing::FILL`
 /// WrapHStack containing many `Button` children (each Hug-sized,
@@ -125,9 +125,10 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
     assert_eq!(rect(0).min.x, 0.0);
     assert_eq!(rect(1).min.x, 0.0);
     assert_eq!(rect(1).min.y, 50.0, "second cell stacks below the first");
-    assert!(
-        rect(2).min.x > 0.0,
-        "third cell wraps to a new column (max_size bounded the INF main-axis)",
+    assert_eq!(
+        rect(2).min.x,
+        62.0,
+        "third cell wraps to a new column, 50 + 12 over (max_size bounded the INF main-axis)",
     );
     assert_eq!(rect(2).min.y, 0.0, "the new column starts at the top");
 }
@@ -167,9 +168,10 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
     let rect = |i: u32| rect_of(&h, ("c", i));
     assert_eq!(rect(0).min.x, 0.0);
     assert_eq!(rect(1).min.x, 0.0);
-    assert!(
-        rect(2).min.x > 0.0,
-        "third cell wraps to a new column against the parent vstack's 100px bound",
+    assert_eq!(
+        rect(2).min.x,
+        62.0,
+        "third cell wraps to a new column, 50 + 12 over, against the parent vstack's 100px bound",
     );
     assert_eq!(rect(2).min.y, 0.0, "the new column starts at the top");
 }
@@ -217,12 +219,25 @@ fn capped_hstack_of_columns_wraps_func_lists() {
                     });
             });
     });
+    // The column forwards its whole 100 px to the wrap, not the 85 left
+    // under the header, so two funcs share a sub-column (40 + 10 + 40 = 90)
+    // and the wrap ends at 15 + 90 = 105, past the cap — the stack's
+    // overflow rule for a child measured against the full bound. Columns
+    // step by 50 + 12.
     let rect = |i: u32| rect_of(&h, ("f", i));
-    assert_eq!(rect(0).min.x, 0.0);
-    assert!(
-        rect(2).min.x > 0.0,
-        "func list wraps to a 2nd sub-column under the hstack's height cap",
-    );
+    for (i, (x, y)) in [
+        (0.0, 15.0),
+        (0.0, 65.0),
+        (62.0, 15.0),
+        (62.0, 65.0),
+        (124.0, 15.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(rect(i as u32).min, Vec2::new(x, y), "func {i}");
+    }
+    assert_eq!(rect_of(&h, "wrap").max().y, 105.0);
 }
 
 /// A `max_size` on a `VStack` ancestor flows through a non-wrap `hstack`
@@ -266,8 +281,9 @@ fn capped_vstack_bounds_wrap_through_hstack() {
                     });
             });
     });
-    assert!(
-        rect_of(&h, ("f", 2u32)).min.x > 0.0,
+    assert_eq!(
+        rect_of(&h, ("f", 2u32)).min.x,
+        62.0,
         "func wrap respects the popup VStack's max-height, flowed through the hstack",
     );
 }

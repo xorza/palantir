@@ -12,6 +12,7 @@ use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
@@ -21,17 +22,14 @@ use glam::UVec2;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
-fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
-    let shaped = support::shaped_text(ui.layout(Layer::Main), node);
-    assert!(
-        shaped.measured.h > 32.0,
-        "expected multi-line wrapped height, got h={}",
-        shaped.measured.h,
-    );
-    assert!(
-        shaped.measured.w <= surface_w,
-        "wrapped text must fit inside surface ({surface_w}); got w={}",
-        shaped.measured.w,
+/// The paragraph wrapped at a 200 px surface: four 16 px lines in the 93
+/// px the bundled faces break it to, the same on every machine. A grid
+/// that fell back to max-content would shape it as one long line.
+fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
+    let four_lines = (4.0 * TextStyle::default().line_height_for(16.0)).ceil();
+    assert_eq!(
+        support::shaped_text(ui.layout(Layer::Main), node).measured,
+        Size::new(93.0, four_lines),
     );
 }
 
@@ -51,7 +49,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_within_surface(&h.ui, node.unwrap(), 200.0);
+    assert_wrapped_at_200(&h.ui, node.unwrap());
 }
 
 /// Regression: same as above but for Canvas — also a "child-positioner"
@@ -68,7 +66,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_within_surface(&h.ui, node.unwrap(), 200.0);
+    assert_wrapped_at_200(&h.ui, node.unwrap());
 }
 
 /// Pin: a `Hug` ZStack containing a `Fill` child must NOT recursively
@@ -142,21 +140,10 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
             .h
     }
 
-    let h_wide = measure(2000);
-    let h_narrow = measure(200);
-    assert!(
-        h_wide < 24.0,
-        "wide-window value should be single-line in Hug grid, got h={h_wide}"
-    );
-    assert!(
-        h_narrow < 24.0,
-        "narrow-window value should also be single-line (Fill col gets INF avail in Hug grid), got h={h_narrow}"
-    );
-    assert!(
-        (h_wide - h_narrow).abs() < 0.5,
-        "row height must not change with horizontal resize in Hug grid + Fill col; \
-         wide={h_wide}, narrow={h_narrow}",
-    );
+    // One 14 px line at both widths: the Fill column of a Hug grid gets
+    // INF, so the window's width never reaches the text.
+    let one_line = TextStyle::default().line_height_for(14.0).ceil();
+    assert_eq!([measure(2000), measure(200)], [one_line, one_line]);
 }
 
 /// Pin: a `Fill` grid with a `Fill` column DOES wrap text in the Fill

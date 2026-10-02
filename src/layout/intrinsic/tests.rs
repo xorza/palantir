@@ -48,9 +48,10 @@ fn intrinsic_cache_populated_after_run() {
             .next()
             .expect("hstack has child");
     let slot = LenReq::MinContent.slot(Axis::X);
-    let cached = h.engines.layout.scratch.intrinsics[child.idx()][slot];
-    assert!(
-        !cached.is_nan(),
+    // Mono's 8 px a char: the widest unbreakable word is five chars, 40.
+    assert_eq!(
+        h.engines.layout.scratch.intrinsics[child.idx()][slot],
+        40.0,
         "MinContent X for the Fill+wrap child must be cached after run"
     );
 }
@@ -172,17 +173,19 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         &interned_text,
     );
 
-    assert!(
-        !h.engines.layout.scratch.intrinsics[root.idx()][slot].is_nan(),
-        "root slot must be cached"
+    // Mono's 8 px a char: "abc" is 24, "defgh" 40, side by side 64.
+    let cached = |node: NodeId| h.engines.layout.scratch.intrinsics[node.idx()][slot];
+    assert_eq!(cached(root), 64.0, "root slot must be cached");
+    let children: Vec<_> =
+        h.ui.tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .collect();
+    assert_eq!(
+        children.iter().map(|&c| cached(c)).collect::<Vec<_>>(),
+        [24.0, 40.0],
+        "each child slot must be cached after the parent query",
     );
-    for c in h.ui.tree(Layer::Main).children(root).map(|c| c.id) {
-        assert!(
-            !h.engines.layout.scratch.intrinsics[c.idx()][slot].is_nan(),
-            "child {} slot must be cached after parent query",
-            c.idx()
-        );
-    }
 }
 
 #[test]

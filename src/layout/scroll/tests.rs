@@ -92,12 +92,8 @@ fn horizontal_scroll_records_content_extent() {
                     });
             });
     });
-    let content_w = layout_for(&h.ui, "scroll").content.w;
-    assert!(
-        content_w > 200.0,
-        "content overflows the 200 viewport on X: got {}",
-        content_w,
-    );
+    // Ten 40 px columns and nine 4 px gaps: 400 + 36, past the 200 viewport.
+    assert_eq!(layout_for(&h.ui, "scroll").content.w, 436.0);
 }
 
 /// Both-axis scroll measures with both axes unbounded.

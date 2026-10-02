@@ -105,14 +105,20 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                 });
         });
 
+        // Mono at 14 px is 7 px a char: "right column" is 12 × 7 = 84.
         let layout = h.ui.layout(Layer::Main);
         let lr = layout.rect[left.unwrap().idx()];
         let rr = layout.rect[right.unwrap().idx()];
-        assert!(lr.size.w > 0.0, "case: {label_id} left col width");
-        assert!(
-            rr.min.x >= lr.max().x - 0.5,
-            "case: {label_id} right must start past left.right; left={lr:?}, right={rr:?}",
+        assert_eq!(rr.size.w, 84.0, "case: {label_id}");
+        assert_eq!(
+            rr.min.x,
+            lr.max().x + gaps.1,
+            "case: {label_id}: the right cell starts one gap past the left",
         );
+        if *label_id == "two_hug_columns" {
+            // The wrapping column takes what the right one leaves.
+            assert_eq!(lr.size.w, 800.0 - 84.0, "case: {label_id}");
+        }
     }
 }
 
@@ -198,15 +204,22 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let l2 = layout.rect[prop_label.unwrap().idx()];
     let r2 = layout.rect[prop_value.unwrap().idx()];
 
-    assert!(l1.size.w > 0.0);
-    assert!(l2.size.w > 0.0);
-    assert!(
-        r1.min.x >= l1.max().x - 0.5,
-        "two-hug-columns: right cell must start past left cell. left={l1:?}, right={r1:?}",
+    // Mono at 14 px is 7 px a char, inside a section inset 8 + 1 px by
+    // its padding and border, so 1500 − 18 = 1482 wide. Two Hug columns:
+    // the 122-char paragraph fits on one line, 854 px, then the 16 px gap.
+    // The property grid: "Title:" is 42, and the Fill value column takes
+    // the rest, 1482 − 42 − 16 = 1424.
+    assert_eq!([l1.min.x, l1.size.w], [9.0, 854.0], "two-hug-columns: left");
+    assert_eq!(
+        [r1.min.x, r1.size.w],
+        [879.0, 84.0],
+        "two-hug-columns: right"
     );
-    assert!(
-        r2.min.x >= l2.max().x - 0.5,
-        "property-grid: value cell must start past label cell. label={l2:?}, value={r2:?}",
+    assert_eq!([l2.min.x, l2.size.w], [9.0, 42.0], "property-grid: label");
+    assert_eq!(
+        [r2.min.x, r2.size.w],
+        [67.0, 1424.0],
+        "property-grid: value"
     );
 }
 

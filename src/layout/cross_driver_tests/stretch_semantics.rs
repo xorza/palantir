@@ -138,11 +138,7 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let row = h.ui.response_for(row_id).rect.expect("row arranged");
     // The node hugs to its content (the 50-wide frame), not the
     // surface (1600).
-    assert!(
-        node.size.w < 200.0,
-        "Hug node must hug to content; got w={}",
-        node.size.w,
-    );
+    assert_eq!(node.size.w, 50.0, "Hug node must hug to content");
     // The Fill row stretches to the node's inner width.
     assert_eq!(row.size.w, node.size.w);
 }
