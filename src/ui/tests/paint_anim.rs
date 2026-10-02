@@ -1,5 +1,6 @@
 //! A paint animation from the record call to the encoded draw.
 
+use crate::Ui;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -24,7 +25,7 @@ use std::time::Duration;
 /// test of its own.
 #[test]
 fn a_fractional_alpha_reaches_the_encoded_fill() {
-    let record = |ui: &mut crate::Ui| {
+    let record = |ui: &mut Ui| {
         Block::new()
             .id(WidgetId::from_hash("faded"))
             .size(20.0)
@@ -49,8 +50,5 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
             _ => None,
         })
         .collect();
-    assert!(
-        alphas.iter().any(|a| (a - 0.5).abs() < 1e-2),
-        "no quad encoded at half alpha: {alphas:?}",
-    );
+    assert_eq!(alphas, [0.5], "the one quad, encoded at half alpha");
 }

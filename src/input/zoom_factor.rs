@@ -196,12 +196,13 @@ mod tests {
     }
 
     /// Wheel-up is positive notches and zooms *in*, so the factor grows.
-    /// Hand-computed: `1.25^-(-2) = 1.5625`, and zero notches is the
-    /// identity whatever the step.
+    /// Hand-computed: `1.25^-1 = 0.8`, rounded to the nearest f32, and
+    /// `1.25^-(-2) = 1.5625`, exact in binary. Zero notches is the identity
+    /// whatever the step.
     #[test]
     fn wheel_notches_negate_into_the_factor() {
-        assert!((ZoomFactor::from_wheel(1.25, 1.0).get() - 0.8).abs() < 1e-6);
-        assert!((ZoomFactor::from_wheel(1.25, -2.0).get() - 1.5625).abs() < 1e-5);
+        assert_eq!(ZoomFactor::from_wheel(1.25, 1.0).get(), 0.8);
+        assert_eq!(ZoomFactor::from_wheel(1.25, -2.0).get(), 1.5625);
         assert_eq!(ZoomFactor::from_wheel(1.25, 0.0), ZoomFactor::ONE);
     }
 }

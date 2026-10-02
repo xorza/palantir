@@ -513,7 +513,7 @@ fn focus_is_evicted_when_widget_disappears() {
         });
     });
     h.click_at(glam::Vec2::new(50.0, 20.0));
-    assert!(h.focused_id().is_some());
+    assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editable")));
 
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});

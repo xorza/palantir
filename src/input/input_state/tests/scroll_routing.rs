@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::sense::Sense;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -111,8 +112,13 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
             ui.response_for(WidgetId::from_hash("b")).scroll.zoom.get(),
         ]
     });
-    assert!((a - 1.155).abs() < 1e-6, "A product: {a}");
-    assert!((b - 0.5).abs() < 1e-6, "B product: {b}");
+    // `combine` multiplies in f64 and rounds the product once, back to f32.
+    assert_eq!(
+        a,
+        (f64::from(1.1f32) * f64::from(1.05f32)) as f32,
+        "A product"
+    );
+    assert_eq!(b, 0.5, "B product");
 }
 
 #[test]
@@ -261,16 +267,15 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
         build(ui);
         ui.response_for(id).scroll
     });
-    let (scroll_pixels, zoom_factor) = (scroll.pixels, scroll.zoom.get());
     assert_eq!(
-        scroll_pixels,
+        scroll.pixels,
         Vec2::new(0.0, 9.0),
         "Sense::SCROLL must receive wheel/touchpad scroll deltas",
     );
-    assert!(
-        (zoom_factor - 1.0).abs() < 1e-6,
-        "Sense::SCROLL alone (no PINCH) must NOT receive pinch — \
-         zoom_factor stayed at identity; got {zoom_factor}",
+    assert_eq!(
+        scroll.zoom,
+        ZoomFactor::ONE,
+        "Sense::SCROLL alone (no PINCH) must NOT receive pinch",
     );
 }
 
@@ -296,15 +301,15 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
         build(ui);
         ui.response_for(id).scroll
     });
-    let (scroll_pixels, zoom_factor) = (scroll.pixels, scroll.zoom.get());
     assert_eq!(
-        scroll_pixels,
+        scroll.pixels,
         Vec2::ZERO,
         "Sense::PINCH alone (no SCROLL) must NOT receive wheel/touchpad \
          scroll deltas",
     );
-    assert!(
-        (zoom_factor - 1.5).abs() < 1e-6,
-        "Sense::PINCH must receive pinch zoom factor; got {zoom_factor}",
+    assert_eq!(
+        scroll.zoom.get(),
+        1.5,
+        "Sense::PINCH must receive pinch zoom factor",
     );
 }

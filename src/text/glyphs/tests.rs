@@ -1,6 +1,7 @@
 use super::*;
 use crate::primitives::content_type::ContentType;
 use crate::text::shaper::TextShaper;
+use glam::UVec2;
 
 /// A real shaper, because the mono fallback shapes no buffers and has no
 /// faces to rasterize from — this API is the render side, and there is
@@ -24,7 +25,11 @@ fn a_line_lays_out_left_to_right_and_repeats_itself() {
     let mut out = Vec::new();
     glyphs.line("abc", font, 1.0, &mut out);
     assert_eq!(out.len(), 3, "{out:?}");
-    assert!(out[0].x < out[1].x && out[1].x < out[2].x, "{out:?}");
+    // Whole-pixel pen positions: Inter's `a` and `b` at 16 px advance the
+    // pen past 9 and then 18, and the fraction goes to the raster key's
+    // subpixel bin.
+    let xs: Vec<_> = out.iter().map(|glyph| glyph.x).collect();
+    assert_eq!(xs, [0, 9, 18], "{out:?}");
 
     let first: Vec<_> = out.iter().map(|glyph| glyph.raster_key).collect();
     // Into a buffer that already holds the answer: rewritten, not appended.
@@ -48,7 +53,7 @@ fn an_empty_line_has_no_glyphs_and_no_extent() {
 
     let mut out = vec![];
     glyphs.line("a", font, 1.0, &mut out);
-    assert!(!out.is_empty());
+    assert_eq!(out.len(), 1);
 
     glyphs.line("", font, 1.0, &mut out);
     assert!(out.is_empty(), "an empty run left glyphs behind: {out:?}");
@@ -78,8 +83,11 @@ fn scale_changes_the_raster_and_not_the_run() {
             "two scales shared one raster"
         );
     }
-    // Laid out twice as far across, because every advance is.
-    assert!(double[2].x > single[2].x, "{single:?} {double:?}");
+    // Laid out twice as far across, because every advance is. The 1× subpixel
+    // bins put the pen at 9 + ~0 and 18 + ~3/4, so doubled it is 18 and
+    // 37 + ~1/2 — the bin the 2× key carries.
+    let xs: Vec<_> = double.iter().map(|glyph| glyph.x).collect();
+    assert_eq!(xs, [0, 18, 37], "{double:?}");
 
     // The measured extent is the run's own, in logical pixels — the raster
     // scale cannot reach it, which is why it takes none. What it *is* is
@@ -87,13 +95,14 @@ fn scale_changes_the_raster_and_not_the_run() {
     // reason a caller anchors from `measure` and positions from `line`,
     // and the pair is only usable together while it holds.
     let measured = glyphs.measure("abc", font);
-    assert!(measured.w > 0.0 && measured.h > 0.0);
+    assert_eq!(
+        measured,
+        Size::new(28.0, 16.0),
+        "\"abc\" ceiled to whole pixels, one 16 px line tall",
+    );
     assert!(
         (single[2].x as f32) < measured.w,
-        "the last glyph of {:?} starts at {} but the run measures {}",
-        "abc",
-        single[2].x,
-        measured.w,
+        "the last glyph starts inside the run's 28 px",
     );
 }
 
@@ -117,12 +126,14 @@ fn a_placed_glyph_rasterizes_to_the_bitmap_it_describes() {
         .rasterize(placed.raster_key)
         .expect("a capital A has an image");
     assert_eq!(image.content, ContentType::Mask);
-    assert!(image.size.x > 0 && image.size.y > 0);
+    // Inter's capital A at 32 px: a 22 × 24 ink box.
+    assert_eq!(image.size, UVec2::new(22, 24));
     // One byte of coverage per pixel, and the rows tightly packed — which
     // is what a caller blits into its atlas on.
     assert_eq!(image.data.len(), (image.size.x * image.size.y) as usize);
-    assert!(
-        image.data.iter().any(|&coverage| coverage > 0),
-        "the glyph rasterized blank"
+    assert_eq!(
+        image.data.iter().max(),
+        Some(&255),
+        "the glyph's interior is fully covered"
     );
 }

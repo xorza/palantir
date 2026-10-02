@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use glam::UVec2;
 
-use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT};
+use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
@@ -188,10 +188,10 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
         rt.dt, 0.0,
         "a frame under the accumulator step spends nothing"
     );
-    assert!(
-        rt.dt_accum < ANIM_SUBSTEP_DT,
-        "and carries it: {}",
+    assert_eq!(
         rt.dt_accum,
+        Duration::from_millis(1).as_secs_f32(),
+        "and carries it whole"
     );
 
     rt.advance_clock(Duration::from_millis(101));
@@ -204,10 +204,10 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
     // An ordinary frame still spends its whole delta — the bound is a
     // ceiling, not a quantization.
     rt.advance_clock(Duration::from_millis(117));
-    assert!(
-        (rt.dt - 0.016).abs() < 1e-6,
-        "a 16 ms frame spends 16 ms; got {}",
+    assert_eq!(
         rt.dt,
+        Duration::from_millis(16).as_secs_f32(),
+        "a 16 ms frame spends 16 ms"
     );
 
     // An unthrottled loop at 10 µs a frame spends nothing until its
@@ -222,5 +222,9 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
     }
     now += Duration::from_micros(10);
     rt.advance_clock(now);
-    assert!((rt.dt - 0.00417).abs() < 1e-7, "frame 417 spends {}", rt.dt);
+    // The carry is 417 additions of 10 µs in `f32`, summed in order.
+    let carried = (0..417).fold(0.0f32, |sum, _| {
+        sum + Duration::from_micros(10).as_secs_f32()
+    });
+    assert_eq!(rt.dt, carried, "frame 417 spends the whole carry");
 }

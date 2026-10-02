@@ -275,12 +275,15 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     h.frame(build_button(id));
 
     let r = h.ui.response_for(id);
-    let rect = r
-        .rect
-        .expect("arranged rect present on the quiescent fast path");
-    assert_eq!(rect.size.w, 100.0);
-    assert_eq!(rect.size.h, 40.0);
-    assert!(r.layout_rect.is_some());
+    // The hstack sits at the origin and its only child is a fixed 100 × 40,
+    // untransformed, so the layout rect and the screen rect agree.
+    let placed = Rect::new(0.0, 0.0, 100.0, 40.0);
+    assert_eq!(
+        r.rect,
+        Some(placed),
+        "the quiescent fast path keeps geometry"
+    );
+    assert_eq!(r.layout_rect, Some(placed));
 
     assert!(!r.hovered());
     assert!(!r.pressed());
@@ -439,9 +442,11 @@ fn quiescent_and_full_paths_agree_on_geometry() {
     assert_eq!(quiet.transform, full.transform);
     assert_eq!(quiet.disabled, full.disabled);
     assert_eq!(quiet.focused, full.focused);
-    assert!(
-        quiet.rect.is_some(),
-        "fixture must actually arrange, or the comparison is vacuous",
+    assert_eq!(
+        quiet.rect,
+        Some(Rect::new(0.0, 0.0, 50.0, 50.0)),
+        "the fixed 50 × 50 root arranges at the origin, or the comparison \
+         is vacuous",
     );
     assert!(quiet.focused, "focus must survive the quiescent path");
 }

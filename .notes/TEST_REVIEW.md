@@ -21,7 +21,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 9. Stale text-determinism advice, and tolerances with no reason
 
-- [ ] Input, ui, text: `ui/tests/text.rs:78,114,515`, `text/tests/geometry.rs:79,259-273,315,317,348,363`, `text/tests/wrap.rs:303,314,325`, `text/glyphs/tests.rs:82`, `ui/tests/repainting.rs:65,287,671` (`:671` should assert `DoubleLayout`), `input_state/tests/drag.rs:128-133,638,643`, `keyboard.rs:498`, `paint_anim.rs:53`, `zoom.rs:48,90`, `scroll_routing.rs:125,282`, `frames/passes.rs` dt, `frame_runtime/tests.rs:192,208`.
 - [ ] Animation and primitives: seven settle loops assert only `is_some()` (`duration.rs:196`, `spring.rs:47,334,357,413`, `snap.rs:187`, `ui_animate.rs:55`); FAST at 16 ms settles at `Some(6)`. Also `duration.rs:53,131,172,222`, `ui_animate.rs:105,194`, `spring.rs:216,250`, `primitives/bezier/tests.rs:38` (the comment's 38.5 is wrong; the extremum is `50/√3 ≈ 28.87`), `brush/tests.rs:396-398`, `color/tests.rs:187`, `diagnostics/gpu_pass_stats.rs:192-216`. `ui_animate.rs:83,115` use `assert!(x == 0)`, which hides the value.
 - [ ] Tolerances with no stated reason: 112 inline in widgets with six epsilons, 32 × 0.5 px in layout, 26 hand-written rect checks in the renderer. Add `assert_close(actual, expected, tol, why)` and `assert_rect_near(.., why)` with a mandatory reason, and one `LAYOUT_SNAP_TOLERANCE` only where pixel snap is on. Use `assert_eq!` everywhere else.
 
