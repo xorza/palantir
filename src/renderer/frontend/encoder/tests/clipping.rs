@@ -7,8 +7,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, stroke::Stroke};
 use crate::renderer::frontend::capture::PaintCall;
-use crate::renderer::frontend::capture::PaintCapture;
-use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -30,11 +28,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
                 .show(ui, |_| {});
         });
     });
-    let cmds = h.encode_paint();
-    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, 1);
-    assert_eq!(pops, 1);
-    assert_eq!(count_draw_rects(&cmds), 0);
+    assert_eq!(h.encode_paint().kinds(), ["PushClip", "PopClip"]);
 }
 
 #[test]
@@ -58,40 +52,10 @@ fn clip_emits_balanced_push_pop() {
                 });
         });
     });
-    let cmds = h.encode_paint();
-
-    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, 1);
-    assert_eq!(pops, 1);
-
-    let push_idx = cmds
-        .calls
-        .iter()
-        .position(|command| matches!(command, PaintCall::PushClip(_)))
-        .unwrap();
-    let pop_idx = cmds
-        .calls
-        .iter()
-        .position(|command| matches!(command, PaintCall::PopClip))
-        .unwrap();
-    let draw_idxs: Vec<_> = cmds
-        .calls
-        .iter()
-        .enumerate()
-        .filter_map(|(i, command)| as_rect(command).map(|_| i))
-        .collect();
-    assert!(!draw_idxs.is_empty());
-    for &di in &draw_idxs {
-        assert!(
-            di > push_idx && di < pop_idx,
-            "draw at {di} not inside [{push_idx}, {pop_idx}]"
-        );
-    }
+    // The draw sits inside the pair.
+    assert_eq!(h.encode_paint().kinds(), ["PushClip", "Quad", "PopClip"]);
 }
 
-/// Rounded-clip emission, plus encoded mask geometry: with zero padding
-/// the mask is inset by the chrome's border width (folded into padding at
-/// `open_node`) so children can't overpaint the border.
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
@@ -191,28 +155,9 @@ fn nested_clips_each_emit_their_own_pair() {
                 });
         });
     });
-    let cmds = h.encode_paint();
-    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, 2);
-    assert_eq!(pops, 2);
-}
-
-#[derive(Debug)]
-struct ClipPairs {
-    pushes: usize,
-    pops: usize,
-}
-
-fn count_clip_pairs(cmds: &PaintCapture) -> ClipPairs {
-    let pushes = cmds
-        .calls
-        .iter()
-        .filter(|command| matches!(command, PaintCall::PushClip(_)))
-        .count();
-    let pops = cmds
-        .calls
-        .iter()
-        .filter(|command| matches!(command, PaintCall::PopClip))
-        .count();
-    ClipPairs { pushes, pops }
+    // Nested, not two siblings: the inner pair sits inside the outer one.
+    assert_eq!(
+        h.encode_paint().kinds(),
+        ["PushClip", "PushClip", "PopClip", "PopClip"],
+    );
 }

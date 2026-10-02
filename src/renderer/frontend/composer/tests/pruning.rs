@@ -6,7 +6,8 @@ use crate::primitives::{
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, composer, draw, params, rect, render_buffer, run, text,
+    clip, composer, draw, draw_marked, params, rect, render_buffer, run, survivor_calls, survivors,
+    text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -18,16 +19,20 @@ use std::time::Duration;
 
 #[test]
 fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
-    // Outer 0..100 painted first (z=0), inner 0..100 (z=1) opaque white
-    // on top — outer is fully covered, prune drops it.
+    // Two opaque quads over one rect: the first is fully covered by the
+    // second, so prune drops it and the second survives.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(0.0, 0.0, 100.0, 100.0));
+            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0));
+            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.quads.len(), 1, "fully-covered earlier quad pruned");
+    assert_eq!(
+        survivor_calls(&buf),
+        [1],
+        "the covered first quad is pruned"
+    );
 }
 
 #[test]
@@ -346,13 +351,13 @@ fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
     // logic handles two consecutive drops.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // A
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // B
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // C
+            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // A
+            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // B
+            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // C
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.quads.len(), 1, "only topmost survives");
+    assert_eq!(survivor_calls(&buf), [2], "only the topmost, C, survives");
 }
 
 #[test]
@@ -471,49 +476,41 @@ fn prune_occluder_stroke_translucency_gates_cover() {
 
 #[test]
 fn prune_compacts_preserving_non_contiguous_survivors() {
-    // Five quads: A,B,C,D,E. Drop A (covered by C), keep B (not
-    // covered), drop C (covered by E), keep D (not covered), keep
-    // E (topmost). After compact the slice must be [B, D, E] in
-    // original order. Exercises the compaction walk over
-    // non-contiguous drop indices.
+    // Five quads, A to E. C covers A and E covers everything else, so
+    // only E survives.
     let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 10.0, 10.0)); // A (covered by C)
-            draw(b, rect(50.0, 50.0, 5.0, 5.0)); // B (off to the side)
-            draw(b, rect(0.0, 0.0, 30.0, 30.0)); // C (covers A, covered by E)
-            draw(b, rect(80.0, 80.0, 5.0, 5.0)); // D (off to the side)
-            draw(b, rect(0.0, 0.0, 100.0, 100.0)); // E covers everything top-left
+            draw_marked(b, rect(0.0, 0.0, 10.0, 10.0)); // A, inside C
+            draw_marked(b, rect(50.0, 50.0, 5.0, 5.0)); // B, inside E
+            draw_marked(b, rect(0.0, 0.0, 30.0, 30.0)); // C, covers A, inside E
+            draw_marked(b, rect(80.0, 80.0, 5.0, 5.0)); // D, inside E
+            draw_marked(b, rect(0.0, 0.0, 100.0, 100.0)); // E, covers the rest
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    // A and C are covered (and B, D — wait, are B and D inside E?)
-    // B at (50,50,5,5) i.e. min=(50,50) max=(55,55). E.cover=(0,0,100,100).
-    // E contains B → B also dropped. Same for D. So only E survives.
-    assert_eq!(
-        buf.quads.len(),
-        1,
-        "E covers everything → only topmost survives"
-    );
+    assert_eq!(survivor_calls(&buf), [4], "E covers everything");
 
-    // Repeat with B/D positioned OUTSIDE E to exercise non-contiguous
-    // survivors at indices 1 and 3.
-    let buf2 = run(
+    // With B and D outside every cover and no E, only A drops: the
+    // survivors sit at indices 1, 2 and 3, and compaction keeps their
+    // order.
+    let buf = run(
         |b, _| {
-            draw(b, rect(0.0, 0.0, 10.0, 10.0)); // A (covered by C)
-            draw(b, rect(150.0, 150.0, 5.0, 5.0)); // B (outside everything)
-            draw(b, rect(0.0, 0.0, 30.0, 30.0)); // C (covers A)
-            draw(b, rect(170.0, 170.0, 5.0, 5.0)); // D (outside everything)
-            // No giant cover at the end — C is the only big occluder.
+            draw_marked(b, rect(0.0, 0.0, 10.0, 10.0)); // A, inside C
+            draw_marked(b, rect(150.0, 150.0, 5.0, 5.0)); // B
+            draw_marked(b, rect(0.0, 0.0, 30.0, 30.0)); // C
+            draw_marked(b, rect(170.0, 170.0, 5.0, 5.0)); // D
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    // Surviving: B, C, D (A is dropped). Three quads, compaction
-    // preserved order.
-    assert_eq!(buf2.quads.len(), 3);
-    // Sanity: B and D unchanged in position, C unchanged.
-    assert_eq!(buf2.quads[0].rect.min, glam::Vec2::new(150.0, 150.0)); // B
-    assert_eq!(buf2.quads[1].rect.min, glam::Vec2::new(0.0, 0.0)); // C
-    assert_eq!(buf2.quads[2].rect.min, glam::Vec2::new(170.0, 170.0)); // D
+    assert_eq!(survivor_calls(&buf), [1, 2, 3]);
+    assert_eq!(
+        survivors(&buf),
+        [
+            rect(150.0, 150.0, 5.0, 5.0),
+            rect(0.0, 0.0, 30.0, 30.0),
+            rect(170.0, 170.0, 5.0, 5.0),
+        ],
+    );
 }
 
 #[test]

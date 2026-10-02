@@ -53,6 +53,18 @@ pub(super) fn collect(
 }
 
 pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
+    // A quad step names its group by span, so two groups sharing a
+    // non-empty span would read as the first of them.
+    for (i, group) in buffer.groups.iter().enumerate() {
+        debug_assert!(
+            group.quads.len == 0
+                || !buffer.groups[..i]
+                    .iter()
+                    .any(|earlier| earlier.quads == group.quads),
+            "groups {i} and an earlier one share the quad span {:?}",
+            group.quads,
+        );
+    }
     let mut out = Vec::new();
     for s in steps {
         match s {

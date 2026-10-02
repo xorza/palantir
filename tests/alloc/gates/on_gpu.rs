@@ -73,7 +73,9 @@ fn offscreen_frame_stays_at_driver_floor() {
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)
         .budget(RENDER_BLOCKS_PER_FRAME_MAX)
-        .run_frames(|| target.frame(&gpu, BENCH_DPR, |ui| state.render(RENDER_NODE_SCALE, ui)));
+        .run_frames(|| {
+            let _ = target.frame(&gpu, BENCH_DPR, |ui| state.render(RENDER_NODE_SCALE, ui));
+        });
 
     // A gate that reads zero has stopped measuring, and only the number
     // says so.

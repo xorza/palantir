@@ -151,6 +151,14 @@ impl PaintCapture {
     pub(crate) fn count(&self, pred: impl Fn(&PaintCall) -> bool) -> usize {
         self.calls.iter().filter(|call| pred(call)).count()
     }
+
+    /// The recorded calls' kinds, in order — what an assertion about
+    /// nesting or order compares, where a count of each kind would let
+    /// two siblings pass for a parent and its child.
+    #[cfg(test)]
+    pub(crate) fn kinds(&self) -> Vec<&'static str> {
+        self.calls.iter().map(PaintCall::kind).collect()
+    }
 }
 
 /// Assert two encodes painted the same sequence, reporting the first
@@ -174,6 +182,14 @@ pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
             l.kind(),
             r.kind(),
         );
+        // A view's callback prints as a constant, so `Debug` cannot tell
+        // two of them apart; identity is what decides.
+        if let (PaintCall::Image { paint: lp, .. }, PaintCall::Image { paint: rp, .. }) = (l, r) {
+            assert!(
+                lp == rp,
+                "paint call {i}: the image draws name different view callbacks"
+            );
+        }
     }
     assert_eq!(
         left.calls.len(),

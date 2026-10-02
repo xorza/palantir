@@ -51,4 +51,7 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
         });
 }
 
+/// A surface for the region-arithmetic tests that build rects by hand
+/// rather than through a frame, and so do not draw on [`DISPLAY`]. A
+/// frame test clamps to `DISPLAY.logical_rect()` instead.
 pub(super) const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);

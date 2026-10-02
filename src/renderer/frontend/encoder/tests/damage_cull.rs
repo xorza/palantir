@@ -104,12 +104,31 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
             });
         });
-        let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
-        let pushes = cmds.count(push_matches);
-        let pops = cmds.count(pop_matches);
-        assert_eq!(pushes, 0, "case {label}: no push (cull)");
-        assert_eq!(pops, 0, "case {label}: no pop");
-        assert_eq!(count_draw_rects(&cmds), 0, "case {label}: no draws");
+        // A region past the subtree culls the push, the pop and the draw;
+        // one over it keeps exactly one of each, so an encoder that drew
+        // nothing at all fails the second row.
+        let regions = [
+            (Rect::new(150.0, 150.0, 50.0, 50.0), 0),
+            (Rect::new(0.0, 0.0, 50.0, 50.0), 1),
+        ];
+        for (region, expected) in regions {
+            let cmds = h.encode_paint_for(DamageRegion::from(region));
+            assert_eq!(
+                cmds.count(push_matches),
+                expected,
+                "case {label}: push, {region:?}"
+            );
+            assert_eq!(
+                cmds.count(pop_matches),
+                expected,
+                "case {label}: pop, {region:?}"
+            );
+            assert_eq!(
+                count_draw_rects(&cmds),
+                expected,
+                "case {label}: draws, {region:?}"
+            );
+        }
     }
 }
 
@@ -222,6 +241,15 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
             0,
             "{cull:?}: the first visible animation must be culled and the later hidden animation must still be sampled",
         );
+        // The same scene uncut by damage draws the visible one, so the
+        // zero above is the cull's and not an encoder that draws nothing.
+        if let Cull::Damage = cull {
+            assert_eq!(
+                count_draw_rects(&h.encode_paint()),
+                1,
+                "uncut, the visible one draws"
+            );
+        }
     }
 }
 
