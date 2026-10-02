@@ -4,15 +4,10 @@
 
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::AnimSpec;
-use crate::animation::tests::support::{
-    AnimUi, SLOT, duration_motion, next_frame, setup_anim_ui, spring_velocity, wid,
-};
+use crate::animation::tests::support::{SLOT, duration_motion, next_frame, spring_velocity, wid};
 use crate::animation::*;
+use crate::common::time::ANIM_SUBSTEP_DT;
 use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
-use std::time::Duration;
 
 #[test]
 fn validated_springs_remain_finite_and_settle() {
@@ -163,6 +158,9 @@ fn spring_parameters_change_trajectory() {
     let custom = AnimSpec::spring(100.0, 15.0);
     let _ = default_map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
     let _ = custom_map.tick(id, SLOT, 0.0, custom, 0.016, next_frame());
+    // The change's frame starts from rest and moves neither.
+    let _ = default_map.tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = custom_map.tick(id, SLOT, 1.0, custom, 0.016, next_frame());
     let default = default_map
         .tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame())
         .current;
@@ -184,6 +182,10 @@ fn spring_step_at_max_dt_stays_bounded() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("a");
     let _ = map.tick(id, SLOT, 400.0, AnimSpec::SPRING, 0.016, next_frame());
+    // From rest, the change's frame steps nothing; the next one spends
+    // the whole clamp.
+    let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1, next_frame());
+    assert_eq!(r.current, 400.0);
     let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1, next_frame());
     assert!(
         r.current >= 80.0 && r.current <= 400.0,
@@ -209,9 +211,15 @@ fn second_tick_in_same_frame_does_not_double_advance() {
 
     // Seed: row settled at 0.0. Different frame so we don't trip the
     // guard during setup.
-    let _ = map.tick(id, SLOT, 0.0, AnimSpec::FAST, 0.016, frame - 1);
+    let _ = map.tick(id, SLOT, 0.0, AnimSpec::FAST, 0.016, frame - 2);
 
-    // Pass A: target 1.0, advance one step.
+    // A retarget from rest steps nothing in either pass: pass A and pass
+    // B agree on the start.
+    let from_rest_a = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame - 1);
+    let from_rest_b = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame - 1);
+    assert_eq!((from_rest_a.current, from_rest_b.current), (0.0, 0.0));
+
+    // Pass A: in flight now, advance one step.
     let pass_a = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame);
     assert!(pass_a.current > 0.0 && pass_a.current < 1.0);
     let pass_a_current = pass_a.current;
@@ -294,46 +302,45 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     );
 }
 
-/// Pin the fixed-step accumulator on `Ui`: a `Ui::frame` loop driven
-/// at NoVsync-style sub-millisecond `dt` must still settle a spring
-/// retarget. Pre-fix, `cur += vel·dt` would fall below the f32 ULP at
-/// pixel-scale positions, the integrator would stall short of
-/// `POS_EPS`, and `repaint_requested` would stay armed forever.
+/// A spring stepped at the smallest delta the frame runtime spends,
+/// `ANIM_SUBSTEP_DT`, settles exactly on its target — the frame clock's
+/// own test pins that an unthrottled loop reaches the integrator in steps
+/// of that size. At pixel-scale values the last stretch is below what f32
+/// can represent next to the value: near 400 a step of f32 is 3e-5 and
+/// one substep decays the remaining travel by 5 %, so the value stops
+/// moving about 3e-4 short of the target, above the 1e-4 floor, and only
+/// the no-progress rule ends the motion. The default spring decays at
+/// 13/s; 320 px to 3e-4 takes `ln(320 / 3e-4) / 13 ≈ 1.07 s`, or about 256
+/// substeps, so 600 is room enough.
 #[test]
-fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
-    let AnimUi { mut h, id } = setup_anim_ui("anim-novsync");
-
-    // First touch at target=80 → snap, no repaint.
-    let mut now = Duration::ZERO;
-    let _ = h.at(now).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
-        Block::new()
-            .id(WidgetId::from_hash("anim-novsync"))
-            .show(ui);
-    });
-
-    // Retarget to 400 over a tight loop with 10 µs per frame (NoVsync).
+fn a_spring_at_the_substep_settles_on_its_target() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("substep");
+    let _ = map.tick(
+        id,
+        SLOT,
+        80.0,
+        AnimSpec::SPRING,
+        ANIM_SUBSTEP_DT,
+        next_frame(),
+    );
     let mut settled_at = None;
-    for i in 0..200_000 {
-        now += Duration::from_micros(10);
-        let repaint = h
-            .at(now)
-            .frame(|ui| {
-                let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
-                Block::new()
-                    .id(WidgetId::from_hash("anim-novsync"))
-                    .show(ui);
-            })
-            .repaint_requested;
-        if !repaint {
-            settled_at = Some(i);
+    for step in 0..600 {
+        let r = map.tick(
+            id,
+            SLOT,
+            400.0,
+            AnimSpec::SPRING,
+            ANIM_SUBSTEP_DT,
+            next_frame(),
+        );
+        if r.settled {
+            assert_eq!(r.current, 400.0);
+            settled_at = Some(step);
             break;
         }
     }
-    assert!(
-        settled_at.is_some(),
-        "spring must settle under sub-millisecond dt",
-    );
+    assert!(settled_at.is_some(), "the spring never settled");
 }
 
 #[test]

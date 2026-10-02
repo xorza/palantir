@@ -14,17 +14,15 @@ const MAX_DURATION_SECS: f32 = 60.0;
 pub(super) const DURATION_ERROR: &str =
     "animation duration must be finite and in 0.0..=60.0 seconds";
 
-// Duration snap-if-close floor. Far tighter than the spring floor
-// (`spring::POS_EPS`): a duration animation should run its full
-// designed curve for *any* visible target change, and
-// snap-without-animating only when the target moved by sub-perceptual
-// drift (ulp rounding in upstream theme math). The spring floor is
-// pixel-scale-loose; reusing it here made sub-1% colour transitions
-// (0..1 linear-RGB) snap instead of ease. `EPS = 1e-4` is below 8-bit
-// colour precision and sub-pixel position resolution, so a target
-// delta under it is genuinely invisible. Duration rows carry no
-// velocity, so this is a position-only check; curve completion is
-// handled by the `t >= 1.0` arm in `AnimMapTyped::tick`, not here.
+// Duration snap-if-close floor, the same absolute floor the spring's
+// position uses (`spring::POS_EPS`): a motion should run its full designed
+// curve for *any* visible target change, and snap without animating only
+// when the target moved by sub-perceptual drift (ulp rounding in upstream
+// theme math). `EPS = 1e-4` is below 8-bit colour precision and sub-pixel
+// position resolution, so a target delta under it is genuinely invisible.
+// Duration rows carry no velocity, so this is a position-only check, run
+// on a retarget alone; curve completion is `MotionRow::advance`'s
+// `progress >= 1` arm.
 const SNAP_EPS_SQ: f32 = EPS * EPS;
 
 /// Whether `secs` names a duration this crate will animate over.

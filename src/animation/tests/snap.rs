@@ -33,15 +33,33 @@ fn spring_snap_fields_carry_target_immediately() {
     };
     // First touch: snaps current = start, returns settled. No motion
     // started yet.
-    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.tick(
+        id,
+        SLOT,
+        start.clone(),
+        AnimSpec::SPRING,
+        0.016,
+        next_frame(),
+    );
 
-    // Retarget to a new fill (animated) and a new radius (snap).
+    // Retarget to a new fill (animated) and a new radius (snap). From
+    // rest, the change's own frame steps nothing and shows the start,
+    // snap field included.
     let target = Background {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
         border: Stroke::ZERO,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
+    let r = map.tick(
+        id,
+        SLOT,
+        target.clone(),
+        AnimSpec::SPRING,
+        0.016,
+        next_frame(),
+    );
+    assert_eq!(r.current, start, "the change's frame shows the start");
     let r = map.tick(
         id,
         SLOT,

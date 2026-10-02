@@ -234,3 +234,30 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     assert_eq!(snap.text.color, own_text.color);
     assert_eq!(snap.text.line_height_mult, own_text.line_height_mult);
 }
+
+/// `AnimSpec::FAST` from rest after a second of idle: the frame of the
+/// change shows the start value, though the clamp would have handed it
+/// 0.1 s — 83 % of a 120 ms curve, 99.5 % eased. The next frame, 16 ms
+/// later, shows `OutCubic(16 / 120)`.
+#[test]
+fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
+    use crate::animation::easing::Easing;
+    let AnimUi { mut h, id } = setup_anim_ui("from-rest");
+    let record = |h: &mut crate::ui::harness::UiHarness, at: Duration, target: f32| {
+        let value = std::cell::Cell::new(f32::NAN);
+        h.at(at).frame(|ui| {
+            value.set(ui.animate(id, SLOT, target, Some(AnimSpec::FAST)));
+            Block::new().id(WidgetId::from_hash("from-rest")).show(ui);
+        });
+        value.get()
+    };
+    assert_eq!(record(&mut h, Duration::ZERO, 0.0), 0.0);
+    let idle = Duration::from_secs(1);
+    assert_eq!(
+        record(&mut h, idle, 1.0),
+        0.0,
+        "the change's frame shows the start"
+    );
+    let next = record(&mut h, idle + Duration::from_millis(16), 1.0);
+    assert_eq!(next, Easing::OutCubic.apply(0.016 / 0.12));
+}

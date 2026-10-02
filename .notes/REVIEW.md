@@ -8,14 +8,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 `F32Ext::themed_length` says theme scalars are hand-edited file data that "cannot assert". Most widgets screen them. These do not, and `SpinnerTheme`/`ToggleTheme`/… derive `Deserialize`:
 - [ ] `src/display/user_scale.rs:27-29,71-77` **bug**: the doc tells apps to read a persisted preference back through `UserScale::new`, which `assert!`s on a non-finite value. A config file containing `nan` crashes the app. Public API: a fallible constructor needs a go-ahead.
 
-## A retarget frame spends time that passed before the target changed
-- [ ] `src/animation/anim_map_typed.rs:145-163,208-217` **bug**: when the target changes, the row resets (`elapsed = 0` for a duration, or keeps its velocity for a spring) and then, in the same tick, advances by the full `dt`. That `dt` is the time since the previous frame, clamped to `MAX_ANIM_DT` = 0.1 in `FrameRuntime::advance_clock`. The usual case is a window idle for ≥100 ms, then a hover or press, so the first frame of the change gets dt = 0.1.
-  - `AnimSpec::FAST` (0.12 s, OutCubic): progress 0.833, eased 0.995. 99.5% of the fade is gone before the first painted frame, so it reads as a snap.
-  - `MEDIUM` lands at 87.5%.
-  - `SPRING` (170/26): x(0.1) = e^-1.3·(cos 0.1 + 13·sin 0.1) ≈ 0.625, so 37.5% of the travel is skipped. This is the default `Switch` knob and track.
-  - Tests hide it by passing `dt = 0.0` on every retarget tick (`tests/duration.rs`).
-  - The behaviour is also inconsistent: a retarget first seen in pass B does not advance (`already_advanced`, line 201), but the same retarget in pass A spends the whole `dt`.
-
 ## ColorPicker readout and edits read the clamped Okhsv coords, not the bound colour
 - [ ] `src/widgets/color_picker/mod.rs:406,309` **bug**: the hex text, the R/G/B values and the preview chip are built from `state.coords.to_color()`. Seeding from `#0000ff` in Okhsv (the default model) clamps to s=v=1, which is `#0037ff`. The hex field reads `#0037FF`, G reads 55 and the preview shows `#0037ff`, while the bound colour is still `#0000ff`.
 - [ ] `src/widgets/color_picker/mod.rs:482-489` **bug**: R/G/B edits rebuild `exact` from the same coords-derived `rgb[]`. Nudging R by 1 on `#0000ff` writes `(1, 55, 255)`: G jumps 0→55 although the user never touched it. The type doc promises this "quietly shift #0000ff to #0037ff" never happens.
@@ -78,24 +70,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## RTL wrap-floor scan reads segments in visual order
 - [ ] `src/text/cosmic/geometry.rs:117` **bug**: segment boundaries are detected by `g.start ∈ breaks`, i.e. at a segment's logical first glyph. In an RTL run that glyph is visited last, so each reset happens one glyph late. Two neighbouring words merge into one segment, with the space between them counted inside it. Example: `"אב גד"` with letters 10 px and the space 5 px. Visual order is ד(7) ג(5) ' '(4) ב(2) א(0), with the break at 5. The scan yields segments {ד}=10 and {ג+' '+ב+א}=35, so `intrinsic_min=35` instead of 20. `WrapWithOverflow` min-content and target width are inflated for RTL text. No RTL case exists in the wrap-floor tests.
-
-## Non-finite targets: a row never settles, and a spring row stays broken
-- [ ] `src/animation/anim_map_typed.rs:125,145,156` **bug**: `Ui::animate` and `tick` accept a NaN target without any check.
-  - `row.target != target` is true every frame (NaN ≠ NaN), so the row retargets every frame and never settles. For a duration spec, `elapsed` resets to 0 each frame, so `progress >= 1` is never reached. Result: a repaint every frame, forever.
-  - For a spring, one NaN frame is enough (f32 spring, targets 0 → NaN → 1.0 → 1.0 …): velocity becomes NaN, and `dot(NaN, …) < 0` is false, so the NaN velocity is kept. `current` stays NaN and `settled` stays false for as long as the slot is touched, even after the target is finite again.
-  - A caller logic error should crash: a `debug_assert!` on finiteness rather than a silent full-rate repaint loop.
-
-## Spring settle floor is in pixels but is applied to colours and mixed compounds
-- [ ] `src/animation/spring.rs:315-318` with `anim_map_typed.rs:179` **bug**: `POS_EPS` = 0.01 is justified as pixel-scale ("the last 0.01 px"). The spring path applies it to `RgbaF32` and to `AnimatedLook`/`Background`, whose `magnitude_squared` adds linear-RGB channels to px stroke widths and shadow offsets.
-  - Example: a dark-theme hover from `#121212` (linear 0.00606) to `#1c1c1c` (linear 0.01162) gives Δ = 0.00556 per channel, Σ² = 9.3e-5 < 1e-4. The retarget hits the snap-if-close path and jumps with no animation under a spring spec.
-  - The same change under a duration spec animates, because that floor is 1e-4. `duration.rs` documents exactly this failure for durations.
-  - Every spring colour fade also ends with a snap of up to ~0.006 linear per channel, which is several 8-bit sRGB levels near black.
-  - This reaches the default `Switch` track cross-fade (`toggle.rs:144`, `AnimSpec::SPRING`).
-
-## Duration snap check runs mid-curve
-- [ ] `src/animation/anim_map_typed.rs:175-194` **bug (low)**: the duration snap-if-close check runs on every unsettled tick, not only on retarget.
-  - With `Easing::OutBack`, the curve crosses the target before overshooting. A frame that lands within 1e-4 of the target at that crossing snaps and settles, cutting off the overshoot.
-  - For small deltas, e.g. a 0.01 colour change at 60 fps over 0.2 s, the per-frame step is about 2e-3, so roughly 10% of such animations are truncated.
 
 ## ColorPicker history fills with non-picks
 - [ ] `src/widgets/color_field/mod.rs:126`, `color_strip/mod.rs:138` → `color_picker/mod.rs:381` **bug**: every keyboard nudge sets `committed`, and `apply` pushes on every commit. 16 ArrowRight presses (or a held key) evict all 16 presets with near-identical shades, against the dedupe rationale in `History::push`.

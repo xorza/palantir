@@ -2,10 +2,8 @@
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
 use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::{AnimMotion, AnimSpec};
+use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
-use crate::animation::duration::within_duration_snap_eps;
-use crate::animation::spring::{step as spring_step, within_settle_eps};
 use crate::common::typed_stores::TypedStore;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use rustc_hash::FxHashMap;
@@ -27,22 +25,6 @@ impl<T: Animatable> Default for AnimMapTyped<T> {
     }
 }
 
-/// Dot product via the polarization identity
-/// `2·a·b = |a+b|² − |a|² − |b|²`, expressed in the existing
-/// `Animatable` vocabulary (add + magnitude_squared) so we don't have
-/// to widen the trait. Used only on spring retarget to decide whether
-/// residual velocity aids or opposes motion toward the new target.
-#[inline]
-fn dot<T: Animatable>(a: T, b: T) -> f32 {
-    // T is `Clone` (not `Copy`); each `Animatable` method consumes its
-    // operand. Compute the magnitudes off the clones first, then let
-    // `add` consume `a` and `b`.
-    let mag_a = a.clone().magnitude_squared();
-    let mag_b = b.clone().magnitude_squared();
-    let sum = a.add(b).magnitude_squared();
-    0.5 * (sum - mag_a - mag_b)
-}
-
 #[derive(Debug)]
 pub(crate) struct TickResult<T: Animatable> {
     pub(crate) current: T,
@@ -62,6 +44,14 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// design. Subsequent calls detect retarget vs steady-state and
     /// advance by `dt` seconds.
     ///
+    /// **A motion that starts from rest spends nothing on its first
+    /// frame**, as a CSS transition shows its start value on the frame of
+    /// the change: the `dt` before it is time that passed while the row was
+    /// at rest — after an idle window, the whole 0.1 s clamp, which used to
+    /// spend 99.5 % of `AnimSpec::FAST` before anything was painted. A row
+    /// already in flight spends `dt` as usual, so a target that moves every
+    /// frame keeps moving.
+    ///
     /// Caller (`Ui::animate`) is responsible for filtering instant
     /// specs (`AnimSpec::is_instant()`) before calling this — tick
     /// itself assumes a real motion spec, no degenerate cases.
@@ -74,6 +64,17 @@ impl<T: Animatable> AnimMapTyped<T> {
         dt: f32,
         render_frame_id: u64,
     ) -> TickResult<T> {
+        // A non-finite target is a caller's logic error, and would never
+        // settle: NaN differs from itself, so the row would retarget every
+        // frame forever. Through `sub`, so `inf - inf` is caught too.
+        debug_assert!(
+            target
+                .clone()
+                .sub(target.clone())
+                .magnitude_squared()
+                .is_finite(),
+            "animation target of {id:?} {slot:?} is not finite",
+        );
         // `T: Animatable` is `Clone` (not `Copy`): each consume of a
         // T field through trait methods needs an explicit `.clone()`.
         // For Copy fields (f32, Vec2, RgbaF32) the clone compiles away;
@@ -100,15 +101,6 @@ impl<T: Animatable> AnimMapTyped<T> {
         let already_advanced = row.advanced_at == render_frame_id;
         row.advanced_at = render_frame_id;
 
-        let same_motion = matches!(
-            (&row.motion, spec.motion),
-            (MotionRow::Duration { .. }, AnimMotion::Duration { .. })
-                | (MotionRow::Spring { .. }, AnimMotion::Spring { .. })
-        );
-        if !same_motion {
-            row.motion = MotionRow::new(spec.motion, &row.current);
-        }
-
         // Steady-state fast path. Once a row settles, every subsequent
         // tick with the same target should be a no-op — skip the
         // `sub` + `magnitude_squared` settle math entirely. Retarget
@@ -130,67 +122,39 @@ impl<T: Animatable> AnimMapTyped<T> {
             };
         }
 
-        if let MotionRow::Spring { velocity } = &mut row.motion {
+        row.motion.conform(spec.motion, &row.current);
+        if let MotionRow::Spring { velocity, .. } = &mut row.motion {
             row.current.normalize_for_spring(&target, velocity);
         }
 
-        // Retarget: duration restarts the segment from `current`;
-        // spring keeps velocity *only when it aids motion toward the
-        // new target* — preserves "fling through" continuations but
-        // kills reversal swings that would otherwise overshoot far
-        // past the new target (e.g. retargeting a toggle while the
-        // spring is mid-flight in the opposite direction).
-        // `Animatable: PartialEq` lets us short-circuit with a
-        // bytewise compare on the steady-state path.
         if row.target != target {
-            match &mut row.motion {
-                MotionRow::Duration {
-                    segment_start,
-                    elapsed,
-                } => {
-                    *segment_start = row.current.clone();
-                    *elapsed = 0.0;
-                }
-                MotionRow::Spring { velocity } => {
-                    let to_target = target.clone().sub(row.current.clone());
-                    if dot(velocity.clone(), to_target) < 0.0 {
-                        *velocity = T::zero();
-                    }
-                }
-            }
+            let from_rest = row.settled;
+            row.motion.retarget(&row.current, &target);
             row.target = target;
             row.settled = false;
-        }
-
-        // Snap-if-close fast path. If `current` is already at its
-        // spec's "close enough" floor, skip the spec math: snap
-        // exactly, report settled, no repaint request. This swallows
-        // sub-eps drift in the caller (theme color rounded to nearest
-        // ulp, etc.) that would otherwise drive a full ease/spring
-        // cycle for a visually imperceptible change. The two specs use
-        // *different* floors: spring tolerates pixel-scale-loose
-        // residue (and checks velocity), duration uses a far tighter
-        // position-only floor so a real target change always runs its
-        // designed curve (see `spring.rs` for the rationale).
-        let close_enough = match &row.motion {
-            MotionRow::Duration { .. } => {
-                within_duration_snap_eps(row.current.clone().sub(row.target.clone()))
+            // Snap-if-close, on the retarget alone: a change too small to
+            // see settles at once rather than running a full curve for it.
+            // A running motion ends by its own rule — checked mid-curve,
+            // this floor cut `OutBack` short where the curve crosses the
+            // target on its way to the overshoot.
+            if row
+                .motion
+                .close_enough(row.current.clone().sub(row.target.clone()))
+            {
+                row.current = row.target.clone();
+                row.motion.stop();
+                row.settled = true;
+                return TickResult {
+                    current: row.target.clone(),
+                    settled: true,
+                };
             }
-            MotionRow::Spring { velocity } => within_settle_eps(
-                row.current.clone().sub(row.target.clone()),
-                velocity.clone(),
-            ),
-        };
-        if close_enough {
-            row.current = row.target.clone();
-            if let MotionRow::Spring { velocity } = &mut row.motion {
-                *velocity = T::zero();
+            if from_rest {
+                return TickResult {
+                    current: row.current.clone(),
+                    settled: false,
+                };
             }
-            row.settled = true;
-            return TickResult {
-                current: row.target.clone(),
-                settled: true,
-            };
         }
 
         // Multi-pass guard: pass A already advanced the integrator
@@ -205,53 +169,12 @@ impl<T: Animatable> AnimMapTyped<T> {
             };
         }
 
-        match spec.motion {
-            AnimMotion::Duration { secs, ease } => {
-                let MotionRow::Duration {
-                    segment_start,
-                    elapsed,
-                } = &mut row.motion
-                else {
-                    unreachable!("motion state must match the active specification");
-                };
-                *elapsed += dt;
-                let progress = *elapsed / secs;
-                row.current = T::lerp(
-                    segment_start.clone(),
-                    row.target.clone(),
-                    ease.apply(progress),
-                );
-                let settled = progress >= 1.0;
-                if settled {
-                    row.current = row.target.clone();
-                }
-                row.settled = settled;
-                TickResult {
-                    current: row.current.clone(),
-                    settled,
-                }
-            }
-            AnimMotion::Spring { stiffness, damping } => {
-                let MotionRow::Spring { velocity } = &mut row.motion else {
-                    unreachable!("motion state must match the active specification");
-                };
-                let step = spring_step(
-                    stiffness,
-                    damping,
-                    row.current.clone(),
-                    velocity.clone(),
-                    row.target.clone(),
-                    dt,
-                );
-                row.current = step.current;
-                *velocity = step.velocity;
-                row.settled = step.settled;
-                TickResult {
-                    current: row.current.clone(),
-                    settled: step.settled,
-                }
-            }
-        }
+        let step = row
+            .motion
+            .advance(row.current.clone(), row.target.clone(), dt);
+        row.current = step.current.clone();
+        row.settled = step.settled;
+        step
     }
 }
 
