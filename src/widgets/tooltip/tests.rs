@@ -234,13 +234,17 @@ fn empty_label_records_no_bubble() {
         !empty
             .ui
             .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
-            .copied()
-            .unwrap_or_default()
-            .visible,
+            .is_some_and(|state| state.visible),
         "an empty tooltip must never become visible",
     );
 
     let shown = visible_tooltip_at(20.0, "tip");
+    assert!(
+        shown
+            .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
+            .visible,
+        "control: the same fixture with text turns its row visible",
+    );
     assert!(
         shown.ui.tree(Layer::Tooltip).records.len() > baseline,
         "the same fixture with text records more than the empty one \
@@ -370,10 +374,7 @@ fn delay_gates_visibility() {
     record_at_secs(&mut h, 0.05, &mut captured);
     h.move_onto(trigger_id);
     record_at_secs(&mut h, 0.1, &mut captured);
-    let early =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let early = *h.state::<TooltipState>(trigger_id);
     assert!(
         !early.visible,
         "tooltip must stay hidden before delay elapses (started_at={:?})",
@@ -390,10 +391,7 @@ fn delay_gates_visibility() {
         record_at_secs(&mut h, t, &mut captured);
     }
 
-    let late =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let late = *h.state::<TooltipState>(trigger_id);
     assert!(
         late.visible,
         "tooltip must become visible after delay (started_at={:?})",
@@ -456,10 +454,7 @@ fn hover_clears_after_tooltip_visible() {
         h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
     }
-    let state =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let state = *h.state::<TooltipState>(trigger_id);
     assert!(
         state.visible,
         "precondition: tooltip visible while hovering"
@@ -472,10 +467,7 @@ fn hover_clears_after_tooltip_visible() {
     record_at_secs(&mut h, t, &mut captured);
 
     let pointer_over = h.ui.response_for(trigger_id).pointer_over;
-    let state =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let state = *h.state::<TooltipState>(trigger_id);
     assert!(!pointer_over, "the pointer left the trigger");
     assert!(!state.visible, "tooltip must hide after move-away");
 }
@@ -533,10 +525,7 @@ fn tooltip_inside_popup_records_without_panic() {
         record_at_secs(&mut h, t, &mut captured);
     }
 
-    let state =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let state = *h.state::<TooltipState>(trigger_id);
     assert!(
         state.visible,
         "tooltip on a popup-nested trigger must become visible after the delay (started_at={:?})",
@@ -607,10 +596,11 @@ fn when_disabled_reaches_a_disabled_trigger() {
             h.move_onto(trigger_id);
             record(&mut h, t);
         }
+        // No row is the off answer: a tooltip that never activates
+        // stores nothing. The `true` row is the control that the id is
+        // the one a visible tooltip writes.
         h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default()
-            .visible
+            .is_some_and(|state| state.visible)
     };
 
     assert!(

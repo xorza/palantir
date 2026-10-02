@@ -68,7 +68,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(40.0, 60.0));
     h.pinch(1.5);
     h.frame(build);
-    let state = *h.ui.state_or_default::<ScrollState>(outer_id);
+    let state = *h.state::<ScrollState>(outer_id);
     assert_eq!(scroll_viewport(&h.ui, outer_id), Size::new(200.0, 200.0));
     assert_eq!(state.zoom, 1.5);
     assert_eq!(
