@@ -143,9 +143,8 @@ impl IconBackend {
             let slot = self.pass.atlas.slots[idx as usize]
                 .placement
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
-            // An icon's raster *is* its box, so its bearing is zero and
-            // the pen is the quad's top-left.
-            let mut quad = slot.quad(row.origin, row.color);
+            // An icon's bearing is zero, so the pen is the quad's top-left.
+            let mut quad = slot.quad_sized(row.origin, row.size, row.color);
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
             }

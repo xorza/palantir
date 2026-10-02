@@ -53,6 +53,7 @@ impl BlockSlot for EncodedGlyph {
             instance: RasterQuad {
                 pos: [0, 0],
                 dim: 0,
+                size: 0,
                 uv_and_kind: 0,
                 color: RgbaF16::TRANSPARENT,
             },
@@ -142,9 +143,7 @@ impl EncodedCache {
             let g = glyph.instance;
             pass.instances.push(RasterQuad {
                 pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
-                dim: g.dim,
-                uv_and_kind: g.uv_and_kind,
-                color: g.color,
+                ..g
             });
             slot.last_use = current_frame;
         }
@@ -446,6 +445,7 @@ pub(crate) mod test_support {
                         instance: RasterQuad {
                             pos: [glyph as i32, run as i32],
                             dim: 0,
+                            size: 0,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },
@@ -524,6 +524,7 @@ pub(crate) mod test_support {
                         instance: RasterQuad {
                             pos: [glyph as i32, row as i32],
                             dim: 0,
+                            size: 0,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },

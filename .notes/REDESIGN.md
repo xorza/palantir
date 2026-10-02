@@ -789,7 +789,6 @@ output, cost, cleanup.
 
 ## Phase 4. GPU geometry and colour (D5, D6)
 
-- [ ] Icons above 512 px fill their box; text scissor at ink.
 - [ ] Pixel damage oracle rows for the changed shapes.
 
 ## Phase 5. Layout (D14)

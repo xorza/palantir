@@ -23,6 +23,7 @@ fn glyph(tag: u32) -> EncodedGlyph {
         instance: RasterQuad {
             pos: [tag as i32, -(tag as i32)],
             dim: tag,
+            size: tag ^ 0x5a5a,
             uv_and_kind: tag << 8,
             color: bytemuck::cast(u64::from(!tag)),
         },

@@ -350,3 +350,60 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     assert!(any_lit(40..52, 6..26), "the label right of the icon");
     assert!(any_lit(0..96, 44..72), "the label in the clipped panel");
 }
+
+/// Past the 512 px raster cap an icon still fills its box: the capped raster
+/// is resampled up to it. A 300 logical px pane at (20, 20) and scale 2 is
+/// the physical box 40..640; the raster is 512, and drawn at its own size it
+/// sat centred at 84..596 with a 44 px gap on every side.
+#[test]
+fn an_icon_past_the_raster_cap_fills_its_box() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(680, 680), 2.0, RgbaF32::BLACK, |ui| {
+        Panel::canvas()
+            .id_salt("icon_capped")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                pane(
+                    ui,
+                    "solid",
+                    Vec2::new(20.0, 20.0),
+                    Vec2::splat(300.0),
+                    "solid",
+                    RgbaF32::WHITE,
+                );
+            });
+    });
+    let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
+    let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
+    assert!(lit(41, 340) && lit(638, 340), "the left and right edges");
+    assert!(lit(340, 41) && lit(340, 638), "the top and bottom edges");
+    assert!(dark(38, 340) && dark(642, 340), "nothing past the box");
+
+    // A colour icon takes the same path through the colour atlas: each half
+    // keeps its own colour, filtered only along the seam at x = 340.
+    let img = h.render(UVec2::new(680, 680), 2.0, RgbaF32::BLACK, |ui| {
+        Panel::canvas()
+            .id_salt("icon_capped_colour")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                pane(
+                    ui,
+                    "halves",
+                    Vec2::new(20.0, 20.0),
+                    Vec2::splat(300.0),
+                    "halves",
+                    RgbaF32::WHITE,
+                );
+            });
+    });
+    assert!(
+        close(img.get_pixel(60, 340).0, LEFT),
+        "{:?}",
+        img.get_pixel(60, 340)
+    );
+    assert!(
+        close(img.get_pixel(620, 340).0, RIGHT),
+        "{:?}",
+        img.get_pixel(620, 340)
+    );
+}

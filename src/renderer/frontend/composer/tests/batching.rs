@@ -641,8 +641,11 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
         &params(1.0, UVec2::new(600, 600)),
     );
     assert_eq!(buf.text_batches.len(), 2);
-    assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 300, 20));
-    assert_eq!(buf.text_batches[1].scissor, URect::new(0, 100, 300, 20));
+    // Each run's box padded by the scale-step pad, 0.25 % a side: 0.75 px
+    // across, 0.05 px down, then covered. The first clamps at the surface
+    // to (0, 0)..(301, 21); the second spans y 99.95..120.05, so 99..121.
+    assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 301, 21));
+    assert_eq!(buf.text_batches[1].scissor, URect::new(0, 99, 301, 22));
     for (batch, quad_y) in buf.text_batches.iter().zip([0.0, 100.0]) {
         let quad_group = buf
             .groups
@@ -930,4 +933,19 @@ fn text_batch_drains_past_a_non_overlapping_image() {
         0,
         "the image drains a group before the batch that paints over it",
     );
+}
+
+/// A text batch's scissor never cuts the glyphs' own extent. With pixel
+/// snapping on, a run at x 10 of width 100.4 spans 10..110.4; padded by
+/// 0.25 % a side (0.251 px across, 0.05 px down) and covered, that is x
+/// 9..111, y 9..31. The snapped box ended at 110, and cut the last column
+/// of antialiasing.
+#[test]
+fn a_text_scissor_covers_the_snapped_glyph_block() {
+    let mut display = params(1.0, UVec2::new(200, 100));
+    display.pixel_snap = true;
+    let buf = run(|b, _| text(b, rect(10.0, 10.0, 100.4, 20.0)), &display);
+    assert_eq!(buf.text_batches.len(), 1);
+    assert_eq!(buf.texts[0].origin, Vec2::new(10.0, 10.0));
+    assert_eq!(buf.text_batches[0].scissor, URect::new(9, 9, 102, 22));
 }
