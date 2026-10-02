@@ -787,13 +787,6 @@ output, cost, cleanup.
 
 - [ ] Key dumps on Linux and on the macOS test laptop, recorded as the translation test table.
 
-## Phase 7. Text (D11)
-
-- [ ] Hebrew and Arabic subset test faces.
-- [ ] Probe line table from the shaped buffer; truncated-run mapping.
-- [ ] Logical-order wrap-floor scan.
-- [ ] Exact encode key.
-
 ## Phase 8. Widgets and overlays (D9, D10, D12)
 
 - [ ] D9: `pan_axes` and per-axis targets.

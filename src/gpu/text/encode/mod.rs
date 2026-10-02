@@ -29,6 +29,7 @@ use crate::primitives::num::F32Px;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::render::SubpixelOrigin;
+use glam::Vec2;
 
 pub(super) mod cache;
 pub(super) mod encoder;
@@ -75,6 +76,21 @@ pub(super) struct EncodedRunKey {
 }
 
 impl EncodedRunKey {
+    /// The origin this key stands for: the integer pixel plus each axis's
+    /// subpixel bin. Glyphs are extracted from it rather than from the
+    /// row's exact origin, so every origin in one bin extracts the
+    /// template the key caches — the key holds the bin and nothing finer.
+    /// From the exact origin, 0.13 and 0.37 share bin One, yet a glyph
+    /// 0.25 further along landed in bin One from the first and Two from
+    /// the second, and whichever came first was replayed for both.
+    pub(super) fn origin(&self) -> Vec2 {
+        let bin = |bits: u8| f32::from(bits & 0b11) * 0.25;
+        Vec2::new(
+            self.origin_x as f32 + bin(self.key.bins >> 2),
+            self.origin_y as f32 + bin(self.key.bins),
+        )
+    }
+
     /// The cache key for `row` placed at `frame_scale * row.scale`, plus
     /// the integer-pixel origin — cosmic's subpixel bins absorb the
     /// fractional component into per-glyph `CacheKey`s, so two runs at
@@ -93,5 +109,50 @@ impl EncodedRunKey {
             origin_x: sub.x,
             origin_y: sub.y,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::text::encode::EncodedRunKey;
+    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::span::Span;
+    use crate::primitives::urect::URect;
+    use crate::renderer::render_buffer::text::TextDrawRow;
+    use crate::text::key::TextShapeKey;
+    use crate::text::shaped_ref::ShapedTextRef;
+    use glam::Vec2;
+
+    fn key_at(x: f32) -> EncodedRunKey {
+        let row = TextDrawRow {
+            text: ShapedTextRef {
+                key: TextShapeKey::fixture(),
+                span: Span::default(),
+            },
+            origin: Vec2::new(x, 3.0),
+            bounds: URect::new(0, 0, 100, 100),
+            color: RgbaF16::from(RgbaF32::WHITE),
+            scale: 1.0,
+        };
+        EncodedRunKey::for_row(&row, 1.0)
+    }
+
+    /// Every origin in one quarter-pixel bin extracts from the same
+    /// point, the one its key stands for: 10.13 and 10.37 are both bin
+    /// One of pixel 10, so both extract at 10.25 under one key. Cosmic's
+    /// bins round to the nearest quarter, so 10.1 is 10.0 and 10.9 is
+    /// 11.0, and a negative origin bins below its integer: -0.2 is -0.25.
+    #[test]
+    fn an_origin_extracts_at_the_bin_its_key_stands_for() {
+        for (raw, snapped) in [
+            (10.13, 10.25),
+            (10.37, 10.25),
+            (10.1, 10.0),
+            (10.9, 11.0),
+            (-0.2, -0.25),
+        ] {
+            assert_eq!(key_at(raw).origin(), Vec2::new(snapped, 3.0), "{raw}");
+        }
+        assert_eq!(key_at(10.13).key, key_at(10.37).key, "one bin, one key");
     }
 }

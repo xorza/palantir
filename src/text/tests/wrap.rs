@@ -270,10 +270,24 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     // same ones cosmic-text splits its shape words on — so the floor has
     // to track punctuation and script boundaries, not just whitespace.
     let mut c = CosmicMeasure::default();
+    c.load_font(HEBREW.into())
+        .expect("the Hebrew test face loads");
     let shape = ui_shape(16.0);
 
     // (run, the widest segment its floor must land on)
     for (text, widest) in [
+        // Right to left: the scan reads segments in logical order. Read
+        // visually, each reset came one glyph late and merged the two
+        // words, and the space between them, into one segment.
+        (
+            "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4} \u{5d5}\u{5d6}",
+            "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4}",
+        ),
+        // Mixed directions on one line.
+        (
+            "ab \u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4} cd",
+            "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4}",
+        ),
         // "world" outweighs "hello" in Inter — `w` is the wider glyph.
         ("hello world hi", "world"),
         // A hyphen opens a break after itself, so the floor is the

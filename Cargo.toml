@@ -22,6 +22,7 @@ exclude = [
     ".zed/",
     "AGENTS.md",
     "CLAUDE.md",
+    "assets/fonts/test/",
     "assets/logo/",
     "benches/bench-perf.sh",
     "docs/",

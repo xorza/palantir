@@ -164,7 +164,6 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 
 ## 13. Slow and environment-dependent tests
 
-- [ ] Three tests use the machine's installed fonts: `text/tests/truncate.rs:317` (Hebrew), `text/tests/geometry.rs:388` (Arabic), `text/font_scan.rs:61` (`len() > 2`). They fail on a host with no such fonts, for example the headless test server, and a cold font scan costs about 860 ms. Ship a small Hebrew and Arabic subset face as a test asset and load it into a Bundled shaper. (judgement)
 - [ ] `host/winit/input/tests.rs:91` branches on `PLATFORM`, so Linux never checks the macOS Cmd→ctrl table. Let `normalize_modifiers` take the `Platform`. (judgement)
 - [ ] Multi-click tests depend on the frozen harness clock without saying so (`input_state/tests/click.rs:356,454,486,580`), and `:383-384` says "real time … 400ms window" (it is a frozen clock and 500 ms). Advance a stated in-window gap.
 - [ ] `ui/tests/frames/settle.rs:59-66` calls `h.at(16ms)` every frame, which parks the clock while the code reads as a 16 ms cadence.

@@ -118,7 +118,7 @@ impl TextBackend {
                 glyphs,
                 r.text.resolve_request(interned_text),
                 RunPlacement {
-                    origin: r.origin,
+                    origin: run_key.origin(),
                     scale: scale * r.scale,
                     bounds: Some(r.bounds),
                 },
