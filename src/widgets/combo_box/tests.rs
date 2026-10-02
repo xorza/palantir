@@ -1,13 +1,18 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::theme::Theme;
+use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use glam::{UVec2, Vec2};
 
@@ -205,6 +210,52 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     let (size_c, gap_c) = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance));
     assert_eq!(size_c, size_b, "`style` overrides the slot's arrow_size");
     assert_eq!(gap_c, gap_b, "`style` overrides the slot's gap");
+}
+
+/// The trigger paints in the button theme `button_style` names, and in
+/// `Theme::button` without one — read off the trigger's chrome on the
+/// frame it first records, where the look snaps to its rest state.
+#[test]
+fn trigger_chrome_follows_button_style() {
+    let options = ["One"];
+    let id = WidgetId::from_hash("styled-combo");
+    let custom = RgbaF32::srgb(0.9, 0.2, 0.1);
+    let mut restyled = ButtonTheme::default();
+    restyled.looks.normal.background.fill = custom.into();
+    assert_ne!(
+        ButtonTheme::default().looks.normal.background.fill,
+        custom.into(),
+        "premise: the custom fill differs from the stock one",
+    );
+    for style in [None, Some(&restyled)] {
+        let mut h = UiHarness::new(SURFACE);
+        let themed = h.ui.theme().button.looks.normal.background.fill.clone();
+        let mut selected = 0;
+        h.frame(|ui| {
+            ComboBox::new(&mut selected, &options)
+                .id(id)
+                .button_style(style)
+                .show(ui);
+        });
+        let want = match style {
+            Some(_) => custom,
+            None => themed
+                .as_solid()
+                .expect("the stock button rests on a solid fill"),
+        };
+        let trigger = h.node_of(id).expect("trigger recorded").node;
+        let fill =
+            h.ui.tree(Layer::Main)
+                .chrome(trigger)
+                .expect("the trigger paints chrome")
+                .fill;
+        let want = RgbaF16::from(want);
+        assert!(
+            matches!(fill, ShapeBrush::Solid(got) if got == want),
+            "styled {}: {fill:?}, want {want:?}",
+            style.is_some(),
+        );
+    }
 }
 
 /// The list is the context menu's panel, not merely its colour: it takes

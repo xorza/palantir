@@ -1,3 +1,4 @@
+use crate::Ui;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -7,7 +8,7 @@ use crate::widgets::checkbox::Checkbox;
 use crate::widgets::configure::Configure;
 use crate::widgets::radio::RadioButton;
 use crate::widgets::switch::Switch;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// All three toggles resolve their box through `WidgetTheme::plan`,
 /// so [`crate::ToggleTheme`]'s `padding` / `margin` reach the row and
@@ -108,4 +109,90 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
         ]
     });
     check("Switch", &h, rows, sw_padding, sw_margin);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Toggle {
+    Checkbox,
+    Radio,
+    Switch,
+}
+
+/// Record one `kind` bound to `value`, at the origin, and report
+/// `(clicked, changed)` — what its response says this frame.
+fn record_toggle(ui: &mut Ui, kind: Toggle, value: &mut bool, disabled: bool) -> [bool; 2] {
+    let id = WidgetId::from_hash("toggle");
+    match kind {
+        Toggle::Checkbox => {
+            let before = *value;
+            let r = Checkbox::new(value)
+                .id(id)
+                .label("t")
+                .disabled(disabled)
+                .show(ui);
+            [r.left.clicked(), *value != before]
+        }
+        Toggle::Switch => {
+            let before = *value;
+            let r = Switch::new(value)
+                .id(id)
+                .label("t")
+                .disabled(disabled)
+                .show(ui);
+            [r.left.clicked(), *value != before]
+        }
+        Toggle::Radio => {
+            let r = RadioButton::new(value, true)
+                .id(id)
+                .label("t")
+                .disabled(disabled)
+                .show(ui);
+            [r.response.left.clicked(), r.changed]
+        }
+    }
+}
+
+/// Two clicks on each toggle, enabled and disabled. A checkbox and a
+/// switch flip on every click, so `clicked()` is their change edge: true
+/// exactly on the frames the value moved. A radio latches, so its second
+/// click is `clicked()` without `changed`. A disabled toggle takes the
+/// click on the same spot and moves nothing.
+#[test]
+fn toggles_answer_clicks_and_ignore_them_disabled() {
+    let at = Vec2::new(8.0, 8.0);
+    for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {
+        for disabled in [false, true] {
+            let mut h = UiHarness::new(UVec2::new(300, 100));
+            let mut value = false;
+            h.frame(|ui| {
+                record_toggle(ui, kind, &mut value, disabled);
+            });
+            assert_eq!(
+                h.hit_at(at),
+                Some(WidgetId::from_hash("toggle")),
+                "{kind:?} disabled {disabled}: the click lands",
+            );
+
+            let second_changes = !matches!(kind, Toggle::Radio);
+            let want = if disabled {
+                [([false, false], false), ([false, false], false)]
+            } else {
+                [
+                    ([true, true], true),
+                    ([true, second_changes], !second_changes),
+                ]
+            };
+            for (n, (edges, after)) in want.into_iter().enumerate() {
+                h.click_at(at);
+                let got = h.frame_value(|ui| record_toggle(ui, kind, &mut value, disabled));
+                assert_eq!(got, edges, "{kind:?} disabled {disabled}: click {n} edges");
+                assert_eq!(
+                    value, after,
+                    "{kind:?} disabled {disabled}: value after click {n}"
+                );
+            }
+            let quiet = h.frame_value(|ui| record_toggle(ui, kind, &mut value, disabled));
+            assert_eq!(quiet, [false, false], "{kind:?}: the edges are one-shot");
+        }
+    }
 }

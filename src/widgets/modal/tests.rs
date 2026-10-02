@@ -2,11 +2,14 @@ use crate::Ui;
 use crate::input::keyboard::key::Key;
 use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
@@ -41,24 +44,43 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
 /// which is the surface origin with the whole surface available. Pinned
 /// here because that default is what makes the backdrop cover the screen,
 /// and nothing else in this file would notice it drifting.
+///
+/// The root paints the scrim: the modal theme's colour, or the one
+/// `Modal::backdrop` names.
 #[test]
-fn the_backdrop_root_covers_the_whole_surface() {
+fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
-    let mut h = UiHarness::new(SURFACE);
-    h.frame(|ui| {
-        Modal::new()
-            .id(WidgetId::from_hash("modal-full-surface"))
+    let id = WidgetId::from_hash("modal-full-surface");
+    let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
+    for explicit in [None, Some(custom)] {
+        let mut h = UiHarness::new(SURFACE);
+        let themed = h.ui.theme().modal.backdrop;
+        h.frame(|ui| {
+            let modal = Modal::new().id(id);
+            match explicit {
+                Some(c) => modal.backdrop(c),
+                None => modal,
+            }
             .show(ui, |_, _| {});
-    });
+        });
 
-    let backdrop = h
-        .node_of(WidgetId::from_hash("modal-full-surface"))
-        .expect("modal backdrop recorded");
-    assert_eq!(backdrop.layer, Layer::Modal);
-    assert_eq!(
-        h.ui.layout(Layer::Modal).rect[backdrop.node.idx()],
-        Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
-    );
+        let backdrop = h.node_of(id).expect("modal backdrop recorded");
+        assert_eq!(backdrop.layer, Layer::Modal);
+        assert_eq!(
+            h.ui.layout(Layer::Modal).rect[backdrop.node.idx()],
+            Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
+        );
+        let scrim =
+            h.ui.tree(Layer::Modal)
+                .chrome(backdrop.node)
+                .expect("the backdrop paints a scrim")
+                .fill;
+        let want = RgbaF16::from(explicit.unwrap_or(themed));
+        assert!(
+            matches!(scrim, ShapeBrush::Solid(fill) if fill == want),
+            "explicit {explicit:?}: scrim {scrim:?}, want {want:?}",
+        );
+    }
 }
 
 /// A modal paints above every popup and eats pointer input through

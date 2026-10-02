@@ -31,7 +31,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     h.ui.theme_mut().separator.thickness = 11.0;
     h.ui.theme_mut().separator.margin = Spacing::all(9.0);
 
-    let (mut inherited, mut explicit, mut global) = (None, None, None);
+    let (mut inherited, mut explicit, mut global, mut thick) = (None, None, None, None);
     h.frame(|ui| {
         let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
         col.show(ui, |ui| {
@@ -44,6 +44,13 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
                     .node(),
             );
             global = Some(Separator::horizontal().show(ui).node());
+            thick = Some(
+                Separator::horizontal()
+                    .style(&styled)
+                    .thickness(7.0)
+                    .show(ui)
+                    .node(),
+            );
         });
     });
 
@@ -68,6 +75,11 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         layouts[global.unwrap().idx()].margin,
         Spacing::all(9.0),
         "an unstyled rule still reads the global slot",
+    );
+    assert_eq!(
+        rects[thick.unwrap().idx()].size.h,
+        7.0,
+        "an explicit thickness beats the styled bundle's 3",
     );
 }
 
