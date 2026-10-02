@@ -159,27 +159,23 @@ fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
 #[test]
 fn identity_cache_rejects_invalid_metrics_before_dispatch() {
     use crate::primitives::approx::EPS;
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
     let mut text = TextSystem::cosmic();
     let widget_id = WidgetId::from_hash("invalid metrics");
     let calls = text.shaper().measure_calls();
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        text.shape_run(
-            slot(widget_id),
-            "hi",
-            shape(EPS * 0.5)
-                .leading(16.0)
-                .width(40.0)
-                .halign(HAlign::Center),
-            TextWrap::Ellipsis,
-        )
-    }))
-    .is_err();
-    assert!(
-        panicked,
-        "the layout-side fixture must refuse to build a request for an unusable face",
+    crate::common::panic_probe::assert_panics_with(
+        "a shaping fixture needs text and a usable face",
+        || {
+            text.shape_run(
+                slot(widget_id),
+                "hi",
+                shape(EPS * 0.5)
+                    .leading(16.0)
+                    .width(40.0)
+                    .halign(HAlign::Center),
+                TextWrap::Ellipsis,
+            )
+        },
     );
     assert!(
         !text.has_entry(widget_id, 0),

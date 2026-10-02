@@ -287,16 +287,16 @@ mod tests {
             Vec2::new(0.0, f32::NEG_INFINITY),
         ];
         for translation in invalid_translations {
-            assert!(
-                std::panic::catch_unwind(|| TranslateScale::new(translation, 1.0)).is_err(),
-                "translation {translation:?} must be rejected"
+            crate::common::panic_probe::assert_panics_with(
+                "TranslateScale translation must be finite",
+                || TranslateScale::new(translation, 1.0),
             );
         }
 
         for scale in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert!(
-                std::panic::catch_unwind(|| TranslateScale::new(Vec2::ZERO, scale)).is_err(),
-                "scale {scale:?} must be rejected"
+            crate::common::panic_probe::assert_panics_with(
+                "TranslateScale scale must be positive and finite",
+                || TranslateScale::new(Vec2::ZERO, scale),
             );
         }
     }
@@ -310,36 +310,25 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn derived_transforms_reject_the_overflow_their_arithmetic_produces() {
-        assert!(
-            std::panic::catch_unwind(|| {
-                TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
-            })
-            .is_err(),
-            "pivot arithmetic that overflows translation must be rejected"
-        );
-        assert!(
-            std::panic::catch_unwind(|| {
-                TranslateScale::from_scale(f32::MAX).compose(TranslateScale::from_scale(2.0))
-            })
-            .is_err(),
-            "composition that overflows scale must be rejected"
-        );
-        assert!(
-            std::panic::catch_unwind(|| {
-                TranslateScale::from_scale(f32::from_bits(1))
-                    .compose(TranslateScale::from_scale(0.5))
-            })
-            .is_err(),
-            "composition that underflows scale to zero must be rejected"
-        );
-        assert!(
-            std::panic::catch_unwind(|| {
-                let transform = TranslateScale::from_translation(Vec2::splat(f32::MAX));
-                transform.compose(transform)
-            })
-            .is_err(),
-            "composition that overflows translation must be rejected"
-        );
+        const TRANSLATION: &str = "TranslateScale translation must be finite";
+        const SCALE: &str = "TranslateScale scale must be positive and finite";
+        // Pivot arithmetic that overflows translation.
+        crate::common::panic_probe::assert_panics_with(TRANSLATION, || {
+            TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
+        });
+        // Composition that overflows scale.
+        crate::common::panic_probe::assert_panics_with(SCALE, || {
+            TranslateScale::from_scale(f32::MAX).compose(TranslateScale::from_scale(2.0))
+        });
+        // Composition that underflows scale to zero.
+        crate::common::panic_probe::assert_panics_with(SCALE, || {
+            TranslateScale::from_scale(f32::from_bits(1)).compose(TranslateScale::from_scale(0.5))
+        });
+        // Composition that overflows translation.
+        crate::common::panic_probe::assert_panics_with(TRANSLATION, || {
+            let transform = TranslateScale::from_translation(Vec2::splat(f32::MAX));
+            transform.compose(transform)
+        });
     }
 
     #[test]

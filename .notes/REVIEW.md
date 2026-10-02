@@ -403,7 +403,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Support-module docs that contradict the code
 - [ ] `src/lib.rs:124-127`: says the derive emits `::palantir::Animatable`. It emits `::palantir::widget::Animatable`.
 - [ ] `src/lib.rs:209-212` **(plausible)**: says the GPU reach-in is "never in a plain `cargo test` build". But `Cargo.toml`'s self dev-dependency `palantir = { features = ["internals"] }` is documented there as unifying into every test target, which makes `internals` always on under `cargo test`. One of the two comments is wrong. The same unification would make `required-features = ["internals"]` on `[[test]] alloc` redundant.
-- [ ] `src/animation/anim_spec/mod.rs:600-605`: the duration message is duplicated as a literal because "a `const fn` cannot run the formatting machinery". Const panics accept `"{}", &str`, so `DURATION_ERROR` can be the single source.
 - [ ] `src/icons/icon_registry/mod.rs:520-538`: `resident` is documented as `None` for a free slot. A released-but-undrained slot still answers `Some`, and the epoch bump on release triggers a prewarm walk that includes the doomed set.
 
 ## Stale or false layout docs

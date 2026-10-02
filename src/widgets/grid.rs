@@ -111,8 +111,8 @@ mod tests {
     use crate::widgets::configure::Configure;
 
     /// A grid's spacing is the node column every other container uses,
-    /// so it is set through the same two setters and faces the same
-    /// packed-gap range.
+    /// so it is set through the same two setters; the packed-gap range
+    /// they share is pinned in `widget::tests`.
     #[test]
     fn gaps_validate_and_store_values() {
         let configured = Grid::new().line_gap(3.0).gap(5.0);
@@ -122,21 +122,5 @@ mod tests {
         let edge = Grid::new().line_gap(MAX_PACKED_GAP).gap(0.0);
         assert_eq!(edge.widget.authored_line_gap(), Some(MAX_PACKED_GAP));
         assert_eq!(edge.widget.authored_gap(), Some(0.0));
-
-        let invalid: [fn(Grid) -> Grid; 6] = [
-            |grid| grid.line_gap(-1.0),
-            |grid| grid.gap(-1.0),
-            |grid| grid.gap(f32::NAN),
-            |grid| grid.line_gap(f32::INFINITY),
-            |grid| grid.gap(f32::NEG_INFINITY),
-            |grid| grid.line_gap(MAX_PACKED_GAP + 1.0),
-        ];
-
-        for (index, case) in invalid.into_iter().enumerate() {
-            assert!(
-                std::panic::catch_unwind(|| case(Grid::new())).is_err(),
-                "invalid gap case {index} must panic in debug builds",
-            );
-        }
     }
 }

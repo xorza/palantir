@@ -159,31 +159,41 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
         document
     };
 
-    for count in [0, 1, 2, 8, 9] {
-        let constructed =
-            std::panic::catch_unwind(|| GradientStops::new(stops(count))).map(|value| value.len());
+    for (count, rejection) in [
+        (0, Some("gradient requires at least 2 stops, got 0")),
+        (1, Some("gradient requires at least 2 stops, got 1")),
+        (2, None),
+        (8, None),
+        (9, Some("gradient stop count exceeds MAX_STOPS = 8")),
+    ] {
         let deserialized =
             ron::from_str::<StopsDocument>(&serialized(count)).map(|value| value.stops.len());
-        let expected = (2..=MAX_STOPS).contains(&count);
-        assert_eq!(constructed.is_ok(), expected, "constructor count {count}");
-        assert_eq!(deserialized.is_ok(), expected, "deserializer count {count}",);
-        if expected {
-            assert_eq!(constructed.unwrap(), count);
-            assert_eq!(deserialized.unwrap(), count);
+        assert_eq!(
+            deserialized.is_ok(),
+            rejection.is_none(),
+            "deserializer count {count}",
+        );
+        match rejection {
+            Some(message) => {
+                crate::common::panic_probe::assert_panics_with(message, || {
+                    GradientStops::new(stops(count))
+                });
+            }
+            None => {
+                assert!((2..=MAX_STOPS).contains(&count));
+                assert_eq!(GradientStops::new(stops(count)).len(), count);
+                assert_eq!(deserialized.unwrap(), count);
+            }
         }
     }
 }
 
 #[test]
 fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
-    for (label, offset) in [
-        ("nan", f32::NAN),
-        ("positive infinity", f32::INFINITY),
-        ("negative infinity", f32::NEG_INFINITY),
-    ] {
-        assert!(
-            std::panic::catch_unwind(|| Stop::new(offset, RgbaF32::WHITE)).is_err(),
-            "{label} must panic at the authoring boundary",
+    for offset in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        crate::common::panic_probe::assert_panics_with(
+            "gradient stop offset must be finite",
+            || Stop::new(offset, RgbaF32::WHITE),
         );
     }
 

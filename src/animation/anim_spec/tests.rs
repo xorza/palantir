@@ -1,5 +1,8 @@
 use crate::animation::anim_spec::AnimSpec;
+use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
+use crate::animation::spring::SPRING_ERROR;
+use crate::common::panic_probe::assert_panics_with;
 use crate::primitives::approx::EPS;
 
 #[test]
@@ -22,10 +25,7 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         f32::INFINITY,
         f32::NEG_INFINITY,
     ] {
-        assert!(
-            std::panic::catch_unwind(|| AnimSpec::duration(secs, Easing::Linear)).is_err(),
-            "duration constructor accepted {secs:?}",
-        );
+        assert_panics_with(DURATION_ERROR, || AnimSpec::duration(secs, Easing::Linear));
     }
 
     for (stiffness, damping) in [
@@ -39,10 +39,7 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         (1.0, 100.0),
         (f32::MAX, 2.0),
     ] {
-        assert!(
-            std::panic::catch_unwind(|| AnimSpec::spring(stiffness, damping)).is_err(),
-            "spring constructor accepted ({stiffness:?}, {damping:?})",
-        );
+        assert_panics_with(SPRING_ERROR, || AnimSpec::spring(stiffness, damping));
     }
 
     assert!(!AnimSpec::spring(1.0, 2.0).is_instant());
@@ -87,27 +84,27 @@ fn anim_spec_serde_validates_and_roundtrips() {
         (
             "negative duration",
             r#"(spec: (kind: "duration", secs: -1.0, ease: "linear"))"#,
-            "animation duration must be finite and in 0.0..=60.0 seconds",
+            DURATION_ERROR,
         ),
         (
             "non-finite duration",
             r#"(spec: (kind: "duration", secs: NaN, ease: "linear"))"#,
-            "animation duration must be finite and in 0.0..=60.0 seconds",
+            DURATION_ERROR,
         ),
         (
             "non-positive spring",
             r#"(spec: (kind: "spring", stiffness: 170.0, damping: 0.0))"#,
-            "spring parameters must be positive, finite, convergent, and settle without a long velocity tail",
+            SPRING_ERROR,
         ),
         (
             "slow spring",
             r#"(spec: (kind: "spring", stiffness: 1.0, damping: 100.0))"#,
-            "spring parameters must be positive, finite, convergent, and settle without a long velocity tail",
+            SPRING_ERROR,
         ),
         (
             "long velocity tail",
             r#"(spec: (kind: "spring", stiffness: 3.4028235e38, damping: 2.0))"#,
-            "spring parameters must be positive, finite, convergent, and settle without a long velocity tail",
+            SPRING_ERROR,
         ),
     ];
     for (label, input, expected) in invalid {

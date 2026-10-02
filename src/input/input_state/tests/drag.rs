@@ -33,6 +33,20 @@ fn id() -> WidgetId {
     WidgetId::from_hash("target")
 }
 
+/// The drag target beside a second draggable that the press does not
+/// land on, so an isolation test asks about a widget that recorded.
+fn build_target_and_bystander(ui: &mut Ui) {
+    Panel::hstack().auto_id().show(ui, |ui| {
+        for name in ["target", "other"] {
+            Panel::hstack()
+                .id(WidgetId::from_hash(name))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                .sense(Sense::DRAG)
+                .show(ui, |_| {});
+        }
+    });
+}
+
 #[test]
 fn drag_delta_none_before_press() {
     let s = UVec2::new(200, 200);
@@ -224,16 +238,16 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
 fn drag_delta_only_for_active_widget() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
-    h.frame(build_clickable);
+    h.frame(build_target_and_bystander);
     h.press_at(Vec2::new(20.0, 20.0));
     h.drag_to(Vec2::new(60.0, 50.0));
 
-    let other = WidgetId::from_hash("other");
-    assert_eq!(
-        h.response_in(other, build_clickable).left.drag.delta(),
-        None,
-        "only the captured widget sees the drag delta",
-    );
+    let [target, other] = h.frame_value(|ui| {
+        build_target_and_bystander(ui);
+        [id(), WidgetId::from_hash("other")].map(|w| ui.response_for(w).left.drag.delta())
+    });
+    assert_eq!(target, Some(Vec2::new(40.0, 30.0)), "the captured widget");
+    assert_eq!(other, None, "only the captured widget sees the drag delta");
 }
 
 #[test]
@@ -377,15 +391,18 @@ fn drag_zero_state_for_uncaptured_widget() {
     // regardless of which button is being dragged elsewhere.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
-    h.frame(build_draggable);
+    h.frame(build_target_and_bystander);
     h.press_button_at(PointerButton::Middle, Vec2::new(50.0, 50.0));
     h.drag_to(Vec2::new(80.0, 70.0));
 
-    let other = WidgetId::from_hash("other");
-    let r = h.response_in(other, build_draggable);
-    assert_eq!(r.middle.drag.delta(), None);
-    assert!(!r.middle.drag.dragging());
-    assert!(!r.middle.drag.started());
+    let [target, other] = h.frame_value(|ui| {
+        build_target_and_bystander(ui);
+        [id(), WidgetId::from_hash("other")].map(|w| ui.response_for(w).middle.drag)
+    });
+    assert!(target.started(), "control: the captured widget latched");
+    assert_eq!(other.delta(), None);
+    assert!(!other.dragging());
+    assert!(!other.started());
 }
 
 #[test]

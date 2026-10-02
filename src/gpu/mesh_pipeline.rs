@@ -257,7 +257,11 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn instances_without_geometry_are_screened() {
-        assert!(std::panic::catch_unwind(|| mesh_upload_required(0, 3, 1)).is_err());
-        assert!(std::panic::catch_unwind(|| mesh_upload_required(3, 0, 1)).is_err());
+        crate::common::panic_probe::assert_panics_with("mesh instances require vertices", || {
+            mesh_upload_required(0, 3, 1)
+        });
+        crate::common::panic_probe::assert_panics_with("mesh instances require indices", || {
+            mesh_upload_required(3, 0, 1)
+        });
     }
 }

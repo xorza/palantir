@@ -325,15 +325,16 @@ mod tests {
             },
         ];
 
-        for case in cases {
-            assert!(
-                std::panic::catch_unwind(|| Image::from_srgba8(
-                    UVec2::new(case.width, case.height),
-                    vec![0; case.len],
-                ))
-                .is_err(),
-                "invalid RGBA8 input must panic: {case:?}",
-            );
+        let expected = [
+            "RGBA8 dimensions must be non-zero",
+            "RGBA8 dimensions must be non-zero",
+            "RGBA8 dimensions overflow addressable byte length",
+            "RGBA8 byte length 15 does not match 2x2x4 = 16",
+        ];
+        for (case, expected) in cases.into_iter().zip(expected) {
+            crate::common::panic_probe::assert_panics_with(expected, || {
+                Image::from_srgba8(UVec2::new(case.width, case.height), vec![0; case.len])
+            });
         }
     }
 }

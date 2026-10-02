@@ -648,30 +648,28 @@ fn interned_handles_do_not_outlive_their_record_pass() {
     // A later frame in the same window.
     let mut h = UiHarness::new(SURFACE);
     let stale = intern_in_own_pass(&mut h);
-    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        h.frame(|ui| {
-            Text::new(stale).id(WidgetId::from_hash("stale")).show(ui);
-        });
-    }));
-    assert!(
-        caught.is_err(),
-        "a handle from a previous frame must not lower"
+    crate::common::panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || {
+            h.frame(|ui| {
+                Text::new(stale).id(WidgetId::from_hash("stale")).show(ui);
+            });
+        },
     );
 
     // Another window, which never shared the epoch.
     let mut source = UiHarness::new(SURFACE);
     let foreign = intern_in_own_pass(&mut source);
     let mut destination = UiHarness::new(SURFACE);
-    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        destination.frame(|ui| {
-            Text::new(foreign)
-                .id(WidgetId::from_hash("cross-window"))
-                .show(ui);
-        });
-    }));
-    assert!(
-        caught.is_err(),
-        "a handle from another window must not lower"
+    crate::common::panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || {
+            destination.frame(|ui| {
+                Text::new(foreign)
+                    .id(WidgetId::from_hash("cross-window"))
+                    .show(ui);
+            });
+        },
     );
 }
 
