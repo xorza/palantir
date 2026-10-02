@@ -32,10 +32,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## TabbedView reorder and identity
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
 
-## Theme derivations that break their own invariants
-- [ ] `src/widgets/theme/color_picker.rs:195` **bug**: `value.editor = mono_edit(p)` replaces the `from_chip`-derived editor with a TextEditTheme box, against DragValueTheme's "chip and editor are pixel-identical" invariant. The stroke is 1.5 vs the chip's 1.0, folded into padding, so a channel value grows 1 px taller and its text shifts 0.5 px when it becomes editable.
-- [ ] `src/widgets/theme/color_picker.rs:126`: `ambient()` re-derives `Theme::from_palette`'s `text` (`mod.rs:306`) — a second source of truth.
-
 ## Scroll reach and paging
 - [ ] `src/widgets/scroll/state.rs:174-181` **bug (plausible)**: the offset band is `content*zoom - viewport`, where viewport is the outer box less gutter and padding (`scrollbars_def.rs:62`). Padding sits inside the zoomed transform, so at zoom z the last `pad_left*(z-1)` px of content is unreachable. Confirm with a zoomable `Scroll::both().padding(10)` at zoom 2, scrolled to the end.
 - [ ] `src/widgets/scroll/bars.rs:33-36` vs `:126`: the doc says the track pages "on press", but `drive` pages on `clicked()`, i.e. on release, once per click.

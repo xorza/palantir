@@ -276,6 +276,14 @@ impl Theme {
         color_picker.for_each_text(f);
     }
 
+    /// The text style a look with none of its own inherits, as
+    /// [`Self::from_palette`] builds `text`. Theme recipes that need the
+    /// ambient style before the theme exists read it here, so there is
+    /// one derivation.
+    pub(crate) fn text_from_palette(p: &Palette) -> TextStyle {
+        TextStyle::default().with_color(p.text)
+    }
+
     /// Assemble a full theme from a [`Palette`] — every widget recipe
     /// recolored from one roster. This is the single source of the
     /// recipes: `Theme::default()` is `from_palette(&Palette::DEFAULT)`,
@@ -303,7 +311,7 @@ impl Theme {
             tabs: TabsTheme::from_palette(p),
             dock: DockTheme::from_palette(p),
             expander: ExpanderTheme::from_palette(p),
-            text: TextStyle::default().with_color(p.text),
+            text: Self::text_from_palette(p),
             window_clear: p.window_bg,
             panel_background: None,
             panel_clip: ClipMode::None,
