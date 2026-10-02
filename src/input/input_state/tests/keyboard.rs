@@ -2,7 +2,9 @@ use crate::FocusPolicy;
 use crate::KeyFilter;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
-use crate::input::input_state::tests::{forged_focus, key_down};
+use crate::input::input_state::tests::{
+    BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, key_down, sample_layers,
+};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -14,10 +16,8 @@ use crate::scene::visibility::Visibility;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
-use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use strum::EnumCount as _;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
@@ -102,7 +102,7 @@ fn a_scope_silences_the_layers_strictly_below_it() {
     // path resolves from the cascade at the start of the next.
     h.frame(popup_with_scope);
     press_escape(&mut h);
-    let seen = sample_layers(&mut h, popup_with_scope).layers;
+    let seen = sample_layers(&mut h, Stream::Keyboard, popup_with_scope).layers;
 
     assert_eq!(seen[Layer::Popup.idx()], 1, "the scope's own layer reads");
     // Strictly below — cut off, which is the whole point.
@@ -121,7 +121,7 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
     h.frame(popup_with_scope);
     press_escape(&mut h);
     assert_eq!(
-        sample_layers(&mut h, popup_with_scope).layers[Layer::Main.idx()],
+        sample_layers(&mut h, Stream::Keyboard, popup_with_scope).layers[Layer::Main.idx()],
         0
     );
 
@@ -129,7 +129,10 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
     // hands `Main` the stream back.
     h.frame(|_| {});
     press_escape(&mut h);
-    assert_eq!(sample_layers(&mut h, |_| {}).layers[Layer::Main.idx()], 1);
+    assert_eq!(
+        sample_layers(&mut h, Stream::Keyboard, |_| {}).layers[Layer::Main.idx()],
+        1
+    );
 }
 
 /// A layer's fallback grant is its **outermost** scope, not its
@@ -222,7 +225,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
         let Sample {
             layers: seen,
             value: read_by_survivor,
-        } = sample_layers(&mut h, two);
+        } = sample_layers(&mut h, Stream::Keyboard, two);
         assert_eq!(
             seen[Layer::Main.idx()],
             0,
@@ -329,28 +332,6 @@ fn press_escape(h: &mut UiHarness) {
     h.key(Key::Escape);
 }
 
-/// What [`sample_layers`] read in pass A: the per-layer keyboard-event
-/// counts, and the record closure's own value.
-#[derive(Debug)]
-struct Sample<R> {
-    layers: [usize; Layer::COUNT],
-    value: R,
-}
-
-/// Per-layer keyboard-event counts read *inside* pass A's record — the
-/// only place they are live, since `end_frame` drains the queue and
-/// pass B sees it drained.
-fn sample_layers<R>(h: &mut UiHarness, mut record: impl FnMut(&mut Ui) -> R) -> Sample<R> {
-    h.frame_value(|ui| {
-        let value = record(ui);
-        Sample {
-            // `PAINT_ORDER[i]` is the layer whose `idx()` is `i`.
-            layers: Layer::PAINT_ORDER.map(|layer| ui.input().keyboard_events(layer).len()),
-            value,
-        }
-    })
-}
-
 /// A node on `layer` declaring an all-taking scope — the shape every
 /// overlay reduces to once `modal_layer` became `input_scope`. `body`
 /// records inside it, which is what puts a read's `parent` within the
@@ -376,19 +357,16 @@ fn focus_policy_routing() {
         ("preserve_keeps_focus", FocusPolicy::PreserveOnMiss, true),
         ("clear_drops_focus", FocusPolicy::ClearOnMiss, false),
     ];
-    let surface = glam::UVec2::new(200, 80);
     let editable_id = WidgetId::from_hash("editable");
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("editable"))
+            fixed_button(WidgetId::from_hash("editable"))
                 .focusable(true)
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     };
     for (label, policy, expect_focus) in cases {
-        let mut h = UiHarness::new(surface);
+        let mut h = UiHarness::new(BUTTON_SURFACE);
         h.ui.set_focus_policy(*policy);
         h.frame(build);
         h.click_on(editable_id);
@@ -408,7 +386,7 @@ fn focus_policy_routing() {
     }
     // Default policy is ClearOnMiss.
     assert_eq!(
-        UiHarness::new(surface).ui.focus_policy(),
+        UiHarness::new(BUTTON_SURFACE).ui.focus_policy(),
         FocusPolicy::ClearOnMiss
     );
 }
@@ -420,15 +398,10 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     h.ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("editable"))
+            fixed_button(WidgetId::from_hash("editable"))
                 .focusable(true)
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
-            Button::new()
-                .id(WidgetId::from_hash("plain"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
+            fixed_button(WidgetId::from_hash("plain")).show(ui);
         });
     };
     h.frame(build);
@@ -447,14 +420,11 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
-    let surface = glam::UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("editable"))
+            fixed_button(WidgetId::from_hash("editable"))
                 .focusable(true)
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     });
@@ -473,7 +443,7 @@ fn focus_is_evicted_when_widget_disappears() {
 
 #[test]
 fn set_focus_bypasses_policy() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 80));
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("manual");
     h.set_focus(id);
     assert_eq!(h.focused_id(), Some(id));
@@ -500,13 +470,10 @@ fn invisible_or_disabled_focusable_refuses_focus() {
         ("disabled", Mode::Disabled, None),
     ];
     for (label, mode, expected) in cases {
-        let mut h = UiHarness::new(glam::UVec2::new(200, 80));
+        let mut h = UiHarness::new(BUTTON_SURFACE);
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
-                let b = Button::new()
-                    .id(WidgetId::from_hash("editable"))
-                    .focusable(true)
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)));
+                let b = fixed_button(WidgetId::from_hash("editable")).focusable(true);
                 match mode {
                     Mode::Shown => b.show(ui),
                     Mode::Hidden => b.visibility(Visibility::Hidden).show(ui),

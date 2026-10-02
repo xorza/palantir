@@ -258,6 +258,39 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     );
 }
 
+/// Half the period of [`blinking_text`]'s blink.
+const HALF: Duration = Duration::from_millis(500);
+
+/// A leaf of `text` that blinks on a square wave, one step per [`HALF`].
+/// A blinking text boundary is what makes the harness produce paint-only
+/// frames at all: it repaints on a timer without re-recording.
+fn blinking_text(ui: &mut Ui, text: &str) {
+    let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
+    widget.record(ui, None, |ui| {
+        let text = ui.intern(text);
+        ui.add_shape_animated(
+            Shape::text(
+                text,
+                GlyphFont {
+                    line_height_px: 19.2,
+                    ..GlyphFont::new(16.0)
+                },
+            )
+            .color(RgbaF32::WHITE)
+            .wrap(TextWrap::SingleLine)
+            .align(Align::default())
+            .family(FontFamily::SANS)
+            .weight(FontWeight::REGULAR),
+            PaintAnim::alpha(0.0, 1.0)
+                .started_at(HALF)
+                .period(HALF * 2)
+                .steps(2)
+                .repeat(PaintRepeat::Settle(Duration::MAX))
+                .curve(curves::square),
+        );
+    });
+}
+
 /// Every frame that reaches the screen advances the shared text clock,
 /// `PaintOnly` ones included.
 ///
@@ -274,43 +307,11 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 /// separate tick the `PaintOnly` arm owes.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
-    const HALF: Duration = Duration::from_millis(500);
-
-    // A blinking text boundary is what makes the harness produce
-    // paint-only frames at all: it repaints on a timer without
-    // re-recording.
-    fn blinking_text(ui: &mut Ui) {
-        let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
-        widget.record(ui, None, |ui| {
-            let text = ui.intern("paint-only clock");
-            ui.add_shape_animated(
-                Shape::text(
-                    text,
-                    GlyphFont {
-                        line_height_px: 19.2,
-                        ..GlyphFont::new(16.0)
-                    },
-                )
-                .color(RgbaF32::WHITE)
-                .wrap(TextWrap::SingleLine)
-                .align(Align::default())
-                .family(FontFamily::SANS)
-                .weight(FontWeight::REGULAR),
-                PaintAnim::alpha(0.0, 1.0)
-                    .started_at(HALF)
-                    .period(HALF * 2)
-                    .steps(2)
-                    .repeat(PaintRepeat::Settle(Duration::MAX))
-                    .curve(curves::square),
-            );
-        });
-    }
-
     let shared = UiResources::isolated_text();
     let mut ui = UiHarness::from_resources(shared.clone(), SURFACE);
     let shaper = ui.ui.resources.text().clone();
 
-    let first = ui.frame(blinking_text);
+    let first = ui.frame(|ui| blinking_text(ui, "paint-only clock"));
     assert_eq!(first.repaint_after, Some(HALF));
     let recorded = shaper.frame();
 
@@ -368,40 +369,11 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 
 #[test]
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
-    const HALF: Duration = Duration::from_millis(500);
-
-    fn idle_body(ui: &mut Ui) {
-        let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
-        widget.record(ui, None, |ui| {
-            let text = ui.intern("idle interned window text");
-            ui.add_shape_animated(
-                Shape::text(
-                    text,
-                    GlyphFont {
-                        line_height_px: 19.2,
-                        ..GlyphFont::new(16.0)
-                    },
-                )
-                .color(RgbaF32::WHITE)
-                .wrap(TextWrap::SingleLine)
-                .align(Align::default())
-                .family(FontFamily::SANS)
-                .weight(FontWeight::REGULAR),
-                PaintAnim::alpha(0.0, 1.0)
-                    .started_at(HALF)
-                    .period(HALF * 2)
-                    .steps(2)
-                    .repeat(PaintRepeat::Settle(Duration::MAX))
-                    .curve(curves::square),
-            );
-        });
-    }
-
     let shared = UiResources::isolated_text();
     let mut idle = UiHarness::from_resources(shared.clone(), SURFACE);
     let mut active = UiHarness::from_resources(shared.clone(), SURFACE);
 
-    let idle_first = idle.frame(idle_body);
+    let idle_first = idle.frame(|ui| blinking_text(ui, "idle interned window text"));
     assert_eq!(idle_first.repaint_after, Some(HALF));
     let idle_key = idle.ui.layout[Layer::Main].text_shapes[0].buffer_key();
 

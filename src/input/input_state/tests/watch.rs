@@ -5,6 +5,7 @@
 //!  * no watcher → no wake AND no entry in `frame_pointer_events`
 //!    (the `any_mask` short-circuit gates the push);
 //!  * pre-record clear drops stale watches.
+use crate::input::input_state::tests::{Stream, sample_layers};
 use crate::primitives::widget_id::WidgetId;
 
 use crate::KeyFilter;
@@ -28,7 +29,6 @@ use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
-use strum::EnumCount as _;
 
 fn empty(ui: &mut Ui) {
     Panel::vstack()
@@ -422,7 +422,7 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
     // Counts are read *inside* pass A, the only place the queue is live.
     h.frame(scoped);
     h.press_at(Vec2::new(50.0, 50.0));
-    let seen = sample_pointer_layers(&mut h, scoped);
+    let seen = sample_layers(&mut h, Stream::Pointer, scoped).layers;
 
     // Strictly below — cut off, which is the whole point.
     assert_eq!(seen[Layer::Main.idx()], 0);
@@ -438,22 +438,9 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
     h.frame(empty_watch_buttons);
     h.press_at(Vec2::new(50.0, 50.0));
     assert_eq!(
-        sample_pointer_layers(&mut h, empty_watch_buttons)[Layer::Main.idx()],
+        sample_layers(&mut h, Stream::Pointer, empty_watch_buttons).layers[Layer::Main.idx()],
         1,
     );
-}
-
-/// Per-layer pointer-watch counts, the sibling of `sample_layers` in
-/// `input::tests::keyboard` — same reason for reading inside the record.
-fn sample_pointer_layers(
-    h: &mut UiHarness,
-    mut record: impl FnMut(&mut Ui),
-) -> [usize; Layer::COUNT] {
-    h.frame_value(|ui| {
-        record(ui);
-        // `PAINT_ORDER[i]` is the layer whose `idx()` is `i`.
-        Layer::PAINT_ORDER.map(|layer| ui.input().pointer_events(layer).len())
-    })
 }
 
 /// End-to-end, and the distinction an overlay's scope exists to draw: a
@@ -479,7 +466,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     h.frame(with_modal);
     h.press_at(press_point);
     assert_eq!(
-        sample_pointer_layers(&mut h, with_modal)[Layer::Main.idx()],
+        sample_layers(&mut h, Stream::Pointer, with_modal).layers[Layer::Main.idx()],
         0,
         "a Modal declares an ALL scope on its layer, so Main is cut off",
     );
@@ -490,7 +477,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     h.frame(plain_layer);
     h.press_at(press_point);
     assert_eq!(
-        sample_pointer_layers(&mut h, plain_layer)[Layer::Main.idx()],
+        sample_layers(&mut h, Stream::Pointer, plain_layer).layers[Layer::Main.idx()],
         1,
         "a plain layer on the same Layer::Modal declares nothing and blocks nothing",
     );
@@ -499,7 +486,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     h.frame(empty_watch_buttons);
     h.press_at(press_point);
     assert_eq!(
-        sample_pointer_layers(&mut h, empty_watch_buttons)[Layer::Main.idx()],
+        sample_layers(&mut h, Stream::Pointer, empty_watch_buttons).layers[Layer::Main.idx()],
         1,
         "a modal that stops recording stops blocking",
     );

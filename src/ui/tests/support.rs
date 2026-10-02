@@ -44,12 +44,7 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
     );
 }
 
-pub(super) const COLD: UVec2 = UVec2::new(200, 200);
-
+/// A harness whose first frame runs the warmup pass, on [`SURFACE`].
 pub(super) fn cold_ui() -> UiHarness {
-    UiHarness::cold(COLD)
-}
-
-pub(super) fn cold_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
-    let _ = h.frame(record);
+    UiHarness::cold(SURFACE)
 }

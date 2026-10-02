@@ -25,116 +25,79 @@ struct Case {
     expected: FramePlan,
 }
 
+/// A warm frame with nothing but an animation wake pending: it paints
+/// without recording. Each row changes the facts it is about.
+const QUIET: Case = Case {
+    label: "quiet",
+    previous: true,
+    display_changed: false,
+    damage_baseline_valid: true,
+    wake: WakeReasons::ANIM,
+    repaint_requested: false,
+    input_policy: InputPolicy::OnDelta,
+    input_signal: InputSignal::None,
+    close_requested: false,
+    expected: FramePlan::PaintOnly,
+};
+
 #[test]
 fn frame_classification_covers_external_entry_facts() {
     let cases = [
         Case {
             label: "first frame",
             previous: false,
-            display_changed: false,
-            damage_baseline_valid: true,
             wake: WakeReasons::default(),
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: true },
+            ..QUIET
         },
         Case {
             label: "display change",
-            previous: true,
             display_changed: true,
-            damage_baseline_valid: true,
             wake: WakeReasons::default(),
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: true },
+            ..QUIET
         },
         Case {
             label: "invalid prior output",
-            previous: true,
-            display_changed: false,
             damage_baseline_valid: false,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: true },
+            ..QUIET
         },
         Case {
             label: "animation wake",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::PaintOnly,
+            ..QUIET
         },
         Case {
             label: "real wake",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
             wake: WakeReasons::REAL,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "coalesced real and animation wake",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
             wake: WakeReasons::REAL.merge(WakeReasons::ANIM),
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "always input policy",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
             input_policy: InputPolicy::Always,
             input_signal: InputSignal::Inert,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "delta input policy",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
             input_signal: InputSignal::Repaint,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "close request",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
             close_requested: true,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
     ];
 
