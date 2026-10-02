@@ -36,6 +36,7 @@
 //! what the benches measure.
 
 mod chrome;
+pub(crate) mod dock_fixture;
 mod forms;
 mod lists;
 mod panes;

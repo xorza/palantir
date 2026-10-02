@@ -7,10 +7,10 @@
 //! one page's state, so the fixture is not bending the widget to be
 //! photographable.
 
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 use palantir::{
-    Configure, DockDrop, DockOp, DockState, DockTabs, DockView, InternedStr, Panel, Sizing,
-    SplitSide, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui, WidgetId,
+    Configure, DockFixture, Panel, Sizing, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui,
+    WidgetId,
 };
 
 use crate::goldens::assert_matches_golden;
@@ -78,91 +78,10 @@ fn tabbed_view_matches_golden() {
 fn dock_split_panes_matches_golden() {
     let mut h = Harness::new();
     fn scene(ui: &mut Ui) {
-        ui.with_state::<DockScene, _>(WidgetId::from_hash("visual.dock"), |ui, scene| {
-            let DockScene { dock, panes } = scene;
-            DockView::run(ui, dock, panes);
+        ui.with_state::<DockFixture, _>(WidgetId::from_hash("visual.dock"), |ui, dock| {
+            dock.record(ui);
         });
     }
     let img = h.size(UVec2::new(520, 220)).settled_frame(2, scene).image;
     assert_matches_golden("dock_split_panes", &img);
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum Tab {
-    Canvas,
-    Layers,
-    Console,
-}
-
-/// The dock and its viewer, as one `Ui` state row — see the module doc.
-#[derive(Debug)]
-struct DockScene {
-    dock: DockState<Tab>,
-    panes: Panes,
-}
-
-impl Default for DockScene {
-    fn default() -> Self {
-        let mut dock = DockState::new("visual.dock", Tab::Canvas);
-        let primary = dock.primary().id;
-        dock.find_or_insert(Tab::Layers, primary);
-        dock.find_or_insert(Tab::Console, primary);
-        dock.apply(DockOp::MoveTab {
-            tab: Tab::Console,
-            to: DockDrop::Split {
-                group: primary,
-                side: SplitSide::Right,
-            },
-        });
-        dock.apply(DockOp::ActivateTab { tab: Tab::Canvas });
-        Self { dock, panes: Panes }
-    }
-}
-
-#[derive(Debug)]
-struct Panes;
-
-impl DockTabs for Panes {
-    type Tab = Tab;
-
-    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
-        ui.intern(match tab {
-            Tab::Canvas => "canvas",
-            Tab::Layers => "layers",
-            Tab::Console => "console",
-        })
-    }
-
-    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Vec2>) {
-        Panel::vstack()
-            .id_salt(("pane", self.title_text(tab)))
-            .size((Sizing::FILL, Sizing::FILL))
-            .padding(14.0)
-            .show(ui, |ui| {
-                Text::new(self.title_text(tab)).id_salt("body").show(ui);
-            });
-    }
-
-    fn closable(&mut self, tab: Tab) -> bool {
-        tab != Tab::Canvas
-    }
-
-    fn badge(&mut self, tab: Tab) -> TabBadge {
-        match tab {
-            Tab::Canvas => TabBadge::On,
-            _ => TabBadge::None,
-        }
-    }
-}
-
-impl Panes {
-    /// The label without a `Ui` to intern it into — the pane body wants
-    /// the same text for its id salt and its own line.
-    fn title_text(&self, tab: Tab) -> &'static str {
-        match tab {
-            Tab::Canvas => "canvas",
-            Tab::Layers => "layers",
-            Tab::Console => "console",
-        }
-    }
 }
