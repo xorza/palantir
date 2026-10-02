@@ -104,11 +104,10 @@ fn fit_to_grows_radii_by_the_css_spread_rule() {
         (4.0, -6.0, 0.0),
     ] {
         let got = Corners::all(r).fit_to(size, 1.0, spread).as_array()[0];
-        // f16 packing: 11.84 lands on the nearest step, 2^-7 apart there.
-        assert!(
-            (got - want).abs() <= 1.0 / 256.0,
-            "r {r}, spread {spread}: {got}, want {want}",
-        );
+        // f16 packing: 11.84 lands on the nearest step, 2^-7 apart there —
+        // 1515.52 steps, so 1516 × 2^-7 = 11.84375.
+        let packed = half::f16::from_f32(want).to_f32();
+        assert_eq!(got, packed, "r {r}, spread {spread}");
     }
 }
 

@@ -6,6 +6,7 @@ use glam::{UVec2, Vec2};
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::keyboard::key::Key;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -339,11 +340,12 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         Vec2::new(8.0, 4.0),
         Vec2::new(0.0, 0.0),
     ];
+    // f32 `cos(π/2)` is -4.4e-8, not 0, so a turned point carries a
+    // residue of that times its 4 px lever, a few ulps of 8.
+    let residue = "f32 cos(π/2) is not 0";
     for (got, want) in turned.into_iter().zip(expected) {
-        assert!(
-            (got - want).length() < 1e-4,
-            "a quarter turn about the centre: got {turned:?}, want {expected:?}",
-        );
+        assert_close(got.x, want.x, 1e-6, residue);
+        assert_close(got.y, want.y, 1e-6, residue);
     }
 
     // Rounded by 1: the same turn on a 6 px arrow one px in from every
@@ -355,10 +357,8 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         Vec2::new(1.0, 1.0),
     ];
     for (got, want) in rounded.into_iter().zip(expected) {
-        assert!(
-            (got - want).length() < 1e-4,
-            "vertices one radius in: got {rounded:?}, want {expected:?}",
-        );
+        assert_close(got.x, want.x, 1e-6, residue);
+        assert_close(got.y, want.y, 1e-6, residue);
     }
     assert_eq!(
         c.rounded(0.0, 0.0),
@@ -370,7 +370,11 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
     let t = ExpanderTheme::default();
     assert_eq!(t.arrow_angle(0.0), t.arrow_closed_angle);
     assert_eq!(t.arrow_angle(1.0), t.arrow_open_angle);
-    assert!(t.arrow_angle(2.0).abs() <= t.arrow_closed_angle.abs());
+    assert_eq!(
+        t.arrow_angle(2.0),
+        t.arrow_open_angle,
+        "openness past 1 clamps to open"
+    );
 }
 
 /// The height a reveal clips against is the body's whole height, on the

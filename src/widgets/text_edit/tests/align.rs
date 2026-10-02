@@ -176,17 +176,15 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
     let mut buf = String::from("abcd");
     let node = frame(&mut h, &mut buf, Some(Align::CENTER), None);
     let first = shape_origins(&h.ui, node).0.expect("text shape emitted");
-    assert!(
-        (first.x - settled.x).abs() < 1e-3,
+    assert_eq!(
+        first.x, settled.x,
         "first frame painted x = {} where the settled frame paints {}",
-        first.x,
-        settled.x
+        first.x, settled.x
     );
-    assert!(
-        (first.y - settled.y).abs() < 1e-3,
+    assert_eq!(
+        first.y, settled.y,
         "first frame painted y = {} where the settled frame paints {}",
-        first.y,
-        settled.y
+        first.y, settled.y
     );
 }
 
@@ -200,9 +198,9 @@ fn single_line_default_is_left_vcenter() {
     let node = warmup_then(&mut h, &mut buf, None, None);
     let (origin, _) = shape_origins(&h.ui, node);
     let o = origin.expect("text shape emitted for non-empty buffer");
-    assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
+    assert_eq!(o.x, PAD_L, "x = {}", o.x);
     let dy = (INNER_H - LINE_H) * 0.5;
-    assert!((o.y - (PAD_T + dy)).abs() < 1e-3, "y = {}", o.y);
+    assert_eq!(o.y, PAD_T + dy, "y = {}", o.y);
 }
 
 #[test]
@@ -232,17 +230,19 @@ fn single_line_text_align_table() {
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
         let (origin, _) = shape_origins(&h.ui, node);
         let o = origin.expect("text shape emitted");
-        assert!(
-            (o.x - (PAD_L + dx)).abs() < 1e-3,
-            "{label}: text.x = {} (expected {})",
+        assert_eq!(
             o.x,
             PAD_L + dx,
+            "{label}: text.x = {} (expected {})",
+            o.x,
+            PAD_L + dx
         );
-        assert!(
-            (o.y - (PAD_T + dy)).abs() < 1e-3,
-            "{label}: text.y = {} (expected {})",
+        assert_eq!(
             o.y,
             PAD_T + dy,
+            "{label}: text.y = {} (expected {})",
+            o.y,
+            PAD_T + dy
         );
     }
 }
@@ -268,20 +268,22 @@ fn caret_tracks_aligned_text() {
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 233.5
     let dy = (INNER_H - LINE_H) * 0.5;
-    assert!((t.x - (PAD_L + dx)).abs() < 1e-3, "text.x = {}", t.x);
-    assert!(
-        (c.x - (PAD_L + dx + TEXT_W_4CH)).abs() < 1e-3,
-        "caret.x = {} (expected {})",
+    assert_eq!(t.x, PAD_L + dx, "text.x = {}", t.x);
+    assert_eq!(
         c.x,
         PAD_L + dx + TEXT_W_4CH,
+        "caret.x = {} (expected {})",
+        c.x,
+        PAD_L + dx + TEXT_W_4CH
     );
     // Caret right edge sits exactly at the clip's right edge.
-    assert!(
-        (c.x + CARET_W - (PAD_L + INNER_W)).abs() < 1e-3,
-        "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
+    assert_eq!(
         c.x + CARET_W,
+        PAD_L + INNER_W,
+        "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
+        c.x + CARET_W
     );
-    assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
+    assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }
 
 #[test]
@@ -300,8 +302,8 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let c = caret_origin.expect("focused empty editor still paints caret");
     let authored_line_height = 16.0 * LINE_HEIGHT_MULT;
     let dy = (INNER_H - authored_line_height) * 0.5;
-    assert!((c.x - PAD_L).abs() < 1e-3, "caret.x = {}", c.x);
-    assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
+    assert_eq!(c.x, PAD_L, "caret.x = {}", c.x);
+    assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }
 
 #[test]
@@ -315,11 +317,12 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     let (origin, _) = shape_origins(&h.ui, node);
     let o = origin.expect("placeholder paints when unfocused + empty");
     let dx = ALIGN_W - TEXT_W_4CH;
-    assert!(
-        (o.x - (PAD_L + dx)).abs() < 1e-3,
-        "placeholder must align right: x = {} (expected {})",
+    assert_eq!(
         o.x,
         PAD_L + dx,
+        "placeholder must align right: x = {} (expected {})",
+        o.x,
+        PAD_L + dx
     );
     // The offset stored for next frame's hit-test is the same placement:
     // the block the engine arranged, not a second alignment of the empty
@@ -327,9 +330,9 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     // placeholder further right.
     let stored = h.state::<TextEditState>(ed_id()).view.block_offset;
     let placed = block_at(&h.ui, node) - glam::Vec2::new(PAD_L, PAD_T);
-    assert!(
-        (stored - placed).length() < 1e-3,
-        "stored {stored:?} is not where the block was placed, {placed:?}",
+    assert_eq!(
+        stored, placed,
+        "stored {stored:?} is not where the block was placed, {placed:?}"
     );
 }
 
@@ -369,10 +372,10 @@ fn align_overflow_clamps_to_zero() {
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
         let (origin, _) = shape_origins(&h.ui, node);
         let o = origin.expect("text shape");
-        assert!(
-            (o.x - PAD_L).abs() < 1e-3,
+        assert_eq!(
+            o.x, PAD_L,
             "overflow under {align:?}: text.x = {} (expected {PAD_L})",
-            o.x,
+            o.x
         );
     }
 }
@@ -415,10 +418,11 @@ fn selection_rects_offset_matches_text() {
             });
     let r = first_rounded.expect("selection wash rect present");
     let dx = ALIGN_W - TEXT_W_4CH;
-    assert!(
-        (r.min.x + at.x - (PAD_L + dx)).abs() < 1e-3,
-        "selection wash must align with right-aligned text: x = {}",
+    assert_eq!(
         r.min.x + at.x,
+        PAD_L + dx,
+        "selection wash must align with right-aligned text: x = {}",
+        r.min.x + at.x
     );
 }
 
@@ -447,8 +451,8 @@ fn multiline_default_is_top_left() {
     h.frame(&mut record);
     let (origin, _) = shape_origins(&h.ui, node.unwrap());
     let o = origin.expect("text shape");
-    assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
-    assert!((o.y - PAD_T).abs() < 1e-3, "y = {}", o.y);
+    assert_eq!(o.x, PAD_L, "x = {}", o.x);
+    assert_eq!(o.y, PAD_T, "y = {}", o.y);
 }
 
 /// Regression: an ancestor `Panel::transform` zoom must not drift the
@@ -492,19 +496,21 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
     let unscaled = run(1.0);
     for &scale in &[2.0_f32, 0.5, 1.7] {
         let zoomed = run(scale);
-        assert!(
-            (zoomed.x - unscaled.x).abs() < 1e-3,
+        assert_eq!(
+            zoomed.x,
+            unscaled.x,
             "scale {scale}: text.x = {} drifted from {} (Δ = {})",
             zoomed.x,
             unscaled.x,
-            zoomed.x - unscaled.x,
+            zoomed.x - unscaled.x
         );
-        assert!(
-            (zoomed.y - unscaled.y).abs() < 1e-3,
+        assert_eq!(
+            zoomed.y,
+            unscaled.y,
             "scale {scale}: text.y = {} drifted from {} (Δ = {})",
             zoomed.y,
             unscaled.y,
-            zoomed.y - unscaled.y,
+            zoomed.y - unscaled.y
         );
     }
 }
@@ -562,17 +568,17 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     h.frame(&mut record);
 
     let field = h.layout_rect(ed_id()).expect("the field was arranged");
-    assert!(
-        (field.min - corner).abs().max_element() < 1e-3,
+    assert_eq!(
+        field.min, corner,
         "the field was put at {:?} having been placed at {corner:?}",
-        field.min,
+        field.min
     );
     let origin = shape_origins(&h.ui, node.unwrap())
         .0
         .expect("text shape emitted");
     let centre = field.min + origin + glam::Vec2::new(text.w, text.h) * 0.5;
-    assert!(
-        (centre - at).abs().max_element() < 1e-3,
-        "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}",
+    assert_eq!(
+        centre, at,
+        "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}"
     );
 }

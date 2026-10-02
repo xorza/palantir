@@ -208,6 +208,7 @@ fn lerp_oklab(
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::approx::test_support::assert_close;
     use crate::primitives::brush::gradient::Interp;
     use crate::primitives::brush::gradient::color_ramp::ColorRamp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
@@ -239,7 +240,7 @@ mod tests {
     /// transparent stop adds no blue, where a straight lerp gave
     /// `(0.8, 0, 0.2, 0.8)`. Oklab weighs each stop's coordinates by its
     /// alpha the same way, so its texel is the same red, up to the
-    /// round trip through Oklab.
+    /// round trip through Oklab in the empty channels.
     ///
     /// A hard stop at 0.5 — stored as 128/255, texel 128's own `t`, which
     /// takes the first stop's colour — bakes texel 128 as opaque red and
@@ -261,21 +262,20 @@ mod tests {
             row
         };
         let fade = GradientStops::new([Stop::new(0.0, red), Stop::new(1.0, clear_blue)]);
-        let want = [0.8, 0.0, 0.0, 0.8];
-        for interp in [Interp::Linear, Interp::Oklab] {
-            let got = RgbaF32::from(bake(&fade, interp)[51]);
-            for (channel, (g, w)) in [got.r, got.g, got.b, got.a]
-                .into_iter()
-                .zip(want)
-                .enumerate()
-            {
-                // An f16 step near 0.8 is 2^-11; Oklab's matrices add a
-                // few more in f32.
-                assert!(
-                    (g - w).abs() < 2e-3,
-                    "{interp:?} channel {channel}: {got:?}"
-                );
-            }
+        // 0.8 stores as the f16 1638 × 2^-11.
+        let stored = 1638.0 / 2048.0;
+        let linear = RgbaF32::from(bake(&fade, Interp::Linear)[51]);
+        assert_eq!(linear, RgbaF32::new(stored, 0.0, 0.0, stored));
+        let oklab = RgbaF32::from(bake(&fade, Interp::Oklab)[51]);
+        assert_eq!((oklab.r, oklab.a), (stored, stored));
+        for residue in [oklab.g, oklab.b] {
+            assert_close(
+                residue,
+                0.0,
+                2f64.powi(-24),
+                "the Oklab round trip leaves at most the smallest f16 \
+                 subnormal in a channel that should be empty",
+            );
         }
 
         let hard = GradientStops::new([Stop::new(0.5, red), Stop::new(0.5, clear_blue)]);

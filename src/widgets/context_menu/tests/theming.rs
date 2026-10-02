@@ -59,16 +59,12 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     // Only the row carrying a shortcut has a gutter to widen, but rows
     // stretch to the body's content width, so both follow it.
     for (i, (a, b)) in after.iter().zip(&before).enumerate() {
-        assert_close(
-            a.rect.size.w - b.rect.size.w,
-            10.0,
-            &format!("row {i} width"),
-        );
-        assert_close(a.rect.size.h, b.rect.size.h, &format!("row {i} height"));
+        assert_eq!(a.rect.size.w - b.rect.size.w, 10.0, "row {i} width");
+        assert_eq!(a.rect.size.h, b.rect.size.h, "row {i} height");
     }
     let pitch_before = before[1].rect.min.y - before[0].rect.min.y;
     let pitch_after = after[1].rect.min.y - after[0].rect.min.y;
-    assert_close(
+    assert_eq!(
         pitch_after - pitch_before,
         6.0,
         "row pitch grows by the menu gap delta",
@@ -103,19 +99,19 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
     let unset = rows(&mut h, None);
     assert_eq!(unset.len(), 2);
     let unset_pitch = unset[1].rect.min.y - unset[0].rect.min.y;
-    assert_close(unset_pitch, unset[0].rect.size.h + 7.0, "themed pitch");
+    assert_eq!(unset_pitch, unset[0].rect.size.h + 7.0, "themed pitch");
 
     // Explicit zero: rows sit flush, theme gap ignored.
     let zeroed = rows(&mut h, Some(0.0));
     let zero_pitch = zeroed[1].rect.min.y - zeroed[0].rect.min.y;
-    assert_close(zero_pitch, zeroed[0].rect.size.h, "explicit 0.0 pitch");
+    assert_eq!(zero_pitch, zeroed[0].rect.size.h, "explicit 0.0 pitch");
     assert_ne!(unset_pitch, zero_pitch);
 
     // And a non-zero explicit value still wins over the theme, so the
     // fallback keys on "set at all", not on "non-zero".
     let wide = rows(&mut h, Some(20.0));
     let wide_pitch = wide[1].rect.min.y - wide[0].rect.min.y;
-    assert_close(
+    assert_eq!(
         wide_pitch,
         wide[0].rect.size.h + 20.0,
         "explicit 20.0 pitch",
@@ -153,13 +149,13 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     assert_eq!(rows.len(), 3, "two rows plus the separator between them");
     let [first, sep, second] = [rows[0], rows[1], rows[2]];
 
-    assert_close(sep.rect.size.h, 3.0, "thickness is the rule's height");
-    assert_close(
+    assert_eq!(sep.rect.size.h, 3.0, "thickness is the rule's height");
+    assert_eq!(
         sep.rect.min.y - first.rect.max().y,
         7.0,
         "margin.top clears the row above",
     );
-    assert_close(
+    assert_eq!(
         second.rect.min.y - sep.rect.max().y,
         7.0,
         "margin.bottom clears the row below",
@@ -291,7 +287,7 @@ fn per_instance_style_overrides_global_menu_theme() {
         Spacing::xy(2.0, 6.0),
         "row margin"
     );
-    assert_close(rows[1].rect.size.h, 5.0, "rule thickness");
+    assert_eq!(rows[1].rect.size.h, 5.0, "rule thickness");
     // Same styled bundle, but this row set both itself.
     assert_eq!(
         layout[rows[2].node.idx()].padding,
@@ -357,17 +353,6 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     assert!(
         popup_node(&h, derived).is_none(),
         "the trigger-derived id must not also be recorded",
-    );
-}
-
-/// Layout arithmetic lands within f32 slop of the hand-computed value —
-/// row extents fold in text measurement, and the gap/margin knobs
-/// round-trip through the node columns' f16 lanes.
-#[track_caller]
-fn assert_close(actual: f32, expected: f32, what: &str) {
-    assert!(
-        (actual - expected).abs() < 1e-3,
-        "{what}: expected {expected}, got {actual}",
     );
 }
 

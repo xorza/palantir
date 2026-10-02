@@ -39,7 +39,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 100;
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset;
-    assert!((scroll.x - 536.0).abs() < 0.5, "scroll.x = {}", scroll.x);
+    assert_eq!(scroll.x, 536.0, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
     // Caret home: scroll.x snaps back so the start of the text is

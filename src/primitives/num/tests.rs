@@ -193,19 +193,13 @@ fn band_fraction_offsets_by_half_the_band() {
     ];
     for &(pos, want) in cases {
         let got = pos.band_fraction(120.0, 20.0);
-        assert!(
-            (got - want).abs() < 1e-6,
-            "band_fraction({pos}) = {got}, want {want}"
-        );
+        assert_eq!(got, want, "band_fraction({pos}) = {got}, want {want}");
     }
     // Per component on a point: each axis is the scalar answer over its
     // own extent and band, so a 60 on the 120 track beside a 20 on a 40
     // track with a 10 band (30 px of travel from 5) reads (0.5, 0.5).
     let point = Vec2::new(60.0, 20.0).band_fraction(Vec2::new(120.0, 40.0), Vec2::new(20.0, 10.0));
-    assert!(
-        (point - Vec2::splat(0.5)).abs().max_element() < 1e-6,
-        "{point}"
-    );
+    assert_eq!(point, Vec2::splat(0.5), "{point}");
 }
 
 /// A band at least as wide as its track leaves no travel, so there is no

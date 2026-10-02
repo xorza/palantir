@@ -183,7 +183,7 @@ fn animated_look_line_height_px_delegates_to_text_style() {
             slant: FontSlant::Normal,
         },
     };
-    assert!((look.text.font().line_height_px - 24.0).abs() < 1e-6);
+    assert_eq!(look.text.font().line_height_px, 24.0);
 }
 
 /// The picker's channel values keep `DragValueTheme`'s promise: the editor

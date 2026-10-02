@@ -155,4 +155,28 @@ pub const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    /// Assert `actual` is within `tol` of `expected`. `why` names what
+    /// makes the value inexact — a test that cannot say should use
+    /// `assert_eq!`.
+    #[track_caller]
+    pub(crate) fn assert_close(
+        actual: impl Into<f64>,
+        expected: impl Into<f64>,
+        tol: f64,
+        why: &str,
+    ) {
+        assert!(
+            tol > 0.0 && !why.is_empty(),
+            "a tolerance must be positive and carry its reason"
+        );
+        let (actual, expected) = (actual.into(), expected.into());
+        assert!(
+            (actual - expected).abs() <= tol,
+            "{actual} is not within {tol} of {expected} ({why})",
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests;

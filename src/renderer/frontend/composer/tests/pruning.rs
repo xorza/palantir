@@ -284,10 +284,10 @@ fn rect_inscribed_for_corners_matches_45_deg_arc_offset() {
     let inscribed = r.inscribed_for_corners(Corners::all(10.0));
     let expected_inset = 10.0 * (1.0 - 1.0 / 2.0_f32.sqrt());
     let expected_size = 100.0 - 2.0 * expected_inset;
-    assert!((inscribed.min.x - expected_inset).abs() < 1e-5);
-    assert!((inscribed.min.y - expected_inset).abs() < 1e-5);
-    assert!((inscribed.size.w - expected_size).abs() < 1e-4);
-    assert!((inscribed.size.h - expected_size).abs() < 1e-4);
+    assert_eq!(inscribed.min.x, expected_inset);
+    assert_eq!(inscribed.min.y, expected_inset);
+    assert_eq!(inscribed.size.w, expected_size);
+    assert_eq!(inscribed.size.h, expected_size);
 }
 
 #[test]
@@ -305,10 +305,10 @@ fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
     let r = Rect::new(0.0, 0.0, 100.0, 100.0);
     let inscribed = r.inscribed_for_corners(Corners::new(20.0, 0.0, 0.0, 0.0));
     let inset = 20.0 * (1.0 - 1.0 / 2.0_f32.sqrt());
-    assert!((inscribed.min.x - inset).abs() < 1e-5);
-    assert!((inscribed.min.y - inset).abs() < 1e-5);
-    assert!((inscribed.max().x - 100.0).abs() < 1e-5);
-    assert!((inscribed.max().y - 100.0).abs() < 1e-5);
+    assert_eq!(inscribed.min.x, inset);
+    assert_eq!(inscribed.min.y, inset);
+    assert_eq!(inscribed.max().x, 100.0);
+    assert_eq!(inscribed.max().y, 100.0);
 }
 
 #[test]
@@ -580,10 +580,10 @@ fn rect_inflated_round_trips_with_deflated_by_uniform() {
     // contract documented on `Rect::inflated`.
     let r = Rect::new(10.0, 20.0, 30.0, 40.0);
     let round = r.inflated(2.5).deflated_by(Spacing::all(2.5));
-    assert!((round.min.x - r.min.x).abs() < 1e-5);
-    assert!((round.min.y - r.min.y).abs() < 1e-5);
-    assert!((round.size.w - r.size.w).abs() < 1e-5);
-    assert!((round.size.h - r.size.h).abs() < 1e-5);
+    assert_eq!(round.min.x, r.min.x);
+    assert_eq!(round.min.y, r.min.y);
+    assert_eq!(round.size.w, r.size.w);
+    assert_eq!(round.size.h, r.size.h);
 }
 
 /// Clear fold: an opaque solid sharp unclipped quad covering the whole

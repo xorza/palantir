@@ -7,9 +7,9 @@ fn tooltip_theme_defaults() {
     let theme = TooltipTheme::default();
     assert_eq!(theme.delay, Duration::from_millis(500));
     assert_eq!(theme.warmup, Duration::from_secs(1));
-    assert!((theme.max_size.w - 280.0).abs() < 1e-6);
+    assert_eq!(theme.max_size.w, 280.0);
     assert!(theme.max_size.h.is_infinite());
-    assert!((theme.gap - 6.0).abs() < 1e-6);
+    assert_eq!(theme.gap, 6.0);
 }
 
 #[test]

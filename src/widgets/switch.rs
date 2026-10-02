@@ -198,11 +198,11 @@ mod tests {
         let (track_h, inset, border) = (20.0_f32, 3.0_f32, 1.0_f32);
         let track_w = track_width(track_h, ASPECT);
         let g = switch_geom(track_h, inset, border, ASPECT);
-        assert!((track_w - 35.0).abs() < 1e-6);
-        assert!((g.knob - 14.0).abs() < 1e-6);
-        assert!((g.off_x - 2.0).abs() < 1e-6);
-        assert!((g.on_x - 17.0).abs() < 1e-6);
-        assert!((g.knob_y - 2.0).abs() < 1e-6);
+        assert_eq!(track_w, 35.0);
+        assert_eq!(g.knob, 14.0);
+        assert_eq!(g.off_x, 2.0);
+        assert_eq!(g.on_x, 17.0);
+        assert_eq!(g.knob_y, 2.0);
 
         // Rect-relative margins (re-add the border the content box ate):
         // every one equals `inset`.
@@ -213,10 +213,7 @@ mod tests {
             ("bottom", track_h - (border + g.knob_y + g.knob)),
         ];
         for (name, m) in margins {
-            assert!(
-                (m - inset).abs() < 1e-6,
-                "{name} margin = {m}, want {inset}"
-            );
+            assert_eq!(m, inset, "{name} margin = {m}, want {inset}");
         }
     }
 
@@ -228,9 +225,9 @@ mod tests {
     #[test]
     fn switch_geom_no_stroke_is_rect_relative() {
         let g = switch_geom(20.0, 3.0, 0.0, ASPECT);
-        assert!((g.off_x - 3.0).abs() < 1e-6);
-        assert!((g.on_x - 18.0).abs() < 1e-6);
-        assert!((g.knob_y - 3.0).abs() < 1e-6);
+        assert_eq!(g.off_x, 3.0);
+        assert_eq!(g.on_x, 18.0);
+        assert_eq!(g.knob_y, 3.0);
     }
 
     /// A wider aspect stretches the track and pushes the on-response
@@ -241,11 +238,11 @@ mod tests {
     fn track_aspect_stretches_the_track_not_the_knob() {
         let wide = switch_geom(20.0, 3.0, 0.0, 3.0);
         let stock = switch_geom(20.0, 3.0, 0.0, ASPECT);
-        assert!((track_width(20.0, 3.0) - 60.0).abs() < 1e-6);
-        assert!((wide.on_x - 43.0).abs() < 1e-6);
-        assert!((stock.on_x - 18.0).abs() < 1e-6);
+        assert_eq!(track_width(20.0, 3.0), 60.0);
+        assert_eq!(wide.on_x, 43.0);
+        assert_eq!(stock.on_x, 18.0);
         assert_ne!(wide.on_x, stock.on_x);
-        assert!((wide.knob - stock.knob).abs() < 1e-6);
+        assert_eq!(wide.knob, stock.knob);
     }
 
     /// A degenerate height can't drive the knob negative — it floors at
@@ -253,7 +250,7 @@ mod tests {
     #[test]
     fn switch_geom_knob_floors_at_two() {
         let g = switch_geom(4.0, 3.0, 0.0, ASPECT); // 4 - 6 = -2 → floored
-        assert!((g.knob - 2.0).abs() < 1e-6);
+        assert_eq!(g.knob, 2.0);
     }
 
     /// Regression: the off-response knob is centred in the track despite the

@@ -145,6 +145,7 @@ const fn inverse_fifth_root(x: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::primitives::approx::test_support::assert_close;
 
     /// The transfer function as the standard writes it, with `powf` in
     /// `f64`, rounded to `f32` once.
@@ -221,9 +222,11 @@ mod tests {
                 1.055 * threshold.powf(1.0 / 2.4) - 0.055
             } * 255.0;
             let midpoint = i as f64 + 0.5;
-            assert!(
-                (reached - midpoint).abs() < 1e-9,
-                "threshold {i} reaches {reached}, not {midpoint}",
+            assert_close(
+                reached,
+                midpoint,
+                1e-9,
+                "the reference encode reaches i + ½ to 1e-9 of a step",
             );
         }
     }

@@ -1,3 +1,4 @@
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::bezier;
 use crate::primitives::bezier::*;
 
@@ -45,12 +46,12 @@ fn cubic_bbox_tighter_than_control_hull_for_opposing_tangents() {
     let bbox = bezier::cubic_bbox(p0, p1, p2, p3);
     let (lo, hi) = (bbox.min, bbox.max());
     let extremum = 50.0 / 3.0f64.sqrt();
-    // The root goes through an f32 sqrt and a cubic evaluation, so the
-    // extremum lands a few ulps (1.9e-6 each at 28.9) off the exact one.
-    assert!(
-        (f64::from(hi.y) - extremum).abs() < 1e-5,
-        "hi.y = {} vs 50/√3 = {extremum}",
+    assert_close(
         hi.y,
+        extremum,
+        1e-5,
+        "the root goes through an f32 sqrt and a cubic evaluation, a few \
+         ulps of 1.9e-6 at 28.9",
     );
     assert_eq!(lo.y, -hi.y, "the S is symmetric");
     assert_eq!((lo.x, hi.x), (0.0, 100.0), "the endpoints bound x");
@@ -94,7 +95,7 @@ fn quadratic_to_cubic_matches_midpoint() {
     let CubicControls { c1: q1, c2: q2 } = quadratic_to_cubic(p0, c, p2);
     let q_mid = 0.25 * p0 + 0.5 * c + 0.25 * p2;
     let c_mid = 0.125 * p0 + 0.375 * q1 + 0.375 * q2 + 0.125 * p2;
-    assert!((q_mid - c_mid).length() < 1.0e-5);
+    assert_eq!(q_mid, c_mid);
 }
 
 /// Every quadratic, promoted to a cubic, keeps its extremum inside the
@@ -118,11 +119,12 @@ fn promoted_quadratics_keep_their_extremum_in_the_bbox() {
         bezier::cubic_bbox(a, ctl.c1, ctl.c2, z)
     };
     let bbox = worked(7.0, 49.0, 8.0);
-    assert!(
-        (bbox.max().y as f64 - peak(7.0, 49.0, 8.0)).abs() < 1e-3,
-        "worked case: {} vs {}",
+    assert_close(
         bbox.max().y,
         peak(7.0, 49.0, 8.0),
+        1e-3,
+        "the f32 2/3 blend leaves the cubic a rounding residue off the \
+         quadratic it promotes",
     );
 
     // A sweep over integer quadratics: every sampled point inside.

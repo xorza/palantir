@@ -238,20 +238,19 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     h.frame(build);
 
     let after = *h.state::<ScrollState>(id);
-    assert!(
-        (after.offset.y - (-45.0)).abs() < 1e-3,
+    assert_eq!(
+        after.offset.y, -45.0,
         "wheel pan from out-of-range offset snapped: -50 + 5 should be -45, got {}",
-        after.offset.y,
+        after.offset.y
     );
 
     h.scroll_pixels(Vec2::new(0.0, -5.0));
     h.frame(build);
     let after2 = *h.state::<ScrollState>(id);
-    assert!(
-        (after2.offset.y - (-45.0)).abs() < 1e-3,
+    assert_eq!(
+        after2.offset.y, -45.0,
         "pan further out-of-range should be blocked at current ({}), got {}",
-        -45.0,
-        after2.offset.y,
+        -45.0, after2.offset.y
     );
 }
 
@@ -329,9 +328,9 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
 
     let after_zoom = h.state::<ScrollState>(scroll_id).zoom;
     let expected = before_zoom * 1.03_f32.powf(-2.0);
-    assert!(
-        (after_zoom - expected).abs() < 1e-3,
-        "ctrl+touchpad zoom: expected {expected}, got {after_zoom}",
+    assert_eq!(
+        after_zoom, expected,
+        "ctrl+touchpad zoom: expected {expected}, got {after_zoom}"
     );
 }
 
@@ -377,9 +376,9 @@ fn wheel_zoom_step_is_font_independent() {
         let zoom = h.state::<ScrollState>(scroll_id).zoom;
         // A tolerance for `powf`'s rounding only: a font-scaled step would
         // miss by the font ratio, two orders of magnitude more.
-        assert!(
-            (zoom - expected).abs() < 1e-6,
-            "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}",
+        assert_eq!(
+            zoom, expected,
+            "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}"
         );
     }
 }
@@ -405,9 +404,9 @@ fn line_wheel_step_scales_with_theme_font_size() {
 
         let scroll_id = WidgetId::from_hash("scroll");
         let offset_y = h.state::<ScrollState>(scroll_id).offset.y;
-        assert!(
-            (offset_y - expected_px).abs() < 0.01,
-            "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",
+        assert_eq!(
+            offset_y, *expected_px,
+            "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}"
         );
     }
 }

@@ -577,7 +577,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
         assert_eq!(ci.width, 4.0, "stroke width at DPI 2");
         // t ranges tile [0, 1] contiguously, ending exactly at 1.
         let n = buf.curves.len() as f32;
-        assert!((ci.t0 - i as f32 / n).abs() < 1e-6);
+        assert_eq!(ci.t0, i as f32 / n);
         if i + 1 == buf.curves.len() {
             assert_eq!(ci.t1, 1.0);
         }
@@ -627,13 +627,14 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     );
     assert!(!buf.curves.is_empty());
     for ci in &buf.curves {
-        assert!(
-            (ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4,
-            "center rotated about the bbox pivot, got {:?}",
+        assert_eq!(
             ci.p0,
+            Vec2::new(50.0, 70.0),
+            "center rotated about the bbox pivot, got {:?}",
+            ci.p0
         );
-        assert!((ci.p2.x - FRAC_PI_2).abs() < 1e-6, "a0 offset by rotation");
-        assert!((ci.p2.y - (PI + FRAC_PI_2)).abs() < 1e-6, "a1 offset");
+        assert_eq!(ci.p2.x, FRAC_PI_2, "a0 offset by rotation");
+        assert_eq!(ci.p2.y, PI + FRAC_PI_2, "a1 offset");
     }
 }
 
@@ -740,26 +741,10 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     );
     assert!(!buf.curves.is_empty());
     let ci = &buf.curves[0];
-    assert!(
-        (ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4,
-        "{:?}",
-        ci.p0
-    );
-    assert!(
-        (ci.p1 - Vec2::new(60.0, 70.0)).length() < 1e-4,
-        "{:?}",
-        ci.p1
-    );
-    assert!(
-        (ci.p2 - Vec2::new(70.0, 60.0)).length() < 1e-4,
-        "{:?}",
-        ci.p2
-    );
-    assert!(
-        (ci.p3 - Vec2::new(70.0, 50.0)).length() < 1e-4,
-        "{:?}",
-        ci.p3
-    );
+    assert_eq!(ci.p0, Vec2::new(50.0, 70.0), "{:?}", ci.p0);
+    assert_eq!(ci.p1, Vec2::new(60.0, 70.0), "{:?}", ci.p1);
+    assert_eq!(ci.p2, Vec2::new(70.0, 60.0), "{:?}", ci.p2);
+    assert_eq!(ci.p3, Vec2::new(70.0, 50.0), "{:?}", ci.p3);
 }
 
 #[test]

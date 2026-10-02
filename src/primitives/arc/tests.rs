@@ -1,3 +1,4 @@
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::arc;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
@@ -7,12 +8,7 @@ const R: f32 = 5.0;
 
 fn assert_bounds(a0: f32, a1: f32, lo: Vec2, hi: Vec2) {
     let b = arc::bbox(C, R, a0, a1);
-    assert!(
-        (b.min - lo).length() < 1e-4 && (b.max() - hi).length() < 1e-4,
-        "arc [{a0}, {a1}]: got lo {:?} hi {:?}, want lo {lo:?} hi {hi:?}",
-        b.min,
-        b.max(),
-    );
+    assert_eq!((b.min, b.max()), (lo, hi), "arc [{a0}, {a1}]");
 }
 
 /// Hand-computed bounds per sweep case. Screen convention: angle 0
@@ -55,8 +51,8 @@ fn negative_sweep_and_offset_window() {
     // [π/2, -π/2] (negative direction) == [-π/2, π/2]: crosses +x.
     let fwd = arc::bbox(C, R, -FRAC_PI_2, FRAC_PI_2);
     let rev = arc::bbox(C, R, FRAC_PI_2, -FRAC_PI_2);
-    assert!((fwd.min - rev.min).length() < 1e-6);
-    assert!((fwd.max() - rev.max()).length() < 1e-6);
+    assert_eq!(fwd.min, rev.min);
+    assert_eq!(fwd.max(), rev.max());
     assert_bounds(
         -FRAC_PI_2,
         FRAC_PI_2,
@@ -66,10 +62,15 @@ fn negative_sweep_and_offset_window() {
     // Window far from 0: [2π + π/4, 2π + 3π/4] crosses +y at
     // 2π + π/2. Endpoints sit at ±R·cos(π/4) in x, +R·sin(π/4) in y.
     let cos45 = 0.5f32.sqrt();
-    assert_bounds(
-        TAU + 0.25 * PI,
-        TAU + 0.75 * PI,
-        Vec2::new(C.x - R * cos45, C.y + R * cos45),
-        Vec2::new(C.x + R * cos45, C.y + R),
-    );
+    let b = arc::bbox(C, R, TAU + 0.25 * PI, TAU + 0.75 * PI);
+    let lo = Vec2::new(C.x - R * cos45, C.y + R * cos45);
+    let hi = Vec2::new(C.x + R * cos45, C.y + R);
+    let past_tau = "f32 cos of an angle past 2π carries an ulp of its own \
+                    rounding, 4.8e-7 at the 6.46 it scales to";
+    for (got, want) in [b.min.x, b.min.y, b.max().x, b.max().y]
+        .into_iter()
+        .zip([lo.x, lo.y, hi.x, hi.y])
+    {
+        assert_close(got, want, 1e-6, past_tau);
+    }
 }

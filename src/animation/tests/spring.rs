@@ -10,6 +10,7 @@ use crate::animation::tests::support::{
 };
 use crate::animation::*;
 use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::color::RgbaF32;
 
 /// Accepted springs stay finite and settle on their target under a mixed
@@ -102,15 +103,18 @@ fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
         );
         let step = spring::step(stiffness, damping, 1.0_f32, 0.0, 0.0, 0.1);
         assert!(!step.settled, "{label}: a unit displacement is not settled");
-        assert!(
-            (step.current - expect_pos).abs() < 1e-6,
-            "{label}: position {} vs analytic {expect_pos}",
+        assert_close(
             step.current,
+            expect_pos,
+            1e-6,
+            "f32 transition coefficients against the analytic position",
         );
-        assert!(
-            (step.velocity - expect_vel).abs() < 1e-5,
-            "{label}: velocity {} vs analytic {expect_vel}",
+        assert_close(
             step.velocity,
+            expect_vel,
+            1e-5,
+            "f32 transition coefficients against the analytic velocity, \
+             which the stiffness scales",
         );
     }
 }
@@ -146,9 +150,12 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
     assert!((185.0..190.0).contains(&once), "fixture sanity: got {once}");
     for steps in [2, 10, 100] {
         let split = travel(steps);
-        assert!(
-            (split - once).abs() < 0.01,
-            "{steps} steps gave {split}, one step gave {once}",
+        assert_close(
+            split,
+            once,
+            0.01,
+            "each step rounds its f32 coefficients, so the products drift \
+             by a few ulps per step at 187 px",
         );
     }
 }
@@ -165,10 +172,14 @@ fn the_critically_damped_boundary_has_no_seam() {
     for offset in [1e-3, 1e-4, 1e-5] {
         let under = at(20.0 - offset);
         let over = at(20.0 + offset);
-        assert!(
-            (under - critical).abs() < 1e-4 && (over - critical).abs() < 1e-4,
-            "offset {offset}: {under} / {critical} / {over} straddle a seam",
-        );
+        // Near critical, x(0.1) moves about 0.0061 per unit of damping:
+        // `∂x/∂c = −t²·h·e^(−ht)/2 + e^(−ht)(t²/2 + h·t³/6)·h`, h = 10,
+        // t = 0.1. The gap shrinks with the offset, down to the ulp of
+        // 0.74; a seam would hold its width.
+        let bound = 0.007 * f64::from(offset) + 6e-8;
+        let why = "the damping offset times the slope, plus an ulp";
+        assert_close(under, critical, bound, why);
+        assert_close(over, critical, bound, why);
     }
 }
 
@@ -211,14 +222,10 @@ fn spring_step_at_max_dt_stays_bounded() {
     let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1, next_frame());
     // Closed form, released from rest 320 px out: `(170, 26)` has h = 13
     // and ω = 1, so `80 + 320·e^(-1.3)(cos 0.1 + 13 sin 0.1)` ≈ 279.96,
-    // inside [80, 400]. 1e-4 is a few f32 ulps at 280.
+    // inside [80, 400].
     let t = f64::from(0.1f32);
     let expected = 80.0 + 320.0 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
-    assert!(
-        (f64::from(r.current) - expected).abs() < 1e-4,
-        "spring at dt=MAX_DT: {} vs closed form {expected}",
-        r.current,
-    );
+    assert_close(r.current, expected, 1e-4, "a few f32 ulps at 280");
 }
 
 /// A frame may run `build` twice on input frames (pass A

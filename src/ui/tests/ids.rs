@@ -199,18 +199,10 @@ fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let main_rect = h.ui.layout[Layer::Main].rect[pair.first.node.idx()];
     let popup_rect = h.ui.layout[Layer::Popup].rect[pair.second.node.idx()];
     let outlines = collision_outlines(&h.ui);
-    assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
-    assert!(
-        outlines
-            .iter()
-            .any(|rect| (rect.min - main_rect.min).length() < 1.0),
-        "no outline at Main rect {main_rect:?}",
-    );
-    assert!(
-        outlines
-            .iter()
-            .any(|rect| (rect.min - popup_rect.min).length() < 1.0),
-        "no outline at Popup rect {popup_rect:?}",
+    assert_eq!(
+        outlines,
+        [main_rect, popup_rect],
+        "one outline per layer, each on its own copy's rect",
     );
 }
 

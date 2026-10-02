@@ -101,13 +101,8 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
             _ => panic!("{spun:?}: expected one draw, got {:?}", cmds.kinds()),
         };
         let spin = bounds.spin().expect("spin must sample a non-zero rotation");
-        let eps = 1e-3;
         // The pivot is carried, not inferred from the cull rect's centre.
-        assert!(
-            (spin.pivot - c).length() < eps,
-            "{spun:?} pivot {:?}",
-            spin.pivot
-        );
+        assert_eq!(spin.pivot, c, "{spun:?} pivot {:?}", spin.pivot);
         assert!(spin.angle != 0.0, "{spun:?}");
         // The cull rect is the rotation-invariant square about it, so the
         // composer's overlap tracking holds at every angle.
@@ -118,12 +113,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
             2.0 * half_extent,
             2.0 * half_extent,
         );
-        assert!(
-            (cull.min - square.min).abs().max_element() < eps
-                && (cull.size.w - square.size.w).abs() < eps
-                && (cull.size.h - square.size.h).abs() < eps,
-            "{spun:?}: cull {cull:?}, expected {square:?}",
-        );
+        assert_eq!(cull, square, "{spun:?}");
     }
     // The polyline's far endpoint rotated 90° about c stays inside its
     // square, and outside the owner box the old code used.
