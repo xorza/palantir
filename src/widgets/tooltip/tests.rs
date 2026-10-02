@@ -89,10 +89,12 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
 
     assert_eq!(small.max().y, above_edge);
     assert_eq!(large.max().y, above_edge);
-    assert!(
-        large.size.w > small.size.w || large.size.h > small.size.h,
-        "long content must change the measured bubble size",
-    );
+    // Mono at the tooltip's 13 px: 6.5 px a char, 15.59375 px a line
+    // (15.6 snapped to 1/64), inside 6 + 6 by 4 + 4 padding and a 1 px
+    // border. "tip" is one 19.5 px line; the long text wraps at
+    // 280 − 14 = 266, which holds 40 chars, onto two lines.
+    assert_eq!(small.size, Size::new(19.5 + 14.0, 15.59375 + 10.0));
+    assert_eq!(large.size, Size::new(260.0 + 14.0, 2.0 * 15.59375 + 10.0));
     assert_eq!(large.max().x, SURFACE.x as f32);
     assert_eq!(
         shrunk, small,
@@ -114,6 +116,10 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .text_shapes
         .first()
         .expect("tooltip text shaped");
+    // Forty 6.5 px chars a line, broken mid-token, inside the 14 px of
+    // padding and border.
+    assert_eq!(shaped.measured, Size::new(260.0, 2.0 * 15.59375));
+    assert_eq!(bubble.size.w, 260.0 + 14.0);
     assert!(
         shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
         "text width {} must fit inside bubble width {}",
@@ -241,9 +247,10 @@ fn empty_label_records_no_bubble() {
             .visible,
         "control: the same fixture with text turns its row visible",
     );
-    assert!(
-        shown.ui.tree(Layer::Tooltip).records.len() > baseline,
-        "the same fixture with text records more than the empty one \
+    assert_eq!(
+        shown.ui.tree(Layer::Tooltip).records.len(),
+        baseline + 2,
+        "the same fixture with text records the bubble and its label beyond the empty one \
          ({baseline} records)",
     );
 }
@@ -373,30 +380,38 @@ fn delay_gates_visibility() {
     let early = *h.state::<TooltipState>(trigger_id);
     assert!(
         !early.visible,
-        "tooltip must stay hidden before delay elapses (started_at={:?})",
-        early.hover_started_at
+        "tooltip must stay hidden before delay elapses"
+    );
+    assert_eq!(
+        early.hover_started_at,
+        Some(Duration::from_secs_f32(0.05)),
+        "the hover begins on the frame the pointer first reached the trigger",
     );
 
-    // Tick well past the delay. The cascade lag is one frame, so we
-    // pad with extra ticks; each one hovers the trigger and advances
-    // time by 0.1 s.
+    // Tick past the delay, hovering the trigger and advancing 0.1 s a
+    // frame from 0.2 s. The delay ends at 0.05 + 0.3 = 0.35 s: the 0.3 s
+    // frame is 250 ms in and stays hidden, the 0.4 s frame — tick 2 — is
+    // 350 ms in and is the first to show.
     let mut t = 0.1_f32;
-    for _ in 0..20 {
+    let mut first_visible = None;
+    for tick in 0..20 {
         t += 0.1;
         h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
+        if first_visible.is_none() && h.state::<TooltipState>(trigger_id).visible {
+            first_visible = Some(tick);
+        }
     }
-
-    let late = *h.state::<TooltipState>(trigger_id);
-    assert!(
-        late.visible,
-        "tooltip must become visible after delay (started_at={:?})",
-        late.hover_started_at
+    assert_eq!(
+        first_visible,
+        Some(2),
+        "the first visible frame is the 0.4 s one"
     );
-    let tooltip_tree = h.ui.tree(Layer::Tooltip);
-    assert!(
-        tooltip_tree.records.len() > 1,
-        "Tooltip layer must contain at least one recorded node",
+    assert!(h.state::<TooltipState>(trigger_id).visible);
+    assert_eq!(
+        h.ui.tree(Layer::Tooltip).records.len(),
+        2,
+        "the Tooltip layer holds the bubble and its label",
     );
 
     h.ui.theme_mut().tooltip.warmup = Duration::ZERO;
@@ -534,10 +549,10 @@ fn tooltip_inside_popup_records_without_panic() {
 
     // The bubble records into the Tooltip layer — a root distinct from
     // the Popup layer it was raised inside.
-    let tooltip_tree = h.ui.tree(Layer::Tooltip);
-    assert!(
-        tooltip_tree.records.len() > 1,
-        "Tooltip layer must contain the bubble recorded from inside the popup",
+    assert_eq!(
+        h.ui.tree(Layer::Tooltip).records.len(),
+        2,
+        "the Tooltip layer holds the bubble raised inside the popup, and its label",
     );
 }
 

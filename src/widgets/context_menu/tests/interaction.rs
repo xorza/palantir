@@ -152,15 +152,10 @@ fn menu_body_width_does_not_span_surface() {
             .map(|l| l.entry_idx)
             .map(|i| h.ui.cascade().entries[i as usize].rect)
             .expect("menu body recorded");
-    // Theme min_width is 160; sample labels are short so we expect
-    // ≤ 200 px wide. SURFACE.w = 400, so a "spans surface" regression
-    // would land ≥ 380.
-    assert!(
-        rect.size.w < 240.0,
-        "menu body w={} — expected hug to content, not surface width ({})",
-        rect.size.w,
-        SURFACE.x,
-    );
+    // The rows are narrower than the theme's floor, so the body sits at
+    // it: hugging, not spanning the 400 px surface.
+    assert_eq!(rect.size.w, h.ui.theme().context_menu.min_width);
+    assert_eq!(rect.size.w, 160.0);
 }
 
 /// The scene, returning whether the Copy row clicked this pass.

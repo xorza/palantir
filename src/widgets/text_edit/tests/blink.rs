@@ -1,5 +1,5 @@
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::{FramePaint, FrameReport};
 use crate::widgets::text_edit::tests::*;
 use std::time::Duration;
 
@@ -229,19 +229,20 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // which isn't `<= 0.2` → anim contributes no damage. No other
     // source of damage either → report damage is `None`.
     let report = record_at_secs(&mut h, 0.2, |ui| record(ui, &mut buf));
-    assert!(
-        report.plan.is_none(),
-        "mid-phase frame should not damage the caret rect (got {:?})",
-        report.plan,
+    assert_eq!(
+        report.paint(),
+        FramePaint::Skip,
+        "mid-phase frame should not damage the caret rect",
     );
 
     // Frame 4 across the half-period boundary (t=0.6). prev_now=0.2;
     // `next_wake(0.2) = 0.5` which IS `<= 0.6` → quantum flipped
     // → caret rect joins damage.
     let report = record_at_secs(&mut h, 0.6, |ui| record(ui, &mut buf));
-    assert!(
-        report.plan.is_some(),
-        "crossing a phase boundary must damage the caret rect",
+    assert_eq!(
+        report.paint(),
+        FramePaint::Partial,
+        "crossing a phase boundary damages the caret rect, and only it",
     );
 }
 
@@ -276,8 +277,10 @@ fn focus_gain_resets_blink_even_without_caret_change() {
 
     // Focus rising edge must reset blink: anim registered → wake
     // scheduled at the next half-period boundary.
-    assert!(
-        r.repaint_after.is_some(),
+    // Restarted at the focus, so the next flip is half a 0.5 s period in.
+    assert_eq!(
+        r.repaint_after,
+        Some(Duration::from_secs_f32(100.5)),
         "focus gain must restart blink scheduling regardless of caret movement",
     );
 }
@@ -309,8 +312,9 @@ fn focused_text_edit_schedules_blink_wake() {
     // request a wake at the next phase boundary.
     h.click_at(Vec2::new(20.0, 20.0));
     let report = h.frame(&mut scene);
-    assert!(
-        report.repaint_after.is_some(),
-        "focused editor schedules a blink wake",
+    assert_eq!(
+        report.repaint_after,
+        Some(Duration::from_millis(500)),
+        "focused editor schedules a blink wake at the first half-period flip",
     );
 }

@@ -45,7 +45,10 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "a chip starts closed");
 
     click_chip(&mut h, |h| frame(h, &mut color));
-    assert!(panel_nodes(&h) > 0, "the click opened the panel");
+    assert!(
+        h.rect(id.with("panel")).is_some(),
+        "the click opened this chip's panel"
+    );
 
     h.advance_past_double_click();
     click_chip(&mut h, |h| frame(h, &mut color));

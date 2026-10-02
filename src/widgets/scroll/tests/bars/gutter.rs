@@ -97,7 +97,7 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
     let theme = theme();
     let expected_x = 200.0 - theme.thickness;
     let overlays = thumb_rects(&ui.ui, "scroll");
-    assert!(!overlays.is_empty(), "expected at least one thumb");
+    assert_eq!(overlays.len(), 1, "one vertical thumb");
     for r in &overlays {
         assert_eq!(
             r.min.x, expected_x,
@@ -193,8 +193,9 @@ fn overlay_mode_skips_gutter_reservation() {
         "Overlay: viewport = full outer (no gutter reservation), \
          even when content overflows and the bar is drawn",
     );
-    assert!(
-        scroll_content(&h.ui, scroll_id).h > scroll_viewport(&h.ui, scroll_id).h,
-        "content > viewport on Y — bar should be drawn"
+    assert_eq!(
+        scroll_content(&h.ui, scroll_id),
+        Size::new(180.0, 800.0),
+        "the content overflows the viewport on Y, so the bar is drawn"
     );
 }

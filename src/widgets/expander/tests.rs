@@ -6,6 +6,7 @@ use glam::{UVec2, Vec2};
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::keyboard::key::Key;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
@@ -72,13 +73,18 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     });
     let body_rect = h.rect(body()).expect("an open section records its body");
     let header_rect = h.rect(header()).expect("the header");
-    assert!(
-        body_rect.min.y >= header_rect.max().y - 1.0,
-        "the body sits under the header: {body_rect:?} against {header_rect:?}",
-    );
-    assert!(
-        body_rect.min.x > header_rect.min.x,
-        "and is indented from its leading edge: {body_rect:?} in {header_rect:?}",
+    // The body sits right under the header, indented by the theme's
+    // 17 px from its leading edge and running to the header's far edge.
+    let indent = h.ui().theme().expander.indent;
+    assert_eq!(indent, 17.0);
+    assert_eq!(
+        body_rect,
+        Rect::new(
+            header_rect.min.x + indent,
+            header_rect.max().y,
+            header_rect.size.w - indent,
+            body_rect.size.h,
+        ),
     );
     assert!(h.rect(label()).is_some(), "the body's own content records");
 }
@@ -277,11 +283,10 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     // tween has not moved yet; the frame after it is the one that shows.
     assert_eq!(h.frame_value(&mut record), 1.0);
     h.advance(std::time::Duration::from_millis(16));
-    let closing = h.frame_value(&mut record);
-    assert!(
-        closing > 0.0 && closing < 1.0,
-        "the close tweened against the remembered height, got {closing}",
-    );
+    // `MEDIUM` is 200 ms of ease-out cubic, so 16 ms in the reveal has
+    // (1 − 16/200)³ = 0.92³ = 0.778688 left: the close tweened rather
+    // than snapping.
+    assert_eq!(h.frame_value(&mut record), 0.778688);
 }
 
 /// Space and Enter toggle a focused header, and nothing else does. The
@@ -409,8 +414,9 @@ fn a_settling_reveal_stores_the_whole_height() {
     h.advance_frames(2, tick, |ui| {
         record(ui);
     });
+    // One mono line, 19.2 snapped to 19.203125, under 4 + 4 padding.
     let whole = h.layout_rect(body()).expect("open").size.h;
-    assert!(whole > 0.0);
+    assert_eq!(whole, 19.203125 + 8.0);
     toggle(&mut h, &mut record);
     while h.frame_value(&mut record) > 0.0 {
         h.advance(tick);
