@@ -249,7 +249,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/host/winit/error.rs:63-88`: `WinitHostError::Gpu` and its `From<GpuRequestError>` are never constructed in production (only tests). Device failures surface as `Surface{source: SurfaceError::Device}`, so one failure has two documented routes. Public API: removal needs a go-ahead.
 - [ ] `src/window/window_commands.rs:33`: `open` dedupes per token but `close` does not. Replayed passes (warmup, pass A, pass B) push the same close up to three times, and the host drains them as no-ops.
 - [ ] `src/input/input_state/mod.rs:43-131`: `focused`, `modifiers`, `pointer_pos`, `hovered`, `focus_policy`, `input_policy` and `signal_since_last_frame` are `pub(crate)` fields read and written directly from `Ui` and `FrameCycle`, though `set_focus` exists as a method. This contradicts `Ui`'s own "every field is private" rule one layer down.
-- [ ] `src/host/offscreen.rs:337`: a top-level `#[cfg(any(test, feature="internals"))] impl OffscreenHost` with `pub fn`s. Gated impl blocks belong inside the file's gated `internals` mod.
 - [ ] `src/ui/frame_runtime/mod.rs:165`: a mid-impl `#[cfg(test)] pub(crate) fn cascade_ran` is a mid-file gate that can move to the end-of-file test mod.
 - [ ] `src/host/winit/runtime.rs:63`: `bootstrap.config.clone()` deep-copies the whole `WinitHostConfig` (title `String`, icon pixel `Vec`) only to read fields that can be borrowed.
 

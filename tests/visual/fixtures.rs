@@ -7,6 +7,7 @@ mod blit;
 mod color;
 mod corners;
 mod damage;
+mod damage_oracle;
 mod expander;
 mod fade;
 mod format_change;

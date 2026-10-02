@@ -332,25 +332,35 @@ impl OffscreenHost {
     }
 }
 
-/// Cache-introspection peepholes for the visual format-change test. Gated
-/// because they call `internals`-gated `WgpuBackend` helpers.
+/// Peepholes for the visual suite: cache introspection for the
+/// format-change test, and a forced full repaint for the pixel damage
+/// oracle. Gated because the first two call `internals`-gated
+/// `WgpuBackend` helpers.
 #[cfg(any(test, feature = "internals"))]
-impl OffscreenHost {
-    /// Whether the shared backend has built a pipeline set for `format`.
-    /// Lets format-change tests confirm a new format materializes its own
-    /// pipelines.
-    pub fn has_format_pipelines(
-        &self,
-        format: impl Into<crate::gpu::render_target::TargetFormat>,
-    ) -> bool {
-        self.core.backend.has_format_pipelines(format.into())
-    }
+pub(crate) mod internals {
+    use crate::gpu::render_target::TargetFormat;
+    use crate::host::offscreen::OffscreenHost;
 
-    /// Images resident in the GPU texture cache. Used by the format-change
-    /// test to assert the cache survives a new format's pipeline build (no
-    /// re-upload).
-    pub fn gpu_image_cache_len(&self) -> usize {
-        self.core.backend.gpu_image_cache_len()
+    impl OffscreenHost {
+        /// Whether the shared backend has built a pipeline set for `format`.
+        /// Lets format-change tests confirm a new format materializes its own
+        /// pipelines.
+        pub fn has_format_pipelines(&self, format: impl Into<TargetFormat>) -> bool {
+            self.core.backend.has_format_pipelines(format.into())
+        }
+
+        /// Images resident in the GPU texture cache. Used by the format-change
+        /// test to assert the cache survives a new format's pipeline build (no
+        /// re-upload).
+        pub fn gpu_image_cache_len(&self) -> usize {
+            self.core.backend.gpu_image_cache_len()
+        }
+
+        /// Paint the next frame in full, as after a swapchain reconfigure:
+        /// the reference a partial repaint is compared against.
+        pub fn invalidate_target_contents(&mut self) {
+            self.driver.invalidate_target_contents();
+        }
     }
 }
 
