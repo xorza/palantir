@@ -27,7 +27,7 @@ impl Axis {
     /// [`Self::from_bit`]; the encoding is written down here alone, so a
     /// packed field cannot spell it a second way.
     #[inline]
-    pub(super) fn bit(self) -> u16 {
+    pub(super) const fn bit(self) -> u16 {
         self as u16
     }
 
@@ -41,31 +41,31 @@ impl Axis {
     }
 
     /// The axis this one is not.
-    pub(crate) fn other(self) -> Axis {
+    pub(crate) const fn other(self) -> Axis {
         match self {
             Axis::X => Axis::Y,
             Axis::Y => Axis::X,
         }
     }
-    pub(crate) fn main(self, s: Size) -> f32 {
+    pub(crate) const fn main(self, s: Size) -> f32 {
         match self {
             Axis::X => s.w,
             Axis::Y => s.h,
         }
     }
-    pub(crate) fn cross(self, s: Size) -> f32 {
+    pub(crate) const fn cross(self, s: Size) -> f32 {
         match self {
             Axis::X => s.h,
             Axis::Y => s.w,
         }
     }
-    pub(crate) fn main_v(self, v: Vec2) -> f32 {
+    pub(crate) const fn main_v(self, v: Vec2) -> f32 {
         match self {
             Axis::X => v.x,
             Axis::Y => v.y,
         }
     }
-    pub(crate) fn cross_v(self, v: Vec2) -> f32 {
+    pub(crate) const fn cross_v(self, v: Vec2) -> f32 {
         match self {
             Axis::X => v.y,
             Axis::Y => v.x,
@@ -85,7 +85,7 @@ impl Axis {
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.
-    pub(crate) fn compose_size(self, main: f32, cross: f32) -> Size {
+    pub(crate) const fn compose_size(self, main: f32, cross: f32) -> Size {
         match self {
             Axis::X => Size::new(main, cross),
             Axis::Y => Size::new(cross, main),
@@ -111,14 +111,20 @@ impl Axis {
         }
     }
     /// Build a `Vec2` from main- and cross-axis positions.
-    pub(crate) fn compose_point(self, main: f32, cross: f32) -> Vec2 {
+    pub(crate) const fn compose_point(self, main: f32, cross: f32) -> Vec2 {
         match self {
             Axis::X => Vec2::new(main, cross),
             Axis::Y => Vec2::new(cross, main),
         }
     }
     /// Build a `Rect` from main- and cross-axis positions and lengths.
-    pub(crate) fn compose_rect(self, main_pos: f32, cross_pos: f32, main: f32, cross: f32) -> Rect {
+    pub(crate) const fn compose_rect(
+        self,
+        main_pos: f32,
+        cross_pos: f32,
+        main: f32,
+        cross: f32,
+    ) -> Rect {
         match self {
             Axis::X => Rect::new(main_pos, cross_pos, main, cross),
             Axis::Y => Rect::new(cross_pos, main_pos, cross, main),

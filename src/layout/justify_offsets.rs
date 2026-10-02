@@ -15,7 +15,7 @@ pub(super) struct JustifyOffsets {
 impl JustifyOffsets {
     /// The offsets `justify` asks for, given `leftover` free main-axis
     /// space across `count` children at a base `gap`.
-    pub(super) fn new(justify: Justify, leftover: f32, gap: f32, count: usize) -> Self {
+    pub(super) const fn new(justify: Justify, leftover: f32, gap: f32, count: usize) -> Self {
         match justify {
             Justify::Start => Self { start: 0.0, gap },
             Justify::Center => Self {

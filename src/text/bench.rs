@@ -1,5 +1,5 @@
 use crate::bench::Run;
-use crate::layout::ShapedText;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::text::cosmic::shaped_buffer_cache;

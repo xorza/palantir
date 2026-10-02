@@ -1,4 +1,5 @@
 use crate::layout::axis::Axis;
+use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::intrinsic::*;
 use crate::scene::tree::node_id::NodeId;
 

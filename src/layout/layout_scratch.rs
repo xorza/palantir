@@ -1,11 +1,11 @@
 //! Per-frame layout scratch: everything the measure and arrange passes
 //! build up and throw away, with its capacity kept across frames.
 
-use crate::layout::LayerLayout;
 use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
 use crate::layout::counters::LayoutCounters;
 use crate::layout::grid::grid_context::GridContext;
-use crate::layout::intrinsic::SLOT_COUNT;
+use crate::layout::intrinsic::len_req::SLOT_COUNT;
+use crate::layout::layer_layout::LayerLayout;
 use crate::layout::stack::StackScratch;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::size::Size;

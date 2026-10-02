@@ -23,10 +23,12 @@ mod fill_item;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 mod justify_offsets;
+pub(crate) mod layer_layout;
 pub(crate) mod layout_scratch;
 pub(crate) mod pass;
 pub(crate) mod scroll;
 pub(crate) mod scrollbars;
+pub(crate) mod shaped_text;
 pub(crate) mod stack;
 pub(crate) mod text_runs;
 pub(crate) mod text_shape_input;
@@ -37,36 +39,12 @@ pub(crate) mod zstack;
 #[cfg(test)]
 mod cross_driver_tests;
 
-use crate::common::content_hash::ContentHash;
-use crate::common::hash::Hasher;
-use crate::primitives::span::Span;
+use crate::layout::layer_layout::LayerLayout;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::layer::PerLayer;
-use crate::scene::tree::Tree;
-use crate::text::key::TextShapeKey;
-use std::hash::Hasher as _;
 use std::ops::{Index, IndexMut};
-
-/// Per-layer layout output — the SoA columns the encoder + hit-index
-/// read after the layout pass. Intermediate scratch (desired sizes,
-/// grid track state) lives on `LayoutScratch` directly. SoA columns
-/// indexed by `NodeId.0`. Capacity is reused across frames via
-/// `resize_for`.
-#[derive(Debug, Default)]
-pub(crate) struct LayerLayout {
-    pub(crate) rect: Vec<Rect>,
-    pub(crate) scroll_content: Vec<Size>,
-    /// Flat per-frame buffer of shaped text runs. Leaf text appends during
-    /// measure because it drives desired size; container text appends after
-    /// arrange against its final padded width. Indexed via
-    /// `text_spans[node]`.
-    pub(crate) text_shapes: Vec<ShapedText>,
-    /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
-    /// nodes that didn't shape text. Same length as `rect`.
-    pub(crate) text_spans: Vec<Span>,
-}
 
 /// Per-frame layout output across all layers. Callers index by
 /// `Layer` directly (`result[Layer::Main]`) — see [`PerLayer`].
@@ -126,74 +104,5 @@ impl IndexMut<Layer> for Layout {
     #[inline]
     fn index_mut(&mut self, layer: Layer) -> &mut LayerLayout {
         &mut self.layers[layer]
-    }
-}
-
-/// Result of shaping one `ShapeRecord::Text` during the measure pass. `Tree`
-/// records only the authoring inputs; this is the layout-side derived state.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ShapedText {
-    pub(crate) measured: Size,
-    /// The buffer the renderer replays, or `None` where the run shaped
-    /// none — which in production is nothing, and under the gated mono
-    /// metric is every run. As wide as a bare key: see
-    /// [`TextShapeKey::text_hash`].
-    pub(crate) key: Option<TextShapeKey>,
-}
-
-impl LayerLayout {
-    /// Destructured so a column added to `LayerLayout` cannot be left
-    /// un-resized here — the per-node columns are indexed by `NodeId`
-    /// without a bounds story of their own.
-    fn resize_for(&mut self, tree: &Tree) {
-        let n = tree.records.len();
-        let Self {
-            rect,
-            scroll_content,
-            text_shapes,
-            text_spans,
-        } = self;
-        rect.clear();
-        rect.resize(n, Rect::ZERO);
-        scroll_content.clear();
-        scroll_content.resize(n, Size::ZERO);
-        // Flat, not per-node: spans index into it.
-        text_shapes.clear();
-        text_spans.clear();
-        text_spans.resize(n, Span::default());
-    }
-
-    /// Summary of the arranged rects, for the cascade key
-    /// (`CascadeKey::new`): a cascade built against other rects is
-    /// neither skipped nor repaired in place.
-    ///
-    /// Hashed as raw bytes rather than through `approx`'s visual
-    /// quantisation on purpose: this gates a *cache-validity* decision,
-    /// so it must be at least as strict as the exact element-wise
-    /// comparison it replaces. Quantising would let a sub-quantum
-    /// arrange shift retain a cascade built for the old rects. `Rect`
-    /// is `Pod`, so the whole column hashes in one bulk write — the
-    /// per-field form cost four hash rounds per rect instead of two.
-    pub(crate) fn rect_hash(&self) -> ContentHash {
-        let mut h = Hasher::new();
-        h.write_usize(self.rect.len());
-        h.pod_slice(&self.rect);
-        ContentHash(h.finish())
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod test_support {
-    use crate::layout::ShapedText;
-    use crate::text::key::TextShapeKey;
-
-    impl ShapedText {
-        /// The key of the buffer this run shaped under. Panics where
-        /// none was shaped, which every case reaching here rules out by
-        /// driving a cosmic harness; one *about* an absent key reads
-        /// [`ShapedText::key`] instead.
-        pub(crate) fn buffer_key(&self) -> TextShapeKey {
-            self.key.expect("this fixture shapes a buffer")
-        }
     }
 }

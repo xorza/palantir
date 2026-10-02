@@ -1,8 +1,8 @@
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
+use crate::layout::types::packed_layout_meta::PackedLayoutMeta;
 use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::*;

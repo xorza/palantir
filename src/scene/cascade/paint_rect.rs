@@ -2,7 +2,7 @@
 //! it comes to.
 
 use crate::common::content_hash::ContentHash;
-use crate::layout::LayerLayout;
+use crate::layout::layer_layout::LayerLayout;
 use crate::layout::text_runs::TextRuns;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;

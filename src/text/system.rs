@@ -31,7 +31,7 @@
 //! which is not a shape the engine produces; read it as an upper bound
 //! on dispatch cost, not as the layer's value.
 
-use crate::layout::ShapedText;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};

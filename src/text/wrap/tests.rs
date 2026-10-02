@@ -1,4 +1,4 @@
-use crate::layout::cache::quantize_available;
+use crate::layout::cache::MeasureCache;
 use crate::primitives::num::F32Px;
 use crate::primitives::size::Size;
 use crate::text::root::TextRoot;
@@ -127,7 +127,7 @@ fn wrap_target_matches_cache_grid() {
     assert_eq!(99.6_f32.canonical_px(), 100.4_f32.canonical_px(),);
     assert_ne!(100.4_f32.canonical_px(), 100.6_f32.canonical_px(),);
     for width in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
-        let cache_width = quantize_available(Size::new(width, 0.0)).x;
+        let cache_width = MeasureCache::available_key(Size::new(width, 0.0)).x;
         assert_eq!(width.canonical_px() as i32, cache_width, "width={width}",);
     }
     // The wrap width adds one rule on top of the shared grid: an

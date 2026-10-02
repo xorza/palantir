@@ -2,7 +2,7 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::grid::grid_context::GridContext;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;

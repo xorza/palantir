@@ -3,7 +3,7 @@
 //! another retained widget-state copy.
 
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::scrollbars_def::BarGeometry;
+use crate::layout::scrollbars::bar_geometry::BarGeometry;
 use crate::primitives::approx;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;

@@ -1606,10 +1606,10 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     use crate::input::input_state::InputState;
-    #[cfg(test)]
-    use crate::layout::LayerLayout;
     #[cfg(any(test, feature = "bench"))]
     use crate::layout::Layout;
+    #[cfg(test)]
+    use crate::layout::layer_layout::LayerLayout;
     #[cfg(test)]
     use crate::primitives::rect::Rect;
     #[cfg(test)]
