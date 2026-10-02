@@ -224,11 +224,11 @@ const PINS: &[Pin] = &[
     pin::<MeshInstance>("renderer::MeshInstance", 20, 4),
     pin::<ImageInstance>("renderer::ImageInstance", 44, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
-    pin::<RasterQuad>("atlas::RasterQuad", 24, 4),
+    pin::<RasterQuad>("atlas::RasterQuad", 28, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
     pin::<TextDrawRow>("renderer::TextDrawRow", 72, 8),
-    pin::<IconDrawRow>("renderer::IconDrawRow", 28, 4),
+    pin::<IconDrawRow>("renderer::IconDrawRow", 32, 4),
     pin::<ImageDrawRow>("renderer::ImageDrawRow", 56, 8),
     pin::<MeshDrawRow>("renderer::MeshDrawRow", 36, 4),
 ];

@@ -42,7 +42,8 @@ use crate::scene::shapes::paint::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
-use glam::{UVec2, Vec2};
+use crate::text::TEXT_SCALE_STEP;
+use glam::{U16Vec2, UVec2, Vec2};
 
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry;
@@ -380,17 +381,30 @@ impl PaintSink for ComposeSession<'_> {
         // The raster size is decided here, not upstream: this is the first
         // point that knows the display scale and every ancestor transform, and
         // so the first point that knows how many device pixels the icon covers.
-        let key = IconRasterKey::for_box(p.icon, Vec2::new(phys_rect.size.w, phys_rect.size.h));
-        // Whole-pixel origin, with the raster centred in the box it was sized
-        // from. The ladder can round the raster a pixel or two off that box
-        // (§ `IconRasterKey`), and centring spreads the difference instead of
-        // piling it on one edge; the `Nearest` atlas sampler is why the origin
-        // itself must land on integers.
-        let size = key.size().as_vec2();
-        let centred = phys_rect.min + (Vec2::new(phys_rect.size.w, phys_rect.size.h) - size) * 0.5;
+        let box_px = Vec2::new(phys_rect.size.w, phys_rect.size.h);
+        let key = IconRasterKey::for_box(p.icon, box_px);
+        let (origin, size) = if key.is_exact() {
+            // Whole-pixel origin, with the raster centred in the box it was
+            // sized from: it is that box rounded, so centring spreads the
+            // rounding over both edges, and the `Nearest` atlas sampler is
+            // why the origin itself must land on integers.
+            let centred = phys_rect.min + (box_px - key.size().as_vec2()) * 0.5;
+            (centred.fast_round().as_ivec2(), key.size())
+        } else {
+            // Above the exact band the raster is a rung near the box, or the
+            // capped one far below it; drawn at its own size it would stick
+            // out of the box the cull and damage rects come from, or leave a
+            // gap inside it. So the quad is the box, in whole pixels, and the
+            // raster is resampled to fill it.
+            let min = phys_rect.min.fast_round();
+            let max = phys_rect.max().fast_round();
+            let size = (max - min).max(Vec2::ONE);
+            (min.as_ivec2(), U16Vec2::new(size.x as u16, size.y as u16))
+        };
         self.out.icons.push(IconDrawRow {
             key,
-            origin: centred.fast_round().as_ivec2(),
+            origin,
+            size,
             color: p.tint,
             desaturate: p.desaturate,
         });
@@ -798,10 +812,24 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn text(&mut self, t: DrawTextPayload) {
-        let ScaledRect {
-            phys: phys_rect,
-            urect: unclipped,
-        } = self.scaled_rect(t.rect);
+        let world = self.composer.transform.apply_rect(t.rect);
+        let scale = self.out.display.scale_factor();
+        let phys_rect = world.scaled_by(scale, self.out.display.pixel_snap);
+        // What the glyphs can reach: the block from the origin they are
+        // placed at, at its true size — pixel snapping moves the origin,
+        // never the glyphs' extent — padded by the scale-step fraction a
+        // snapped text scale can add, the same pad the run's damage rect
+        // carries (`text_paint_bbox_local`). Covered, never rounded in, so
+        // the last column of antialiasing is not cut.
+        let unclipped = {
+            let size = Vec2::new(world.size.w, world.size.h) * scale;
+            let pad = size * (TEXT_SCALE_STEP * 0.5);
+            geometry::urect_from_phys(
+                phys_rect.min - pad,
+                phys_rect.min + size + pad,
+                self.out.display.physical,
+            )
+        };
         // `bounds` feeds the batch GPU scissor (union of the
         // batch's runs — see the strict-bounds rule below) and
         // the backend's per-line y-cull; there is no per-glyph
