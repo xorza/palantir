@@ -3,7 +3,7 @@ use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::{IconDef, IconId, IconTable};
-use crate::icons::test_svgs::BROKEN;
+use crate::icons::test_support::BROKEN;
 use crate::primitives::content_type::ContentType;
 use crate::primitives::raster_image::RasterImage;
 use crate::primitives::span::Span;

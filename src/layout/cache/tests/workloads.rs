@@ -1,7 +1,7 @@
 //! What the cache retains for the bench's adversarial tree shapes, and
 //! which subtrees a localized change still hits.
 
-use crate::layout::cache::workloads::{
+use crate::layout::cache::test_support::{
     BROAD_DEPTH, BROAD_FANOUT, DEEP_DEPTH, build_broad, build_broad_variant, build_deep,
 };
 use crate::scene::layer::Layer;

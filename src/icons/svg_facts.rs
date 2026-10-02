@@ -108,7 +108,7 @@ impl Survey {
 #[cfg(test)]
 mod tests {
     use crate::icons::svg_facts::SvgFacts;
-    use crate::icons::test_svgs::{BROKEN, ONE_COLOUR, TWO_COLOURS};
+    use crate::icons::test_support::{BROKEN, ONE_COLOUR, TWO_COLOURS};
     use glam::Vec2;
 
     const GRADIENT: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><linearGradient id="g"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="16" height="16" fill="url(#g)"/></svg>"##;
