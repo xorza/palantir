@@ -182,36 +182,30 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     assert_eq!(*first.a(), start);
     assert!(!first.report().repaint_requested);
 
-    let mut now = Duration::from_millis(16);
-    let retarget = frame(h.at(now), &target);
+    let tick = Duration::from_millis(16);
+    let retarget = frame(h.advance(tick), &target);
     assert_eq!(retarget.a().background.fill, gradient);
     assert_ne!(retarget.a().text.color, target.text.color);
     assert!(retarget.report().repaint_requested);
 
-    let mut settled_at = None;
-    for frame_index in 0..600 {
-        now += Duration::from_millis(16);
-        let output = frame(h.at(now), &target);
-        assert_eq!(output.a().background.fill, gradient);
-        if !output.report().repaint_requested {
-            assert_eq!(*output.a(), target);
-            settled_at = Some(frame_index);
-            break;
-        }
-    }
-    // The text colour moves black → white, √3 in linear RGB; the gradient
-    // snaps. The retarget frame stepped nothing, so loop frame `i` is
-    // step `i + 1`.
+    // The gradient snaps and holds through every frame of the fade.
+    let mut last = None;
+    let frames = h.frames_until_idle(600, tick, |ui| {
+        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
+        assert_eq!(current.background.fill, gradient);
+        Block::new()
+            .id(WidgetId::from_hash("gradient-look-settle"))
+            .show(ui);
+        last = Some(current);
+    });
+    // The text colour moves black → white, √3 in linear RGB. The retarget
+    // frame stepped nothing, so frame `n` after it is step `n`.
     let step = closed_form_settle_step(170.0, 26.0, 3.0f64.sqrt(), |_| 0.016);
     assert_eq!(step, 59);
-    assert_eq!(
-        settled_at,
-        Some(step - 1),
-        "the look's color spring settles"
-    );
+    assert_eq!(frames, Some(step), "the look's color spring settles");
+    assert_eq!(last, Some(target.clone()));
 
-    now += Duration::from_millis(16);
-    let after_settle = frame(h.at(now), &target);
+    let after_settle = frame(h.advance(tick), &target);
     assert_eq!(*after_settle.a(), target);
     assert!(
         !after_settle.report().repaint_requested,

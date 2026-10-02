@@ -62,19 +62,29 @@ fn scale_makes_the_surface_physical_and_positions_logical() {
 /// while the window manager still sees 100×60.
 #[test]
 fn user_scale_multiplies_onto_the_dpr() {
-    let harness = UiHarness::new(SURFACE)
+    let mut harness = UiHarness::new(SURFACE)
         .scale(2.0)
         .user_scale(UserScale::new(1.25));
-    let display = harness.display;
+    let display = harness.ui.display;
 
     assert_eq!(display.scale_factor(), 2.5);
     assert_eq!(display.logical_size(), Size::new(80.0, 48.0));
     assert_eq!(display.system_logical_size(), Size::new(100.0, 60.0));
-    assert_eq!(
-        harness.ui.user_scale(),
-        UserScale::new(1.25),
-        "the harness writes both homes of the value",
-    );
+
+    // The setting is the one home: a change made inside a frame stamps
+    // the next frame, as the window driver derives it.
+    harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5)));
+    harness.frame(button);
+    assert_eq!(harness.ui.display.scale_factor(), 3.0);
+
+    // And a display swapped in carries its scale onto the setting.
+    let swapped = Display {
+        user_scale: UserScale::new(2.0),
+        ..harness.ui.display
+    };
+    harness.set_display(swapped);
+    assert_eq!(harness.ui.user_scale(), UserScale::new(2.0));
+    assert_eq!(harness.ui.display.scale_factor(), 4.0);
 }
 
 /// A user-scale move between frames must escalate to a full repaint, the
@@ -87,7 +97,7 @@ fn a_user_scale_move_repaints_in_full() {
 
     let zoomed = Display {
         user_scale: UserScale::new(1.5),
-        ..harness.display
+        ..harness.ui.display
     };
     assert_eq!(
         harness.set_display(zoomed).frame(button).paint(),

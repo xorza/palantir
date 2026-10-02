@@ -33,6 +33,14 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
         button(ui);
     });
     assert_eq!(passes.take(), 1);
+
+    // A builder on a cold harness keeps it cold.
+    let mut scaled = UiHarness::cold(SURFACE).scale(2.0);
+    scaled.frame(|ui| {
+        passes.0 += 1;
+        button(ui);
+    });
+    assert_eq!(passes.take(), 2, "a scaled cold frame 1 still warms up");
 }
 
 #[test]

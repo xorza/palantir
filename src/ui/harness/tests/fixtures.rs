@@ -1,33 +1,8 @@
-//! The non-frame affordances: the arena, the clipboard, a shared text
-//! cache, and the collision report.
+//! The non-frame affordances: the arena, the clipboard, and a shared text
+//! cache.
 
-use crate::ui::harness::tests::support::{SURFACE, button, target};
+use crate::ui::harness::tests::support::SURFACE;
 use crate::ui::harness::*;
-use crate::widgets::button::Button;
-use crate::widgets::configure::Configure;
-use crate::widgets::panel::Panel;
-
-#[test]
-fn collisions_surface_duplicate_explicit_ids() {
-    // Two siblings under one explicit id — invisible at runtime except
-    // as a magenta overlay, and invisible to a test without this.
-    let mut harness = UiHarness::new(SURFACE);
-    harness.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            for _ in 0..2 {
-                Button::new().id(target()).label("dup").show(ui);
-            }
-        });
-    });
-
-    let collisions = harness.collisions();
-    assert_eq!(collisions.len(), 1, "one colliding pair");
-    assert_eq!(collisions[0].0, target(), "reported under the explicit id");
-
-    let mut clean = UiHarness::new(SURFACE);
-    clean.frame(button);
-    assert!(clean.collisions().is_empty(), "distinct ids do not collide");
-}
 
 #[test]
 fn clipboard_round_trips_through_the_harness() {

@@ -42,7 +42,7 @@ use std::collections::hash_map::Entry;
 /// [`SeenIds::record_endpoint`] hands back when the endpoint it just
 /// filed completed a pair. Logged by `Forest` in every profile, then
 /// accumulated into `Forest.collisions` for `encoder::collision_overlay`
-/// (`debug_assertions`) and `UiHarness::collisions` (`internals`).
+/// (`debug_assertions`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CollisionRecord {
     pub(crate) first: Endpoint,
