@@ -242,3 +242,47 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
         );
     }
 }
+
+/// A Hug `Scroll::vertical()` in a 300 px column wraps its text at 300.
+/// The scroll's outer frame is a Hug ZStack around a Fill viewport, and a
+/// Hug ZStack offers its children the room it can grow to — the column's
+/// 300 px — as `Stack` offers its cross axis. Offered `INFINITY` there,
+/// the paragraph shaped as one line far wider than the column, and the
+/// viewport clipped it.
+#[test]
+fn a_hug_scroll_wraps_its_text_at_the_column_width() {
+    use crate::widgets::scroll::Scroll;
+
+    let paragraph = [PARAGRAPH; 4].join(" ");
+    let mut h = UiHarness::with_text(UVec2::new(600, 400));
+    let mut text_node = None;
+    h.frame(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(300.0), Sizing::HUG))
+            .show(ui, |ui| {
+                Scroll::vertical().auto_id().show(ui, |ui| {
+                    text_node = Some(
+                        Text::new(&paragraph)
+                            .auto_id()
+                            .style(&TextStyle::default().with_font_size(16.0))
+                            .text_wrap(TextWrap::WrapWithOverflow)
+                            .show(ui)
+                            .node(),
+                    );
+                });
+            });
+    });
+    let node = text_node.unwrap();
+    let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
+    assert!(
+        shaped.measured.w <= 300.0,
+        "shaped {} wide in a 300 px column",
+        shaped.measured.w,
+    );
+    assert!(
+        shaped.measured.h > 32.0,
+        "the paragraph spans several lines, got h={}",
+        shaped.measured.h,
+    );
+}

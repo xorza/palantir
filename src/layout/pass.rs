@@ -88,23 +88,18 @@ impl<'a> LayoutPass<'a> {
     ///
     /// `offset` is where the panel places a child inside its own inner
     /// rect — always zero for a ZStack, the declared position for a
-    /// Canvas. Both halves of the answer come from it, per axis:
+    /// Canvas. Every axis offers the child the room left *past* the
+    /// offset: what `arrange` will hand it on a bounded axis, and on a
+    /// Hug axis the most the panel can grow to, since a Hug panel resolves
+    /// to `min(content, available)`. Offering more makes a wrapping child
+    /// report a height for a width it will not get — `Stack` offers its
+    /// cross axis the same finite room. An unbounded parent still offers
+    /// `INFINITY`, and the room past it stays unbounded.
     ///
-    /// - A **bounded** axis offers the room left *past* the offset, which
-    ///   is what `arrange` will hand the child. Offering the whole extent
-    ///   from an offset origin makes a wrapping child report a height for
-    ///   a width it will not get.
-    /// - A **Hug** axis offers `INFINITY` and folds the offset back into
-    ///   the extent reported, because a panel that hugs has no extent to
-    ///   divide yet and has to cover where it put things.
+    /// The extent reported differs per axis: a bounded axis reports the
+    /// child's own extent, and a Hug axis folds the offset back in,
+    /// because a panel that hugs has to cover where it put things.
     ///
-    /// `INF` here is *height-given-width* via measure, not an
-    /// intrinsic-replaceable sentinel — replacing it with
-    /// `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
-    /// nested containers whose main-axis size depends on cross-axis (Grid
-    /// with wrapping cells, etc.): intrinsic queries the unbounded shape,
-    /// while INF-measure runs the child's full layout under the committed
-    /// cross.
     pub(super) fn measure_per_axis_hug(
         &mut self,
         node: NodeId,
@@ -116,10 +111,10 @@ impl<'a> LayoutPass<'a> {
         let mut max = Size::ZERO;
         for c in tree.active_children(node) {
             let at = offset(tree, c);
-            // A hug axis measures unbounded and then grows to cover where
-            // the child was put; a bounded one offers the room past that
-            // position and reports the child's extent alone.
-            let d = self.measure(c, Size::INF.select(hug, inner_avail.room_past(at)));
+            // Both kinds of axis offer the room past the child's position;
+            // a hug axis then grows to cover where the child was put, and a
+            // bounded one reports the child's extent alone.
+            let d = self.measure(c, inner_avail.room_past(at));
             let past = Size::new(at.x + d.w, at.y + d.h);
             max = max.max(past.select(hug, d));
         }
@@ -286,7 +281,16 @@ impl LayoutPass<'_> {
                 // so a length mismatch here would mean the rollup is broken.
                 debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start));
                 self.engine.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
-                self.engine.scratch.arrange_src[curr_start] = hit.nodes_base;
+                // Every node of the subtree, not only its root: each one's
+                // desired and authoring is proven alike, so a descendant
+                // arranged at its cached size replays even where the root,
+                // arranged at a new size, has to dispatch.
+                for (src, offset) in self.engine.scratch.arrange_src[curr_start..curr_end]
+                    .iter_mut()
+                    .zip(0..)
+                {
+                    *src = hit.nodes_base + offset;
+                }
                 self.engine.scratch.restore_after_cache_hit(
                     tree,
                     curr_start..curr_end,

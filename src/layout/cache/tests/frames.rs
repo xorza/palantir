@@ -746,3 +746,87 @@ fn moved_subtree_replays_translated_rects() {
         "translated replay diverged from a cold remeasure",
     );
 }
+
+/// A hit subtree whose root is arranged at a new size still replays the
+/// descendants that keep theirs. The `stable` panel fills a Hug ZStack
+/// whose width follows a sibling: measured against the ZStack's constant
+/// offer, it hits the cache, but it is arranged at the grown width, so its
+/// own driver runs. Its rows are a fixed 60×20 at the top-left of it and
+/// arranged unchanged, so each replays its cached rects instead of
+/// dispatching.
+#[test]
+fn a_resized_hit_root_replays_its_unchanged_descendants() {
+    const ROWS: usize = 3;
+    let record = |ui: &mut Ui, grower_w: f32, capture: &mut Vec<NodeId>| {
+        capture.clear();
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("host"))
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Panel::zstack()
+                            .id(WidgetId::from_hash("grower"))
+                            .size((Sizing::fixed(grower_w), Sizing::fixed(80.0)))
+                            .show(ui, |_ui| {});
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("stable"))
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                for row in 0..ROWS {
+                                    let outer = Panel::hstack()
+                                        .id(WidgetId::from_hash(("row", row)))
+                                        .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
+                                        .show(ui, |ui| {
+                                            capture.push(
+                                                Panel::zstack()
+                                                    .id(WidgetId::from_hash(("cell", row)))
+                                                    .size((Sizing::fixed(30.0), Sizing::FILL))
+                                                    .show(ui, |_ui| {})
+                                                    .response
+                                                    .node(),
+                                            );
+                                        });
+                                    capture.push(outer.response.node());
+                                }
+                            });
+                    });
+            });
+    };
+    let rects = |ui: &Ui, nodes: &[NodeId]| -> Vec<_> {
+        nodes
+            .iter()
+            .map(|&n| ui.arranged_rect(Layer::Main, n))
+            .collect()
+    };
+
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut nodes = Vec::new();
+    h.frame(|ui| record(ui, 100.0, &mut nodes));
+    h.frame(|ui| record(ui, 150.0, &mut nodes));
+    assert!(
+        h.engines
+            .layout
+            .scratch
+            .counters
+            .cache_hits()
+            .contains(&WidgetId::from_hash("stable")),
+        "premise: the stable panel's measure hits the cache",
+    );
+    assert_eq!(
+        h.engines.layout.scratch.counters.arrange_replays().copied,
+        ROWS as u32,
+        "each row, arranged where it was, replays",
+    );
+    let warm = rects(&h.ui, &nodes);
+
+    h.engines.layout.cache.forget_all();
+    h.frame(|ui| record(ui, 150.0, &mut nodes));
+    assert_eq!(
+        warm,
+        rects(&h.ui, &nodes),
+        "replay diverged from a cold remeasure"
+    );
+}

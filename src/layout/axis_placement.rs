@@ -128,17 +128,20 @@ impl AxisPlacement {
 /// rather than clipping its own content. A `Scroll` viewport is the
 /// exception, because clipping its content is exactly what it is for.
 /// `Scroll::measure` reports the content extent so a `Hug` wrapper can size
-/// to it, and a `Hug` parent measures its children against `INFINITY`, so
-/// the desired that reaches placement is the content's rather than anything
-/// the slot can hold. Both axes, not just the panned ones: a viewport clips
+/// to it, so the desired that reaches placement is the content's rather
+/// than anything the slot can hold. Both axes, not just the panned ones: a viewport clips
 /// on every side, and a cross axis wider than the slot would paint outside
 /// the clip its own subtree is scissored to.
 ///
 /// Stated here rather than in one driver because *every* placement goes
 /// through [`AxisPlacement::arrange`]. Stated per driver instead, a scroll
 /// inside a Grid, a Canvas or a stack's cross axis gets no such clamp.
-/// A stack's *main* axis needs none: its flex solver shrinks against the
-/// zero min-content a panned scroll reports.
+/// A stack's *main* axis needs none for a `Fill` scroll: its flex solver
+/// shrinks the scroll against the zero min-content a panned scroll
+/// reports. A `Hug` scroll there keeps the stack contract every non-`Fill`
+/// child keeps — measured against the stack's whole extent and never
+/// shrunk to what its siblings leave — so it can run past the stack; a
+/// scroll meant to take the remaining space is `Fill`.
 fn clip_scroll_to_slot(child: &LayoutCore, desired: f32, slot: f32) -> f32 {
     match LayoutMode::from(child.meta) {
         LayoutMode::Scroll(_) => desired.min(slot),

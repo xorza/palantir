@@ -202,8 +202,12 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
 ///
 /// Geometry: two 50.0625-wide cells total 100.125, and at scale 4 a
 /// 400 px surface is 100.0 logical while a 401 px one is 100.25. The raw
-/// sum falls between them, and both round to a 100 px budget — so the
-/// pair wraps at either width and the stack stands two 20 px lines tall.
+/// sum falls between them; both widths round to a 100 px budget and the
+/// sum rounds to 100, so the pair fits one 20 px line at either width.
+///
+/// A Hug stack arranged at its own width keeps its lines too: two 100.2 px
+/// cells measure one line 200.4 wide, and arranged at that width — a
+/// 200 px budget — the 200.4 extent rounds to it and still fits.
 #[test]
 fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
     fn build(ui: &mut crate::Ui) {
@@ -227,12 +231,25 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
 
     assert_eq!(
         height(&cold),
-        40.0,
-        "100.125 of children past a 100 px budget takes two lines",
+        20.0,
+        "100.125 of children rounds to a 100 px budget and fits one line",
     );
     assert_eq!(
         height(&warm),
         height(&cold),
         "a warm frame must answer what a cold one answers for the same surface",
     );
+
+    let mut h = UiHarness::new(UVec2::new(400, 300));
+    h.frame(|ui| {
+        Panel::wrap_hstack()
+            .id(WidgetId::from_hash("w"))
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                cell(ui, "a", 100.2, 20.0);
+                cell(ui, "b", 100.2, 20.0);
+            });
+    });
+    assert_eq!(rect_of(&h, "w").size.h, 20.0, "one line, as measured");
+    assert_eq!(rect_of(&h, "b").min.y, rect_of(&h, "a").min.y, "b beside a");
 }

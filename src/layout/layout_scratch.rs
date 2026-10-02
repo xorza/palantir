@@ -33,8 +33,8 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///   computed".
 /// - `available_q` — quantized offer per node, the key
 ///   [`MeasureCache`](crate::layout::cache::MeasureCache) records a subtree under.
-/// - `arrange_src` — snapshot arena base of each subtree measure
-///   restored from the cache this frame.
+/// - `arrange_src` — snapshot arena row of each node whose subtree
+///   measure was restored from the cache this frame.
 /// - `stack_fill` — Fill-freeze scratch, same depth-shared shape as
 ///   `wrap`.
 /// - `counters` — test-only observability for the run.
@@ -85,11 +85,12 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 /// un-reset. Behaviour is pinned per-driver by the fixtures in
 /// `src/layout/cache/tests/frames.rs`.
 ///
-/// `arrange_src` is the one category-(2) field arrange *consumes* rather
-/// than reads through: measure stamps the snapshot arena base of every
-/// subtree it short-circuited, and
+/// `arrange_src` belongs to none of the three: it is frame-local, never
+/// captured or restored. Measure stamps it on every node of a subtree it
+/// short-circuited, with that node's row in the snapshot arena, and
 /// [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged)
-/// replays that subtree's rects instead of re-running the drivers.
+/// replays a node's subtree rects from there instead of re-running the
+/// drivers.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
     /// Test-only observability for this run — see [`LayoutCounters`].
@@ -98,9 +99,10 @@ pub(crate) struct LayoutScratch {
     pub(super) wrap: WrapScratch,
     pub(super) stack_fill: StackScratch,
     pub(super) desired: Vec<Size>,
-    /// Snapshot arena base of each subtree root measure restored from the
-    /// cache this frame, or [`NO_ARRANGE_SRC`]. Written at the measure-hit
-    /// site, read once per node by `arrange`.
+    /// Snapshot arena row of each node whose subtree measure was restored
+    /// from the cache this frame — the hit root and every node under it —
+    /// or [`NO_ARRANGE_SRC`]. Written at the measure-hit site, read once
+    /// per node by `arrange`.
     pub(super) arrange_src: Vec<u32>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(super) available_q: Vec<AvailableKey>,

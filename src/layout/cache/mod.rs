@@ -60,11 +60,11 @@ pub(super) struct CachedSubtree<'a> {
 
 #[derive(Debug)]
 pub(super) struct CaptureTreeInput<'a> {
-    pub(super) desired: &'a mut Vec<Size>,
+    pub(super) desired: &'a [Size],
     pub(super) rect: &'a [Rect],
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(super) available_q: &'a mut Vec<AvailableKey>,
+    pub(super) available_q: &'a [AvailableKey],
     pub(super) grid_track_state: &'a GridTrackStore,
     pub(super) text_spans: &'a [Span],
     pub(super) text_shapes: &'a [ShapedText],
@@ -464,16 +464,15 @@ impl MeasureCache {
             self.current.descriptor_wids.push(wid);
         }
 
-        if node_base == 0 {
-            std::mem::swap(&mut self.current.nodes.desired, desired);
-            std::mem::swap(&mut self.current.nodes.available_q, available_q);
-        } else {
-            self.current.nodes.desired.extend_from_slice(desired);
-            self.current
-                .nodes
-                .available_q
-                .extend_from_slice(available_q);
-        }
+        // Copied for every layer, the first included, like the columns
+        // above: a swap for the first would leave the engine's scratch
+        // columns empty until the next `resize_for`, while the
+        // container-text pass still runs.
+        self.current.nodes.desired.extend_from_slice(desired);
+        self.current
+            .nodes
+            .available_q
+            .extend_from_slice(available_q);
     }
 
     pub(super) fn end_frame(&mut self) {
