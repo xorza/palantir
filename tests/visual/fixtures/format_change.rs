@@ -242,3 +242,19 @@ fn images_survive_format_change_without_reupload() {
         report.differing_ratio,
     );
 }
+
+/// A unorm target would store the renderer's linear light as is and draw
+/// every colour too dark with no error, so the first frame into one
+/// refuses it.
+#[test]
+#[should_panic(expected = "render target format Rgba8Unorm does not encode linear light")]
+fn a_unorm_target_is_refused() {
+    let mut h = Harness::new();
+    let _ = h.render_to_format(
+        TextureFormat::Rgba8Unorm,
+        UVec2::new(32, 32),
+        1.0,
+        DARK_BG,
+        scene,
+    );
+}

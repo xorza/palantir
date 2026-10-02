@@ -48,7 +48,10 @@ impl<'a> RenderTarget<'a> {
 /// Render into `texture`.
 ///
 /// It must carry `RENDER_ATTACHMENT`, and `COPY_DST` as well when the host
-/// presents through its backbuffer.
+/// presents through its backbuffer. Its format must be an sRGB one or a
+/// float one (`Rgba16Float`, `Rgba32Float`, `Rg11b10Ufloat`): the renderer
+/// writes linear light and relies on the target to encode it. Rendering
+/// into any other format panics on the first frame.
 impl<'a> From<&'a wgpu::Texture> for RenderTarget<'a> {
     fn from(texture: &'a wgpu::Texture) -> Self {
         Self { texture }
