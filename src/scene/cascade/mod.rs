@@ -13,6 +13,7 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+pub(crate) mod cascade_key;
 pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod entry;
@@ -23,6 +24,7 @@ use crate::common::content_hash::ContentHash;
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::entry::{
     EntryRow, HitRow, HitTargets, PressTargets, ScopeRow, WidgetLocation,
 };
@@ -105,20 +107,6 @@ impl CascadeInputHash {
 ///   walked column.
 #[derive(Debug, Default)]
 pub(crate) struct LayerCascade {
-    /// Paint-excluding authoring hash from the last full rebuild.
-    static_hash: ContentHash,
-    /// `Tree::fingerprint.paint_counts` as of the last full rebuild.
-    /// The incremental walk can only repair paint rows in place, so a
-    /// changed row count sends it home empty-handed after it has already
-    /// walked part of the tree; comparing this first turns that wasted
-    /// half-walk into an immediate full rebuild.
-    paint_counts: ContentHash,
-    /// `LayerLayout::rect_hash` as of the last full rebuild — the arranged
-    /// geometry these retained rows were built against.
-    /// [`CascadeEngine::can_update`](engine::CascadeEngine::can_update)
-    /// compares it to the live layout's hash to decide whether the retained
-    /// non-paint columns still describe the current arrangement.
-    layout_hash: ContentHash,
     /// Per-node `cascade_input` fingerprint, indexed the same way as
     /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
     /// ancestor state + own arranged rect hash with the cascade-resolved
@@ -157,8 +145,7 @@ pub(crate) struct LayerCascade {
     pub(super) paint_arena: PaintArena,
     /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
     /// rows were built from — the per-node half of the validity gate
-    /// whose whole-layer half is [`Self::static_hash`],
-    /// [`Self::paint_counts`] and [`Self::layout_hash`]. An
+    /// whose whole-layer half is [`Cascade::key`]. An
     /// incremental repair descends exactly where this disagrees with the
     /// live rollup and re-stamps what it repaired. Dirty ancestors
     /// recompute their own paint rows, so no separate per-node paint hash
@@ -225,8 +212,8 @@ pub(crate) struct Cascade {
     /// ([`crate::input::input_state::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
     /// the end of the most recent `CascadeEngine::run`** — a full
-    /// rebuild populates it with `clone_from(&seen.curr)`; paint-only
-    /// runs retain it because their preflight includes every widget
+    /// rebuild refills it from `seen.curr`, and paint-only runs and
+    /// skips retain it because [`Self::key`] includes every widget
     /// identity. The snapshot is required (rather than reading
     /// `seen.curr` directly) because `response_for` is called during
     /// recording, and `SeenIds::pre_record` clears `curr` at the top
@@ -238,6 +225,9 @@ pub(crate) struct Cascade {
     /// on a full rebuild in exchange for not paying an O(N) hashmap
     /// insert per widget.
     pub(crate) by_id: WidgetIdMap<Endpoint>,
+    /// The inputs this cascade was built from; `None` before the first
+    /// run.
+    pub(crate) key: Option<CascadeKey>,
 }
 
 impl Cascade {

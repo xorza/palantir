@@ -163,18 +163,9 @@ impl LayerLayout {
         text_spans.resize(n, Span::default());
     }
 
-    /// Summary of the arranged rects, for the cascade's
-    /// incremental-validity check (`CascadeEngine::can_update`): it
-    /// retains this value from its last full rebuild and compares to
-    /// decide whether the rows it kept still describe the current
-    /// arrangement.
-    ///
-    /// **Computed on demand, not cached on the struct.** Only the
-    /// cascade wants it, and the cascade is skipped outright on most
-    /// frames (`FrameCycle::post_record`'s fingerprint gate). Refreshing it at
-    /// the tail of every `LayoutEngine::run` would charge every layout
-    /// pass — including the cache-hit ones that touch nothing else —
-    /// for an answer usually nobody reads.
+    /// Summary of the arranged rects, for the cascade key
+    /// (`CascadeKey::new`): a cascade built against other rects is
+    /// neither skipped nor repaired in place.
     ///
     /// Hashed as raw bytes rather than through `approx`'s visual
     /// quantisation on purpose: this gates a *cache-validity* decision,

@@ -83,7 +83,7 @@ impl Layer {
 /// [`Self::iter_mut`] when the layer doesn't matter, and
 /// [`Self::iter_paint_order`] when it does. The backing array is private
 /// so those stay the only spellings.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub(crate) struct PerLayer<T>([T; Layer::COUNT]);
 
