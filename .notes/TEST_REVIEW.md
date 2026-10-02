@@ -29,7 +29,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 14. Missing coverage for computable logic
 
-- [ ] `runtime.rs:196` `schedule`, `native.rs:125` `position_on_monitor`, and the scale-change resync in `winit/mod.rs` are pure folds behind `ActiveEventLoop`. Extract them as functions over slices and table-test them.
 - [ ] `anim-derive`'s two error arms (a non-struct input, an unknown `#[animate(..)]` option) have no `compile_fail` test. `trybuild` would cover them at a cost of seconds per run, past the 1 s test budget. (judgement)
 
 ## 15. Duplicated fixtures and setup

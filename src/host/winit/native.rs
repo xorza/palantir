@@ -123,13 +123,21 @@ fn with_app_id(attrs: WindowAttributes, _cfg: &WindowConfig) -> WindowAttributes
 /// connected monitor's bounds — the guard that keeps a restored position
 /// from placing the window off every screen.
 fn position_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
-    event_loop.available_monitors().any(|m| {
-        let mp = m.position();
-        let ms = m.size();
-        pos.x >= mp.x
-            && pos.y >= mp.y
-            && pos.x < mp.x + ms.width as i32
-            && pos.y < mp.y + ms.height as i32
+    within_any(
+        pos,
+        event_loop.available_monitors().map(|m| {
+            let (at, size) = (m.position(), m.size());
+            (IVec2::new(at.x, at.y), UVec2::new(size.width, size.height))
+        }),
+    )
+}
+
+/// Whether `pos` lies in any of `monitors`, each a physical top-left and
+/// extent: the top-left edges inside, the far edges out.
+fn within_any(pos: IVec2, monitors: impl IntoIterator<Item = (IVec2, UVec2)>) -> bool {
+    monitors.into_iter().any(|(at, size)| {
+        let end = at + size.as_ivec2();
+        pos.x >= at.x && pos.y >= at.y && pos.x < end.x && pos.y < end.y
     })
 }
 
@@ -143,7 +151,28 @@ pub(super) fn physical_size(window: &WinitWindow) -> UVec2 {
 mod tests {
     use crate::host::winit::native;
     use crate::primitives::image::Image;
-    use glam::UVec2;
+    use glam::{IVec2, UVec2};
+
+    /// A restored position must land on a screen: inside one of two
+    /// side-by-side monitors counts, their top-left edges included and
+    /// their far edges not, and no monitor at all places nothing.
+    #[test]
+    fn a_position_is_on_a_monitor_only_inside_its_bounds() {
+        let left = (IVec2::new(0, 0), UVec2::new(1920, 1080));
+        let right = (IVec2::new(1920, 0), UVec2::new(2560, 1440));
+        for (pos, on) in [
+            (IVec2::new(100, 100), true),
+            (IVec2::new(0, 0), true),
+            (IVec2::new(1919, 1079), true),
+            (IVec2::new(1920, 1200), true),
+            (IVec2::new(1919, 1080), false),
+            (IVec2::new(4480, 0), false),
+            (IVec2::new(-1, 10), false),
+        ] {
+            assert_eq!(native::within_any(pos, [left, right]), on, "{pos}");
+        }
+        assert!(!native::within_any(IVec2::ZERO, []), "no monitor, no place");
+    }
 
     #[test]
     fn validated_window_icon_converts_to_the_platform_type() {
