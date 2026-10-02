@@ -1,13 +1,11 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
 use crate::Ui;
-use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::renderer::render_plan::RenderPlan;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::ui::frame_report::FrameProcessing;
@@ -408,7 +406,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::shape::Shape;
-    use crate::text::shaper::TextShaper;
+
     use std::collections::HashSet;
 
     fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
@@ -437,11 +435,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     }
 
-    let shared = UiResources::new(
-        TextShaper::test_mono(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_mono();
     let atlas = shared.gradient_atlas().clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
