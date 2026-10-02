@@ -265,7 +265,7 @@ impl MeasureCache {
                 let root = slot.first_node;
                 let current = RootSnapshotKey {
                     wid: tree.records.widget_id()[root.idx()],
-                    subtree_hash: tree.rollups.subtree[root.idx()],
+                    subtree_hash: tree.rollups.layout_subtree[root.idx()],
                     available_q: quantize_available(slot.available(layer, surface)),
                 };
                 if snapshot.roots[root_index] != current {
@@ -427,7 +427,7 @@ impl MeasureCache {
             let index = slot.first_node.idx();
             self.current.roots.push(RootSnapshotKey {
                 wid: tree.records.widget_id()[index],
-                subtree_hash: tree.rollups.subtree[index],
+                subtree_hash: tree.rollups.layout_subtree[index],
                 available_q: available_q[index],
             });
         }
@@ -455,7 +455,7 @@ impl MeasureCache {
                 ^ wid.0)
                 .wrapping_mul(0x517c_c1b7_2722_0a95);
             self.current.descriptors.push(ArenaSnapshot {
-                subtree_hash: tree.rollups.subtree[index],
+                subtree_hash: tree.rollups.layout_subtree[index],
                 available_q: available_q[index],
                 nodes: Span::new(node_base + index as u32, (end - index) as u32),
                 tracks,

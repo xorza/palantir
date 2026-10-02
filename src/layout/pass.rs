@@ -273,7 +273,7 @@ impl LayoutPass<'_> {
         // for `Hug` / `Fill` axes.
         if LayoutMode::from(layout.meta) != LayoutMode::Leaf {
             let cache_wid = tree.records.widget_id()[node.idx()];
-            let cache_hash = tree.rollups.subtree[node.idx()];
+            let cache_hash = tree.rollups.layout_subtree[node.idx()];
             if let Some(hit) = self
                 .engine
                 .cache
