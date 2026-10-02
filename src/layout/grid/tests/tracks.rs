@@ -462,13 +462,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[0].idx()].size.h, 10.0);
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[1].idx()].size.h, 80.0);
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[2].idx()].size.h, 30.0);
-    assert_eq!(
-        h.layout_rect(WidgetId::from_hash("multi-row"))
-            .expect("arranged")
-            .size
-            .h,
-        120.0
-    );
+    assert_eq!(h.arranged(WidgetId::from_hash("multi-row")).size.h, 120.0);
 }
 
 fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {

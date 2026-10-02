@@ -190,7 +190,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     };
     h.prime(2, |ui| record(ui, &mut text, false));
 
-    let body_rect = h.layout_rect(body()).expect("a kept body still records");
+    let body_rect = h.arranged(body());
     assert_eq!(
         body_rect.size.h, 0.0,
         "a collapsed body takes no space: {body_rect:?}",
@@ -419,7 +419,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         record(ui);
     });
     // One mono line, 19.2 snapped to 19.203125, under 4 + 4 padding.
-    let whole = h.layout_rect(body()).expect("open").size.h;
+    let whole = h.arranged(body()).size.h;
     assert_eq!(whole, 19.203125 + 8.0);
     toggle(&mut h, &mut record);
     while h.frame_value(&mut record) > 0.0 {
@@ -433,7 +433,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         openness = h.frame_value(&mut record);
         if openness < 1.0 {
             assert_eq!(
-                h.layout_rect(body()).expect("revealing").size.h,
+                h.arranged(body()).size.h,
                 whole,
                 "the body lays out whole under the clip at {openness}",
             );

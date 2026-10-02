@@ -524,7 +524,7 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
             h.state::<ScrollState>(scroll_id).offset,
             Vec2::splat(offset)
         );
-        let laid = h.layout_rect(content_id).unwrap();
+        let laid = h.arranged(content_id);
         let transform = h.transform(content_id);
         let start = transform.apply_point(laid.min);
         let end = transform.apply_point(laid.max());

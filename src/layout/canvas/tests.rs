@@ -291,9 +291,7 @@ fn canvas_ignores_child_align() {
             .response
             .node()
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("aligned"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("aligned"));
     assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }

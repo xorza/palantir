@@ -95,9 +95,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                 });
         });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("hug-z"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("hug-z"));
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -243,11 +241,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                 );
             });
     });
-    let h = h
-        .layout_rect(WidgetId::from_hash("pg"))
-        .expect("arranged")
-        .size
-        .h;
+    let h = h.arranged(WidgetId::from_hash("pg")).size.h;
     assert!(
         h > 50.0,
         "grid must size to wrapped row heights, not single-line × 2; got h={h}"
@@ -298,11 +292,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     });
             });
     });
-    let h = h
-        .layout_rect(WidgetId::from_hash("nested-grid"))
-        .expect("arranged")
-        .size
-        .h;
+    let h = h.arranged(WidgetId::from_hash("nested-grid")).size.h;
     assert!(
         h > 30.0,
         "ZStack must pass `INF` on Hug axes so nested grid measures \

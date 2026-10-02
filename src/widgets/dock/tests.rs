@@ -904,9 +904,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
                 ..pane
             }
         );
-        let content = h
-            .layout_rect(d.content_id(group))
-            .expect("the content area arranged");
+        let content = h.arranged(d.content_id(group));
         assert_eq!(
             content,
             Rect::new(

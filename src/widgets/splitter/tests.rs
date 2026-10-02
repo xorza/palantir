@@ -87,7 +87,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
     assert_eq!(*held.a(), QUIET, "the binding did not move this frame");
-    let rect = h.layout_rect(split_id().with("first")).expect("arranged");
+    let rect = h.arranged(split_id().with("first"));
     assert_eq!(
         rect.size.w, 350.0,
         "min_pane(50) stops the current layout at 350 px, got {}",
@@ -182,7 +182,7 @@ fn divider_drag_is_scale_invariant() {
         h.press_on(split_id().with("divider"));
         // Drag targets along the splitter's own x, read before the drag
         // moves anything. Unchecked: the pane under one need not sense.
-        let layout = h.layout_rect(split_id()).expect("splitter arranged");
+        let layout = h.arranged(split_id());
         let transform = h.transform(split_id());
         let target = |x: f32| transform.apply_point(layout.min + Vec2::new(x, 50.0));
         h.move_to(target(300.5));
@@ -196,10 +196,7 @@ fn divider_drag_is_scale_invariant() {
         h.move_to(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
-            h.layout_rect(split_id().with("first"))
-                .expect("arranged")
-                .size
-                .w,
+            h.arranged(split_id().with("first")).size.w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
@@ -303,7 +300,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "{rigid_half:?} pane stops at its rigid content floor"
         );
-        let rigid_rect = h.layout_rect(split_id().with("rigid")).expect("arranged");
+        let rigid_rect = h.arranged(split_id().with("rigid"));
         assert_eq!(
             if horizontal {
                 rigid_rect.size.w
@@ -313,7 +310,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "rigid content remains laid out"
         );
-        let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
+        let first_rect = h.arranged(split_id().with("first"));
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");
@@ -437,7 +434,7 @@ fn divider_requests_the_resize_cursor() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
+        let first_rect = h.arranged(split_id().with("first"));
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");

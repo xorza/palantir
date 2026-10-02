@@ -40,9 +40,7 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
                 );
             });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("hug-grid"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("hug-grid"));
     assert_eq!(r.size.w, 80.0, "empty Fill col contributes no floor");
     assert_eq!(r.size.h, 40.0);
 }
@@ -78,9 +76,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
 
     let grid = h.ui.arranged_rect(Layer::Main, root);
     let cell = h.main_child_rects(root)[0];
-    let rigid = h
-        .layout_rect(WidgetId::from_hash("rigid"))
-        .expect("arranged");
+    let rigid = h.arranged(WidgetId::from_hash("rigid"));
     assert_eq!(grid.size, Size::new(120.0, 20.0));
     assert_eq!(cell.size, Size::new(120.0, 20.0));
     assert_eq!(rigid.size, Size::new(120.0, 20.0));
@@ -125,9 +121,7 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     });
 
     let siblings = h.main_child_rects(root);
-    let rigid = h
-        .layout_rect(WidgetId::from_hash("rigid"))
-        .expect("arranged");
+    let rigid = h.arranged(WidgetId::from_hash("rigid"));
     assert_eq!(siblings[0].size.w, 200.0);
     assert_eq!(siblings[1].min.x, 200.0);
     assert_eq!(siblings[1].size.w, 100.0);

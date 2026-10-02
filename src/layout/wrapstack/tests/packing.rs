@@ -2,7 +2,7 @@
 //! all.
 
 use crate::layout::types::{justify::Justify, sizing::Sizing};
-use crate::layout::wrapstack::tests::support::{cell, rect_of};
+use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -40,7 +40,10 @@ fn wrap_hstack_justify_per_line() {
         });
         // 200 wide, 60 + 10 + 60 = 130 used, 70 to place; each x is a
         // multiple of 0.5, so exact in f32.
-        let xs = [rect_of(&h, "a").min.x, rect_of(&h, "b").min.x];
+        let xs = [
+            h.arranged(WidgetId::from_hash("a")).min.x,
+            h.arranged(WidgetId::from_hash("b")).min.x,
+        ];
         assert_eq!(xs, *expected, "case: {label}");
     }
 }
@@ -70,9 +73,9 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
             .response
             .node()
     });
-    let a = rect_of(&h, "a");
-    let hidden = rect_of(&h, "hidden");
-    let b = rect_of(&h, "b");
+    let a = h.arranged(WidgetId::from_hash("a"));
+    let hidden = h.arranged(WidgetId::from_hash("hidden"));
+    let b = h.arranged(WidgetId::from_hash("b"));
     // a at 0, b at 70 — collapsed didn't insert a gap.
     assert_eq!(a.min.x, 0.0);
     assert_eq!(b.min.x, 70.0);
@@ -106,9 +109,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             .response
             .node()
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("filler"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("filler"));
     // Fill child got its min_size width (40), NOT the row leftover
     // (300 - 60 - 10 - 10 = 220). If a future change distributes
     // leftover, this assertion flips and the test becomes the spec.

@@ -5,7 +5,7 @@ use crate::Ui;
 use crate::layout::axis::Axis;
 use crate::layout::types::sizing::SizeSpec;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::wrapstack::tests::support::{cell, rect_of};
+use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
@@ -90,13 +90,13 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
                 .node()
         });
 
-        let wrap = rect_of(&h, "wrap");
+        let wrap = h.arranged(WidgetId::from_hash("wrap"));
         assert_eq!(wrap.size, case.expected_wrap, "case: {}", case.label);
-        let zero = rect_of(&h, "zero");
+        let zero = h.arranged(WidgetId::from_hash("zero"));
         assert_eq!(zero.min, Vec2::ZERO, "case: {} zero origin", case.label);
         assert_eq!(zero.size, zero_size, "case: {} zero size", case.label);
         if let Some(expected) = case.expected_normal_min {
-            let normal = rect_of(&h, "normal");
+            let normal = h.arranged(WidgetId::from_hash("normal"));
             assert_eq!(normal.min, expected, "case: {} normal origin", case.label);
         }
     }
@@ -122,9 +122,9 @@ fn wrap_hstack_line_height_is_max_child_cross() {
             .response
             .node()
     });
-    let tall = rect_of(&h, "tall");
-    let short = rect_of(&h, "short");
-    let next = rect_of(&h, "next-line");
+    let tall = h.arranged(WidgetId::from_hash("tall"));
+    let short = h.arranged(WidgetId::from_hash("short"));
+    let next = h.arranged(WidgetId::from_hash("next-line"));
     assert_eq!(tall.min.y, 0.0);
     assert_eq!(short.min.y, 0.0);
     // Line 0 height = 60; line_gap = 0 → next at y=60.
@@ -158,8 +158,8 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
             .response
             .node()
     });
-    let tall = rect_of(&h, "tall");
-    let filler = rect_of(&h, "filler");
+    let tall = h.arranged(WidgetId::from_hash("tall"));
+    let filler = h.arranged(WidgetId::from_hash("filler"));
     assert_eq!(tall.size.h, 60.0);
     assert_eq!(
         filler.size.h, 60.0,
@@ -223,7 +223,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                     .node()
             });
 
-            let wrap_rect = rect_of(&h, "all-fill-wrap");
+            let wrap_rect = h.arranged(WidgetId::from_hash("all-fill-wrap"));
             assert_eq!(
                 axis.main(wrap_rect.size),
                 125.0,
@@ -241,7 +241,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                 .enumerate()
                 .take(case.floors.len())
             {
-                let rect = rect_of(&h, name);
+                let rect = h.arranged(WidgetId::from_hash(name));
                 assert_eq!(
                     axis.main_v(rect.min),
                     [0.0, 65.0, 0.0][index],
@@ -296,11 +296,11 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
                 .node()
         });
 
-        let wrap_rect = rect_of(&h, "mixed-fill-wrap");
+        let wrap_rect = h.arranged(WidgetId::from_hash("mixed-fill-wrap"));
         assert_eq!(axis.cross(wrap_rect.size), 57.0, "{axis:?} wrap cross");
-        let fill = rect_of(&h, "mixed-fill");
-        let fixed = rect_of(&h, "mixed-fixed");
-        let next = rect_of(&h, "mixed-next");
+        let fill = h.arranged(WidgetId::from_hash("mixed-fill"));
+        let fixed = h.arranged(WidgetId::from_hash("mixed-fixed"));
+        let next = h.arranged(WidgetId::from_hash("mixed-next"));
         assert_eq!(axis.cross(fill.size), 40.0, "{axis:?} fill cross");
         assert_eq!(axis.cross(fixed.size), 20.0, "{axis:?} fixed cross");
         assert_eq!(axis.cross_v(next.min), 47.0, "{axis:?} second line origin");
@@ -330,11 +330,11 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
                 .node()
         });
 
-        let wrap_rect = rect_of(&h, "bounded-fill-wrap");
+        let wrap_rect = h.arranged(WidgetId::from_hash("bounded-fill-wrap"));
         assert_eq!(axis.cross(wrap_rect.size), 55.0, "{axis:?} wrap cross");
-        let min_fill = rect_of(&h, "min-fill");
-        let max_fill = rect_of(&h, "max-fill");
-        let next_fill = rect_of(&h, "next-fill");
+        let min_fill = h.arranged(WidgetId::from_hash("min-fill"));
+        let max_fill = h.arranged(WidgetId::from_hash("max-fill"));
+        let next_fill = h.arranged(WidgetId::from_hash("next-fill"));
         assert_eq!(axis.cross(min_fill.size), 35.0, "{axis:?} min fill");
         assert_eq!(axis.cross(max_fill.size), 35.0, "{axis:?} max fill");
         assert_eq!(

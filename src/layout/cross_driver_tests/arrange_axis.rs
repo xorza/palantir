@@ -124,7 +124,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
     });
-    h.ui.response_for(child).rect.expect("child arranged")
+    h.arranged(child)
 }
 
 #[test]

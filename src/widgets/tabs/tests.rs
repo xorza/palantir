@@ -299,7 +299,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
             .unwrap()
             .deflated_by(padding);
         let chip = TabStrip::chip_id(strip_id(), 30);
-        let full = h.transform(chip).apply_rect(h.layout_rect(chip).unwrap());
+        let full = h.transform(chip).apply_rect(h.arranged(chip));
         full.min.x >= clip.min.x - EPS && full.max().x <= clip.max().x + EPS
     };
     assert!(!in_clip(&mut h), "premise: the last chip is out of sight");
@@ -526,8 +526,8 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(build(SURFACE.x as f32));
     h.frame(build(SURFACE.x as f32));
-    let whole = h.layout_rect(last).expect("the last chip arranged");
-    let strip_left = h.layout_rect(strip_id()).expect("the strip arranged").min.x;
+    let whole = h.arranged(last);
+    let strip_left = h.arranged(strip_id()).min.x;
     assert!(
         h.rect(chevron).is_none(),
         "premise: nothing is hidden, so nothing offers a menu",

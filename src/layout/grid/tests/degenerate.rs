@@ -39,15 +39,11 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                 );
             });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("empty-grid"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("empty-grid"));
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 
-    let ghost = h
-        .layout_rect(WidgetId::from_hash("ghost"))
-        .expect("arranged");
+    let ghost = h.arranged(WidgetId::from_hash("ghost"));
     assert_eq!(ghost.size.w, 0.0);
     assert_eq!(ghost.size.h, 0.0);
 }
@@ -85,15 +81,9 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
     let mut frames = Vec::new();
     for _ in 0..2 {
         h.frame(build);
-        let grid = h
-            .layout_rect(WidgetId::from_hash("zero-grid"))
-            .expect("arranged");
-        let fixed = h
-            .layout_rect(WidgetId::from_hash("fixed-cell"))
-            .expect("arranged");
-        let fill = h
-            .layout_rect(WidgetId::from_hash("fill-cell"))
-            .expect("arranged");
+        let grid = h.arranged(WidgetId::from_hash("zero-grid"));
+        let fixed = h.arranged(WidgetId::from_hash("fixed-cell"));
+        let fill = h.arranged(WidgetId::from_hash("fill-cell"));
 
         assert_eq!((grid.size.w, grid.size.h), (0.0, 0.0));
         // Phase 1 commits Fixed tracks before any leftover is shared out,
@@ -139,15 +129,11 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     });
 
     // Sum 1..=64 = 2,080; 63 gaps × 2 = 126.
-    let grid = h
-        .layout_rect(WidgetId::from_hash("large-grid"))
-        .expect("arranged");
+    let grid = h.arranged(WidgetId::from_hash("large-grid"));
     assert_eq!(grid.size, Size::new(2_206.0, 10.0));
 
     // Sum 1..=63 = 2,016; 63 preceding gaps × 2 = 126.
-    let last = h
-        .layout_rect(WidgetId::from_hash("last-cell"))
-        .expect("arranged");
+    let last = h.arranged(WidgetId::from_hash("last-cell"));
     assert_eq!(last.min, glam::Vec2::new(2_142.0, 0.0));
     assert_eq!(last.size, Size::new(64.0, 10.0));
 }

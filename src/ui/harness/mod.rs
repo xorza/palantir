@@ -791,6 +791,14 @@ impl UiHarness {
         self.ui.response_for(id).layout_rect
     }
 
+    /// [`Self::layout_rect`] for a widget the test knows arranged —
+    /// the read a layout assertion makes. Panics when `id` did not
+    /// arrange last frame.
+    pub fn arranged(&self, id: WidgetId) -> Rect {
+        self.layout_rect(id)
+            .unwrap_or_else(|| panic!("{id:?} did not arrange last frame"))
+    }
+
     /// Center of `id`'s arranged rect.
     pub fn center_of(&self, id: WidgetId) -> Vec2 {
         self.rect(id)
