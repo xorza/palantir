@@ -29,6 +29,11 @@ fn text_reshape_skipped_when_unchanged() {
 
     type Build = fn(&mut Ui);
 
+    // First-frame dispatches: a run that fits its slot resolves once,
+    // unbounded. One wider than its slot resolves again, bounded at the
+    // width it wraps to. The grid's label fits (1), and its fill-column
+    // sentence is wider than what the label leaves of 200 px (2).
+
     let single: Build = |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("the quick brown fox")
@@ -66,18 +71,15 @@ fn text_reshape_skipped_when_unchanged() {
             });
     };
 
-    for (label, build) in [
-        ("single-line", single),
-        ("wrapped", wrapped),
-        ("grid-intrinsic", grid_intrinsic),
+    for (label, build, first_frame) in [
+        ("single-line", single, 1),
+        ("wrapped", wrapped, 2),
+        ("grid-intrinsic", grid_intrinsic, 3),
     ] {
         let mut h = UiHarness::new(UVec2::new(400, 200));
         h.frame(build);
         let after_first = measure_calls(&h.ui);
-        assert!(
-            after_first > 0,
-            "{label}: first frame should drive at least one measure call",
-        );
+        assert_eq!(after_first, first_frame, "{label}: first-frame dispatches");
         h.frame(build);
         let after_second = measure_calls(&h.ui);
         assert_eq!(
@@ -110,9 +112,10 @@ fn text_reshape_runs_when_content_changes() {
     let before = measure_calls(&h.ui);
     h.frame(render("second"));
     let after = measure_calls(&h.ui);
-    assert!(
-        after > before,
-        "content change must trigger fresh measure (before={before}, after={after})",
+    assert_eq!(
+        after - before,
+        1,
+        "content change must trigger exactly one fresh unbounded measure",
     );
 }
 
@@ -374,10 +377,10 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         at += HALF;
     }
     let over_the_streak = shaper.cache_counts() - before;
-    assert!(
-        over_the_streak.expiries > 0,
-        "a paint-only streak past the protected window must age the \
-         shaped-buffer cache; counts over the streak = {over_the_streak:?}",
+    assert_eq!(
+        over_the_streak.expiries, 1,
+        "a paint-only streak past the protected window must age the one \
+         shaped buffer out; counts over the streak = {over_the_streak:?}",
     );
     assert_eq!(
         over_the_streak.shapes, 0,
@@ -511,9 +514,9 @@ fn wrap_target_change_preserves_unbounded_cache() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(render(60.0));
     let after_first = measure_calls(&h.ui);
-    assert!(
-        after_first >= 2,
-        "first frame should measure both unbounded and wrap (got {after_first})",
+    assert_eq!(
+        after_first, 2,
+        "first frame measures unbounded, then wraps at the 60 px slot",
     );
     h.frame(render(80.0));
     let after_second = measure_calls(&h.ui);

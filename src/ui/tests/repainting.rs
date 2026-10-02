@@ -10,6 +10,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
+use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
@@ -48,7 +49,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Second frame at t = 16ms. Main scene is unchanged; only the
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
-    // reading (~62.5).
+    // reading, 1 / 0.016 s.
     let report = h.at(Duration::from_millis(16)).frame(&mut body);
     assert!(
         matches!(
@@ -61,10 +62,10 @@ fn frame_stats_overlay_records_partial_damage() {
         "frame_stats should produce Partial damage on a static scene; got {:?}",
         report.plan,
     );
-    assert!(
-        h.ui.frame_runtime.fps_ema > 0.0,
-        "fps_ema must update after the second frame; got {}",
+    assert_eq!(
         h.ui.frame_runtime.fps_ema,
+        1.0 / Duration::from_millis(16).as_secs_f32(),
+        "the first reading seeds fps_ema with the instantaneous rate",
     );
 
     // Disabling the flag mid-stream evicts the Debug-layer node next
@@ -228,19 +229,12 @@ fn request_repaint_after_drains_fired_entries() {
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 
-// `app_state_round_trip_across_frame` and `app_without_install_panics`
-// were removed when `Ui` lost its `<T>` parameter. App-owned state now
-// lives in the caller's frame-builder closure (capture it) — see the
-// `app_state` showcase for the canonical pattern.
-
 /// Anim-only fast path: when the only wake fired is a paint-anim
 /// quantum boundary (no input, no `request_repaint`, no real wake),
 /// `Ui::frame` skips record + post-record and emits
 /// `FrameProcessing::PaintOnly`.
 #[test]
 fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
-    use crate::ui::frame_report::FrameProcessing;
-
     let half = Duration::from_millis(500);
 
     fn body(ui: &mut Ui, half: Duration) {
@@ -283,9 +277,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
             let rects: Vec<_> = damage.region.iter_rects().collect();
             assert_eq!(rects.len(), 1, "expected single damage rect, got {rects:?}");
             let r = rects[0];
-            assert!(
-                r.size.w <= 8.0 && r.size.h <= 16.0,
-                "PaintOnly damage should be the anim's tight rect, got {r:?}",
+            assert_eq!(
+                r,
+                Rect::new(0.0, 0.0, 4.0, 12.0),
+                "PaintOnly damage is the anim's tight rect",
             );
         }
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
@@ -333,7 +328,6 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 fn paint_only_preserves_record_store_for_retained_shapes() {
     use crate::primitives::brush::Brush;
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
 
@@ -415,7 +409,6 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::shape::Shape;
     use crate::text::shaper::TextShaper;
-    use crate::ui::frame_report::FrameProcessing;
     use std::collections::HashSet;
 
     fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
@@ -493,8 +486,6 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 /// `REAL | ANIM` mix, so the classifier picks Full.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
-    use crate::ui::frame_report::FrameProcessing;
-
     let half = Duration::from_millis(500);
 
     fn body(ui: &mut Ui, half: Duration) {
@@ -534,7 +525,6 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 fn input_policy_routes_paint_only_gate() {
     use crate::input::keyboard::key::Key;
     use crate::input::policy::{InputPolicy, InputSignal};
-    use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
 
@@ -637,17 +627,9 @@ fn fps_ema_reads_unclamped_frame_delta() {
     let mut noop = |_: &mut Ui| {};
     h.frame(&mut noop);
     h.at(Duration::from_secs(1)).frame(&mut noop);
-    assert!(
-        (h.ui.frame_runtime.fps_ema - 1.0).abs() < 1e-6,
-        "got {}",
-        h.ui.frame_runtime.fps_ema
-    );
+    assert_eq!(h.ui.frame_runtime.fps_ema, 1.0);
     h.at(Duration::from_secs(3)).frame(&mut noop);
-    assert!(
-        (h.ui.frame_runtime.fps_ema - 0.95).abs() < 1e-6,
-        "got {}",
-        h.ui.frame_runtime.fps_ema
-    );
+    assert_eq!(h.ui.frame_runtime.fps_ema, 1.0f32 * 0.9 + 0.5 * 0.1);
 }
 
 /// `Ui::request_relayout` outside a record pass is a caller error, not a
@@ -671,13 +653,17 @@ fn request_relayout_between_frames_is_a_caller_error() {
 fn request_relayout_during_record_is_honoured() {
     let mut h = UiHarness::new(SURFACE);
     let mut asked = false;
-    h.frame(|ui| {
+    let report = h.frame(|ui| {
         if !asked {
             asked = true;
             ui.request_relayout();
         }
     });
-    assert!(asked, "the record closure ran");
+    assert_eq!(
+        report.processing,
+        FrameProcessing::DoubleLayout,
+        "the request re-runs this frame's record",
+    );
 }
 
 /// The record-pass gate is a *frame*-level question, not a per-layer

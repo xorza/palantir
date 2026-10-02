@@ -138,12 +138,10 @@ fn drag_delta_clears_on_release() {
     h.frame(build_clickable);
     h.press_at(Vec2::new(30.0, 30.0));
     h.drag_to(Vec2::new(70.0, 70.0));
-    assert!(
-        h.response_in(id(), build_clickable)
-            .left
-            .drag
-            .delta()
-            .is_some()
+    assert_eq!(
+        h.response_in(id(), build_clickable).left.drag.delta(),
+        Some(Vec2::new(40.0, 40.0)),
+        "press (30, 30) → drag (70, 70): 40 px of travel on each axis",
     );
 
     h.release();
@@ -659,15 +657,11 @@ fn canvas_rearranges_with_dragged_child_position() {
     });
 
     let rect = h.ui.arranged_rect(Layer::Main, card_node.unwrap());
-    assert!(
-        (rect.min.x - 130.0).abs() < 0.5,
-        "drag lands within the frame: anchor(40) + delta(90) = 130, got {}",
-        rect.min.x,
+    assert_eq!(
+        rect.min.x, 130.0,
+        "drag lands within the frame: anchor(40) + delta(90) = 130",
     );
-    assert!(
-        (a.pos.x - 130.0).abs() < 0.5,
-        "pos = anchor(40) + delta(90)"
-    );
+    assert_eq!(a.pos.x, 130.0, "pos = anchor(40) + delta(90)");
 }
 
 /// A capture evicted because its widget left the tree still ends through

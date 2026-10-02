@@ -45,7 +45,9 @@ fn pinch_gesture_accumulates_zoom_delta() {
     let cascade = Cascade::default();
     state.on_input(InputEvent::Zoom(1.1), &cascade, Duration::ZERO);
     state.on_input(InputEvent::Zoom(1.05), &cascade, Duration::ZERO);
-    assert!((state.scroll_delta_for(pinch_id()).zoom.get() - 1.155).abs() < 1e-5);
+    // `combine` multiplies in f64 and rounds the product once, back to f32.
+    let product = (f64::from(1.1f32) * f64::from(1.05f32)) as f32;
+    assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), product);
 }
 
 #[test]
@@ -87,7 +89,7 @@ fn post_record_resets_zoom_delta_to_identity() {
     let mut state = pinch_state();
     let cascade = Cascade::default();
     state.on_input(InputEvent::Zoom(1.2), &cascade, Duration::ZERO);
-    assert!((state.scroll_delta_for(pinch_id()).zoom.get() - 1.2).abs() < 1e-5);
+    assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.2);
     state.end_frame(&cascade);
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.0);
     assert!(state.frame_target_deltas.is_empty());

@@ -259,10 +259,10 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "no animate-not-settled flag set — must stay false"
     );
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(16));
-    assert!(
-        (h.ui.frame_runtime.dt - 0.016).abs() < 1e-6,
-        "FrameRuntime::dt should be (now - prev) in seconds; got {}",
+    assert_eq!(
         h.ui.frame_runtime.dt,
+        Duration::from_millis(16).as_secs_f32(),
+        "FrameRuntime::dt should be (now - prev) in seconds",
     );
 
     // Frame B: simulate an unsettled animation tick by setting the
@@ -281,10 +281,10 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "repaint_requested set during recording must surface on FrameOutput",
     );
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(32));
-    assert!(
-        (h.ui.frame_runtime.dt - 0.016).abs() < 1e-6,
-        "FrameRuntime::dt should be next-frame delta; got {}",
+    assert_eq!(
         h.ui.frame_runtime.dt,
+        Duration::from_millis(16).as_secs_f32(),
+        "FrameRuntime::dt should be next-frame delta",
     );
 
     // Frame C: oversized gap (5s) clamps dt to MAX_ANIM_DT; `time` still
@@ -295,10 +295,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             .show(ui, |_| {});
     });
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(5_032));
-    assert!(
-        (h.ui.frame_runtime.dt - MAX_ANIM_DT).abs() < 1e-6,
-        "FrameRuntime::dt should clamp at MAX_ANIM_DT; got {}",
-        h.ui.frame_runtime.dt,
+    assert_eq!(
+        h.ui.frame_runtime.dt, MAX_ANIM_DT,
+        "FrameRuntime::dt should clamp at MAX_ANIM_DT",
     );
 
     // Frame D: prior frame's repaint_requested must NOT leak — resets
