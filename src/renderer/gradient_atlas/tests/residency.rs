@@ -37,7 +37,13 @@ fn register_returns_nonzero_row_and_marks_dirty() {
     let g = distinct_grad(0.1);
     let row = atlas.register(&g.ramp);
     assert_real_row(&atlas, row);
-    assert!(atlas.dirty.is_some(), "register must mark atlas dirty");
+    // The magenta row 0 is still waiting from construction, so the span
+    // runs from it to the new row.
+    assert_eq!(
+        atlas.dirty.map(|d| (d.first, d.last)),
+        Some((0, row.0)),
+        "register must mark its row dirty",
+    );
 }
 
 /// Same gradient registered twice returns the same row and does
@@ -95,7 +101,11 @@ fn register_distinct_gradients_get_distinct_rows() {
     let ra = register_for(&mut atlas, distinct_grad(0.1));
     let rb = register_for(&mut atlas, distinct_grad(0.2));
     assert_ne!(ra, rb);
-    assert!(atlas.dirty.is_some());
+    // Flushed first, so the span covers exactly the two new rows.
+    assert_eq!(
+        atlas.dirty.map(|d| (d.first, d.last)),
+        Some((ra.0.min(rb.0), ra.0.max(rb.0))),
+    );
 }
 
 /// Filling the atlas one distinct gradient at a time hands out every

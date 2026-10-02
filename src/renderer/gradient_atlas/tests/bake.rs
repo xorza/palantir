@@ -6,6 +6,8 @@ use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::color::RgbaF32;
+use crate::primitives::color::oklab;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
@@ -21,15 +23,9 @@ fn linear_midpoint_black_to_white_is_half() {
         LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE).with_interp(Interp::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    let mid = texel(&out, 127);
-    assert!(
-        (0.4..=0.6).contains(&mid.r),
-        "linear-RGB midpoint should be near linear 0.5, got {}",
-        mid.r,
-    );
-    assert_eq!(mid.r, mid.g);
-    assert_eq!(mid.g, mid.b);
-    assert_eq!(mid.a, 1.0);
+    // Texel 127 sits at t = 127/255, so the grey is that, f16-rounded.
+    let t = 127.0 / 255.0;
+    assert_eq!(texel(&out, 127), stored(RgbaF32::new(t, t, t, 1.0)));
 }
 
 /// `Interp::Oklab`: red→green midpoint should *not* be muddy
@@ -44,19 +40,17 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    let mid = texel(&out, 127);
-    // Both channels should be non-trivial at midpoint — Oklab
-    // hits a yellowish midpoint, not the dark muddy brown that
-    // linear-RGB lerp produces. The f16 store holds linear values
-    // directly; expect high red (>0.47 ≈ 120/255) and moderate
-    // green (>0.31 ≈ 80/255) reflecting the warm-yellow midpoint.
-    assert!(
-        mid.r > 0.47 && mid.g > 0.31,
-        "Oklab red→green midpoint should preserve luminance; got ({}, {}, {})",
-        mid.r,
-        mid.g,
-        mid.b,
+    // The midpoint is the two stops' Oklab coordinates blended at
+    // t = 127/255 and brought back to linear — a warm yellow, where a
+    // linear-RGB blend dips through dark brown.
+    let t = 127.0 / 255.0;
+    let (from, to) = (
+        oklab::from_linear(1.0, 0.0, 0.0),
+        oklab::from_linear(0.0, 1.0, 0.0),
     );
+    let [r, g, b] = oklab::to_linear(std::array::from_fn(|i| from[i] + (to[i] - from[i]) * t));
+    let mid = texel(&out, 127);
+    assert_stored(mid, RgbaF32::new(r, g, b, 1.0), "Oklab midpoint");
 }
 
 /// First and last texels hold the corresponding stops' stored colours.
@@ -92,14 +86,12 @@ fn three_stop_quarter_brackets_first_pair() {
         .build();
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    // Texel at i=64 ≈ t=0.251 → halfway between stops 0 and 1.
-    // r channel: lerp(0.0, 1.0, 0.502) ≈ 0.502.
+    // Stop offsets snap to the texel grid, so the 0.5 stop sits on texel
+    // 128 (offset 128/255). Texel 64 is then exactly halfway into the
+    // first segment, 64/128 of the way from black to red.
+    assert_eq!(g.ramp.stops[1].offset(), 128.0 / 255.0);
     let q = texel(&out, 64);
-    assert!(
-        (q.r - 0.502).abs() <= 0.01,
-        "quarter-texel r={} not ~0.502 (bracketing first pair)",
-        q.r,
-    );
+    assert_eq!(q, stored(RgbaF32::new(0.5, 0.0, 0.0, 1.0)));
     // Stops 0 and 1 are both b=0, so the whole first segment bakes b=0 —
     // stop 2's b=1.0 is not reached until past the midpoint.
     assert_eq!(q.b, 0.0, "quarter-texel leaked blue from stop 2");
@@ -233,16 +225,10 @@ fn partial_range_clamps_at_edges() {
 fn dark_gradient_row_has_no_banding() {
     let navy = RgbaF32::hex(0x1a1a2e);
     let blue = RgbaF32::hex(0x4c5cdb);
-    // The whole problem: both stops linearise to tiny reds (≈ 2/255
-    // and 18/255), so the bake walks a narrow span that an 8-bit
-    // linear row can't resolve. Bounded, not exact-pinned, so a
-    // tweak to the sRGB cubic fit doesn't break this test.
-    assert!(
-        navy.r < 6.0 / 255.0 && blue.r < 24.0 / 255.0,
-        "stops not dark: navy.r={} blue.r={}",
-        navy.r,
-        blue.r
-    );
+    // The whole problem: both stops linearise to tiny reds, 2.6/255 and
+    // 18.4/255, so the bake walks a narrow span that an 8-bit linear row
+    // can't resolve.
+    assert_eq!([navy.r, blue.r], [0.010329823, 0.07227185]);
     let g = LinearGradient::two_stop(0.0, navy, blue); // default Oklab
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
@@ -250,15 +236,15 @@ fn dark_gradient_row_has_no_banding() {
     let reds: Vec<f32> = (0..LUT_ROW_TEXELS).map(|i| texel(&out, i).r).collect();
 
     // f16 store: per-texel red delta (~2.5e-4) dwarfs the f16 ulp
-    // (~8e-6) at this magnitude, so distinct reds ≈ texel count.
+    // (~8e-6) at this magnitude, so every texel holds its own red.
     let distinct_f16 = reds
         .iter()
         .map(|r| r.to_bits())
         .collect::<HashSet<_>>()
         .len();
-    assert!(
-        distinct_f16 >= 180,
-        "f16 red banded: only {distinct_f16} distinct levels"
+    assert_eq!(
+        distinct_f16, LUT_ROW_TEXELS,
+        "f16 red: a distinct level at every texel"
     );
 
     // Counterfactual: the old `Rgba8Unorm` store quantized these
@@ -268,10 +254,13 @@ fn dark_gradient_row_has_no_banding() {
         .map(|r| (r * 255.0).round() as u8)
         .collect::<HashSet<_>>()
         .len();
-    assert!(
-        distinct_u8 <= 20,
-        "premise check: 8-bit linear should band hard, got {distinct_u8} levels",
-    );
+    // 8-bit linear: the reds span 3..=18, sixteen levels across 256 texels.
+    assert_eq!(distinct_u8, 16, "premise: 8-bit linear bands hard");
+}
+
+/// What the f16 store holds for `color`: its rounding, decoded.
+fn stored(color: RgbaF32) -> RgbaF32 {
+    RgbaF16::from(color).unpack()
 }
 
 /// One baked texel decoded back to a linear `RgbaF32`. The f16 store

@@ -224,13 +224,10 @@ fn the_gate_sees_the_faded_payload() {
     let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
+    // Half of an opaque white tint's alpha, colour untouched — values f16
+    // holds exactly.
     let tint = payload.tint.unpack();
-    assert!(
-        (tint.a - 0.5).abs() < 1e-3,
-        "tint alpha {} is not half",
-        tint.a
-    );
-    assert_eq!((tint.r, tint.g, tint.b), (1.0, 1.0, 1.0));
+    assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
     // A polyline gates the same way: its fade rides the payload's own
     // alpha lane, since its colours live in the record store.

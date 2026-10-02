@@ -300,6 +300,14 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
     // well past the margin → must stay culled.
     let cases: &[(&str, Rect, usize)] = &[
         ("within_aa_pad_gap_2", Rect::new(60.0, 100.0, 38.0, 20.0), 1),
+        // The margin repaints any gap under 3 px. At 3 the pad's 2 px of
+        // clear stops a pixel short of the neighbour, so it stays culled.
+        ("at_the_margin_gap_3", Rect::new(60.0, 100.0, 37.0, 20.0), 0),
+        (
+            "past_the_margin_gap_4",
+            Rect::new(60.0, 100.0, 36.0, 20.0),
+            0,
+        ),
         ("beyond_pad_gap_10", Rect::new(60.0, 100.0, 30.0, 20.0), 0),
     ];
     for (label, damage, expected) in cases {

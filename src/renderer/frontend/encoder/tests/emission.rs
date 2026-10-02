@@ -411,15 +411,15 @@ fn encoder_text_alignment_respects_leaf_padding() {
     );
     let text_rect = cmds.calls[1].as_text().unwrap().rect;
 
-    assert!(
-        text_rect.min.x > 20.0 && text_rect.min.x < 180.0,
-        "text x must lie inside padded content area, got {}",
-        text_rect.min.x
-    );
-    let expected_x_center = 20.0 + (160.0 - text_rect.size.w) * 0.5;
-    assert!(
-        (text_rect.min.x - expected_x_center).abs() < 0.5,
-        "text x should center within padded area; expected ≈{expected_x_center}, got {}",
-        text_rect.min.x
+    // "ok" is 19 px in the bundled face and one 20 px line, centred on
+    // both axes inside the 20 px padding: 160 × 40 of room.
+    assert_eq!(
+        text_rect,
+        Rect::new(
+            20.0 + (160.0 - 19.0) * 0.5,
+            20.0 + (40.0 - 20.0) * 0.5,
+            19.0,
+            20.0
+        ),
     );
 }
