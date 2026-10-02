@@ -3,14 +3,6 @@ use crate::primitives::corners::*;
 use crate::primitives::serde::test_support::{from_ron, ron_text};
 
 #[test]
-fn struct_is_eight_bytes() {
-    assert_eq!(std::mem::size_of::<Corners>(), 8);
-    // align 2 (not 8) so embedding inside `Quad` doesn't bump
-    // Quad's alignment above 4 and introduce trailing pad bytes
-    // that break the `Pod` no-padding contract.
-}
-
-#[test]
 fn lanes_round_trip_integer_values_exactly() {
     let c = Corners::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(c.as_array(), [1.0, 2.0, 3.0, 4.0]);

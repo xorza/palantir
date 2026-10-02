@@ -4,11 +4,6 @@ use crate::primitives::mesh::*;
 use crate::primitives::size::Size;
 
 #[test]
-fn mesh_vertex_is_12_bytes_no_padding() {
-    assert_eq!(std::mem::size_of::<MeshVertex>(), 12);
-}
-
-#[test]
 fn mesh_vertex_pod_roundtrip() {
     let v = MeshVertex::new(
         Vec2::new(1.0, 2.0),

@@ -1,7 +1,6 @@
 use crate::animation::animatable::Animatable;
 use crate::common::panic_probe;
 use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
@@ -118,29 +117,6 @@ fn solid_solid_animatable_lerp_matches_color() {
 fn solid_is_noop_iff_color_is_noop() {
     assert!(Brush::Solid(RgbaF32::TRANSPARENT).is_noop());
     assert!(!Brush::Solid(RgbaF32::BLACK).is_noop());
-}
-
-/// `LinearGradient` is inline-stored on every `Brush::Linear`, so
-/// its size sets the floor for `Brush`, `Background.fill`, and every
-/// `Shape::*` variant carrying a brush. Pin the size so any silent
-/// footprint regression (added field, stop-cap bump) trips a test
-/// rather than diffusing through the codebase. The exact numbers below
-/// are a function of `MAX_STOPS = 8` and the field layout; recompute
-/// when those change.
-#[test]
-fn linear_gradient_size_is_compact() {
-    // GradientStops: 1 (len) + 8 × 5 (Stop = 1 offset_u8 + 4 SrgbaU8),
-    // align 1. ColorRamp adds 1 (interp) with no padding. LinearGradient:
-    // 4 (angle) + 42 (ramp) + 1 (spread) + 1 tail pad to align 4.
-    assert_eq!(
-        (
-            std::mem::size_of::<GradientStops>(),
-            std::mem::align_of::<GradientStops>()
-        ),
-        (1 + 5 * MAX_STOPS, 1),
-    );
-    assert_eq!(std::mem::size_of::<ColorRamp>(), 1 + 5 * MAX_STOPS + 1);
-    assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
 }
 
 /// Two through `MAX_STOPS` stops, and every door a stop list comes in

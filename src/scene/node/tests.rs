@@ -2,7 +2,6 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
-use crate::layout::types::packed_layout_meta::PackedLayoutMeta;
 use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::*;
@@ -47,27 +46,6 @@ fn flag_setters_round_trip_each_field_independently() {
         assert_eq!(f.clip_mode(), *clip, "case: {label} clip");
         assert_eq!(f.is_focusable(), *focusable, "case: {label} focusable");
     }
-}
-
-#[test]
-fn authoring_struct_sizes_stay_packed() {
-    // Grew from 1 byte to 2 when `Sense::PINCH` claimed bit 4,
-    // pushing `DISABLED`/`CLIP`/`FOCUSABLE` past the u8 ceiling.
-    // Still packed — sense (5 bits) + disabled (1) + clip (2) +
-    // focusable (1) = 9 bits, fitting in a u16 with 7 spare.
-    assert_eq!(std::mem::size_of::<NodeFlags>(), 2);
-    assert_eq!(std::mem::size_of::<Node>(), 100);
-}
-
-#[test]
-fn layout_core_size() {
-    assert_eq!(std::mem::size_of::<LayoutCore>(), 28);
-}
-
-#[test]
-fn layout_mode_size() {
-    assert_eq!(std::mem::size_of::<LayoutMode>(), 4);
-    assert_eq!(std::mem::size_of::<PackedLayoutMeta>(), 4);
 }
 
 #[test]

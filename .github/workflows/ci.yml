@@ -104,6 +104,10 @@ jobs:
       # invocation to differ from the one above at all.
       - run: cargo test --locked --lib --no-default-features
         timeout-minutes: 20
+      # The derive's error arms are unit tests of its expansion, in its own
+      # crate, which the root package's `--lib` does not build.
+      - run: cargo test --locked --lib -p palantir-anim-derive
+        timeout-minutes: 20
       # `alloc` without the scale ramp, whose ceiling holds on one adapter only
       # — see `gates/on_gpu.rs`. Its own invocation, so a skip cannot reach a
       # lib test. `visual` needs `golden`, which stays off: its baselines are

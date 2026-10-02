@@ -9,10 +9,17 @@ use crate::input::response::response_state::ResponseState;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::layout::cache::MeasureSnapshot;
 use crate::layout::shaped_text::ShapedText;
+use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
+use crate::primitives::corners::Corners;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::recorded_text::RecordedText;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -156,7 +163,13 @@ const PINS: &[Pin] = &[
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 64, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
+    // Grew from 1 byte to 2 when `Sense::PINCH` claimed bit 4, pushing
+    // `DISABLED`/`CLIP`/`FOCUSABLE` past the u8 ceiling. Still packed:
+    // sense (5 bits) + disabled (1) + clip (2) + focusable (1) = 9 bits,
+    // fitting in a u16 with 7 spare.
     pin::<NodeFlags>("scene::NodeFlags", 2, 2),
+    pin::<LayoutMode>("layout::LayoutMode", 4, 2),
+    pin::<PackedLayoutMeta>("layout::PackedLayoutMeta", 4, 4),
     pin::<ExtrasIdx>("scene::ExtrasIdx", 6, 2),
     pin::<BoundsExtras>("scene::BoundsExtras", 32, 4),
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
@@ -169,6 +182,20 @@ const PINS: &[Pin] = &[
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
     pin::<Background>("primitives::Background", 124, 4),
+    // Align 2, not 8, so embedding either inside `Quad` does not raise
+    // `Quad`'s alignment above 4 and add the trailing pad bytes that
+    // break its `Pod` no-padding contract.
+    pin::<Spacing>("primitives::Spacing", 8, 2),
+    pin::<Corners>("primitives::Corners", 8, 2),
+    // `LinearGradient` is stored inline on every `Brush::Linear`, so it
+    // sets the floor for `Brush`, `Background.fill`, and every shape
+    // carrying a brush. The stops are 1 (len) + `MAX_STOPS` × 5 (a `u8`
+    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interp) with
+    // no padding; the gradient adds 4 (angle), 1 (spread) and 1 tail pad
+    // to align 4.
+    pin::<GradientStops>("brush::GradientStops", 1 + 5 * MAX_STOPS, 1),
+    pin::<ColorRamp>("brush::ColorRamp", 1 + 5 * MAX_STOPS + 1, 1),
+    pin::<LinearGradient>("brush::LinearGradient", 48, 4),
     pin::<Brush>("primitives::Brush", 60, 4),
     pin::<Span>("layout::Span", 8, 4),
     pin::<Button<'static>>("widgets::Button", 160, 8),
