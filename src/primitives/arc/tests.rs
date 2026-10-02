@@ -1,4 +1,4 @@
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::arc;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};

@@ -1,7 +1,8 @@
 use crate::bench::Run;
 use crate::display::Display;
-use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::input::sense::Sense;
+use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -9,7 +10,6 @@ use crate::scene::cascade::Cascade;
 use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::engine::CascadeEngine;
 use crate::scene::cascade::entry::{EntryRow, HitRow};
-use crate::ui::harness::UiHarness;
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;

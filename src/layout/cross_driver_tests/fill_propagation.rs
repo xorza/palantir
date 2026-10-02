@@ -7,6 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -15,7 +16,6 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;

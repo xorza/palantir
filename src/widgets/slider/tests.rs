@@ -1,16 +1,16 @@
 use crate::Ui;
-use crate::common::panic_probe;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::passes::Passes;
+use crate::internals::harness::size_trio::SizeTrio;
+use crate::internals::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::passes::Passes;
-use crate::ui::harness::size_trio::SizeTrio;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
-use crate::widgets::value_response::test_support::ValueEdges;
+use crate::widgets::value_response::internals::ValueEdges;
 use glam::{UVec2, Vec2};
 
 /// One frame driven by a commit-deferring caller: the draft re-seeds

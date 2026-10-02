@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::widgets::scroll::{ZoomConfig, ZoomModifier, ZoomPivot};
 use std::ops::RangeInclusive;
 

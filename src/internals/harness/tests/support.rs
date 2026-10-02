@@ -1,7 +1,7 @@
 //! The one button a harness test drives, and the positions on and off it.
 
+use crate::internals::harness::*;
 use crate::layout::types::sizing::Sizing;
-use crate::ui::harness::*;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;

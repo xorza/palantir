@@ -2,8 +2,8 @@
 
 When you address an item, delete it. Delete a heading when its last item is gone.
 
-Scope: every test in `src/`, `tests/alloc`, `tests/visual`, `src/ui/harness`, `src/gpu/test_gpu.rs`,
-`src/text/mono.rs`, `src/frame_fixture`, `src/golden`, and the gated `internals` / `test_support` modules.
+Scope: every test in `src/`, `tests/alloc`, `tests/visual`, `src/internals`, `src/gpu/test_gpu.rs`,
+`src/text/mono.rs`, `src/golden`, and the gated `internals` modules.
 Line numbers are against `50b34a49`.
 
 Measured on this tree: the unit suite passes 1737 tests in 1.8–3.0 s, and `alloc` passes 47 in 1.4 s.

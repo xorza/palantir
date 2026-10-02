@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::RgbaF32;

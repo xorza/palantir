@@ -80,10 +80,10 @@ impl Configure for ColorSwatch<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::internals::harness::UiHarness;
     use crate::primitives::color::RgbaF32;
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::layer::Layer;
-    use crate::ui::harness::UiHarness;
     use crate::widgets::color_swatch::ColorSwatch;
     use crate::widgets::configure::Configure;
     use crate::widgets::theme::color_picker::ColorPickerTheme;

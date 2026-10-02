@@ -1,10 +1,10 @@
 //! The width a bar reserves from the viewport, and the padding it lands in.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;

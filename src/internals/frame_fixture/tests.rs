@@ -1,7 +1,7 @@
 use super::*;
+use crate::internals::harness::UiHarness;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use std::cell::RefCell;
 use std::time::Duration;
@@ -184,7 +184,7 @@ fn covered_and_excluded_account_for_every_public_widget() {
     let mut classified: Vec<&str> = COVERED.to_vec();
     classified.extend(EXCLUDED.iter().map(|(m, _)| *m));
 
-    let mut public: Vec<&str> = include_str!("../lib.rs")
+    let mut public: Vec<&str> = include_str!("../../lib.rs")
         .lines()
         .filter_map(|line| line.trim().strip_prefix("pub use widgets::"))
         .filter_map(|rest| rest.split("::").next())

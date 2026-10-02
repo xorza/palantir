@@ -10,6 +10,7 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
+use crate::internals::harness::UiHarness;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
@@ -17,7 +18,6 @@ use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::rect::RectKind;
-use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::tests::*;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;

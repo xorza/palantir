@@ -7,6 +7,7 @@ use crate::layout::types::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
 use crate::input::response::response_state::ResponseState;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
@@ -15,7 +16,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;

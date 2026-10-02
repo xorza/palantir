@@ -1,10 +1,10 @@
 //! Polylines, arcs and cubics: the instances they emit and the chrome at
 //! their joins.
 
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::rect::Rect;
 use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16};
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
     clip, curve, image, mesh, params, polyline_cmd, run, text,

@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;

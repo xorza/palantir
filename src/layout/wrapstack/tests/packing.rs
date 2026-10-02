@@ -1,10 +1,10 @@
 //! Justify within a line, and the children that pack differently or not at
 //! all.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;

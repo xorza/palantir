@@ -6,9 +6,9 @@
 //! bending the widget to be photographable.
 
 use glam::UVec2;
+use palantir::internals::frame_fixture::dock_fixture::DockFixture;
 use palantir::{
-    Configure, DockFixture, Panel, Sizing, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui,
-    WidgetId,
+    Configure, Panel, Sizing, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui, WidgetId,
 };
 
 use crate::goldens::assert_matches_golden;

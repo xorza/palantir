@@ -1,9 +1,9 @@
 //! How an image or icon resolves its destination rect and UVs.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::scene::damage::region::DamageRegion;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

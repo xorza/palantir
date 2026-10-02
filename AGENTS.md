@@ -77,23 +77,31 @@ unchanged tree first — if it fails there, rewrite the stale goldens with
 
 A change a user can see ends with a look at `cargo run --example showcase`.
 
-## Gated reach-in modules
+## Non-shipping code
 
-Test and bench code that reaches past a file's privates goes in one gated
-`pub(crate)` module at the end of that file, named for who reaches in:
+Code that does not ship has three homes, apart from a file's own
+`#[cfg(test)] mod tests` and the helpers only that module uses.
 
-- **`internals`** — from *outside* the crate (`tests/visual`, `tests/alloc`,
-  the showcase). Always `#[cfg(any(test, feature = "internals"))]`;
-  `src/lib.rs` re-exports the published subset through `pub mod internals`.
-- **`test_support`** — from *inside* the crate only (other modules' unit
-  tests, `bench.rs` drivers). Its `cfg` is exactly the builds those consumers
-  exist in — `test`, `feature = "bench"`, or both — since anything wider is
-  dead code that `-W dead_code` reports. An in-crate consumer that is itself
-  `internals`-gated (the harness, the offscreen host's peepholes) makes it
-  `#[cfg(any(test, feature = "internals"))]`: still inside the crate, so
-  still `test_support`.
+- **`internals` at the end of a file** — a reach-in: test or bench code
+  that needs that file's private items. One per file, the last item before
+  `mod tests`. Its `cfg` is exactly the builds its callers exist in —
+  `test`, `feature = "bench"`, `feature = "internals"`, or a mix — since
+  anything wider is dead code that `-W dead_code` reports. A wider module
+  narrows single items with their own `cfg`, and never needs a lint allow.
+- **`crate::internals`** (`src/internals/`) — the subsystems: the frame
+  harness, the paint capture, the panic probe, the shared fixtures. It is
+  `palantir::internals` under `any(test, feature = "internals")`, and each
+  submodule carries its own narrower gate. Test code that is a subsystem
+  rather than a reach-in goes here, never among production modules.
+- **`bench.rs`** beside the code it measures, under `feature = "bench"`,
+  reached through the `bench` facade in `src/lib.rs`.
 
-Helpers only the file's own `mod tests` uses live in `mod tests`. Support that
-is a subsystem rather than a reach-in — `ui::harness`, `host::test_gpu`,
-`text::mono` — is a module of its own under the same `cfg`, named for what it
-is.
+Visibility says who reaches in: `pub` when code outside the crate calls it
+(`tests/visual`, `tests/alloc`, the showcase, `benches/`), `pub(crate)` when
+only the crate's own tests and benches do.
+
+Two subsystems stay outside `src/internals/`. `gpu::test_gpu` and
+`gpu::bench_gpu` hold wgpu types, which `clippy.toml` keeps inside
+`crate::gpu`, so `crate::internals` re-exports the test GPU. `text::mono` is
+a measurement backend beside `cosmic`, gated `any(test, feature =
+"internals")`.

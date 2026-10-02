@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;

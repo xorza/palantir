@@ -6,9 +6,9 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{
     AnimUi, SLOT, closed_form_settle_step, setup_anim_ui, spring_velocity, wid,
 };
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use std::time::Duration;

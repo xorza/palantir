@@ -532,7 +532,7 @@ impl<'a> Editor<'a> {
 /// hash latch, neither of which any production caller reads off a live
 /// session.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::widgets::text_edit::edit_state::EditState;
     use crate::widgets::text_edit::editor::Editor;
 

@@ -126,7 +126,7 @@ mod output_validity_tests {
     use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
+    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::render_plan::RenderPlan;
 
     use crate::scene::damage::Damage;
@@ -496,7 +496,7 @@ mod record_store_tests {
     use glam::{UVec2, Vec2};
 
     use crate::app::App;
-    use crate::app::internals::RecordApp;
+    use crate::internals::record_app::RecordApp;
 
     use crate::host::clock::FixedClock;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
@@ -506,7 +506,7 @@ mod record_store_tests {
     use crate::primitives::stroke::Stroke;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
+    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
 
     use crate::shape::Shape;
 

@@ -16,9 +16,9 @@ use glam::{UVec2, Vec2};
 use crate::Ui;
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::watch::PointerWake;
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 

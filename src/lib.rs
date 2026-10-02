@@ -106,7 +106,7 @@
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard, which is what [`TextEdit`]'s cut/copy/paste reaches. [`WinitHost`] always uses it; [`OffscreenHost`] asks through [`OffscreenHostBuilder::system_clipboard`]. Without it every host runs on an in-process buffer. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
-//! | `internals` | no | Test reach-ins — adds the `internals` module. **Not a supported API**: it exists so the integration tests under `tests/` can reach crate privates, and it breaks without notice. |
+//! | `internals` | no | Test reach-ins and the test subsystems — adds the `internals` module: the frame harness, the shared fixtures, the headless test GPU. **Not a supported API**: it exists so the integration tests under `tests/` and the showcase can drive the crate, and it breaks without notice. |
 //! | `bench` | no | The source-level benchmark drivers, and the function-only facade the thin targets under `benches/` call. Implies `internals`, and adds the harness crates on top. Not a supported API either. |
 //! | `golden` | no | Adds the `golden` module — golden-image regression testing for suites that draw through Palantir. Its own flag because it is the only part of the surface that costs an image codec. |
 //!
@@ -149,32 +149,20 @@ pub(crate) mod animation;
 pub(crate) mod app;
 #[cfg(feature = "bench")]
 pub mod bench;
-/// Accent swatches shared by the two bundled demo surfaces. Public only
-/// because the `showcase` example is a separate crate from this library
-/// and cannot reach a `pub(crate)` one; not part of the supported API.
-#[cfg(feature = "internals")]
-pub mod demo_swatches;
 pub(crate) mod diagnostics;
 /// Per-output display state (physical size, the system and user scale
 /// factors, pixel-snap, refresh) — cross-cutting host/render vocabulary,
 /// read by `ui`, the renderer, and the host layer; not owned by any one
 /// subsystem.
 pub(crate) mod display;
-/// The shared benchmark workload — one designed app screen recorded by the
-/// frame, allocation, and cascade benches alike. Owned by none of them, so
-/// it lives here rather than under whichever driver happened to need it
-/// first.
-///
-/// Gated on `internals`: the allocation gates in `tests/alloc` clear
-/// against this tree, and the showcase carries it as a page — the only way
-/// to look at the workload the numbers come from. It is pure scene code
-/// with no harness dependency, so reaching it costs nothing.
-#[cfg(feature = "internals")]
-pub(crate) mod frame_fixture;
 pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;
 pub(crate) mod input;
+/// Everything that does not ship — see the module doc. **Not a supported
+/// API.**
+#[cfg(any(test, feature = "internals"))]
+pub mod internals;
 pub(crate) mod layout;
 pub(crate) mod primitives;
 pub(crate) mod renderer;
@@ -190,35 +178,6 @@ pub(crate) mod window;
 /// only thing here that costs an image codec.
 #[cfg(feature = "golden")]
 pub mod golden;
-
-/// Test reach-ins the supported surface deliberately excludes, gathered here
-/// rather than scattered through it so the published API stays exactly the
-/// list below. Each item is re-exported from the gated module that owns it —
-/// which lives beside the code whose privates it exposes. Benchmark entry
-/// points have their own gated facade in the `bench` module, behind that
-/// feature.
-///
-/// The two bundled demo surfaces — [`FrameFixture`] and [`demo_swatches`] —
-/// are gated at the crate root instead of here. They reach past nothing:
-/// they are scene code the showcase and the allocation gates both record.
-///
-/// The same feature also adds methods to public types, which a module
-/// cannot re-export: `Ui::theme_mut`, and the offscreen host's
-/// `has_format_pipelines`, `gpu_image_cache_len` and
-/// `invalidate_target_contents`.
-#[cfg(any(test, feature = "internals"))]
-pub mod internals {
-    pub use crate::app::internals::RecordApp;
-    pub use crate::gpu::test_gpu::{
-        HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
-    };
-    pub use crate::text::internals::{
-        PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES, TEXT_SCALE_STEP,
-    };
-    pub use crate::ui::harness::UiHarness;
-    pub use crate::ui::harness::frontend_harness::FrontendHarness;
-    pub use crate::ui::harness::passes::Passes;
-}
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
@@ -373,22 +332,6 @@ pub use display::Display;
 /// platform reports. Written through
 /// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
 pub use display::user_scale::UserScale;
-/// The benchmark workload as a recordable scene. Not part of the supported
-/// surface — it exists so the bench target, the allocation gates and the
-/// showcase page record the same tree, rather than each keeping a smaller
-/// stand-in of its own.
-#[cfg(feature = "internals")]
-pub use frame_fixture::FrameFixture;
-/// A settled three-pane dock as a recordable scene. Not part of the
-/// supported surface — the allocation gates and the visual suite record
-/// it rather than each keeping a dock of its own.
-#[cfg(feature = "internals")]
-pub use frame_fixture::dock_fixture::DockFixture;
-/// The surface, scale and dpr the benchmark workload is timed at. The
-/// bench target and the allocation gates share them so their numbers stay
-/// comparable.
-#[cfg(feature = "internals")]
-pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
 pub use gpu::device_requirements::DeviceRequirements;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;

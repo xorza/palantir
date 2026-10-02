@@ -29,7 +29,8 @@ use std::panic::Location;
 
 use glam::UVec2;
 use palantir::Ui;
-use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES, UiHarness};
+use palantir::internals::harness::UiHarness;
+use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES};
 
 use crate::allocator::{AuditResult, with_audit};
 

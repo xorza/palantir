@@ -2,6 +2,7 @@
 //! node.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -9,7 +10,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::{DragValue, DragValueState};
 use crate::widgets::panel::Panel;

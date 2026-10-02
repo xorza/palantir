@@ -1,3 +1,5 @@
+//! The values one frame's record passes returned.
+
 use crate::ui::frame_report::FrameReport;
 
 /// The values one frame's record closure returned, one per record pass

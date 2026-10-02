@@ -15,10 +15,10 @@
 use std::rc::Rc;
 
 use glam::UVec2;
+use palantir::internals::frame_fixture::{BENCH_DPR, FrameFixture};
 use palantir::internals::{HeadlessTestGpuLease, TEXT_SCALE_STEP, isolated_headless_test_gpu};
 use palantir::{
-    BENCH_DPR, Configure, FrameFixture, Grid, IconId, IconSet, IconTable, Panel, Sizing, Track,
-    TranslateScale, Ui,
+    Configure, Grid, IconId, IconSet, IconTable, Panel, Sizing, Track, TranslateScale, Ui,
 };
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};

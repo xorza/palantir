@@ -22,10 +22,10 @@
 //! footer-counter rect both arms exist to measure. That, and the three other
 //! standing exclusions, are recorded with their reasons in `EXCLUDED`.
 //!
-//! It sits at the crate root rather than beside any one driver because no
-//! driver owns it: the frame benches ([`crate::ui::bench`]), the allocation
+//! It sits in `crate::internals` rather than beside any one driver because
+//! no driver owns it: the frame benches (`crate::ui::bench`), the allocation
 //! gates in `tests/alloc/gates/` and the cascade bench
-//! ([`crate::scene::cascade::bench`]) all record this same tree, and its
+//! (`crate::scene::cascade::bench`) all record this same tree, and its
 //! node structure is what makes their numbers comparable release to
 //! release. Treat the structure as frozen — retheming is free, but adding
 //! or removing nodes retargets every recorded series at once.
@@ -36,7 +36,7 @@
 //! what the benches measure.
 
 mod chrome;
-pub(crate) mod dock_fixture;
+pub mod dock_fixture;
 mod forms;
 mod lists;
 mod panes;

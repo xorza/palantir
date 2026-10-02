@@ -13,7 +13,7 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::LineAlign;
-use crate::text::request::test_support::TestShape;
+use crate::text::request::internals::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::widgets::text_edit::tests::*;
 use crate::{Align, HAlign};

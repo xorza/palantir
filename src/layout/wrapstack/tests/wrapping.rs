@@ -1,10 +1,10 @@
 //! Where the break falls on each axis, and what an oversize child does to
 //! its line.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;

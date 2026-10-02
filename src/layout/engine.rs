@@ -317,7 +317,7 @@ impl LayoutEngine {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::layout::axis::Axis;
     use crate::layout::engine::LayoutEngine;
     use crate::layout::intrinsic::len_req::{LenReq, SLOT_COUNT};

@@ -459,7 +459,7 @@ const fn dequantize(value: u32) -> f32 {
 // Gated as wide as its consumers: the encoded cache's churn fixture is
 // built by the `text_atlas` benchmark as well as by tests.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
 

@@ -1,5 +1,5 @@
-use crate::common::panic_probe;
 use crate::input::sense::Sense;
+use crate::internals::panic_probe;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};

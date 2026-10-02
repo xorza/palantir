@@ -1,9 +1,9 @@
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::configure::Configure;
 use crate::widgets::radio::RadioButton;

@@ -1,4 +1,4 @@
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::okhsv::Okhsv;
 use crate::primitives::color::srgba_u8::SrgbaU8;

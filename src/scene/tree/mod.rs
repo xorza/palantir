@@ -746,7 +746,7 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::node_id::NodeId;
     use crate::scene::tree::*;

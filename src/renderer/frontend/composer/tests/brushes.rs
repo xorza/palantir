@@ -1,5 +1,6 @@
 //! Fills, images and raster targets: what each emits and what rides with it.
 
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
@@ -9,7 +10,6 @@ use crate::primitives::{
     color::RgbaF32, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     translate_scale::TranslateScale,
 };
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{

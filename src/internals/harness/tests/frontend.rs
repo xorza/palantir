@@ -1,12 +1,12 @@
 //! The deviceless frontend paints what a frame planned, and only that.
 
+use crate::internals::harness::frontend_harness::FrontendHarness;
+use crate::internals::harness::tests::support::SURFACE;
+use crate::internals::harness::*;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::frontend_harness::FrontendHarness;
-use crate::ui::harness::tests::support::SURFACE;
-use crate::ui::harness::*;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 

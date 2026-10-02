@@ -122,7 +122,7 @@ impl Configure for Button<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ui::harness::UiHarness;
+    use crate::internals::harness::UiHarness;
 
     use crate::primitives::background::Background;
     use crate::primitives::spacing::Spacing;

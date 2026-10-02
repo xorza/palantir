@@ -2,7 +2,8 @@
 
 use crate::InternedStr;
 use crate::Ui;
-use crate::common::panic_probe;
+use crate::internals::harness::UiHarness;
+use crate::internals::panic_probe;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -22,7 +23,6 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::frame_report::FrameProcessing;
-use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, ui_with_shared};
 use crate::widgets::configure::Configure;

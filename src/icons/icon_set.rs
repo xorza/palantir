@@ -157,7 +157,7 @@ impl IconSet {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::icons::icon_registry::IconSetId;
     use crate::icons::icon_set::IconRef;
     use crate::icons::icon_table::IconId;

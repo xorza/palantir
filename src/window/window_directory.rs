@@ -55,7 +55,7 @@ impl WindowDirectory {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::panic_probe;
+    use crate::internals::panic_probe;
     use crate::window::window_directory::WindowDirectory;
     use crate::window::window_token::WindowToken;
 

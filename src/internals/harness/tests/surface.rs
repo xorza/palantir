@@ -1,9 +1,9 @@
 //! Moving the surface between frames, and the physical/logical split.
 
+use crate::internals::harness::tests::support::{SURFACE, button};
+use crate::internals::harness::*;
 use crate::primitives::size::Size;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::tests::support::{SURFACE, button};
-use crate::ui::harness::*;
 
 #[test]
 fn resize_and_set_display_move_the_surface_between_frames() {
@@ -22,7 +22,7 @@ fn resize_and_set_display_move_the_surface_between_frames() {
         FramePaint::Full
     );
     assert_eq!(harness.display.physical, bigger);
-    assert_eq!(harness.ui.display.physical, bigger);
+    assert_eq!(harness.ui.display().physical, bigger);
 
     // A DPI move changes `physical` and `system_scale` together, leaving
     // `logical_rect` identical — `resize` alone cannot express it.
@@ -36,9 +36,9 @@ fn resize_and_set_display_move_the_surface_between_frames() {
         harness.set_display(dpi_move).frame(button).paint(),
         FramePaint::Full,
     );
-    assert_eq!(harness.ui.display, dpi_move);
+    assert_eq!(harness.ui.display(), dpi_move);
     assert_eq!(
-        harness.ui.display.logical_size().w,
+        harness.ui.display().logical_size().w,
         bigger.x as f32,
         "the logical surface is unchanged — only the raster is",
     );
@@ -65,7 +65,7 @@ fn user_scale_multiplies_onto_the_dpr() {
     let mut harness = UiHarness::new(SURFACE)
         .scale(2.0)
         .user_scale(UserScale::new(1.25));
-    let display = harness.ui.display;
+    let display = harness.ui.display();
 
     assert_eq!(display.scale_factor(), 2.5);
     assert_eq!(display.logical_size(), Size::new(80.0, 48.0));
@@ -75,16 +75,16 @@ fn user_scale_multiplies_onto_the_dpr() {
     // the next frame, as the window driver derives it.
     harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5)));
     harness.frame(button);
-    assert_eq!(harness.ui.display.scale_factor(), 3.0);
+    assert_eq!(harness.ui.display().scale_factor(), 3.0);
 
     // And a display swapped in carries its scale onto the setting.
     let swapped = Display {
         user_scale: UserScale::new(2.0),
-        ..harness.ui.display
+        ..harness.ui.display()
     };
     harness.set_display(swapped);
     assert_eq!(harness.ui.user_scale(), UserScale::new(2.0));
-    assert_eq!(harness.ui.display.scale_factor(), 4.0);
+    assert_eq!(harness.ui.display().scale_factor(), 4.0);
 }
 
 /// A user-scale move between frames must escalate to a full repaint, the
@@ -97,7 +97,7 @@ fn a_user_scale_move_repaints_in_full() {
 
     let zoomed = Display {
         user_scale: UserScale::new(1.5),
-        ..harness.ui.display
+        ..harness.ui.display()
     };
     assert_eq!(
         harness.set_display(zoomed).frame(button).paint(),

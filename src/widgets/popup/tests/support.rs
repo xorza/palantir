@@ -3,9 +3,9 @@
 
 use crate::layout::types::anchor::Anchor;
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;

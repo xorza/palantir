@@ -1,11 +1,11 @@
-//! A [`UiHarness`] with a deviceless [`Frontend`] behind it.
+//! A [`UiHarness`] with a deviceless `Frontend` behind it.
 
+use crate::internals::harness::UiHarness;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
-use crate::ui::harness::UiHarness;
 
 /// Drives frames through the whole CPU pipeline: record through damage
 /// on the [`UiHarness`], then encode and compose of what the frame

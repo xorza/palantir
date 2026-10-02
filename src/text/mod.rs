@@ -179,25 +179,15 @@ pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use crate::text;
     use crate::text::cosmic::shaped_buffer_cache;
 
-    /// The raster-scale quantum, so the allocation suite's scale ramp can
-    /// step exactly one rung a frame. A ramp that spelled the number
-    /// itself would stop minting fresh raster keys the moment this moved,
-    /// and a gate that stops missing stops measuring.
-    pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;
+    /// The shaped-buffer cache's short window — see
+    /// `crate::internals::PROBATION_KEEP_FRAMES`.
+    pub(crate) const PROBATION_KEEP_FRAMES: u64 = shaped_buffer_cache::PROBATION_KEEP_FRAMES;
 
-    /// The shaped-buffer cache's short window, so a text audit can warm
-    /// through the first expiry drain it schedules — a one-off that comes
-    /// due this many frames after the first shape, whatever the frames
-    /// between look like.
-    pub const PROBATION_KEEP_FRAMES: u64 = shaped_buffer_cache::PROBATION_KEEP_FRAMES;
-
-    /// Frames one revolution of the shaped-buffer expiry ring takes. A
-    /// text audit warms and measures in whole revolutions, so a cost the
-    /// ring incurs once per revolution lands inside its window.
-    pub const SHAPED_BUFFER_RING_FRAMES: u64 = shaped_buffer_cache::test_support::RING_FRAMES;
+    /// Frames one revolution of the shaped-buffer expiry ring takes — see
+    /// `crate::internals::SHAPED_BUFFER_RING_FRAMES`.
+    pub(crate) const SHAPED_BUFFER_RING_FRAMES: u64 = shaped_buffer_cache::internals::RING_FRAMES;
 }
 
 #[cfg(test)]

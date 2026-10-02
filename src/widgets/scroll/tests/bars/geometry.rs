@@ -2,6 +2,7 @@
 //! thumb keeps.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::scroll_axes::ScrollAxes;
@@ -10,7 +11,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;

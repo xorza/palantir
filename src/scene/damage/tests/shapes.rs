@@ -1,6 +1,7 @@
 //! What one node redrawing damages, shape by shape.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::stroke::Stroke;
@@ -14,7 +15,6 @@ use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use crate::text::glyph_font::GlyphFont;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};

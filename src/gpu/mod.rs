@@ -1192,7 +1192,7 @@ fn begin_load_pass<'e>(
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     //! Reach-in introspection for the surface-format-change tests: the
     //! count of cached per-format pipeline sets and the GPU image-cache
     //! occupancy, used to assert a new format builds its own pipelines

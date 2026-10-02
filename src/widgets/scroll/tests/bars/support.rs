@@ -1,10 +1,10 @@
 //! Recording a scroll twice and reading its bar rects back.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::UVec2;
 

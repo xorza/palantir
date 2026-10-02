@@ -6,13 +6,13 @@ use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::RgbaF32, corners::Corners, stroke::Stroke};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;

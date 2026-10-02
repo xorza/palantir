@@ -12,9 +12,9 @@
 //! inside the toolbar it wrapped in.
 use crate::primitives::widget_id::WidgetId;
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;

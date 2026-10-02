@@ -83,7 +83,7 @@ impl FontScope {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     /// The bundled Inter as the crate actually ships it, so a load case
     /// registers those bytes rather than a second `include_bytes!` of the
     /// same 875 KB file.

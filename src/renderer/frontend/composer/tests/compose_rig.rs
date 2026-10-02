@@ -2,9 +2,9 @@
 //! frontend keeps them.
 
 use crate::display::Display;
-use crate::renderer::frontend::capture::PaintCapture;
+use crate::internals::paint_capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
+use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordStore;
 use std::num::NonZeroU32;

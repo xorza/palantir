@@ -243,7 +243,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::mesh_upload_required;
-    use crate::common::panic_probe;
+    use crate::internals::panic_probe;
 
     #[test]
     fn mesh_upload_requires_geometry_only_when_instances_exist() {

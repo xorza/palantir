@@ -199,7 +199,7 @@ impl Cascade {
 // production routes through the two fused walks above, each of which
 // answers its whole question in one pass.
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #[cfg(test)]
     use crate::common::content_hash::ContentHash;
     use crate::input::sense::Sense;

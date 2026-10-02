@@ -12,10 +12,10 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;

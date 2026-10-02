@@ -1,6 +1,6 @@
 use crate::primitives::approx::EPS;
 use crate::primitives::corners::*;
-use crate::primitives::serde::test_support::{from_ron, ron_text};
+use crate::primitives::serde::internals::{from_ron, ron_text};
 
 #[test]
 fn lanes_round_trip_integer_values_exactly() {

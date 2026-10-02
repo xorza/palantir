@@ -2,6 +2,7 @@
 
 use crate::Ui;
 use crate::display::user_scale::UserScale;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
@@ -11,7 +12,6 @@ use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{
     BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame,
 };
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};

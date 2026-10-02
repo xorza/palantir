@@ -2,11 +2,12 @@
 
 use crate::Ui;
 use crate::WidgetId;
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
 use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::cross_driver_tests::support::chat_message;
 use crate::layout::types::align::Align;
 use crate::primitives::color::RgbaF32;
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -14,7 +15,6 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::widget::Widget;

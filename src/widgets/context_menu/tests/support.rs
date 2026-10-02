@@ -1,10 +1,10 @@
 //! Opening the menu and reading its rows back.
 
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use glam::UVec2;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 400);

@@ -338,7 +338,7 @@ impl ScrollState {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::widgets::scroll::state::ScrollState;
 
     impl ScrollState {

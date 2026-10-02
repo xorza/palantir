@@ -1,6 +1,7 @@
 //! The rollup: what a subtree hash covers, and where its span ends.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -8,7 +9,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record};
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 

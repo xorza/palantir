@@ -26,7 +26,7 @@ pub(crate) mod svg_facts;
 
 /// SVG documents the icon tests share.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     /// One fill colour over a 24 × 12 viewBox — a tintable icon.
     pub(crate) const ONE_COLOUR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><rect width="24" height="12" fill="#4080c0"/><circle cx="6" cy="6" r="3" fill="#4080c0"/></svg>"##;
 

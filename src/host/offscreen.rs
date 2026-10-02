@@ -332,14 +332,26 @@ impl OffscreenHost {
     }
 }
 
-/// Peepholes for the visual suite: cache introspection for the
+/// Peepholes for the visual suite — cache introspection for the
 /// format-change test, and a forced full repaint for the pixel damage
-/// oracle. Gated because the first two call `internals`-gated
-/// `WgpuBackend` helpers.
+/// oracle — and the draw list the `record_pass` benchmark replays. Gated
+/// because the first two call `internals`-gated `WgpuBackend` helpers.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use crate::gpu::render_target::TargetFormat;
     use crate::host::offscreen::OffscreenHost;
+    #[cfg(feature = "bench")]
+    use crate::renderer::render_buffer::RenderBuffer;
+
+    /// Draw list the most recent [`OffscreenHost::frame`]
+    /// composed. The `record_pass` benchmark replays the schedule over it
+    /// to report the exact step counts behind each timing — a number the
+    /// backend never publishes, because counting steps on the production
+    /// path would cost what the benchmark exists to measure.
+    #[cfg(feature = "bench")]
+    pub(crate) fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
+        &host.core.frontend.buffer
+    }
 
     impl OffscreenHost {
         /// Whether the shared backend has built a pipeline set for `format`.
@@ -364,27 +376,12 @@ pub(crate) mod internals {
     }
 }
 
-#[cfg(feature = "bench")]
-pub(crate) mod test_support {
-    use crate::host::offscreen::OffscreenHost;
-    use crate::renderer::render_buffer::RenderBuffer;
-
-    /// Draw list the most recent [`OffscreenHost::frame`]
-    /// composed. The `record_pass` benchmark replays the schedule over it
-    /// to report the exact step counts behind each timing — a number the
-    /// backend never publishes, because counting steps on the production
-    /// path would cost what the benchmark exists to measure.
-    pub(crate) fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
-        &host.core.frontend.buffer
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::internals::RecordApp;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::PresentPath;
+    use crate::internals::record_app::RecordApp;
     use crate::primitives::background::Background;
     use crate::primitives::color::RgbaF32;
     use crate::widgets::block::Block;

@@ -290,7 +290,7 @@ const fn moved_index(index: usize, from: usize, to: usize) -> usize {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     /// Where the page at `index` sits after a reorder of `from` into the
     /// gap `to` — the rule the view applies to its selection.
     pub(crate) const fn moved_index(index: usize, from: usize, to: usize) -> usize {

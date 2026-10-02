@@ -123,8 +123,8 @@ impl<K: PartialEq> ColorSurface<K> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::internals::harness::UiHarness;
     use crate::primitives::color::srgba_u8::SrgbaU8;
-    use crate::ui::harness::UiHarness;
 
     #[test]
     fn cached_surface_reuses_pixels_and_handle_until_resize() {

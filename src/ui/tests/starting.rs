@@ -2,6 +2,7 @@
 
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
@@ -9,7 +10,6 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{SURFACE, cold_ui};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};

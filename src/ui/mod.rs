@@ -1580,19 +1580,16 @@ impl Ui {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod harness;
-
 /// The doors past [`Ui`]'s private fields, and the only ones.
 ///
 /// Every field is private so that production code outside this module reaches
 /// the state through a named method — see the type's own doc for why. The
 /// white-box suites need more than that surface: they assert on tree
 /// contents, measure-cache descriptors, cascade rows and routing state that
-/// no widget has any business reading. They reach it in the two modules
-/// below, which do not exist in a shipped build: `internals` for what the
-/// integration suites call from outside the crate, `test_support` for this
-/// crate's own tests and benches.
+/// no widget has any business reading. They reach it here, in a module that
+/// does not exist in a shipped build: `pub` items for the integration suites
+/// outside the crate, `pub(crate)` ones for this crate's own tests, benches
+/// and harness.
 ///
 /// None of these carry `#[inline]`, unlike the one-line façade above. Nothing
 /// here reaches an optimized build that would want it: `cfg(test)` compiles
@@ -1601,44 +1598,23 @@ pub(crate) mod harness;
 /// the crate regardless.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use crate::ui::Ui;
     use crate::widgets::theme::Theme;
     use std::rc::Rc;
 
-    impl Ui {
-        /// The active theme, for in-place edits
-        /// (`ui.theme_mut().button.anim = …`).
-        ///
-        /// Gated, because in-place mutation is a fixture affordance
-        /// rather than how an app dresses a `Ui`: build the [`Theme`]
-        /// you want and hand it over with
-        /// [`set_theme`](Ui::set_theme) — which is what every caller in
-        /// this workspace does, and what the `winit` module's example
-        /// shows. This exists so a test can nudge one axis of an
-        /// already-running harness without rebuilding the bundle.
-        ///
-        /// Copy-on-write, so a handle taken from [`Ui::theme`] keeps the
-        /// values it was taken with and the `Ui` moves on alone.
-        #[inline]
-        pub fn theme_mut(&mut self) -> &mut Theme {
-            Rc::make_mut(&mut self.theme)
-        }
-    }
-}
-
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
     #[cfg(test)]
+    use crate::animation::AnimMap;
+    use crate::display::Display;
     use crate::input::input_state::InputState;
+    #[cfg(any(test, feature = "bench"))]
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::layer_layout::LayerLayout;
     #[cfg(test)]
     use crate::primitives::rect::Rect;
-    #[cfg(test)]
     use crate::scene::cascade::Cascade;
     #[cfg(test)]
     use crate::scene::endpoint::Endpoint;
+    #[cfg(any(test, feature = "bench"))]
     use crate::scene::forest::Forest;
     #[cfg(test)]
     use crate::scene::layer::Layer;
@@ -1649,16 +1625,48 @@ pub(crate) mod test_support {
     #[cfg(test)]
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    #[cfg(test)]
     use crate::ui::frame_runtime::FrameRuntime;
+    use crate::ui::frame_stamp::FrameStamp;
     #[cfg(all(test, feature = "winit"))]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
 
+    /// What the frame harness reads and seeds: it drives frames the way a
+    /// host does, and asserts on the routing a host never sees.
+    impl Ui {
+        /// The input machine itself, for tests that assert on routing
+        /// state the public surface deliberately does not expose —
+        /// capture targets, the raw per-layer streams, the action flag.
+        pub(crate) fn input(&self) -> &InputState {
+            &self.input
+        }
+
+        pub(crate) fn cascade(&self) -> &Cascade {
+            &self.cascade
+        }
+
+        pub(crate) fn frame_runtime(&self) -> &FrameRuntime {
+            &self.frame_runtime
+        }
+
+        /// Set the last frame's stamp. `Some` makes the next frame warm, so
+        /// it skips the warmup pass. `None` makes it a cold start.
+        pub(crate) fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
+            self.frame_runtime.prev_stamp = stamp;
+        }
+
+        /// Replace the display the next frame lays out at, as the window
+        /// driver does before each frame.
+        pub(crate) fn set_display(&mut self, display: Display) {
+            self.display = display;
+        }
+    }
+
     /// What the benches read as well as the tests: the tree walkers and
     /// measure-cache cases take `Self::forest`, and the cascade bench runs
     /// its engine over both tables.
+    #[cfg(any(test, feature = "bench"))]
     impl Ui {
         /// The whole forest, for the callers that re-run a pass over it —
         /// the cascade engine and the measure cache both walk every layer.
@@ -1683,22 +1691,11 @@ pub(crate) mod test_support {
     /// Only this crate's own tests call these.
     #[cfg(test)]
     impl Ui {
-        /// The input machine itself, for tests that assert on routing
-        /// state the public surface deliberately does not expose —
-        /// capture targets, the raw per-layer streams, the action flag.
-        pub(crate) fn input(&self) -> &InputState {
-            &self.input
-        }
-
         /// [`Self::input`], mutably — for tests that *drive* routing
         /// state rather than assert on it (planting focus, taking the
         /// action flag).
         pub(crate) fn input_mut(&mut self) -> &mut InputState {
             &mut self.input
-        }
-
-        pub(crate) fn cascade(&self) -> &Cascade {
-            &self.cascade
         }
 
         /// One layer's recorded tree — its `records` columns, `rollups`,
@@ -1744,8 +1741,9 @@ pub(crate) mod test_support {
             self.resources.text()
         }
 
-        pub(crate) fn frame_runtime(&self) -> &FrameRuntime {
-            &self.frame_runtime
+        /// The animation rows, for the tests that count what is resident.
+        pub(crate) fn anim_mut(&mut self) -> &mut AnimMap {
+            &mut self.anim
         }
 
         /// Narrower again: only the winit host's own tests write here.
@@ -1762,6 +1760,26 @@ pub(crate) mod test_support {
         #[cfg(feature = "winit")]
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame
+        }
+    }
+
+    impl Ui {
+        /// The active theme, for in-place edits
+        /// (`ui.theme_mut().button.anim = …`).
+        ///
+        /// Gated, because in-place mutation is a fixture affordance
+        /// rather than how an app dresses a `Ui`: build the [`Theme`]
+        /// you want and hand it over with
+        /// [`set_theme`](Ui::set_theme) — which is what every caller in
+        /// this workspace does, and what the `winit` module's example
+        /// shows. This exists so a test can nudge one axis of an
+        /// already-running harness without rebuilding the bundle.
+        ///
+        /// Copy-on-write, so a handle taken from [`Ui::theme`] keeps the
+        /// values it was taken with and the `Ui` moves on alone.
+        #[inline]
+        pub fn theme_mut(&mut self) -> &mut Theme {
+            Rc::make_mut(&mut self.theme)
         }
     }
 }

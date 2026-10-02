@@ -1,5 +1,5 @@
 use super::*;
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
@@ -7,7 +7,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::gpu_paint::gpu_paint_ref::test_support::NoopPaint;
+use crate::renderer::gpu_paint::gpu_paint_ref::internals::NoopPaint;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;

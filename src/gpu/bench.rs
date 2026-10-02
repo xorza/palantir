@@ -63,11 +63,11 @@
 //! Step and draw-list counts print alongside each result. They explain a
 //! result — they don't replace its elapsed time.
 
-use crate::app::internals::RecordApp;
 use crate::bench::Run;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::gpu::schedule::test_support::Walk;
-use crate::host::offscreen::{OffscreenHost, test_support as offscreen_support};
+use crate::gpu::schedule::internals::Walk;
+use crate::host::offscreen::{OffscreenHost, internals as offscreen_support};
+use crate::internals::record_app::RecordApp;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{Image, ImageFit};

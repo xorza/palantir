@@ -5,8 +5,8 @@
 //! in [`properties_card`]. The notes field sits behind the tree's one
 //! [`Expander`], held open.
 
-use crate::frame_fixture::FrameFixture;
-use crate::frame_fixture::tokens;
+use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::tokens;
 use crate::layout::types::align::Align;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::sizing::Sizing;

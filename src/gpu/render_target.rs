@@ -91,7 +91,7 @@ pub(crate) fn extent(size: UVec2) -> wgpu::Extent3d {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::gpu::render_target;
     use glam::UVec2;
 

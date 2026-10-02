@@ -1,11 +1,11 @@
 //! Wrapping text inside a fill slot: the share it reshapes at, and the
 //! floor under it.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::cross_driver_tests::support::chat_message;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use glam::UVec2;
 
 /// Chat-message HStack pattern. Avatar (Fixed) + Message (Fill,

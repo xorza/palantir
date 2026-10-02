@@ -2,6 +2,7 @@
 
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
@@ -13,7 +14,6 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record};
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;

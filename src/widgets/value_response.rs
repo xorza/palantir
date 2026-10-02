@@ -39,7 +39,7 @@ pub struct ValueResponse<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::widgets::value_response::ValueResponse;
 
     /// A [`ValueResponse`]'s two signals, copied out of the record pass

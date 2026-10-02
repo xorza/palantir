@@ -1,8 +1,8 @@
 //! The non-frame affordances: the arena, the clipboard, and a shared text
 //! cache.
 
-use crate::ui::harness::tests::support::SURFACE;
-use crate::ui::harness::*;
+use crate::internals::harness::tests::support::SURFACE;
+use crate::internals::harness::*;
 
 #[test]
 fn clipboard_round_trips_through_the_harness() {
@@ -20,7 +20,7 @@ fn arena_interns_without_ever_recording() {
     // `InternedStr` is a span plus an epoch and owns nothing, so the
     // store is the only thing that can resolve it — which is exactly the
     // property this harness exists to make reachable without a frame.
-    let store = &harness.ui.forest.record_store;
+    let store = &harness.ui.forest().record_store;
     let recorded = store.record_text(interned);
     assert_eq!(store.interned_text().resolve(recorded.span), "label");
 }

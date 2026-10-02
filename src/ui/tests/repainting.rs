@@ -5,6 +5,8 @@ use crate::diagnostics::DebugOverlayConfig;
 use crate::input::keyboard::key::Key;
 use crate::input::policy::InputPolicy;
 use crate::input::policy::InputSignal;
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
@@ -12,7 +14,6 @@ use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder;
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
@@ -21,7 +22,6 @@ use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::ui::frame_report::FrameProcessing;
-use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
 use crate::widgets::configure::Configure;
@@ -411,7 +411,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             clear: ui.theme.window_clear,
             damage: Damage::Full,
         };
-        encoder::test_support::encode(ui.frame_scene(), atlas, plan)
+        encoder::internals::encode(ui.frame_scene(), atlas, plan)
             .calls
             .iter()
             .filter_map(|command| match command {

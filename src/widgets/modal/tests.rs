@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::input::keyboard::key::Key;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -10,7 +11,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;

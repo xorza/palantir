@@ -6,8 +6,8 @@
 
 use std::f32::consts::PI;
 
-use crate::demo_swatches;
-use crate::frame_fixture::tokens;
+use crate::internals::demo_swatches;
+use crate::internals::frame_fixture::tokens;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;

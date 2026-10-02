@@ -28,7 +28,7 @@ impl<'a> InternedText<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::primitives::interned_text::InternedText;
 
     impl<'a> InternedText<'a> {

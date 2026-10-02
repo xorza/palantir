@@ -155,7 +155,7 @@ pub const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     /// Assert `actual` is within `tol` of `expected`. `why` names what
     /// makes the value inexact — a test that cannot say should use
     /// `assert_eq!`.

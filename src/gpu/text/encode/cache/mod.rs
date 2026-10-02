@@ -367,7 +367,7 @@ const _: () = assert!(
 // which the two integration suites enable without ever building a churn
 // fixture.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::common::block_arena::BlockArenaCounts;

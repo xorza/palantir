@@ -1,12 +1,12 @@
 //! Reaching a widget by id: the rect that answers, and the occlusion that
 //! refuses.
 
-use crate::common::panic_probe;
+use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
+use crate::internals::harness::*;
+use crate::internals::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
-use crate::ui::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
-use crate::ui::harness::*;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -141,7 +141,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let node = harness.node_for_widget_id(inner);
     assert_eq!(
         arranged,
-        harness.ui.layout[Layer::Main].rect[node.idx()],
+        harness.ui.layout(Layer::Main).rect[node.idx()],
         "layout_rect == the arrange output for that widget's node",
     );
 

@@ -8,7 +8,7 @@
 //! that stays closed — every one of them a place a fresh `Vec` would be
 //! easy to write and invisible to look at.
 
-use palantir::DockFixture;
+use palantir::internals::frame_fixture::dock_fixture::DockFixture;
 
 use crate::harness::Audit;
 

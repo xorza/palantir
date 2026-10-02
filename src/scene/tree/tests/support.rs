@@ -3,9 +3,9 @@
 
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
+use crate::internals::harness::UiHarness;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use glam::UVec2;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);

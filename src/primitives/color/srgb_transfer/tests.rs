@@ -1,5 +1,5 @@
 use super::*;
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 
 /// The transfer function as the standard writes it, with `powf` in
 /// `f64`, rounded to `f32` once.

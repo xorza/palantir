@@ -9,8 +9,8 @@
 //! value here — only `tick` moves — so the divider never perturbs the
 //! steady-state damage the bench arms assert.
 
-use crate::frame_fixture::FrameFixture;
-use crate::frame_fixture::tokens;
+use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::tokens;
 use crate::layout::types::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;

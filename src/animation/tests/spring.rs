@@ -10,7 +10,7 @@ use crate::animation::tests::support::{
 };
 use crate::animation::*;
 use crate::common::time::ANIM_SUBSTEP_DT;
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::color::RgbaF32;
 
 /// Accepted springs stay finite and settle on their target under a mixed

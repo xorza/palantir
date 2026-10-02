@@ -12,14 +12,14 @@ use crate::scene::cascade::engine::{
     CascadeContext, CascadePrefixBits, build_cascade_prefix, finish_cascade_input,
 };
 
+use crate::internals::harness::UiHarness;
 use crate::primitives::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
-use crate::text::font_scope::test_support::INTER;
-use crate::ui::harness::UiHarness;
+use crate::text::font_scope::internals::INTER;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::state::ScrollState;

@@ -373,7 +373,7 @@ fn recycle_into(pool: &mut Vec<Buffer>, buffer: Buffer) {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::common::counters::CounterSet;

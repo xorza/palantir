@@ -1,10 +1,10 @@
 //! The gestures the harness synthesises, and the routing each depends on.
 
-use crate::common::panic_probe;
+use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
+use crate::internals::harness::*;
+use crate::internals::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::ui::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
-use crate::ui::harness::*;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 
@@ -93,7 +93,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.set_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
-        harness.ui.input.modifiers(),
+        harness.ui.input().modifiers(),
         ctrl,
         "the key does not consume the chord",
     );
@@ -101,7 +101,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.set_modifiers(Modifiers::NONE);
     harness.key(Key::Char('c'));
     assert_eq!(
-        harness.ui.input.modifiers(),
+        harness.ui.input().modifiers(),
         Modifiers::NONE,
         "…and it stays cleared once set back",
     );
@@ -112,7 +112,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.on_input(InputEvent::ModifiersChanged(ctrl));
     harness.set_modifiers(Modifiers::NONE);
     assert_eq!(
-        harness.ui.input.modifiers(),
+        harness.ui.input().modifiers(),
         Modifiers::NONE,
         "set_modifiers clears a set the raw door installed",
     );
@@ -132,7 +132,7 @@ fn typed_text_arrives_as_one_press_per_char() {
 
     let keys: Vec<_> = harness
         .ui
-        .input
+        .input()
         .keyboard_events(Layer::Main)
         .iter()
         .map(|press| format!("{:?}", press.key))

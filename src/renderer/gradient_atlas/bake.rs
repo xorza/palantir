@@ -198,7 +198,7 @@ fn lerp_oklab(
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::approx::test_support::assert_close;
+    use crate::primitives::approx::internals::assert_close;
     use crate::primitives::brush::gradient::Interp;
     use crate::primitives::brush::gradient::color_ramp::ColorRamp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};

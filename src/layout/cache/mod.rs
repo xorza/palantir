@@ -503,7 +503,7 @@ impl MeasureCache {
 /// the measure-cache bench times — shared with the tests that pin what
 /// the cache retains for them: a deep chain and a balanced broad tree.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #[cfg(test)]
     use super::*;
     use crate::layout::types::sizing::Sizing;

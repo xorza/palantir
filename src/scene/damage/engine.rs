@@ -355,7 +355,7 @@ fn extend_predamaged(
 
 /// In-tree-test-only reach-in.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::cascade::paint::Paint;

@@ -843,7 +843,7 @@ const fn unallocated_dies_at(last_use: u64) -> u64 {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     /// The frame an unallocated entry last used at `last_use` is
     /// reclaimed on — for a test that steps an atlas past it.
     pub(crate) const fn unallocated_dies_at(last_use: u64) -> u64 {

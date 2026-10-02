@@ -323,7 +323,7 @@ impl From<Size> for SizeSpec {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::panic_probe;
+    use crate::internals::panic_probe;
     use crate::layout::types::sizing::{SizeSpec, Sizing};
 
     /// The two shares always partition 1.0, so the first lands at exactly

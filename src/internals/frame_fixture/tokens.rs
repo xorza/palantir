@@ -7,7 +7,7 @@
 //! real drop shadow (it is the sole driver of `emit_shadow`'s chrome
 //! branch) and a hairline border, or the workload silently loses coverage.
 
-use crate::demo_swatches;
+use crate::internals::demo_swatches;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;

@@ -1,10 +1,9 @@
 //! Frame-driving test harness — the intended single entry point for
-//! driving a [`Ui`] with synthetic input, in-crate and (once exported)
-//! from consumers.
+//! driving a [`Ui`] with synthetic input, in-crate and from consumers.
 //!
 //! # The one fact everything follows from
 //!
-//! [`Ui::frame`] calls the record closure **one, two, or three times**,
+//! `Ui::frame` calls the record closure **one, two, or three times**,
 //! and each call sees different input:
 //!
 //! | pass | when it runs | what it sees |
@@ -138,12 +137,12 @@
 //! that* a given method is for.
 //!
 //! 1. `impl UiHarness` (`pub`) — the surface that leaves the crate
-//!    through `palantir::internals`, addressing widgets by [`WidgetId`]
+//!    through `palantir::internals::harness`, addressing widgets by [`WidgetId`]
 //!    and nothing else.
 //! 2. `impl UiHarness` (`pub(crate)`) — construction, with
 //!    `from_resources` there because tier 1's constructors call it. The
 //!    two damage reads the **benches** make, `collapsed_damage` and
-//!    `damage_region`, sit in `mod test_support`: benches compile under
+//!    `damage_region`, sit in `mod internals`: benches compile under
 //!    `bench` without `cfg(test)`, so they cannot drop to tier 3.
 //! 3. `mod unit` (`#[cfg(test)]`) — what only the *in-tree* suite calls:
 //!    the tree/encoder reach-ins, the cold constructor, the
@@ -155,14 +154,13 @@
 //! simply isn't compiled, so nothing is spuriously unused and a
 //! genuinely dead method in tiers 2 and 3 still gets reported.
 //!
-//! No block here carries a lint allow. `palantir::internals` is gated on
-//! `any(test, feature = "internals")` — the same condition as this
-//! module — so tier 1 is reachable in every build that compiles it. Being
+//! No block here carries a lint allow. This module is `pub` under
+//! `palantir::internals`, so tier 1 is reachable in every build that
+//! compiles it. Being
 //! `pub`, a tier-1 method nobody calls is invisible to `dead_code`, so
 //! one is pruned when its last caller goes.
 
 use crate::app::App;
-use crate::app::internals::RecordApp;
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
@@ -174,6 +172,8 @@ use crate::input::pointer::PointerButton;
 use crate::input::response::input_delta::InputDelta;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
+use crate::internals::harness::passes::Passes;
+use crate::internals::record_app::RecordApp;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -182,17 +182,16 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
-use crate::ui::harness::passes::Passes;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 use strum::EnumCount as _;
 
-pub(crate) mod frontend_harness;
+pub mod frontend_harness;
 #[cfg(test)]
 pub(crate) mod oracle;
-pub(crate) mod passes;
+pub mod passes;
 #[cfg(test)]
 pub(crate) mod size_trio;
 
@@ -336,7 +335,7 @@ impl UiHarness {
     /// Run the frames input fed before now still owes, each with `app`,
     /// as a host does on the `repaint_requested` they report.
     fn deliver_held_input(&mut self, app: &mut impl App) {
-        while self.ui.input.has_held_input() {
+        while self.ui.input().has_held_input() {
             self.drive(true, app);
         }
     }
@@ -361,7 +360,7 @@ impl UiHarness {
     pub fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
         // A cold recorder runs the input-blind warmup pass first; it is
         // not one of the passes a caller asks about.
-        let mut warmup = self.ui.frame_runtime.prev_stamp.is_none();
+        let mut warmup = self.ui.frame_runtime().is_first_frame();
         let mut values = Vec::new();
         let report = self.step(|ui| {
             // `record` runs on *every* pass — it is the scene, and a pass
@@ -484,7 +483,7 @@ impl UiHarness {
                     "{button:?} is already held — release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.ui.input.pointer_pos(),
+                    at: self.ui.input().pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
@@ -587,7 +586,7 @@ impl UiHarness {
 
     fn assert_reaches(&self, id: WidgetId, pos: Vec2) {
         let senses_anything = |sense: Sense| sense != Sense::NONE;
-        let hit = self.ui.cascade.hit_test(pos, senses_anything);
+        let hit = self.ui.cascade().hit_test(pos, senses_anything);
         assert_eq!(
             hit,
             Some(id),
@@ -733,7 +732,7 @@ impl UiHarness {
     /// *after held input*: a change still waiting in the queue (rule 16)
     /// is one this harness already sent.
     pub fn set_modifiers(&mut self, mods: Modifiers) {
-        if self.ui.input.modifiers_after_held_input() != mods {
+        if self.ui.input().modifiers_after_held_input() != mods {
             self.on_input(InputEvent::ModifiersChanged(mods));
         }
     }
@@ -828,7 +827,7 @@ impl UiHarness {
     /// hover routing uses. Turns "the press didn't land and I don't know
     /// why" into one assertion.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
-        self.ui.cascade.hit_test(pos, Sense::hovers)
+        self.ui.cascade().hit_test(pos, Sense::hovers)
     }
 
     /// # Panics
@@ -916,7 +915,7 @@ impl UiHarness {
     }
 
     fn sync_display(&mut self) {
-        self.ui.display = self.frame_display();
+        self.ui.set_display(self.frame_display());
     }
 
     /// Re-seed `prev_stamp` after a builder moved the display, so the
@@ -924,7 +923,7 @@ impl UiHarness {
     /// warm harness: seeding a cold one would skip the warmup pass it
     /// exists for.
     fn rewarm(&mut self) {
-        if self.ui.frame_runtime.prev_stamp.is_some() {
+        if !self.ui.frame_runtime().is_first_frame() {
             self.mark_warm();
         }
     }
@@ -932,16 +931,17 @@ impl UiHarness {
     /// Seed `prev_stamp` so frame 1 skips the cold-start warmup pass and
     /// runs one record pass like every later frame.
     fn mark_warm(&mut self) {
-        self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.frame_display(), self.time));
+        self.ui
+            .set_prev_stamp(Some(FrameStamp::new(self.frame_display(), self.time)));
     }
 }
 
 /// The damage reads the crate's damage tests and the `damage` bench make;
 /// a non-test `internals` build has no caller.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
+    use crate::internals::harness::UiHarness;
     use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
-    use crate::ui::harness::UiHarness;
 
     impl UiHarness {
         /// Collapse this frame's accumulated raw rects the way
@@ -954,7 +954,7 @@ pub(crate) mod test_support {
             DamageRegion::collapse_from(
                 &self.engines.damage.raw_rects,
                 DEFAULT_PASS_BUDGET_PX,
-                self.ui.display.logical_rect(),
+                self.ui.display().logical_rect(),
             )
         }
 
@@ -977,13 +977,14 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod unit {
     use crate::animation::animatable::Animatable;
-    use crate::app::internals::RecordApp;
+    use crate::internals::harness::UiHarness;
+    use crate::internals::paint_capture::PaintCapture;
+    use crate::internals::record_app::RecordApp;
     use crate::layout::axis::Axis;
     use crate::layout::intrinsic::len_req::LenReq;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
-    use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;
@@ -994,7 +995,6 @@ mod unit {
     use crate::scene::tree::node_id::NodeId;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameReport;
-    use crate::ui::harness::UiHarness;
     use crate::widgets::configure::Configure;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
@@ -1005,7 +1005,7 @@ mod unit {
         /// itself; every other constructor is warm.
         pub(crate) fn cold(surface: UVec2) -> Self {
             let mut harness = Self::new(surface);
-            harness.ui.frame_runtime.prev_stamp = None;
+            harness.ui.set_prev_stamp(None);
             harness
         }
 
@@ -1036,7 +1036,7 @@ mod unit {
         }
 
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-            self.ui.forest.node_for_widget_id(Layer::Main, id)
+            self.ui.forest().node_for_widget_id(Layer::Main, id)
         }
 
         /// `node`'s main-tree intrinsic on `axis` — the query a layout test
@@ -1044,7 +1044,7 @@ mod unit {
         pub(crate) fn intrinsic(&mut self, node: NodeId, axis: Axis, req: LenReq) -> f32 {
             self.engines
                 .layout
-                .main_intrinsic(&self.ui.forest, node, axis, req)
+                .main_intrinsic(self.ui.forest(), node, axis, req)
         }
 
         /// Where `id` recorded last frame, on whichever layer took it.
@@ -1053,21 +1053,23 @@ mod unit {
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
-            self.ui.forest.trees[Layer::Main]
+            self.ui
+                .tree(Layer::Main)
                 .children(parent)
                 .map(|child| child.id)
                 .collect()
         }
 
         pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
-            self.ui.forest.trees[Layer::Main]
+            self.ui
+                .tree(Layer::Main)
                 .children(parent)
-                .map(|child| self.ui.layout[Layer::Main].rect[child.id.idx()])
+                .map(|child| self.ui.layout(Layer::Main).rect[child.id.idx()])
                 .collect()
         }
 
         pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
-            self.ui.anim.row_count::<T>()
+            self.ui.anim_mut().row_count::<T>()
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {
@@ -1080,14 +1082,10 @@ mod unit {
 
         fn encode(&self, damage: Damage) -> PaintCapture {
             let plan = RenderPlan {
-                clear: self.ui.theme.window_clear,
+                clear: self.ui.theme().window_clear,
                 damage,
             };
-            encoder::test_support::encode(
-                self.ui.frame_scene(),
-                &SharedGradientAtlas::default(),
-                plan,
-            )
+            encoder::internals::encode(self.ui.frame_scene(), &SharedGradientAtlas::default(), plan)
         }
     }
 }

@@ -177,7 +177,7 @@ impl IconTable {
 #[cfg(test)]
 mod tests {
     use crate::icons::icon_table::{IconId, IconTable};
-    use crate::icons::test_support::{BROKEN, ONE_COLOUR, TWO_COLOURS};
+    use crate::icons::internals::{BROKEN, ONE_COLOUR, TWO_COLOURS};
     use glam::Vec2;
 
     /// The set-level invariants `from_svgs` guarantees: name order, which

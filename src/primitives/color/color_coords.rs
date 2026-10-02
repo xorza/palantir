@@ -130,7 +130,7 @@ impl ColorCoords {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::approx::test_support::assert_close;
+    use crate::primitives::approx::internals::assert_close;
     use crate::primitives::color::RgbaF32;
     use crate::primitives::color::color_coords::ColorCoords;
     use crate::primitives::color::color_model::ColorModel;

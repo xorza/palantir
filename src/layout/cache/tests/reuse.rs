@@ -2,6 +2,7 @@
 //! the invalidations that must miss.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey, MeasureCache};
 use crate::layout::counters::ReplayCounts;
 use crate::layout::types::sizing::Sizing;
@@ -12,7 +13,6 @@ use crate::primitives::{color::RgbaF32, size::Size};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::UVec2;

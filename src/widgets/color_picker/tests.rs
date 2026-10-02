@@ -1,10 +1,10 @@
-use crate::primitives::approx::test_support::assert_close;
+use crate::internals::harness::UiHarness;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::okhsv::Okhsv;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
