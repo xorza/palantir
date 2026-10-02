@@ -184,14 +184,16 @@ mod tests {
         assert_eq!(s.last_main_pass_cpu_ms(), None);
     }
 
+    /// `ns as f32 / 1e6` is one correctly rounded division, so each
+    /// reading is the f32 nearest the exact quotient — the literal itself.
     #[test]
     fn handle_clones_share_state() {
         let a = GpuPassStats::default();
         let b = a.clone();
         a.record_pass_ns(3_500_000);
         a.record_main_pass_cpu_ns(250_000);
-        assert!((b.last_pass_ms().unwrap() - 3.5).abs() < 1e-4);
-        assert!((b.last_main_pass_cpu_ms().unwrap() - 0.25).abs() < 1e-4);
+        assert_eq!(b.last_pass_ms().unwrap(), 3.5);
+        assert_eq!(b.last_main_pass_cpu_ms().unwrap(), 0.25);
     }
 
     #[test]
@@ -202,10 +204,10 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_pass_ns(1_000_000);
         s.record_pass_ns(5_000_000);
-        assert!((s.last_pass_ms().unwrap() - 5.0).abs() < 1e-4);
+        assert_eq!(s.last_pass_ms().unwrap(), 5.0);
         s.record_main_pass_cpu_ns(80_000);
         s.record_main_pass_cpu_ns(20_000);
-        assert!((s.last_main_pass_cpu_ms().unwrap() - 0.02).abs() < 1e-4);
+        assert_eq!(s.last_main_pass_cpu_ms().unwrap(), 0.02);
     }
 
     #[test]
@@ -213,8 +215,8 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_kind_ns(BatchKind::Quads, 1_500_000);
         s.record_kind_ns(BatchKind::Text, 500_000);
-        assert!((s.last_kind_ms(BatchKind::Quads).unwrap() - 1.5).abs() < 1e-4);
-        assert!((s.last_kind_ms(BatchKind::Text).unwrap() - 0.5).abs() < 1e-4);
+        assert_eq!(s.last_kind_ms(BatchKind::Quads).unwrap(), 1.5);
+        assert_eq!(s.last_kind_ms(BatchKind::Text).unwrap(), 0.5);
         assert_eq!(s.last_kind_ms(BatchKind::Mesh), None);
         // Total isn't auto-populated from per-kind.
         assert_eq!(s.last_pass_ms(), None);

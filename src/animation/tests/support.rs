@@ -81,6 +81,44 @@ pub(super) fn setup_anim_ui(salt: &'static str) -> AnimUi {
     AnimUi { h, id }
 }
 
+/// The first step at which a spring released from rest `distance` from
+/// its target is inside both settle floors — from the closed form in
+/// `f64`, independent of the integrator. Step `n` lasts `dt_of(n)`.
+///
+/// Released from rest, `x(t) = e^(-h·t)(C + h·S)` and
+/// `v(t) = -k·e^(-h·t)·S` per unit distance, with `h = c/2` and `(C, S)`
+/// the pair `SpringTransition` names: `cos`/`sin` over `ω` below critical
+/// damping, `1`/`t` at it, `cosh`/`sinh` over `ψ` above it. The floors are
+/// `POS_EPS = 1e-4` and `VEL_EPS = 0.1`.
+pub(super) fn closed_form_settle_step(
+    stiffness: f64,
+    damping: f64,
+    distance: f64,
+    dt_of: impl Fn(u32) -> f32,
+) -> u32 {
+    let h = damping / 2.0;
+    let psi_sq = h * h - stiffness;
+    let mut t = 0.0;
+    (1..)
+        .find(|&n| {
+            t += f64::from(dt_of(n));
+            let (c, s) = if psi_sq < 0.0 {
+                let omega = (-psi_sq).sqrt();
+                ((omega * t).cos(), (omega * t).sin() / omega)
+            } else if psi_sq == 0.0 {
+                (1.0, t)
+            } else {
+                let psi = psi_sq.sqrt();
+                ((psi * t).cosh(), (psi * t).sinh() / psi)
+            };
+            let decay = (-h * t).exp();
+            let x = distance * decay * (c + h * s);
+            let v = distance * stiffness * decay * s;
+            x.abs() < 1e-4 && v.abs() < 0.1
+        })
+        .unwrap()
+}
+
 pub(super) fn linear_100ms() -> AnimSpec {
     AnimSpec::duration(0.1, Easing::Linear)
 }

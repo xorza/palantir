@@ -51,10 +51,9 @@ fn animate_drives_repaint_until_settle() {
             break;
         }
     }
-    assert!(
-        settled_at.is_some(),
-        "animation must settle and stop requesting repaints",
-    );
+    // FAST is 120 ms. The retarget frame spent nothing, so loop frame `i`
+    // has spent (i + 1) × 16 ms: 112 ms at i = 6, 128 ms at i = 7.
+    assert_eq!(settled_at, Some(7), "the 8th 16 ms frame passes 120 ms");
 }
 
 /// `Ui::animate(..., None)` must: return `target` unchanged, never
@@ -79,8 +78,9 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
             !passes.report().repaint_requested,
             "{label} spec must never request a repaint"
         );
-        assert!(
-            h.anim_row_count::<f32>() == 0,
+        assert_eq!(
+            h.anim_row_count::<f32>(),
+            0,
             "{label} spec must not allocate a row",
         );
     }
@@ -101,8 +101,9 @@ fn animate_some_then_none_drops_stale_row() {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
         Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
-    assert!(
-        h.anim_row_count::<f32>() > 0,
+    assert_eq!(
+        h.anim_row_count::<f32>(),
+        1,
         "Some(FAST) must allocate a row mid-flight",
     );
 
@@ -111,8 +112,9 @@ fn animate_some_then_none_drops_stale_row() {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
         Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
-    assert!(
-        h.anim_row_count::<f32>() == 0,
+    assert_eq!(
+        h.anim_row_count::<f32>(),
+        0,
         "None spec must drop the stale row inserted by a prior Some()",
     );
 }
@@ -190,8 +192,9 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimSpec::FAST));
         Block::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
-    assert!(
-        h.anim_row_count::<AnimatedLook>() > 0,
+    assert_eq!(
+        h.anim_row_count::<AnimatedLook>(),
+        1,
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
 
