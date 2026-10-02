@@ -45,33 +45,54 @@ fn click_to_edit_types_and_commits_on_enter() {
     assert!(!s.committed, "commit is a one-frame edge");
 }
 
+/// Escape ends the edit with the value it opened on and commits nothing.
+/// A live binding holds the typed 42 until then, so the revert is a
+/// change; a deferred caller never adopted 42, so it sees neither.
 #[test]
-fn escape_blur_commits_pending_draft_once() {
-    let id = WidgetId::from_hash("dv-escape-blur");
+fn escape_reverts_the_draft_without_a_commit() {
+    let id = WidgetId::from_hash("dv-escape-revert");
     let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
-
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    h.key(Key::Char('4'));
-    deferred_frame(&mut h, id, &mut canonical, true, false);
-    h.key(Key::Char('2'));
-    deferred_frame(&mut h, id, &mut canonical, true, false);
-
-    // Escape blurs the editor (typing left no selection, so one Escape).
-    // The pending draft resolves on the first chip record after the blur —
-    // the same frame when it re-records, the next frame otherwise — with
-    // exactly one commit either way.
+    for c in ['4', '2'] {
+        h.key(Key::Char(c));
+        deferred_frame(&mut h, id, &mut canonical, true, false);
+    }
     h.key(Key::Escape);
-    let a = deferred_frame(&mut h, id, &mut canonical, true, false);
-    let b = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(a.committed || b.committed, "blur commits the draft");
-    assert_eq!(a.commits + b.commits, 1, "exactly one commit");
-    assert_eq!(canonical, 42.0);
+    for _ in 0..2 {
+        let s = deferred_frame(&mut h, id, &mut canonical, true, false);
+        assert!(!s.changed && !s.committed && s.commits == 0, "{s:?}");
+    }
+    assert_eq!(canonical, 5.0);
+    assert!(h.ui.focused_id().is_none(), "Escape blurs");
 
-    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed);
+    let live_id = WidgetId::from_hash("dv-escape-live");
+    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut value = 5.0_f64;
+    let live = |h: &mut UiHarness, value: &mut f64| {
+        h.frame_value(|ui| {
+            let r = DragValue::new(&mut *value)
+                .editable(true)
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .id(live_id)
+                .show(ui);
+            (r.changed, r.committed)
+        })
+    };
+    live(&mut h, &mut value);
+    h.set_focus(live_id);
+    live(&mut h, &mut value);
+    for c in ['4', '2'] {
+        h.key(Key::Char(c));
+        live(&mut h, &mut value);
+    }
+    assert_eq!(value, 42.0, "the typed text is written live");
+    h.key(Key::Escape);
+    assert_eq!(live(&mut h, &mut value), (true, false), "the revert");
+    assert_eq!(value, 5.0);
+    assert_eq!(live(&mut h, &mut value), (false, false), "no residue");
 }
 
 #[test]
@@ -273,7 +294,7 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
 
 fn edit_buffer(ui: &mut Ui, id: WidgetId) -> &mut String {
     match ui.state_or_default::<DragValueState>(id) {
-        DragValueState::Editing { buffer } => buffer,
+        DragValueState::Editing { buffer, .. } => buffer,
         state => panic!("expected DragValue edit state, got {state:?}"),
     }
 }

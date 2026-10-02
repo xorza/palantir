@@ -309,3 +309,15 @@ delta only when no row under the pointer pans y. Touches `Sense`, `Scroll`, `Tex
 `TabStrip`, `Cascade::hit_test_targets` and `InputState::on_scroll`. Tests: wheel y over a field in
 a `Scroll::vertical()` scrolls the page; an overflowing tab strip pans on wheel x and Shift+wheel y
 (Linux) and passes wheel y to the page; a lone field with overflowing text pans on wheel y.
+
+## A23. A shared popup trigger
+
+**Findings.** REVIEW "Small widgets design": `ColorButton`'s `ChipState` and `ComboBox`'s
+`ComboState` are the same `{open}` row, and the block around them is the same in both: probe the
+flag, toggle on click, close when disabled, show `Popup::below(rect)`, close on `closed()`, write
+back only on a flip. REDESIGN D12 proposed a crate-internal `PopupTrigger`, but AGENTS.md lets a
+widget reach only the public API, so a shared helper has to be public.
+
+**Recommendation.** A public `PopupTrigger` beside `Popup`: `PopupTrigger::new(id, &response)`
+probes and toggles, `open()` answers, `close()` closes, and `finish(ui)` writes back on a flip. Read `Popup`, `OverlayScope` and `ContextMenu::attach` first, and match their argument
+order. Touches `ColorButton`, `ComboBox` and any app that drops its own panel from a button.

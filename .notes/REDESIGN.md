@@ -670,7 +670,7 @@ Local causes, one step each in phase 8.
 - **MenuItem::separator** gets `#[track_caller]`.
 - **Clipboard**: `ContentNotAvailable` answers `Ok("")`; only a backend error falls back; a failed
   `set_text` retries the primary on the next read.
-- **Shared popup trigger**: one crate-internal `PopupTrigger { open }` for ComboBox and ColorButton.
+- **Shared popup trigger**: waits for API_CHANGES A23 (a widget reaches only the public API).
 - **ColorField / ColorStrip keys**: one handler; PageUp/PageDown step 0.1 on both.
 - **DragValue Escape** reverts the typed text, as the hex field does.
 - **WindowCommands::close** dedupes per token.

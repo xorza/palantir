@@ -134,9 +134,7 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Small widgets design and consolidation
 - [ ] `color_button/mod.rs:46` vs `combo_box/mod.rs:28`: `ChipState`/`ComboState` are identical `{open}` structs. The "probe flag → toggle on click → `Popup::below(rect)` → close on `closed()` → write back on flip" block is duplicated verbatim.
-- [ ] `color_field/mod.rs:176-204` vs `color_strip/mod.rs:236-258`: duplicated key handling with diverging semantics. PageUp/PageDown jump the field's value axis to 1/0, but step the strip by ±0.1. The press → keyed → committed scaffolding and the surface/texel code are also copied.
 - [ ] Keyboard support differs across siblings. ColorField/ColorStrip and Expander are focusable and key-driven. Slider, Checkbox, Radio and Switch are not focusable and have no key path.
-- [ ] Escape differs across siblings. In DragValue edit mode (`drag_value/mod.rs:367-386`) Escape commits the typed text (the buffer is parsed live). The picker's hex field (`color_picker/mod.rs:451`) treats Escape (`cancelled`) as revert.
 - [ ] `color_button/mod.rs`: lacks ColorPicker's `swatches(&[RgbaF32])` and `downsample(n)`. Its `history` default (true) also differs from ColorPicker's (Hidden).
 - [ ] Naming: `Tooltip::on(&snapshot)` vs `ContextMenu::attach(ui, &snapshot)` are two names for "attach to a trigger snapshot".
 - [ ] File layout: `TooltipResponse`, `ExpanderResponse`, `ClickOutside` (`popup/mod.rs`) and `SplitHalf` (`splitter/mod.rs`) are standalone public types inside a widget's file, while `ValueResponse`/`SelectResponse`/`OverlayResponse` each get their own file.
