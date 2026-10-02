@@ -1082,7 +1082,7 @@ impl InputState {
 // Read by the frame harness, which feeds input the way a host does and
 // has to know what it already fed.
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::input::input_state::InputState;
     use crate::input::keyboard::modifiers::Modifiers;
 

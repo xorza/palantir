@@ -1,3 +1,4 @@
+use crate::widgets::text_edit::input_pass::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -123,12 +124,7 @@ struct ExternalReplacementCase {
 #[test]
 fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
     fn word_nav(key: Key) -> KeyPress {
-        let mut keypress = press(key);
-        match PLATFORM {
-            Platform::Mac => keypress.mods.alt = true,
-            _ => keypress.mods.ctrl = true,
-        }
-        keypress
+        KeyPress::with(key, WORD_NAV)
     }
 
     let cases = [

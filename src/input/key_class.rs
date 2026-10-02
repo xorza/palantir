@@ -206,20 +206,11 @@ mod tests {
     use crate::input::key_class::{KeyClass, KeyFilter};
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_press::KeyPress;
-    use crate::input::keyboard::key_text::KeyText;
+
     use crate::input::keyboard::modifiers::Modifiers;
 
     fn press(key: Key, mods: Modifiers) -> KeyPress {
-        KeyPress {
-            key,
-            mods,
-            repeat: false,
-            physical: key,
-            text: match key {
-                Key::Char(c) => KeyText::from_char(c),
-                _ => KeyText::EMPTY,
-            },
-        }
+        KeyPress::with(key, mods)
     }
 
     /// `accepts` is `takes` over a press: it classifies the press the way

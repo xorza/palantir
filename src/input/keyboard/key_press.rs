@@ -63,3 +63,27 @@ impl KeyPress {
         !self.text.is_empty() && self.mods.compose_text(PLATFORM)
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_press::KeyPress;
+    use crate::input::keyboard::key_text::KeyText;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    impl KeyPress {
+        /// A first press of `key` under `mods`, typing what the key types
+        /// on a plain layout. `physical` is [`Key::Other`]: only a
+        /// non-ASCII `Char` under a command modifier consults it, and a
+        /// case that needs a real position spells the press out.
+        pub(crate) fn with(key: Key, mods: Modifiers) -> Self {
+            Self {
+                key,
+                mods,
+                repeat: false,
+                physical: Key::Other,
+                text: KeyText::of_key(key),
+            }
+        }
+    }
+}

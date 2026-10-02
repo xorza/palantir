@@ -1,4 +1,4 @@
-use crate::input::keyboard::key_text::KeyText;
+use crate::widgets::text_edit::input_pass::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -74,28 +74,8 @@ fn word_range_at_picks_anchor_kind() {
 
 #[test]
 fn apply_key_word_nav_cases() {
-    // Word-nav modifier (Alt on macOS, Ctrl elsewhere) plus arrow.
     fn word_nav(key: Key) -> KeyPress {
-        let mods = match PLATFORM {
-            Platform::Mac => Modifiers {
-                alt: true,
-                ..Modifiers::NONE
-            },
-            _ => Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-        };
-        KeyPress {
-            key,
-            mods,
-            repeat: false,
-            physical: Key::Other,
-            text: match key {
-                Key::Char(c) => KeyText::from_char(c),
-                _ => KeyText::EMPTY,
-            },
-        }
+        KeyPress::with(key, WORD_NAV)
     }
 
     fn word_nav_shift(key: Key) -> KeyPress {

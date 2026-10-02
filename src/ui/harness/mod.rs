@@ -731,14 +731,9 @@ impl UiHarness {
             key,
             repeat: false,
             physical: Key::Other,
-            // What a window reports beside the key: a printable one
-            // carries its character, and a named one carries
-            // nothing. The command gate is the *field's*, not this
-            // one's — a platform reports text under Ctrl too.
-            text: match key {
-                Key::Char(c) => KeyText::from_char(c),
-                _ => KeyText::EMPTY,
-            },
+            // The command gate is the *field's*, not this one's — a
+            // platform reports text under Ctrl too.
+            text: KeyText::of_key(key),
         })
     }
 

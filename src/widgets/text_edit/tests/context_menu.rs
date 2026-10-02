@@ -1,5 +1,4 @@
 use crate::common::clipboard::{Clipboard, test_support};
-use crate::input::keyboard::key_text::KeyText;
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against
@@ -145,30 +144,24 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
     fn primary(c: char) -> KeyPress {
-        KeyPress {
-            key: Key::Char(c),
-            mods: Modifiers {
+        KeyPress::with(
+            Key::Char(c),
+            Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char(c),
-        }
+        )
     }
 
     // A non-command modifier — must NOT trigger clipboard shortcuts.
     fn non_primary(c: char) -> KeyPress {
-        KeyPress {
-            key: Key::Char(c),
-            mods: Modifiers {
+        KeyPress::with(
+            Key::Char(c),
+            Modifiers {
                 alt: true,
                 ..Modifiers::NONE
             },
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char(c),
-        }
+        )
     }
 
     clipboard.set_text("").unwrap();
@@ -311,16 +304,13 @@ fn clipboard_shortcut_does_not_insert_char() {
     apply_key_with_clipboard(
         &mut text,
         &mut state,
-        KeyPress {
-            key: Key::Char('c'),
-            mods: Modifiers {
+        KeyPress::with(
+            Key::Char('c'),
+            Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char('c'),
-        },
+        ),
         &clipboard,
     );
     assert_eq!(text, "ab", "primary+c without a selection is a no-op");
