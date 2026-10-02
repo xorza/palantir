@@ -274,11 +274,11 @@ impl LayoutEngine {
                 self.cache.capture_tree(
                     tree,
                     CaptureTreeInput {
-                        desired: &mut self.scratch.desired,
+                        desired: &self.scratch.desired,
                         rect: &layer_out.rect,
                         scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
-                        available_q: &mut self.scratch.available_q,
+                        available_q: &self.scratch.available_q,
                         grid_track_state: &self.scratch.grid.track_state,
                         text_spans: &layer_out.text_spans,
                         text_shapes: &layer_out.text_shapes,

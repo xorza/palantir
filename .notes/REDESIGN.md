@@ -787,13 +787,6 @@ output, cost, cleanup.
 
 - [ ] Key dumps on Linux and on the macOS test laptop, recorded as the translation test table.
 
-## Phase 5. Layout (D14)
-
-- [ ] Quantized `would_wrap` in both passes.
-- [ ] ZStack/Canvas Hug axes against `inner_avail`.
-- [ ] Stack main-axis contract doc and the `Scroll` Fill note.
-- [ ] Cache snapshot rule; `arrange_src` on every node of a hit subtree.
-
 ## Phase 6. Animation (D7)
 
 - [ ] From-rest first frame spends 0; in-flight retargets unchanged.
