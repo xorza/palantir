@@ -41,9 +41,12 @@ fn cube_corners_are_the_gamut_edge() {
             "the reference port's hues are printed to seven decimals, and \
              the f32 conversion adds up to two ulps",
         );
-        let edge = "the gamut-edge search lands a few f32 ulps under 1";
-        assert_close(coords.s, 1.0, 1e-6, edge);
-        assert_close(coords.v, 1.0, 1e-6, edge);
+        // The gamut-edge search runs on the platform's cbrt and powf,
+        // and their last-ulp differences grow through it: a few ulps
+        // under 1 on Linux, 5e-6 under it on Windows.
+        let edge = "the platform's cbrt and powf move the gamut-edge search";
+        assert_close(coords.s, 1.0, 1e-5, edge);
+        assert_close(coords.v, 1.0, 1e-5, edge);
 
         if index == BLUE {
             continue;

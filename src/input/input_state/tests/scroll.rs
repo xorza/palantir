@@ -4,24 +4,14 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use glam::Vec2;
-use std::time::Duration;
 
 #[test]
 fn scroll_delta_for_preserves_raw_pixels_and_lines() {
     let mut state = InputState::default();
-    let cascade = Cascade::default();
     let id = WidgetId::from_hash("scroll");
     state.scroll_target = Some(id);
-    state.on_input(
-        InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::ScrollLines(Vec2::new(0.0, 2.0)),
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    state.feed(InputEvent::ScrollLines(Vec2::new(0.0, 2.0)));
     let delta = state.scroll_delta_for(id);
     assert_eq!(delta.pixels, Vec2::new(0.0, 5.0));
     assert_eq!(delta.lines, Vec2::new(0.0, 2.0));
@@ -31,19 +21,10 @@ fn scroll_delta_for_preserves_raw_pixels_and_lines() {
 #[test]
 fn on_input_accumulates_scroll_delta() {
     let mut state = InputState::default();
-    let cascade = Cascade::default();
     let id = WidgetId::from_hash("scroll");
     state.scroll_target = Some(id);
-    state.on_input(
-        InputEvent::ScrollPixels(Vec2::new(0.0, 40.0)),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::ScrollPixels(Vec2::new(5.0, -10.0)),
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 40.0)));
+    state.feed(InputEvent::ScrollPixels(Vec2::new(5.0, -10.0)));
     assert_eq!(state.scroll_delta_for(id).pixels, Vec2::new(5.0, 30.0));
 }
 
@@ -53,11 +34,7 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
     let cascade = Cascade::default();
     for index in 0..8 {
         state.scroll_target = Some(WidgetId::from_hash(("scroll", index)));
-        state.on_input(
-            InputEvent::ScrollPixels(Vec2::ONE),
-            &cascade,
-            Duration::ZERO,
-        );
+        state.feed(InputEvent::ScrollPixels(Vec2::ONE));
     }
     assert_eq!(state.frame_target_deltas.len(), 8);
     let capacity = state.frame_target_deltas.capacity();
@@ -68,11 +45,7 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
 
     for index in 0..8 {
         state.scroll_target = Some(WidgetId::from_hash(("next", index)));
-        state.on_input(
-            InputEvent::ScrollLines(Vec2::new(0.0, 1.0)),
-            &cascade,
-            Duration::ZERO,
-        );
+        state.feed(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
     }
     assert_eq!(state.frame_target_deltas.len(), 8);
     assert_eq!(state.frame_target_deltas.capacity(), capacity);
@@ -90,27 +63,14 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
 #[test]
 fn non_finite_payloads_are_refused_before_they_reach_retained_state() {
     let mut state = InputState::default();
-    let cascade = Cascade::default();
     let id = WidgetId::from_hash("scroll");
     // The pointer move first: it re-resolves the targets against the
     // cascade, and this one is empty. Routing is stamped in after it, the
     // way the other cases here do.
-    state.on_input(
-        InputEvent::PointerMoved(Vec2::new(7.0, 11.0)),
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(InputEvent::PointerMoved(Vec2::new(7.0, 11.0)));
     state.scroll_target = Some(id);
-    state.on_input(
-        InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::ScrollLines(Vec2::new(1.0, 0.0)),
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    state.feed(InputEvent::ScrollLines(Vec2::new(1.0, 0.0)));
 
     for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         for axis in [Vec2::new(bad, 0.0), Vec2::new(0.0, bad)] {
@@ -120,9 +80,7 @@ fn non_finite_payloads_are_refused_before_they_reach_retained_state() {
                 InputEvent::PointerMoved(axis),
             ] {
                 assert!(
-                    !state
-                        .on_input(event, &cascade, Duration::ZERO)
-                        .requests_repaint,
+                    !state.feed(event).requests_repaint,
                     "{event:?} must be refused",
                 );
             }

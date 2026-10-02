@@ -36,7 +36,6 @@ use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -79,16 +78,7 @@ fn block_of(ui: &Ui, field: NodeId) -> NodeId {
 }
 
 fn press(key: Key) -> KeyPress {
-    KeyPress {
-        key,
-        mods: Modifiers::NONE,
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    KeyPress::with(key, Modifiers::NONE)
 }
 
 const SMALL: UVec2 = UVec2::new(200, 80);
@@ -107,19 +97,13 @@ fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
 }
 
 fn shift(key: Key) -> KeyPress {
-    KeyPress {
+    KeyPress::with(
         key,
-        mods: Modifiers {
+        Modifiers {
             shift: true,
             ..Modifiers::NONE
         },
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    )
 }
 
 /// Primary-modifier + key — the chord under which shortcuts like
@@ -127,19 +111,13 @@ fn shift(key: Key) -> KeyPress {
 /// platform-normalized command bit (Cmd on macOS, Ctrl elsewhere), so
 /// tests just set `ctrl`.
 fn ctrl_press(key: Key) -> KeyPress {
-    KeyPress {
+    KeyPress::with(
         key,
-        mods: Modifiers {
+        Modifiers {
             ctrl: true,
             ..Modifiers::NONE
         },
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    )
 }
 
 fn ctrl_shift_press(key: Key) -> KeyPress {

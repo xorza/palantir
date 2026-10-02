@@ -2,6 +2,7 @@ use crate::FocusPolicy;
 use crate::KeyFilter;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
+use crate::input::input_state::tests::{forged_focus, key_down};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -14,35 +15,16 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use std::time::Duration;
 use strum::EnumCount as _;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
-    let cascade = Cascade::default();
     let target = WidgetId::from_hash("scroll");
     state.scroll_target = Some(target);
-    state.on_input(
-        InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)),
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)));
     let before_scroll = state.frame_target_deltas.clone();
-    state.on_input(
-        InputEvent::KeyDown {
-            key: Key::ArrowLeft,
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::EMPTY,
-        },
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::ModifiersChanged(Modifiers::NONE),
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(key_down(Key::ArrowLeft));
+    state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
     assert_eq!(state.frame_target_deltas, before_scroll);
 }
 
@@ -51,42 +33,20 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     // Modifiers captured at push time, so a ModifiersChanged between
     // two KeyDowns attributes correctly.
     let mut state = InputState::default();
-    let cascade = Cascade::default();
-    state.focused = Some(WidgetId::from_hash("editor"));
+    state.set_focus(Some(forged_focus()));
 
-    state.on_input(
-        InputEvent::ModifiersChanged(Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        }),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::KeyDown {
-            key: Key::Char('a'),
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char('a'),
-        },
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::ModifiersChanged(Modifiers::NONE),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::KeyDown {
-            key: Key::Char('b'),
-            repeat: true,
-            physical: Key::Other,
-            text: KeyText::from_char('b'),
-        },
-        &cascade,
-        Duration::ZERO,
-    );
+    state.feed(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
+    state.feed(key_down(Key::Char('a')));
+    state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
+    state.feed(InputEvent::KeyDown {
+        key: Key::Char('b'),
+        repeat: true,
+        physical: Key::Other,
+        text: KeyText::from_char('b'),
+    });
 
     let presses = &state.frame_keyboard_events;
     assert_eq!(presses.len(), 2);
@@ -357,12 +317,13 @@ fn a_close_takes_effect_at_the_next_resolution() {
     }
 }
 
-/// Feed an Escape that the keyboard wake-gate will actually deliver.
+/// Feed an Escape that the keyboard wake-gate will actually deliver,
+/// focused on the fixture's `editor` block when it records one.
 /// The gate drops an unsubscribed chord when nothing is focused, and
 /// `end_frame` evicts focus whose widget was not recorded — so this has
 /// to be set immediately before the press, not once up front.
 fn press_escape(h: &mut UiHarness) {
-    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
+    h.set_focus(WidgetId::from_hash("editor"));
     h.key(Key::Escape);
 }
 
@@ -582,25 +543,12 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 fn post_record_clears_keys_but_preserves_modifiers() {
     let mut state = InputState::default();
     let cascade = Cascade::default();
-    state.focused = Some(WidgetId::from_hash("editor"));
-    state.on_input(
-        InputEvent::ModifiersChanged(Modifiers {
-            shift: true,
-            ..Modifiers::NONE
-        }),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::KeyDown {
-            key: Key::ArrowLeft,
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::EMPTY,
-        },
-        &cascade,
-        Duration::ZERO,
-    );
+    state.set_focus(Some(forged_focus()));
+    state.feed(InputEvent::ModifiersChanged(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    }));
+    state.feed(key_down(Key::ArrowLeft));
     let buf_cap_before = state.frame_keyboard_events.capacity();
 
     state.end_frame(&cascade);
