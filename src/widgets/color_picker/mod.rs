@@ -1,6 +1,7 @@
 //! The assembled colour picker: the panel, what it retains between frames,
 //! and the rule that decides which control's write reaches the bound colour.
 
+use crate::input::response::response_state::ResponseState;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -88,13 +89,10 @@ enum Swatches<'a> {
 #[derive(Debug, Default)]
 struct PickerState {
     coords: ColorCoords,
-    /// The colour this picker last wrote. Any other value in the binding is
-    /// an edit from outside, and re-seeds the axes.
-    written: RgbaF32,
-    /// Whether `written` has ever been written. Without it a picker bound to
-    /// a transparent black would read its own default as a match and never
-    /// seed.
-    seeded: bool,
+    /// The colour this picker last wrote or seeded from, `None` before the
+    /// first frame. Any other value in the binding is an edit from outside,
+    /// and re-seeds the axes.
+    written: Option<RgbaF32>,
     /// The hex field's buffer, rewritten from the colour whenever the field
     /// does not hold focus.
     hex: String,
@@ -265,6 +263,35 @@ struct Writes {
     /// The hex field, an RGB value or a swatch named a colour outright.
     exact: Option<RgbaF32>,
     committed: bool,
+    /// A pick the history keeps: a pointer gesture released, a value
+    /// typed and committed, a swatch clicked. Not a keyboard nudge — each
+    /// arrow press commits, and sixteen of them would evict the whole row
+    /// with near-identical shades.
+    remember: bool,
+}
+
+/// The colour the panel shows: the bound one, unless an axis moved this
+/// frame. Built from the axes alone, it would show their clamped reading
+/// of the bound colour — `#0000ff` seeds Okhsv at s = v = 1, which is
+/// `#0037ff` — though the binding still holds `#0000ff`.
+fn shown(state: &PickerState, bound: RgbaF32, writes: &Writes) -> RgbaF32 {
+    let color = if writes.axes {
+        state.coords.to_color()
+    } else {
+        bound
+    };
+    color.with_alpha(writes.alpha)
+}
+
+/// Whether two colours have the same sRGB channels, alpha aside.
+fn same_rgb(a: SrgbaU8, b: SrgbaU8) -> bool {
+    (a.r, a.g, a.b) == (b.r, b.g, b.b)
+}
+
+/// Whether `response` ended a pointer gesture this frame — a commit the
+/// history keeps, where a keyboard nudge's is not.
+fn pointer_released(response: &ResponseState) -> bool {
+    response.left.released()
 }
 
 fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
@@ -283,11 +310,10 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
 
     // An edit from outside moves the handles; the picker's own writes do not
     // come back through here, which is what lets black keep its hue.
-    if !state.seeded || *color != state.written {
+    if state.written != Some(*color) {
         let model = pinned.unwrap_or_else(|| state.coords.model());
         state.coords = ColorCoords::new(model, *color, state.coords.hue());
-        state.written = *color;
-        state.seeded = true;
+        state.written = Some(*color);
     }
     if let Some(model) = pinned {
         state.coords = state.coords.with_model(model);
@@ -305,8 +331,10 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
         .show(ui);
     writes.axes |= field.changed;
     writes.committed |= field.committed;
+    writes.remember |= field.committed && pointer_released(&field.response);
 
-    let preview = state.coords.to_color().with_alpha(writes.alpha);
+    let bound = *color;
+    let preview = shown(state, bound, &writes);
     Panel::hstack()
         .id(id.with("bars"))
         .gap(gap)
@@ -330,6 +358,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                         .show(ui);
                     writes.axes |= hue.changed;
                     writes.committed |= hue.committed;
+                    writes.remember |= hue.committed && pointer_released(&hue.response);
                     if alpha_on {
                         let mut working = preview;
                         let strip = ColorStrip::for_alpha(&mut working)
@@ -343,11 +372,13 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                             writes.alpha_moved = true;
                         }
                         writes.committed |= strip.committed;
+                        writes.remember |= strip.committed && pointer_released(&strip.response);
                     }
                 });
         });
 
-    values_grid(ui, state, id, theme, alpha_on, &mut writes);
+    let readout = shown(state, bound, &writes);
+    values_grid(ui, state, id, theme, alpha_on, readout, &mut writes);
     if pinned.is_none() {
         model_switch(ui, state, id, gap);
     }
@@ -371,13 +402,13 @@ fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> Edit {
     let changed = next != *color;
     if changed {
         *color = next;
-        state.written = next;
+        state.written = Some(next);
         if writes.exact.is_some() {
             let model = state.coords.model();
             state.coords = ColorCoords::new(model, next, state.coords.hue());
         }
     }
-    if writes.committed {
+    if writes.remember {
         state.history.push(*color);
     }
     Edit {
@@ -400,11 +431,11 @@ fn values_grid(
     id: WidgetId,
     theme: &ColorPickerTheme,
     alpha_on: bool,
+    shown: RgbaF32,
     writes: &mut Writes,
 ) {
     let gap = theme.gap.themed_length(0.0);
-    let color = state.coords.to_color().with_alpha(writes.alpha);
-    let quantized = color.to_srgba_u8();
+    let quantized = shown.to_srgba_u8();
     let hex_id = id.with("hex");
     if ui.focused_id() != Some(hex_id) {
         state.hex.clear();
@@ -423,6 +454,7 @@ fn values_grid(
     let mut opacity = (writes.alpha * 100.0).round() as i64;
     let mut hue = (state.coords.hue() * 360.0).round() as i64;
     let mut sat = (state.coords.sat() * 100.0).round() as i64;
+    let mut val = (state.coords.val() * 100.0).round() as i64;
 
     Grid::new()
         .id(id.with("values"))
@@ -448,15 +480,22 @@ fn values_grid(
                         .id(hex_id)
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
+                    // A buffer that parses to the colour already shown is no
+                    // edit: tabbing through the field commits nothing.
                     if !hex.cancelled
                         && (hex.submitted || hex.lost_focus)
                         && let Ok(parsed) = state.hex.trim().parse::<RgbaF32>()
+                        && !same_rgb(parsed.to_srgba_u8(), quantized)
                     {
                         writes.exact = Some(parsed.with_alpha(writes.alpha));
                         writes.committed = true;
+                        writes.remember = true;
                     }
                 });
 
+            // The cell beside the hex field shows opacity where the picker
+            // edits alpha, and the value axis where it does not — so the
+            // grid's last free cell completes H, S and V.
             if alpha_on {
                 let cell = GridCell::at(0, 2);
                 let r = value_cell(ui, id, theme, "A %", cell, &mut opacity, 100.0);
@@ -465,6 +504,15 @@ fn values_grid(
                     writes.alpha_moved = true;
                 }
                 writes.committed |= r.committed;
+                writes.remember |= r.committed;
+            } else {
+                let r = value_cell(ui, id, theme, "V %", GridCell::at(0, 2), &mut val, 100.0);
+                if r.changed {
+                    state.coords.set_val(val as f32 / 100.0);
+                    writes.axes = true;
+                }
+                writes.committed |= r.committed;
+                writes.remember |= r.committed;
             }
 
             let r = value_cell(ui, id, theme, "H °", GridCell::at(0, 3), &mut hue, 360.0);
@@ -473,6 +521,7 @@ fn values_grid(
                 writes.axes = true;
             }
             writes.committed |= r.committed;
+            writes.remember |= r.committed;
 
             for (column, name) in ["R", "G", "B"].into_iter().enumerate() {
                 let cell = GridCell::at(1, column as u16);
@@ -489,6 +538,7 @@ fn values_grid(
                     );
                 }
                 writes.committed |= r.committed;
+                writes.remember |= r.committed;
             }
 
             let r = value_cell(ui, id, theme, "S %", GridCell::at(1, 3), &mut sat, 100.0);
@@ -497,6 +547,7 @@ fn values_grid(
                 writes.axes = true;
             }
             writes.committed |= r.committed;
+            writes.remember |= r.committed;
         });
 }
 
@@ -595,6 +646,7 @@ fn swatch_row(
         writes.exact = Some(color);
         writes.alpha = color.a;
         writes.committed = true;
+        writes.remember = true;
     }
 }
 

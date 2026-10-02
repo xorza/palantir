@@ -250,9 +250,13 @@ fn keyboard_travel(ui: &mut Ui, kind: &mut StripKind<'_>) -> bool {
     }
     if home {
         at = 0.0;
-    }
-    if end {
+    } else if end {
         at = 1.0;
+    } else if matches!(kind, StripKind::Hue(_)) && !(0.0..=1.0).contains(&at) {
+        // Steps go round the hue circle; positions do not. A step past an
+        // end wraps here, and every write — a drag to the edge, Home, End —
+        // clamps in `ColorCoords::set_hue`.
+        at = at.rem_euclid(1.0);
     }
     kind.write(at)
 }

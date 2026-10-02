@@ -125,3 +125,41 @@ fn a_click_commits_as_a_drag_does() {
     let (_, committed) = frame(&mut h, &mut color);
     assert!(committed, "the release is the edit");
 }
+
+/// The hue bar's right end is hue 1, not hue 0: a drag past the edge
+/// stores 1, End stores 1 and Home 0, and a step past either end wraps round.
+#[test]
+fn the_hue_bar_keeps_both_ends() {
+    use crate::input::keyboard::key::Key;
+
+    let id = WidgetId::from_hash("strip-hue-ends");
+    let mut h = harness();
+    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
+    let show = |h: &mut UiHarness, coords: &mut ColorCoords| {
+        h.frame(|ui| {
+            ColorStrip::for_hue(coords).id(id).show(ui);
+        });
+    };
+    show(&mut h, &mut coords);
+    h.press_at(Vec2::new(BAR.x as f32 - 8.0, 7.0));
+    show(&mut h, &mut coords);
+    h.drag_to(Vec2::new(BAR.x as f32 + 40.0, 7.0));
+    show(&mut h, &mut coords);
+    h.release();
+    show(&mut h, &mut coords);
+    assert_eq!(coords.hue(), 1.0, "past the right edge");
+
+    h.set_focus(id);
+    for (key, hue) in [(Key::Home, 0.0), (Key::End, 1.0)] {
+        h.key(key);
+        show(&mut h, &mut coords);
+        assert_eq!(coords.hue(), hue, "{key:?}");
+    }
+    h.key(Key::ArrowRight);
+    show(&mut h, &mut coords);
+    assert!(
+        coords.hue() < 0.1,
+        "a step past the end wraps: {}",
+        coords.hue()
+    );
+}
