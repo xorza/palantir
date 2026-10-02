@@ -14,6 +14,7 @@ use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
+use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::value_response::ValueResponse;
 use crate::widgets::widget::Widget;
@@ -45,16 +46,6 @@ pub struct Splitter<'a> {
     axis: Axis,
     min_pane: f32,
     style: Option<&'a SplitterTheme>,
-}
-
-/// Which pane [`Splitter::show`]'s body is currently recording.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SplitHalf {
-    /// The leading pane — left of a vertical divider, above a
-    /// horizontal one.
-    First,
-    /// The trailing pane.
-    Second,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -317,5 +308,6 @@ fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 
         .clamp(floor, 1.0 - floor)
 }
 
+pub(crate) mod split_half;
 #[cfg(test)]
 mod tests;

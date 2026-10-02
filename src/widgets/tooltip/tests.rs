@@ -479,7 +479,8 @@ fn hover_clears_after_tooltip_visible() {
 /// darkroom's new-node menu.
 #[test]
 fn tooltip_inside_popup_records_without_panic() {
-    use crate::widgets::popup::{ClickOutside, Popup};
+    use crate::widgets::popup::Popup;
+    use crate::widgets::popup::click_outside::ClickOutside;
 
     let mut h = UiHarness::new(SURFACE);
 

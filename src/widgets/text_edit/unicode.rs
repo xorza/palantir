@@ -10,8 +10,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 /// Strip line-break chars from an inbound string so the single-line
 /// TextEdit's buffer never contains `\n` / `\r`. Hit by both the
-/// paste path and the IME-text-commit path — host events and OS
-/// clipboards routinely carry `\r\n` / `\n` from multi-line sources
+/// paste path and typed text — host events and OS clipboards
+/// routinely carry `\r\n` / `\n` from multi-line sources
 /// that this widget can't render or hit-test correctly. Spaces are a
 /// safer substitute than outright deletion (preserves intent for
 /// "First Name\nLast Name" → "First Name Last Name"). Borrowed

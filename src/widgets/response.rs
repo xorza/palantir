@@ -174,7 +174,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use crate::widgets::expander::ExpanderResponse;
+    use crate::widgets::expander::expander_response::ExpanderResponse;
     use crate::widgets::response::InnerResponse;
     use crate::widgets::select_response::SelectResponse;
     use crate::widgets::tabs::tab_strip::TabStripResponse;
