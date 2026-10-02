@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::input::capture::{Press, PressDrag, Release, ReleaseKind};
 use crate::input::input_state::InputState;
+use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::input::pointer::PointerButton;
 use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::button_state::ButtonState;
@@ -16,7 +17,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
-use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -247,28 +247,12 @@ fn frame_quiescent_predicate() {
     );
 }
 
-fn button_surface() -> UVec2 {
-    UVec2::new(200, 80)
-}
-
-fn build_button(id: WidgetId) -> impl FnMut(&mut Ui) {
-    move |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(id)
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    }
-}
-
 /// On a quiescent frame (no pointer ever fed) `response_for` takes the
 /// geometry-only fast path: the arranged rect survives but every
 /// interaction field reads its default.
 #[test]
 fn quiescent_frame_keeps_geometry_defaults_interaction() {
-    let mut h = UiHarness::new(button_surface());
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
     // No pointer is ever fed → the frame is quiescent, so the snapshot
     // taken at record-pass start stays valid for this post-frame read.
@@ -303,7 +287,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 /// pre-transform widget-local pointer.
 #[test]
 fn non_quiescent_frame_computes_interaction() {
-    let mut h = UiHarness::new(button_surface());
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
     h.frame(build_button(id));
 
@@ -340,10 +324,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
                 .transform(TranslateScale::from_scale(scale))
                 .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
                 .show(ui, |ui| {
-                    Button::new()
-                        .id(id)
-                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                        .show(ui);
+                    fixed_button(id).show(ui);
                 });
         };
         h.frame(build);
@@ -374,7 +355,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
 
 #[test]
 fn pointer_local_uses_unclipped_widget_origin() {
-    let mut h = UiHarness::new(button_surface());
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("clipped-child");
     let build = |ui: &mut Ui| {
         Panel::canvas()

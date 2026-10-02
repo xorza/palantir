@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::input::capture::DOUBLE_CLICK_WINDOW;
+use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -20,17 +21,8 @@ fn input_state_press_release_emits_click() {
     // Frame 1 lays out the button; frame 2 reads .left.clicked() after a
     // press+release pair lands inside its rect; frame 3 confirms the
     // click is one-shot.
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("target"))
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    };
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = build_button(WidgetId::from_hash("target"));
     h.frame(build);
     h.click_at(Vec2::new(50.0, 20.0));
 
@@ -38,10 +30,8 @@ fn input_state_press_release_emits_click() {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                Button::new()
-                    .id(WidgetId::from_hash("target"))
+                fixed_button(WidgetId::from_hash("target"))
                     .label("hi")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .left
                     .clicked()
@@ -193,10 +183,7 @@ fn input_state_release_outside_does_not_click() {
     let mut h = UiHarness::new(surface);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("target"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
+            fixed_button(WidgetId::from_hash("target")).show(ui);
         });
     });
     let target = WidgetId::from_hash("target");
@@ -215,9 +202,7 @@ fn input_state_release_outside_does_not_click() {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                Button::new()
-                    .id(WidgetId::from_hash("target"))
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                fixed_button(WidgetId::from_hash("target"))
                     .show(ui)
                     .left
                     .clicked()
@@ -350,16 +335,13 @@ fn transformed_panels_route_clicks_by_composed_world_rect() {
 
 #[test]
 fn secondary_click_press_release_emits_secondary_clicked() {
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                let r = Button::new()
-                    .id(WidgetId::from_hash("rc_target"))
+                let r = fixed_button(WidgetId::from_hash("rc_target"))
                     .label("rc")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
                 [r.left.clicked(), r.right.clicked()]
             })
@@ -383,16 +365,13 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     // Two clicks on the same widget within DOUBLE_CLICK_WINDOW must
     // set `double_clicked` on the second-click frame. The first click
     // alone must not fire it (otherwise every click would double).
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                let r = Button::new()
-                    .id(WidgetId::from_hash("dc_target"))
+                let r = fixed_button(WidgetId::from_hash("dc_target"))
                     .label("dc")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
                 [r.left.clicked(), r.left.double_clicked()]
             })
@@ -439,15 +418,13 @@ fn two_left_clicks_within_window_emit_double_clicked() {
 /// double-clicking it is an ordinary interaction.
 #[test]
 fn a_double_click_survives_the_idle_before_it() {
-    let mut h = UiHarness::new(UVec2::new(200, 80));
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                let r = Button::new()
-                    .id(WidgetId::from_hash("idle_target"))
+                let r = fixed_button(WidgetId::from_hash("idle_target"))
                     .label("dc")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
                 [r.left.clicked(), r.left.double_clicked()]
             })
@@ -481,8 +458,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
     // Same widget, within the window, but the second press lands more
     // than `DOUBLE_CLICK_RADIUS` from the first — a slow drift between
     // presses is two clicks, not a double.
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
@@ -531,10 +507,8 @@ fn click_on_different_widget_resets_double_click() {
             .auto_id()
             .show(ui, |ui| {
                 ["dc_a", "dc_b"].map(|id| {
-                    Button::new()
-                        .id(WidgetId::from_hash(id))
+                    fixed_button(WidgetId::from_hash(id))
                         .label(id)
-                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .left
                         .click_count()
@@ -560,16 +534,13 @@ fn click_on_different_widget_resets_double_click() {
 #[test]
 fn left_and_right_click_are_independent() {
     use crate::input::pointer::PointerButton;
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                let r = Button::new()
-                    .id(WidgetId::from_hash("indep"))
+                let r = fixed_button(WidgetId::from_hash("indep"))
                     .label("x")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
                 [r.left.clicked(), r.right.clicked()]
             })
@@ -614,24 +585,16 @@ fn drain_per_frame_queues_clears_action_latch() {
 /// press — other frames read 0.
 #[test]
 fn press_started_counts_multi_press_runs() {
-    const SURFACE: UVec2 = UVec2::new(200, 80);
-
     fn probe(h: &mut UiHarness) -> u8 {
         let id = WidgetId::from_hash("target");
         h.frame_value(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Button::new()
-                    .id(id)
-                    .label("hi")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                    .show(ui);
-            });
+            build_button(id)(ui);
             let r = ui.response_for(id);
             r.left.press_count()
         })
     }
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     probe(&mut h); // settle layout
 
     h.press_on(WidgetId::from_hash("target"));
@@ -679,16 +642,8 @@ fn pointer_actions_report_the_edges_the_response_reports() {
     use crate::input::response::pointer_edge::PointerEdge;
 
     let id = WidgetId::from_hash("collated");
-    let mut h = UiHarness::new(UVec2::new(200, 80));
-    let build = |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(id)
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    };
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = build_button(id);
     h.frame(build);
 
     let at = |edge| PointerAction {

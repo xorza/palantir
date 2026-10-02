@@ -10,7 +10,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
-use crate::ui::tests::support::{COLD, SURFACE, cold_frame, cold_ui};
+use crate::ui::tests::support::{SURFACE, cold_ui};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -93,11 +93,11 @@ fn display_logical_rect_scales() {
 fn cold_start_runs_record_closure_twice_on_first_frame() {
     let mut h = cold_ui();
     let mut calls = 0_u32;
-    cold_frame(&mut h, |_| calls += 1);
+    h.frame(|_| calls += 1);
     assert_eq!(calls, 2, "first frame: warmup pass + real pass");
 
     let snapshot = calls;
-    cold_frame(&mut h, |_| calls += 1);
+    h.frame(|_| calls += 1);
     assert_eq!(
         calls - snapshot,
         1,
@@ -114,7 +114,7 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
     h.move_to(Vec2::new(40.0, 40.0));
 
     let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
-    cold_frame(&mut h, |ui| {
+    h.frame(|ui| {
         observed.borrow_mut().push(ui.input.pointer_pos());
     });
     let observed = observed.into_inner();
@@ -145,7 +145,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     assert_eq!(h.ui.input.hovered(), None, "pre-frame: no cascade, no hit");
 
     let button_id = WidgetId::from_hash("btn");
-    cold_frame(&mut h, |ui| {
+    h.frame(|ui| {
         Button::new()
             .id(button_id)
             .label("hi")
@@ -193,7 +193,7 @@ fn cold_start_first_frame_damage_is_full() {
 fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     let mut h = cold_ui();
     let mut calls = 0_u32;
-    cold_frame(&mut h, |ui| {
+    h.frame(|ui| {
         calls += 1;
         if calls == 1 {
             // Simulate a widget whose first-frame measure depends on
@@ -216,7 +216,7 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
 /// about the double-call contract for every assertion.
 #[test]
 fn warm_constructors_skip_the_warmup_pass() {
-    let mut h = UiHarness::new(COLD);
+    let mut h = UiHarness::new(SURFACE);
     let mut calls = 0_u32;
     h.frame(|_| calls += 1);
     assert_eq!(
@@ -241,7 +241,7 @@ fn warmup_keeps_focus_requests() {
         }
         let mut records = 0_u32;
         let mut seen = Vec::new();
-        cold_frame(&mut h, |ui| {
+        h.frame(|ui| {
             if records == 0 {
                 match request {
                     Some(id) => ui.set_focus(id),

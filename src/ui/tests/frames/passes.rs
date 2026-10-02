@@ -6,7 +6,7 @@ use crate::common::time::MAX_ANIM_DT;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
-use crate::ui::tests::support::{COLD, SURFACE};
+use crate::ui::tests::support::SURFACE;
 use crate::widgets::configure::Configure;
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -217,7 +217,7 @@ fn action_effect_runs_once_across_record_replay() {
 /// pass A is the one that observes one-frame edges.
 #[test]
 fn frame_value_records_both_relayout_passes_and_returns_the_first() {
-    let mut h = UiHarness::new(COLD);
+    let mut h = UiHarness::new(SURFACE);
     let mut calls = 0_u32;
 
     let captured = h.frame_value(|ui| {
