@@ -210,8 +210,7 @@ impl Popup {
         } else {
             Backdrop::Eater(eater_id)
         };
-        let id = widget.resolve(ui);
-        let scope = OverlayScope::claim(id, layer, Some(anchor), backdrop, &mut widget);
+        let scope = OverlayScope::claim(ui, layer, Some(anchor), backdrop, &mut widget);
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);

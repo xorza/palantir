@@ -47,12 +47,21 @@ pub(crate) struct RecordingScratch {
     /// roots can share the policy. `Main` falls through to
     /// `Placement::default()`.
     pub(crate) pending_placement: Option<Placement>,
+
+    /// Whether the scope the active `Forest::push_layer` was raised from
+    /// is disabled — its innermost open node, or any ancestor of it. A
+    /// side layer is a tree of its own, so nothing else carries the
+    /// owner's state across: a popup raised inside a disabled panel would
+    /// be live. Every root minted in the scope starts disabled, like a
+    /// child of that node would.
+    pub(crate) owner_disabled: bool,
 }
 
 impl RecordingScratch {
     pub(crate) fn clear(&mut self) {
         self.open_frames.clear();
         self.pending_placement = None;
+        self.owner_disabled = false;
     }
 
     /// True when any currently-open ancestor in the active recording
@@ -67,6 +76,6 @@ impl RecordingScratch {
     pub(crate) fn ancestor_disabled(&self) -> bool {
         self.open_frames
             .last()
-            .is_some_and(|f| f.ancestor_or_self_disabled)
+            .map_or(self.owner_disabled, |f| f.ancestor_or_self_disabled)
     }
 }

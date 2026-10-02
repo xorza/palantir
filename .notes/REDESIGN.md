@@ -789,8 +789,7 @@ output, cost, cleanup.
 
 ## Phase 8. Widgets and overlays (D9, D10, D12)
 
-- [ ] D9: `pan_axes` and per-axis targets.
-- [ ] D10: owner state, disabled closes, composites forward, `claim` owner.
+- [ ] D9 waits for API_CHANGES A22: a widget has to declare which axes it pans.
 - [ ] D12, one step per bullet, in the listed order.
 - [ ] Key-class claims wait for API_CHANGES A3. Interim, only if you want it: a single-line TextEdit
       drops `Motion` from its filter while focused with no selection, so Tab reaches the app.

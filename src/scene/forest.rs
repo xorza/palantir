@@ -405,12 +405,14 @@ impl Forest {
             "Ui::layer({layer:?}) must rank above the current scope ({active:?}) \
              in Layer::PAINT_ORDER — a nested layer painting under its parent is a bug",
         );
+        let owner_disabled = self.scratch[active].ancestor_disabled();
         let scratch = &mut self.scratch[layer];
         debug_assert!(
             scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
         scratch.pending_placement = Some(placement);
+        scratch.owner_disabled = owner_disabled;
         self.layer_stack.push(layer);
     }
 
@@ -427,6 +429,7 @@ impl Forest {
             layer,
         );
         scratch.pending_placement = None;
+        scratch.owner_disabled = false;
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one

@@ -142,6 +142,29 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
     assert!(h.rect(body()).is_none(), "a second click closed it again");
 }
 
+/// An Expander disabled on the frame a click lands does not toggle: the
+/// header reads its owner's flag that frame, not through the cascade a
+/// frame late.
+#[test]
+fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
+    let mut h = UiHarness::new(SURFACE);
+    frame(&mut h, false);
+    frame(&mut h, false);
+    let at = h.center_of(header());
+    h.click_at(at);
+    let open = h.frame_value(|ui| {
+        Expander::new("section")
+            .id(root())
+            .disabled(true)
+            .show(ui, |ui| {
+                Text::new("body").id(label()).show(ui);
+            })
+            .openness
+    });
+    assert_eq!(open, 0.0, "the disabled header ignored the click");
+    assert!(h.rect(body()).is_none());
+}
+
 /// `keep_body` trades a record per frame for the state inside it. The
 /// collapsed body takes no space and paints nothing, but its ids stay
 /// live, so a `TextEdit` in there still holds its text.

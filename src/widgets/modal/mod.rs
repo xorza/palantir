@@ -108,7 +108,7 @@ impl<'a> Modal<'a> {
         // No placement: a modal is a full-surface layer, and the layer's
         // own default is the surface origin with the whole surface
         // available.
-        let scope = OverlayScope::claim(root_id, Layer::Modal, None, Backdrop::Root, &mut root);
+        let scope = OverlayScope::claim(ui, Layer::Modal, None, Backdrop::Root, &mut root);
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {
