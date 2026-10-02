@@ -2,9 +2,7 @@
 //! back through.
 
 use crate::display::Display;
-use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
-use crate::icons::icon_table::IconId;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
@@ -166,13 +164,6 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
         },
         1.0,
     );
-}
-
-pub(super) fn icon_ref(id: u16) -> IconRef {
-    IconRef {
-        set: IconSetId::new(0, 0),
-        icon: IconId(id),
-    }
 }
 
 pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {

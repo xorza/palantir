@@ -177,10 +177,8 @@ impl IconTable {
 #[cfg(test)]
 mod tests {
     use crate::icons::icon_table::{IconId, IconTable};
+    use crate::icons::test_svgs::{BROKEN, ONE_COLOUR, TWO_COLOURS};
     use glam::Vec2;
-
-    const ONE_COLOUR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><rect width="24" height="12" fill="#4080c0"/><circle cx="6" cy="6" r="3" fill="#4080c0"/></svg>"##;
-    const TWO_COLOURS: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="8" height="16" fill="#f00"/><rect x="8" width="8" height="16" fill="#00f"/></svg>"##;
 
     /// The set-level invariants `from_svgs` guarantees: name order, which
     /// `by_name`'s binary search rests on. What each icon is classified *as*
@@ -233,7 +231,7 @@ mod tests {
 
     #[test]
     fn unparseable_sources_are_skipped() {
-        let table = IconTable::from_svgs([("good", ONE_COLOUR), ("bad", "<svg")]);
+        let table = IconTable::from_svgs([("good", ONE_COLOUR), ("bad", BROKEN)]);
         assert_eq!(table.icons().len(), 1);
         assert_eq!(table.icons()[0].name, "good");
         assert_eq!(

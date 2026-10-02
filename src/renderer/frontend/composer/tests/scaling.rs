@@ -1,5 +1,6 @@
 //! What the display scale and a transform do to what is drawn.
 
+use crate::icons::icon_set::IconRef;
 use crate::primitives::rect::Rect;
 use crate::primitives::{
     color::RgbaF32, corners::Corners, size::Size, stroke::Stroke, translate_scale::TranslateScale,
@@ -322,18 +323,28 @@ fn compose_transforms_clip_rects_to_screen_space() {
 /// 1.5, where a 24 px icon is 36 physical and nothing divides evenly.
 #[test]
 fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
-    use crate::renderer::frontend::composer::tests::support::{icon, icon_ref};
+    use crate::renderer::frontend::composer::tests::support::icon;
     use glam::{IVec2, U16Vec2};
 
     // 24 logical px at 1.5 → 36 physical, inside the exact band.
     let out = run(
-        |buf, _| icon(buf, Rect::new(10.0, 20.0, 24.0, 24.0), icon_ref(3)),
+        |buf, _| {
+            icon(
+                buf,
+                Rect::new(10.0, 20.0, 24.0, 24.0),
+                IconRef::fixture(0, 3),
+            )
+        },
         &params(1.5, UVec2::new(200, 200)),
     );
     assert_eq!(out.icons.len(), 1, "one row per icon");
     let row = out.icons[0];
     assert_eq!(row.key.size(), U16Vec2::new(36, 36));
-    assert_eq!(row.key.icon, icon_ref(3), "identity survives compose");
+    assert_eq!(
+        row.key.icon,
+        IconRef::fixture(0, 3),
+        "identity survives compose"
+    );
     // Origin 10*1.5 = 15, 20*1.5 = 30, and the raster fills the box exactly,
     // so centring shifts nothing.
     assert_eq!(row.origin, IVec2::new(15, 30));
@@ -348,7 +359,13 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     // rounds the raster up to 76, and the quad is the box, 75 px at
     // (15, 15), the raster resampled into it.
     let out = run(
-        |buf, _| icon(buf, Rect::new(10.0, 10.0, 50.0, 50.0), icon_ref(0)),
+        |buf, _| {
+            icon(
+                buf,
+                Rect::new(10.0, 10.0, 50.0, 50.0),
+                IconRef::fixture(0, 0),
+            )
+        },
         &params(1.5, UVec2::new(200, 200)),
     );
     assert_eq!(out.icons[0].key.size(), U16Vec2::new(76, 76));
@@ -358,7 +375,13 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     // 300 logical px at 2 → 600 physical, past the 512 cap: the raster is
     // 512, and the quad still fills the 600 px box at (20, 40).
     let out = run(
-        |buf, _| icon(buf, Rect::new(10.0, 20.0, 300.0, 300.0), icon_ref(0)),
+        |buf, _| {
+            icon(
+                buf,
+                Rect::new(10.0, 20.0, 300.0, 300.0),
+                IconRef::fixture(0, 0),
+            )
+        },
         &params(2.0, UVec2::new(800, 800)),
     );
     assert_eq!(out.icons[0].key.size(), U16Vec2::new(512, 512));
@@ -370,12 +393,16 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
 /// splits the group, exactly as it would for any other higher-kind tier.
 #[test]
 fn icons_batch_together_and_respect_tier_order() {
-    use crate::renderer::frontend::composer::tests::support::{icon, icon_ref};
+    use crate::renderer::frontend::composer::tests::support::icon;
 
     let out = run(
         |buf, _| {
-            icon(buf, Rect::new(0.0, 0.0, 16.0, 16.0), icon_ref(0));
-            icon(buf, Rect::new(20.0, 0.0, 16.0, 16.0), icon_ref(1));
+            icon(buf, Rect::new(0.0, 0.0, 16.0, 16.0), IconRef::fixture(0, 0));
+            icon(
+                buf,
+                Rect::new(20.0, 0.0, 16.0, 16.0),
+                IconRef::fixture(0, 1),
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );

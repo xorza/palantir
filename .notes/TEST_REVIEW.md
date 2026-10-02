@@ -34,7 +34,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 ## 15. Duplicated fixtures and setup
 
 - [ ] Dock scene in `tests/alloc/fixtures/dock.rs:19-93` and `tests/visual/fixtures/tabs.rs:92-170` (plus the showcase and `widgets/dock/tests.rs:843`). Add a `DockFixture` beside `FrameFixture`.
-- [ ] SVG fixtures copied (`icons/icon_table.rs:166-167` = `svg_facts.rs:113-114`; broken `"<svg"` ×3). `IconRef` built twice, `.icon.set` overridden by hand 3 times.
 - [ ] Bare size pins outside `hot_struct_sizes.rs` `PINS`; `MeshVertex = 12` is pinned twice. (judgement)
 - [ ] Two App-lifecycle counting fixtures (`host/winit/tests.rs:26`, `host/window_driver/tests.rs:~425`) pin one fact.
 - [ ] Widgets: the explicit-size trio ×4 (`progress_bar`, `separator`, `spinner`, `slider`); scroll-over-`Block` ×37 (add a `ScrollFixture`); 31 `Option` out-vars; copy-in/copy-out of the bound value in `checkbox` and `radio`; `context_menu/tests/interaction.rs:173` dead parameter; `popup/tests/support.rs:18-20` `BODY_W/BODY_H` unused by the body it records; `record_at_secs` ×3; `ui_at_no_cosmic` is `UiHarness::new` under a second name (44 calls); 15 `response_for(id).rect.expect` that are `h.rect(id)`; 4 `fn harness()` wrappers.
