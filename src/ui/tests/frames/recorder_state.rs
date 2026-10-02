@@ -20,17 +20,17 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     let target = WidgetId::from_hash("target");
     let mut h = UiHarness::new(SURFACE);
     let run = |h: &mut UiHarness, disabled: bool| {
-        let mut resp = None;
-        h.frame(|ui| {
+        h.frame_value(|ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("wrap"))
                 .disabled(disabled)
                 .show(ui, |ui| {
-                    resp = Some(ui.response_for(target));
+                    let resp = ui.response_for(target);
                     Button::new().label("hi").id(target).show(ui);
-                });
-        });
-        resp.unwrap()
+                    resp
+                })
+                .inner
+        })
     };
     run(&mut h, false);
     h.move_to(Vec2::new(10.0, 10.0));

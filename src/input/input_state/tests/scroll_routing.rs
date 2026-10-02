@@ -33,17 +33,13 @@ fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
         h.scroll_lines(Vec2::new(4.0, 5.0));
     }
 
-    let mut observed = None;
-    h.frame(|ui| {
+    h.frame_value(|ui| {
         build_two_gesture_targets(ui);
-        if observed.is_none() {
-            observed = Some([
-                ui.response_for(WidgetId::from_hash("a")).scroll,
-                ui.response_for(WidgetId::from_hash("b")).scroll,
-            ]);
-        }
-    });
-    observed.unwrap()
+        [
+            ui.response_for(WidgetId::from_hash("a")).scroll,
+            ui.response_for(WidgetId::from_hash("b")).scroll,
+        ]
+    })
 }
 
 #[test]
@@ -86,15 +82,12 @@ fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(7.0, 11.0));
     h.pointer_left();
 
-    let mut observed = None;
-    h.frame(|ui| {
+    let observed = h.frame_value(|ui| {
         build_two_gesture_targets(ui);
-        if observed.is_none() {
-            observed = Some(ui.response_for(WidgetId::from_hash("a")).scroll);
-        }
+        ui.response_for(WidgetId::from_hash("a")).scroll
     });
     assert_eq!(
-        observed.unwrap(),
+        observed,
         ScrollDelta {
             pixels: Vec2::new(7.0, 11.0),
             ..ScrollDelta::default()
@@ -111,17 +104,13 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
     h.pinch(1.05);
     h.pinch_at(Vec2::new(150.0, 50.0), 0.5);
 
-    let mut observed = None;
-    h.frame(|ui| {
+    let [a, b] = h.frame_value(|ui| {
         build_two_gesture_targets(ui);
-        if observed.is_none() {
-            observed = Some([
-                ui.response_for(WidgetId::from_hash("a")).scroll.zoom.get(),
-                ui.response_for(WidgetId::from_hash("b")).scroll.zoom.get(),
-            ]);
-        }
+        [
+            ui.response_for(WidgetId::from_hash("a")).scroll.zoom.get(),
+            ui.response_for(WidgetId::from_hash("b")).scroll.zoom.get(),
+        ]
     });
-    let [a, b] = observed.unwrap();
     assert!((a - 1.155).abs() < 1e-6, "A product: {a}");
     assert!((b - 0.5).abs() < 1e-6, "B product: {b}");
 }
@@ -147,14 +136,12 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     let inner_id = WidgetId::from_hash("inner");
     let outer_id = WidgetId::from_hash("outer");
-    let mut inner_d = Vec2::ZERO;
-    let mut outer_d = Vec2::ZERO;
-    h.frame(|ui| {
+    let [inner_d, outer_d] = h.frame_value(|ui| {
         build(ui);
-        if inner_d == Vec2::ZERO {
-            inner_d = ui.input().scroll_delta_for(inner_id).pixels;
-            outer_d = ui.input().scroll_delta_for(outer_id).pixels;
-        }
+        [
+            ui.input().scroll_delta_for(inner_id).pixels,
+            ui.input().scroll_delta_for(outer_id).pixels,
+        ]
     });
     assert_eq!(inner_d, Vec2::new(0.0, 5.0));
     assert_eq!(outer_d, Vec2::ZERO);
@@ -164,23 +151,30 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
 fn scroll_delta_zero_for_non_target() {
     let surface = UVec2::new(200, 200);
     let mut h = UiHarness::new(surface);
+    let scroller = WidgetId::from_hash("scroller");
+    let other = WidgetId::from_hash("other");
     let build = |ui: &mut Ui| {
-        Panel::zstack()
-            .id(WidgetId::from_hash("scroller"))
-            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-            .sense(Sense::SCROLL)
-            .show(ui, |_| {});
+        Panel::hstack().auto_id().show(ui, |ui| {
+            for id in [scroller, other] {
+                Panel::zstack()
+                    .id(id)
+                    .size((Sizing::fixed(100.0), Sizing::fixed(200.0)))
+                    .sense(Sense::SCROLL)
+                    .show(ui, |_| {});
+            }
+        });
     };
     h.frame(build);
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
-    let unrelated = WidgetId::from_hash("nope");
-    let mut d = Vec2::new(1.0, 1.0);
-    h.frame(|ui| {
+    let [target, bystander] = h.frame_value(|ui| {
         build(ui);
-        d = ui.input().scroll_delta_for(unrelated).pixels;
+        [
+            ui.input().scroll_delta_for(scroller).pixels,
+            ui.input().scroll_delta_for(other).pixels,
+        ]
     });
-    // Both passes return zero — the widget id never matches.
-    assert_eq!(d, Vec2::ZERO);
+    assert_eq!(target, Vec2::new(0.0, 9.0), "the widget under the pointer");
+    assert_eq!(bystander, Vec2::ZERO, "a recorded widget beside it");
 }
 
 #[test]
@@ -199,10 +193,9 @@ fn pointer_left_clears_scroll_target() {
     h.pointer_left();
     h.scroll_pixels(Vec2::new(0.0, 5.0));
     let id = WidgetId::from_hash("scroller");
-    let mut d = Vec2::new(1.0, 1.0);
-    h.frame(|ui| {
+    let d = h.frame_value(|ui| {
         build(ui);
-        d = ui.input().scroll_delta_for(id).pixels;
+        ui.input().scroll_delta_for(id).pixels
     });
     assert_eq!(
         d,
@@ -232,10 +225,9 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     );
     h.move_to(Vec2::new(50.0, 50.0));
 
-    let mut delivered = Vec2::new(f32::NAN, f32::NAN);
-    h.frame(|ui| {
+    let delivered = h.frame_value(|ui| {
         build(ui);
-        delivered = ui.input().scroll_delta_for(id).pixels;
+        ui.input().scroll_delta_for(id).pixels
     });
     assert_eq!(
         delivered,
@@ -265,14 +257,11 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
     h.frame(build);
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
     h.pinch(1.5);
-    let mut scroll_pixels = Vec2::ZERO;
-    let mut zoom_factor = f32::NAN;
-    h.frame(|ui| {
+    let scroll = h.frame_value(|ui| {
         build(ui);
-        let resp = ui.response_for(id);
-        scroll_pixels = resp.scroll.pixels;
-        zoom_factor = resp.scroll.zoom.get();
+        ui.response_for(id).scroll
     });
+    let (scroll_pixels, zoom_factor) = (scroll.pixels, scroll.zoom.get());
     assert_eq!(
         scroll_pixels,
         Vec2::new(0.0, 9.0),
@@ -303,14 +292,11 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
     h.frame(build);
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
     h.pinch(1.5);
-    let mut scroll_pixels = Vec2::new(1.0, 1.0);
-    let mut zoom_factor = f32::NAN;
-    h.frame(|ui| {
+    let scroll = h.frame_value(|ui| {
         build(ui);
-        let resp = ui.response_for(id);
-        scroll_pixels = resp.scroll.pixels;
-        zoom_factor = resp.scroll.zoom.get();
+        ui.response_for(id).scroll
     });
+    let (scroll_pixels, zoom_factor) = (scroll.pixels, scroll.zoom.get());
     assert_eq!(
         scroll_pixels,
         Vec2::ZERO,
