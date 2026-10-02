@@ -25,7 +25,7 @@ use crate::text::system::TextSystem;
 /// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
-///   Cleared at the top of every `run`.
+///   Reset per layer by `LayoutScratch::resize_for`.
 /// - `text` — per-window text shaping and reuse slots.
 /// - `cache` — cross-frame measure cache. See [`crate::layout::cache`].
 ///

@@ -56,8 +56,11 @@ impl AxisSlot {
         (self.outer(self.available.max(self.intrinsic_min)) - padding).max(0.0)
     }
     /// **Contains-content rule:** Hug aims for content size, Fill aims
-    /// for `available`. Both floor at `max(content, intrinsic_min)` — a
-    /// node's rect always contains what's inside it. If the rigid floor
+    /// for `available`. Fill floors at `max(content, intrinsic_min)`.
+    /// Hug, under a finite `available`, caps its content at what is
+    /// available and floors only at `intrinsic_min` — so a Hug rect can
+    /// end smaller than content that measured wider than the space, but
+    /// never smaller than its rigid descendants. If the rigid floor
     /// exceeds `available`, the node overflows its parent rather than its
     /// content overflowing the node's rect. Downstream
     /// (cascade/composer/backend) tolerates overflow, same as the

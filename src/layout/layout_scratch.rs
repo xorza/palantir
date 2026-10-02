@@ -179,9 +179,8 @@ impl LayoutScratch {
         // The three `_` bindings are the fields that are deliberately not
         // this function's job: `root` and `nodes_base` describe the
         // snapshot rather than being columns of it, and `desired` is
-        // restored by the measure-hit site itself
-        // (`LayoutPass::replay_arranged`'s caller) because it is what
-        // decides the hit.
+        // restored by the measure-hit site itself (`LayoutPass::measure`)
+        // because it is what decides the hit.
         let CachedSubtree {
             root: _,
             nodes_base: _,

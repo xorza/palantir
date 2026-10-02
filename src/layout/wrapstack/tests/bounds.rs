@@ -91,7 +91,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
 /// A `wrap_vstack` nested inside a `vstack` (same main axis) is measured
 /// with `INF` main-axis available by the parent stack, so on its own it
 /// would never wrap. An explicit `max_size` height gives it a finite wrap
-/// budget — `resolve_sizing` clamps the `INF` down to the cap — so the
+/// budget — `AxisSlot::resolve` clamps the `INF` down to the cap — so the
 /// children pack into columns. Drives the darkroom new-node popup, where
 /// each category's function list is a capped `wrap_vstack`.
 #[test]

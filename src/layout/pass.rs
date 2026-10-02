@@ -65,7 +65,7 @@ impl<'a> LayoutPass<'a> {
     /// shrink to without breaking a rigid descendant (Fixed widget,
     /// explicit `min_size`, longest unbreakable word).
     ///
-    /// Fed into `resolve_desired` as the lower bound under flex
+    /// Fed into `AxisSlot::resolve` as the lower bound under flex
     /// semantics: Hug/Fill clamp down to `available` but never below
     /// this. Cached per (node, axis, slot), so repeat queries during
     /// the same `run` are O(1).

@@ -94,7 +94,7 @@ impl LayoutDriver for Stack {
         // (or width-given-height): the child shapes/wraps under the finite
         // cross and reports the resulting main-axis size.
         //
-        // `main_avail` is the stack's own main extent — `resolve_sizing` has
+        // `main_avail` is the stack's own main extent — `AxisSlot::resolve` has
         // already clamped it to the stack's `Fixed`/`max_size`/inherited
         // bound. When the stack is unbounded on its main axis it's `INF`
         // (the common Hug-in-Hug case: children report their natural main
@@ -194,8 +194,8 @@ impl LayoutDriver for Stack {
         let layouts = tree.records.layout();
         // Shares the count / weight / gap accounting with `measure`; the
         // closure supplies the per-phase main source — here the cached
-        // `desired.main` (Fill children's content size, since the
-        // `AxisSlot::resolve` change pins Fill at content). Both
+        // `desired.main` (Fill children's content size: measure pins
+        // Fill at content). Both
         // parameters read that one source here, while `measure` gives
         // them different ones.
         let main_desired = |pass: &mut LayoutPass<'_>, c: NodeId| axis.main(pass.desired(c));

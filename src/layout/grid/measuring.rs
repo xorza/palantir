@@ -212,7 +212,7 @@ pub(super) fn measure_inner(
     }
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
-    // claims leftover at arrange; `resolve_sizing` separately floors this
+    // claims leftover at arrange; `AxisSlot::resolve` separately floors this
     // raw answer at the Grid intrinsic, which includes Fill content.
     let s = pass.grid_mut().depth_stack.at(depth);
     let total_w = sum_non_fill(col_tracks, &s.col.sizes) + col_gap.gaps_between(n_cols);
