@@ -63,7 +63,7 @@ pub(super) struct ShaperInner {
     /// [`CosmicMeasure::frame`].
     ///
     /// Held outright, not behind an `Option` or a metric enum. A shaper
-    /// always has a font system, [`Self::mono`] included: the mono
+    /// always has a font system, `Self::mono` included: the mono
     /// metric replaces the *arithmetic* two calls do, and every other
     /// question a shaper answers — which faces exist, what a family
     /// resolves to, what a glyph rasterizes to — is the database's, not
@@ -112,7 +112,7 @@ impl ShaperInner {
         &self.cosmic
     }
 
-    /// Whether measurement takes the mono metric — see [`Self::mono`].
+    /// Whether measurement takes the mono metric — see `Self::mono`.
     /// A literal `false` in production, so the two tests that stay
     /// compiled there — [`TextProbe::shaped`] and
     /// [`TextShaper::shapes_buffers`] — fold away rather than reading a

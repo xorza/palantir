@@ -119,7 +119,8 @@ impl GpuViewTargets {
     /// Drop every target belonging to a render stream that will never submit
     /// again, freeing its textures and bind groups.
     ///
-    /// [`keep_target`] preserves foreign owners' entries on every submit, so
+    /// [`keep_target`](crate::gpu::gpu_view_targets::view_target::keep_target)
+    /// preserves foreign owners' entries on every submit, so
     /// a closed window's targets would otherwise be held by the surviving
     /// windows for the life of the host.
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]

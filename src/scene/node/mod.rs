@@ -106,7 +106,7 @@ impl Node {
     ///
     /// The four `set_*` writers below own every check an authored field
     /// owes, and everything that writes one goes through them: the
-    /// consuming [`Configure`] setter, the
+    /// consuming [`Configure`](crate::Configure) setter, the
     /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
     /// fallback beside it, and the widgets that hold a `&mut Node` and
     /// cannot move it through a builder. A field written past them is a

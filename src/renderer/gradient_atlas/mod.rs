@@ -29,10 +29,10 @@
 //! before the 256-texel loop, so the inner loop never runs the transfer
 //! function.
 //!
-//! - [`Interp::Linear`]: physically correct linear blend. Shows the
+//! - [`Interp::Linear`](crate::primitives::brush::gradient::Interp::Linear): physically correct linear blend. Shows the
 //!   classic midpoint dip on saturated complementary pairs (red↔green
 //!   muddy brown).
-//! - [`Interp::Oklab`]: pre-converts each stop's linear RGB to Oklab
+//! - [`Interp::Oklab`](crate::primitives::brush::gradient::Interp::Oklab): pre-converts each stop's linear RGB to Oklab
 //!   `L/a/b` triplets once at bake time; the texel loop lerps the
 //!   triplet and runs only `oklab_to_linear` per texel. Perceptually
 //!   uniform; the CSS Color 4 default.
