@@ -34,7 +34,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 ## 15. Duplicated fixtures and setup
 
 - [ ] Dock scene in `tests/alloc/fixtures/dock.rs:19-93` and `tests/visual/fixtures/tabs.rs:92-170` (plus the showcase and `widgets/dock/tests.rs:843`). Add a `DockFixture` beside `FrameFixture`.
-- [ ] Std-hash helper spelled 7 ways (`color/tests.rs:6`, `size.rs:224`, `rect/tests.rs:7`, `track/tests.rs:8`, `sizing.rs:330`, `brush/tests.rs:20`, `approx/tests.rs:6`, plus `stops/tests.rs` closures). Signed-zero hash agreement is pinned 4 times, once per type; make it one table over every `FloatHash` type.
 - [ ] Lane serde is tested three times (`serde/tests.rs`, `corners/tests.rs:161-198`, `spacing/tests.rs:310-343`) with identical `ser`/`de` helpers. Add a generic `ron_round_trip<T>`.
 - [ ] HSV and Okhsv suites are parallel copies (`hsv.rs:136,154,161` vs `okhsv/tests.rs:96,133,163`, `color_coords.rs:150` vs `okhsv/tests.rs:52`). Sweep `ColorModel::ALL`.
 - [ ] SVG fixtures copied (`icons/icon_table.rs:166-167` = `svg_facts.rs:113-114`; broken `"<svg"` ×3). `IconRef` built twice, `.icon.set` overridden by hand 3 times.

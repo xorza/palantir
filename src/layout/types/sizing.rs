@@ -324,14 +324,6 @@ impl From<Size> for SizeSpec {
 #[cfg(test)]
 mod tests {
     use crate::layout::types::sizing::{SizeSpec, Sizing};
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    fn hash_value(value: impl Hash) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        value.hash(&mut hasher);
-        hasher.finish()
-    }
 
     /// The two shares always partition 1.0, so the first lands at exactly
     /// `fraction` of the parent — and an out-of-range input clamps rather
@@ -407,19 +399,6 @@ mod tests {
                 assert!(fill.w().is_hug(), "the Hug beside Fill({v:e})");
             }
         }
-    }
-
-    #[test]
-    fn signed_zero_sizing_and_sizes_share_equality_and_hashes() {
-        let positive = Sizing::fixed(0.0);
-        let negative = Sizing::fixed(-0.0);
-        assert_eq!(positive, negative);
-        assert_eq!(hash_value(positive), hash_value(negative));
-
-        let positive = SizeSpec::new(positive, Sizing::HUG);
-        let negative = SizeSpec::new(negative, Sizing::HUG);
-        assert_eq!(positive, negative);
-        assert_eq!(hash_value(positive), hash_value(negative));
     }
 
     #[test]

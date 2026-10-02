@@ -1,15 +1,8 @@
-use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::approx::EPS;
 use crate::primitives::span::Span;
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-fn hash_value(value: impl Hash) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
-}
+use std::hash::Hasher;
 
 #[test]
 fn bounds_accept_valid_ranges_in_either_order() {
@@ -22,11 +15,6 @@ fn bounds_accept_valid_ranges_in_either_order() {
     assert_eq!(MIN_THEN_MAX.max, 20.0);
     assert_eq!(PINNED.min, 5.0);
     assert_eq!(PINNED.max, 5.0);
-
-    let positive_zero = Track::new(Sizing::fixed(0.0)).min(0.0);
-    let negative_zero = Track::new(Sizing::fixed(-0.0)).min(-0.0);
-    assert_eq!(positive_zero, negative_zero);
-    assert_eq!(hash_value(positive_zero), hash_value(negative_zero));
 }
 
 #[test]

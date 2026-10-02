@@ -1,23 +1,6 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use glam::Vec2;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-fn hash_value(value: impl Hash) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
-}
-
-#[test]
-fn equal_signed_zero_rects_have_equal_hashes() {
-    let positive = Rect::new(0.0, 0.0, 0.0, 0.0);
-    let negative = Rect::new(-0.0, -0.0, -0.0, -0.0);
-
-    assert_eq!(positive, negative);
-    assert_eq!(hash_value(positive), hash_value(negative));
-}
 
 #[test]
 fn from_min_max_preserves_extents() {
