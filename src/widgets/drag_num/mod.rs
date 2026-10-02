@@ -104,6 +104,24 @@ impl DragNum<'_> {
         self.commit_drag(Num::F64(value), 0.0, decimals, min, max)
     }
 
+    /// Write back `value` exactly, as read by [`Self::read`] before an edit
+    /// that is now cancelled. Returns whether the stored value changed.
+    pub(crate) fn restore(&mut self, value: Num) -> bool {
+        match (self, value) {
+            (DragNum::I64(v), Num::I64(n)) => {
+                let changed = **v != n;
+                **v = n;
+                changed
+            }
+            (DragNum::F64(v), Num::F64(n)) => {
+                let changed = v.to_bits() != n.to_bits();
+                **v = n;
+                changed
+            }
+            (_, value) => unreachable!("{value:?} restored into a binding of the other type"),
+        }
+    }
+
     /// Exact, full-precision text for the edit buffer — `{:?}` on the float
     /// keeps a trailing `.0` so a whole value still reads as a float.
     pub(crate) fn edit_string(&self) -> String {

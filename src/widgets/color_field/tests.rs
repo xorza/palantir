@@ -102,6 +102,42 @@ fn changed_and_committed_are_edges() {
     assert!(!changed && !committed, "no residual signals");
 }
 
+/// Arrows step 0.005 and Shift-arrows ten steps, PageUp/PageDown page the
+/// value axis by 0.1, and Home/End jump the saturation axis to its ends.
+/// Each case starts from `s = v = 0.5`, so the expected axis is that plus
+/// the key's travel, in the order the handler adds it.
+#[test]
+fn keys_walk_both_axes() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    let shift = Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    };
+    let cases = [
+        (Modifiers::NONE, Key::ArrowRight, 0.5 + 0.005, 0.5),
+        (shift, Key::ArrowLeft, 0.5 - 0.005 * 10.0, 0.5),
+        (Modifiers::NONE, Key::ArrowUp, 0.5, 0.5 + 0.005),
+        (Modifiers::NONE, Key::PageUp, 0.5, 0.5 + 0.1),
+        (Modifiers::NONE, Key::PageDown, 0.5, 0.5 - 0.1),
+        (Modifiers::NONE, Key::Home, 0.0, 0.5),
+        (Modifiers::NONE, Key::End, 1.0, 0.5),
+    ];
+    let id = WidgetId::from_hash("field-keys");
+    for (mods, key, sat, val) in cases {
+        let mut h = harness();
+        let mut state = coords(0.3, 0.5, 0.5);
+        frame(&mut h, id, &mut state);
+        h.set_focus(id);
+        h.set_modifiers(mods);
+        h.key(key);
+        let EditEdges { changed, committed } = frame(&mut h, id, &mut state);
+        assert_eq!((state.sat(), state.val()), (sat, val), "{mods:?} {key:?}");
+        assert!(changed && committed, "{key:?} is a whole edit");
+    }
+}
+
 /// The texture is sRGB-encoded, because that is what `Rgba8UnormSrgb` decodes
 /// on sample. Writing linear bytes instead would paint the whole field far too
 /// bright, and nothing else in the crate would catch it.

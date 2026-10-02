@@ -2,7 +2,6 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
@@ -15,6 +14,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
+use crate::widgets::axis_keys::KeyPair;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
@@ -57,7 +57,20 @@ enum StripKind<'a> {
     Alpha(&'a mut RgbaF32),
 }
 
-const KEY_PAGE: f32 = 0.1;
+const ALONG: AxisKeys = AxisKeys {
+    step: KeyPair {
+        back: Key::ArrowLeft,
+        forward: Key::ArrowRight,
+    },
+    page: Some(KeyPair {
+        back: Key::PageDown,
+        forward: Key::PageUp,
+    }),
+    ends: Some(KeyPair {
+        back: Key::Home,
+        forward: Key::End,
+    }),
+};
 
 impl<'a> ColorStrip<'a> {
     /// A hue bar driving `coords`, painted in that value's model.
@@ -233,26 +246,9 @@ impl StripPaint {
 }
 
 fn keyboard_travel(ui: &mut Ui, kind: &mut StripKind<'_>) -> bool {
-    let along = AxisKeys {
-        back: Key::ArrowLeft,
-        forward: Key::ArrowRight,
-    };
-    let mut at = kind.read() + along.travel(ui);
-    let home = ui.key_pressed(Shortcut::key(Key::Home));
-    let end = ui.key_pressed(Shortcut::key(Key::End));
-    let page_up = ui.key_pressed(Shortcut::key(Key::PageUp));
-    let page_down = ui.key_pressed(Shortcut::key(Key::PageDown));
-    if page_down {
-        at -= KEY_PAGE;
-    }
-    if page_up {
-        at += KEY_PAGE;
-    }
-    if home {
-        at = 0.0;
-    } else if end {
-        at = 1.0;
-    } else if matches!(kind, StripKind::Hue(_)) && !(0.0..=1.0).contains(&at) {
+    let travel = ALONG.travel(ui, kind.read());
+    let mut at = travel.to;
+    if !travel.jumped && matches!(kind, StripKind::Hue(_)) && !(0.0..=1.0).contains(&at) {
         // Steps go round the hue circle; positions do not. A step past an
         // end wraps here, and every write — a drag to the edge, Home, End —
         // clamps in `ColorCoords::set_hue`.
