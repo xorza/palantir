@@ -72,6 +72,15 @@ impl F16x4 {
         self.0[lane]
     }
 
+    /// Wrap four raw lane words. The lanes are f16 everywhere but one
+    /// place: a triangle quad stores its corner points in the same
+    /// storage as unorm16, which the shader decodes by `fill_kind`.
+    /// Tests build bit patterns with it too.
+    #[inline(always)]
+    pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
+        Self(bits)
+    }
+
     /// Pack four runtime f32 lanes — single SIMD instruction on
     /// F16C/fp16 targets, scalar fallback elsewhere.
     #[inline]
@@ -345,31 +354,6 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
         let mut out = [0u16; 4];
         _mm_storel_epi64(out.as_mut_ptr() as *mut _, h);
         out
-    }
-}
-
-/// Raw-lane construction, for tests and benches only.
-///
-/// Production code has no business with the storage form — wrappers go in
-/// through [`F16x4::from_lanes`] and come out through [`F16x4::lanes`] or
-/// [`F16x4::lane_bits`] — so gating these is what makes the private field
-/// mean anything. A child module, because the field is private to this
-/// one and children can see it.
-///
-/// Gated on `bench` rather than the usual `internals`: no integration
-/// test reaches the storage form, so the wider gate would leave both
-/// items dead in an `internals`-only build.
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
-    use crate::primitives::half_simd::F16x4;
-
-    impl F16x4 {
-        /// Wrap four already-encoded f16 lanes — a raw test pattern, or a
-        /// value read back off the GPU wire.
-        #[inline(always)]
-        pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
-            Self(bits)
-        }
     }
 }
 

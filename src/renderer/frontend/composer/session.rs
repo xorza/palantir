@@ -6,6 +6,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
+use crate::primitives::half_simd::{self, F16x4};
 use crate::primitives::num::{F32Px, Vec2Ext};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -924,19 +925,23 @@ impl ComposeSession<'_> {
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
                 let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + HALF_FRINGE);
-                // Pack the three points in rect-local coords (0..size,
-                // matching the shader's `in.local`) + the corner radius
-                // into the reused `corners` / `fill_axis` lanes;
-                // `FillKind::TRIANGLE` tells the shader to read them as a
-                // triangle SDF rather than rounded-rect radii / gradient
-                // axis.
-                let al = a - phys_rect.min;
-                let bl = b - phys_rect.min;
-                let cl = c - phys_rect.min;
+                // Pack the three points as unorm16 shares of the covering
+                // rect, which holds them, so every share is in 0..=1, and
+                // the corner radius as f16, into the reused `corners` /
+                // `fill_axis` lanes; `FillKind::TRIANGLE` tells the shader
+                // to decode them as a triangle rather than rounded-rect
+                // radii / gradient axis.
+                let share = |p: Vec2| {
+                    let at = (p - phys_rect.min) / Vec2::new(phys_rect.size.w, phys_rect.size.h);
+                    [unorm16(at.x), unorm16(at.y)]
+                };
+                let ([ax, ay], [bx, by], [cx, cy]) = (share(a), share(b), share(c));
+                let [_, _, radius_f16, _] =
+                    half_simd::f16x4_from_f32x4([0.0, 0.0, radius_phys, 0.0]);
                 PackedQuad {
                     rect: ScaledRect::from_phys(phys_rect, self.out.display.physical),
-                    corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
-                    fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
+                    corners: Corners::from_bits([ax, ay, bx, by]),
+                    fill_axis: FillAxis::from(F16x4::from_bits([cx, cy, radius_f16, 0])),
                     stroke_width: (p.stroke.width * scale_phys).max(0.0),
                 }
             }
@@ -1287,4 +1292,10 @@ impl ComposeSession<'_> {
         self.out.discard_scene();
         self.composer.reset_group_scratch(self.out.display.physical);
     }
+}
+
+/// `v` in `0..=1` as unorm16, the encoding `unpack2x16unorm` decodes:
+/// `bits / 65535`.
+const fn unorm16(v: f32) -> u16 {
+    (v.clamp(0.0, 1.0) * 65535.0).round() as u16
 }

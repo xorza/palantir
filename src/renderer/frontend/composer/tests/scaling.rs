@@ -366,3 +366,50 @@ fn icons_batch_together_and_respect_tier_order() {
     assert_eq!(out.batches(PaintTier::Icon).len(), 1, "two icons, one draw");
     assert_eq!(out.batches(PaintTier::Icon)[0].items.len, 2);
 }
+
+/// A triangle's corner points reach the GPU as unorm16 shares of the
+/// quad that covers it, so a 3000 px triangle decodes, the way `quad.wgsl`
+/// does it — `min + bits / 65535 · size` — to within `3000 / 65535 / 2`
+/// ≈ 0.023 px of each point. As f16 lanes they stepped 2 px past 2048.
+#[test]
+fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
+    let points = [
+        Vec2::new(13.3, 7.1),
+        Vec2::new(3013.7, 41.9),
+        Vec2::new(1500.2, 2950.6),
+    ];
+    let buf = run(
+        |b, _arena| {
+            b.draw_quad(
+                DrawQuadPayload::triangle(
+                    Vec2::ZERO,
+                    points,
+                    RgbaF32::WHITE.into(),
+                    2.0,
+                    Stroke::ZERO.into(),
+                ),
+                1.0,
+            );
+        },
+        &params(1.0, UVec2::new(4000, 4000)),
+    );
+    assert_eq!(buf.quads.len(), 1);
+    let quad = buf.quads[0];
+    let [ax, ay, bx, by]: [u16; 4] = bytemuck::cast(quad.corners);
+    let [cx, cy, radius, _]: [u16; 4] = bytemuck::cast(quad.fill_axis);
+    let decode = |x: u16, y: u16| {
+        quad.rect.min
+            + Vec2::new(x as f32, y as f32) / 65535.0
+                * Vec2::new(quad.rect.size.w, quad.rect.size.h)
+    };
+    for (want, got) in points
+        .into_iter()
+        .zip([decode(ax, ay), decode(bx, by), decode(cx, cy)])
+    {
+        assert!(
+            (want - got).abs().max_element() <= 0.025,
+            "{want} decoded as {got}",
+        );
+    }
+    assert_eq!(half::f16::from_bits(radius).to_f32(), 2.0);
+}

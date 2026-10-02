@@ -178,8 +178,13 @@ impl<G: GradientGeometry> NanCheck for Gradient<G> {
 /// calls into the same `vec4<f32>` the fragment shader sees.
 ///
 /// f16 precision (~3 decimal digits) is plenty for unit direction
-/// vectors and the 0..1 parametric range; sub-pixel error envelope
-/// up to ~2048 px, then degrading like `Corners`.
+/// vectors and the 0..1 parametric range. A pixel-valued lane (a shadow's
+/// σ, spread or offset) rounds by up to half an f16 step: ¼ px below
+/// 1024, ½ px below 2048, 1 px below 4096.
+///
+/// A triangle quad reuses the word differently: its first two lanes are
+/// the third corner as unorm16 shares of the quad, and the third its
+/// corner radius in f16 — see `quad.wgsl`'s triangle notes.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct FillAxis(F16x4);

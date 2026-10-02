@@ -23,19 +23,24 @@ fn lanes_round_trip_integer_values_exactly() {
     assert_eq!(c.as_array(), [1.0, 2.0, 3.0, 4.0]);
 }
 
-/// Documents the f16 precision contract: lossless for integer
-/// radii ≤ 2048, ~0.25 px quantization at 4096. A refactor that
-/// quietly switched storage (e.g. to Q8.8 fixed-point) would
-/// trip these.
+/// Documents the f16 precision contract. A refactor that quietly
+/// switched storage (e.g. to Q8.8 fixed-point) would trip these.
 #[test]
 fn f16_precision_contract() {
-    assert_eq!(Corners::all(2048.0).as_array()[0], 2048.0);
-    let big = Corners::all(4096.0).as_array()[0];
-    assert!(
-        (big - 4096.0).abs() <= 0.25,
-        "expected ≤0.25 px error at 4096, got {} -> {big}",
-        (big - 4096.0).abs(),
-    );
+    // Integers are exact to 2048. Past it the f16 step is 2, then 4 from
+    // 4096, and a tie rounds to the even mantissa: 2049 → 2048, 2051 →
+    // 2052, 4097 and 4098 → 4096, 4099 → 4100.
+    for (value, stored) in [
+        (2048.0, 2048.0),
+        (2049.0, 2048.0),
+        (2051.0, 2052.0),
+        (4096.0, 4096.0),
+        (4097.0, 4096.0),
+        (4098.0, 4096.0),
+        (4099.0, 4100.0),
+    ] {
+        assert_eq!(Corners::all(value).as_array()[0], stored, "{value}");
+    }
 }
 
 #[test]
