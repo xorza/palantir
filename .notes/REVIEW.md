@@ -33,10 +33,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - `from_svgs` also neither rejects nor dedupes duplicate names, though `IconDef::name` is documented "unique within a set". `by_name` then picks one arbitrarily.
 - [ ] `src/icons/icon_set.rs:141-143`: the comment says a cross-set id "fails at the call site that mixed them". Only an out-of-range id fails. An in-range id from another set draws the wrong icon silently.
 
-## Composer worst-case per-frame cost
-- [ ] `src/renderer/frontend/composer/occlusion.rs:140-149` **bug (perf)**: the prune is O(N·K) whenever covers equal quad sizes. Sharp, pixel-aligned opaque quads (the default under `pixel_snap`) record their full rect as the cover (`aa_inset` is 0). `q.rect.size > suffix_max` is then never true, and every quad scans all later occluders. A 100×100 grid of equal cells stays in one group: about 5·10⁷ `contains_rect` calls per full frame.
-- [ ] `src/renderer/frontend/composer/higher_kind.rs:221-232,300-302` **bug (perf, plausible)**: the module doc's bound ("a query that survives the union pre-reject flushes, so a scan happens once per group") is false. `any_overlap` can scan every rect, find no hit, and not flush. Curve-after-curve never flushes, so curves accumulate. 2000 short `Shape::line` strokes plus 500 labels in the gaps costs about 10⁶ rect tests per frame.
-
 ## Icon prewarm warms keys the frame never asks for
 - [ ] `src/gpu/icon/mod.rs:124` **bug (plausible)**: prewarm keys on `def.view_box * display_scale`. The composer keys on the drawn box `phys_rect.size`, which includes ancestor transforms (`composer/session.rs:381`). So prewarm hits only icons drawn at exactly their view-box size. Any other size still takes the 10-20× filtered raster lazily.
   - Prewarm rasterizes every filtered icon of every loaded set in one frame on each DPI change or set load: a worst-case-frame spike. Those slots are stamped current-frame, so they cannot be evicted while that frame's real draws compete for space.
