@@ -56,6 +56,8 @@ impl TriangleShape {
     }
 }
 
+/// Whether the triangle's own area paints nothing. A rounding radius
+/// can still paint around it — see [`TriangleShape`]'s `is_noop`.
 #[inline]
 fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
     let ab = b - a;
@@ -70,9 +72,12 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
     paints_nothing(normalized_twice_area)
 }
 impl sealed::LowerShape for TriangleShape {
+    /// A thin or collapsed triangle with a radius is not empty: the SDF
+    /// grows it by the radius on every side, so it paints a bar along its
+    /// edges or a disc at its point.
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.border.is_noop())
-            || triangle_paint_empty(self.a, self.b, self.c)
+            || (paints_nothing(self.radius) && triangle_paint_empty(self.a, self.b, self.c))
     }
 
     /// `radius` has to be named. Lowering launders it —

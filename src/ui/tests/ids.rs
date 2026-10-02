@@ -123,6 +123,44 @@ fn duplicate_explicit_widget_ids_are_outlined() {
     );
 }
 
+/// Under a panned and zoomed panel the outline follows the node to where
+/// it paints, not where it was laid out. The canvas translates by (30, 20)
+/// and scales by 0.5; each duplicate is a 40 px block, at canvas-local
+/// (10, 10) and (60, 10). On screen: (10·0.5 + 30, 10·0.5 + 20) =
+/// (35, 25) and (60·0.5 + 30, 25) = (60, 25), each 20 px square.
+#[cfg(debug_assertions)]
+#[test]
+fn a_collision_under_a_transform_is_outlined_where_it_paints() {
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::translate_scale::TranslateScale;
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(|ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .transform(TranslateScale::new(Vec2::new(30.0, 20.0), 0.5))
+            .show(ui, |ui| {
+                for x in [10.0, 60.0] {
+                    Block::new()
+                        .id(WidgetId::from_hash("dup"))
+                        .position((x, 10.0))
+                        .size(40.0)
+                        .show(ui);
+                }
+            });
+    });
+    let mut outlines = collision_outlines(&h.ui);
+    outlines.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    assert_eq!(
+        outlines,
+        [
+            Rect::new(35.0, 25.0, 20.0, 20.0),
+            Rect::new(60.0, 25.0, 20.0, 20.0)
+        ],
+    );
+}
+
 /// An explicit id is per-layer, so `Main` and `Popup` each keep their own
 /// resolved id — and the pair records which layer each endpoint sat in.
 #[test]

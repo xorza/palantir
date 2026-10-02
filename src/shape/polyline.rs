@@ -93,6 +93,15 @@ pub(crate) enum PolylineColors<'a> {
 }
 
 impl PolylineColors<'_> {
+    /// Whether the per-point / per-segment cardinality contract holds.
+    const fn matches(&self, points_len: usize) -> bool {
+        match self {
+            PolylineColors::Single => true,
+            PolylineColors::PerPoint(colors) => colors.len() == points_len,
+            PolylineColors::PerSegment(colors) => colors.len() == points_len.saturating_sub(1),
+        }
+    }
+
     /// Check the per-point / per-segment cardinality contract.
     ///
     /// One length compare, run per polyline per frame against a `memcpy`
@@ -101,44 +110,45 @@ impl PolylineColors<'_> {
     /// recoverable: lowering stages a colour slice of the wrong length,
     /// and the composer reads per-point colours off the end of it.
     pub(crate) fn assert_matches(&self, points_len: usize) {
+        assert!(
+            self.matches(points_len),
+            "Shape::Polyline {self:?} does not fit {points_len} points: per-point colours \
+             number the points, per-segment colours one fewer",
+        );
+    }
+
+    fn colors(&self) -> &[RgbaF32] {
         match self {
-            PolylineColors::Single => {}
-            PolylineColors::PerPoint(colors) => assert_eq!(
-                colors.len(),
-                points_len,
-                "Shape::Polyline PerPoint colors len {} != points len {}",
-                colors.len(),
-                points_len,
-            ),
-            PolylineColors::PerSegment(colors) => assert_eq!(
-                colors.len(),
-                points_len.saturating_sub(1),
-                "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",
-                colors.len(),
-                points_len.saturating_sub(1),
-            ),
+            PolylineColors::Single => &[],
+            PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => colors,
         }
     }
 }
+
 impl sealed::LowerShape for PolylineShape<'_> {
+    /// A colour slice of the wrong length is not a no-op, however
+    /// transparent: it goes on to lowering, whose cardinality assert names
+    /// the bug rather than a stroke going missing.
     fn is_noop(&self) -> bool {
         if self.stroke.is_noop() || self.points.len() < 2 {
             return true;
         }
         match self.colors {
             PolylineColors::Single => false,
+            _ if !self.colors.matches(self.points.len()) => false,
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
                 colors.iter().all(|color| color.is_noop())
             }
         }
     }
 
-    /// The per-point and per-segment colours are the bulk input `bbox`
-    /// does not cover, and they are `RgbaF32`s rather than positions — a
-    /// NaN channel reads as invisible through `is_noop` above rather than
-    /// poisoning geometry, so the fold that would scan them buys nothing.
+    /// The colours are the bulk input `bbox` does not cover, so they are
+    /// scanned: a NaN channel would reach the shader through the staged
+    /// colours and the averaged join colour.
     fn has_nan(&self) -> bool {
-        self.stroke.has_nan() || self.bbox.has_nan()
+        self.stroke.has_nan()
+            || self.bbox.has_nan()
+            || self.colors.colors().iter().any(NanCheck::has_nan)
     }
 
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {

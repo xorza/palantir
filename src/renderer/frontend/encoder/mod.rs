@@ -155,7 +155,7 @@ impl Encoder {
         }
 
         #[cfg(debug_assertions)]
-        collision_overlay::emit(scene.forest, scene.layout, out);
+        collision_overlay::emit(scene.forest, scene.layout, scene.cascade, out);
     }
 }
 

@@ -19,6 +19,7 @@ mod scroll;
 mod shadow;
 mod tabs;
 mod text;
+mod triangle;
 mod user_scale;
 mod widgets;
 

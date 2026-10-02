@@ -352,8 +352,16 @@ impl Rect {
     /// The counterpart of the crate-internal `URect::clamp_to`. Named for
     /// the clamp rather than for an intersection, because
     /// [`Self::intersect`] is the strict one that answers `None`.
+    ///
+    /// Neither operand may hold a NaN: `f32::max` drops one, so the answer
+    /// would be the other operand's edge — a clip that silently stops
+    /// clipping. Shapes and backgrounds screen NaN where they are added.
     #[inline]
     pub const fn clamp_to(self, bounds: Self) -> Self {
+        debug_assert!(
+            !self.has_nan() && !bounds.has_nan(),
+            "Rect::clamp_to with a NaN operand"
+        );
         let (a, b) = (self.max(), bounds.max());
         let min = Vec2::new(self.min.x.max(bounds.min.x), self.min.y.max(bounds.min.y));
         let max = Vec2::new(a.x.min(b.x), a.y.min(b.y));

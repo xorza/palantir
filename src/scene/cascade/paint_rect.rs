@@ -216,7 +216,16 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
         size: layout_rect.size,
     };
 
-    if let Some(bg) = tree.chrome(node) {
+    if let Some(bg) = tree.chrome(node).filter(|bg| bg.paints_nothing()) {
+        // Kept for a rounded clip and nothing else: a row with an empty
+        // screen, so it damages nothing, and the owner rect in the cull
+        // rollup, as for a chromeless clip below.
+        arena.rows.push(Paint {
+            screen: Rect::ZERO,
+            hash: bg.hash,
+        });
+        union = visible_rect;
+    } else if let Some(bg) = tree.chrome(node) {
         let screen = if bg.shadow.is_noop() {
             visible_rect
         } else {

@@ -58,6 +58,10 @@ impl MeshVertex {
 pub struct Mesh {
     pub(crate) vertices: Vec<MeshVertex>,
     pub(crate) indices: Vec<u32>,
+    /// The largest index pushed, kept as indices go in so
+    /// [`Self::is_noop`] screens an index past the last vertex at one
+    /// compare. Meaningless while `indices` is empty.
+    max_index: u32,
     /// Lazy cache of `content_hash`. `None` = not computed or
     /// invalidated. Set by `content_hash`; cleared by every public
     /// mutator. Internal arena pushes bypass the cache by going
@@ -80,6 +84,7 @@ impl Mesh {
         Self {
             vertices: Vec::new(),
             indices: Vec::new(),
+            max_index: 0,
             cached_hash: Cell::new(None),
             cached_bbox: Cell::new(None),
         }
@@ -92,6 +97,7 @@ impl Mesh {
         Self {
             vertices: Vec::with_capacity(vertices),
             indices: Vec::with_capacity(indices),
+            max_index: 0,
             cached_hash: Cell::new(None),
             cached_bbox: Cell::new(None),
         }
@@ -103,17 +109,23 @@ impl Mesh {
     pub fn clear(&mut self) {
         self.vertices.clear();
         self.indices.clear();
+        self.max_index = 0;
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
     }
 
-    /// Non-paintable: missing vertices, or indices that don't form whole
-    /// triangles. Mirror of `DrawMeshPayload::is_noop` at the user-mesh layer.
+    /// Non-paintable: missing vertices, indices that don't form whole
+    /// triangles, or an index past the last vertex. Mirror of
+    /// `DrawMeshPayload::is_noop` at the user-mesh layer.
     #[inline]
     pub fn is_noop(&self) -> bool {
         self.vertices.is_empty()
             || self.indices.len() < 3
             || !self.indices.len().is_multiple_of(3)
+            // A release build reaches here with what `triangle`'s debug
+            // assert would have caught: the GPU would read another
+            // mesh's vertices, or past the arena.
+            || self.max_index as usize >= self.vertices.len()
             // A NaN vertex reaches the AABB by the fold's NaN contract,
             // so this `O(1)` read stands in for scanning every position.
             // `bbox` is memoized, so repeat calls are a load.
@@ -160,7 +172,8 @@ impl Mesh {
     /// Panics in a debug build if any index does not refer to an
     /// existing vertex. Debug-only because this is per item of a
     /// caller's build loop — a mesh of ten thousand triangles pays it
-    /// ten thousand times, and a mesh is rebuilt per frame.
+    /// ten thousand times, and a mesh is rebuilt per frame. A release
+    /// build draws nothing for the mesh instead: see [`Self::is_noop`].
     #[inline]
     pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
         debug_assert!(
@@ -171,6 +184,7 @@ impl Mesh {
         self.indices.push(a);
         self.indices.push(b);
         self.indices.push(c);
+        self.max_index = self.max_index.max(a.max(b).max(c));
         self.cached_hash.set(None);
     }
 
@@ -201,6 +215,11 @@ impl Mesh {
         self.indices.reserve(other.indices.len());
         for &index in &other.indices {
             self.indices.push(checked_rebased_index(base, index));
+        }
+        if !other.indices.is_empty() {
+            self.max_index = self
+                .max_index
+                .max(checked_rebased_index(base, other.max_index));
         }
         self.cached_hash.set(None);
         self.cached_bbox.set(None);

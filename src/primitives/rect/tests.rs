@@ -85,6 +85,17 @@ fn intersects_cases() {
         }
     }
 
+    // A NaN operand is a broken contract, not a miss: `f32::max` would drop
+    // it and answer the other rect, so `Rect::NAN.intersect(b)` was `Some(b)`.
+    #[cfg(debug_assertions)]
+    for (a, b) in [
+        (Rect::NAN, Rect::new(0.0, 0.0, 10.0, 10.0)),
+        (Rect::new(0.0, 0.0, 10.0, 10.0), Rect::NAN),
+    ] {
+        crate::common::panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
+        crate::common::panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
+    }
+
     // Clamping is not symmetric the way overlapping is: it keeps the *origin*
     // of the overlap, so a rect wholly inside its bounds comes back untouched
     // while its bounds clamped the other way come back as the inner rect.

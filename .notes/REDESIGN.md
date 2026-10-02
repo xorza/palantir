@@ -787,11 +787,6 @@ output, cost, cleanup.
 
 - [ ] Key dumps on Linux and on the macOS test laptop, recorded as the translation test table.
 
-## Phase 3. Scene identity and bounds (D3, D4)
-
-- [ ] No-op rounded-clip row; NaN asserts in `Rect`; mesh `max_index` screen; polyline per-colour
-      screen; triangle radius extent; collision overlay in screen space.
-
 ## Phase 4. GPU geometry and colour (D5, D6)
 
 - [ ] `Corners::fit_to` in the quad composer, the rounded clip mask and shadows.
