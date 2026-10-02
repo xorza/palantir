@@ -74,7 +74,7 @@ impl LayoutEngine {
         }
         self.cache.lookup_root_intrinsic(
             tree.records.widget_id()[idx],
-            tree.rollups.subtree[idx],
+            tree.rollups.layout_subtree[idx],
             slot,
         )
     }

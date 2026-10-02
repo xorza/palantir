@@ -21,12 +21,20 @@ use crate::common::content_hash::ContentHash;
 /// see [`TreeFingerprint`](crate::scene::tree::tree_fingerprint::TreeFingerprint).
 #[derive(Debug, Default)]
 pub(crate) struct SubtreeRollups {
+    /// Everything a node paints and lays out, in record order — what the
+    /// cascade's repair and damage compare.
     pub(crate) node: Vec<ContentHash>,
     pub(crate) subtree: Vec<ContentHash>,
+    /// The part of [`Self::node`] that measure and arrange read — what
+    /// the measure cache keys on, so a hover tint or a paint animation
+    /// still hits it. [`Self::node`] is built from this, so nothing in it
+    /// can be missing there.
+    pub(crate) layout_node: Vec<ContentHash>,
+    pub(crate) layout_subtree: Vec<ContentHash>,
 }
 
 impl SubtreeRollups {
-    /// Resize both columns for `n` records. Columns are resized with
+    /// Resize the columns for `n` records. Columns are resized with
     /// default values — filled by indexed assignment during the fused
     /// reverse-pre-order pass in `Tree::compute_rollups`.
     pub(crate) fn reset_for(&mut self, n: usize) {
@@ -36,5 +44,7 @@ impl SubtreeRollups {
         // avoids the truncate-then-grow round trip when `n` is steady.
         self.node.resize(n, ContentHash::default());
         self.subtree.resize(n, ContentHash::default());
+        self.layout_node.resize(n, ContentHash::default());
+        self.layout_subtree.resize(n, ContentHash::default());
     }
 }

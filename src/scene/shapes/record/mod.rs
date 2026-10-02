@@ -4,6 +4,7 @@
 
 use crate::icons::icon_set::IconHandle;
 use crate::layout::types::align::Align;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::color::RgbaF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
@@ -18,6 +19,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
+use std::hash::Hash;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -262,6 +264,41 @@ pub(crate) fn text_paint_bbox_local(
 /// Every bulk input (polyline points, mesh vertices, curve control
 /// points) reaches it as a `bbox` folded under the AABB NaN contract, so
 /// one `Rect` test stands in for an `O(n)` scan of the data behind it.
+impl ShapeRecord {
+    /// Feed what layout reads from this record into `h`, answering
+    /// whether there was anything. Only a text run is read by layout —
+    /// measure shapes it — so only its shaping inputs go in: the text,
+    /// the face and metrics, the wrap and the alignment. Its colour and
+    /// origin are paint, and stay out, so a recoloured label still hits
+    /// the measure cache.
+    pub(crate) fn hash_layout_inputs(&self, h: &mut impl std::hash::Hasher) -> bool {
+        let ShapeRecord::Text {
+            text,
+            font,
+            wrap,
+            align,
+            local_origin: _,
+            color: _,
+        } = self
+        else {
+            return false;
+        };
+        text.hash(h);
+        font.size_px.hash_visual(h);
+        font.line_height_px.hash_visual(h);
+        // The five face axes in one word: family and weight are 16 bits
+        // each, so the set needs a `u64`. Two runs that differ only in
+        // weight, style or family must not collide here.
+        let face = (u64::from(font.family.raw()) << 40)
+            | (u64::from(font.weight.value()) << 24)
+            | ((font.slant as u64) << 16)
+            | (u64::from(align.raw()) << 8)
+            | (*wrap as u64);
+        h.write_u64(face);
+        true
+    }
+}
+
 impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {

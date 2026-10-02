@@ -147,6 +147,31 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     assert_snapshot_is_linear(&h);
 }
 
+/// A recolour is paint, not layout: the measure cache keys on the layout
+/// half of the rollup, so a frame that only changes a fill hits at the
+/// root, where the full subtree hash did change.
+#[test]
+fn a_recolour_hits_the_measure_cache_at_the_root() {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    run_frame(&mut h, |ui| {
+        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.2, 0.4, 0.8));
+    });
+    let full_before = h.ui.tree(Layer::Main).rollups.subtree.clone();
+    run_frame(&mut h, |ui| {
+        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.9, 0.4, 0.8));
+    });
+    assert_ne!(
+        full_before,
+        h.ui.tree(Layer::Main).rollups.subtree,
+        "control: the paint did change",
+    );
+    assert_eq!(
+        h.engines.layout.scratch.counters.cache_hits().len(),
+        1,
+        "the whole tree replays from one hit",
+    );
+}
+
 #[test]
 fn changing_descendant_hash_replaces_ancestor_descriptor() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -155,8 +180,10 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
     });
     let first = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
+    // A layout change — the leaf's size. A colour change is paint and
+    // leaves the layout hash alone; that is the next test's case.
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.9, 0.4, 0.8));
+        build_wrapped_frame(ui, "a", 60.0, RgbaF32::srgb(0.2, 0.4, 0.8));
     });
     let second = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
@@ -339,7 +366,7 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
 
 #[test]
 fn localized_change_hits_unchanged_sibling() {
-    let build = |ui: &mut Ui, color: RgbaF32| {
+    let build = |ui: &mut Ui, size: f32| {
         Panel::vstack()
             .id(WidgetId::from_hash("branch-root"))
             .show(ui, |ui| {
@@ -348,11 +375,7 @@ fn localized_change_hits_unchanged_sibling() {
                     .show(ui, |ui| {
                         Block::new()
                             .id(WidgetId::from_hash("changing-leaf"))
-                            .size(20.0)
-                            .background(Background {
-                                fill: color.into(),
-                                ..Default::default()
-                            })
+                            .size(size)
                             .show(ui);
                     });
                 Panel::vstack()
@@ -366,13 +389,13 @@ fn localized_change_hits_unchanged_sibling() {
             });
     };
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    run_frame(&mut h, |ui| build(ui, RgbaF32::srgb(1.0, 0.0, 0.0)));
+    run_frame(&mut h, |ui| build(ui, 20.0));
     let stable_hash = snap_for(&h, WidgetId::from_hash("stable"))
         .unwrap()
         .snap
         .subtree_hash;
 
-    run_frame(&mut h, |ui| build(ui, RgbaF32::srgb(0.0, 1.0, 0.0)));
+    run_frame(&mut h, |ui| build(ui, 25.0));
 
     assert!(
         h.engines

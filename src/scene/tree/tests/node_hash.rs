@@ -531,3 +531,77 @@ fn a_paint_animation_moves_the_node_hash() {
     assert_ne!(spun, faster, "a different period");
     assert_ne!(spun, fading, "a different channel");
 }
+
+/// Which half of the rollup each kind of edit moves. Paint-only edits
+/// move the full hash and leave the layout half, which the measure cache
+/// keys on; layout edits move both, the full hash being built from the
+/// layout half.
+#[test]
+fn each_edit_moves_the_half_it_belongs_to() {
+    use crate::widgets::text::Text;
+
+    #[derive(Clone, Copy)]
+    struct Edit {
+        fill: RgbaF32,
+        label: &'static str,
+        padding: f32,
+    }
+    let base = Edit {
+        fill: RgbaF32::srgb(0.2, 0.4, 0.8),
+        label: "hello",
+        padding: 4.0,
+    };
+    let hashes = |edit: Edit| {
+        let mut h = UiHarness::new(SURFACE);
+        let node = h.frame_value(|ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .padding(edit.padding)
+                .background(Background::fill(edit.fill))
+                .show(ui, |ui| {
+                    Text::new(edit.label)
+                        .id(WidgetId::from_hash("label"))
+                        .show(ui);
+                })
+                .response
+                .node()
+        });
+        let rollups = &h.ui.tree(Layer::Main).rollups;
+        (rollups.node[node.idx()], rollups.layout_node[node.idx()])
+    };
+    let (full, layout) = hashes(base);
+    let rows: [(&str, Edit, bool, bool); 3] = [
+        (
+            "recolour",
+            Edit {
+                fill: RgbaF32::srgb(0.9, 0.1, 0.1),
+                ..base
+            },
+            true,
+            false,
+        ),
+        (
+            "padding",
+            Edit {
+                padding: 8.0,
+                ..base
+            },
+            true,
+            true,
+        ),
+        (
+            "child text",
+            Edit {
+                label: "goodbye",
+                ..base
+            },
+            false,
+            false,
+        ),
+    ];
+    for (label, edit, full_moves, layout_moves) in rows {
+        let (f, l) = hashes(edit);
+        assert_eq!(f != full, full_moves, "{label}: full node hash");
+        assert_eq!(l != layout, layout_moves, "{label}: layout node hash");
+    }
+}

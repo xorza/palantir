@@ -186,12 +186,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Unpinned numbering invariant in the curve shader
 - [ ] `src/gpu/curve_pipeline/curve.wgsl:260`: `in.kind >= KIND_JOIN_ROUND` assumes every join kind is ≥ JOIN_ROUND and every non-join kind is below it. `renderer/render_buffer/curve.rs:27-28` says the joins' "order among themselves is free", and no const assert pins it. Renumbering BEVEL=3, ROUND=4 would silently send bevel joins down the strip path.
 
-## Measure cache keyed on a paint-inclusive hash
-- [ ] `src/layout/pass.rs:276` / `src/layout/engine.rs:221`: the measure cache and `matches_forest` key on `rollups.subtree`. That hash folds shape hashes and the chrome hash (`src/scene/tree/mod.rs:292,328`), so it changes on colour, hover tint or any paint animation.
-  - Every paint-only change misses the measure cache on the whole ancestor chain (driver re-dispatch plus intrinsic queries per ancestor).
-  - It also forces a rebuild frame: `capture_tree` copies every column of every layer, rebuilds `text_bounds` and the descriptors, and recomputes the identity, O(N) on every animated frame.
-  - A layout-only rollup (sizing, bounds, panel, text content/font/wrap, grid/scroll defs, child ids) would let paint-only frames hit at the root.
-
 ## Composer worst-case per-frame cost
 - [ ] `src/renderer/frontend/composer/occlusion.rs:140-149` **bug (perf)**: the prune is O(N·K) whenever covers equal quad sizes. Sharp, pixel-aligned opaque quads (the default under `pixel_snap`) record their full rect as the cover (`aa_inset` is 0). `q.rect.size > suffix_max` is then never true, and every quad scans all later occluders. A 100×100 grid of equal cells stays in one group: about 5·10⁷ `contains_rect` calls per full frame.
 - [ ] `src/renderer/frontend/composer/higher_kind.rs:221-232,300-302` **bug (perf, plausible)**: the module doc's bound ("a query that survives the union pre-reject flushes, so a scan happens once per group") is false. `any_overlap` can scan every rect, find no hit, and not flush. Curve-after-curve never flushes, so curves accumulate. 2000 short `Shape::line` strokes plus 500 labels in the gaps costs about 10⁶ rect tests per frame.

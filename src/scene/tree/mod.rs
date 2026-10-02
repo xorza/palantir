@@ -54,7 +54,6 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::paint::ChromeRow;
-use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
@@ -222,11 +221,23 @@ impl Tree {
         self.compute_rollups();
     }
 
-    /// Fused reverse-pre-order pass: computes both hash columns and
+    /// Fused reverse-pre-order pass: computes the hash columns and
     /// discovers non-leaf direct-text owners in a single sweep.
     /// `subtree[i]` reads `node[i]` (just written this iteration) and
     /// the already-finalized `subtree[children]` (visited earlier in
     /// the reverse pass).
+    ///
+    /// **Layout half first, full hash derived from it.** A node's layout
+    /// hash folds what measure and arrange read — the layout core and
+    /// flags, bounds, panel, grid and scrollbar definitions, child ids in
+    /// order, and each text run's shaping inputs. Its full hash is that,
+    /// plus chrome and every shape's paint hash in record order. An
+    /// input added to the layout half reaches the full half by
+    /// construction, so the measure cache (which keys on the layout
+    /// half) and the cascade and damage (which key on the full one)
+    /// cannot drift apart. The rule for a new input: if layout might read
+    /// it, it goes in the layout half — an extra input costs a cache miss,
+    /// a missing one is a stale layout.
     fn compute_rollups(&mut self) {
         let n = self.records.len();
         let layouts = self.records.layout();
@@ -244,21 +255,30 @@ impl Tree {
         let grid_tracks = &self.grid_tracks;
         let grid_defs = &self.grid_defs;
         let scrollbar_defs = &self.scrollbar_defs;
-        let SubtreeRollups { node, subtree } = &mut self.rollups;
+        let SubtreeRollups {
+            node,
+            subtree,
+            layout_node,
+            layout_subtree,
+        } = &mut self.rollups;
         let container_text = &mut self.container_text;
         // `paint_counts` is stamped by `post_record` before this pass —
         // a whole-tree fold, not a per-node one.
         let cascade_static = &mut self.fingerprint.cascade_static;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
+        let layout_node_out = layout_node.as_mut_slice();
+        let layout_subtree_out = layout_subtree.as_mut_slice();
         let mut cascade_static_hasher = Hasher::new();
 
         for i in (0..n).rev() {
-            let mut h = Hasher::new();
-            layouts[i].hash_with_flags(attrs[i], &mut h);
+            // `lh` is the layout half, `ph` what only paint reads.
+            let mut lh = Hasher::new();
+            let mut ph = Hasher::new();
+            layouts[i].hash_with_flags(attrs[i], &mut lh);
             let ex = extras[i];
             if let Some(s) = ex.bounds {
-                bounds_tab[s.idx()].hash(&mut h);
+                bounds_tab[s.idx()].hash(&mut lh);
             }
             if let Some(s) = ex.panel {
                 // `PanelExtras::hash` already folds `transform`
@@ -267,10 +287,10 @@ impl Tree {
                 // shapes paint inside the transform per the
                 // `Panel::transform` contract. Pinned by
                 // `self_transform_change_flips_node_hash`.
-                panel_tab[s.idx()].hash(&mut h);
+                panel_tab[s.idx()].hash(&mut lh);
             }
             cascade_static_hasher.write_u64(widget_ids[i].0);
-            cascade_static_hasher.write_u64(h.finish());
+            cascade_static_hasher.write_u64(lh.finish());
             // Nesting, folded in so this hash actually describes the
             // tree's *shape* and not just its nodes. Without it two
             // trees with the same node count and the same per-node
@@ -288,10 +308,10 @@ impl Tree {
             // collide with a chromed node whose hash happens to start
             // `0x00`.
             if let Some(s) = ex.chrome {
-                h.write_u8(1);
-                h.write_u64(chrome_tab[s.idx()].hash.0);
+                ph.write_u8(1);
+                ph.write_u64(chrome_tab[s.idx()].hash.0);
             } else {
-                h.write_u8(0);
+                ph.write_u8(0);
             }
 
             // Walk this node's direct shapes + immediate-child position
@@ -313,25 +333,31 @@ impl Tree {
             // accepted, since re-keys are rare and almost always ride
             // a structural change that invalidates those anyway.
             //
-            // The subtree hasher rides the same walk: each child's
-            // already-finalized `subtree[child]` (reverse pre-order —
-            // children were visited earlier) folds in as it's yielded,
-            // and `node_hash` is appended after `finish` below —
+            // The subtree hashers ride the same walk: each child's
+            // already-finalized subtree rollups (reverse pre-order —
+            // children were visited earlier) fold in as it's yielded, and
+            // the node hashes are appended after `finish` below —
             // children-then-self, one traversal instead of a second
             // child-hop loop.
             let mut sh = Hasher::new();
+            let mut lsh = Hasher::new();
             let mut has_children = false;
             let mut has_direct_text = false;
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(idx, shape) => {
-                        h.write_u64(shape_hashes[idx as usize].0);
-                        has_direct_text |= matches!(shape, ShapeRecord::Text { .. });
+                        ph.write_u64(shape_hashes[idx as usize].0);
+                        if shape.hash_layout_inputs(&mut lh) {
+                            has_direct_text = true;
+                        }
                     }
                     TreeItem::Child(c) => {
-                        h.write_u8(0xFF);
-                        h.write_u64(widget_ids[c.id.idx()].0);
+                        for hasher in [&mut lh, &mut ph] {
+                            hasher.write_u8(0xFF);
+                            hasher.write_u64(widget_ids[c.id.idx()].0);
+                        }
                         sh.write_u64(subtree_out[c.id.idx()].0);
+                        lsh.write_u64(layout_subtree_out[c.id.idx()].0);
                         has_children = true;
                     }
                 }
@@ -354,24 +380,32 @@ impl Tree {
                 container_text.remove_range(i..subtree_ends[i].end() as usize);
             }
             match mode {
-                LayoutMode::Grid(id) => grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h),
+                LayoutMode::Grid(id) => {
+                    grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut lh)
+                }
                 LayoutMode::Scrollbars(id) => {
-                    scrollbar_defs[usize::from(id)].def.hash_visual(&mut h);
+                    scrollbar_defs[usize::from(id)].def.hash_visual(&mut lh);
                 }
                 _ => {}
             }
-            let node_hash = h.finish();
+            let layout_hash = lh.finish();
+            ph.write_u64(layout_hash);
+            let node_hash = ph.finish();
+            layout_node_out[i] = ContentHash(layout_hash);
             node_out[i] = ContentHash(node_hash);
 
-            // Childless subtree = the node alone, so `node_hash` IS the
+            // Childless subtree = the node alone, so the node hash IS the
             // rollup — skip the second hasher round-trip (most nodes).
             // Inner nodes fold children (streamed above) then self.
-            subtree_out[i] = if has_children {
+            if has_children {
                 sh.write_u64(node_hash);
-                ContentHash(sh.finish())
+                lsh.write_u64(layout_hash);
+                subtree_out[i] = ContentHash(sh.finish());
+                layout_subtree_out[i] = ContentHash(lsh.finish());
             } else {
-                ContentHash(node_hash)
-            };
+                subtree_out[i] = ContentHash(node_hash);
+                layout_subtree_out[i] = ContentHash(layout_hash);
+            }
         }
         *cascade_static = ContentHash(cascade_static_hasher.finish());
     }
