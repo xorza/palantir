@@ -145,6 +145,33 @@ fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f3
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
+// CSS `box-shadow` spread on each radius: `max(r + s, 0)` for `s < 0`;
+// for `s ≥ 0`, `r + s` when `r ≥ s` and `r + s·(1 + (r/s − 1)³)` below, so
+// a sharp corner stays sharp. The shader's copy of the rule in
+// `Corners::fit_to`, for the inset hole, whose box only the shader sizes.
+// At `s = 0` the cubic arm divides by the floor and goes non-finite, and
+// the `r ≥ s` arm is the one selected.
+fn spread_radius(r: vec4<f32>, s: f32) -> vec4<f32> {
+    if (s < 0.0) {
+        return max(r + vec4<f32>(s), vec4<f32>(0.0));
+    }
+    let t = r / max(s, 1e-30) - vec4<f32>(1.0);
+    return select(r + s * (vec4<f32>(1.0) + t * t * t), r + vec4<f32>(s), r >= vec4<f32>(s));
+}
+
+// CSS "overlapping curves": scale every radius `(tl, tr, br, bl)` by the
+// least of each side's length over the sum of its two radii, when that is
+// below 1, so no radius exceeds what the box of half-extents `half` holds.
+// The shader's copy of `Corners::fit_to`'s fit.
+fn fit_radii(r: vec4<f32>, half: vec2<f32>) -> vec4<f32> {
+    let size = 2.0 * half;
+    let sums = vec4<f32>(r.x + r.y, r.w + r.z, r.x + r.w, r.y + r.z);
+    let sides = vec4<f32>(size.x, size.x, size.y, size.y);
+    let ratios = select(vec4<f32>(1.0), sides / max(sums, vec4<f32>(1e-30)), sums > vec4<f32>(0.0));
+    let f = min(1.0, min(min(ratios.x, ratios.y), min(ratios.z, ratios.w)));
+    return r * f;
+}
+
 // Corner-origin convenience: `p` measured from the top-left of a rect
 // of `size`. Forwards to the centered form.
 fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
@@ -362,11 +389,11 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
             return vec4<f32>(0.0);
         }
         let hole_half = max(half - vec2<f32>(spread), vec2<f32>(0.0));
-        // Inner edge of a rounded rect deflated by `spread` has corner
-        // radii reduced by the same amount (CSS / Qt / RN inset-shadow
-        // convention); floored at 0 so big spread collapses to square
-        // corners instead of inverting.
-        let hole_radius = max(in.radius - vec4<f32>(spread), vec4<f32>(0.0));
+        // The hole is the source shrunk by `spread`, so its radii follow
+        // the CSS spread rule with `-spread` — less by `spread`, floored
+        // at 0, or grown the way a drop shadow's are when the spread is
+        // negative — then fit the hole's own box.
+        let hole_radius = fit_radii(spread_radius(in.radius, -spread), hole_half);
         let p_hole = in.local - half - offset;
         let d_hole = sdf_rounded_box_centered(p_hole, hole_half, hole_radius);
         let cov_hole = blurred_rect_coverage(d_hole, sigma);
