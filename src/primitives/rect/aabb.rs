@@ -85,3 +85,58 @@ impl Aabb {
         Rect::from_min_max(self.lo, self.hi)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::rect::Rect;
+    use crate::primitives::rect::aabb::Aabb;
+    use glam::Vec2;
+
+    /// The fold's bounds against hand-computed rects, and the NaN
+    /// contract: a NaN anywhere — first point, a later one, either lane —
+    /// yields a NaN rect rather than the finite box `min`/`max` would
+    /// leave. Empty input is the zero rect, and the slice and stream
+    /// forms agree.
+    #[test]
+    fn bounds_fold_points_and_any_nan_poisons_them() {
+        let nan = f32::NAN;
+        let cases: [(&str, Vec<Vec2>, Option<Rect>); 6] = [
+            ("empty", vec![], Some(Rect::ZERO)),
+            (
+                "one point",
+                vec![Vec2::new(3.0, 4.0)],
+                Some(Rect::new(3.0, 4.0, 0.0, 0.0)),
+            ),
+            (
+                "spread",
+                vec![
+                    Vec2::new(3.0, 4.0),
+                    Vec2::new(-1.0, 9.0),
+                    Vec2::new(5.0, 2.0),
+                ],
+                Some(Rect::new(-1.0, 2.0, 6.0, 7.0)),
+            ),
+            (
+                "nan first",
+                vec![Vec2::new(nan, 0.0), Vec2::new(1.0, 1.0)],
+                None,
+            ),
+            ("nan later x", vec![Vec2::ZERO, Vec2::new(nan, 1.0)], None),
+            ("nan later y", vec![Vec2::ZERO, Vec2::new(1.0, nan)], None),
+        ];
+        for (label, points, want) in cases {
+            let slice = Aabb::of(&points);
+            let stream = Aabb::of_iter(points.iter().copied());
+            match want {
+                Some(rect) => {
+                    assert_eq!(slice, rect, "{label}");
+                    assert_eq!(stream, rect, "{label}: stream");
+                }
+                None => {
+                    assert!(slice.has_nan(), "{label}: {slice:?}");
+                    assert!(stream.has_nan(), "{label}: stream {stream:?}");
+                }
+            }
+        }
+    }
+}

@@ -186,29 +186,6 @@ fn content_hash_changes_on_reordered_indices() {
 }
 
 #[test]
-fn content_hash_memoizes_until_mutation() {
-    let mut m = red_tri();
-    let h0 = m.content_hash();
-    assert_eq!(m.cached_hash.get(), Some(h0));
-    // No mutation → same value, cache still populated.
-    assert_eq!(m.content_hash(), h0);
-    assert_eq!(m.cached_hash.get(), Some(h0));
-    // Any builder mutation invalidates.
-    m.vertex(Vec2::new(2.0, 2.0), RgbaF32::default());
-    assert_eq!(m.cached_hash.get(), None);
-    let h1 = m.content_hash();
-    assert_ne!(h0, h1);
-}
-
-#[test]
-fn clone_preserves_cache() {
-    let m = red_tri();
-    let h = m.content_hash();
-    let c = m.clone();
-    assert_eq!(c.cached_hash.get(), Some(h));
-}
-
-#[test]
 fn filled_triangle_precaches_bbox() {
     let m = Mesh::filled_triangle(
         Vec2::new(-1.0, 2.0),
@@ -264,17 +241,6 @@ fn bbox_spans_vertex_extent() {
 }
 
 #[test]
-fn bbox_memoizes_until_mutation() {
-    let mut m = red_tri();
-    let b0 = m.bbox();
-    assert_eq!(m.cached_bbox.get(), Some(b0));
-    m.vertex(Vec2::new(10.0, 10.0), RgbaF32::default());
-    assert_eq!(m.cached_bbox.get(), None);
-    let b1 = m.bbox();
-    assert_ne!(b0, b1);
-}
-
-#[test]
 fn with_known_bbox_skips_compute() {
     let bogus = Rect {
         min: Vec2::new(100.0, 100.0),
@@ -284,41 +250,72 @@ fn with_known_bbox_skips_compute() {
     assert_eq!(m.bbox(), bogus);
 }
 
+/// Which caches each mutation drops, from a mesh with both primed. A
+/// vertex, an append and a clear move vertices, so both go. A triangle
+/// only adds indices: the hash goes and the bbox stays. Appending an
+/// empty mesh changes nothing and keeps both. Every recomputed value is
+/// the fresh one — the hash differs exactly when its cache dropped. A
+/// clone carries both caches with it.
 #[test]
-fn clear_invalidates_bbox() {
-    let mut m = red_tri();
-    let _ = m.bbox();
-    m.clear();
-    assert_eq!(m.cached_bbox.get(), None);
-    assert_eq!(m.bbox(), Rect::ZERO);
-}
-
-#[test]
-fn triangle_keeps_bbox_cache() {
-    let mut m = red_tri();
-    let b0 = m.bbox();
-    assert_eq!(m.cached_bbox.get(), Some(b0));
-    // Pushing indices doesn't move any vertices, so bbox stays valid.
-    m.triangle(0, 1, 2);
-    assert_eq!(m.cached_bbox.get(), Some(b0));
-    // ...but content_hash must invalidate — render output changed.
-    assert_eq!(m.cached_hash.get(), None);
-}
-
-#[test]
-fn append_invalidates_bbox() {
-    let mut a = red_tri();
-    let _ = a.bbox();
-    let b = Mesh::filled_triangle(
+fn mutations_drop_exactly_the_caches_they_stale() {
+    type Mutate = fn(&mut Mesh, &Mesh);
+    let far = Mesh::filled_triangle(
         Vec2::new(10.0, 10.0),
         Vec2::new(11.0, 10.0),
         Vec2::new(10.0, 11.0),
         RgbaF32::default(),
     );
-    a.append(&b);
-    assert_eq!(a.cached_bbox.get(), None);
-    let bb = a.bbox();
-    assert_eq!(bb.min, Vec2::ZERO);
-    assert_eq!(bb.size.w, 11.0);
-    assert_eq!(bb.size.h, 11.0);
+    let unit = Rect::new(0.0, 0.0, 1.0, 1.0);
+    let cases: [(&str, Mutate, bool, bool, Rect); 5] = [
+        (
+            "vertex",
+            |m, _| {
+                m.vertex(Vec2::new(2.0, 3.0), RgbaF32::default());
+            },
+            false,
+            false,
+            Rect::new(0.0, 0.0, 2.0, 3.0),
+        ),
+        ("triangle", |m, _| m.triangle(0, 1, 2), false, true, unit),
+        (
+            "append",
+            |m, o| m.append(o),
+            false,
+            false,
+            Rect::new(0.0, 0.0, 11.0, 11.0),
+        ),
+        (
+            "append empty",
+            |m, _| m.append(&Mesh::new()),
+            true,
+            true,
+            unit,
+        ),
+        ("clear", |m, _| m.clear(), false, false, Rect::ZERO),
+    ];
+    for (label, mutate, hash_kept, bbox_kept, bbox) in cases {
+        let mut m = red_tri();
+        let (h0, b0) = (m.content_hash(), m.bbox());
+        assert_eq!(b0, unit);
+        let copy = m.clone();
+        assert_eq!(
+            (copy.cached_hash.get(), copy.cached_bbox.get()),
+            (Some(h0), Some(b0)),
+            "a clone carries both caches",
+        );
+
+        mutate(&mut m, &far);
+        assert_eq!(
+            m.cached_hash.get(),
+            hash_kept.then_some(h0),
+            "{label}: hash cache"
+        );
+        assert_eq!(
+            m.cached_bbox.get(),
+            bbox_kept.then_some(b0),
+            "{label}: bbox cache"
+        );
+        assert_eq!(m.bbox(), bbox, "{label}: bbox");
+        assert_eq!(m.content_hash() == h0, hash_kept, "{label}: hash value");
+    }
 }

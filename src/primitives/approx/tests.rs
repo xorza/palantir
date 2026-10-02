@@ -1,5 +1,8 @@
-use crate::primitives::approx::{EPS, FloatHash, approx_zero, canon_bits, paints_nothing};
+use crate::primitives::approx::{
+    EPS, FloatHash, approx_zero, canon_bits, paints_nothing, share_of, vec2_approx_eq,
+};
 use crate::primitives::rect::Rect;
+use glam::Vec2;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher as _;
 
@@ -217,4 +220,38 @@ fn visual_hash_helpers_collapse_zero_noise_and_nan_payloads() {
         finish_hash(|h| nan_a.hash_visual(h)),
         finish_hash(|h| nan_b.hash_visual(h)),
     );
+}
+
+/// A share of a collapsed divisor is nothing, not a huge number: zero,
+/// sub-`EPS` and negative divisors all answer 0. Above the floor it is the
+/// plain quotient.
+#[test]
+fn share_of_answers_zero_for_a_collapsed_divisor() {
+    for (label, n, d, want) in [
+        ("plain", 3.0, 4.0, 0.75),
+        ("whole", 5.0, 5.0, 1.0),
+        ("zero divisor", 3.0, 0.0, 0.0),
+        ("sub-eps divisor", 3.0, EPS * 0.5, 0.0),
+        ("negative divisor", 3.0, -4.0, 0.0),
+    ] {
+        assert_eq!(share_of(n, d), want, "{label}");
+    }
+}
+
+/// Two points coincide within `EPS` of Euclidean distance, inclusive.
+/// Measured from the origin so the offsets are exact: `EPS` on one axis
+/// is on the boundary, and `EPS` on both is √2 · `EPS` away.
+#[test]
+fn vec2_approx_eq_is_euclidean_and_inclusive() {
+    for (label, b, want) in [
+        ("same", Vec2::ZERO, true),
+        ("half eps on x", Vec2::new(EPS * 0.5, 0.0), true),
+        ("one eps on y", Vec2::new(0.0, EPS), true),
+        ("two eps on x", Vec2::new(EPS * 2.0, 0.0), false),
+        ("eps on both axes", Vec2::splat(EPS), false),
+        ("half eps on both axes", Vec2::splat(EPS * 0.5), true),
+    ] {
+        assert_eq!(vec2_approx_eq(Vec2::ZERO, b), want, "{label}");
+        assert_eq!(vec2_approx_eq(b, Vec2::ZERO), want, "{label}: swapped");
+    }
 }

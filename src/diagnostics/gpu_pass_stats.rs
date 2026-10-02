@@ -229,10 +229,28 @@ mod tests {
     fn clear_kinds_resets_to_none() {
         // Pin: a category that ran last frame but not this one shows
         // `None`, not the stale previous-frame value.
+        // The pass total, the CPU time and the pipeline stats are other
+        // producers' values, so clearing the kinds leaves them alone.
         let s = GpuPassStats::default();
+        let stats = PipelineStats {
+            vertex_shader_invocations: 1,
+            clipper_invocations: 2,
+            clipper_primitives_out: 3,
+            fragment_shader_invocations: 4,
+            compute_shader_invocations: 0,
+        };
         s.record_kind_ns(BatchKind::Quads, 2_000_000);
+        s.record_kind_ns(BatchKind::Text, 1_000_000);
+        s.record_pass_ns(3_000_000);
+        s.record_main_pass_cpu_ns(500_000);
+        s.record_pipeline_stats(stats);
         s.clear_kinds();
-        assert_eq!(s.last_kind_ms(BatchKind::Quads), None);
+        for kind in BatchKind::iter() {
+            assert_eq!(s.last_kind_ms(kind), None, "{kind:?}");
+        }
+        assert_eq!(s.last_pass_ms(), Some(3.0));
+        assert_eq!(s.last_main_pass_cpu_ms(), Some(0.5));
+        assert_eq!(s.last_pipeline_stats(), Some(stats));
     }
 
     #[test]
