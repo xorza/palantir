@@ -14,10 +14,7 @@ fn tile(ui: &mut Ui) {
     Block::new()
         .id_salt("tile")
         .size(20.0)
-        .background(Background {
-            fill: RgbaF32::WHITE.into(),
-            ..Default::default()
-        })
+        .background(Background::fill(RgbaF32::WHITE))
         .show(ui);
 }
 

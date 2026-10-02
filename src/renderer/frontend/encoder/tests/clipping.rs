@@ -42,10 +42,7 @@ fn clip_emits_balanced_push_pop() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                 });
         });

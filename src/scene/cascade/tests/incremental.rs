@@ -65,10 +65,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
         Block::new()
             .id(WidgetId::from_hash("paint"))
             .size(50.0)
-            .background(Background {
-                fill: color.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(color))
             .show(ui);
     }
 
@@ -325,10 +322,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("body"))
                     .size((Sizing::fixed(size), Sizing::fixed(40.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui, |_| {});
             });
     }

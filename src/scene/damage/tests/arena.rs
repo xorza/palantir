@@ -37,10 +37,7 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
     Panel::hstack()
         .id(WidgetId::from_hash(id))
         .size((Sizing::fixed(180.0), Sizing::fixed(90.0)))
-        .background(Background {
-            fill: BLUE.into(),
-            ..Default::default()
-        })
+        .background(Background::fill(BLUE))
         .show(ui, |ui| {
             for s in 0..shapes {
                 ui.add_shape(

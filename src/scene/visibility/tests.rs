@@ -210,27 +210,18 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("hid"))
                     .size(40.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .hidden()
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .show(ui);
             })
             .response

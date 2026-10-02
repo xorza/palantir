@@ -1,7 +1,6 @@
 //! Text owned by a container rather than a leaf: paint-only, ordered, and
 //! cached alongside its children.
 
-use crate::TextStyle;
 use crate::Ui;
 use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::layout::types::align::Align;
@@ -233,7 +232,7 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
             child = Some(
                 Text::new("child-between")
                     .id_salt("interleaved-child")
-                    .style(&TextStyle::default().with_font_size(18.0))
+                    .font_size(18.0)
                     .show(ui)
                     .node(),
             );

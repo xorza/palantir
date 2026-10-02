@@ -36,10 +36,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("paint-only"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {})
                 .response
                 .node();
@@ -60,10 +57,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("clipped"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rect()
                 .show(ui, |_| {})
                 .response
@@ -88,10 +82,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
@@ -217,10 +208,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                         Block::new()
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                             .show(ui)
                             .node()
                     })
@@ -280,10 +268,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .id(WidgetId::from_hash("locked"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                     .padding(20.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                     .disabled(disabled)
                     .show(ui, |ui| {
                         clicked = Button::new()
@@ -363,10 +348,7 @@ fn zstack_layers_children_without_painting_background() {
                             Block::new()
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
-                                .background(Background {
-                                    fill: RgbaF32::srgb(0.1, 0.1, 0.2).into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(RgbaF32::srgb(0.1, 0.1, 0.2)))
                                 .show(ui)
                                 .node(),
                             Button::new()
@@ -421,10 +403,7 @@ fn zstack_aligns_child_per_axis() {
                                 .id(WidgetId::from_hash("c"))
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)
-                                .background(Background {
-                                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                                 .show(ui)
                                 .node()
                         })

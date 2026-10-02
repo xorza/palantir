@@ -125,10 +125,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("off"))
                     .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                    .background(Background {
-                        fill: BLUE.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(BLUE))
                     .show(ui, |_| {});
             });
     });
@@ -185,10 +182,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                             Block::new()
                                 .id(WidgetId::from_hash(key))
                                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui);
                         }
                     });

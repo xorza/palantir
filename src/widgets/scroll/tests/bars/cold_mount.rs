@@ -235,10 +235,7 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                         .id(WidgetId::from_hash(("card", tag)))
                         .padding(8.0)
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(0.16, 0.20, 0.28)))
                         .clip_rect()
                         .show(ui, |ui| {
                             let s = match tag {

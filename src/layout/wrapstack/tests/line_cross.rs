@@ -145,10 +145,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
             });
     });

@@ -39,10 +39,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .id(WidgetId::from_hash("V"))
                             .position((0.0, 0.0))
                             .size(30.0)
-                            .background(Background {
-                                fill: v_color.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(v_color))
                             .sense(Sense::CLICK)
                             .show(ui)
                             .left
@@ -51,10 +48,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .id(WidgetId::from_hash("D"))
                             .position((40.0, 0.0))
                             .size(30.0)
-                            .background(Background {
-                                fill: d_color.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(d_color))
                             .sense(Sense::CLICK)
                             .disabled(true)
                             .show(ui)
@@ -64,10 +58,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .id(WidgetId::from_hash("H"))
                             .position((80.0, 0.0))
                             .size(30.0)
-                            .background(Background {
-                                fill: h_color.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(h_color))
                             .sense(Sense::CLICK)
                             .hidden()
                             .show(ui)
@@ -139,10 +130,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                 Block::new()
                     .auto_id()
                     .size(Sizing::fixed(40.0))
-                    .background(Background {
-                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui)
                     .node()
             })

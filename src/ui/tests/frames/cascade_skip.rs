@@ -101,10 +101,7 @@ fn the_key_covers_authoring_input_classes() {
     }
 
     fn bg(r: f32, g: f32, b: f32) -> Background {
-        Background {
-            fill: RgbaF32::srgb(r, g, b).into(),
-            ..Default::default()
-        }
+        Background::fill(RgbaF32::srgb(r, g, b))
     }
 
     assert_reruns(
@@ -182,10 +179,7 @@ fn the_key_covers_layer_and_root_identity() {
             Block::new()
                 .id(WidgetId::from_hash(key))
                 .size(20.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         });
     }

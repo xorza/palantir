@@ -30,18 +30,12 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .show(ui);
             });
         });
@@ -78,10 +72,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(20.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 };
                 match wrap {
@@ -125,10 +116,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                         .id(WidgetId::from_hash(*key))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .position(Vec2::new(*x, *y))
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
             });
@@ -262,10 +250,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
                         .id(WidgetId::from_hash("overflowing-child"))
                         .position((60.0, 0.0))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });
@@ -323,10 +308,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .id(WidgetId::from_hash("neighbour"))
                         .position(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });
