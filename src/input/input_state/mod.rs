@@ -67,8 +67,8 @@ pub(crate) struct InputState {
     /// Frame-snapshot of "no widget can hold any non-default interaction
     /// state this frame" — no pointer on the surface, no routed
     /// scroll/pinch target or pending target delta, no live button
-    /// capture or click/double-click edge. Filled once per record pass via
-    /// [`Self::snapshot_frame_quiescent`];
+    /// capture or click/double-click edge. Filled before `App::update` and
+    /// once per record pass via [`Self::snapshot_frame_quiescent`];
     /// read in [`Self::response_for`] to default the whole interaction
     /// half out for every widget instead of re-deriving it per call.
     /// `focused` is excluded on purpose (see `snapshot_frame_quiescent`),
@@ -160,6 +160,24 @@ impl InputState {
     /// this pass is unaffected.
     pub(crate) fn release_input_scope(&mut self, owner: WidgetId) {
         self.scopes.close(owner);
+    }
+
+    /// The state a warmup pass records against: no input at all, but this
+    /// state's focus, so a widget records as it will in the visible pass.
+    pub(crate) fn warmup_scratch(&self) -> Self {
+        Self {
+            focused: self.focused,
+            ..Self::default()
+        }
+    }
+
+    /// Keep what a warmup pass recorded against `warmup` asked of the
+    /// input: its focus moves and its scope withdrawals. An app that sets
+    /// focus once, on its first record, would otherwise lose it to the
+    /// discarded pass.
+    pub(crate) fn adopt_warmup(&mut self, warmup: &Self) {
+        self.focused = warmup.focused;
+        self.scopes.adopt_closing(&warmup.scopes);
     }
 
     pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
@@ -827,8 +845,9 @@ impl InputState {
     /// hold non-default interaction state this frame: no pointer on the
     /// surface, no routed scroll/pinch target or pending event-time
     /// delta, and no live button capture or per-frame click/double-click
-    /// edge. Taken once per record pass so [`Self::response_for`] can
-    /// default the interaction half out for every widget at once.
+    /// edge. Taken before `App::update` and once per record pass, so
+    /// [`Self::response_for`] can default the interaction half out for
+    /// every widget at once.
     ///
     /// `focused` is deliberately *not* part of this: [`crate::Ui::set_focus`]
     /// can set it mid-record, after the snapshot is taken, so
@@ -844,7 +863,7 @@ impl InputState {
     /// the surface. A pointer resting on inert surface still routes
     /// nothing, but it holds a position, so every widget takes the long
     /// probe that frame.
-    fn snapshot_frame_quiescent(&mut self) {
+    pub(crate) fn snapshot_frame_quiescent(&mut self) {
         debug_assert!(
             self.pointer_pos.is_some()
                 || (self.hovered.is_none()

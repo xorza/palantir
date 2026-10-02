@@ -34,10 +34,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/expander/mod.rs:247-253` **bug (plausible)**: on the frame the reveal tween settles, `response_for(body_id)` returns the previous frame's clipped rect (`max_size = openness_prev * full`), and that is stored as `height`. A settled `animate` requests no repaint. If the next interaction is keyboard-only (Space on the focused header), the collapse tween clips against e.g. 0.97×full and the body visibly jumps.
 - [ ] `src/widgets/response.rs:65`: says external authors reach `Response::lazy` "through `Widget::response`". That returns a `ResponseState`. The lazy route is `Widget::show`.
 
-## Frame-start snapshots read outside the pass that took them
-- [ ] `src/input/input_state/mod.rs:855` against `app.rs:13` **bug (plausible)**: `frame_quiescent` is re-snapshotted only in `pre_record`, but `App::update` (documented as exposing "the current frame's ... unsuppressed input") runs before that. Scenario: the last pass ran with the pointer off-surface, then the pointer enters onto a button and clicks before any frame runs. In `update`, `ui.response_for(id).clicked()` returns false (stale snapshot), while `ui.pointer_actions()` reports the click.
-- [ ] `src/ui/frame_cycle.rs:233-241` **bug (plausible)**: warmup runs record against a scratch `InputState`. It keeps state rows, animations, wakes and window commands, but discards `set_focus` / `clear_focus` / `release_input_scope`. An app that does a one-shot first-frame `ui.set_focus(id)` from `record` loses it, and `update` cannot do it instead because it gets `&Ui`.
-
 ## `IconId` is u16 but icon sets are unbounded
 - [ ] `src/icons/icon_set.rs:165` with `icon_table.rs:283` **bug (low)**: `from_svgs` accepts any number of sources, but `by_name` mints `IconId(i as u16)`. In a 70 000-icon set, the name at index 65 540 silently resolves to icon 4. The `gpu/icon` prewarm has the same truncation.
   - `from_svgs` also neither rejects nor dedupes duplicate names, though `IconDef::name` is documented "unique within a set". `by_name` then picks one arbitrarily.

@@ -1130,8 +1130,9 @@ impl Ui {
     ///
     /// **Read it during the frame's record** — as every widget does. The
     /// interaction half is gated on a `frame_quiescent` snapshot taken
-    /// once at record-pass start, so a read taken *between* frames would
-    /// reflect the previous frame's input, not events fed since. Reading
+    /// before `App::update` and at each record-pass start, so a read taken
+    /// *between* frames would reflect the previous frame's input, not
+    /// events fed since. Reading
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
     /// The widget's own `NodeFlags::is_disabled` is **not** folded in here — only
