@@ -5,6 +5,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::spacing::Spacing;
 use crate::text::font_family::FontFamily;
+use crate::widgets::theme::Theme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -131,10 +132,10 @@ fn mono_states(looks: &mut StatefulLook, ambient: TextStyle) {
     }
 }
 
-/// The style a look without one of its own inherits — what
-/// `Theme::from_palette` builds as its `text`.
+/// The style a look without one of its own inherits: the theme's own
+/// `text`, from the one place `Theme::from_palette` builds it.
 fn ambient(p: &Palette) -> TextStyle {
-    TextStyle::default().with_color(p.text)
+    Theme::text_from_palette(p)
 }
 
 fn mono_edit(p: &Palette) -> TextEditTheme {
@@ -198,12 +199,14 @@ impl ColorPickerTheme {
             gap: 6.0,
             popup: p.popup_panel(),
             popup_padding: Spacing::all(8.0),
+            // The editor derives from the chip, as `DragValueTheme`
+            // promises, so a value that becomes editable keeps its box and
+            // its text exactly where they were.
             value: {
-                let mut value = DragValueTheme::from_palette(p);
-                mono_states(&mut value.chip.looks, ambient(p));
-                value.chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
-                value.editor = mono_edit(p);
-                value
+                let mut chip = DragValueTheme::from_palette(p).chip;
+                mono_states(&mut chip.looks, ambient(p));
+                chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
+                DragValueTheme::from_chip(chip, &TextEditTheme::from_palette(p))
             },
             hex: mono_edit(p),
             label: TextStyle {
