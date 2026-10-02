@@ -3,11 +3,12 @@
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::layout::axis::Axis;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::scene::layer::Layer;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::text::wrap::TextWrap;

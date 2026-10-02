@@ -5,7 +5,7 @@
 //! everything from there down to the emitted paint commands is the recursion
 //! below.
 
-use crate::layout::LayerLayout;
+use crate::layout::layer_layout::LayerLayout;
 use crate::layout::text_runs::TextRuns;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::paints_nothing;

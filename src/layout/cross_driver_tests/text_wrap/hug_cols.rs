@@ -4,9 +4,10 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::WidgetId;
+use crate::layout::axis::Axis;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
-use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;

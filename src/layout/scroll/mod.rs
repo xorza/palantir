@@ -1,12 +1,14 @@
 //! Layout-side scroll driver. Measure records the content extent on
-//! [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content);
+//! [`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content);
 //! arrange delegates child placement to the matching stack driver, and
 //! intrinsic answers the same per-axis contribution rule measure does.
 
 use crate::layout::axis::Axis;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::stack::Stack;
 use crate::layout::types::scroll_axes::{ScrollAxes, ScrollChildLayout};

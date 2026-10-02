@@ -5,7 +5,7 @@ use crate::layout::axis::Axis;
 use crate::layout::grid::axis_scratch::AxisScratch;
 use crate::layout::grid::axis_scratch::HugRanges;
 
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;

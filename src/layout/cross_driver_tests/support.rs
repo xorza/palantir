@@ -7,8 +7,9 @@ use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::layout::layer_layout::LayerLayout;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::{sizing::Sizing, track::Track};
-use crate::layout::{LayerLayout, ShapedText};
 use crate::scene::tree::node_id::NodeId;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};

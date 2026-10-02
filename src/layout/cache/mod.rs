@@ -8,9 +8,9 @@ pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
-use crate::layout::ShapedText;
 use crate::layout::grid::grid_track_store::GridTrackStore;
-use crate::layout::intrinsic::SLOT_COUNT;
+use crate::layout::intrinsic::len_req::SLOT_COUNT;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::num::F32Px;
 use crate::primitives::rect::Rect;
@@ -68,15 +68,6 @@ pub(super) struct CaptureTreeInput<'a> {
     pub(super) grid_track_state: &'a GridTrackStore,
     pub(super) text_spans: &'a [Span],
     pub(super) text_shapes: &'a [ShapedText],
-}
-
-/// `pub(crate)` for one caller outside `layout`:
-/// `text::wrap::tests::wrap_target_matches_cache_grid`, which pins the
-/// wrap width against this very grid.
-#[inline]
-pub(crate) fn quantize_available(s: Size) -> AvailableKey {
-    debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
-    IVec2::new(s.w.quantize_px(), s.h.quantize_px())
 }
 
 fn union_spans(a: Span, b: Span) -> Span {
@@ -243,6 +234,18 @@ pub(crate) struct MeasureCache {
 }
 
 impl MeasureCache {
+    /// The cache key for an available size: each axis quantized to the
+    /// grid `try_lookup` matches on.
+    ///
+    /// `pub(crate)` for one caller outside `layout`:
+    /// `text::wrap::tests::wrap_target_matches_cache_grid`, which pins the
+    /// wrap width against this very grid.
+    #[inline]
+    pub(crate) fn available_key(s: Size) -> AvailableKey {
+        debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
+        IVec2::new(s.w.quantize_px(), s.h.quantize_px())
+    }
+
     pub(super) fn begin_frame(&mut self) {
         self.current.clear_capture();
     }
@@ -266,7 +269,7 @@ impl MeasureCache {
                 let current = RootSnapshotKey {
                     wid: tree.records.widget_id()[root.idx()],
                     subtree_hash: tree.rollups.layout_subtree[root.idx()],
-                    available_q: quantize_available(slot.available(layer, surface)),
+                    available_q: Self::available_key(slot.available(layer, surface)),
                 };
                 if snapshot.roots[root_index] != current {
                     return false;

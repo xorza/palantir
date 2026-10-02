@@ -16,16 +16,17 @@
 //! [`LayoutPass::intrinsic_range`] are one-line forwarders so driver call
 //! sites stay short without widening what the query can touch.
 
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::axis_slot::AxisSlot;
-use crate::layout::cache::quantize_available;
+use crate::layout::cache::MeasureCache;
 use crate::layout::counters::PhaseSpan;
 use crate::layout::driver::{DriverOp, LayoutDriver, ReplayOp};
 use crate::layout::engine::LayoutEngine;
 use crate::layout::grid::grid_context::GridContext;
 use crate::layout::grid::grid_track_store::GridTrackStore;
-use crate::layout::intrinsic::{IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::layer_layout::LayerLayout;
 use crate::layout::layout_scratch::NO_ARRANGE_SRC;
 use crate::layout::stack::StackScratch;
 use crate::layout::text_shape_input::TextShapeInput;
@@ -246,7 +247,7 @@ impl LayoutPass<'_> {
     pub(super) fn measure(&mut self, node: NodeId, available: Size) -> Size {
         let tree = self.tree;
         let layout = tree.records.layout()[node.idx()];
-        let available_q = quantize_available(available);
+        let available_q = MeasureCache::available_key(available);
         self.engine.scratch.available_q[node.idx()] = available_q;
         // `is_collapsed`, not `!is_visible`: a `Hidden` node keeps its
         // slot, so its extent still has to be measured — a text leaf
@@ -336,7 +337,7 @@ impl LayoutPass<'_> {
     ///
     /// The contract every driver answers to is [`LayoutDriver`]; the
     /// match that picks one is `DriverOp::dispatch`, shared with
-    /// [`Self::arrange`] and `intrinsic::compute`.
+    /// [`Self::arrange`] and `IntrinsicQuery::walk`.
     fn measure_dispatch(&mut self, node: NodeId, layout: LayoutCore, inner_avail: Size) -> Size {
         MeasureOp {
             pass: self,

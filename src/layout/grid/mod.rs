@@ -8,7 +8,9 @@
 use crate::layout::axis::Axis;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::interned_text::InternedText;
@@ -65,7 +67,7 @@ impl LayoutDriver for Grid {
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, idx: Self::Payload, inner: Rect) {
         let depth = pass.grid_mut().depth_stack.enter();
-        arrange_inner(pass, node, inner, idx, depth);
+        arrange_inner(pass, node, idx, depth, inner);
         pass.grid_mut().depth_stack.exit();
     }
 

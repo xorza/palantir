@@ -27,7 +27,7 @@ impl GridDepthStack {
     /// scratch slot. Debug-only: `enter`/`exit` are the layout engine's
     /// own pairing, run per grid node per frame, so this is the crate
     /// checking itself rather than screening anything a caller passed.
-    pub(super) fn exit(&mut self) {
+    pub(super) const fn exit(&mut self) {
         debug_assert!(self.depth > 0, "GridDepthStack::exit underflow");
         self.depth -= 1;
     }

@@ -12,8 +12,10 @@
 //! this check after each frame finds a missed input without anyone having
 //! to think of it.
 
+use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::{LayerLayout, Layout, ShapedText};
+use crate::layout::layer_layout::LayerLayout;
+use crate::layout::shaped_text::ShapedText;
 use crate::primitives::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::Cascade;

@@ -116,18 +116,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/text/cosmic/mod.rs:876` vs `:576`: `shape_truncated` discards the `left` that `shaped_geometry` just measured and hardcodes `0.0`, relying on a comment about how cosmic places unbounded lines. `shape_wrapped` stores the measured `left`.
 - [ ] `src/primitives/span.rs:33` vs `:65`: `Span::range()` and `From<Span> for Range<usize>` are the same conversion written twice.
 
-## Layout style-rule violations
-- [ ] `src/layout/mod.rs`: hosts three major types with impls (`LayerLayout`, `Layout`, `ShapedText`).
-- [ ] `src/layout/cache/mod.rs`: `MeasureSnapshot` and `NodeArenas` have their own impls and share the file with `MeasureCache`.
-- [ ] `src/layout/intrinsic/mod.rs`: holds `LenReq`, `IntrinsicRange`, `IntrinsicWalk`, `IntrinsicQuery` and `IntrinsicOp` in one file.
-- [ ] `src/layout/scrollbars/scrollbars_def.rs:122`: `BarGeometry` stands on its own (it has an impl and widget consumers) but lives in `scrollbars_def.rs`.
-- [ ] `src/layout/types/layout_mode.rs`: `PackedLayoutMeta` shares the file with `LayoutMode`.
-- [ ] Exposed free functions where methods are preferred: `pub(crate) fn compute` (`src/layout/intrinsic/mod.rs:261`) and `pub(crate) fn quantize_available` (`src/layout/cache/mod.rs:77`).
-- [ ] `measure_inner(pass, node, idx, depth, inner_avail)` and `arrange_inner(pass, node, inner, idx, depth)` (`src/layout/grid/measuring.rs:13`, `arranging.rs:13`) are sibling free functions with mismatched argument order.
-- [ ] Missing `const fn`: `Axis::{bit, other, main, cross, main_v, cross_v, compose_size, compose_point, compose_rect, compose_spacing}`, `IntrinsicRange::get`, `IntrinsicQuery::includes`, `FillItem::new`, `JustifyOffsets::new`, `AxisSlot::{outer, inner_avail, resolve}`, `AxisAlignPair::resolve_axis`, `GridDepthStack::exit`.
-- [ ] `src/layout/canvas/mod.rs:113`: tests Hug with `matches!(.., Sizing::HUG)`, while `measure`/`arrange` in the same file use `hug_mask()` / `is_hug()`.
-- [ ] `src/layout/counters.rs:197,206`: `#[cfg(feature = "bench")]` and `#[cfg(test)]` impl blocks sit as free gated impls rather than inside the end-of-file gated module.
-
 ## Text and primitives style-rule violations
 - [ ] `src/primitives/color/mod.rs:276,450,469`: one file holds two major public types (`RgbaF32`, `RgbaF16`) plus the Oklab conversions as `pub(crate)` free functions.
 - [ ] `src/primitives/brush/gradient/mod.rs:185`: `FillAxis` is a standalone GPU-wire type that shadows use too, but it sits in the gradient module file.

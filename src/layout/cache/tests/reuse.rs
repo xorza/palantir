@@ -2,7 +2,7 @@
 //! the invalidations that must miss.
 
 use crate::Ui;
-use crate::layout::cache::{ArenaSnapshot, AvailableKey};
+use crate::layout::cache::{ArenaSnapshot, AvailableKey, MeasureCache};
 use crate::layout::counters::ReplayCounts;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -564,21 +564,19 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
 }
 
 #[test]
-fn quantize_available_axis_invariants() {
-    use crate::layout::cache::quantize_available;
-
+fn available_key_axis_invariants() {
     let inf = f32::INFINITY;
     assert_eq!(
-        quantize_available(Size::new(inf, 100.4)),
+        MeasureCache::available_key(Size::new(inf, 100.4)),
         glam::IVec2::new(i32::MAX, 100),
     );
     assert_eq!(
-        quantize_available(Size::new(50.7, inf)),
+        MeasureCache::available_key(Size::new(50.7, inf)),
         glam::IVec2::new(51, i32::MAX),
     );
     assert_eq!(
-        quantize_available(Size::new(inf, inf)),
+        MeasureCache::available_key(Size::new(inf, inf)),
         glam::IVec2::splat(i32::MAX),
     );
-    assert_eq!(quantize_available(Size::ZERO), glam::IVec2::ZERO);
+    assert_eq!(MeasureCache::available_key(Size::ZERO), glam::IVec2::ZERO);
 }

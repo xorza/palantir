@@ -35,11 +35,12 @@ impl AxisSlot {
     /// parent must not grant children more room than it can later
     /// arrange.
     #[inline]
-    fn outer(self, dispatch_avail: f32) -> f32 {
-        self.sizing
-            .fixed_value()
-            .unwrap_or_else(|| (dispatch_avail - self.margin).max(0.0))
-            .clamp(self.min, self.max)
+    const fn outer(self, dispatch_avail: f32) -> f32 {
+        match self.sizing.fixed_value() {
+            Some(value) => value,
+            None => (dispatch_avail - self.margin).max(0.0),
+        }
+        .clamp(self.min, self.max)
     }
 
     /// What the driver measures its children against on this axis: the
@@ -52,7 +53,7 @@ impl AxisSlot {
     /// width. INFINITY on a Hug axis survives (`INF.max(x) == INF`); a
     /// Fixed axis reads neither input.
     #[inline]
-    fn inner_avail(self, padding: f32) -> f32 {
+    const fn inner_avail(self, padding: f32) -> f32 {
         (self.outer(self.available.max(self.intrinsic_min)) - padding).max(0.0)
     }
     /// **Contains-content rule:** Hug aims for content size, Fill aims
@@ -87,7 +88,7 @@ impl AxisSlot {
     /// `Fill` on an unconstrained axis (intrinsic queries with
     /// `available = INFINITY`) collapses to its content size — matches
     /// CSS Grid's `1fr` track in an auto-context parent.
-    pub(super) fn resolve(self, content_plus_padding: f32) -> f32 {
+    pub(super) const fn resolve(self, content_plus_padding: f32) -> f32 {
         let rendered = if let Some(value) = self.sizing.fixed_value() {
             value
         } else if self.sizing.is_hug() {

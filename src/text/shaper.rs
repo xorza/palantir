@@ -398,7 +398,7 @@ pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     #[cfg(test)]
-    use crate::layout::ShapedText;
+    use crate::layout::shaped_text::ShapedText;
     #[cfg(test)]
     use crate::layout::types::align::Align;
     #[cfg(test)]
