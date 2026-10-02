@@ -5,7 +5,7 @@
 //! the record store, and the renderer all depend *down* on one
 //! definition instead of `forest` reaching up into `renderer`. The
 //! matching gradient *axis* lives in
-//! [`crate::primitives::brush::gradient::FillAxis`]; the atlas row the
+//! [`crate::primitives::fill_axis::FillAxis`]; the atlas row the
 //! gradient kinds index is [`LutRow`](crate::primitives::lut_row::LutRow)
 //! and the LUT texture itself is a renderer resource
 //! ([`crate::renderer::gradient_atlas`]).

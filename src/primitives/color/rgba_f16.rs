@@ -83,7 +83,7 @@ impl RgbaF16 {
     /// solid-fill payload packing where a `RgbaF16` rides in a `u64`
     /// slot alongside the gradient-hash alternative.
     #[inline]
-    pub(crate) fn as_u64(self) -> u64 {
+    pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
     }
 }

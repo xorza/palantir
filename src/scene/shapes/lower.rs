@@ -36,9 +36,13 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::shapes::paint::{
-    ChromeRow, CurveBasis, CurveRamp, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
-};
+use crate::scene::shapes::paint::chrome_row::ChromeRow;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
+use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
+use crate::scene::shapes::paint::shape_brush::CurveRamp;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
+use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
 use crate::shape::curve::{CurveGeometry, CurveStyle};
 use crate::shape::polyline::PolylineColors;
@@ -450,7 +454,7 @@ mod tests {
 
     use crate::scene::record_store::RecordStore;
     use crate::scene::record_store::recorded_gradients::GradientId;
-    use crate::scene::shapes::paint::ShapeBrush;
+    use crate::scene::shapes::paint::shape_brush::ShapeBrush;
     use std::collections::HashSet;
 
     fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {

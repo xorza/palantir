@@ -5,7 +5,7 @@ use crate::common::hash::Hasher;
 use crate::display::Display;
 use crate::layout::Layout;
 use crate::scene::forest::Forest;
-use crate::scene::layer::PerLayer;
+use crate::scene::per_layer::PerLayer;
 use std::hash::Hasher as _;
 
 /// What [`CascadeEngine::run`](crate::scene::cascade::engine::CascadeEngine::run)

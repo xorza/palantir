@@ -1,5 +1,5 @@
 //! Bounded set of screen-space damage rects produced by
-//! [`crate::scene::damage::DamageEngine::compute`] and consumed by the encoder filter +
+//! [`crate::scene::damage::engine::DamageEngine::compute`] and consumed by the encoder filter +
 //! backend scissor.
 //!
 //! Merge policy: agglomerative bottom-up clustering driven by the

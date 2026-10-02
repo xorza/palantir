@@ -21,7 +21,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::ShapeBrush;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 
 /// Retained encoder state.
 #[derive(Debug)]

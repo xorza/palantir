@@ -8,7 +8,7 @@ use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
-use crate::scene::shapes::paint::ImageSource;
+use crate::scene::shapes::paint::image_source::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineShape;

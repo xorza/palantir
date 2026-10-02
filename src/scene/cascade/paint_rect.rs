@@ -9,7 +9,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::paint::{Paint, PaintArena};
-use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;

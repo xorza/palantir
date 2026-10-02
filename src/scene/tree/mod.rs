@@ -53,7 +53,7 @@ use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::lower;
-use crate::scene::shapes::paint::ChromeRow;
+use crate::scene::shapes::paint::chrome_row::ChromeRow;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;

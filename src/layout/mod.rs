@@ -43,7 +43,7 @@ use crate::layout::layer_layout::LayerLayout;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
-use crate::scene::layer::PerLayer;
+use crate::scene::per_layer::PerLayer;
 use std::ops::{Index, IndexMut};
 
 /// Per-frame layout output across all layers. Callers index by

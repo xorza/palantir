@@ -4,7 +4,7 @@ use crate::primitives::approx;
 use crate::primitives::num::F32Px;
 
 /// One bar along its axis, in logical pixels from the track's start:
-/// what [`ScrollbarsDef::thumb`] answers.
+/// what [`ScrollbarsDef::thumb`](crate::layout::scrollbars::scrollbars_def::ScrollbarsDef::thumb) answers.
 ///
 /// The thumb's size and offset are whole pixels already. The driver paints
 /// them as they are, and a widget maps pointer input against the same

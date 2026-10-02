@@ -12,7 +12,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::ShapeBrush;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;

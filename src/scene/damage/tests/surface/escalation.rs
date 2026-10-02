@@ -6,7 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, one_frame};
 use crate::ui::harness::UiHarness;

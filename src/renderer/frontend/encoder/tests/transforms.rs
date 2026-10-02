@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
-use crate::scene::shapes::paint::CurveBasis;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};

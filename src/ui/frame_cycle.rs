@@ -29,7 +29,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::cascade_key::CascadeKey;
-use crate::scene::damage::DamageInput;
+use crate::scene::damage::engine::DamageInput;
 use crate::scene::damage::frame_baseline::FrameBaseline;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;

@@ -19,7 +19,7 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::scene::layer::Layer;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::ShapeBrush;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};

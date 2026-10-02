@@ -14,7 +14,7 @@ use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::ImageSource;
+use crate::scene::shapes::paint::image_source::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::shape::Lower;

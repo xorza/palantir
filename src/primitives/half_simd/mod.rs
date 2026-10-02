@@ -189,8 +189,17 @@ impl F16x4 {
     /// The 8 storage bytes as one `u64` — lets wrappers hash with a
     /// single hasher write instead of four `write_u16`s.
     #[inline]
-    pub(crate) fn as_u64(self) -> u64 {
-        u64::from_ne_bytes(bytemuck::cast(self.0))
+    pub(crate) const fn as_u64(self) -> u64 {
+        // The four lanes' native bytes in lane order: what a `bytemuck`
+        // cast of the `[u16; 4]` reads, spelled so it can be `const`.
+        let [a, b, c, d] = self.0;
+        let [a, b, c, d] = [
+            a.to_ne_bytes(),
+            b.to_ne_bytes(),
+            c.to_ne_bytes(),
+            d.to_ne_bytes(),
+        ];
+        u64::from_ne_bytes([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]])
     }
 }
 

@@ -22,7 +22,7 @@
 //!    on hand.
 //! 3. **Removed-widget diff + rollover.** [`SeenIds::rollover`] computes
 //!    which ids were present last painted frame but absent this pass
-//!    (populating `removed` for [`crate::scene::damage::DamageEngine`] /
+//!    (populating `removed` for [`crate::scene::damage::engine::DamageEngine`] /
 //!    [`crate::text::shaper::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per application frame from

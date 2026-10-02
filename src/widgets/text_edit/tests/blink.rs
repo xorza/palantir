@@ -11,7 +11,7 @@ use std::time::Duration;
 /// "rect present AND its anim (if any) samples to visible at the
 /// current time".
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
-    use crate::scene::shapes::paint::QuadShape;
+    use crate::scene::shapes::paint::quad_shape::QuadShape;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::iter::TreeItem;
     use crate::shape::rect::RectKind;

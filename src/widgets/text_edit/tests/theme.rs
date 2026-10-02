@@ -1,4 +1,4 @@
-use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 use crate::{scene::tree::node_id::NodeId, widgets::text_edit::tests::*};

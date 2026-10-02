@@ -10,7 +10,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::shapes::paint::ShapeStroke;
+use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 

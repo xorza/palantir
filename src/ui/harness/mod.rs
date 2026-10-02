@@ -182,7 +182,7 @@ use crate::renderer::texture_limit::TextureLimit;
 // Carries `damage_region`'s gate: this whole module is build-gated test
 // support, and under a non-test `internals` build that method is absent.
 #[cfg(any(test, feature = "bench"))]
-use crate::scene::damage::region::{CollapsedDamage, DamageRegion};
+use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::endpoint::Endpoint;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -970,7 +970,7 @@ impl UiHarness {
     pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
         DamageRegion::collapse_from(
             &self.engines.damage.raw_rects,
-            self.engines.damage.budget_px,
+            DEFAULT_PASS_BUDGET_PX,
             self.ui.display.logical_rect(),
         )
     }

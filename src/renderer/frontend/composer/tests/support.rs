@@ -237,7 +237,7 @@ pub(super) fn polyline_cmd(
 
 pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     b.draw_curve(
         DrawCurvePayload {
             bounds: StrokeBounds::Still(bbox),

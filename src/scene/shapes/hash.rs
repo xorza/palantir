@@ -16,9 +16,12 @@ use crate::common::hash::Hasher;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
-use crate::scene::shapes::paint::{
-    BrushHash, CurveBasis, CurveRamp, ImageSource, QuadShape, ShapeBrush,
-};
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
+use crate::scene::shapes::paint::image_source::ImageSource;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
+use crate::scene::shapes::paint::shape_brush::BrushHash;
+use crate::scene::shapes::paint::shape_brush::CurveRamp;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 use std::mem;

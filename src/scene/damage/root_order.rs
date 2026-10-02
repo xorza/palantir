@@ -2,10 +2,11 @@
 
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::LayerCascade;
+use crate::scene::cascade::layer_cascade::LayerCascade;
 use crate::scene::damage::inverted_overlaps::InvertedOverlaps;
 use crate::scene::damage::row_matcher::ROW_UNMATCHED;
-use crate::scene::layer::{Layer, PerLayer};
+use crate::scene::layer::Layer;
+use crate::scene::per_layer::PerLayer;
 use crate::scene::tree::Tree;
 
 /// Each layer's roots, last frame, in paint order — the child list of a

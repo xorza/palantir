@@ -25,22 +25,22 @@ impl NodeFlags {
     /// [`LayoutCore::hash_with_flags`]:
     ///     crate::scene::node::layout_core::LayoutCore::hash_with_flags
     #[inline]
-    pub(super) fn bits(self) -> u16 {
+    pub(super) const fn bits(self) -> u16 {
         self.bits
     }
 
     #[inline]
-    pub(crate) fn sense(self) -> Sense {
+    pub(crate) const fn sense(self) -> Sense {
         Sense::from_bits_truncate((self.bits & Self::SENSE_MASK) as u8)
     }
 
     #[inline]
-    pub(crate) fn is_disabled(self) -> bool {
+    pub(crate) const fn is_disabled(self) -> bool {
         self.bits & Self::DISABLED != 0
     }
 
     #[inline]
-    pub(crate) fn clip_mode(self) -> ClipMode {
+    pub(crate) const fn clip_mode(self) -> ClipMode {
         match (self.bits & Self::CLIP_MASK) >> Self::CLIP_SHIFT {
             0 => ClipMode::None,
             1 => ClipMode::Rect,
@@ -50,7 +50,7 @@ impl NodeFlags {
     }
 
     #[inline]
-    pub(crate) fn is_focusable(self) -> bool {
+    pub(crate) const fn is_focusable(self) -> bool {
         self.bits & Self::FOCUSABLE != 0
     }
 
@@ -59,32 +59,32 @@ impl NodeFlags {
     /// doubles as "not a scope", which is what lets this ride spare bits
     /// instead of costing a presence flag of its own.
     #[inline]
-    pub(crate) fn key_filter(self) -> KeyFilter {
+    pub(crate) const fn key_filter(self) -> KeyFilter {
         KeyFilter::from_bits_truncate(((self.bits & Self::SCOPE_MASK) >> Self::SCOPE_SHIFT) as u8)
     }
 
     #[inline]
-    pub(crate) fn set_sense(&mut self, s: Sense) {
+    pub(crate) const fn set_sense(&mut self, s: Sense) {
         self.bits = (self.bits & !Self::SENSE_MASK) | ((s.bits() as u16) & Self::SENSE_MASK);
     }
 
     #[inline]
-    pub(crate) fn set_disabled(&mut self, v: bool) {
+    pub(crate) const fn set_disabled(&mut self, v: bool) {
         self.bits = (self.bits & !Self::DISABLED) | (if v { Self::DISABLED } else { 0 });
     }
 
     #[inline]
-    pub(crate) fn set_clip(&mut self, c: ClipMode) {
+    pub(crate) const fn set_clip(&mut self, c: ClipMode) {
         self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u16) << Self::CLIP_SHIFT);
     }
 
     #[inline]
-    pub(crate) fn set_focusable(&mut self, v: bool) {
+    pub(crate) const fn set_focusable(&mut self, v: bool) {
         self.bits = (self.bits & !Self::FOCUSABLE) | (if v { Self::FOCUSABLE } else { 0 });
     }
 
     #[inline]
-    pub(crate) fn set_key_filter(&mut self, f: KeyFilter) {
+    pub(crate) const fn set_key_filter(&mut self, f: KeyFilter) {
         self.bits = (self.bits & !Self::SCOPE_MASK)
             | (((f.bits() as u16) << Self::SCOPE_SHIFT) & Self::SCOPE_MASK);
     }
