@@ -793,10 +793,9 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     let prev_snap = h.engines.damage.prev[&leaf_id];
     let prev_text_rect = h.engines.damage.paints.slots[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
-    assert!(
-        (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
-            && (prev_text_rect.size.h - prev_size_short.h).abs() < 0.5,
-        "prev text rect should have shaped size ≈ {prev_size_short:?}, got {prev_text_rect:?}",
+    assert_eq!(
+        prev_text_rect.size, prev_size_short,
+        "the short text's damage size"
     );
 
     frame(&mut h, |ui| build("abcdef", ui));
@@ -804,10 +803,9 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     let curr_snap = h.engines.damage.prev[&leaf_id];
     let curr_text_rect = h.engines.damage.paints.slots[curr_snap.paint_span.range()][0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
-    assert!(
-        (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5
-            && (curr_text_rect.size.h - curr_size_long.h).abs() < 0.5,
-        "curr text rect should have shaped size ≈ {curr_size_long:?}, got {curr_text_rect:?}",
+    assert_eq!(
+        curr_text_rect.size, curr_size_long,
+        "the long text's damage size"
     );
 
     let region = h.damage_region();

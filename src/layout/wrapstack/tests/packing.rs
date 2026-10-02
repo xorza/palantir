@@ -38,18 +38,10 @@ fn wrap_hstack_justify_per_line() {
                 .response
                 .node()
         });
-        let a = rect_of(&h, "a");
-        let b = rect_of(&h, "b");
-        assert!(
-            (a.min.x - expected[0]).abs() < 0.5,
-            "case: {label} a.x={}",
-            a.min.x
-        );
-        assert!(
-            (b.min.x - expected[1]).abs() < 0.5,
-            "case: {label} b.x={}",
-            b.min.x
-        );
+        // 200 wide, 60 + 10 + 60 = 130 used, 70 to place; each x is a
+        // multiple of 0.5, so exact in f32.
+        let xs = [rect_of(&h, "a").min.x, rect_of(&h, "b").min.x];
+        assert_eq!(xs, *expected, "case: {label}");
     }
 }
 
@@ -120,9 +112,5 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     // Fill child got its min_size width (40), NOT the row leftover
     // (300 - 60 - 10 - 10 = 220). If a future change distributes
     // leftover, this assertion flips and the test becomes the spec.
-    assert!(
-        r.size.w < 100.0,
-        "Fill main treated as Hug today; got w={}",
-        r.size.w
-    );
+    assert_eq!(r.size.w, 40.0, "Fill main treated as Hug today");
 }

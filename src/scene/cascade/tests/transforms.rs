@@ -54,14 +54,7 @@ fn shape_rect_composes_self_transform() {
     // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
     //   min = (0, 0) * 3 + (10, 20) = (10, 20)
     //   size = (30, 30) * 3 = (90, 90)
-    let eps = 1e-3;
-    assert!(
-        (shape_rect.min.x - 10.0).abs() < eps
-            && (shape_rect.min.y - 20.0).abs() < eps
-            && (shape_rect.size.w - 90.0).abs() < eps
-            && (shape_rect.size.h - 90.0).abs() < eps,
-        "expected shape_rect = (10, 20, 90, 90); got {shape_rect:?}",
-    );
+    assert_eq!(shape_rect, Rect::new(10.0, 20.0, 90.0, 90.0));
 }
 
 #[test]
@@ -185,17 +178,10 @@ fn self_transform_anchors_scale_at_panel_origin() {
     // Without anchoring, the raw `parent.compose(self).apply(panel.min)`
     // would give `(50, 0) * 2 = (100, 0)` — content slides 50px
     // right of where it belongs.
-    let eps = 1e-3;
-    assert!(
-        (shape_rect.min.x - 50.0).abs() < eps && (shape_rect.min.y - 0.0).abs() < eps,
-        "expected shape min = (50, 0); got {:?} — scale should anchor at panel.min, \
-         not at cascade origin",
-        shape_rect.min,
-    );
-    assert!(
-        (shape_rect.size.w - 20.0).abs() < eps && (shape_rect.size.h - 20.0).abs() < eps,
-        "expected size = (20, 20) (panel-local * zoom); got {:?}",
-        shape_rect.size,
+    assert_eq!(
+        shape_rect,
+        Rect::new(50.0, 0.0, 20.0, 20.0),
+        "scale anchors at panel.min, not at the cascade origin",
     );
 }
 
@@ -260,21 +246,10 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
 
     // child-local (0,0,20,20) under (translate=(15,25), scale=2):
     //   min = (0,0)*2 + (15,25) = (15,25);  size = (20,20)*2 = (40,40)
-    let eps = 1e-3;
-    assert!(
-        (cascade_rect.min.x - 15.0).abs() < eps
-            && (cascade_rect.min.y - 25.0).abs() < eps
-            && (cascade_rect.size.w - 40.0).abs() < eps
-            && (cascade_rect.size.h - 40.0).abs() < eps,
-        "cascade screen rect wrong: {cascade_rect:?} (expected min (15,25) size (40,40))",
-    );
-    assert!(
-        (quad_rect.min.x - cascade_rect.min.x).abs() < eps
-            && (quad_rect.min.y - cascade_rect.min.y).abs() < eps
-            && (quad_rect.size.w - cascade_rect.size.w).abs() < eps
-            && (quad_rect.size.h - cascade_rect.size.h).abs() < eps,
-        "composer quad {quad_rect:?} drifted from cascade screen rect {cascade_rect:?} — \
-         encoder/composer transform composition diverged from the cascade walk",
+    assert_eq!(cascade_rect, Rect::new(15.0, 25.0, 40.0, 40.0));
+    assert_eq!(
+        quad_rect, cascade_rect,
+        "the quad lands on the cascade's rect"
     );
 }
 

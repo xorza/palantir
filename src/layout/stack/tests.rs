@@ -332,8 +332,10 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
     // Hug HStack tracks the button's content width — no inflation from
-    // the Fill filler, and no double-count (would be > root_w).
-    assert_eq!(root_w, button_w);
+    // the Fill filler, and no double-count. The button is "Hi" at mono's
+    // 8 px per char, 12 px padding and the 1 px border folded into it on
+    // each side: 16 + 24 + 2 = 42.
+    assert_eq!([button_w, root_w], [42.0, 42.0]);
 }
 
 /// Pin: a collapsed child between two active children does not advance
