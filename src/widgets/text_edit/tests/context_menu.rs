@@ -213,7 +213,15 @@ fn clipboard_shortcuts_apply_keypresses() {
         "non-primary must not copy"
     );
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
-    assert_eq!(text2, "hello", "non-primary must not paste");
+    // Option composes text on macOS, so there each key types its
+    // character: `c` over the selected "ell", then `v` after it. Alt alone
+    // types nothing elsewhere. Neither pastes "CLIP".
+    let typed = if PLATFORM == Platform::Mac {
+        "hcvo"
+    } else {
+        "hello"
+    };
+    assert_eq!(text2, typed, "non-primary must not paste");
 
     let rejecting = test_support::rejecting();
     let mut rejected_text = String::from("hello");
