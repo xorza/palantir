@@ -255,3 +255,56 @@ fn vec2_approx_eq_is_euclidean_and_inclusive() {
         assert_eq!(vec2_approx_eq(b, Vec2::ZERO), want, "{label}: swapped");
     }
 }
+
+/// Every `FloatHash` type hashes `0.0` and `-0.0` alike, since it
+/// compares them equal — the `Hash` / `Eq` agreement a map relies on.
+/// Through `hash_eq` for the two foreign types, and through `Hash` for
+/// the crate's own.
+#[test]
+fn signed_zeros_hash_alike_for_every_float_hash_type() {
+    use crate::layout::types::sizing::{SizeSpec, Sizing};
+    use crate::layout::types::track::Track;
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::size::Size;
+    use std::fmt::Debug;
+    use std::hash::Hash;
+
+    #[track_caller]
+    fn agree<T: Hash + PartialEq + Debug>(positive: T, negative: T) {
+        assert_eq!(positive, negative);
+        assert_eq!(
+            finish_hash(|h| positive.hash(h)),
+            finish_hash(|h| negative.hash(h)),
+            "{positive:?}",
+        );
+    }
+
+    assert_eq!(
+        finish_hash(|h| 0.0_f32.hash_eq(h)),
+        finish_hash(|h| (-0.0_f32).hash_eq(h)),
+        "f32",
+    );
+    assert_eq!(
+        finish_hash(|h| Vec2::ZERO.hash_eq(h)),
+        finish_hash(|h| Vec2::splat(-0.0).hash_eq(h)),
+        "Vec2",
+    );
+    agree(Size::new(0.0, 0.0), Size::new(-0.0, -0.0));
+    agree(
+        Rect::new(0.0, 0.0, 0.0, 0.0),
+        Rect::new(-0.0, -0.0, -0.0, -0.0),
+    );
+    agree(
+        RgbaF32::new(0.0, 0.0, 0.0, 0.0),
+        RgbaF32::new(-0.0, -0.0, -0.0, -0.0),
+    );
+    agree(Sizing::fixed(0.0), Sizing::fixed(-0.0));
+    agree(
+        SizeSpec::new(Sizing::fixed(0.0), Sizing::HUG),
+        SizeSpec::new(Sizing::fixed(-0.0), Sizing::HUG),
+    );
+    agree(
+        Track::new(Sizing::fixed(0.0)).min(0.0),
+        Track::new(Sizing::fixed(-0.0)).min(-0.0),
+    );
+}

@@ -1,13 +1,5 @@
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::color::*;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-fn hash_value(value: impl Hash) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
-}
 
 /// Every sRGB byte comes back from each wider form unchanged, alpha
 /// included: from `RgbaF32` exactly, and from `RgbaF16` because it holds
@@ -140,15 +132,6 @@ fn color_parse_rejects_malformed_input() {
     // `u8::from_str_radix` accepts a leading sign, so a parser that
     // delegates to it reads `"+a+b+c"` as rgb(10, 11, 12).
     assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
-}
-
-#[test]
-fn equal_signed_zero_colors_have_equal_hashes() {
-    let positive = RgbaF32::new(0.0, 0.0, 0.0, 0.0);
-    let negative = RgbaF32::new(-0.0, -0.0, -0.0, -0.0);
-
-    assert_eq!(positive, negative);
-    assert_eq!(hash_value(positive), hash_value(negative));
 }
 
 #[test]
