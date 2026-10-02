@@ -109,14 +109,14 @@ pub(crate) struct ExpiryWheel<K> {
     /// arena instead would save the bucket headers and cost a pointer
     /// chase per ticket on the one path that has to be fast.
     ///
-    /// The headers are worth 13 824 bytes across the four wheels in the
-    /// crate, at 24 bytes a `Vec`: 256 buckets for the shaped-buffer
-    /// cache (a keep of 120 + 15 frames), 128 for each raster atlas (120),
-    /// and 64 for the encoded-run cache (30) — each keep plus the three
-    /// slack slots, rounded up to a power of two. That is a number set by the owners' retention windows, not
-    /// by this type: an owner that files deadlines a thousand frames out
-    /// buys a thousand-bucket ring, so a window is a memory decision as
-    /// well as a retention one.
+    /// The headers are worth 13 824 bytes across the four wheels in the crate,
+    /// at 24 bytes a `Vec`: 256 buckets for the shaped-buffer cache (a keep of
+    /// 120 + 15 frames), 128 for each raster atlas (120), and 64 for the
+    /// encoded-run cache (30) — each keep plus the three slack slots, rounded
+    /// up to a power of two. That is a number set by the owners' retention
+    /// windows, not by this type: an owner that files deadlines a thousand
+    /// frames out buys a thousand-bucket ring, so a window is a memory decision
+    /// as well as a retention one.
     buckets: Box<[Vec<Ticket<K>>]>,
     mask: u64,
     /// Highest frame whose bucket has been drained. Tickets must be

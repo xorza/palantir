@@ -1,6 +1,8 @@
 //! Two panes divided by a draggable rule: the widget, the per-pane bodies
 //! it takes, and the split ratio it keeps between frames.
 
+pub(crate) mod split_half;
+
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::grid_cell::GridCell;
@@ -308,6 +310,5 @@ fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 
         .clamp(floor, 1.0 - floor)
 }
 
-pub(crate) mod split_half;
 #[cfg(test)]
 mod tests;

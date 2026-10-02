@@ -243,6 +243,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::mesh_upload_required;
+    use crate::common::panic_probe;
 
     #[test]
     fn mesh_upload_requires_geometry_only_when_instances_exist() {
@@ -257,10 +258,10 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn instances_without_geometry_are_screened() {
-        crate::common::panic_probe::assert_panics_with("mesh instances require vertices", || {
+        panic_probe::assert_panics_with("mesh instances require vertices", || {
             mesh_upload_required(0, 3, 1)
         });
-        crate::common::panic_probe::assert_panics_with("mesh instances require indices", || {
+        panic_probe::assert_panics_with("mesh instances require indices", || {
             mesh_upload_required(3, 0, 1)
         });
     }

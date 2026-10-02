@@ -24,8 +24,9 @@ use crate::primitives::widget_id::WidgetId;
 /// `MeasureCache::try_lookup` can short-circuit an entire subtree — in
 /// steady state the root itself, so measure collapses to a few whole-tree
 /// `copy_from_slice`s — while `LayoutPass::arrange` still visits every
-/// node, replaying a hit subtree's rects rather than dispatching it. A whole-`run` number averages
-/// that asymmetry away; these two are what make it visible.
+/// node, replaying a hit subtree's rects rather than dispatching it. A
+/// whole-`run` number averages that asymmetry away; these two are what
+/// make it visible.
 ///
 /// The sliver between the two (resolving the root's own size from
 /// `desired`) is charged to neither: it is one `arrange_size` call per
@@ -197,6 +198,8 @@ impl LayoutCounters {
 /// a reason to ask, which is what lets the counters themselves be absent.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod test_support {
+    #[cfg(test)]
+    use crate::common::counters::CounterSet;
     use crate::layout::counters::LayoutCounters;
     #[cfg(feature = "bench")]
     use crate::layout::counters::PhaseTimings;
@@ -230,7 +233,7 @@ pub(crate) mod test_support {
 
         #[cfg(test)]
         pub(crate) fn arrange_replays(&self) -> ReplayCounts {
-            crate::common::counters::CounterSet::counts(&self.replays)
+            self.replays.counts()
         }
     }
 }

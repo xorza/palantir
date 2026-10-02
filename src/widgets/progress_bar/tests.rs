@@ -1,6 +1,6 @@
 use crate::primitives::size::Size;
 use crate::ui::harness::UiHarness;
-use crate::widgets::size_trio::SizeTrio;
+use crate::ui::harness::size_trio::SizeTrio;
 
 use crate::layout::types::sizing::Sizing;
 use crate::widgets::configure::Configure;

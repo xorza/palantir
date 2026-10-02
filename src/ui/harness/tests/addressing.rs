@@ -1,6 +1,7 @@
 //! Reaching a widget by id: the rect that answers, and the occlusion that
 //! refuses.
 
+use crate::common::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
@@ -90,7 +91,7 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
     );
 
     // A covered widget must refuse, not silently click the cover.
-    crate::common::panic_probe::assert_panics_with("does not receive the pointer at", || {
+    panic_probe::assert_panics_with("does not receive the pointer at", || {
         let mut harness = UiHarness::new(SURFACE);
         harness.prime(2, stacked);
         harness.click_on(under);

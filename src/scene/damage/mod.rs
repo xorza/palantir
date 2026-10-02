@@ -46,8 +46,8 @@
 //! the one ordering change no row span or hash captures — a widget
 //! reparented (or moved between layers) at an identical rect keeps
 //! every hash — so each snapshot also carries
-//! [`NodeSnapshot::parent_key`](crate::scene::damage::node_snapshot::NodeSnapshot::parent_key), and a mismatch damages the moved
-//! subtree's painted extent.
+//! [`NodeSnapshot::parent_key`](crate::scene::damage::node_snapshot::NodeSnapshot::parent_key),
+//! and a mismatch damages the moved subtree's painted extent.
 //!
 //! `DamageEngine.counters.dirty` is the per-node dirty list (added /
 //! hash- or cascade-changed / evicted) in pre-order paint order. It is a

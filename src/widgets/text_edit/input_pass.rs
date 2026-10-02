@@ -379,7 +379,7 @@ fn is_document_nav(keypress: KeyPress) -> bool {
 
 /// The chord that moves by word with an arrow: Alt on macOS, where Cmd
 /// is the line chord, and Ctrl elsewhere.
-pub(super) const WORD_NAV: Modifiers = match PLATFORM {
+const WORD_NAV: Modifiers = match PLATFORM {
     Platform::Mac => Modifiers {
         alt: true,
         ..Modifiers::NONE
@@ -409,4 +409,12 @@ pub(super) enum KeyOutcome {
         end: bool,
         extend: bool,
     },
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    /// The platform's word-motion chord, for the cases that press it.
+    pub(crate) const WORD_NAV: Modifiers = super::WORD_NAV;
 }

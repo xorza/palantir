@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;
@@ -119,7 +120,7 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
     let x = WidgetId::from_hash("x");
     ids.record_endpoint(x, ep(1));
 
-    crate::common::panic_probe::assert_panics_with("record_endpoint called twice", || {
+    panic_probe::assert_panics_with("record_endpoint called twice", || {
         ids.record_endpoint(x, ep(2))
     });
     assert_eq!(ids.curr[&x], ep(1));

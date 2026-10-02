@@ -447,9 +447,7 @@ mod output_validity_tests {
 /// What a driver owns for as long as it exists: its place in the
 /// app-global window directory, and a render-owner id no sibling shares.
 mod lifecycle_tests {
-
     use crate::host::window_driver::WindowDriver;
-
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 

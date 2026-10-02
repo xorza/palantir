@@ -2,6 +2,7 @@
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::common::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -464,12 +465,9 @@ fn zoom_by_composes_across_calls() {
 #[test]
 fn zoom_by_rejects_a_factor_that_cannot_scale() {
     for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        crate::common::panic_probe::assert_panics_with(
-            "a zoom factor must be finite and above zero",
-            || {
-                let _ = Scroll::both().zoom_by(bad);
-            },
-        );
+        panic_probe::assert_panics_with("a zoom factor must be finite and above zero", || {
+            let _ = Scroll::both().zoom_by(bad);
+        });
     }
 }
 

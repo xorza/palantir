@@ -27,12 +27,12 @@
 //! from inside `record` via [`Ui::open_window`] / [`Ui::close_window`].
 //!
 //! Submodules: [`config`] ([`WinitHostConfig`]), [`error`]
-//! ([`WinitHostError`]), [`handle`] ([`HostHandle`] + [`UserEvent`]), [`input`]
-//! (winit event translation), [`native`] (winit type conversion + window
-//! creation), [`runtime`] ([`WinitRuntime`]), [`window_set`] (the live
-//! windows), and [`window`] (per-window
-//! swapchain frames). The backend-agnostic window vocabulary
-//! ([`WindowToken`], [`WindowConfig`]) lives in [`crate::window`].
+//! ([`WinitHostError`]), [`handle`] ([`HostHandle`] + [`UserEvent`]),
+//! [`input`] (winit event translation), [`native`] (winit type conversion
+//! and window creation), [`runtime`] ([`WinitRuntime`]), [`window_set`]
+//! (the live windows), and [`window`] (per-window swapchain frames). The
+//! backend-agnostic window vocabulary ([`WindowToken`], [`WindowConfig`])
+//! lives in [`crate::window`].
 //!
 //! Usage:
 //!

@@ -84,7 +84,7 @@ fn unused_rows_die_one_frame_past_the_keep_window() {
 /// so the arena stops growing once every size class has been seen.
 ///
 /// Hand-traced with a 10-glyph untouched row plus a 4-glyph run
-/// re-encoded every frame. `BLOCK_GRANULE` is 4, so the 10-glyph row
+/// re-encoded every frame. `EncodedGlyph::GRANULE` is 4, so the 10-glyph row
 /// takes a 12-slot block and the 4-glyph run a 4-slot one: the arena
 /// reaches 16 slots on frame 1 and **never grows again**, because
 /// every later re-encode of the 4-glyph run frees a 4-slot block and
@@ -455,7 +455,7 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
 ///
 /// Traced with one fresh key per frame carrying `16 × frame` glyphs — a
 /// run that grows, which is what a long unwrapped line being typed into
-/// produces. `16 × frame` is a multiple of [`BLOCK_GRANULE`], so each
+/// produces. `16 × frame` is a multiple of `EncodedGlyph::GRANULE`, so each
 /// frame's block is exactly that many slots and each frame lands in a
 /// class of its own, never revisited:
 ///

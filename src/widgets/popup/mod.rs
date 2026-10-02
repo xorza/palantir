@@ -1,5 +1,7 @@
 //! The anchored floating body: the widget and the press-outside policy.
 
+pub(crate) mod click_outside;
+
 use crate::input::sense::Sense;
 use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
@@ -215,6 +217,5 @@ impl Configure for Popup {
     }
 }
 
-pub(crate) mod click_outside;
 #[cfg(test)]
 mod tests;

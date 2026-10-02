@@ -1,11 +1,9 @@
 //! Tab and dock fixtures: the chip row's chrome, and the pane tree the
 //! dock walks it onto.
 //!
-//! Both scenes are bare `fn`s over state the `Ui` holds, because
-//! [`Harness::render_after_settle`] wants a `Copy` scene and a dock's
-//! tree is anything but. That is also how a real application would host
-//! one page's state, so the fixture is not bending the widget to be
-//! photographable.
+//! Both scenes are bare `fn`s over state the `Ui` holds, which is how a
+//! real application would host one page's state, so the fixture is not
+//! bending the widget to be photographable.
 
 use glam::UVec2;
 use palantir::{

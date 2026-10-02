@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::primitives::approx;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::mesh::*;
@@ -23,14 +24,13 @@ fn mesh_vertex_pod_roundtrip() {
 fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
     assert_eq!(checked_vertex_index(u32::MAX as usize), u32::MAX);
     if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
-        crate::common::panic_probe::assert_panics_with(
-            "mesh vertex index exceeds u32 range",
-            || checked_vertex_index(overflow),
-        );
+        panic_probe::assert_panics_with("mesh vertex index exceeds u32 range", || {
+            checked_vertex_index(overflow)
+        });
     }
 
     assert_eq!(checked_rebased_index(u32::MAX - 1, 1), u32::MAX);
-    crate::common::panic_probe::assert_panics_with("appended mesh index exceeds u32 range", || {
+    panic_probe::assert_panics_with("appended mesh index exceeds u32 range", || {
         checked_rebased_index(u32::MAX, 1)
     });
 }
@@ -73,9 +73,7 @@ fn triangle_validates_each_index_before_mutating() {
     ] {
         let mut mesh = mesh_with_vertices(3);
         let [a, b, c] = case.indices;
-        crate::common::panic_probe::assert_panics_with("exceed vertex count 3", || {
-            mesh.triangle(a, b, c)
-        });
+        panic_probe::assert_panics_with("exceed vertex count 3", || mesh.triangle(a, b, c));
         assert!(
             mesh.indices.is_empty(),
             "{} failure must not partially append indices",

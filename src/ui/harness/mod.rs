@@ -169,7 +169,6 @@ use crate::display::user_scale::UserScale;
 use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::response::input_delta::InputDelta;
@@ -194,6 +193,8 @@ pub(crate) mod frontend_harness;
 #[cfg(test)]
 pub(crate) mod oracle;
 pub(crate) mod passes;
+#[cfg(test)]
+pub(crate) mod size_trio;
 
 /// Surface for [`UiHarness::arena`]. Never framed, so the value only has
 /// to be non-degenerate.
@@ -708,20 +709,13 @@ impl UiHarness {
         self.pinch(factor)
     }
 
-    /// A non-repeat press whose `physical` is [`Key::Other`]. That is
-    /// only consulted for a non-ASCII `Char` under a command modifier
-    /// (`Shortcut::matches`), so it is inert for every other key; a case
-    /// that needs a real physical position builds the event through
-    /// [`Self::on_input`].
+    /// A non-repeat press whose `physical` is [`Key::Other`]
+    /// (`InputEvent::key_down`); a case that needs a real physical
+    /// position builds the event through [`Self::on_input`]. Text rides
+    /// along under any modifier: the command gate is the *field's*, not
+    /// this one's — a platform reports text under Ctrl too.
     pub fn key(&mut self, key: Key) -> InputDelta {
-        self.on_input(InputEvent::KeyDown {
-            key,
-            repeat: false,
-            physical: Key::Other,
-            // The command gate is the *field's*, not this one's — a
-            // platform reports text under Ctrl too.
-            text: KeyText::of_key(key),
-        })
+        self.on_input(InputEvent::key_down(key))
     }
 
     /// Emits `ModifiersChanged` only when the set actually changes —

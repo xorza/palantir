@@ -130,7 +130,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
         "tests/alloc/allocator.rs",
         "tests/alloc/harness/mod.rs",
         "tests/alloc/harness/format.rs",
-        "tests/alloc/harness_tests.rs",
+        "tests/alloc/harness/tests.rs",
         "tests/alloc/main.rs",
     ] {
         assert!(

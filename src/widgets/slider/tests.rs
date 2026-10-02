@@ -1,13 +1,14 @@
 use crate::Ui;
+use crate::common::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::ui::harness::passes::Passes;
+use crate::ui::harness::size_trio::SizeTrio;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::size_trio::SizeTrio;
 use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
 use crate::widgets::value_response::test_support::ValueEdges;
 use glam::{UVec2, Vec2};
@@ -292,13 +293,10 @@ fn snap_to_step_rounds_to_grid() {
 #[test]
 fn step_rejects_a_value_that_cannot_snap() {
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        crate::common::panic_probe::assert_panics_with(
-            "slider step must be finite and greater than zero",
-            || {
-                let mut v = 0.5_f64;
-                let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
-            },
-        );
+        panic_probe::assert_panics_with("slider step must be finite and greater than zero", || {
+            let mut v = 0.5_f64;
+            let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
+        });
     }
 }
 
@@ -312,7 +310,7 @@ fn new_rejects_an_infinite_range() {
         (f64::NEG_INFINITY, 1.0),
         (f64::NAN, 1.0),
     ] {
-        crate::common::panic_probe::assert_panics_with("slider range must be finite", || {
+        panic_probe::assert_panics_with("slider range must be finite", || {
             let mut v = 0.5_f64;
             let _ = Slider::new(&mut v, lo..=hi);
         });

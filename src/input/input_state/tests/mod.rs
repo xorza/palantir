@@ -13,8 +13,6 @@ mod zoom;
 use crate::Ui;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_text::KeyText;
 use crate::input::response::input_delta::InputDelta;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -26,16 +24,6 @@ use crate::widgets::{button::Button, panel::Panel};
 use glam::UVec2;
 use std::time::Duration;
 use strum::EnumCount as _;
-
-/// A first press of `key`, typing what the key types on a plain layout.
-fn key_down(key: Key) -> InputEvent {
-    InputEvent::KeyDown {
-        key,
-        repeat: false,
-        physical: Key::Other,
-        text: KeyText::of_key(key),
-    }
-}
 
 impl InputState {
     /// Feed `event` at time zero against an empty cascade — the input

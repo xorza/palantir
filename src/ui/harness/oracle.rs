@@ -175,17 +175,26 @@ fn sort_rows(rows: &mut [OwnedPaint]) {
     rows.sort_unstable_by_key(row_key);
 }
 
-fn row_key(row: &OwnedPaint) -> (u64, u64, [u32; 4]) {
-    (
-        row.owner.0,
-        row.hash.0,
-        [
+/// The order two frames' rows merge in: owner, then content, then the
+/// exact screen rect.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct RowKey {
+    owner: u64,
+    hash: u64,
+    screen: [u32; 4],
+}
+
+fn row_key(row: &OwnedPaint) -> RowKey {
+    RowKey {
+        owner: row.owner.0,
+        hash: row.hash.0,
+        screen: [
             row.screen.min.x.to_bits(),
             row.screen.min.y.to_bits(),
             row.screen.size.w.to_bits(),
             row.screen.size.h.to_bits(),
         ],
-    )
+    }
 }
 
 /// A row in both frames, with its place in each frame's paint order.

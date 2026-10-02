@@ -1,5 +1,6 @@
 //! The gestures the harness synthesises, and the routing each depends on.
 
+use crate::common::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
@@ -40,16 +41,13 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     );
 
     // Sub-threshold travel must panic, not quietly fail to latch.
-    crate::common::panic_probe::assert_panics_with(
-        "DRAG_THRESHOLD — no drag would latch",
-        || {
-            let mut harness = UiHarness::new(SURFACE);
-            harness.prime(2, button);
-            harness.press_at(INSIDE);
-            harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0));
-        },
-    );
-    crate::common::panic_probe::assert_panics_with("drag_to needs a press first", || {
+    panic_probe::assert_panics_with("DRAG_THRESHOLD — no drag would latch", || {
+        let mut harness = UiHarness::new(SURFACE);
+        harness.prime(2, button);
+        harness.press_at(INSIDE);
+        harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0));
+    });
+    panic_probe::assert_panics_with("drag_to needs a press first", || {
         UiHarness::new(SURFACE).drag_to(INSIDE);
     });
 
@@ -71,7 +69,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
 
     // Without a pointer position there is no origin to measure from, so
     // the threshold check must refuse rather than invent one.
-    crate::common::panic_probe::assert_panics_with("drag_to needs a press on the surface", || {
+    panic_probe::assert_panics_with("drag_to needs a press on the surface", || {
         let mut harness = UiHarness::new(SURFACE);
         harness.prime(2, button);
         harness.press();

@@ -838,8 +838,17 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
 /// what the wheel files under. One expression, read by the filing in
 /// [`RasterAtlas::insert_unallocated`] and by the re-file in
 /// [`retire_unallocated`], so the two cannot name different frames.
-pub(super) const fn unallocated_dies_at(last_use: u64) -> u64 {
+const fn unallocated_dies_at(last_use: u64) -> u64 {
     last_use + UNALLOCATED_KEEP_FRAMES + 1
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    /// The frame an unallocated entry last used at `last_use` is
+    /// reclaimed on — for a test that steps an atlas past it.
+    pub(crate) const fn unallocated_dies_at(last_use: u64) -> u64 {
+        super::unallocated_dies_at(last_use)
+    }
 }
 
 #[cfg(test)]

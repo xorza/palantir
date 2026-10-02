@@ -29,10 +29,18 @@ fn rgb_is_const_constructible() {
     const _HEX: RgbaF32 = RgbaF32::hex(0x3366CC);
 }
 
+/// What one colour serializes to, and what that text parses back to.
+#[derive(Debug)]
+struct RonRoundTrip {
+    text: String,
+    parsed: RgbaF32,
+}
+
 /// Roundtrip a RgbaF32 through RON and parse the emitted hex back.
-fn ron_roundtrip(c: RgbaF32) -> (String, RgbaF32) {
-    let s = ron::ser::to_string(&c).expect("serialize");
-    (s.clone(), ron::from_str(&s).expect("parse"))
+fn ron_roundtrip(c: RgbaF32) -> RonRoundTrip {
+    let text = ron::ser::to_string(&c).expect("serialize");
+    let parsed = ron::from_str(&text).expect("parse");
+    RonRoundTrip { text, parsed }
 }
 
 /// Every sRGB byte serializes to its own hex digits and parses back to
@@ -42,7 +50,7 @@ fn ron_roundtrip(c: RgbaF32) -> (String, RgbaF32) {
 fn hex_round_trip_is_exact_over_all_bytes() {
     for byte in 0u8..=255 {
         let c = RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte));
-        let (s, parsed) = ron_roundtrip(c);
+        let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
         assert_eq!(
             s,
             format!("\"#{byte:02x}{byte:02x}{byte:02x}\""),
@@ -58,12 +66,12 @@ fn hex_round_trip_is_exact_over_all_bytes() {
 #[test]
 fn opaque_emits_six_digits_translucent_emits_eight() {
     // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc.
-    let (s, _) = ron_roundtrip(RgbaF32::srgb(0.2, 0.4, 0.8));
+    let s = ron_roundtrip(RgbaF32::srgb(0.2, 0.4, 0.8)).text;
     assert!(
         s.contains(r##""#3366cc""##),
         "opaque must emit 6 digits: {s}"
     );
-    let (s, _) = ron_roundtrip(RgbaF32::srgba(0.2, 0.4, 0.8, 0.5));
+    let s = ron_roundtrip(RgbaF32::srgba(0.2, 0.4, 0.8, 0.5)).text;
     assert!(
         s.contains(r##""#3366cc80""##),
         "translucent must emit 8 digits: {s}"
@@ -78,7 +86,7 @@ fn extremes_round_trip() {
         (RgbaF32::WHITE, "#ffffff"),
         (RgbaF32::BLACK, "#000000"),
     ] {
-        let (s, parsed) = ron_roundtrip(c);
+        let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
         assert_eq!(s, format!("\"{hex}\""), "{c:?}");
         assert_eq!(parsed, c, "{c:?}");
     }

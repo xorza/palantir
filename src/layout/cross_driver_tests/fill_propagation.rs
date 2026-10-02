@@ -6,7 +6,6 @@ use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::TextStyle;
 use crate::Ui;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
@@ -25,10 +24,9 @@ use glam::UVec2;
 /// px the bundled faces break it to, the same on every machine. A grid
 /// that fell back to max-content would shape it as one long line.
 fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
-    let four_lines = (4.0 * TextStyle::default().line_height_for(16.0)).ceil();
     assert_eq!(
         support::shaped_text(ui.layout(Layer::Main), node).measured,
-        Size::new(93.0, four_lines),
+        Size::new(93.0, support::lines_h(4, 16.0)),
     );
 }
 
@@ -136,7 +134,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
 
     // One 14 px line at both widths: the Fill column of a Hug grid gets
     // INF, so the window's width never reaches the text.
-    let one_line = TextStyle::default().line_height_for(14.0).ceil();
+    let one_line = support::lines_h(1, 14.0);
     assert_eq!([measure(2000), measure(200)], [one_line, one_line]);
 }
 

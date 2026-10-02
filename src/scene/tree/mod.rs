@@ -258,7 +258,6 @@ impl Tree {
         let SubtreeRollups {
             node,
             subtree,
-            layout_node,
             layout_subtree,
         } = &mut self.rollups;
         let container_text = &mut self.container_text;
@@ -267,7 +266,6 @@ impl Tree {
         let cascade_static = &mut self.fingerprint.cascade_static;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
-        let layout_node_out = layout_node.as_mut_slice();
         let layout_subtree_out = layout_subtree.as_mut_slice();
         let mut cascade_static_hasher = Hasher::new();
 
@@ -391,7 +389,6 @@ impl Tree {
             let layout_hash = lh.finish();
             ph.write_u64(layout_hash);
             let node_hash = ph.finish();
-            layout_node_out[i] = ContentHash(layout_hash);
             node_out[i] = ContentHash(node_hash);
 
             // Childless subtree = the node alone, so the node hash IS the

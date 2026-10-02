@@ -18,8 +18,9 @@ pub(crate) struct PaintMod {
 }
 
 impl PaintMod {
-    /// Pass-through sample. Returned by [`PaintAnimCursor::sample`](crate::scene::tree::paint_anims::PaintAnimCursor::sample) when a
-    /// shape has no anim attached, so callers can fold the result
+    /// Pass-through sample. Returned by
+    /// [`PaintAnimCursor::sample`](crate::scene::tree::paint_anims::PaintAnimCursor::sample)
+    /// when a shape has no anim attached, so callers can fold the result
     /// unconditionally.
     pub(crate) const IDENTITY: Self = Self {
         alpha: 1.0,

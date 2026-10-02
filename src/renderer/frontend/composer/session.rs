@@ -1329,11 +1329,12 @@ impl ComposeSession<'_> {
 /// half alpha, where a straight average would be a darker red. A midpoint
 /// with no alpha has no hue and comes back transparent black.
 fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
+    let (a, b) = (a.premultiplied(), b.premultiplied());
     let alpha = (a.a + b.a) * 0.5;
     if alpha <= 0.0 {
         return RgbaF32::TRANSPARENT;
     }
-    let channel = |x: f32, y: f32| (x * a.a + y * b.a) * 0.5 / alpha;
+    let channel = |x: f32, y: f32| (x + y) * 0.5 / alpha;
     RgbaF32 {
         r: channel(a.r, b.r),
         g: channel(a.g, b.g),

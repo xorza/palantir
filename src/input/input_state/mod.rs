@@ -650,8 +650,7 @@ impl InputState {
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
-                let cap = self.capture_mut(btn);
-                let was_captured = cap.press.is_some();
+                let was_captured = self.capture(btn).press.is_some();
                 if was_captured {
                     self.queue.note_button(btn);
                 }

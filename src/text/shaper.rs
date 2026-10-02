@@ -394,8 +394,20 @@ impl TextShaper {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use super::*;
+    #[cfg(test)]
+    use crate::layout::shaped_text::ShapedText;
+    #[cfg(test)]
+    use crate::layout::types::align::Align;
+    #[cfg(test)]
+    use crate::text::cosmic::counters::CacheCounts;
+    #[cfg(test)]
+    use crate::text::probe::Caret;
+    #[cfg(test)]
+    use crate::text::request::test_support::TestShape;
+    #[cfg(test)]
+    use crate::text::wrap::TextWrap;
 
     /// What the integration suites reach through `UiHarness`.
     impl TextShaper {
@@ -414,23 +426,6 @@ pub(crate) mod internals {
             shaper
         }
     }
-}
-
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
-    use super::*;
-    #[cfg(test)]
-    use crate::layout::shaped_text::ShapedText;
-    #[cfg(test)]
-    use crate::layout::types::align::Align;
-    #[cfg(test)]
-    use crate::text::cosmic::counters::CacheCounts;
-    #[cfg(test)]
-    use crate::text::probe::Caret;
-    #[cfg(test)]
-    use crate::text::request::test_support::TestShape;
-    #[cfg(test)]
-    use crate::text::wrap::TextWrap;
 
     #[cfg(test)]
     impl TextShaper {
@@ -511,6 +506,7 @@ pub(crate) mod test_support {
     }
 
     /// What the retention tests and the text benches drive.
+    #[cfg(any(test, feature = "bench"))]
     impl TextShaper {
         /// Shaped buffers currently resident.
         pub(crate) fn cosmic_cache_len(&self) -> usize {

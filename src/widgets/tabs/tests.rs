@@ -481,7 +481,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
 /// others down; moving D to the front (gap 0) shifts the others up.
 #[test]
 fn a_move_carries_every_index_with_its_page() {
-    use crate::widgets::tabs::tabbed_view::moved_index;
+    use crate::widgets::tabs::tabbed_view::test_support::moved_index;
     for (from, to, before, after) in [
         (0, 4, [0, 1, 2, 3], [3, 0, 1, 2]),
         (3, 0, [0, 1, 2, 3], [1, 2, 3, 0]),

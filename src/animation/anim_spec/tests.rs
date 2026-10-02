@@ -2,7 +2,7 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
-use crate::common::panic_probe::assert_panics_with;
+use crate::common::panic_probe;
 use crate::primitives::approx::EPS;
 
 #[test]
@@ -25,7 +25,9 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         f32::INFINITY,
         f32::NEG_INFINITY,
     ] {
-        assert_panics_with(DURATION_ERROR, || AnimSpec::duration(secs, Easing::Linear));
+        panic_probe::assert_panics_with(DURATION_ERROR, || {
+            AnimSpec::duration(secs, Easing::Linear)
+        });
     }
 
     for (stiffness, damping) in [
@@ -39,7 +41,7 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         (1.0, 100.0),
         (f32::MAX, 2.0),
     ] {
-        assert_panics_with(SPRING_ERROR, || AnimSpec::spring(stiffness, damping));
+        panic_probe::assert_panics_with(SPRING_ERROR, || AnimSpec::spring(stiffness, damping));
     }
 
     assert!(!AnimSpec::spring(1.0, 2.0).is_instant());

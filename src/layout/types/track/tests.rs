@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::approx::EPS;
 use crate::primitives::span::Span;
@@ -37,7 +38,7 @@ fn bounds_reject_invalid_values_and_inverted_setter_orders() {
     ];
 
     for &(expected, build) in cases {
-        crate::common::panic_probe::assert_panics_with(expected, build);
+        panic_probe::assert_panics_with(expected, build);
     }
 
     assert_eq!(Track::HUG.max(f32::INFINITY).max, f32::INFINITY);

@@ -415,7 +415,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
 
 /// Pin the native GPU curve pipeline end-to-end: encoder lowers
 /// `Shape::cubic_bezier` to `ShapeRecord::Curve`, composer batches into
-/// one `CurveBatch`, `CurvePipeline` issues a single
+/// one curve batch, `CurvePipeline` issues a single
 /// `pass.draw_indexed(0..96, ..)` per scissor group. Three cubic curves with
 /// Butt / Square / Round caps, identical shape and width — the only
 /// visual difference is the endpoint geometry, so the golden pins both

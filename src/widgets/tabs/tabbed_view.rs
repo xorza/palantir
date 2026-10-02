@@ -276,7 +276,7 @@ fn dropped_slot(ui: &mut Ui, strip: WidgetId, len: usize) -> Option<usize> {
 
 /// Where the page at `index` sits after [`TabsAction::Reordered`] moves
 /// `from` into the gap `to`.
-pub(super) const fn moved_index(index: usize, from: usize, to: usize) -> usize {
+const fn moved_index(index: usize, from: usize, to: usize) -> usize {
     let landing = if to > from { to - 1 } else { to };
     if index == from {
         return landing;
@@ -286,5 +286,14 @@ pub(super) const fn moved_index(index: usize, from: usize, to: usize) -> usize {
         without + 1
     } else {
         without
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    /// Where the page at `index` sits after a reorder of `from` into the
+    /// gap `to` — the rule the view applies to its selection.
+    pub(crate) const fn moved_index(index: usize, from: usize, to: usize) -> usize {
+        super::moved_index(index, from, to)
     }
 }

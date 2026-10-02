@@ -92,7 +92,6 @@ impl Hsv {
 
 #[cfg(test)]
 mod tests {
-
     use crate::primitives::color::hsv::Hsv;
     use crate::primitives::color::srgba_u8::SrgbaU8;
 

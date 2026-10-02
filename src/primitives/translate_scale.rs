@@ -246,6 +246,7 @@ impl Default for TranslateScale {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::panic_probe;
     use crate::primitives::approx::EPS;
 
     /// A transform is the identity when its bits are, or when each part
@@ -291,14 +292,13 @@ mod tests {
             Vec2::new(0.0, f32::NEG_INFINITY),
         ];
         for translation in invalid_translations {
-            crate::common::panic_probe::assert_panics_with(
-                "TranslateScale translation must be finite",
-                || TranslateScale::new(translation, 1.0),
-            );
+            panic_probe::assert_panics_with("TranslateScale translation must be finite", || {
+                TranslateScale::new(translation, 1.0)
+            });
         }
 
         for scale in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            crate::common::panic_probe::assert_panics_with(
+            panic_probe::assert_panics_with(
                 "TranslateScale scale must be positive and finite",
                 || TranslateScale::new(Vec2::ZERO, scale),
             );
@@ -317,19 +317,19 @@ mod tests {
         const TRANSLATION: &str = "TranslateScale translation must be finite";
         const SCALE: &str = "TranslateScale scale must be positive and finite";
         // Pivot arithmetic that overflows translation.
-        crate::common::panic_probe::assert_panics_with(TRANSLATION, || {
+        panic_probe::assert_panics_with(TRANSLATION, || {
             TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
         });
         // Composition that overflows scale.
-        crate::common::panic_probe::assert_panics_with(SCALE, || {
+        panic_probe::assert_panics_with(SCALE, || {
             TranslateScale::from_scale(f32::MAX).compose(TranslateScale::from_scale(2.0))
         });
         // Composition that underflows scale to zero.
-        crate::common::panic_probe::assert_panics_with(SCALE, || {
+        panic_probe::assert_panics_with(SCALE, || {
             TranslateScale::from_scale(f32::from_bits(1)).compose(TranslateScale::from_scale(0.5))
         });
         // Composition that overflows translation.
-        crate::common::panic_probe::assert_panics_with(TRANSLATION, || {
+        panic_probe::assert_panics_with(TRANSLATION, || {
             let transform = TranslateScale::from_translation(Vec2::splat(f32::MAX));
             transform.compose(transform)
         });

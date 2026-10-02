@@ -118,15 +118,9 @@ impl GpuViews {
 
 #[cfg(test)]
 mod tests {
-
     use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
-
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use crate::renderer::gpu_paint::gpu_views::GpuViews;
-
-    fn renderer() -> GpuPaintRef {
-        GpuPaintRef::noop()
-    }
 
     /// One callback keeps one target, and a different one takes its own.
     ///
@@ -139,7 +133,7 @@ mod tests {
     fn a_replaced_callback_takes_a_fresh_target() {
         let id = WidgetId::from_hash("view");
         let mut views = GpuViews::default();
-        let first = renderer();
+        let first = GpuPaintRef::noop();
 
         views.record(id, first.clone(), true, 1);
         let target = views.view(id).texture_id;
@@ -156,7 +150,7 @@ mod tests {
 
         // A different one: its own target, and a paint whether or not it
         // asked, because that target is empty.
-        let epoch = views.record(id, renderer(), false, 3);
+        let epoch = views.record(id, GpuPaintRef::noop(), false, 3);
         assert_ne!(
             views.view(id).texture_id,
             target,
@@ -171,8 +165,8 @@ mod tests {
     fn sweeping_a_removed_view_keeps_its_sibling() {
         let (gone, kept) = (WidgetId::from_hash("gone"), WidgetId::from_hash("kept"));
         let mut views = GpuViews::default();
-        views.record(gone, renderer(), true, 1);
-        views.record(kept, renderer(), true, 1);
+        views.record(gone, GpuPaintRef::noop(), true, 1);
+        views.record(kept, GpuPaintRef::noop(), true, 1);
         let target = views.view(kept).texture_id;
 
         let removed: WidgetIdSet = [gone].into_iter().collect();

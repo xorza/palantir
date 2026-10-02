@@ -138,6 +138,7 @@ fn checked_text_ordinal(index: usize) -> u16 {
 #[cfg(test)]
 mod tests {
     use crate::common::hash;
+    use crate::common::panic_probe;
     use crate::layout::text_shape_input::{TextShapeInput, checked_text_ordinal};
     use crate::layout::types::align::HAlign;
     use crate::text::font_family::FontFamily;
@@ -151,7 +152,7 @@ mod tests {
     fn text_ordinal_covers_the_u16_domain_and_rejects_the_next_run() {
         assert_eq!(checked_text_ordinal(0), 0);
         assert_eq!(checked_text_ordinal(usize::from(u16::MAX)), u16::MAX);
-        crate::common::panic_probe::assert_panics_with(
+        panic_probe::assert_panics_with(
             "more than 65536 direct ShapeRecord::Text runs on one node",
             || checked_text_ordinal(usize::from(u16::MAX) + 1),
         );

@@ -307,6 +307,7 @@ impl NanCheck for ImageFit {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::panic_probe;
     use crate::primitives::color::srgba_u8::SrgbaU8;
     use crate::primitives::image::{Image, ImageFit};
     use crate::primitives::rect::Rect;
@@ -462,7 +463,7 @@ mod tests {
             "RGBA8 byte length 15 does not match 2x2x4 = 16",
         ];
         for (case, expected) in cases.into_iter().zip(expected) {
-            crate::common::panic_probe::assert_panics_with(expected, || {
+            panic_probe::assert_panics_with(expected, || {
                 Image::from_srgba8(UVec2::new(case.width, case.height), vec![0; case.len])
             });
         }

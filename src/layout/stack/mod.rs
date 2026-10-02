@@ -197,9 +197,8 @@ impl LayoutDriver for Stack {
         // Shares the count / weight / gap accounting with `measure`; the
         // closure supplies the per-phase main source — here the cached
         // `desired.main` (Fill children's content size: measure pins
-        // Fill at content). Both
-        // parameters read that one source here, while `measure` gives
-        // them different ones.
+        // Fill at content). Both parameters read that one source here,
+        // while `measure` gives them different ones.
         let main_desired = |pass: &mut LayoutPass<'_>, c: NodeId| axis.main(pass.desired(c));
         let StackPlan {
             sum_non_fill_main,

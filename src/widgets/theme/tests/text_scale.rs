@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use ron::Value;
 
 use super::pretty;
@@ -165,7 +166,7 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     ] {
         let mut theme = Theme::default();
         let before = pretty(&theme);
-        crate::common::panic_probe::assert_panics_with(expected, || theme.scale_text(factor));
+        panic_probe::assert_panics_with(expected, || theme.scale_text(factor));
         let after = pretty(&theme);
         assert_eq!(after, before, "{label}: theme was partially mutated");
     }

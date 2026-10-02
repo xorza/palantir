@@ -5,6 +5,7 @@
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
+use crate::TextStyle;
 use crate::Ui;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::shaped_text::ShapedText;
@@ -16,6 +17,14 @@ use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 /// The paragraph the wrapping cases shape: nine words, so every narrow
 /// width breaks it somewhere.
 pub(super) const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
+
+/// The measured height of `lines` lines of `font_px` text: the default
+/// style's line height per line, on the shaper's 1/64-px grid, ceiled to
+/// whole pixels as the measurer does. Widths have no such formula — they
+/// are the bundled faces' glyph advances, the same on every machine.
+pub(super) fn lines_h(lines: u32, font_px: f32) -> f32 {
+    (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
+}
 
 /// Test helper: the leaf's single shaped-text result. Asserts the
 /// span holds exactly one entry — every cross-driver test today builds

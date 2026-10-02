@@ -2,6 +2,8 @@
 //! honour a delay, and the app-global state that lets a second tooltip
 //! appear without re-serving the delay.
 
+pub(crate) mod tooltip_response;
+
 use crate::input::sense::Sense;
 use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
@@ -270,4 +272,3 @@ impl Configure for Tooltip<'_> {
 
 #[cfg(test)]
 mod tests;
-pub(crate) mod tooltip_response;

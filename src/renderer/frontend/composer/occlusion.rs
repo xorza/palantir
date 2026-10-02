@@ -3,6 +3,7 @@
 //! pipeline or shader changes.
 
 use crate::primitives::rect::Rect;
+use crate::renderer::frontend::composer::rect_grid::TILE_SIZE;
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::{UVec2, Vec2};
 
@@ -76,9 +77,9 @@ const LINEAR_OCCLUDERS: usize = 16;
 /// query instead.
 const LARGE_COVER_TILES: u32 = 256;
 
-/// Physical-pixel side of one index tile: the size the text grid
-/// measured best for rects of UI scale (`rect_grid::TILE_SIZE`).
-const TILE: f32 = 64.0;
+/// Physical-pixel side of one index tile: the size the rect grid
+/// measured best for rects of UI scale.
+const TILE: f32 = TILE_SIZE as f32;
 
 /// The inclusive range of tiles a rect overlaps.
 #[derive(Clone, Copy, Debug)]
@@ -92,8 +93,8 @@ impl OcclusionPruner {
     /// compose start.
     pub(super) fn start_frame(&mut self, viewport: UVec2) {
         self.last_tile = UVec2::new(
-            viewport.x.div_ceil(TILE as u32).max(1) - 1,
-            viewport.y.div_ceil(TILE as u32).max(1) - 1,
+            viewport.x.div_ceil(TILE_SIZE).max(1) - 1,
+            viewport.y.div_ceil(TILE_SIZE).max(1) - 1,
         );
         #[cfg(test)]
         {

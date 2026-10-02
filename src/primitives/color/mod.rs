@@ -176,6 +176,20 @@ impl RgbaF32 {
         }
     }
 
+    /// The colour channels multiplied by alpha — the form every colour
+    /// blend in the crate interpolates in (see `primitives::brush`). The
+    /// result is still an `RgbaF32`, so dividing the alpha back out before
+    /// it is read as straight is the caller's.
+    #[inline]
+    pub(crate) const fn premultiplied(self) -> Self {
+        Self {
+            r: self.r * self.a,
+            g: self.g * self.a,
+            b: self.b * self.a,
+            a: self.a,
+        }
+    }
+
     /// Replace the alpha channel, preserve RGB. Storage is linear /
     /// straight-alpha (see `RgbaF32` docs), so this is a one-field swap —
     /// no premultiply rebalancing.

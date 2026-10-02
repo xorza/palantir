@@ -29,13 +29,13 @@
 //! before the 256-texel loop, so the inner loop never runs the transfer
 //! function.
 //!
-//! - [`Interp::Linear`](crate::primitives::brush::gradient::Interp::Linear): physically correct linear blend. Shows the
-//!   classic midpoint dip on saturated complementary pairs (red↔green
-//!   muddy brown).
-//! - [`Interp::Oklab`](crate::primitives::brush::gradient::Interp::Oklab): pre-converts each stop's linear RGB to Oklab
-//!   `L/a/b` triplets once at bake time; the texel loop lerps the
-//!   triplet and runs only `oklab_to_linear` per texel. Perceptually
-//!   uniform; the CSS Color 4 default.
+//! - [`Interp::Linear`](crate::primitives::brush::gradient::Interp::Linear):
+//!   physically correct linear blend. Shows the classic midpoint dip on
+//!   saturated complementary pairs (red↔green muddy brown).
+//! - [`Interp::Oklab`](crate::primitives::brush::gradient::Interp::Oklab):
+//!   pre-converts each stop's linear RGB to Oklab `L/a/b` triplets once at bake
+//!   time; the texel loop lerps the triplet and runs only `oklab::to_linear` per
+//!   texel. Perceptually uniform; the CSS Color 4 default.
 
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::color::rgba_f16::RgbaF16;

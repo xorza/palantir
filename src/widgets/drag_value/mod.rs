@@ -85,9 +85,9 @@ impl Scrub {
 /// click (no drag) focuses it and swaps the chip for an inline `TextEdit`
 /// (theme slot `drag_value.editor`, same box as the chip) for exact keyboard
 /// entry; Enter or clicking away commits and returns to the scrub chip, and
-/// Escape returns to it with the value the edit opened on. The editor holds the chip's width and **scrolls** a longer
-/// full-precision value inside it, so it stays put even in a
-/// content-hugging parent.
+/// Escape returns to it with the value the edit opened on. The editor holds the
+/// chip's width and **scrolls** a longer full-precision value inside it, so it
+/// stays put even in a content-hugging parent.
 ///
 /// The value is written live — every scrub step and edit-mode reparse lands
 /// in the bound target — and [`ValueResponse`] reports both grains:

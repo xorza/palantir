@@ -26,9 +26,9 @@ pub(super) enum RepaintScissors {
 /// Non-emptiness is a real invariant — a `Partial` plan with nothing to
 /// scissor would load the backbuffer and draw nothing — but it is carried
 /// by the constructor's `debug_assert!` rather than the field layout: the
-/// constructor runs every partial frame. Splitting
-/// a `first` off the array would restate the same guarantee while costing
-/// an O(n) shift to build and a chained iterator to read.
+/// constructor runs every partial frame. Splitting a `first` off the
+/// array would restate the same guarantee while costing an O(n) shift to
+/// build and a chained iterator to read.
 #[derive(Debug)]
 pub(super) struct PartialScissors {
     rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>,

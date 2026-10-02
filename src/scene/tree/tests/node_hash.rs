@@ -522,14 +522,15 @@ fn a_paint_animation_moves_the_node_hash() {
 }
 
 /// Which half of the rollup each kind of edit moves. Paint-only edits
-/// move the full hash and leave the layout half, which the measure cache
-/// keys on; layout edits move both, the full hash being built from the
-/// layout half.
+/// move the full subtree hash and leave the layout half, which the
+/// measure cache keys on; layout edits move both, the full hash being
+/// built from the layout half. A child's text is a layout input of the
+/// child, so it reaches both of the parent's rollups through the child.
 #[test]
 fn each_edit_moves_the_half_it_belongs_to() {
     use crate::widgets::text::Text;
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     struct Edit {
         fill: RgbaF32,
         label: &'static str,
@@ -556,7 +557,10 @@ fn each_edit_moves_the_half_it_belongs_to() {
                 .node()
         });
         let rollups = &h.ui.tree(Layer::Main).rollups;
-        (rollups.node[node.idx()], rollups.layout_node[node.idx()])
+        (
+            rollups.subtree[node.idx()],
+            rollups.layout_subtree[node.idx()],
+        )
     };
     let (full, layout) = hashes(base);
     let rows: [(&str, Edit, bool, bool); 3] = [
@@ -584,13 +588,13 @@ fn each_edit_moves_the_half_it_belongs_to() {
                 label: "goodbye",
                 ..base
             },
-            false,
-            false,
+            true,
+            true,
         ),
     ];
     for (label, edit, full_moves, layout_moves) in rows {
         let (f, l) = hashes(edit);
-        assert_eq!(f != full, full_moves, "{label}: full node hash");
-        assert_eq!(l != layout, layout_moves, "{label}: layout node hash");
+        assert_eq!(f != full, full_moves, "{label}: full subtree hash");
+        assert_eq!(l != layout, layout_moves, "{label}: layout subtree hash");
     }
 }

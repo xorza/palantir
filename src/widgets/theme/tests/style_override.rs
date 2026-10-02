@@ -186,6 +186,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
 }
 
 /// What one `Shape::Text` was recorded with.
+#[derive(Debug)]
 struct RecordedFace {
     font: GlyphFont,
     color: RgbaF16,

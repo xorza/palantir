@@ -87,7 +87,7 @@ fn recreate_backend_on_format_change_renders_identically() {
 
     // Render the same scene against the new format. The renderer notices
     // the target's format changed and forces a full repaint at the new
-    // format (building its pipeline set lazily); `render_to_format`
+    // format (building its pipeline set lazily); `Harness::frame`
     // swizzles the BGRA readback back into RGBA space for comparison.
     let after = h
         .size(size)

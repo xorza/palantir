@@ -61,13 +61,13 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     );
 }
 
-/// Key completeness for the *authoring* cascade inputs. The key
-/// trusts the tree hashes to capture everything the cascade reads (transforms, clip / disabled / focusable, visibility, chrome,
-/// shapes); if a future input stops being folded in, a frame toggling
-/// it would wrongly skip the cascade and paint stale. One arm per
-/// attribute class — each toggles a single attribute and asserts the
-/// skip is busted. Scroll offset and zoom are authored transforms and
-/// are pinned separately by
+/// Key completeness for the *authoring* cascade inputs. The key trusts the tree
+/// hashes to capture everything the cascade reads (transforms, clip / disabled
+/// / focusable, visibility, chrome, shapes); if a future input stops being
+/// folded in, a frame toggling it would wrongly skip the cascade and paint
+/// stale. One arm per attribute class — each toggles a single attribute and
+/// asserts the skip is busted. Scroll offset and zoom are authored transforms
+/// and are pinned separately by
 /// `widgets::scroll::tests::cascade_skip_busts_on_scroll_offset_change`.
 #[test]
 fn the_key_covers_authoring_input_classes() {
@@ -160,13 +160,13 @@ fn the_key_covers_the_font_database() {
     );
 }
 
-/// Key completeness for the *identity* cascade inputs: the layer a root
-/// subtree lives on and the root's own `WidgetId`. Neither reaches any
-/// subtree hash (`compute_rollups` folds only child ids into parents,
-/// and roots have no parent); the key holds one part per layer, and each
-/// part folds every node's id. A wrongly matching key here reuses per-layer cascade columns sized for the previous
-/// layer assignment (index OOB in the damage pass) or a `by_id` map
-/// still keyed by the dead old root id (inert widget).
+/// Key completeness for the *identity* cascade inputs: the layer a root subtree
+/// lives on and the root's own `WidgetId`. Neither reaches any subtree hash
+/// (`compute_rollups` folds only child ids into parents, and roots have no
+/// parent); the key holds one part per layer, and each part folds every node's
+/// id. A wrongly matching key here reuses per-layer cascade columns sized for
+/// the previous layer assignment (index OOB in the damage pass) or a `by_id`
+/// map still keyed by the dead old root id (inert widget).
 #[test]
 fn the_key_covers_layer_and_root_identity() {
     fn float(ui: &mut Ui, layer: Layer, key: &str) {

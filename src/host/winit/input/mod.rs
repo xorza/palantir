@@ -271,7 +271,7 @@ enum WheelUnit {
 /// Windows and Linux, the convention their toolkits and browsers share.
 /// macOS needs no help: its trackpads and mice send the horizontal delta
 /// themselves when Shift is held.
-pub(super) fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Vec2 {
+fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Vec2 {
     let swaps = platform != Platform::Mac && modifiers.shift_key() && delta.x == 0.0;
     if swaps {
         Vec2::new(delta.y, 0.0)
@@ -284,12 +284,12 @@ pub(super) fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Plat
 /// `KeyEvent` cannot be built outside winit, so the rule below takes
 /// what it needs from one rather than the event.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct KeyDownFacts<'a> {
-    pub(super) logical: &'a WinitKey,
-    pub(super) physical: &'a PhysicalKey,
-    pub(super) text: Option<&'a str>,
-    pub(super) repeat: bool,
-    pub(super) is_synthetic: bool,
+struct KeyDownFacts<'a> {
+    logical: &'a WinitKey,
+    physical: &'a PhysicalKey,
+    text: Option<&'a str>,
+    repeat: bool,
+    is_synthetic: bool,
 }
 
 /// The `KeyDown` a press becomes, or `None` for one that is not input.
@@ -302,7 +302,7 @@ pub(super) struct KeyDownFacts<'a> {
 ///   on every platform (Cmd on macOS reaches `Modifiers::ctrl`, which the
 ///   text rule already reads), and `Modifiers` has no bit for it on
 ///   Windows and Linux, so this is the one place that can drop it.
-pub(super) fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent> {
+fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent> {
     if facts.is_synthetic {
         return None;
     }

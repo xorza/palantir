@@ -20,8 +20,9 @@
 //!   *after* any grow blit — encoder ordering is load-bearing
 //!   (`queue.write_texture` runs before all encoder commands in a
 //!   submit, so it could be clobbered by the blit).
-//! - **28-byte [`RasterQuad`](crate::gpu::raster_atlas::raster_quad::RasterQuad) instances.** The content type and the
-//!   desaturate flag sit above `u` in `uv_and_kind`.
+//! - **28-byte [`RasterQuad`](crate::gpu::raster_atlas::raster_quad::RasterQuad)
+//!   instances.** The content type and the desaturate flag sit above `u`
+//!   in `uv_and_kind`.
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
 //!   region as two `u32`s, pushed per batch — no uniform buffer.
 
