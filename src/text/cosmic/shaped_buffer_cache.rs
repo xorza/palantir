@@ -73,6 +73,13 @@ const RECYCLE_POOL_CAP: usize = 128;
 /// whole restore path (`ShapedTextRef`, `InternedText`,
 /// `CosmicMeasure::ensure_buffer`) has to stay — and deleting that was
 /// the other half of the idea. The two wins are mutually exclusive.
+/// The longest a rendered run waits to be retired: its keep plus the
+/// spread that staggers retirements.
+const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
+
+/// Frames one revolution of the expiry ring takes.
+pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
+
 pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 
 /// A resident shaped buffer paired with the x its glyph block starts at,
@@ -142,9 +149,7 @@ impl Default for ShapedBufferCache {
         Self {
             entries: FxHashMap::default(),
             frame: 0,
-            expiry: ExpiryWheel::with_keep(
-                RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK,
-            ),
+            expiry: ExpiryWheel::with_keep(KEEP_FRAMES),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             counters: CacheCounters::default(),
         }

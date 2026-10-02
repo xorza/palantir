@@ -28,7 +28,7 @@ use std::panic::Location;
 
 use glam::UVec2;
 use palantir::Ui;
-use palantir::internals::{PROBATION_KEEP_FRAMES, UiHarness};
+use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES, UiHarness};
 
 use crate::allocator::{AuditResult, with_audit};
 
@@ -81,6 +81,7 @@ pub(crate) struct Audit {
     warmup: Warmup,
     frames: usize,
     budget: u64,
+    paint_only: bool,
 }
 
 /// What an audit observed.
@@ -102,13 +103,23 @@ impl Audit {
             warmup: Warmup::Probe,
             frames: 64,
             budget: 0,
+            paint_only: false,
         }
     }
 
     /// Real cosmic shaping instead of the mono fallback, for a fixture
-    /// that has to exercise it.
+    /// that has to exercise it — warmed and measured in one revolution
+    /// of the shaped-buffer expiry ring each.
+    ///
+    /// A bucket's first drain grows the wheel's scratch, and the probe's
+    /// quiet frames come long before the widest bucket of the first
+    /// revolution is due; a cost the ring pays once a revolution would
+    /// fall outside any shorter window.
     pub(crate) fn text(mut self) -> Self {
+        let ring = SHAPED_BUFFER_RING_FRAMES as usize;
         self.text = true;
+        self.warmup = Warmup::Fixed(ring);
+        self.frames = ring;
         self
     }
 
@@ -142,8 +153,23 @@ impl Audit {
         self
     }
 
+    /// Measure the frames that repaint from the retained tree without
+    /// running the scene — an idle animation's steady state.
+    ///
+    /// Without this, every measured frame must run the scene: a frame
+    /// that skips it measures nothing the fixture wrote, and a paint-only
+    /// animation anywhere in the scene skips it on every frame after the
+    /// first. A scene that has one and still wants its record measured
+    /// calls `Ui::request_repaint` each frame, as an app that redraws
+    /// continuously does.
+    pub(crate) fn paint_only(mut self) -> Self {
+        self.paint_only = true;
+        self
+    }
+
     /// Drive `scene` through a `UiHarness` raised from [`Self::text`],
-    /// [`Self::surface`] and [`Self::dpr`].
+    /// [`Self::surface`] and [`Self::dpr`], every measured frame checked
+    /// against [`Self::paint_only`].
     #[track_caller]
     pub(crate) fn run(self, mut scene: impl FnMut(&mut Ui)) -> Report {
         let mut ui = if self.text {
@@ -156,20 +182,36 @@ impl Audit {
         if let Some(dpr) = self.dpr {
             ui = ui.scale(dpr);
         }
+        let mut recorded = false;
         self.measure(Location::caller(), || {
-            let _ = ui.frame(&mut scene);
+            recorded = false;
+            let _ = ui.frame(|ui| {
+                recorded = true;
+                scene(ui);
+            });
+            recorded
         })
     }
 
     /// The same measured loop over a frame the caller renders itself.
     /// [`Self::text`], [`Self::surface`] and [`Self::dpr`] describe the
-    /// harness [`Self::run`] raises, so they say nothing here.
+    /// harness [`Self::run`] raises, so they say nothing here, and the
+    /// caller asserts what its own frames ran.
     #[track_caller]
-    pub(crate) fn run_frames(self, frame: impl FnMut()) -> Report {
-        self.measure(Location::caller(), frame)
+    pub(crate) fn run_frames(self, mut frame: impl FnMut()) -> Report {
+        assert!(
+            !self.paint_only,
+            "paint_only reads the scene's record passes, which run_frames never sees",
+        );
+        self.measure(Location::caller(), || {
+            frame();
+            true
+        })
     }
 
-    fn measure(self, at: &'static Location<'static>, mut frame: impl FnMut()) -> Report {
+    /// `frame` returns whether it ran the scene, which only the measured
+    /// window checks: a paint-only scene still records while it warms.
+    fn measure(self, at: &'static Location<'static>, mut frame: impl FnMut() -> bool) -> Report {
         assert!(self.frames > 0, "an audit must measure at least one frame");
 
         let warmup = match self.warmup {
@@ -185,7 +227,19 @@ impl Audit {
         let mut worst = 0;
         let mut total = 0;
         for i in 0..self.frames {
-            let result = with_audit(&mut frame);
+            let mut recorded = false;
+            let result = with_audit(|| recorded = frame());
+            if recorded == self.paint_only {
+                let what = if recorded {
+                    "ran the scene, but the audit is paint_only"
+                } else {
+                    "skipped the scene, so the audit measured none of it — see Audit::paint_only"
+                };
+                panic!(
+                    "alloc-audit {at}: frame {i}/{} (after {warmup} warmup) {what}",
+                    self.frames,
+                );
+            }
             if result.allocs > self.budget {
                 self.fail(at, i, warmup, result);
             }
@@ -203,7 +257,7 @@ impl Audit {
         Report { worst }
     }
 
-    fn probe(self, frame: &mut impl FnMut()) -> usize {
+    fn probe(self, frame: &mut impl FnMut() -> bool) -> usize {
         const MAX_WARMUP: usize = 8;
         const STABLE_RUN: usize = 2;
         // Real shaping defers one allocation past any run of quiet frames:
@@ -220,7 +274,9 @@ impl Audit {
         let mut warmup = 0;
         let mut stable = 0;
         while warmup < MAX_WARMUP {
-            let result = with_audit(&mut *frame);
+            let result = with_audit(|| {
+                frame();
+            });
             warmup += 1;
             stable = if result.allocs <= self.budget {
                 stable + 1
