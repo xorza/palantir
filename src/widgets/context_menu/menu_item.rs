@@ -85,6 +85,7 @@ impl<'a> MenuItem<'a> {
     /// Thin horizontal divider between groups — no label, no input.
     /// Chain `.show(ui)` and ignore the response. See
     /// [`MenuSeparator`].
+    #[track_caller]
     pub fn separator<'s>() -> MenuSeparator<'s> {
         MenuSeparator::new()
     }
