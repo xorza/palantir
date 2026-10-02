@@ -10,7 +10,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Paint output wrong or missing
 - [ ] `src/renderer/frontend/composer/session.rs:381-394` **bug**: an icon whose physical box is larger than `MAX_RASTER_PX` (512) is drawn at 512 px, centred, rather than filling its box. `IconRasterKey::for_box` clamps the key to 512. `IconDrawRow` carries only `key` and `origin`, and the backend (`AtlasSlot::quad`) draws at the raster's own `size`. Example: a 300×300 logical icon at scale 2 paints 512×512 with a 44 px gap on every side. The `MAX_RASTER_PX` doc says "the largest cached raster is reused and magnifies", but nothing magnifies it. Related (**plausible**): in the coarse band the raster rounds up to 4 px, so the drawn quad can stick out up to ~2 px past the `urect` used for cull, overlap tracking and damage.
-- [ ] `src/renderer/frontend/composer/session.rs:915-921` **bug**: a triangle's points are packed into the f16 `corners` / `fill_axis` lanes, measured from the covering rect's min. f16 spacing is 1 px in [1024,2048), 2 px in [2048,4096), and anything past 65504 becomes `inf`. A triangle that spans 3000 physical px gets its vertices moved by up to 1 px, so its edges no longer meet neighbouring f32 quad edges. A zoomed-canvas triangle with a vertex more than 65504 px from its rect's min gets an `inf` lane, and the SDF becomes NaN. The `FillAxis` doc promises "sub-pixel up to ~2048 px", which already fails between 1024 and 2048 px.
 - [ ] `src/renderer/gradient_atlas/bake.rs:149` **bug**: texel `i` is baked at `t = i/255`, but both shaders sample `u = t` directly (`quad.wgsl:239`, `curve.wgsl:424`). With linear filtering, texel centres sit at `(i+0.5)/256`, so the colour shown at parameter `t` is `C(t + (t−0.5)/255)`. That is up to half a texel of skew toward the ends. A hard stop at 0.1 on a 1000 px linear gradient lands at 101.6 px.
 
 ## Hug WrapStack: arrange breaks lines against a rounded-down budget
@@ -156,9 +155,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - `from_svgs` also neither rejects nor dedupes duplicate names, though `IconDef::name` is documented "unique within a set". `by_name` then picks one arbitrarily.
 - [ ] `src/icons/icon_set.rs:141-143`: the comment says a cross-set id "fails at the call site that mixed them". Only an out-of-range id fails. An in-range id from another set draws the wrong icon silently.
 
-## Unpinned numbering invariant in the curve shader
-- [ ] `src/gpu/curve_pipeline/curve.wgsl:260`: `in.kind >= KIND_JOIN_ROUND` assumes every join kind is ≥ JOIN_ROUND and every non-join kind is below it. `renderer/render_buffer/curve.rs:27-28` says the joins' "order among themselves is free", and no const assert pins it. Renumbering BEVEL=3, ROUND=4 would silently send bevel joins down the strip path.
-
 ## Composer worst-case per-frame cost
 - [ ] `src/renderer/frontend/composer/occlusion.rs:140-149` **bug (perf)**: the prune is O(N·K) whenever covers equal quad sizes. Sharp, pixel-aligned opaque quads (the default under `pixel_snap`) record their full rect as the cover (`aa_inset` is 0). `q.rect.size > suffix_max` is then never true, and every quad scans all later occluders. A 100×100 grid of equal cells stays in one group: about 5·10⁷ `contains_rect` calls per full frame.
 - [ ] `src/renderer/frontend/composer/higher_kind.rs:221-232,300-302` **bug (perf, plausible)**: the module doc's bound ("a query that survives the union pre-reject flushes, so a scan happens once per group") is false. `any_overlap` can scan every rect, find no hit, and not flush. Curve-after-curve never flushes, so curves accumulate. 2000 short `Shape::line` strokes plus 500 labels in the gaps costs about 10⁶ rect tests per frame.
@@ -277,7 +273,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Text and primitives duplicated sources of truth
 - [ ] `src/text/cosmic/mod.rs:876` vs `:576`: `shape_truncated` discards the `left` that `shaped_geometry` just measured and hardcodes `0.0`, relying on a comment about how cosmic places unbounded lines. `shape_wrapped` stores the measured `left`.
 - [ ] `src/primitives/span.rs:33` vs `:65`: `Span::range()` and `From<Span> for Range<usize>` are the same conversion written twice.
-- [ ] `src/primitives/spacing/mod.rs` (f16 lanes): `Spacing` is layout input, but f16 drops whole pixels past 2048 (margin 2049→2048, 3001→3000). A silent layout change, unlike `Corners`, which is paint-only.
 
 ## Renderer docs that state the opposite of the code
 - [ ] `src/renderer/quad.rs:24-28`: says a gradient's `fill` is "unused (set to zero)". It is the white multiplier the shader applies (`c * in.fill`), and it carries the fade.

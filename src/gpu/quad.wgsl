@@ -57,8 +57,10 @@ const BRUSH_KIND_SHADOW_DROP:  u32 = /*{BRUSH_KIND_SHADOW_DROP}*/;
 const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // Rounded-triangle SDF. `fill` is the solid fill; the three corner points
 // ride the reused instance lanes — `radius.xy = a`, `radius.zw = b`,
-// `fill_axis.xy = c` — all in `local` (0..size) coords, and `fill_axis.z`
-// is the corner radius. Stroke uses the usual `stroke_color`/`stroke_width`.
+// `fill_axis.xy = c` — stored as unorm16 shares of the quad's size, which
+// `vs` turns into `local` (0..size) coords; `fill_axis.z` is the corner
+// radius, f16 like every other lane. Stroke uses the usual
+// `stroke_color`/`stroke_width`.
 const BRUSH_KIND_TRIANGLE:     u32 = /*{BRUSH_KIND_TRIANGLE}*/;
 // Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
 // `Pad` is the fallback below rather than a constant of its own.
@@ -117,17 +119,30 @@ fn vs(
     let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
     let local = CORNERS[vi] * size;
 
+    var corner_lanes = radius;
+    var axis_lanes = fill_axis;
+    if ((fill_kind & 0xFFu) == BRUSH_KIND_TRIANGLE) {
+        // Corner points as unorm16 shares of the quad: an f16 lane steps
+        // a whole pixel above 1024 px, a share of the quad steps
+        // `size / 65535` at any size.
+        corner_lanes = vec4<f32>(
+            unpack2x16unorm(radius_packed.x) * size,
+            unpack2x16unorm(radius_packed.y) * size,
+        );
+        axis_lanes = vec4<f32>(unpack2x16unorm(fill_axis_packed.x) * size, fa_hi);
+    }
+
     var out: VertexOut;
     out.clip         = clip_from_px(pos + local);
     out.local        = local;
     out.size         = size;
     out.fill         = fill;
-    out.radius       = radius;
+    out.radius       = corner_lanes;
     out.stroke_color = stroke_color;
     out.stroke_width = stroke_width;
     out.fill_kind    = fill_kind;
     out.fill_lut_row = fill_lut_row;
-    out.fill_axis    = fill_axis;
+    out.fill_axis    = axis_lanes;
     out.inv_size     = 1.0 / max(size, vec2<f32>(ZERO_EPS));
     return out;
 }

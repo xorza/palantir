@@ -789,8 +789,6 @@ output, cost, cleanup.
 
 ## Phase 4. GPU geometry and colour (D5, D6)
 
-- [ ] Triangle vertices as rect-relative unorm16.
-- [ ] Curve kind order const assert; f16 precision docs.
 - [ ] Premultiplied LUT with a scalar fade; mesh `vs`; curve `mix`; join average; document the space.
 - [ ] Texel-centre `u` helper.
 - [ ] `OffscreenHost` format assert; premultiply table at construction.

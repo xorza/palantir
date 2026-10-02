@@ -13,8 +13,9 @@ use glam::Vec2;
 /// the first u32 carries `tl,tr` and the second `br,bl`; the shader
 /// reconstructs `vec4<f32>` via two `unpack2x16float` calls.
 ///
-/// Precision: lossless for integer radii up to 2048, ~0.25 px error at
-/// 4096, +Inf above ~65504. Plenty of headroom for UI workloads.
+/// Precision: lossless for integer radii up to 2048. Above that an f16
+/// step is 2 px below 4096 and 4 px below 8192, so a radius rounds by up
+/// to ±1 px and ±2 px there; +Inf above 65504.
 ///
 /// Hash delegates to the packed `F16x4` representation — one `u64` write,
 /// fed every frame into
@@ -132,6 +133,13 @@ impl Corners {
         // sharp-corner fast path this gates. The shape-level NaN gate is
         // what drops such a shape.
         self.0.all_lanes_noop()
+    }
+
+    /// Four raw lane words — see [`F16x4::from_bits`] for the one
+    /// non-f16 use.
+    #[inline]
+    pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
+        Self(F16x4::from_bits(bits))
     }
 
     /// Packed 8-byte form, the peer of `Spacing::as_u64`. The chrome

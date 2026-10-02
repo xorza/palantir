@@ -30,6 +30,16 @@ pub(crate) const CURVE_KIND_JOIN_ROUND: u32 = 3;
 pub(crate) const CURVE_KIND_JOIN_BEVEL: u32 = 4;
 pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
 
+// `curve.wgsl` splits on `kind >= KIND_JOIN_ROUND`: every basis below it,
+// every join at or above it.
+const _: () = assert!(
+    CURVE_KIND_CUBIC < CURVE_KIND_JOIN_ROUND
+        && CURVE_KIND_ARC < CURVE_KIND_JOIN_ROUND
+        && CURVE_KIND_SEGMENT < CURVE_KIND_JOIN_ROUND
+        && CURVE_KIND_JOIN_BEVEL >= CURVE_KIND_JOIN_ROUND
+        && CURVE_KIND_JOIN_MITER >= CURVE_KIND_JOIN_ROUND
+);
+
 /// Per-curve-sub-instance GPU state, uploaded to a
 /// `step_mode: Instance` vertex buffer. For the strip kinds the
 /// shader evaluates the stroke's parametric basis (picked by `kind`)
