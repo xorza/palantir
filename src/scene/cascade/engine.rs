@@ -246,7 +246,21 @@ impl CascadeEngine {
 
         // `SeenIds::pre_record` clears `curr` before a relayout pass can
         // query the preceding pass's responses.
-        cascade.by_id.clone_from(&forest.ids.curr);
+        //
+        // Refilled rather than `clone_from`: `curr` and `prev` swap every
+        // frame, so the source alternates between two tables, and
+        // hashbrown's `clone_from` reallocates whenever their bucket
+        // counts differ — one widget-count spike would grow one of them
+        // for good and make every later full rebuild free and allocate.
+        // `clear` keeps this table's own capacity.
+        cascade.by_id.clear();
+        cascade.by_id.extend(
+            forest
+                .ids
+                .curr
+                .iter()
+                .map(|(id, endpoint)| (*id, *endpoint)),
+        );
         self.display_scale = Some(display.scale_factor());
     }
 }

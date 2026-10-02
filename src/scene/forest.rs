@@ -333,6 +333,7 @@ impl Forest {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;
             };
+            tree.shapes.fold_paint_anim(shape_idx, &anim);
             // The row is charged either way — an invisible pass still
             // authors the shape — so only the animation row is skipped.
             if frame.effectively_visible {
