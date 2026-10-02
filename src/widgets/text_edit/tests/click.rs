@@ -246,7 +246,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
 fn click_lands_caret_at_pressed_position() {
     // Mono fallback: 8 px per char @ 16 px font. With theme's default
     // 8 px left padding, x=32 → caret=3.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
     h.frame(editor_at(&mut buf, None));
@@ -265,7 +265,7 @@ fn click_uses_overridden_padding() {
     // `.padding(...)` shifts both rendering and click hit-test
     // consistently. Override 24 px left → x=32 hits offset 1.
     let pad = Some(Spacing::xy(24.0, 6.0));
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
     h.frame(editor_at(&mut buf, pad));
@@ -299,7 +299,7 @@ fn drag_select_continues_past_editor_bounds() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world"); // 11 bytes
 
     // Record once so the editor's rect is known to the next frame's hit-test.
@@ -572,7 +572,7 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
 /// (`InputQueue`), and the press frame is where the field reads the hit.
 #[test]
 fn a_tap_places_the_caret() {
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
     let ed_id = WidgetId::from_hash("ed");
     h.prime(2, editor_at(&mut buf, None));

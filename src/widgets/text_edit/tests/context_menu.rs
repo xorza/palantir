@@ -47,7 +47,7 @@ fn context_menu_cut_copy_paste_clear() {
     }
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
-    let mut h = ui_at_no_cosmic(SMALL);
+    let mut h = UiHarness::new(SMALL);
     h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
@@ -325,7 +325,7 @@ fn secondary_click_opens_text_edit_menu() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(SMALL);
+    let mut h = UiHarness::new(SMALL);
     let mut buf = String::from("hi");
     h.frame(|ui| body(ui, &mut buf));
     assert!(!ContextMenu::is_open(&h.ui, editor_id));
@@ -344,7 +344,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
 
     let a_id = WidgetId::from_hash("focused-editor");
     let b_id = WidgetId::from_hash("menu-editor");
-    let mut h = ui_at_no_cosmic(UVec2::new(400, 120));
+    let mut h = UiHarness::new(UVec2::new(400, 120));
     let mut a = String::from("focused");
     let mut b = String::from("menu");
     let body = |ui: &mut Ui, a: &mut String, b: &mut String| {

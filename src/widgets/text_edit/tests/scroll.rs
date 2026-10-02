@@ -20,7 +20,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
 
     // Short text: caret at end (5) → x = 40 px ≤ inner_w. No scroll.
     let mut buf = String::from("hello");
@@ -71,7 +71,7 @@ fn hug_width_editor_shows_full_text_after_growth() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(WIDE);
+    let mut h = UiHarness::new(WIDE);
 
     // Start narrow so the Hug width settles small (rect ≈ one glyph).
     let mut buf = String::from("1");
@@ -112,7 +112,7 @@ fn click_hit_test_compensates_for_scroll() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = "a".repeat(100);
 
     // Drive caret to end so the editor scrolls all the way right.
@@ -166,7 +166,7 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = (0..100).map(|i| format!("line{i}\n")).collect::<String>();
 
     // Caret at the top, so anything that follows it would pull the view

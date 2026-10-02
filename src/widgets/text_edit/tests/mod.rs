@@ -159,10 +159,6 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
 /// `ui_at_no_cosmic` constructs a Ui without cosmic, so the mono
 /// fallback drives caret-x (8 px/char at 16 px font) — predictable
 /// widths the click-positioning tests rely on.
-fn ui_at_no_cosmic(size: UVec2) -> UiHarness {
-    UiHarness::new(size)
-}
-
 /// Multi-line builder flag: `Enter` inserts `\n` (instead of being
 /// ignored), `Cmd/Ctrl+V` preserves clipboard newlines, and cursor
 /// navigation works in 2D. Driven via `apply_key` directly for the

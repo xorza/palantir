@@ -163,7 +163,7 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
 #[test]
 fn the_first_frame_aligns_like_the_ones_after_it() {
     let settled = {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
         shape_origins(&h.ui, node).0.expect("text shape emitted")
@@ -172,7 +172,7 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
     // than accidentally the right one.
     assert!(settled.x > PAD_L + 1.0, "x = {} is not centred", settled.x);
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let node = frame(&mut h, &mut buf, Some(Align::CENTER), None);
     let first = shape_origins(&h.ui, node).0.expect("text shape emitted");
@@ -193,7 +193,7 @@ fn single_line_default_is_left_vcenter() {
     // No `.text_align(...)` → mode default `Align::LEFT` (left +
     // vcenter). With "abcd" (32×19.203125) inside the inner rect,
     // dx = 0 and dy = (inner height − line height) / 2.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let node = warmup_then(&mut h, &mut buf, None, None);
     let (origin, _) = shape_origins(&h.ui, node);
@@ -225,7 +225,7 @@ fn single_line_text_align_table() {
         (Align::BOTTOM_RIGHT, rx, by, "BOTTOM_RIGHT"),
     ];
     for &(align, dx, dy, label) in cases {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
         let (origin, _) = shape_origins(&h.ui, node);
@@ -253,7 +253,7 @@ fn caret_tracks_aligned_text() {
     // origin shifts right by `ALIGN_W − TEXT_W_4CH`; the caret must
     // shift by the same dx so it sits at the rightmost glyph trailing
     // edge, leaving `CARET_W` of reserved room before the clip edge.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     // Warmup so response.rect lands; click; then a final frame so
     // the post-click focus state drives a caret render with the
@@ -292,7 +292,7 @@ fn empty_focused_caret_vcenters_against_one_line() {
     // used it directly the caret would sit below center. The widget
     // floors measured.h at `line_height_px`, so VAlign::Center
     // centers the caret against a full virtual line.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
     frame(&mut h, &mut buf, None, None);
     h.click_at(glam::Vec2::new(50.0, 20.0));
@@ -311,7 +311,7 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     // Bug fix pin: empty + unfocused → render placeholder. Offset is
     // computed from the placeholder string ("wxyz", mono 32 px), not
     // the empty buffer (which would collapse any halign to zero).
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
     let node = warmup_then(&mut h, &mut buf, Some(Align::RIGHT), Some("wxyz"));
     let (origin, _) = shape_origins(&h.ui, node);
@@ -342,7 +342,7 @@ fn click_compensates_for_right_align() {
     // 5+238+8..5+238+16 = 251..259. Clicking at 254 (mid-glyph) must
     // land on byte 1, proving the input pass subtracts the same
     // `align_offset.x` from the local pointer coords.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     // Two warmup frames so the second one carries response.rect and
     // the click hit-test runs against the right-aligned layout.
@@ -367,7 +367,7 @@ fn align_overflow_clamps_to_zero() {
     // 800 px > 270 inner_w. LEFT, RIGHT, CENTER must all render text
     // at x = padding.left.
     for align in [Align::LEFT, Align::RIGHT, Align::CENTER] {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = "a".repeat(100);
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
         let (origin, _) = shape_origins(&h.ui, node);
@@ -386,7 +386,7 @@ fn selection_rects_offset_matches_text() {
     // Mono fallback emits one rect for [0..2] on "abcd" → x = 0,
     // w = 16 in text-local coords. Under HAlign::Right that becomes
     // editor-local x = PAD_L + (ALIGN_W − TEXT_W_4CH).
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
@@ -430,7 +430,7 @@ fn selection_rects_offset_matches_text() {
 fn multiline_default_is_top_left() {
     // Default for `multiline(true)` is `Align::TOP_LEFT`. With "abcd"
     // the text origin sits flush at the inner top-left = padding.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
@@ -468,7 +468,7 @@ fn multiline_default_is_top_left() {
 #[test]
 fn text_origin_invariant_under_ancestor_transform_zoom() {
     fn run(scale: f32) -> glam::Vec2 {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let mut node: Option<NodeId> = None;
         let mut record = |ui: &mut Ui| {
@@ -534,7 +534,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 /// and stroke, so restyling a field moves both together.
 #[test]
 fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
-    let mut h = ui_at_no_cosmic(WIDE);
+    let mut h = UiHarness::new(WIDE);
     // What the mono fallback measures "abcd" as. Its height rather than the
     // glyphs' own, because that is the box a line is laid in — see
     // `resolve_geometry`, which floors the run at the leading.

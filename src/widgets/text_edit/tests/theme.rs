@@ -10,7 +10,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
+    let mut h = UiHarness::new(UVec2::new(600, 200));
     h.ui.theme_mut().text.font_size_px = 22.0;
     h.ui.theme_mut().text_edit.looks.normal.text = Some(TextStyle::default().with_font_size(24.0));
     let mut buf = String::from("hi");
@@ -70,7 +70,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     h.ui.theme_mut().text.color = RgbaF32::srgb(1.0, 0.0, 0.0);
 
     let mut node = None;
@@ -95,7 +95,7 @@ fn text_widget_color_override_wins_over_theme() {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     h.ui.theme_mut().text.color = RgbaF32::srgb(1.0, 0.0, 0.0);
 
     let mut node = None;
@@ -126,7 +126,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
+    let mut h = UiHarness::new(UVec2::new(600, 200));
     h.ui.theme_mut().text.line_height_mult = 2.0;
     h.ui.theme_mut().text_edit.looks.normal.text =
         Some(TextStyle::default().with_line_height_mult(3.0));
@@ -211,7 +211,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             ..TextStyle::default()
         };
         let editor_id = WidgetId::from_hash("invalid editor");
-        let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
+        let mut h = UiHarness::new(UVec2::new(600, 200));
         let mut buf = String::from("editable");
 
         // One renderable frame first, so the unrenderable one below has
@@ -288,7 +288,7 @@ fn textedit_style_override_replaces_default_theme() {
         ("mult_3x_override", 3.0_f32, 48.0_f32),
         ("mult_2x_override", 2.0_f32, 32.0_f32),
     ] {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("hi");
         let style = TextEditTheme {
             looks: StatefulLook {
@@ -327,7 +327,7 @@ fn textedit_style_override_replaces_default_theme() {
 #[test]
 fn pushed_shape_carries_default_line_height_from_theme() {
     use crate::scene::shapes::record::ShapeRecord;
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hi");
     let mut leaf_node = None;
     h.frame(|ui| {
@@ -361,7 +361,7 @@ fn no_selection_paints_no_highlight_rect() {
     // rounded rect (the caret). No selection wash.
     use crate::scene::shapes::record::ShapeRecord;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
     let mut leaf = None;
     let body = |ui: &mut Ui, leaf: &mut Option<NodeId>, buf: &mut String| {
@@ -400,7 +400,7 @@ fn shift_end_paints_selection_highlight() {
     // the selection wash, painted *before* the caret rect.
     use crate::scene::shapes::record::ShapeRecord;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
     let mut leaf = None;
     let body = |ui: &mut Ui, leaf: &mut Option<NodeId>, buf: &mut String| {
@@ -451,7 +451,7 @@ fn drag_select_extends_selection() {
     // Press at offset 1, drag to offset 4 → selection covers [1..4].
     // Mono fallback: 8 px/char, theme pad-left = 8 px → byte offset N
     // sits at x = 8 + 8N.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(editor_at(&mut buf, None));
@@ -481,7 +481,7 @@ fn click_without_drag_clears_prior_selection() {
     // the input layer counts *every* press toward a multi-press run
     // (frames don't have to observe them), so a same-spot follow-up
     // would legitimately read as a double-click word-select.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(editor_at(&mut buf, None));
@@ -518,7 +518,7 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::new();
         let mut leaf = None;
         let body = |ui: &mut Ui,

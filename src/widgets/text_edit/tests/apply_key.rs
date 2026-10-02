@@ -294,7 +294,7 @@ fn max_chars_caps_typing_and_paste_through_show() {
             .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
             .show(ui);
     };
-    let mut h = ui_at_no_cosmic(SMALL);
+    let mut h = UiHarness::new(SMALL);
     let mut buf = String::from("ab");
     h.frame(|ui| record(ui, &mut buf));
     h.click_on(id);
