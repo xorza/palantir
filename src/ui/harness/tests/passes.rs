@@ -44,6 +44,8 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
     harness.click_at(INSIDE);
+    // The press frame; the release — the click — is the next frame's.
+    harness.step(button);
 
     // Instrumenting the raw `frame` closure, which runs on every pass —
     // this is what a caller writing `let mut x = …; frame(|ui| x = …)`
@@ -64,6 +66,7 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
     // Same click, through `frame_value`: the scene still records on both
     // passes, but the value comes from the one that saw the edge.
     harness.click_at(INSIDE);
+    harness.step(button);
     let mut passes = 0;
     let clicked = harness.frame_value(|ui| {
         button(ui);

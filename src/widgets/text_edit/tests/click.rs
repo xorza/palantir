@@ -571,3 +571,26 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
     assert!(!h.focus_within(bystander));
     assert!(!h.focus_within(WidgetId::from_hash("unrecorded")));
 }
+
+/// A tap — press and release fed together, as a touchpad's tap-to-click
+/// does — places the caret. The press lands a frame before its release
+/// (`InputQueue`), and the press frame is where the field reads the hit.
+#[test]
+fn a_tap_places_the_caret() {
+    let mut h = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello");
+    let ed_id = WidgetId::from_hash("ed");
+    h.prime(2, editor_at(&mut buf, None));
+    h.set_focus(ed_id);
+    h.key(Key::End);
+    h.frame(editor_at(&mut buf, None));
+    assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 5);
+
+    // Mono metric, 8 px per char from the inner left edge: the tap at
+    // x = inner.min + 14 is 1.75 glyphs in, nearest boundary 2 → caret 2.
+    let rect = h.layout_rect(ed_id).expect("arranged");
+    let inner_left = rect.min.x + h.ui.theme().text_edit.defaults.padding.as_array()[0];
+    h.click_at(glam::Vec2::new(inner_left + 14.0, rect.center().y));
+    h.frame(editor_at(&mut buf, None));
+    assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
+}

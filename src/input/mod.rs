@@ -7,6 +7,7 @@ pub(crate) mod bench;
 pub(crate) mod capture;
 pub(crate) mod event_outcome;
 pub(crate) mod input_event;
+pub(crate) mod input_queue;
 pub(crate) mod input_state;
 pub(crate) mod key_class;
 pub(crate) mod keyboard;

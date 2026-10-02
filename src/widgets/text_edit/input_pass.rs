@@ -183,14 +183,19 @@ impl InputPass<'_> {
             // the caller learns the user accepted the value.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
                 submitted = true;
-                continue;
+                stop_after(ui.keyboard_events(), i);
+                break;
             }
             if let Some(action) = EditAction::from_keypress(kp) {
                 action.execute(&mut ed, &clipboard);
                 continue;
             }
             match apply_key(&mut ed, kp) {
-                KeyOutcome::Blur => cancelled = true,
+                KeyOutcome::Blur => {
+                    cancelled = true;
+                    stop_after(ui.keyboard_events(), i);
+                    break;
+                }
                 KeyOutcome::Vertical { up, extend } => {
                     resolve_vertical(&mut ed, ui, ctx, up, extend);
                 }
@@ -208,6 +213,22 @@ impl InputPass<'_> {
             edited: ed.edited(),
         }
     }
+}
+
+/// The field stops reading keys at a submit or a cancel: what follows
+/// belongs to whoever owns focus next. `InputQueue` already holds every
+/// key press after a command key for the next frame, so only repeats of
+/// that key can follow it here; the assert keeps a change to that rule
+/// from silently typing into a field that just let go.
+fn stop_after(events: &[KeyPress], terminal: usize) {
+    let key = events[terminal].key;
+    debug_assert!(
+        events[terminal + 1..]
+            .iter()
+            .all(|press| press.repeat && press.key == key),
+        "keys after a terminal {key:?} reached the field in its frame: {:?}",
+        &events[terminal + 1..],
+    );
 }
 
 pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {

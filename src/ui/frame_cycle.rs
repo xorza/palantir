@@ -212,6 +212,16 @@ impl<'a> FrameCycle<'a> {
 
         self.ui.frame_runtime.prev_stamp = Some(stamp);
 
+        // The frame boundary for input: events held because this frame
+        // already saw their kind change apply now, against the cascade
+        // this frame left, and become the next frame's input. Whatever
+        // input owes that frame — a replayed event, an eviction's release
+        // edge, events still waiting — asks for it here, since no host
+        // event will.
+        if self.ui.input.next_frame(&self.ui.cascade) {
+            self.ui.frame_runtime.repaint_requested = true;
+        }
+
         let report = FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested,
             repaint_after: self

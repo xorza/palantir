@@ -102,8 +102,11 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
 fn a_missed_release_does_not_settle_but_a_click_does() {
     // Release back on the press target: `ReleaseKind::Click`. Apps act on
     // this edge, so it keeps its settle.
+    // The press lands a frame before its release (`InputQueue`), so the
+    // release frame is the one measured.
     let (mut h, rect) = warm(button);
     h.press_at(rect.center());
+    h.frame(button);
     h.release();
     assert_eq!(passes(&mut h, button), 2, "a click settles");
 
@@ -119,6 +122,7 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
     );
     h.press_at(edge);
     h.move_to(off);
+    h.frame(button);
     h.release();
     assert_eq!(
         passes(&mut h, button),

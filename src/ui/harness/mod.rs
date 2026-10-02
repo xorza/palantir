@@ -118,6 +118,14 @@
 //!     both type. A case that needs several characters from one press,
 //!     or a character on an unnamed key, builds the event through
 //!     [`on_input`](UiHarness::on_input).
+//! 16. **One change of a kind per frame.** A second press or release
+//!     of one button, or a key press after the frame's command key,
+//!     waits for the next frame (`InputQueue`) — so `click_at` is a
+//!     press frame and then a release frame. [`UiHarness::frame`] and
+//!     every reader built on it run the frames held input owes before
+//!     their own, with the same closure, and answer from the last one:
+//!     `click_at` then `frame_value` reads the click. A test of the
+//!     spread itself steps one frame at a time with [`UiHarness::step`].
 //! 15. **Keyboard events are discarded at ingress when nothing is
 //!     focused.** `InputState::on_input` gates `KeyDown` on
 //!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
@@ -325,24 +333,47 @@ impl UiHarness {
 
     /// Run one frame and report what it did. The record closure runs
     /// once, twice, or not at all — see the module doc.
+    ///
+    /// First runs, with the same closure, every frame that input fed
+    /// before this call still owes — see rule 16. The report is the last
+    /// frame's.
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         self.frame_app(&mut RecordApp::new(record))
     }
 
-    /// Run one frame of a whole [`App`] — `update` once, then `record`
-    /// per pass — the way a host drives it.
+    /// Run frames of a whole [`App`] — `update` once, then `record` per
+    /// pass — the way a host drives it, delivering held input first like
+    /// [`Self::frame`].
     pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport {
+        self.deliver_held_input(app);
         self.drive(true, app)
+    }
+
+    /// Run the frames input fed before now still owes, each with `app`,
+    /// as a host does on the `repaint_requested` they report.
+    fn deliver_held_input(&mut self, app: &mut impl App) {
+        while self.ui.input.has_held_input() {
+            self.drive(true, app);
+        }
+    }
+
+    /// Exactly one host frame, delivering nothing held — for a test that
+    /// asserts on the frames input is spread over.
+    pub fn step(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
+        self.drive(true, &mut RecordApp::new(record))
     }
 
     /// Run one frame and keep what each record pass returned, warmup
     /// excluded. See [`Passes`] for which pass sees what.
     pub fn frame_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
+        self.deliver_held_input(&mut RecordApp::new(|ui: &mut Ui| {
+            record(ui);
+        }));
         // A cold recorder runs the input-blind warmup pass first; it is
         // not one of the passes a caller asks about.
         let mut warmup = self.ui.frame_runtime.prev_stamp.is_none();
         let mut values = Vec::new();
-        self.frame(|ui| {
+        self.step(|ui| {
             // `record` runs on *every* pass — it is the scene, and a pass
             // that skipped it would record an empty tree and wipe the
             // cascade the next frame reads.
@@ -706,9 +737,11 @@ impl UiHarness {
     /// The "actually changes" is read off `InputState`, not a mirror on
     /// this type. A mirror desyncs the moment one modifier goes through
     /// [`Self::on_input`] — and then this suppresses the very emit that
-    /// would have cleared it, leaving a chord silently held.
+    /// would have cleared it, leaving a chord silently held. It is read
+    /// *after held input*: a change still waiting in the queue (rule 16)
+    /// is one this harness already sent.
     pub fn set_modifiers(&mut self, mods: Modifiers) {
-        if self.ui.input.modifiers != mods {
+        if self.ui.input.modifiers_after_held_input() != mods {
             self.on_input(InputEvent::ModifiersChanged(mods));
         }
     }
