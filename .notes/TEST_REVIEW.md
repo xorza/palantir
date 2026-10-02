@@ -19,18 +19,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ---
 
-## 7. The visual suite's tolerance and capture lose information
-
-- [ ] `Tolerance` caps the share of differing pixels but not how far a pixel may differ (`golden/mod.rs:17-36`). The default lets 6 px of `spinner` and 2400 px of `dashboard_hidpi` be completely wrong. The goldens are local and from one adapter, so an unchanged tree diffs at zero. Use WPT-style `{ max_delta, max_pixels }`, default to exact, and require a derivation for each loosening. `format_change.rs:126-129` compares the same format on the same device at 1 %; make it exact.
-- [ ] `fixtures/text.rs:108-120` documents that it cannot catch the bug it is named for, and its row bands are hand constants. Assert unchanged bands bit for bit with `paint == Partial`, or delete it.
-- [ ] Golden bookkeeping: `golden/frame_filled_with_stroke.png` is an orphan, and `frame_filled_with_border` (`fixtures/widgets.rs:56`) has no golden here, so it fails now. Nothing reports orphans. `UPDATE_GOLDEN=1` rewrites passing goldens too (`golden/mod.rs:174-179`). A pass leaves an earlier failure's `output/<name>/` in place (`:197-200`). The adapter and driver are not recorded, so a driver update shows as many pixel diffs. Rewrite only missing or failing goldens, delete `output/<name>/` on pass, write an adapter sidecar and compare it on load, and report orphans.
-- [ ] Image comparison has four idioms (`Goldens::assert_matches`, `Tolerance{0,0}.diff`, `shadow.rs:41-63`, raw `==`), and only one writes artifacts. Add `golden::assert_same(label, actual, expected, tol, region)`.
-- [ ] 8 hand-rolled per-pixel probes use four bounds (±1, ±2, ±3, ±4); `fixtures.rs:39` `close` returns `bool` and its doc says one step but allows two. Add `assert_px(img, (x, y), want, tol)` with a named constant per derivation.
-- [ ] `widgets.rs:500-525` `rounded_clip_survives_surface_resize` discards both images. Assert the corner and centre pixels.
-- [ ] `fixtures/widgets.rs` (1226 lines) holds shape and gradient tests; move them to `gradient.rs` and a new `shapes.rs`. `showcase_gradients_tab_matches_golden` (`:192-296`) is a hand copy of the showcase page and already differs from it.
-- [ ] No golden renders `FrameFixture`, the one tree that covers every public widget. Add one at small scale. (judgement)
-- [ ] `damage.rs:26-35` `SAVE_DAMAGE_PNGS` is a second artifact channel beside `Goldens`.
-
 ## 8. The `internals` feature is on in every test build
 
 - [ ] The self dev-dependency (`Cargo.toml:101`, `features = ["internals"]`) merges `internals` into every test target. Seven comments say a plain `cargo test` is GPU-free, and that is false: `lib.rs:209-211`, `text/mod.rs:179-183`, `text/shaper.rs:469-473`, `gpu/icon/tests.rs:4-6`, `gpu/raster_atlas/tests.rs:258-259`, `gpu/text/tests.rs:7-9`, `gpu/text/mod.rs:162-165`. `text/cosmic/mod.rs:921-923` gives the wrong reason for its gate. Choose: accept GPU tests in every run and delete the claims, or add a dedicated `gpu-tests` feature that the dev-dependency does not request. Then the AGENTS.md test line's `--features internals` is redundant or needs a reason.

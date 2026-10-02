@@ -10,6 +10,7 @@ use glam::UVec2;
 use image::{Rgba, RgbaImage};
 use palantir::{Background, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
+use crate::goldens::assert_same;
 use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(200, 160);
@@ -31,17 +32,11 @@ fn block(ui: &mut Ui) {
 }
 
 /// How wide and how tall the painted region reaches, measured from the
-/// corner the block is flush against.
-///
-/// The tolerance absorbs the linear→sRGB round trip the pipeline makes of
-/// the clear colour, which lands the background a code point or two off
-/// the value that went in. It is far below the white block's own
-/// distance from it, so no edge pixel is miscounted either way.
-const BACKGROUND_TOLERANCE: u8 = 8;
-
+/// corner the block is flush against. `background` is read back from an
+/// empty render on the same pipeline, so it is the exact bytes an
+/// unpainted pixel holds.
 fn painted_extent(img: &RgbaImage, background: Rgba<u8>) -> UVec2 {
-    let painted =
-        |p: &Rgba<u8>| (0..3).any(|c| p.0[c].abs_diff(background.0[c]) > BACKGROUND_TOLERANCE);
+    let painted = |p: &Rgba<u8>| *p != background;
     let mut extent = UVec2::ZERO;
     for (x, y, pixel) in img.enumerate_pixels() {
         if painted(pixel) {
@@ -65,7 +60,7 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     h.host.ui().set_user_scale(UserScale::new(2.0));
     let user = h.scale(1.0).frame(block).image;
 
-    assert_eq!(system, user);
+    assert_same("user_scale_halves", &user, &system);
 }
 
 /// Scaling up paints up. The 40×24 logical block covers 40×24 physical

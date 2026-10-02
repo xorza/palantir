@@ -20,9 +20,9 @@ mod layout;
 mod occlusion;
 mod scroll;
 mod shadow;
+mod shapes;
 mod tabs;
 mod text;
-mod triangle;
 mod user_scale;
 mod widgets;
 
@@ -37,9 +37,27 @@ use crate::harness::FIXTURE_PALETTE;
 /// `RgbaF32::BLACK` instead.
 pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.window_bg;
 
-/// Pixel comparison shared by the exact-value fixtures: an sRGB round-trip
-/// through the f16 tint and the render target moves a channel by at most one
-/// step, so equality is "within two".
-pub(crate) fn close(a: [u8; 4], b: [u8; 4]) -> bool {
-    a.iter().zip(b).all(|(l, r)| l.abs_diff(r) <= 2)
+/// How far a probed channel may sit from the 8-bit value its fixture
+/// derived: a colour written as linear `f32`, carried as an `f16` tint and
+/// encoded into an 8-bit sRGB target lands within one step of its exact
+/// sRGB encoding. `f16`'s 11-bit significand resolves every linear value
+/// finer than the sRGB step that encodes it, so the only error left is
+/// the final rounding to 8 bits — half a step each way, one step between
+/// two values each rounded once.
+pub(crate) const SRGB_ROUND_TRIP: u8 = 1;
+
+/// Every channel of `got` is within `tol` of `want`, or a panic naming
+/// `what`, both pixels and the worst channel.
+#[track_caller]
+pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], tol: u8, what: impl std::fmt::Display) {
+    let worst = got
+        .iter()
+        .zip(want)
+        .map(|(g, w)| g.abs_diff(w))
+        .max()
+        .unwrap();
+    assert!(
+        worst <= tol,
+        "{what}: got {got:?}, want {want:?} — a channel is {worst} steps off, {tol} allowed",
+    );
 }

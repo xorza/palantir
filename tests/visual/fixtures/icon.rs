@@ -9,7 +9,7 @@ use palantir::widget::IconFit;
 use palantir::{Configure, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
 use std::rc::Rc;
 
-use crate::fixtures::close;
+use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
 
 /// Fills its whole 8x8 viewBox with one colour, so every covered pixel is
@@ -54,14 +54,13 @@ fn assert_pane_interior(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
     for dy in 1..19 {
         for dx in 1..19 {
             let (x, y) = (ox + dx, oy + dy);
-            let p = img.get_pixel(x, y).0;
-            for c in 0..3 {
-                assert!(
-                    p[c].abs_diff(expected[c]) <= 4,
-                    "({x},{y}) = {p:?} should be the tint {expected:?}",
-                );
-            }
-            assert_eq!(p[3], 255, "({x},{y}) must be opaque");
+            let [r, g, b] = expected;
+            assert_px(
+                img.get_pixel(x, y).0,
+                [r, g, b, 255],
+                SRGB_ROUND_TRIP,
+                format_args!("({x},{y}) is the tint, opaque"),
+            );
         }
     }
 }
@@ -74,10 +73,14 @@ fn assert_solid_pane(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {
         let (x, y) = (ox.wrapping_add_signed(dx), oy.wrapping_add_signed(dy));
-        assert!(
-            close(img.get_pixel(x, y).0, [0, 0, 0, 255]),
-            "({x},{y}) = {:?} must still be the clear colour",
+        assert_px(
             img.get_pixel(x, y).0,
+            [0, 0, 0, 255],
+            SRGB_ROUND_TRIP,
+            format_args!(
+                "({x},{y}) = {:?} must still be the clear colour",
+                img.get_pixel(x, y).0
+            ),
         );
     }
 }
@@ -171,16 +174,24 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
 
     // Pane spans x 8..40, so the seam is at x = 24. Sample well inside each
     // half to stay clear of the one-pixel edge the rasterizer antialiases.
-    assert!(
-        close(img.get_pixel(14, 16).0, LEFT),
-        "left half = {:?}, expected the authored red {LEFT:?} — a colour icon \
-         must not take the tint's RGB",
+    assert_px(
         img.get_pixel(14, 16).0,
+        LEFT,
+        SRGB_ROUND_TRIP,
+        format_args!(
+            "left half = {:?}, expected the authored red {LEFT:?} — a colour icon \
+         must not take the tint's RGB",
+            img.get_pixel(14, 16).0
+        ),
     );
-    assert!(
-        close(img.get_pixel(34, 16).0, RIGHT),
-        "right half = {:?}, expected the authored blue {RIGHT:?}",
+    assert_px(
         img.get_pixel(34, 16).0,
+        RIGHT,
+        SRGB_ROUND_TRIP,
+        format_args!(
+            "right half = {:?}, expected the authored blue {RIGHT:?}",
+            img.get_pixel(34, 16).0
+        ),
     );
 }
 
@@ -271,12 +282,12 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
             px[0] == px[1] && px[1] == px[2],
             "{label} half = {px:?} must be neutral grey after desaturation",
         );
-        assert!(
-            px[0].abs_diff(expected) <= 2,
-            "{label} half = {} but its luminance works out to {expected}",
-            px[0],
+        assert_px(
+            px,
+            [expected, expected, expected, 255],
+            SRGB_ROUND_TRIP,
+            format_args!("{label} half is its luminance, opaque"),
         );
-        assert_eq!(px[3], 255, "{label} half keeps its alpha");
     }
     // A flat channel average would put both at 117; the artwork's own colours
     // would leave them at LEFT / RIGHT. Neither is what luminance gives.
@@ -427,14 +438,16 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
                 });
         })
         .image;
-    assert!(
-        close(img.get_pixel(60, 340).0, LEFT),
-        "{:?}",
-        img.get_pixel(60, 340)
+    assert_px(
+        img.get_pixel(60, 340).0,
+        LEFT,
+        SRGB_ROUND_TRIP,
+        format_args!("{:?}", img.get_pixel(60, 340)),
     );
-    assert!(
-        close(img.get_pixel(620, 340).0, RIGHT),
-        "{:?}",
-        img.get_pixel(620, 340)
+    assert_px(
+        img.get_pixel(620, 340).0,
+        RIGHT,
+        SRGB_ROUND_TRIP,
+        format_args!("{:?}", img.get_pixel(620, 340)),
     );
 }

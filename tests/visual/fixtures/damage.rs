@@ -7,10 +7,8 @@
 //! colour for the pair on purpose: a clear colour that moves between
 //! frames is itself a full repaint (`FrameBaseline`), and a full repaint
 //! is the one classification these fixtures cannot observe anything
-//! through. With `SAVE_DAMAGE_PNGS=1` the second frame is written under
-//! `tests/visual/output/damage/<name>.png` for inspection.
-
-use std::path::Path;
+//! through. A failing test writes its second frame under
+//! `tests/visual/output/damage_<name>/`.
 
 use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
@@ -18,22 +16,12 @@ use palantir::{
     Background, Block, Button, Configure, DebugOverlayConfig, FramePaint, Panel, RgbaF32, Sizing,
 };
 
+use crate::goldens::{KeptOnFailure, assert_same};
 use crate::harness::Harness;
 
 /// Bright magenta — picked so non-painted pixels in the damage
 /// visualization image stand out against any plausible UI palette.
 const VIS_CLEAR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 1.0);
-
-fn save_debug(name: &str, img: &RgbaImage) {
-    if std::env::var_os("SAVE_DAMAGE_PNGS").is_none_or(|v| v.is_empty()) {
-        return;
-    }
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/visual/output/damage");
-    std::fs::create_dir_all(&dir).expect("mkdir output/damage");
-    let path = dir.join(format!("{name}.png"));
-    img.save(&path).expect("save damage png");
-    eprintln!("damage vis: wrote {}", path.display());
-}
 
 fn count_pixels(img: &RgbaImage, predicate: impl Fn(u8, u8, u8) -> bool) -> u32 {
     img.pixels()
@@ -204,7 +192,7 @@ fn static_scene_repeats_clean() {
         .frame(scene);
     assert_eq!(repeat.paint, FramePaint::Skip);
     let f2 = repeat.image;
-    save_debug("static_scene_repeats_clean", &f2);
+    let _kept = KeptOnFailure::new("damage_static_scene_repeats_clean", &f2);
 
     let painted = count_pixels(&f2, |r, g, b| !is_magenta(r, g, b));
     let total = size.x * size.y;
@@ -213,11 +201,9 @@ fn static_scene_repeats_clean() {
         "the scene covers the surface, so no pixel may read as the clear \
          colour. Got {painted}/{total} non-magenta pixels."
     );
-    assert!(
-        f2 == f1,
-        "a repeat frame must paint nothing: an undim-able pixel changed, so \
-         the frame took a paint path and the Skip didn't fire",
-    );
+    // A repeat frame paints nothing, so nothing dims: the target still
+    // holds frame 1.
+    assert_same("damage_static_repeat", &f2, &f1);
 }
 
 /// One small thing actually changes between frames: button label flips
@@ -245,7 +231,7 @@ fn single_button_change_repaints_partially() {
         .frame(button_scene("b", "b"));
     assert_eq!(changed.paint, FramePaint::Partial);
     let f2 = changed.image;
-    save_debug("single_button_change_repaints_partially", &f2);
+    let _kept = KeptOnFailure::new("damage_single_button_change_repaints_partially", &f2);
 
     let painted = count_pixels(&f2, |r, g, b| !is_magenta(r, g, b));
     assert_eq!(
@@ -273,7 +259,7 @@ fn damage_rect_overlay_strokes_dirty_region() {
         })
         .frame(button_scene("c", "b"))
         .image;
-    save_debug("damage_rect_overlay_strokes_dirty_region", &f2);
+    let _kept = KeptOnFailure::new("damage_rect_overlay_strokes_dirty_region", &f2);
 
     // The button's label width decides the damage rect's size, so that is
     // read back; its corner is the panel's 12 px padding.
@@ -327,7 +313,7 @@ fn corner_pair_change_keeps_center_unpainted() {
         })
         .frame(corner_pair_scene("b", "b"))
         .image;
-    save_debug("corner_pair_change_keeps_center_unpainted", &f2);
+    let _kept = KeptOnFailure::new("damage_corner_pair_change_keeps_center_unpainted", &f2);
 
     // (1) Centre 100×100 region (50..150) lies outside both corner
     // scissors. Multi-rect damage keeps it that way; a unioned Full
@@ -397,7 +383,7 @@ fn corner_pair_overlay_strokes_each_rect() {
         })
         .frame(corner_pair_scene("b", "b"))
         .image;
-    save_debug("corner_pair_overlay_strokes_each_rect", &f2);
+    let _kept = KeptOnFailure::new("damage_corner_pair_overlay_strokes_each_rect", &f2);
 
     // Each 20 px corner block is its own damage rect; their union would
     // be the whole surface. The top-left outline hangs a pixel off the
@@ -454,7 +440,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
         })
         .frame(sliver(true))
         .image;
-    save_debug("damage_rect_overlay_outlines_thin_sliver", &f2);
+    let _kept = KeptOnFailure::new("damage_rect_overlay_outlines_thin_sliver", &f2);
 
     // An outset outline of the 2 × 40 sliver: a 4 × 42 quad, solid red
     // since its 2 px stroke meets itself across the width. An inset wider

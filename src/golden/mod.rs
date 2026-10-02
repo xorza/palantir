@@ -165,10 +165,22 @@ impl Goldens {
     /// test in the suite, which is the one result this is here to prevent —
     /// and a first golden is exactly the image that most wants looking at
     /// before it becomes the thing everything else is judged against.
+    ///
+    /// With `UPDATE_GOLDEN` set, a missing or failing golden is rewritten
+    /// from `actual` and passes; a passing one is left as it is, so an
+    /// update run changes only what it has to. A pass clears whatever an
+    /// earlier failure left under `output/<name>/`.
     pub fn assert_matches(&self, name: &str, actual: &RgbaImage) {
-        let golden = self.golden_path(name);
         let forced = std::env::var_os(UPDATE).is_some_and(|value| !value.is_empty());
-        if forced || !golden.exists() {
+        self.check(name, actual, forced);
+    }
+
+    /// [`Self::assert_matches`] with the update flag passed in rather than
+    /// read from the environment, which a test cannot set for itself alone.
+    fn check(&self, name: &str, actual: &RgbaImage, forced: bool) {
+        let golden = self.golden_path(name);
+        let output = self.root.join("output").join(name);
+        if !golden.exists() {
             self.write(&golden, actual);
             if forced {
                 return;
@@ -182,20 +194,25 @@ impl Goldens {
         let expected = image::open(&golden)
             .unwrap_or_else(|error| panic!("read golden {}: {error}", golden.display()))
             .to_rgba8();
-        if actual.dimensions() != expected.dimensions() {
+        let report = (actual.dimensions() == expected.dimensions())
+            .then(|| self.tolerance.diff(actual, &expected));
+        if report.as_ref().is_some_and(DiffReport::passes) {
+            Self::clear_output(&output);
+            return;
+        }
+        if forced {
+            self.write(&golden, actual);
+            Self::clear_output(&output);
+            return;
+        }
+        let Some(report) = report else {
             panic!(
                 "`{name}` is {:?}, golden is {:?} — a golden is only meaningful at one size",
                 actual.dimensions(),
                 expected.dimensions()
             );
-        }
+        };
 
-        let report = self.tolerance.diff(actual, &expected);
-        if report.passes() {
-            return;
-        }
-
-        let output = self.root.join("output").join(name);
         std::fs::create_dir_all(&output).expect("create golden output directory");
         actual.save(output.join("actual.png")).expect("save actual");
         expected
@@ -220,6 +237,15 @@ impl Goldens {
             self.tolerance.max_ratio,
             output.display(),
         );
+    }
+
+    /// Remove a failure's artifacts, so `output/` names only what fails now.
+    fn clear_output(output: &Path) {
+        match std::fs::remove_dir_all(output) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("clear {}: {error}", output.display()),
+        }
     }
 
     fn write(&self, golden: &Path, actual: &RgbaImage) {

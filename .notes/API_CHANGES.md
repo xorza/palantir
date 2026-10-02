@@ -331,3 +331,29 @@ crate-internal ones are done.
 
 **Recommendation.** Make it `const`, and sweep the rest of the public surface for the same in
 one pass.
+
+## A25. Golden tolerance that bounds how far a pixel may differ
+
+**Findings.** TEST_REVIEW "The visual suite's tolerance and capture lose information":
+`golden::Tolerance { per_channel, max_ratio }` caps the share of pixels past `per_channel`, but not
+how far those pixels may move, so a loosened golden lets a few pixels be wholly wrong. Its
+`Default` (2 per channel, 0.1 %) hid stale goldens in this repo's own suite: switching the suite to
+exact comparison turned up five goldens 1–3 steps off on a large share of their pixels. The suite
+now compares exactly through its own wrapper (`tests/visual/goldens.rs`); the public type and its
+default are unchanged.
+
+**Recommendation.** The WPT fuzzy shape: `Tolerance { max_delta, max_pixels }` — at most
+`max_pixels` pixels may differ, and none by more than `max_delta` on any channel — with
+`Tolerance::EXACT` as the `Default`. A loosening then names two numbers a reader can derive. Touches
+`golden::Tolerance`, `DiffReport::passes`, `Goldens::tolerance` and any downstream suite.
+
+## A26. Golden bookkeeping a suite cannot do from outside
+
+**Findings.** TEST_REVIEW "The visual suite's tolerance and capture lose information": `Goldens`
+does not know which adapter wrote a golden, so a driver update reads as pixel diffs across the
+suite; and nothing reports a golden no test compares against any more.
+
+**Recommendation.** `Goldens::adapter(info)` writes an adapter sidecar beside the goldens and
+fails a comparison against a sidecar from another adapter with that reason instead of a pixel
+diff; `Goldens::orphans(names)` lists golden files not among `names`, for a suite to assert empty
+from one test that names them all. Touches `golden::Goldens`.

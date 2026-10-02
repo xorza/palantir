@@ -9,7 +9,7 @@ use palantir::{
     Configure, Image, ImageDownsample, ImageFilter, ImageFit, Panel, RgbaF32, Sizing, Ui,
 };
 
-use crate::fixtures::close;
+use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
 
 #[test]
@@ -47,9 +47,12 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
             for x in 0..4 {
                 // Sampling at texel centres only incurs the sRGB round trip.
                 let want = expected[(y * 2 + x % 2) as usize];
-                for (got, want) in out.get_pixel(x, y).0.into_iter().zip(want) {
-                    assert!(got.abs_diff(want) <= 1, "pixel ({x}, {y}): {got} != {want}");
-                }
+                assert_px(
+                    out.get_pixel(x, y).0,
+                    want,
+                    SRGB_ROUND_TRIP,
+                    format_args!("pixel ({x}, {y})"),
+                );
             }
         }
         clone.update(&image);
@@ -157,15 +160,32 @@ fn minification_and_magnification_filters_are_independent() {
     let px = |x: u32| magnified.get_pixel(x, 32).0;
 
     for (base, name) in [(0, "linear magnification"), (128, "nearest magnification")] {
-        assert!(close(px(base + 16), RED), "{name} left half must be RED");
-        assert!(
-            close(px(base + 112), BLUE),
-            "{name} right half must be BLUE"
+        assert_px(
+            px(base + 16),
+            RED,
+            SRGB_ROUND_TRIP,
+            format_args!("{name} left half must be RED"),
+        );
+        assert_px(
+            px(base + 112),
+            BLUE,
+            SRGB_ROUND_TRIP,
+            format_args!("{name} right half must be BLUE"),
         );
     }
 
-    assert!(close(px(128 + 63), RED), "nearest seam-left must be RED");
-    assert!(close(px(128 + 64), BLUE), "nearest seam-right must be BLUE");
+    assert_px(
+        px(128 + 63),
+        RED,
+        SRGB_ROUND_TRIP,
+        format_args!("nearest seam-left must be RED"),
+    );
+    assert_px(
+        px(128 + 64),
+        BLUE,
+        SRGB_ROUND_TRIP,
+        format_args!("nearest seam-right must be BLUE"),
+    );
     assert_blend(px(64), "linear magnification seam");
 
     let mut min_strip: Option<palantir::ImageHandle> = None;
@@ -209,9 +229,11 @@ fn minification_and_magnification_filters_are_independent() {
         .image;
 
     for x in 0..2 {
-        assert!(
-            close(minified.get_pixel(x, 8).0, BLUE),
-            "nearest minification pixel {x} must select BLUE",
+        assert_px(
+            minified.get_pixel(x, 8).0,
+            BLUE,
+            SRGB_ROUND_TRIP,
+            format_args!("nearest minification pixel {x} must select BLUE"),
         );
     }
     for x in 2..4 {
@@ -293,8 +315,18 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         .image;
 
     let px = |x: u32| strips.get_pixel(x, 16).0;
-    assert!(close(px(16), RED), "bilinear left clamp must be RED");
-    assert!(close(px(83), RED), "bilinear right clamp must be RED");
+    assert_px(
+        px(16),
+        RED,
+        SRGB_ROUND_TRIP,
+        format_args!("bilinear left clamp must be RED"),
+    );
+    assert_px(
+        px(83),
+        RED,
+        SRGB_ROUND_TRIP,
+        format_args!("bilinear right clamp must be RED"),
+    );
     assert_blend(px(32), "bilinear seam");
     for (x, expected, name) in [
         (32, RED, "both-nearest first seam-left"),
@@ -302,7 +334,12 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         (66, BLUE, "both-nearest second seam-left"),
         (67, RED, "both-nearest second seam-right"),
     ] {
-        assert!(close(px(100 + x), expected), "{name} must be {expected:?}");
+        assert_px(
+            px(100 + x),
+            expected,
+            SRGB_ROUND_TRIP,
+            format_args!("{name} must be {expected:?}"),
+        );
     }
 
     let mut tile: Option<palantir::ImageHandle> = None;
@@ -356,19 +393,34 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     // At 20 px per texel the sample points nearest the first seam are
     // x = 0 and x = 39, and both read a blend rather than the pure texel
     // a clamp would smear there.
-    assert!(
-        close(tpx(0), [176, 94, 170, 255]),
-        "tiled bilinear must open on the seam blend, got {:?}",
+    assert_px(
         tpx(0),
+        [176, 94, 170, 255],
+        SRGB_ROUND_TRIP,
+        format_args!(
+            "tiled bilinear must open on the seam blend, got {:?}",
+            tpx(0)
+        ),
     );
-    assert!(
-        close(tpx(39), [170, 97, 176, 255]),
-        "and close on it, got {:?}",
+    assert_px(
         tpx(39),
+        [170, 97, 176, 255],
+        SRGB_ROUND_TRIP,
+        format_args!("and close on it, got {:?}", tpx(39)),
     );
     // One tile is 40 px, so the same offsets a repeat later read the same.
-    assert!(close(tpx(40), tpx(0)), "the next repeat opens the same way");
-    assert!(close(tpx(79), tpx(39)), "and closes the same way");
+    assert_px(
+        tpx(40),
+        tpx(0),
+        SRGB_ROUND_TRIP,
+        format_args!("the next repeat opens the same way"),
+    );
+    assert_px(
+        tpx(79),
+        tpx(39),
+        SRGB_ROUND_TRIP,
+        format_args!("and closes the same way"),
+    );
     assert_blend(tpx(20), "tiled bilinear intra-tile seam");
 
     // Nearest picks a whole texel, so a seam is a step and the pure
@@ -379,19 +431,27 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         (40, RED, "wrap back"),
         (81, RED, "partial third repeat"),
     ] {
-        assert!(
-            close(tpx(100 + x), expected),
-            "tiled both-nearest {name} must be {expected:?}, got {:?}",
+        assert_px(
             tpx(100 + x),
+            expected,
+            SRGB_ROUND_TRIP,
+            format_args!(
+                "tiled both-nearest {name} must be {expected:?}, got {:?}",
+                tpx(100 + x)
+            ),
         );
     }
-    assert!(
-        close(tpx(100 + 19), RED),
-        "tiled nearest intra-tile seam-left must be RED"
+    assert_px(
+        tpx(100 + 19),
+        RED,
+        SRGB_ROUND_TRIP,
+        format_args!("tiled nearest intra-tile seam-left must be RED"),
     );
-    assert!(
-        close(tpx(100 + 20), BLUE),
-        "tiled nearest intra-tile seam-right must be BLUE"
+    assert_px(
+        tpx(100 + 20),
+        BLUE,
+        SRGB_ROUND_TRIP,
+        format_args!("tiled nearest intra-tile seam-right must be BLUE"),
     );
 }
 
@@ -481,9 +541,11 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
         // Mid-pane, away from the pane seams; every pixel in a pane covers an
         // identical `STAR SKY SKY` group, so the column choice is arbitrary.
         let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
-        assert!(
-            close(pixel, [*expected, *expected, *expected, 255]),
-            "{label} must read {expected} grey, got {pixel:?}",
+        assert_px(
+            pixel,
+            [*expected, *expected, *expected, 255],
+            SRGB_ROUND_TRIP,
+            format_args!("{label} must read {expected} grey, got {pixel:?}"),
         );
         assert_eq!(
             [pixel[0], pixel[1], pixel[2]],
@@ -593,9 +655,11 @@ fn downsample_combines_taps_in_premultiplied_space() {
 
     for (i, (_, _, expected, label)) in cases.iter().enumerate() {
         let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
-        assert!(
-            close(pixel, [*expected, *expected, *expected, 255]),
-            "{label} must read {expected} grey, got {pixel:?}",
+        assert_px(
+            pixel,
+            [*expected, *expected, *expected, 255],
+            SRGB_ROUND_TRIP,
+            format_args!("{label} must read {expected} grey, got {pixel:?}"),
         );
     }
 }
@@ -650,9 +714,11 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
         .image;
 
     let pixel = out.get_pixel(7, 8).0;
-    assert!(
-        close(pixel, [199, 0, 0, 255]),
-        "half-covered red must stay red at half coverage, got {pixel:?}",
+    assert_px(
+        pixel,
+        [199, 0, 0, 255],
+        SRGB_ROUND_TRIP,
+        format_args!("half-covered red must stay red at half coverage, got {pixel:?}"),
     );
 }
 
@@ -714,9 +780,11 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     // covers the pane — and a seam that clamped would break exactly that.
     for x in 0..8 {
         let pixel = out.get_pixel(x, 8).0;
-        assert!(
-            close(pixel, [137, 137, 137, 255]),
-            "tiled tap column {x} must read 137 grey, got {pixel:?}",
+        assert_px(
+            pixel,
+            [137, 137, 137, 255],
+            SRGB_ROUND_TRIP,
+            format_args!("tiled tap column {x} must read 137 grey, got {pixel:?}"),
         );
     }
 }
@@ -783,9 +851,11 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
         let expected = SOURCES[source];
         let x = pane as u32 * PANE as u32 + PANE as u32 / 2;
         let pixel = out.get_pixel(x, 16).0;
-        assert!(
-            close(pixel, expected),
-            "pane {pane} draws source {source}: expected {expected:?}, got {pixel:?}"
+        assert_px(
+            pixel,
+            expected,
+            SRGB_ROUND_TRIP,
+            format_args!("pane {pane} draws source {source}: expected {expected:?}, got {pixel:?}"),
         );
     }
 }
