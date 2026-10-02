@@ -261,12 +261,41 @@ fn an_authored_value_wins_over_the_theme_default() {
     assert_eq!(untouched.padding, Some(Spacing::all(9.0)), "theme fills in");
 }
 
-/// A themed lower bound is checked against an authored upper one, the
-/// way an authored lower bound is.
+/// A themed default never contradicts what the caller authored: a default
+/// minimum above an authored maximum is clamped to it, a default maximum
+/// below an authored minimum is raised to it, per axis. Two authored
+/// bounds that conflict still panic, and a NaN default still reaches the
+/// check rather than being clamped away.
 #[test]
-#[should_panic]
-fn a_themed_min_size_is_bound_checked_against_an_authored_max() {
-    let mut node = Node::new(NodeMode::Resolved(LayoutMode::Leaf));
-    node.set_max_size(Size::new(10.0, 10.0));
-    node.fill_min_size(Size::new(40.0, 40.0));
+fn themed_bounds_yield_to_authored_ones() {
+    let leaf = || Node::new(NodeMode::Resolved(LayoutMode::Leaf));
+
+    // Modal: stock min width 280 under an authored max of 240.
+    let mut node = leaf();
+    node.set_max_size(Size::new(240.0, 400.0));
+    node.fill_min_size(Size::new(280.0, 0.0));
+    assert_eq!(node.min_size, Some(Size::new(240.0, 0.0)));
+
+    // Tooltip: stock max 280×∞ under an authored min width of 300.
+    let mut node = leaf();
+    node.set_min_size(Size::new(300.0, 0.0));
+    node.fill_max_size(Size::new(280.0, f32::INFINITY));
+    assert_eq!(node.max_size, Some(Size::new(300.0, f32::INFINITY)));
+
+    // A default inside the authored bound is taken as it is.
+    let mut node = leaf();
+    node.set_max_size(Size::new(500.0, 500.0));
+    node.fill_min_size(Size::new(280.0, 10.0));
+    assert_eq!(node.min_size, Some(Size::new(280.0, 10.0)));
+
+    crate::common::panic_probe::assert_panics_with("node minimums must be finite", || {
+        let mut node = leaf();
+        node.set_max_size(Size::new(240.0, 400.0));
+        node.set_min_size(Size::new(280.0, 0.0));
+    });
+    crate::common::panic_probe::assert_panics_with("node minimums must be finite", || {
+        let mut node = leaf();
+        node.set_max_size(Size::new(240.0, 400.0));
+        node.fill_min_size(Size::new(f32::NAN, 0.0));
+    });
 }

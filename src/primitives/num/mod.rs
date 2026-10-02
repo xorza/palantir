@@ -165,10 +165,10 @@ pub(crate) trait F32Px {
     /// reason [`Self::fast_round`] exists, on the same per-quad scissor
     /// path.
     ///
-    /// Truncate, then bump when the truncation lost something. For a
-    /// non-negative coordinate below `2^24`, where a `u32` still
-    /// round-trips through `f32` exactly — every caller is a pixel
-    /// coordinate, and the debug assert is the guard.
+    /// Truncate, then bump when the truncation lost something. Exact for
+    /// every non-negative value: below `2^24` a `u32` round-trips through
+    /// `f32`, and from `2^24` up every `f32` is already whole, so the
+    /// truncation is the answer, saturating at `u32::MAX`.
     fn ceil_px(self) -> u32;
 
     /// `self` has no fractional part — equivalent to `x == x.round()`
@@ -241,8 +241,11 @@ impl F32Px for f32 {
 
     #[inline]
     fn ceil_px(self) -> u32 {
+        // Any magnitude: from 2^24 up every f32 is a whole number, so the
+        // truncation below is already the ceiling, saturating at
+        // `u32::MAX` past the range.
         debug_assert!(
-            (0.0..(1u32 << 24) as f32).contains(&self),
+            self >= 0.0,
             "ceil_px is for a non-negative pixel coordinate, got {self}",
         );
         let truncated = self as u32;

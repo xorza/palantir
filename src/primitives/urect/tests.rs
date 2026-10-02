@@ -137,6 +137,18 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
     );
     // Nothing finite, nothing covered.
     assert_eq!(URect::covering(Rect::NAN), URect::ZERO);
+    // A clip deep in a long list: physical max past 2^24, where every
+    // f32 is whole. 20_000_000 is exactly representable, and the row
+    // above it ends at 20_000_020.
+    assert_eq!(
+        URect::covering(Rect::new(10.0, 20_000_000.0, 100.0, 20.0)),
+        URect::from_min_max(UVec2::new(10, 20_000_000), UVec2::new(110, 20_000_020)),
+    );
+    // Past u32 the extent saturates rather than wrapping.
+    assert_eq!(
+        URect::covering(Rect::new(0.0, 0.0, 1.0e10, 1.0)).max().x,
+        u32::MAX,
+    );
 
     // `from_min_max` is `new`'s other spelling, and saturates where a float
     // rect would debug-assert.
