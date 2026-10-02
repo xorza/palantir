@@ -22,11 +22,11 @@ fn click_to_edit_types_and_commits_on_enter() {
     h.press_at(Vec2::new(50.0, 20.0));
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed, "the click itself commits nothing");
+    assert!(!s.a().committed, "the click itself commits nothing");
 
     // Editor frame: entry seeds the buffer from the value.
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed);
+    assert!(!s.a().committed);
     assert_eq!(edit_buffer(&mut h.ui, id), "5.0", "seeded on entry");
 
     // First keystroke replaces the select-all'd seed; second appends.
@@ -38,11 +38,14 @@ fn click_to_edit_types_and_commits_on_enter() {
 
     h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(s.committed && s.commits == 1, "Enter commits once");
+    assert!(
+        s.a().committed && s.count_where(|e| e.committed) == 1,
+        "Enter commits once"
+    );
     assert_eq!(canonical, 72.0);
 
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed, "commit is a one-frame edge");
+    assert!(!s.a().committed, "commit is a one-frame edge");
 }
 
 /// Escape ends the edit with the value it opened on and commits nothing.
@@ -63,7 +66,10 @@ fn escape_reverts_the_draft_without_a_commit() {
     h.key(Key::Escape);
     for _ in 0..2 {
         let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-        assert!(!s.changed && !s.committed && s.commits == 0, "{s:?}");
+        assert!(
+            !s.a().changed && !s.a().committed && s.count_where(|e| e.committed) == 0,
+            "{s:?}"
+        );
     }
     assert_eq!(canonical, 5.0);
     assert!(h.ui.focused_id().is_none(), "Escape blurs");
@@ -151,7 +157,10 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // now or later.
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed, "disarmed scrub must not commit into the edit");
+    assert!(
+        !s.a().committed,
+        "disarmed scrub must not commit into the edit"
+    );
 
     // A typed draft (hand-set: the still-held-then-released button placed
     // a caret, so simulated keystrokes wouldn't select-all-replace here;
@@ -161,11 +170,14 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     *edit_buffer(&mut h.ui, id) = "42".to_string();
     h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(s.committed && s.commits == 1);
+    assert!(s.a().committed && s.count_where(|e| e.committed) == 1);
     assert_eq!(canonical, 42.0, "typed value, not the stale scrub");
 
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed && !s.changed, "no residual scrub commit");
+    assert!(
+        !s.a().committed && !s.a().changed,
+        "no residual scrub commit"
+    );
     assert_eq!(canonical, 42.0);
 }
 
@@ -186,7 +198,7 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
         h.clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, true, false);
         assert!(
-            s.committed && !s.changed,
+            s.a().committed && !s.a().changed,
             "{bad:?}: commit reported, nothing written"
         );
         assert_eq!(canonical, 42.0, "{bad:?} must not land");
@@ -208,7 +220,7 @@ fn disabling_mid_edit_discards_the_draft() {
     // The widget is disabled while the user edits: focus is kicked, the
     // draft is discarded — a locked control must not emit an edit.
     let s = deferred_frame(&mut h, id, &mut canonical, true, true);
-    assert!(!s.committed, "locked control emits no commit");
+    assert!(!s.a().committed, "locked control emits no commit");
     assert_eq!(h.focused_id(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
@@ -218,7 +230,7 @@ fn disabling_mid_edit_discards_the_draft() {
 
     // Re-enabled later: no phantom replay of the stale "9".
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed && !s.changed);
+    assert!(!s.a().committed && !s.a().changed);
     assert_eq!(canonical, 5.0);
 }
 
@@ -241,7 +253,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     // Rendered read-only mid-edit: the pending draft is discarded.
     h.clear_focus();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.committed, "read-only frame commits nothing");
+    assert!(!s.a().committed, "read-only frame commits nothing");
     assert!(matches!(
         h.state::<DragValueState>(id),
         DragValueState::Idle
@@ -249,7 +261,10 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
 
     // Back to editable, focus elsewhere: nothing to replay.
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed && !s.changed, "no phantom commit of '999'");
+    assert!(
+        !s.a().committed && !s.a().changed,
+        "no phantom commit of '999'"
+    );
     assert_eq!(canonical, 5.0);
 }
 

@@ -445,7 +445,10 @@ struct Card {
     label: &'static str,
     pos: Vec2,
     anchor: Vec2,
-    clicked: bool,
+    /// Clicks seen across every pass of every frame — a count rather
+    /// than a flag, so a click reported by both passes of one frame
+    /// reads as the double fire it is.
+    clicks: u32,
 }
 
 impl Card {
@@ -454,7 +457,7 @@ impl Card {
             label,
             pos,
             anchor: pos,
-            clicked: false,
+            clicks: 0,
         }
     }
 
@@ -468,9 +471,8 @@ impl Card {
         self.fold(&r);
     }
 
-    // Idempotent across the multi-pass `Ui::frame` rebuild — pass 2
-    // would otherwise overwrite the click with `false` and miss the
-    // one-shot drag_started.
+    // Runs on every pass, as an app's handler does: pass B sees the
+    // edges drained, so it re-anchors nothing and clicks nothing.
     fn fold(&mut self, r: &Response) {
         if r.left.drag.started() {
             self.anchor = self.pos;
@@ -478,7 +480,7 @@ impl Card {
         if let Some(delta) = r.left.drag.delta() {
             self.pos = self.anchor + delta;
         }
-        self.clicked |= r.left.clicked();
+        self.clicks += u32::from(r.left.clicked());
     }
 }
 
@@ -510,7 +512,7 @@ fn sub_threshold_keeps_position_and_emits_click() {
         Vec2::new(50.0, 50.0),
         "sub-threshold leaves position"
     );
-    assert!(a.clicked, "sub-threshold gesture still fires click");
+    assert_eq!(a.clicks, 1, "sub-threshold gesture still fires one click");
 }
 
 #[test]
@@ -530,12 +532,12 @@ fn supra_threshold_moves_widget_and_suppresses_click() {
         Vec2::new(90.0, 50.0),
         "position = anchor + delta on latch frame"
     );
-    assert!(!a.clicked, "click does not fire mid-drag");
+    assert_eq!(a.clicks, 0, "click does not fire mid-drag");
 
     h.release();
     frame_with(&mut h, |ui| a.record(ui));
     assert_eq!(a.pos, Vec2::new(90.0, 50.0), "release re-grounds position");
-    assert!(!a.clicked, "drag suppresses release-click");
+    assert_eq!(a.clicks, 0, "drag suppresses release-click");
 }
 
 #[test]
@@ -586,20 +588,26 @@ fn drag_started_fires_only_on_latch_frame() {
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     let mut started = vec![];
 
+    // How many of the frame's passes saw the latch.
     let mut step = |h: &mut UiHarness, a: &mut Card| {
-        let mut latched = false;
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Panel::canvas()
-                    .id(WidgetId::from_hash("canvas"))
-                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+        let latches = h
+            .frame_passes(|ui| {
+                Panel::hstack()
+                    .auto_id()
                     .show(ui, |ui| {
-                        a.record(ui);
-                        latched |= ui.response_for(card_id("a")).left.drag.started();
-                    });
-            });
-        });
-        started.push(latched);
+                        Panel::canvas()
+                            .id(WidgetId::from_hash("canvas"))
+                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+                            .show(ui, |ui| {
+                                a.record(ui);
+                                ui.response_for(card_id("a")).left.drag.started()
+                            })
+                            .inner
+                    })
+                    .inner
+            })
+            .count_where(|&started| started);
+        started.push(latches);
     };
 
     step(&mut h, &mut a);
@@ -615,8 +623,8 @@ fn drag_started_fires_only_on_latch_frame() {
 
     assert_eq!(
         started,
-        vec![false, false, false, true, false],
-        "drag_started fires exactly on the latch frame"
+        vec![0, 0, 0, 1, 0],
+        "drag_started fires on the latch frame, in one pass"
     );
 }
 

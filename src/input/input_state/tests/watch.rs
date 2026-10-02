@@ -449,15 +449,11 @@ fn sample_pointer_layers(
     h: &mut UiHarness,
     mut record: impl FnMut(&mut Ui),
 ) -> [usize; Layer::COUNT] {
-    *h.frame_passes(|ui| {
+    h.frame_value(|ui| {
         record(ui);
-        let mut seen = [0usize; Layer::COUNT];
-        for layer in Layer::PAINT_ORDER {
-            seen[layer.idx()] = ui.input().pointer_events(layer).len();
-        }
-        seen
+        // `PAINT_ORDER[i]` is the layer whose `idx()` is `i`.
+        Layer::PAINT_ORDER.map(|layer| ui.input().pointer_events(layer).len())
     })
-    .a()
 }
 
 /// End-to-end, and the distinction an overlay's scope exists to draw: a

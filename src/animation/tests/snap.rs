@@ -8,6 +8,7 @@ use crate::animation::tests::support::{
 };
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use std::time::Duration;
@@ -165,55 +166,46 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
-    let first = h.frame(|ui| {
-        let current = ui.animate(id, SLOT, start.clone(), Some(AnimSpec::SPRING));
-        assert_eq!(current, start);
-        Block::new()
-            .id(WidgetId::from_hash("gradient-look-settle"))
-            .show(ui);
-    });
-    assert!(!first.repaint_requested);
-
-    let mut now = Duration::from_millis(16);
-    let retarget = h.at(now).frame(|ui| {
-        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
-        assert_eq!(current.background.fill, gradient);
-        assert_ne!(current.text.color, target.text.color);
-        Block::new()
-            .id(WidgetId::from_hash("gradient-look-settle"))
-            .show(ui);
-    });
-    assert!(retarget.repaint_requested);
-
-    let mut settled_at = None;
-    for frame in 0..600 {
-        now += Duration::from_millis(16);
-        let mut current = target.clone();
-        let output = h.at(now).frame(|ui| {
-            current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
-            assert_eq!(current.background.fill, gradient);
+    // Pass A's look, with the frame's report: the repaint request is
+    // what says whether the spring is still moving.
+    let frame = |h: &mut UiHarness, look: &AnimatedLook| {
+        h.frame_passes(|ui| {
+            let current = ui.animate(id, SLOT, look.clone(), Some(AnimSpec::SPRING));
             Block::new()
                 .id(WidgetId::from_hash("gradient-look-settle"))
                 .show(ui);
-        });
-        if !output.repaint_requested {
-            assert_eq!(current, target);
-            settled_at = Some(frame);
+            current
+        })
+    };
+
+    let first = frame(&mut h, &start);
+    assert_eq!(*first.a(), start);
+    assert!(!first.report().repaint_requested);
+
+    let mut now = Duration::from_millis(16);
+    let retarget = frame(h.at(now), &target);
+    assert_eq!(retarget.a().background.fill, gradient);
+    assert_ne!(retarget.a().text.color, target.text.color);
+    assert!(retarget.report().repaint_requested);
+
+    let mut settled_at = None;
+    for frame_index in 0..600 {
+        now += Duration::from_millis(16);
+        let output = frame(h.at(now), &target);
+        assert_eq!(output.a().background.fill, gradient);
+        if !output.report().repaint_requested {
+            assert_eq!(*output.a(), target);
+            settled_at = Some(frame_index);
             break;
         }
     }
     assert!(settled_at.is_some(), "the look's color spring must settle");
 
     now += Duration::from_millis(16);
-    let after_settle = h.at(now).frame(|ui| {
-        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
-        assert_eq!(current, target);
-        Block::new()
-            .id(WidgetId::from_hash("gradient-look-settle"))
-            .show(ui);
-    });
+    let after_settle = frame(h.at(now), &target);
+    assert_eq!(*after_settle.a(), target);
     assert!(
-        !after_settle.repaint_requested,
+        !after_settle.report().repaint_requested,
         "a settled look must not request a surplus repaint",
     );
 }

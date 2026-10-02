@@ -65,17 +65,19 @@ fn frame_with_sense_click_is_clickable() {
     });
     h.click_at(Vec2::new(50.0, 25.0));
 
-    let mut clicked = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            clicked |= Block::new()
-                .id(WidgetId::from_hash("hitbox"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
-                .sense(Sense::CLICK)
-                .show(ui)
-                .left
-                .clicked();
-        });
+    let clicked = h.frame_value(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("hitbox"))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
+                    .sense(Sense::CLICK)
+                    .show(ui)
+                    .left
+                    .clicked()
+            })
+            .inner
     });
     assert!(clicked);
 }

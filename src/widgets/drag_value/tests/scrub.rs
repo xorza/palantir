@@ -29,27 +29,34 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
     h.press_at(Vec2::new(50.0, 20.0));
     h.drag_to(Vec2::new(70.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.changed && !s.committed, "mid-drag: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "mid-drag: live write, no commit"
+    );
     assert_eq!(canonical, 10.0, "deferred caller ignores mid-drag writes");
 
     // 5px more: anchor math re-derives 10 + 25 = 35 even though the
     // caller re-seeded the stale 10 into the draft.
     h.drag_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.changed && !s.committed);
+    assert!(s.a().changed && !s.a().committed);
     assert_eq!(canonical, 10.0);
 
     // Release: exactly one commit (in exactly one record pass), carrying
     // the final scrubbed value into the stale-seeded draft.
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.committed, "release commits the scrub");
-    assert_eq!(s.commits, 1, "one commit, one record pass");
+    assert!(s.a().committed, "release commits the scrub");
+    assert_eq!(
+        s.count_where(|e| e.committed),
+        1,
+        "one commit, one record pass"
+    );
     assert_eq!(canonical, 35.0);
 
     // Idle frame after: no residual signals — one commit per gesture.
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.changed && !s.committed);
+    assert!(!s.a().changed && !s.a().committed);
     assert_eq!(canonical, 35.0);
 }
 
@@ -110,17 +117,20 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     // Pointer crosses the window edge: drag unobservable, but latched.
     h.pointer_left();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.committed, "window exit is not a release");
+    assert!(!s.a().committed, "window exit is not a release");
     assert_eq!(canonical, 10.0);
 
     // Re-enter with the button held and keep scrubbing: 10 + 25 = 35.
     h.move_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.changed && !s.committed, "resumed drag keeps writing");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "resumed drag keeps writing"
+    );
 
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.committed && s.commits == 1);
+    assert!(s.a().committed && s.count_where(|e| e.committed) == 1);
     assert_eq!(canonical, 35.0, "one gesture, one commit, full travel");
 }
 
@@ -137,18 +147,24 @@ fn transient_disable_does_not_swallow_the_gesture() {
 
     // One disabled frame mid-drag: no write, but the gesture survives.
     let s = deferred_frame(&mut h, id, &mut canonical, false, true);
-    assert!(!s.changed && !s.committed, "disabled frame writes nothing");
+    assert!(
+        !s.a().changed && !s.a().committed,
+        "disabled frame writes nothing"
+    );
 
     // Re-enabled with the button still held: one settle frame (the
     // cascaded disabled flag is one frame stale), then scrubbing resumes.
     deferred_frame(&mut h, id, &mut canonical, false, false);
     h.drag_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.changed, "scrub resumes after the disable blip");
+    assert!(s.a().changed, "scrub resumes after the disable blip");
 
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(s.committed && s.commits == 1, "release still commits");
+    assert!(
+        s.a().committed && s.count_where(|e| e.committed) == 1,
+        "release still commits"
+    );
     assert_eq!(canonical, 35.0);
 }
 
@@ -167,9 +183,9 @@ fn release_while_disabled_drops_the_gesture() {
     // the gesture is over — a later enabled frame must not revive it.
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, true);
-    assert!(!s.committed, "disabled release drops the gesture");
+    assert!(!s.a().committed, "disabled release drops the gesture");
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.committed && !s.changed);
+    assert!(!s.a().committed && !s.a().changed);
     assert_eq!(canonical, 10.0);
 }
 
@@ -223,11 +239,14 @@ fn non_left_drags_do_not_scrub() {
     h.press_button_at(PointerButton::Right, Vec2::new(50.0, 20.0));
     h.drag_to(Vec2::new(70.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.changed && !s.committed, "right drag must not scrub");
+    assert!(
+        !s.a().changed && !s.a().committed,
+        "right drag must not scrub"
+    );
 
     h.release_button(PointerButton::Right);
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.committed, "right release must not commit");
+    assert!(!s.a().committed, "right release must not commit");
     assert_eq!(canonical, 10.0);
 }
 

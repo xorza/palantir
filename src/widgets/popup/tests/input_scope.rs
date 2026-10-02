@@ -136,8 +136,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
         (ClickOutside::PassThrough, true),
     ] {
         let mut h = UiHarness::new(SURFACE);
-        let mut saw = false;
-        let mut scene = |ui: &mut Ui| {
+        let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -146,7 +145,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                     // than Esc: Esc is the dismiss key the popup itself
                     // consumes, so it could not tell "scope silenced Main"
                     // from "the popup handled it".
-                    saw |= ui.key_pressed(Shortcut::key(Key::F5));
+                    let saw = ui.key_pressed(Shortcut::key(Key::F5));
                     Popup::new(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)
@@ -156,11 +155,15 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                                 .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
                                 .show(ui, |_| {});
                         });
-                });
+                    saw
+                })
+                .inner
         };
-        h.frame(&mut scene);
+        h.frame(|ui| {
+            scene(ui);
+        });
         h.key(Key::F5);
-        h.frame(&mut scene);
+        let saw = h.frame_value(scene);
 
         assert_eq!(
             saw, main_reads_key,
@@ -236,12 +239,11 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         let field = WidgetId::from_hash("filter-field");
         let mut buf = String::new();
         let scene = |ui: &mut Ui, buf: &mut String| {
-            let mut dismissed = false;
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    let r = Popup::new(Anchor::at_point(ANCHOR))
+                    Popup::new(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("filter-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _handle| {
@@ -252,10 +254,10 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                                 edit
                             };
                             edit.show(ui);
-                        });
-                    dismissed |= r.dismissed;
-                });
-            dismissed
+                        })
+                        .dismissed
+                })
+                .inner
         };
 
         let mut h = UiHarness::new(SURFACE);

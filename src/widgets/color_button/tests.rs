@@ -60,15 +60,14 @@ fn opening_the_panel_is_not_an_edit() {
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
     let before = color;
-    let mut changed = false;
-    for _ in 0..2 {
-        h.frame(|ui| {
-            changed |= ColorButton::new(&mut color).id(id).show(ui).changed;
-        });
+    for round in 0..2 {
+        let changes = h
+            .frame_passes(|ui| ColorButton::new(&mut color).id(id).show(ui).changed)
+            .count_where(|&changed| changed);
+        assert_eq!(changes, 0, "round {round}");
         h.press_at(Vec2::new(10.0, 10.0));
         h.release();
     }
-    assert!(!changed);
     assert_eq!(color, before);
 }
 

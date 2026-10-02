@@ -1,38 +1,28 @@
 use crate::input::keyboard::key_text::KeyText;
 use crate::ui::harness::UiHarness;
+use crate::ui::harness::passes::Passes;
+use crate::widgets::text_edit::test_support::EditEdges;
 use crate::widgets::text_edit::tests::*;
-
-/// The edit signals off one `TextEdit::show`, snapshotted out (the response
-/// itself borrows `ui`, so it can't escape the frame closure).
-#[derive(Debug, Default, Clone, Copy)]
-struct Signals {
-    changed: bool,
-    submitted: bool,
-    gained: bool,
-    lost: bool,
-}
 
 const EDITOR: &str = "response-editor";
 
-/// Drive one frame and OR-accumulate the response signals across its record
-/// passes. `Ui::frame` re-records on relayout, and the second pass sees a
-/// drained input queue — the *buffer* survives (it's cross-frame state) but a
-/// per-frame edge signal would read `false` on the second pass, so combine them.
-fn frame(h: &mut UiHarness, buf: &mut String) -> Signals {
-    let mut out = Signals::default();
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let r = TextEdit::new(buf)
-                .id(WidgetId::from_hash(EDITOR))
-                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                .show(ui);
-            out.changed |= r.changed;
-            out.submitted |= r.submitted;
-            out.gained |= r.gained_focus;
-            out.lost |= r.lost_focus;
-        });
-    });
-    out
+/// Drive one frame and keep each record pass's edges. `Ui::frame`
+/// re-records on relayout, and the second pass sees a drained input
+/// queue — the *buffer* survives (it's cross-frame state), but a
+/// per-frame edge only shows in pass A.
+fn frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
+    h.frame_passes(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                TextEdit::new(buf)
+                    .id(WidgetId::from_hash(EDITOR))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                    .show(ui)
+                    .edges()
+            })
+            .inner
+    })
 }
 
 #[test]
@@ -41,11 +31,17 @@ fn reports_gained_focus_as_a_one_frame_edge() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    assert!(!frame(&mut h, &mut buf).gained, "unfocused: no gain");
-    h.set_focus(id);
-    assert!(frame(&mut h, &mut buf).gained, "took focus this frame");
     assert!(
-        !frame(&mut h, &mut buf).gained,
+        !frame(&mut h, &mut buf).a().gained_focus,
+        "unfocused: no gain"
+    );
+    h.set_focus(id);
+    assert!(
+        frame(&mut h, &mut buf).a().gained_focus,
+        "took focus this frame"
+    );
+    assert!(
+        !frame(&mut h, &mut buf).a().gained_focus,
         "gain clears after one frame"
     );
 }
@@ -61,7 +57,7 @@ fn reports_changed_on_edit_but_not_submit() {
     h.key(Key::Char('x'));
     let s = frame(&mut h, &mut buf);
     assert_eq!(buf, "x");
-    assert!(s.changed && !s.submitted, "an edit is not a submit");
+    assert!(s.a().changed && !s.a().submitted, "an edit is not a submit");
 }
 
 #[test]
@@ -74,8 +70,8 @@ fn reports_submitted_on_single_line_enter() {
     let _ = frame(&mut h, &mut buf); // settle focus
     h.key(Key::Enter);
     let s = frame(&mut h, &mut buf);
-    assert!(s.submitted, "single-line Enter submits");
-    assert!(!s.changed, "Enter inserts nothing in single-line");
+    assert!(s.a().submitted, "single-line Enter submits");
+    assert!(!s.a().changed, "Enter inserts nothing in single-line");
     assert_eq!(buf, "hi", "buffer untouched by the submit");
 }
 
@@ -88,7 +84,10 @@ fn reports_lost_focus_on_blur() {
     h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     h.clear_focus();
-    assert!(frame(&mut h, &mut buf).lost, "lost focus this frame");
+    assert!(
+        frame(&mut h, &mut buf).a().lost_focus,
+        "lost focus this frame"
+    );
 }
 
 #[test]
@@ -101,10 +100,13 @@ fn escape_reports_lost_focus_on_the_blur_frame() {
     let _ = frame(&mut h, &mut buf);
     h.key(Key::Escape);
     let escaped = frame(&mut h, &mut buf);
-    assert!(escaped.lost, "Escape reports the focus edge immediately");
+    assert!(
+        escaped.a().lost_focus,
+        "Escape reports the focus edge immediately"
+    );
     assert!(h.focused_id().is_none());
     assert!(
-        !frame(&mut h, &mut buf).lost,
+        !frame(&mut h, &mut buf).a().lost_focus,
         "the edge is not repeated next frame",
     );
 }
@@ -131,7 +133,7 @@ fn reports_changed_on_same_length_overwrite() {
     h.key(Key::Char('b'));
     let sig = frame(&mut h, &mut buf);
     assert_eq!(buf, "b", "overwrite replaced the selection");
-    assert!(sig.changed, "same-length overwrite reports changed");
+    assert!(sig.a().changed, "same-length overwrite reports changed");
 }
 
 /// Disabling a focused editor kicks focus out on the disable frame
@@ -140,20 +142,20 @@ fn reports_changed_on_same_length_overwrite() {
 /// routing typing into the host's buffer.
 #[test]
 fn disabling_a_focused_editor_blurs_and_drops_input() {
-    fn disabled_frame(h: &mut UiHarness, buf: &mut String) -> Signals {
-        let mut out = Signals::default();
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                let r = TextEdit::new(buf)
-                    .id(WidgetId::from_hash(EDITOR))
-                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                    .disabled(true)
-                    .show(ui);
-                out.changed |= r.changed;
-                out.lost |= r.lost_focus;
-            });
-        });
-        out
+    fn disabled_frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
+        h.frame_passes(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    TextEdit::new(buf)
+                        .id(WidgetId::from_hash(EDITOR))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                        .disabled(true)
+                        .show(ui)
+                        .edges()
+                })
+                .inner
+        })
     }
 
     let mut h = UiHarness::with_text(SMALL);
@@ -165,8 +167,8 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     h.key(Key::Char('x'));
     let sig = disabled_frame(&mut h, &mut buf);
     assert_eq!(buf, "", "typing into a disabled editor is dropped");
-    assert!(!sig.changed, "no change reported");
-    assert!(sig.lost, "disable frame reports lost_focus");
+    assert!(!sig.a().changed, "no change reported");
+    assert!(sig.a().lost_focus, "disable frame reports lost_focus");
     assert!(h.focused_id().is_none(), "focus was kicked out");
 }
 

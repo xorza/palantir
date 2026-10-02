@@ -75,35 +75,28 @@ fn the_backdrop_root_covers_the_whole_surface() {
 fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
     fn escape_dismisses(with_popup: bool) -> bool {
         const SURFACE: UVec2 = UVec2::new(400, 300);
-        let scene = |ui: &mut Ui, dismissed: &mut bool| {
+        let scene = |ui: &mut Ui| {
             if with_popup {
                 Popup::new(Anchor::at_point(Vec2::ZERO))
                     .id(WidgetId::from_hash("under-modal"))
                     .show(ui, |_ui, _handle| {});
             }
-            *dismissed |= Modal::new()
+            Modal::new()
                 .id(WidgetId::from_hash("modal-escape"))
                 .show(ui, |_, _| {})
-                .dismissed;
+                .dismissed
         };
 
         // Two frames: the keyboard wake-gate parks a press whose
         // shortcut nobody watched yet, so the first frame is what
         // registers the modal's interest in Escape and the press lands
         // after it.
-        //
-        // `|=` rather than `=` because a frame may record twice, and
-        // `post_record` drains the key queue between passes — so pass B
-        // sees no Escape and would overwrite pass A's result. Real
-        // callers have the same shape: they flip an `open` flag on
-        // dismissal rather than reading the last pass's return.
         let mut h = UiHarness::new(SURFACE);
-        let mut dismissed = false;
-        h.frame(|ui| scene(ui, &mut dismissed));
+        h.frame(|ui| {
+            scene(ui);
+        });
         h.key(Key::Escape);
-        let mut dismissed = false;
-        h.frame(|ui| scene(ui, &mut dismissed));
-        dismissed
+        h.frame_value(scene)
     }
 
     assert!(
@@ -168,16 +161,9 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
     // must reach it during the record, which is when widgets read.
     h.press_at(Vec2::new(20.0, 20.0));
     h.key(Key::Char('a'));
-    // `max`, not `=`: a frame may record twice and `post_record`
-    // drains the queues between passes, so pass B legitimately sees
-    // nothing and would overwrite pass A's reading. Same hazard the
-    // `|=` in `modal_hears_escape_…` guards against.
-    let mut pointer = 0;
-    let mut keyboard = 0;
-    h.frame(|ui| {
+    let [pointer, keyboard] = h.frame_value(|ui| {
         scene(ui, &mut open);
-        pointer = pointer.max(ui.pointer_events().len());
-        keyboard = keyboard.max(ui.keyboard_events().len());
+        [ui.pointer_events().len(), ui.keyboard_events().len()]
     });
     assert_eq!(pointer, 1, "the dismissed modal still held the pointer");
     assert_eq!(keyboard, 1, "the dismissed modal still held the keyboard");
@@ -192,27 +178,32 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
 #[test]
 fn escape_closes_only_the_topmost_overlay() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
-    let scene = |ui: &mut Ui, modal: &mut bool, popup: &mut bool| {
-        *popup |= Popup::new(Anchor::at_point(Vec2::ZERO))
+    #[derive(Debug)]
+    struct Closed {
+        popup: bool,
+        modal: bool,
+    }
+    let scene = |ui: &mut Ui| Closed {
+        popup: Popup::new(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
             .show(ui, |_ui, _handle| {})
-            .dismissed;
-        *modal |= Modal::new()
+            .dismissed,
+        modal: Modal::new()
             .id(WidgetId::from_hash("over-popup"))
             .show(ui, |_, _| {})
-            .dismissed;
+            .dismissed,
     };
 
     let mut h = UiHarness::new(SURFACE);
-    let (mut m, mut p) = (false, false);
-    h.frame(|ui| scene(ui, &mut m, &mut p));
+    h.frame(|ui| {
+        scene(ui);
+    });
     h.key(Key::Escape);
-    let (mut modal_closed, mut popup_closed) = (false, false);
-    h.frame(|ui| scene(ui, &mut modal_closed, &mut popup_closed));
+    let closed = h.frame_value(scene);
 
-    assert!(modal_closed, "the topmost overlay must take the Escape");
+    assert!(closed.modal, "the topmost overlay must take the Escape");
     assert!(
-        !popup_closed,
+        !closed.popup,
         "the popup beneath the modal must not also consume it",
     );
 }

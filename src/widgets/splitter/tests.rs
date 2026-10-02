@@ -7,12 +7,14 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
+use crate::ui::harness::passes::Passes;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::splitter::{Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
+use crate::widgets::value_response::test_support::ValueEdges;
 use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
 
@@ -22,35 +24,32 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
-/// What one [`frame_with`] frame recorded and reported.
-#[derive(Debug, Default)]
-struct Frame {
-    passes: usize,
-    changed: bool,
-    committed: bool,
-}
-
 /// One frame: a 401×100 horizontal splitter at the surface origin.
 /// Default theme reserves the 1 px rule, so the free span is 400 —
 /// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
 /// straddling it. Tests run two warm-up frames before interacting so
 /// the divider has arranged geometry for hit-testing.
 ///
-/// The signals are OR-ed across record passes: a frame with action input
-/// records twice, and a signal fires on the pass that saw the input.
-fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Frame {
-    let mut frame = Frame::default();
-    h.frame(|ui| {
-        let hit = Splitter::horizontal(ratio)
+/// One snapshot per record pass: a frame with action input records
+/// twice, and a signal fires on pass A, the one that saw the input.
+const QUIET: ValueEdges = ValueEdges {
+    changed: false,
+    committed: false,
+};
+const CHANGED: ValueEdges = ValueEdges {
+    changed: true,
+    committed: false,
+};
+
+fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Passes<ValueEdges> {
+    h.frame_passes(|ui| {
+        Splitter::horizontal(ratio)
             .id(split_id())
             .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
             .min_pane(50.0)
-            .show(ui, |_, _| {});
-        frame.passes += 1;
-        frame.changed |= hit.changed;
-        frame.committed |= hit.committed;
-    });
-    frame
+            .show(ui, |_, _| {})
+            .edges()
+    })
 }
 
 #[test]
@@ -70,22 +69,23 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         (ratio - 0.75).abs() < 1e-6,
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
-    assert!(
-        moved.changed && !moved.committed,
-        "a live drag changes the ratio and commits nothing: {moved:?}",
-    );
+    // Pass A lays the panes out at the pointer; the binding takes the
+    // arranged ratio on the next record, pass B of this same frame. One
+    // write, in one pass, and no commit.
+    assert_eq!(*moved.a(), QUIET, "{moved:?}");
+    assert_eq!(moved.b(), Some(&CHANGED), "{moved:?}");
 
     // A later drag movement records once. Layout follows the current
     // pointer immediately, while the caller still receives the prior
     // arranged ratio until the next record.
     h.drag_to(Vec2::new(999.0, 50.0));
     let held = frame_with(&mut h, &mut ratio);
-    assert_eq!(held.passes, 1);
+    assert_eq!(held.len(), 1);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
-    assert!(!held.changed, "the binding did not move this frame");
+    assert_eq!(*held.a(), QUIET, "the binding did not move this frame");
     let rect = h.layout_rect(split_id().with("first")).expect("arranged");
     assert!(
         (rect.size.w - 350.0).abs() < 0.5,
@@ -95,12 +95,12 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 
     h.drag_to(Vec2::new(998.0, 50.0));
     let caught_up = frame_with(&mut h, &mut ratio);
-    assert_eq!(caught_up.passes, 1);
+    assert_eq!(caught_up.len(), 1);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
         "the next record writes back the arranged 350/400 ratio, got {ratio}"
     );
-    assert!(caught_up.changed);
+    assert_eq!(*caught_up.a(), CHANGED);
 
     // Release ends the gesture and commits the ratio it holds; further
     // pointer motion leaves the ratio alone and commits nothing more.
@@ -111,12 +111,19 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         (ratio - 0.875).abs() < 1e-6,
         "ratio holds after release, got {ratio}"
     );
-    assert!(
-        released.committed && !released.changed,
-        "the release commits the held ratio: {released:?}",
+    // A release is action input, so the frame records twice; the
+    // commit is pass A's edge alone.
+    assert_eq!(
+        *released.a(),
+        ValueEdges {
+            changed: false,
+            committed: true
+        },
+        "the release commits the held ratio",
     );
+    assert_eq!(released.b(), Some(&QUIET));
     let after = frame_with(&mut h, &mut ratio);
-    assert!(!after.committed && !after.changed, "{after:?}");
+    assert_eq!((after.len(), *after.a()), (1, QUIET));
 
     // A double-click on the divider — its seam now at 350.5 — resets to
     // the centre. Layout takes 0.5 on the first pass, and the binding
@@ -134,14 +141,24 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     frame_with(&mut h, &mut ratio);
     h.release();
     let reset = frame_with(&mut h, &mut ratio);
-    assert_eq!(reset.passes, 2, "premise: a double-click records twice");
+    assert_eq!(reset.len(), 2, "premise: a double-click records twice");
     assert!(
         (ratio - 0.5).abs() < 1e-6,
         "the reset writes the centre, got {ratio}"
     );
-    assert!(reset.changed && reset.committed, "{reset:?}");
+    // The same sync as a drag, so the write and its commit land on
+    // pass B together.
+    assert_eq!(*reset.a(), QUIET, "{reset:?}");
+    assert_eq!(
+        reset.b(),
+        Some(&ValueEdges {
+            changed: true,
+            committed: true
+        }),
+        "{reset:?}"
+    );
     let settled = frame_with(&mut h, &mut ratio);
-    assert!(!settled.changed && !settled.committed, "{settled:?}");
+    assert_eq!((settled.len(), *settled.a()), (1, QUIET));
 }
 
 #[test]
