@@ -277,28 +277,12 @@ fn an_empty_driver_hugs_its_padding() {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| {
             let hug = (Sizing::HUG, Sizing::HUG);
-            match driver {
+            let panel = match driver {
                 Driver::Root => unreachable!("the root is not a container"),
-                Driver::Canvas => Panel::canvas()
-                    .id(id)
-                    .size(hug)
-                    .padding(5.0)
-                    .show(ui, |_| {}),
-                Driver::Stack => Panel::hstack()
-                    .id(id)
-                    .size(hug)
-                    .padding(5.0)
-                    .show(ui, |_| {}),
-                Driver::WrapStack => Panel::wrap_hstack()
-                    .id(id)
-                    .size(hug)
-                    .padding(5.0)
-                    .show(ui, |_| {}),
-                Driver::ZStack => Panel::zstack()
-                    .id(id)
-                    .size(hug)
-                    .padding(5.0)
-                    .show(ui, |_| {}),
+                Driver::Canvas => Panel::canvas(),
+                Driver::Stack => Panel::hstack(),
+                Driver::WrapStack => Panel::wrap_hstack(),
+                Driver::ZStack => Panel::zstack(),
                 Driver::Grid => {
                     Grid::new()
                         .id(id)
@@ -310,6 +294,7 @@ fn an_empty_driver_hugs_its_padding() {
                     return;
                 }
             };
+            panel.id(id).size(hug).padding(5.0).show(ui, |_| {});
         });
         assert_eq!(
             h.arranged(id),
