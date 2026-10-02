@@ -25,15 +25,8 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
     }
 }
 
+use crate::primitives::serde::test_support::{from_ron, ron_text};
 use crate::primitives::spacing::*;
-
-fn ser(v: Spacing) -> String {
-    ron::ser::to_string(&v).expect("serialize")
-}
-
-fn de(text: &str) -> Spacing {
-    ron::from_str(text).expect("parse")
-}
 
 #[test]
 fn struct_is_eight_bytes() {
@@ -111,7 +104,7 @@ fn serialize_picks_compact_form_per_symmetry() {
         ),
     ];
     for (label, s, want) in cases {
-        assert_eq!(ser(*s), *want, "case: {label}");
+        assert_eq!(ron_text(s), *want, "case: {label}");
     }
 }
 
@@ -129,14 +122,14 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
         ("one_element_array_uniform", "[4.0]", Spacing::all(4.0)),
     ];
     for (label, input, want) in cases {
-        assert_eq!(de(input), *want, "case: {label}");
+        assert_eq!(from_ron::<Spacing>(input), *want, "case: {label}");
     }
 }
 
 #[test]
 fn deserialize_struct_form() {
     let text = "(left: 1.0, top: 2.0, right: 3.0, bottom: 4.0)";
-    assert_eq!(de(text), Spacing::new(1.0, 2.0, 3.0, 4.0));
+    assert_eq!(from_ron::<Spacing>(text), Spacing::new(1.0, 2.0, 3.0, 4.0));
 }
 
 #[test]
@@ -146,8 +139,12 @@ fn serialize_then_parse_round_trips() {
         Spacing::xy(4.0, 8.0),
         Spacing::new(1.0, 2.0, 3.0, 4.0),
     ] {
-        let out = ser(s);
-        assert_eq!(de(&out), s, "round-trip failed for {s:?} -> {out}");
+        let out = ron_text(&s);
+        assert_eq!(
+            from_ron::<Spacing>(&out),
+            s,
+            "round-trip failed for {s:?} -> {out}"
+        );
     }
 }
 

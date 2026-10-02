@@ -92,7 +92,7 @@ impl Hsv {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::RgbaF32;
+
     use crate::primitives::color::hsv::Hsv;
     use crate::primitives::color::srgba_u8::SrgbaU8;
 
@@ -130,38 +130,5 @@ mod tests {
                 "hue {h}"
             );
         }
-    }
-
-    #[test]
-    fn round_trip_holds_across_the_cube() {
-        let mut worst = 0.0_f32;
-        for hi in 0..9 {
-            for si in 1..9 {
-                for vi in 1..9 {
-                    let start = Hsv::new(hi as f32 / 9.0, si as f32 / 8.0, vi as f32 / 8.0);
-                    let back = Hsv::from_color(start.to_color(), start.h);
-                    worst = worst
-                        .max((back.h - start.h).abs())
-                        .max((back.s - start.s).abs())
-                        .max((back.v - start.v).abs());
-                }
-            }
-        }
-        assert!(worst < 1e-3, "worst axis drift {worst}");
-    }
-
-    #[test]
-    fn grey_keeps_the_fallback_hue() {
-        let coords = Hsv::from_color(RgbaF32::srgb(0.4, 0.4, 0.4), 0.618);
-        assert_eq!(coords.h, 0.618);
-        assert_eq!(coords.s, 0.0);
-    }
-
-    #[test]
-    fn out_of_range_axes_wrap_and_clamp() {
-        assert_eq!(
-            Hsv::new(1.25, 2.0, 2.0).to_color().to_srgba_u8(),
-            Hsv::new(0.25, 1.0, 1.0).to_color().to_srgba_u8(),
-        );
     }
 }

@@ -254,4 +254,20 @@ pub(crate) mod checked {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+
+    /// `value` in RON, as a theme file spells it.
+    pub(crate) fn ron_text<T: Serialize>(value: &T) -> String {
+        ron::ser::to_string(value).expect("serialize")
+    }
+
+    /// `text` read as RON into a `T`.
+    pub(crate) fn from_ron<T: DeserializeOwned>(text: &str) -> T {
+        ron::from_str(text).expect("parse")
+    }
+}
+
+#[cfg(test)]
 mod tests;

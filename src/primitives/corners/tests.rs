@@ -1,13 +1,6 @@
 use crate::primitives::approx::EPS;
 use crate::primitives::corners::*;
-
-fn ser(v: Corners) -> String {
-    ron::ser::to_string(&v).expect("serialize")
-}
-
-fn de(text: &str) -> Corners {
-    ron::from_str(text).expect("parse")
-}
+use crate::primitives::serde::test_support::{from_ron, ron_text};
 
 #[test]
 fn struct_is_eight_bytes() {
@@ -217,7 +210,7 @@ fn serialize_picks_compact_form_per_symmetry() {
         ),
     ];
     for (label, c, want) in cases {
-        assert_eq!(ser(*c), *want, "case: {label}");
+        assert_eq!(ron_text(c), *want, "case: {label}");
     }
 }
 
@@ -239,14 +232,14 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
         ("one_element_array_uniform", "[4.0]", Corners::all(4.0)),
     ];
     for (label, input, want) in cases {
-        assert_eq!(de(input), *want, "case: {label}");
+        assert_eq!(from_ron::<Corners>(input), *want, "case: {label}");
     }
 }
 
 #[test]
 fn deserialize_struct_form() {
     let text = "(tl: 1.0, tr: 2.0, br: 3.0, bl: 4.0)";
-    assert_eq!(de(text), Corners::new(1.0, 2.0, 3.0, 4.0));
+    assert_eq!(from_ron::<Corners>(text), Corners::new(1.0, 2.0, 3.0, 4.0));
 }
 
 #[test]
@@ -256,7 +249,11 @@ fn serialize_then_parse_round_trips() {
         Corners::new(4.0, 4.0, 8.0, 8.0),
         Corners::new(1.0, 2.0, 3.0, 4.0),
     ] {
-        let s = ser(c);
-        assert_eq!(de(&s), c, "round-trip failed for {c:?} -> {s}");
+        let s = ron_text(&c);
+        assert_eq!(
+            from_ron::<Corners>(&s),
+            c,
+            "round-trip failed for {c:?} -> {s}"
+        );
     }
 }
