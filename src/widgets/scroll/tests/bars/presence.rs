@@ -6,10 +6,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::quad_shape::QuadShape;
-use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::node_id::NodeId;
-use crate::shape::rect::RectKind;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
@@ -164,7 +160,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
 
 #[test]
 fn no_bar_when_content_fits_viewport() {
-    let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -179,10 +175,9 @@ fn no_bar_when_content_fits_viewport() {
                     });
             });
     });
-    assert_eq!(
-        count_positioned(&ui.ui, node),
-        0,
-        "non-overflowing content should produce no bar shapes"
+    assert!(
+        thumb_rects(&ui.ui, "scroll").is_empty(),
+        "non-overflowing content should show no thumb"
     );
 }
 
@@ -254,22 +249,6 @@ fn both_axes_bars_dont_overlap_at_corner() {
          h.max.x={}, inner={inner}",
         h.max().x,
     );
-}
-
-fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-    ui.tree(Layer::Main)
-        .shapes_of(node)
-        .filter(|s| {
-            matches!(
-                s,
-                ShapeRecord::Quad(QuadShape::Rect {
-                    kind: RectKind::Rounded,
-                    local_rect: Some(_),
-                    ..
-                })
-            )
-        })
-        .count()
 }
 
 /// Every bar node's arranged rect, collapsed ones included.

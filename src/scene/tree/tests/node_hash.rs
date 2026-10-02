@@ -47,6 +47,29 @@ fn same_authoring_produces_same_hash() {
             .node()
     };
     assert_eq!(record_hash(build), record_hash(build));
+    // The hash is the root's own, so the change is to the root.
+    let padded = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .padding(4.0)
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(50.0)
+                    .background(Background {
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            })
+            .response
+            .node()
+    };
+    assert_ne!(
+        record_hash(build),
+        record_hash(padded),
+        "other authoring, other hash"
+    );
 }
 
 #[test]
@@ -74,6 +97,14 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         record_hash(|ui| build(ui, &noisy_points, color_a)),
     );
     assert_eq!(baseline, record_hash(|ui| build(ui, &base_points, color_b)),);
+    // The same comparison does see a move and a colour change it can show.
+    let moved = [Vec2::ZERO, Vec2::new(11.0, 0.0)];
+    assert_ne!(baseline, record_hash(|ui| build(ui, &moved, color_a)));
+    let recoloured = RgbaF32::new(0.6, 0.25, 0.75, 1.0);
+    assert_ne!(
+        baseline,
+        record_hash(|ui| build(ui, &base_points, recoloured))
+    );
 }
 
 #[test]

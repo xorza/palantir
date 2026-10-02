@@ -64,12 +64,7 @@ fn clamp_to_cases() {
         ),
     ];
     for (label, me, parent, want) in cases {
-        let got = me.clamp_to(*parent);
-        assert_eq!(got.size.x, want.size.x, "case: {label} w");
-        assert_eq!(got.size.y, want.size.y, "case: {label} h");
-        if got.size.x != 0 && got.size.y != 0 {
-            assert_eq!(got, *want, "case: {label}");
-        }
+        assert_eq!(me.clamp_to(*parent), *want, "case: {label}");
     }
 }
 

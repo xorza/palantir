@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(with_border.shadow, base.shadow);
 
         let with_shadow = base.clone().with_shadow(shadow);
-        assert_eq!(with_shadow.shadow.blur, 4.0);
+        assert_eq!(with_shadow.shadow, shadow);
         assert_eq!(with_shadow.fill, base.fill);
         assert_eq!(with_shadow.border, base.border);
         assert_eq!(with_shadow.corners, base.corners);

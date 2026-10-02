@@ -132,7 +132,8 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
         "the body recorded on the frame the click landed",
     );
 
-    h.advance_past_double_click(|ui| {
+    h.advance_past_double_click();
+    h.frame(|ui| {
         Expander::new("section").id(root()).show(ui, |_| {});
     });
     let at = h.center_of(header());
@@ -273,7 +274,8 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         record(ui);
     });
 
-    h.advance_past_double_click(|ui| {
+    h.advance_past_double_click();
+    h.frame(|ui| {
         record(ui);
     });
     let at = h.center_of(header());
@@ -402,7 +404,8 @@ fn a_settling_reveal_stores_the_whole_height() {
     });
     let tick = std::time::Duration::from_millis(16);
     let toggle = |h: &mut UiHarness, record: &mut dyn FnMut(&mut Ui) -> f32| {
-        h.advance_past_double_click(|ui| {
+        h.advance_past_double_click();
+        h.frame(|ui| {
             record(ui);
         });
         let at = h.center_of(header());

@@ -341,7 +341,8 @@ fn wheel_zoom_step_is_font_independent() {
     // The line→pan magnitude scales with font; the line→zoom step must
     // not — pin that so a future refactor that reintroduces a
     // font-scaled denominator on the zoom side fails loudly.
-    let mut last_zoom: Option<f32> = None;
+    // `ZoomConfig::default().step` is 1.03, and scrolling down zooms out.
+    let expected = 1.03_f32.powf(-1.0);
     for font_size in [12.0_f32, 16.0, 24.0] {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().text.font_size_px = font_size;
@@ -374,13 +375,12 @@ fn wheel_zoom_step_is_font_independent() {
 
         let scroll_id = WidgetId::from_hash("fz");
         let zoom = h.state::<ScrollState>(scroll_id).zoom;
-        if let Some(prev) = last_zoom {
-            assert!(
-                (zoom - prev).abs() < 1e-4,
-                "zoom step must be font-independent: prev {prev}, got {zoom} at font_size {font_size}",
-            );
-        }
-        last_zoom = Some(zoom);
+        // A tolerance for `powf`'s rounding only: a font-scaled step would
+        // miss by the font ratio, two orders of magnitude more.
+        assert!(
+            (zoom - expected).abs() < 1e-6,
+            "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}",
+        );
     }
 }
 

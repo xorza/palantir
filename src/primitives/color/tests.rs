@@ -43,15 +43,20 @@ fn ron_roundtrip(c: RgbaF32) -> (String, RgbaF32) {
     (s.clone(), ron::from_str(&s).expect("parse"))
 }
 
-/// Pin: serializing a RgbaF32 and re-serializing the parse converges
-/// to the same hex bytes for every (r, g, b) sRGB byte.
+/// Every sRGB byte serializes to its own hex digits and parses back to
+/// the colour it came from: the hex is the byte, and decoding the byte is
+/// the computation that made the colour.
 #[test]
-fn hex_round_trip_stable_over_all_bytes() {
+fn hex_round_trip_is_exact_over_all_bytes() {
     for byte in 0u8..=255 {
         let c = RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte));
-        let (s1, parsed) = ron_roundtrip(c);
-        let (s2, _) = ron_roundtrip(parsed);
-        assert_eq!(s1, s2, "byte {byte} did not round-trip stably");
+        let (s, parsed) = ron_roundtrip(c);
+        assert_eq!(
+            s,
+            format!("\"#{byte:02x}{byte:02x}{byte:02x}\""),
+            "byte {byte}"
+        );
+        assert_eq!(parsed, c, "byte {byte}");
     }
 }
 
@@ -76,10 +81,14 @@ fn opaque_emits_six_digits_translucent_emits_eight() {
 /// Edge cases: fully transparent, fully opaque white, opaque black.
 #[test]
 fn extremes_round_trip() {
-    for c in [RgbaF32::TRANSPARENT, RgbaF32::WHITE, RgbaF32::BLACK] {
-        let (s1, p) = ron_roundtrip(c);
-        let (s2, _) = ron_roundtrip(p);
-        assert_eq!(s1, s2);
+    for (c, hex) in [
+        (RgbaF32::TRANSPARENT, "#00000000"),
+        (RgbaF32::WHITE, "#ffffff"),
+        (RgbaF32::BLACK, "#000000"),
+    ] {
+        let (s, parsed) = ron_roundtrip(c);
+        assert_eq!(s, format!("\"{hex}\""), "{c:?}");
+        assert_eq!(parsed, c, "{c:?}");
     }
 }
 

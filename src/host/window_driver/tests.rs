@@ -101,11 +101,17 @@ mod present_mode_tests {
     fn direct_adaptive_promote_threshold_is_strict() {
         // Coverage at-or-below 0.4 stays on the backbuffer path (`>`, not `>=`);
         // just over promotes. 63×63 = 3_969 (0.3969) vs 64×64 = 4_096 (0.4096) —
-        // straddling the 0.4 line.
-        assert!(matches!(
-            present_path(partial(63.0, 63.0), DirectAdaptive, true),
-            ViaBackbuffer(_)
-        ));
+        // straddling the 0.4 line — and 40×100 = 4_000 sits on it exactly,
+        // as `0.4f32`, which only a strict compare keeps on the backbuffer.
+        for (w, h) in [(63.0, 63.0), (40.0, 100.0)] {
+            assert!(
+                matches!(
+                    present_path(partial(w, h), DirectAdaptive, true),
+                    ViaBackbuffer(_)
+                ),
+                "{w}×{h}",
+            );
+        }
         assert_eq!(
             present_path(partial(64.0, 64.0), DirectAdaptive, true),
             DIRECT_FULL
@@ -344,8 +350,8 @@ mod output_validity_tests {
             "paint stays pending until acquire and submit complete"
         );
 
+        // Stands in for the GPU submit, which sets it on completion.
         driver.output_valid = true;
-        assert!(driver.output_valid, "successful submit restores validity");
 
         let skip = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(matches!(skip.mode, PresentPath::SkipNoop));
@@ -361,8 +367,6 @@ mod output_validity_tests {
             !driver.output_valid,
             "SkipCopy stays pending until the copy is submitted"
         );
-        driver.output_valid = true;
-        assert!(driver.output_valid, "successful copy restores validity");
     }
 }
 

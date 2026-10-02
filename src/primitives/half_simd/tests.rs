@@ -144,8 +144,7 @@ fn to_f32_matches_scalar_reference_exhaustively() {
     for b in 0..=u16::MAX {
         let got = f16x4_to_f32x4([b; 4]).map(f32::to_bits);
         let want = f16::from_bits(b).to_f32().to_bits();
-        assert_eq!(got[0], want, "bits = {b:#06x}");
-        assert_eq!(got, [got[0]; 4], "lane divergence at {b:#06x}");
+        assert_eq!(got, [want; 4], "bits = {b:#06x}");
     }
 }
 

@@ -70,6 +70,11 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     );
     assert_eq!(v(&mut map), 0, "vec2 slots for `id` must drop");
     assert_eq!(c(&mut map), 0, "color slots for `id` must drop");
+
+    // A typed map its sweep drained goes with its last row (`Drained::Drop`),
+    // which is what lets `Ui::animate`'s empty fast path come back.
+    map.sweep_removed(&WidgetIdSet::from_iter([other]));
+    assert!(map.is_empty(), "every typed map drained, so none is kept");
 }
 
 /// `post_record` also evicts slots that were *not* poked this frame

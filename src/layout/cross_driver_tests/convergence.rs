@@ -102,15 +102,13 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         // cell absorb the squeeze instead. This is CSS Flexbox's
         // default "items at min-content stop shrinking, others
         // continue."
-        if outer_w >= 260 {
-            assert!(
-                right.size.w >= 204.0 - 0.5,
-                "outer_w={outer_w}: right cell shrunk below its 204 min-content floor; \
-                 left.w={} right.w={}",
-                left.size.w,
-                right.size.w,
-            );
-        }
+        assert!(
+            right.size.w >= 204.0 - 0.5,
+            "outer_w={outer_w}: right cell shrunk below its 204 min-content floor; \
+             left.w={} right.w={}",
+            left.size.w,
+            right.size.w,
+        );
         // And in all cases the row's children should be contained: no
         // sibling reaches past the HStack's right edge.
         let row_right_edge = row.min.x + row.size.w;
@@ -166,7 +164,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                     // produce different row counts (non-monotonic
                     // height-vs-width).
                     Panel::wrap_hstack()
-                        .auto_id()
+                        .id(WidgetId::from_hash("toolbar"))
                         .gap(6.0)
                         .line_gap(6.0)
                         .size((Sizing::FILL, Sizing::HUG))
@@ -215,5 +213,21 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                         });
                 });
         });
+        // Every button sits inside the toolbar it wrapped in, at every
+        // width — what a converged second pass promises. The toolbar
+        // itself can be wider than the window: the cells below it have a
+        // rigid floor of 536 px, and the root contains its content.
+        let toolbar = h
+            .layout_rect(WidgetId::from_hash("toolbar"))
+            .expect("the toolbar records");
+        for label in LABELS {
+            let button = h
+                .layout_rect(WidgetId::from_hash(*label))
+                .expect("every button records");
+            assert!(
+                toolbar.contains_rect(button),
+                "w={w}: {label} at {button:?} leaves the toolbar at {toolbar:?}",
+            );
+        }
     }
 }
