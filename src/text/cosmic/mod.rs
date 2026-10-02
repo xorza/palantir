@@ -385,9 +385,16 @@ impl CosmicMeasure {
             };
             names.extend(face.families.iter().map(|(name, _)| name.clone()));
         }
+        // `try_named`, because the names come from the file: a collection
+        // with enough distinct families to fill the name table is bad
+        // font data, which this reports as an error rather than a panic.
+        // A name that does not fit is skipped; when none fits, the load
+        // has nothing to hand back.
         let mut loaded = None;
         for name in &names {
-            loaded.get_or_insert(FontFamily::named(name));
+            if let Some(family) = FontFamily::try_named(name) {
+                loaded.get_or_insert(family);
+            }
         }
         let loaded = loaded.ok_or(FontLoadError::NoFaces)?;
 

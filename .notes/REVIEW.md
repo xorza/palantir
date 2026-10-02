@@ -4,11 +4,6 @@ Whoever addresses an item deletes it from this file. A group goes when its last 
 
 Groups run from the most severe to the least: panics on reachable input first, then wrong output, then per-frame cost, then design, docs and style. Items tagged **bug** were traced through the code. Items tagged **bug (plausible)** name the check that would confirm them.
 
-## Caller bounds collide with themed `default_*` bounds and panic
-- [ ] `src/widgets/modal/mod.rs:98` **bug**: `default_min_size(Size::new(theme.min_width, 0))` goes through `Node::set_min_size`, which asserts `min <= max`. `Modal::new().max_size((240.0, 400.0)).show(..)` panics, because the stock `modal.min_width` is 280.
-- [ ] `src/widgets/context_menu/mod.rs:175` **bug**: the same panic. `ContextMenu::attach(..).max_size((120.0, 300.0))` panics on the first open frame, since the stock `context_menu.min_width` is 160.
-- [ ] `src/widgets/tooltip/mod.rs:234` **bug**: the mirror case. `default_max_size(theme.max_size)` (stock 280×∞) goes through `set_max_size`, so `Tooltip::on(&r).min_size((300.0, 0.0))` panics the first frame the bubble becomes visible.
-
 ## Theme and preference file data reach asserts
 `F32Ext::themed_length` says theme scalars are hand-edited file data that "cannot assert". Most widgets screen them. These do not, and `SpinnerTheme`/`ToggleTheme`/… derive `Deserialize`:
 - [ ] `src/widgets/spinner/mod.rs:120` **bug**: `Duration::from_secs_f32(TAU / speed)` panics when `spinner.speed` is 0 (+inf), negative (a reverse spin) or NaN.
@@ -227,8 +222,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Release builds lack screens the primitive docs promise
 - [ ] `src/primitives/mesh/mod.rs:165,113,189` **bug (plausible)**: triangle indices are range-checked only by `debug_assert` in `triangle`, and not at all in `append` or `is_noop`. The module doc promises "index … screens that keep a malformed one from reaching the renderer". In release, an index ≥ vertex count reaches `draw_indexed` with `base_vertex` into the shared arena (`gpu/mesh_pipeline.rs:180`). It reads a neighbouring mesh's vertices and paints triangles outside the recorded bbox, which escapes culling and damage.
 - [ ] `src/primitives/rect/mod.rs:356,340` **bug (latent)**: `clamp_to` uses IEEE `max`/`min`, which drop a NaN operand. So `Rect::NAN.clamp_to(Rect::new(0,0,100,100))` returns `(0,0,100,100)`, and `Rect::NAN.intersect(b)` returns `Some(b)`. Callers: `scene/cascade/paint_rect.rs:44`, `damage/walk.rs:375`. Today only the upstream `Shapes::add` gate shields them.
-- [ ] `src/primitives/urect/mod.rs:90` **bug (plausible, debug-only panic)**: `covering` calls `ceil_px` on a finite max that is not clamped. `ceil_px` debug-asserts `< 2^24`, so `push_clip` (`composer/session.rs:209`) panics in debug on any clip rect whose physical max reaches 16,777,216. Example: a clipped child of a 1M-row × 20 px list. Release saturates correctly.
-- [ ] `src/text/cosmic/mod.rs:390` **bug (plausible)**: `load_font` interns names with the panicking `FontFamily::named`, not `try_named`. A font collection with enough distinct family names to fill the 65,536-entry table panics inside `Ui::load_font`, which is supposed to report bad font data as `Err`.
 
 ## Encoded text cache identity is coarser than the extraction input
 - [ ] `src/text/cosmic/mod.rs:661,687` vs `src/gpu/text/encode/mod.rs:85` **bug (plausible, minor)**: the `EncodedKey` stores only the subpixel bin of `row.origin`. Extraction bins each glyph from the exact `origin.x - left*scale + glyph.x*scale`. Two origins in the same bin can produce different per-glyph bins: fractions 0.13 and 0.37 are both bin One, and a glyph at +0.25 lands in bin One vs Two. The cached template from whichever origin came first is replayed for the other, so glyphs are off by up to 0.25 px depending on cache history.

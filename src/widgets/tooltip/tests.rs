@@ -612,3 +612,27 @@ fn when_disabled_reaches_a_disabled_trigger() {
         "and off by default it does not"
     );
 }
+
+/// The stock tooltip `max_size` (280 wide) is a default, so an authored
+/// `min_size` above it raises the bound instead of panicking.
+#[test]
+fn an_authored_min_above_the_themed_max_width_wins() {
+    let mut h = UiHarness::new(SURFACE);
+    let trigger_id = WidgetId::from_hash("wide-tip-trigger");
+    let snapshot = ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(Rect::new(20.0, 40.0, 40.0, 24.0)),
+            pointer_over: true,
+            ..ResponseState::default()
+        },
+    };
+    h.prime(2, |ui| {
+        Tooltip::on(&snapshot)
+            .label("wide")
+            .delay(Duration::ZERO)
+            .min_size((300.0, 0.0))
+            .show(ui);
+    });
+    assert!(h.state::<TooltipState>(trigger_id).visible);
+}

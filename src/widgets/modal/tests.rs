@@ -216,3 +216,26 @@ fn escape_closes_only_the_topmost_overlay() {
         "the popup beneath the modal must not also consume it",
     );
 }
+
+/// The stock `modal.min_width` (280) is a default, so an authored
+/// `max_size` below it wins instead of panicking: the panel arranges at
+/// the authored 240.
+#[test]
+fn an_authored_max_below_the_themed_min_width_wins() {
+    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let root_id = WidgetId::from_hash("narrow-modal");
+    assert!(
+        h.ui.theme().modal.min_width > 240.0,
+        "fixture: the stock floor is above 240"
+    );
+    h.prime(2, |ui| {
+        Modal::new()
+            .id(root_id)
+            .max_size((240.0, 400.0))
+            .show(ui, |_, _| {});
+    });
+    let panel = h
+        .layout_rect(root_id.with("panel"))
+        .expect("panel arranged");
+    assert_eq!(panel.size.w, 240.0);
+}
