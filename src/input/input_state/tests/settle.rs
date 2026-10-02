@@ -48,10 +48,9 @@ fn button_watching_buttons(ui: &mut Ui) {
 fn warm(record: fn(&mut Ui)) -> (UiHarness, Rect) {
     let mut h = UiHarness::new(SURFACE);
     h.frame(record);
-    let rect =
-        h.ui.response_for(button_id())
-            .rect
-            .expect("the button arranged on the warm frame");
+    let rect = h
+        .rect(button_id())
+        .expect("the button arranged on the warm frame");
     (h, rect)
 }
 

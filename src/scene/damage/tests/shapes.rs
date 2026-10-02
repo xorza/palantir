@@ -386,10 +386,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
             });
     });
 
-    let owner =
-        h.ui.response_for(owner_id)
-            .rect
-            .expect("the owner arranged");
+    let owner = h.rect(owner_id).expect("the owner arranged");
     let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
     let span = h.ui.cascade().layers[Layer::Main].paint_arena.node_spans[node_idx];
     // No background on the owner, so its one row is the polyline.

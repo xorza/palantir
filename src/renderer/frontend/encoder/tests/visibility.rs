@@ -81,12 +81,12 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     let v_id = WidgetId::from_hash("V");
     let v_screen = rect_with_fill(&drawn, v_color).expect("visible node should emit a rect quad");
-    let v_hit = h.ui.response_for(v_id).rect.expect("visible has hit rect");
+    let v_hit = h.rect(v_id).expect("visible has hit rect");
     assert_eq!(v_screen, v_hit, "encoder vs hit-index rect for V");
 
     let d_id = WidgetId::from_hash("D");
     let d_screen = rect_with_fill(&drawn, d_color).expect("disabled node should still paint");
-    let d_hit = h.ui.response_for(d_id).rect.expect("disabled has rect");
+    let d_hit = h.rect(d_id).expect("disabled has rect");
     assert_eq!(d_screen, d_hit, "encoder vs hit-index rect for D");
 
     let h_id = WidgetId::from_hash("H");
@@ -95,12 +95,12 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         None,
         "hidden node must not emit a rect quad"
     );
-    assert!(h.ui.response_for(h_id).rect.is_some());
+    assert!(h.rect(h_id).is_some());
 
     // A frame per gesture: one release slot per button, so three
     // uninterrupted gestures would leave only the last one to read, and
     // `D` absorbing its press is exactly what makes that visible.
-    let h_hit = h.ui.response_for(h_id).rect.unwrap();
+    let h_hit = h.rect(h_id).unwrap();
     for (target, expected, why) in [
         (v_hit, [true, false, false], "the visible widget clicks"),
         (

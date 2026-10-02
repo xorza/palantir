@@ -487,10 +487,7 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
             }
         });
         let scroll_id = WidgetId::from_hash(SCROLL);
-        let rect =
-            h.ui.response_for(scroll_id)
-                .rect
-                .expect("the scroll arranged");
+        let rect = h.rect(scroll_id).expect("the scroll arranged");
         assert_eq!(
             (rect.size.w, rect.size.h),
             (SLOT.w, SLOT.h),
