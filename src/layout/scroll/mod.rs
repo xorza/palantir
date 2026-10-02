@@ -62,7 +62,7 @@ impl LayoutDriver for Scroll {
     ///
     /// **A scroll's two content sizes differ in kind, so one rule can't serve
     /// both.** *Min*-content on a panned axis is zero: being able to shrink
-    /// below the content is what scrolling *is*, and `resolve_sizing` floors the
+    /// below the content is what scrolling *is*, and `AxisSlot::resolve` floors the
     /// viewport's own size with this, so anything larger pins a `Hug` scroll open
     /// at its content. *Max*-content is what the viewport would take given room
     /// — the content extent exactly when the author asked it to `fit`.
