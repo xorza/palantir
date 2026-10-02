@@ -1,12 +1,14 @@
 //! What the display scale and a transform do to what is drawn.
 
+use crate::primitives::rect::Rect;
 use crate::primitives::{
     color::RgbaF32, corners::Corners, size::Size, stroke::Stroke, translate_scale::TranslateScale,
     urect::URect,
 };
 use crate::renderer::frontend::composer::geometry::StrokeBbox;
+use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, draw, params, params_unsnapped, rect, run, text,
+    clip, draw, params, params_unsnapped, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -70,7 +72,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
     for case in cases {
         let actual = StrokeBbox {
             xform,
-            bbox: rect(10.0, 20.0, 20.0, 10.0),
+            bbox: Rect::new(10.0, 20.0, 20.0, 10.0),
             origin: Vec2::new(2.0, 4.0),
             width_phys: 4.0 * 1.5 * case.scale,
             cap: case.cap,
@@ -105,7 +107,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
         |b, _arena| {
             b.draw_quad(
                 DrawQuadPayload::rect(
-                    rect(10.0, 20.0, 30.0, 40.0),
+                    Rect::new(10.0, 20.0, 30.0, 40.0),
                     Corners::ZERO,
                     BrushSource::Solid(RgbaF32::WHITE.into()),
                     nan_stroke,
@@ -152,7 +154,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
         |b, _arena| {
             b.draw_quad(
                 DrawQuadPayload::rect(
-                    rect(10.0, 20.0, 30.0, 40.0),
+                    Rect::new(10.0, 20.0, 30.0, 40.0),
                     Corners::ZERO,
                     BrushSource::Solid(RgbaF32::TRANSPARENT.into()),
                     nan_stroke,
@@ -168,7 +170,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
 #[test]
 fn compose_scales_rects_for_dpr() {
     let buf = run(
-        |b, _arena| draw(b, rect(10.0, 20.0, 30.0, 40.0)),
+        |b, _arena| draw(b, Rect::new(10.0, 20.0, 30.0, 40.0)),
         &params(2.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
@@ -182,7 +184,7 @@ fn compose_translates_under_push_transform() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_translation(Vec2::new(100.0, 50.0)));
-            draw(b, rect(10.0, 20.0, 30.0, 40.0));
+            draw(b, Rect::new(10.0, 20.0, 30.0, 40.0));
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -198,15 +200,10 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            b.draw_quad(
-                DrawQuadPayload::rect(
-                    rect(0.0, 0.0, 50.0, 50.0),
-                    Corners::all(8.0),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5).into(),
-                ),
-                1.0,
-            );
+            QuadBuilder::new(Rect::new(0.0, 0.0, 50.0, 50.0))
+                .corners(Corners::all(8.0))
+                .stroke(Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5))
+                .draw(b);
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -226,7 +223,7 @@ fn compose_snaps_text_scale_to_discrete_steps() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(1.013));
-            text(b, rect(0.0, 0.0, 50.0, 20.0));
+            text(b, Rect::new(0.0, 0.0, 50.0, 20.0));
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -248,7 +245,7 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(1.013));
-            draw(b, rect(0.0, 0.0, 100.0, 50.0));
+            draw(b, Rect::new(0.0, 0.0, 100.0, 50.0));
             b.pop_transform();
         },
         // Unsnapped: the pixel snap rounds every quad's edges, zoomed or
@@ -274,7 +271,7 @@ fn compose_propagates_transform_scale_to_text_runs() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            text(b, rect(0.0, 0.0, 50.0, 20.0));
+            text(b, Rect::new(0.0, 0.0, 50.0, 20.0));
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -289,7 +286,7 @@ fn compose_composes_nested_transforms() {
         |b, _arena| {
             b.push_transform(TranslateScale::new(Vec2::new(3.0, 5.0), 2.0));
             b.push_transform(TranslateScale::new(Vec2::new(7.0, 11.0), 4.0));
-            draw(b, rect(-2.0, 3.0, 4.0, 5.0));
+            draw(b, Rect::new(-2.0, 3.0, 4.0, 5.0));
             b.pop_transform();
             b.pop_transform();
         },
@@ -305,8 +302,8 @@ fn compose_transforms_clip_rects_to_screen_space() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            clip(b, rect(10.0, 10.0, 20.0, 20.0));
-            draw(b, rect(15.0, 15.0, 5.0, 5.0));
+            clip(b, Rect::new(10.0, 10.0, 20.0, 20.0));
+            draw(b, Rect::new(15.0, 15.0, 5.0, 5.0));
             b.pop_clip();
             b.pop_transform();
         },
@@ -330,7 +327,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
 
     // 24 logical px at 1.5 → 36 physical, inside the exact band.
     let out = run(
-        |buf, _| icon(buf, rect(10.0, 20.0, 24.0, 24.0), icon_ref(3)),
+        |buf, _| icon(buf, Rect::new(10.0, 20.0, 24.0, 24.0), icon_ref(3)),
         &params(1.5, UVec2::new(200, 200)),
     );
     assert_eq!(out.icons.len(), 1, "one row per icon");
@@ -351,7 +348,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     // rounds the raster up to 76, and the quad is the box, 75 px at
     // (15, 15), the raster resampled into it.
     let out = run(
-        |buf, _| icon(buf, rect(10.0, 10.0, 50.0, 50.0), icon_ref(0)),
+        |buf, _| icon(buf, Rect::new(10.0, 10.0, 50.0, 50.0), icon_ref(0)),
         &params(1.5, UVec2::new(200, 200)),
     );
     assert_eq!(out.icons[0].key.size(), U16Vec2::new(76, 76));
@@ -361,7 +358,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     // 300 logical px at 2 → 600 physical, past the 512 cap: the raster is
     // 512, and the quad still fills the 600 px box at (20, 40).
     let out = run(
-        |buf, _| icon(buf, rect(10.0, 20.0, 300.0, 300.0), icon_ref(0)),
+        |buf, _| icon(buf, Rect::new(10.0, 20.0, 300.0, 300.0), icon_ref(0)),
         &params(2.0, UVec2::new(800, 800)),
     );
     assert_eq!(out.icons[0].key.size(), U16Vec2::new(512, 512));
@@ -377,8 +374,8 @@ fn icons_batch_together_and_respect_tier_order() {
 
     let out = run(
         |buf, _| {
-            icon(buf, rect(0.0, 0.0, 16.0, 16.0), icon_ref(0));
-            icon(buf, rect(20.0, 0.0, 16.0, 16.0), icon_ref(1));
+            icon(buf, Rect::new(0.0, 0.0, 16.0, 16.0), icon_ref(0));
+            icon(buf, Rect::new(20.0, 0.0, 16.0, 16.0), icon_ref(1));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -445,14 +442,17 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
     for (display, want) in [
         (
             params(1.5, UVec2::new(400, 400)),
-            rect(15.0, 16.0, 31.0, 8.0),
+            Rect::new(15.0, 16.0, 31.0, 8.0),
         ),
         (
             params_unsnapped(1.5, UVec2::new(400, 400)),
-            rect(15.375, 16.125, 30.75, 7.875),
+            Rect::new(15.375, 16.125, 30.75, 7.875),
         ),
     ] {
-        let buf = run(|b, _| draw(b, rect(10.25, 10.75, 20.5, 5.25)), &display);
+        let buf = run(
+            |b, _| draw(b, Rect::new(10.25, 10.75, 20.5, 5.25)),
+            &display,
+        );
         assert_eq!(buf.quads.len(), 1);
         assert_eq!(buf.quads[0].rect, want, "snap {}", display.pixel_snap);
     }

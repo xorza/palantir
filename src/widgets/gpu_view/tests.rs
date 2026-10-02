@@ -1,13 +1,13 @@
 use super::*;
 use crate::ui::harness::UiHarness;
 
-use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
+use crate::renderer::gpu_paint::gpu_paint_ref::test_support::NoopPaint;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
@@ -17,12 +17,6 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
-
-#[derive(Debug)]
-struct NoopPaint;
-impl GpuPaint for NoopPaint {
-    fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-}
 
 /// The renderer an application keeps and lends back every frame — one
 /// handle, because a fresh one is a fresh view and takes a target of its
