@@ -25,6 +25,14 @@ use syn::{Data, DataStruct, DeriveInput, Field, Fields, Ident, Type, parse_macro
 #[proc_macro_derive(Animatable, attributes(animate))]
 pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    expand(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// The `Animatable` impl for `input`, or the error the derive reports in
+/// its place.
+fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -34,12 +42,10 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
             ..
         }) => &named.named,
         _ => {
-            return syn::Error::new_spanned(
-                &input,
+            return Err(syn::Error::new_spanned(
+                input,
                 "Animatable can only be derived on structs with named fields",
-            )
-            .to_compile_error()
-            .into();
+            ));
         }
     };
 
@@ -49,11 +55,7 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         let Some(ident) = f.ident.as_ref() else {
             continue;
         };
-        let is_snap = match classify_field(f) {
-            Ok(b) => b,
-            Err(e) => return e.to_compile_error().into(),
-        };
-        if is_snap {
+        if classify_field(f)? {
             snap.push((ident, &f.ty));
         } else {
             anim.push((ident, &f.ty));
@@ -167,7 +169,7 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         }
     };
 
-    expanded.into()
+    Ok(expanded)
 }
 
 /// Returns `Ok(true)` if `#[animate(snap)]` (or `skip`) is set on the
@@ -190,4 +192,34 @@ fn classify_field(f: &Field) -> syn::Result<bool> {
         })?;
     }
     Ok(snap)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::expand;
+    use syn::{DeriveInput, parse_quote};
+
+    /// Each input the derive refuses, and the message it refuses with:
+    /// a shape with no named fields to walk, and an `#[animate(..)]`
+    /// option that is neither `snap` nor its alias `skip` — a typo there
+    /// would otherwise animate the field silently.
+    #[test]
+    fn refused_inputs_name_the_reason() {
+        let shape = "Animatable can only be derived on structs with named fields";
+        let option = "unknown #[animate(...)] option; expected `snap` or `skip`";
+        let cases: [(&str, DeriveInput, &str); 4] = [
+            ("enum", parse_quote! { enum E { A } }, shape),
+            ("tuple struct", parse_quote! { struct T(f32); }, shape),
+            ("unit struct", parse_quote! { struct U; }, shape),
+            (
+                "typo",
+                parse_quote! { struct S { #[animate(snip)] a: f32 } },
+                option,
+            ),
+        ];
+        for (label, input, message) in cases {
+            let error = expand(&input).expect_err(label);
+            assert_eq!(error.to_string(), message, "{label}");
+        }
+    }
 }

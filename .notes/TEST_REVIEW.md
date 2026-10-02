@@ -22,15 +22,3 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 ## 10. Two input doors, and input state mirrored outside `InputState`
 
 - [ ] 50 `Modifiers { ctrl: true, ..Modifiers::NONE }` literals. Add `Modifiers::CTRL` / `SHIFT` / `ALT`. **(API)**
-
-## 12. Renderer and GPU test rigs are hand-rolled per test
-
-- [ ] `RasterProgram::new(device)` is rebuilt in 13 GPU tests. One program on the shared device could serve them. (judgement)
-
-## 14. Missing coverage for computable logic
-
-- [ ] `anim-derive`'s two error arms (a non-struct input, an unknown `#[animate(..)]` option) have no `compile_fail` test. `trybuild` would cover them at a cost of seconds per run, past the 1 s test budget. (judgement)
-
-## 15. Duplicated fixtures and setup
-
-- [ ] Bare size pins outside `hot_struct_sizes.rs` `PINS`; `MeshVertex = 12` is pinned twice. (judgement)

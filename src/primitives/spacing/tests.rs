@@ -29,11 +29,6 @@ use crate::primitives::serde::test_support::{from_ron, ron_text};
 use crate::primitives::spacing::*;
 
 #[test]
-fn struct_is_eight_bytes() {
-    assert_eq!(std::mem::size_of::<Spacing>(), 8);
-}
-
-#[test]
 fn lanes_round_trip_integer_values_exactly() {
     let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
