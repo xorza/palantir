@@ -16,6 +16,7 @@ use crate::text::cosmic::cluster_glyph::{self, ClusterGlyph};
 use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
+use crate::text::font_scope::test_support::{ARABIC, HEBREW};
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;

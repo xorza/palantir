@@ -28,7 +28,7 @@ use crate::text::cosmic::cache_entry::CachedExtent;
 use crate::text::cosmic::cluster_glyph::{ClusterGlyph, fitting_prefix};
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{
-    ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
+    SegmentScratch, ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
 };
 use crate::text::cosmic::shaped_buffer_cache::{ShapedBufferCache, ShapedRun};
 use crate::text::error::FontLoadError;
@@ -300,9 +300,9 @@ pub(super) struct CosmicMeasure {
     /// into a retained buffer keeps that path free of `String` allocs,
     /// while the unbounded probe itself comes from `cache`.
     truncate_scratch: String,
-    /// Retained scratch for `collect_break_offsets`, so the unbounded
-    /// shape's segment scan allocates nothing per miss.
-    break_scratch: Vec<u32>,
+    /// Retained scratch for the unbounded shape's segment scan, so it
+    /// allocates nothing per miss.
+    break_scratch: SegmentScratch,
     /// Retained snapshot of the truncation probe's first layout run, in
     /// the run's own visual order — [`fitting_prefix`] is what sorts it
     /// logically, in place. Copied out of the cache once per miss so the
@@ -331,7 +331,7 @@ impl CosmicMeasure {
             cache: ShapedBufferCache::default(),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
-            break_scratch: Vec::new(),
+            break_scratch: SegmentScratch::default(),
             cut_glyphs: Vec::new(),
         }
     }

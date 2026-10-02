@@ -221,8 +221,8 @@ fn selection_rects_match_cosmic_highlight_spans() {
         let mut expected = Vec::new();
         m.probe_layout(case.text, params, |layout| {
             let buffer = layout.buffer_for_test().unwrap();
-            let start = probe::cursor_from_byte(case.text, case.range.start);
-            let end = probe::cursor_from_byte(case.text, case.range.end);
+            let start = probe::cursor_from_byte(buffer, case.text, case.range.start);
+            let end = probe::cursor_from_byte(buffer, case.text, case.range.end);
             for run in buffer.layout_runs() {
                 // Raw `highlight` marks any run whose line differs from both
                 // cursors as fully selected; cosmic's editor guards it with
@@ -279,27 +279,106 @@ fn selection_rects_match_cosmic_highlight_spans() {
     }
 }
 
+/// Byte offsets map to cosmic cursors through the shaped buffer's own
+/// lines, so every line ending cosmic splits at — `\n`, `\r`, `\r\n`,
+/// `\n\r` — starts a line where cosmic starts one. Each row is
+/// `(offset, line, index, back)`: the cursor an offset maps to, and the
+/// offset that cursor maps back to. An offset on line text round-trips;
+/// one inside a two-byte ending sits at its line's end; one past the text
+/// clamps to the text's end.
 #[test]
-fn cursor_byte_round_trip_multiline() {
-    // `cursor_from_byte` and `cursor_to_byte` must invert each other
-    // across line breaks. Offsets sampled at every byte position of a
-    // 3-line string with varying line lengths.
-    let text = "ab\ncde\nfg";
-    for off in 0..=text.len() {
-        let cur = probe::cursor_from_byte(text, off);
-        let back = probe::cursor_to_byte(text, cur);
-        assert_eq!(
-            back, off,
-            "round-trip failed at offset {off}, cursor={cur:?}"
-        );
+fn byte_offsets_map_through_cosmic_lines() {
+    let m = TextShaper::new();
+    // (offset, line, index, back)
+    type Row = (usize, usize, usize, usize);
+    let rows: &[(&str, &[Row])] = &[
+        (
+            "ab\ncde\nfg",
+            &[
+                (0, 0, 0, 0),
+                (2, 0, 2, 2),
+                (3, 1, 0, 3),
+                (6, 1, 3, 6),
+                (7, 2, 0, 7),
+                (9, 2, 2, 9),
+            ],
+        ),
+        ("ab\rcd", &[(2, 0, 2, 2), (3, 1, 0, 3), (5, 1, 2, 5)]),
+        (
+            "ab\r\ncd",
+            &[(2, 0, 2, 2), (3, 0, 2, 2), (4, 1, 0, 4), (6, 1, 2, 6)],
+        ),
+        (
+            "ab\n\rcd",
+            &[(2, 0, 2, 2), (3, 0, 2, 2), (4, 1, 0, 4), (6, 1, 2, 6)],
+        ),
+        (
+            "ab\ncd",
+            &[(6, 1, 2, 5), (99, 1, 2, 5), (usize::MAX, 1, 2, 5)],
+        ),
+    ];
+    for &(text, offsets) in rows {
+        m.probe_layout(text, ui_shape(16.0), |layout| {
+            let buffer = layout.buffer_for_test().unwrap();
+            for &(offset, line, index, back) in offsets {
+                let cursor = probe::cursor_from_byte(buffer, text, offset);
+                assert_eq!(
+                    (cursor.line, cursor.index),
+                    (line, index),
+                    "{text:?} at {offset}"
+                );
+                assert_eq!(
+                    probe::cursor_to_byte(buffer, text, cursor),
+                    back,
+                    "{text:?} at {offset}"
+                );
+            }
+        });
     }
-    // Line counts: offsets 0..=2 → line 0; 3..=6 → line 1; 7..=9 → line 2.
-    assert_eq!(probe::cursor_from_byte(text, 0).line, 0);
-    assert_eq!(probe::cursor_from_byte(text, 2).line, 0);
-    assert_eq!(probe::cursor_from_byte(text, 3).line, 1);
-    assert_eq!(probe::cursor_from_byte(text, 6).line, 1);
-    assert_eq!(probe::cursor_from_byte(text, 7).line, 2);
-    assert_eq!(probe::cursor_from_byte(text, 9).line, 2);
+}
+
+/// A truncated run shapes its kept prefix and the ellipsis, so a hit
+/// anywhere on it answers a byte of the source no later than the cut,
+/// on a char boundary: `"ééééé"` cut to `"é…"` answers 0 or 2, never the
+/// 3 that indexing the source with the shown text's offsets gave — inside
+/// the second `é`.
+#[test]
+fn a_truncated_run_hits_inside_its_kept_prefix() {
+    let m = TextShaper::new();
+    let text = "ééééé";
+    let font = ui_shape(16.0).font;
+    let width = m
+        .layout(&TextRun {
+            text: "é…",
+            font,
+            wrap: TextWrap::SingleLine,
+            align: Align::LEFT,
+            max_width_px: None,
+        })
+        .size()
+        .w;
+    let probe = m.layout(&TextRun {
+        text,
+        font,
+        wrap: TextWrap::Ellipsis,
+        align: Align::LEFT,
+        max_width_px: Some(width + 0.5),
+    });
+    assert!(probe.size().w <= width + 0.5, "premise: the run is cut");
+    let mut x = -2.0;
+    while x < width + 4.0 {
+        let byte = probe.byte_at(x, 5.0);
+        assert!(
+            text.is_char_boundary(byte) && byte <= 2,
+            "x {x}: byte {byte}"
+        );
+        x += 0.5;
+    }
+    assert_eq!(
+        probe.caret_at(8).x,
+        probe.caret_at(2).x,
+        "past the cut sits at the cut"
+    );
 }
 
 #[test]
@@ -383,9 +462,10 @@ fn cursor_xy_on_empty_line_respects_right_align() {
 #[test]
 fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
     // The RTL row is Arabic, which no bundled face covers, so this case
-    // needs the machine's fonts to shape anything but tofu — the one
-    // reason a text case asks for [`FontScope::System`].
-    let mut m = CosmicMeasure::new(FontScope::System);
+    // loads the Arabic test face to shape anything but tofu.
+    let mut m = CosmicMeasure::new(FontScope::Bundled);
+    m.load_font(ARABIC.into())
+        .expect("the Arabic test face loads");
     let wrap = 200.0;
     let bounded = |halign| ui_shape(16.0).width(wrap).halign(halign);
     for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {

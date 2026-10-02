@@ -311,10 +311,13 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     // *visual* order. In an RTL run the logically-first glyph sits at the
     // right edge and trailing edges descend, so a cut driven by `x + w`
     // stops at the first glyph and drops the whole run.
-    // Hebrew, which no bundled face covers: without the machine's fonts
-    // every glyph is the same tofu box and the prefix/suffix widths this
-    // case separates would be identical.
-    let mut c = CosmicMeasure::new(FontScope::System);
+    // Hebrew, which no bundled face covers: without a Hebrew face every
+    // glyph is the same tofu box and the prefix/suffix widths this case
+    // separates would be identical. The test face is loaded rather than
+    // the machine's fonts scanned, so a host with none still runs it.
+    let mut c = CosmicMeasure::new(FontScope::Bundled);
+    c.load_font(HEBREW.into())
+        .expect("the Hebrew test face loads");
     let unbounded = shape(16.0);
     let elide = |c: &mut CosmicMeasure, text: &str, width: f32| {
         measure_truncated(c, text, unbounded.width(width), LineFit::Ellipsis)
@@ -325,9 +328,8 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     // Three shin, among the widest Hebrew letters, then three vav, among the
     // narrowest — and neither takes a positional form, so a cut prefix
     // reshapes to the same advances it was measured with. Every budget below
-    // is measured off the same face rather than named, because a baked-in
-    // pixel count buys one letter on one platform's Hebrew face and two on
-    // another's.
+    // is measured off the face rather than named, so the case states what it
+    // needs of the face instead of one face's pixel counts.
     let rtl = "\u{5e9}\u{5e9}\u{5e9}\u{5d5}\u{5d5}\u{5d5}";
     let width_of = |c: &mut CosmicMeasure, text: &str| c.measure(text, unbounded).size.w;
     let marker_only = width_of(&mut c, "\u{2026}");
@@ -336,7 +338,7 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     let two_suffix = width_of(&mut c, "\u{5d5}\u{5d5}\u{2026}");
     let whole = width_of(&mut c, rtl);
 
-    // What the machine's face owes the case for either half below to prove
+    // What the face owes the case for either half below to prove
     // anything: room for a real cut, and two ends that measure apart.
     assert!(
         two_prefix < whole,

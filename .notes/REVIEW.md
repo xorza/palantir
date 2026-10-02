@@ -35,13 +35,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - Pressing an unselected chip flips it to 13 px while held, because `inactive.active` is `None`.
   - The close glyph resizes on hover.
 
-## TextProbe byte↔cursor mapping disagrees with what cosmic shaped
-- [ ] `src/text/probe/mod.rs:437,450` **bug**: `cursor_from_byte` and `cursor_to_byte` count only `\n`, but cosmic's `LineIter` also splits on lone `\r` and on `\n\r` (and treats `\r\n` as one ending).
-  - For `"ab\rcd"`: `caret_at(4)` maps to `Cursor{line 0, index 4}`, so the caret lands at the end of "ab" instead of after "c". A hit on line 1 index 1 returns `text.len()=5` instead of 4.
-  - For `"ab\n\rcd"`: hit `Cursor{1,1}` maps to byte 4 instead of 5.
-  - Reachable: multi-line `TextEdit` paste keeps `\r` (only the single-line mode sanitizes).
-- [ ] `src/text/shaper.rs:290` with `src/text/probe/mod.rs:293` **bug**: for a `Truncate`/`Ellipsis` run with a width it does not fit, `layout` resolves the bounded key, so the probe's buffer holds `prefix + "…"`. Every answer is still mapped through the full `run.text`. With `text="ééééé"` (10 bytes) truncated to `"é…"`, a click right of the marker gives cosmic index 5, and `cursor_to_byte` returns 5. That is inside the third `é` (bytes 4..6), so a caller's `text[..5]` panics. `caret_at` for any offset past the cut lands inside the "…" glyph. Reachable through the public `Ui::probe_text`.
-
 ## Clipboard folds "no text" into "unavailable"
 - [ ] `src/common/clipboard.rs:44,114` **bug**: `map_err(|_| ClipboardUnavailable)` treats arboard's `ContentNotAvailable` (empty clipboard, or non-text content) as an unavailable backend.
   - The documented contract "an empty clipboard answers `Ok("")`" (line 174) is false with the system backend.
@@ -68,9 +61,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/widgets/combo_box/mod.rs:185-191`, `color_button/mod.rs:116-122` **bug**: the open flag toggles only on `clicked()`, which is empty while disabled, and the popup is recorded whenever `open`. If the trigger becomes disabled while its list or picker is open, the popup stays open and live. Picking a row still writes `*selected`, and the picker still writes the colour. The popup sits in another layer, so the per-layer disabled cascade never reaches it.
 - [ ] `src/widgets/expander/mod.rs:178`, `color_picker/mod.rs:186` **bug**: the caller's `.disabled(true)` lands on the outer vstack. The interactive children read it only through the cascade, one frame late. On the first disabled frame a click or Space still toggles the Expander, and drags still write the colour. `Widget::response`'s own-flag fold exists to prevent this lag, but neither widget folds `authored_disabled()` into its children.
 
-## RTL wrap-floor scan reads segments in visual order
-- [ ] `src/text/cosmic/geometry.rs:117` **bug**: segment boundaries are detected by `g.start ∈ breaks`, i.e. at a segment's logical first glyph. In an RTL run that glyph is visited last, so each reset happens one glyph late. Two neighbouring words merge into one segment, with the space between them counted inside it. Example: `"אב גד"` with letters 10 px and the space 5 px. Visual order is ד(7) ג(5) ' '(4) ב(2) א(0), with the break at 5. The scan yields segments {ד}=10 and {ג+' '+ב+א}=35, so `intrinsic_min=35` instead of 20. `WrapWithOverflow` min-content and target width are inflated for RTL text. No RTL case exists in the wrap-floor tests.
-
 ## ColorPicker history fills with non-picks
 - [ ] `src/widgets/color_field/mod.rs:126`, `color_strip/mod.rs:138` → `color_picker/mod.rs:381` **bug**: every keyboard nudge sets `committed`, and `apply` pushes on every commit. 16 ArrowRight presses (or a held key) evict all 16 presets with near-identical shades, against the dedupe rationale in `History::push`.
 - [ ] `src/widgets/color_picker/mod.rs:451-456` **bug (plausible)**: hex `lost_focus` with an unchanged, valid buffer still commits. Tabbing through the hex field reorders history and reports `committed`.
@@ -91,9 +81,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 ## Frame-start snapshots read outside the pass that took them
 - [ ] `src/input/input_state/mod.rs:855` against `app.rs:13` **bug (plausible)**: `frame_quiescent` is re-snapshotted only in `pre_record`, but `App::update` (documented as exposing "the current frame's ... unsuppressed input") runs before that. Scenario: the last pass ran with the pointer off-surface, then the pointer enters onto a button and clicks before any frame runs. In `update`, `ui.response_for(id).clicked()` returns false (stale snapshot), while `ui.pointer_actions()` reports the click.
 - [ ] `src/ui/frame_cycle.rs:233-241` **bug (plausible)**: warmup runs record against a scratch `InputState`. It keeps state rows, animations, wakes and window commands, but discards `set_focus` / `clear_focus` / `release_input_scope`. An app that does a one-shot first-frame `ui.set_focus(id)` from `record` loses it, and `update` cannot do it instead because it gets `&Ui`.
-
-## Encoded text cache identity is coarser than the extraction input
-- [ ] `src/text/cosmic/mod.rs:661,687` vs `src/gpu/text/encode/mod.rs:85` **bug (plausible, minor)**: the `EncodedKey` stores only the subpixel bin of `row.origin`. Extraction bins each glyph from the exact `origin.x - left*scale + glyph.x*scale`. Two origins in the same bin can produce different per-glyph bins: fractions 0.13 and 0.37 are both bin One, and a glyph at +0.25 lands in bin One vs Two. The cached template from whichever origin came first is replayed for the other, so glyphs are off by up to 0.25 px depending on cache history.
 
 ## `IconId` is u16 but icon sets are unbounded
 - [ ] `src/icons/icon_set.rs:165` with `icon_table.rs:283` **bug (low)**: `from_svgs` accepts any number of sources, but `by_name` mints `IconId(i as u16)`. In a 70 000-icon set, the name at index 65 540 silently resolves to icon 4. The `gpu/icon` prewarm has the same truncation.

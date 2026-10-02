@@ -4,7 +4,6 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::probe::{cursor_from_byte, cursor_to_byte};
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
@@ -183,44 +182,6 @@ fn an_unusable_face_probes_to_nothing() {
             probe.caret_at(3).x,
             0.0,
             "{label} must put every caret at the origin",
-        );
-    }
-}
-
-/// Byte offset → cosmic cursor, hand-computed over `"ab\ncd"`: the two
-/// lines start at bytes 0 and 3, so byte 4 is line 1, index 1.
-///
-/// The out-of-range case is the one this exists for. `caret_at` and
-/// `selection_rects` are documented as clamped and take offsets from a
-/// caller's own arithmetic, so the clamp has to bind before `line` and
-/// `index` are derived — clamping only the prefix counts lines against a
-/// shorter string and then measures `index` from the raw offset, which
-/// puts the cursor past the end of the line it landed on.
-#[test]
-fn a_byte_offset_maps_to_its_line_and_clamps_to_the_text() {
-    const TEXT: &str = "ab\ncd";
-    let cases: &[(usize, usize, usize)] = &[
-        (0, 0, 0),
-        (2, 0, 2),
-        (3, 1, 0),
-        (4, 1, 1),
-        (5, 1, 2),
-        // Past the end answers the end, not byte 99 of line 1.
-        (6, 1, 2),
-        (99, 1, 2),
-        (usize::MAX, 1, 2),
-    ];
-    for &(byte_offset, line, index) in cases {
-        let cursor = cursor_from_byte(TEXT, byte_offset);
-        assert_eq!(
-            (cursor.line, cursor.index),
-            (line, index),
-            "byte {byte_offset}"
-        );
-        assert_eq!(
-            cursor_to_byte(TEXT, cursor),
-            byte_offset.min(TEXT.len()),
-            "byte {byte_offset} must round-trip to its clamped self",
         );
     }
 }
