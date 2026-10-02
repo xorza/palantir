@@ -94,12 +94,10 @@
 //!     `dpr = 1.0` they coincide, which is why a DPI test can look right
 //!     and not be.
 //! 11. **Mono vs. real text.** [`UiHarness::new`] uses the mono fallback
-//!     shaper; [`UiHarness::with_text`] uses cosmic with bundled Inter +
-//!     JetBrains Mono. Anything whose width follows its label measures
-//!     wrong under mono. But real shaping is *not* pixel-identical
-//!     across machines — `FontSystem::new_with_fonts` also loads
-//!     platform fonts as fallback — so assert relations, not exact
-//!     widths.
+//!     shaper; [`UiHarness::with_text`] shapes with the four bundled faces
+//!     (`FontScope::Bundled`) and nothing from the machine, so its metrics
+//!     are the same everywhere and a test may pin exact widths. Anything
+//!     whose width follows its label measures wrong under mono.
 //! 12. **Scroll and pinch route to the widget under the pointer at
 //!     event time.** They carry no position of their own; `InputState`
 //!     resolves them against the last `PointerMoved`. Hence each comes
@@ -253,15 +251,19 @@ impl UiHarness {
         Self::from_resources(UiResources::isolated_mono(), surface)
     }
 
-    /// Real cosmic shaping, over a thread-local shared shaper. Use when
-    /// anything under test sizes to its text. Metrics are not identical
-    /// across machines — the bundled faces are joined by platform fonts
-    /// as fallback — so assert relations, not exact widths.
+    /// Real cosmic shaping over the bundled faces, through a shaper of
+    /// this harness's own. Use when anything under test sizes to its text.
+    /// The bundled faces are all it sees, so metrics are identical on every
+    /// machine and exact widths are fair to assert.
     pub fn with_text(surface: UVec2) -> Self {
-        thread_local! {
-            static SHARED: TextShaper = TextShaper::new();
-        }
-        Self::over_shaper(SHARED.with(Clone::clone), surface)
+        Self::from_resources(
+            UiResources::new(
+                TextShaper::new(),
+                Clipboard::memory(),
+                TextureLimit::default(),
+            ),
+            surface,
+        )
     }
 
     /// A harness that is never framed — its [`Self::ui`] is a
@@ -922,8 +924,9 @@ impl UiHarness {
 /// The in-crate rung: tree, encoder, damage, and the schedule knobs.
 /// None of this leaves the crate when the type is exported.
 impl UiHarness {
-    /// Two recorders over one `UiResources`, for the shared-text-cache and
-    /// idle/active-window tests.
+    /// A recorder over `resources` — two over one, for the shared-text-cache
+    /// and idle/active-window tests, or one over a shaper of the caller's
+    /// own, for a case that *changes* the font database.
     pub(crate) fn from_resources(resources: UiResources, surface: UVec2) -> Self {
         let mut harness = Self {
             engines: FrameEngines::new(&resources),
@@ -935,18 +938,6 @@ impl UiHarness {
         harness.sync_display();
         harness.mark_warm();
         harness
-    }
-
-    /// [`Self::with_text`] over a shaper of the caller's own, for a case
-    /// that *changes* the font database. Registering a face is
-    /// process-visible state — it moves the epoch every text cache
-    /// watches, and drops every shaped buffer — so a case that loads one
-    /// must not do it to the shaper its neighbours are sharing.
-    pub(crate) fn over_shaper(shaper: TextShaper, surface: UVec2) -> Self {
-        Self::from_resources(
-            UiResources::new(shaper, Clipboard::memory(), TextureLimit::default()),
-            surface,
-        )
     }
 
     /// The one place a frame is actually entered. `Ui::frame` is

@@ -7,7 +7,6 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::text::font_scope::test_support::INTER;
-use crate::text::shaper::TextShaper;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::block::Block;
@@ -141,11 +140,9 @@ fn the_key_covers_authoring_input_classes() {
 /// that does not move, while every hash addressing that run stands still.
 /// So the epoch is folded in directly.
 ///
-/// Over a shaper of this test's own: a load moves process-visible state
-/// that the shared one's neighbours must not see move.
 #[test]
 fn the_key_covers_the_font_database() {
-    let mut h = UiHarness::over_shaper(TextShaper::new(), SURFACE);
+    let mut h = UiHarness::with_text(SURFACE);
     let record = |ui: &mut Ui| {
         Text::new("a label that sizes to its own text")
             .id(WidgetId::from_hash("label"))

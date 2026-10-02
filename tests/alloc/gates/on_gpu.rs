@@ -118,9 +118,10 @@ const RAMP_FRAMES: usize = 64;
 /// both atlases take an insert. Shaping is not in that list — the rung is
 /// a raster scale, which `TextShapeKey` does not carry, so the shaped
 /// buffers hit. The floor belongs to the dependencies rather than to
-/// palantir, and the headroom above it is for the platform fallback
-/// faces, which differ per machine and so change how many glyphs a run
-/// resolves to.
+/// palantir. The glyph set is fixed — the host shapes with the four
+/// bundled faces and nothing from the machine — so the headroom above the
+/// measured worst is for the driver's frame-to-frame spread on this
+/// adapter, which repeated runs put at 398 to 404.
 ///
 /// What it pins is the *per-miss* cost. A regression that allocated once
 /// more per glyph would lift this by the glyph count, and the audit

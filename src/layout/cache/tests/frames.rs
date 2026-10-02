@@ -6,7 +6,6 @@
 
 use crate::primitives::widget_id::WidgetId;
 use crate::text::font_scope::test_support::INTER;
-use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
@@ -561,9 +560,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
 /// unchanged run reaches neither `TextSystem` nor the shaper.
 #[test]
 fn registering_a_font_forces_the_next_frame_to_remeasure() {
-    // A shaper of this case's own: a load moves the font epoch and drops
-    // every shaped buffer, which the shared one must not suffer.
-    let mut h = UiHarness::over_shaper(TextShaper::new(), UVec2::new(400, 300));
+    let mut h = UiHarness::with_text(UVec2::new(400, 300));
     let record = |ui: &mut Ui| {
         Text::new("a label that sizes to its own text")
             .auto_id()
