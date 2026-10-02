@@ -10,7 +10,7 @@ use crate::primitives::{
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, composer, curve, draw, gpu_view_payload, icon, icon_ref, image, mesh,
-    params, polyline_cmd, rect, render_buffer, run, text,
+    params, params_unsnapped, polyline_cmd, rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -759,7 +759,7 @@ fn quad_fast_path_flag_cases() {
                     1.0,
                 )
             },
-            &params(*dpr, UVec2::new(400, 400)),
+            &params_unsnapped(*dpr, UVec2::new(400, 400)),
         );
         assert_eq!(buf.quads.len(), 1, "{name}: quad emitted");
         let got = buf.quads[0].fill_kind;
