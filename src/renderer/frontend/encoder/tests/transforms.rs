@@ -1,5 +1,6 @@
 //! Shapes under a transformed ancestor, and the bounds they claim.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::stroke::Stroke;
@@ -7,7 +8,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
 use crate::scene::shapes::paint::curve_basis::CurveBasis;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -31,7 +31,7 @@ use glam::{UVec2, Vec2};
 #[test]
 fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     use crate::display::Display;
-    use crate::renderer::frontend::capture::PaintCall;
+    use crate::internals::paint_capture::PaintCall;
     use crate::scene::tree::paint_anims::curves;
     use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
     use crate::shape::Shape;

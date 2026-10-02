@@ -853,7 +853,7 @@ struct ChipRects {
 }
 
 #[cfg(test)]
-mod test_support {
+mod internals {
     use crate::widgets::dock::dock_node::DockNode;
     use crate::widgets::dock::dock_state::DockState;
     use crate::widgets::dock::dock_tab::DockTab;
@@ -864,7 +864,7 @@ mod test_support {
         /// corrupt trees no public op can produce.
         ///
         /// Reached only from this module's own tests, which is why it is
-        /// `test_support` rather than `internals`.
+        /// gated on `test` alone.
         pub(crate) fn nodes_mut(&mut self) -> &mut Vec<DockNode<T>> {
             &mut self.nodes
         }

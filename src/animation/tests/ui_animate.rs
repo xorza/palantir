@@ -2,8 +2,8 @@
 
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use std::time::Duration;

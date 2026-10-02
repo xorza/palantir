@@ -4,9 +4,9 @@
 //! These tests pin the contract we want, independent of the current
 //! implementation. Where an existing test in this crate contradicts
 //! one of these, this file wins and the older test is updated.
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};

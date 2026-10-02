@@ -108,7 +108,7 @@ pub(crate) struct AtlasSlot {
 }
 
 #[cfg(test)]
-pub(super) mod test_support {
+pub(super) mod internals {
     use crate::gpu::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
     use crate::primitives::content_type::ContentType;
     use etagere::AllocId;

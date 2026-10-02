@@ -1,7 +1,7 @@
 //! The metric strip under the app bar — the one node group that carries
 //! all four `Brush` variants as chrome fills at once.
 
-use crate::frame_fixture::tokens;
+use crate::internals::frame_fixture::tokens;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;

@@ -117,7 +117,7 @@ impl Configure for Panel {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::layout::axis::Axis;
     use crate::widgets::panel::Panel;
 

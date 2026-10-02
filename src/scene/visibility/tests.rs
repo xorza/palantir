@@ -1,12 +1,12 @@
 use crate::Ui;
 use crate::display::Display;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::visibility::Visibility;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel, spinner::Spinner};
 use glam::UVec2;
@@ -159,7 +159,7 @@ fn collapsed_does_not_consume_fill_weight() {
 
 #[test]
 fn hidden_keeps_slot_but_emits_no_draws() {
-    use crate::renderer::frontend::capture::PaintCall;
+    use crate::internals::paint_capture::PaintCall;
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let root = h.frame_value(|ui| {

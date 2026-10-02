@@ -25,8 +25,10 @@
 
 pub(crate) mod on_gpu;
 
-use palantir::internals::{FrontendHarness, UiHarness};
-use palantir::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture, FramePaint};
+use palantir::FramePaint;
+use palantir::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+use palantir::internals::harness::UiHarness;
+use palantir::internals::harness::frontend_harness::FrontendHarness;
 
 use crate::harness::Audit;
 

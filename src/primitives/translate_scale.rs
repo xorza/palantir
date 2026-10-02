@@ -246,7 +246,7 @@ impl Default for TranslateScale {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::panic_probe;
+    use crate::internals::panic_probe;
     use crate::primitives::approx::EPS;
 
     /// A transform is the identity when its bits are, or when each part

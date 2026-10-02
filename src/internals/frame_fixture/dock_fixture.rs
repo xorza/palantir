@@ -20,7 +20,7 @@ use glam::Vec2;
 /// the three strips. Each pane's body is one line of its title.
 ///
 /// One tree for the allocation gates and the visual suite alike, as
-/// [`FrameFixture`](crate::FrameFixture) is for the frame workload, so
+/// [`FrameFixture`](crate::internals::frame_fixture::FrameFixture) is for the frame workload, so
 /// neither keeps a stand-in of its own.
 #[derive(Debug)]
 pub struct DockFixture {

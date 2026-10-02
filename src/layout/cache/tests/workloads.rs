@@ -1,12 +1,12 @@
 //! What the cache retains for the bench's adversarial tree shapes, and
 //! which subtrees a localized change still hits.
 
-use crate::layout::cache::test_support::{
+use crate::internals::harness::UiHarness;
+use crate::layout::cache::internals::{
     BROAD_DEPTH, BROAD_FANOUT, DEEP_DEPTH, build_broad, build_broad_variant, build_deep,
 };
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 
 /// A fresh harness after the first frame of `build`.
 fn first_frame(build: fn(&mut Ui)) -> UiHarness {

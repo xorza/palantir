@@ -7,11 +7,11 @@
 //! hand-edited file can hold; a document that still loads is rendered
 //! through a scene that draws every themed widget.
 
-use crate::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;

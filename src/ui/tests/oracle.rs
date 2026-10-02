@@ -1,11 +1,13 @@
 //! A scene driven through one mutation per frame, with every retained
 //! result checked against a cold one after each frame — see
-//! [`Oracle`](crate::ui::harness::oracle::Oracle).
+//! [`Oracle`](crate::internals::harness::oracle::Oracle).
 //!
 //! One test per mutation, so a known gap is one `#[ignore]` naming the
 //! redesign step that closes it rather than a hole in a shared script.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::oracle::Oracle;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -17,8 +19,6 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::oracle::Oracle;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};

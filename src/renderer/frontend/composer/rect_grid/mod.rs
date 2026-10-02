@@ -272,7 +272,7 @@ impl RectGrid {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::renderer::frontend::composer::rect_grid::RectGrid;
 
     impl RectGrid {

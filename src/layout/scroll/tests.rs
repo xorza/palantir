@@ -2,12 +2,12 @@
 //! measure and arrange.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::grid::Grid;

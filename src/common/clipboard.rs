@@ -218,7 +218,7 @@ impl Clipboard {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable};
 
     #[derive(Debug)]

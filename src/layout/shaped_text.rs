@@ -16,7 +16,7 @@ pub(crate) struct ShapedText {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::layout::shaped_text::ShapedText;
     use crate::text::key::TextShapeKey;
 

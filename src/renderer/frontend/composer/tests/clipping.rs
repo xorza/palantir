@@ -1,9 +1,9 @@
 //! What a clip keeps, what it culls, and what a rounded one costs.
 
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::{corners::Corners, size::Size, urect::URect};
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, curve, draw, draw_marked, image, mesh, params, push_distinct_rounded_clips,

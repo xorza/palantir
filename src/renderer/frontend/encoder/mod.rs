@@ -161,9 +161,9 @@ impl Encoder {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
+    use crate::internals::paint_capture::PaintCapture;
     use crate::renderer::frontend::FrameScene;
-    use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::encoder::Encoder;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;

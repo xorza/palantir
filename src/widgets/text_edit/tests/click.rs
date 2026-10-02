@@ -1,7 +1,7 @@
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 use crate::{FocusPolicy, widgets::text_edit::tests::*};
 
 #[test]

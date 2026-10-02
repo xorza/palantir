@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::primitives::approx;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::mesh::*;

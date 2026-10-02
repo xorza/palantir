@@ -3,7 +3,7 @@
 //! actually grows — the bulky tail of the card column.
 
 use crate::fmt;
-use crate::frame_fixture::tokens;
+use crate::internals::frame_fixture::tokens;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;

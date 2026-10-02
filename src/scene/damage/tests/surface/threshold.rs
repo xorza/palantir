@@ -1,11 +1,11 @@
 //! The area ratio that decides partial against full.
 
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::scene::damage::Damage;
 use crate::scene::damage::engine::DamageEngine;
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame, one_frame};
-use crate::ui::harness::UiHarness;
 
 /// Pin: a single-leaf fill flip stays in the partial-repaint regime —
 /// `filter(surface)` returns `Partial(rect)`, because the rect is well

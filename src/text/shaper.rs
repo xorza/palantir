@@ -394,7 +394,7 @@ impl TextShaper {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::layout::shaped_text::ShapedText;
@@ -405,7 +405,7 @@ pub(crate) mod test_support {
     #[cfg(test)]
     use crate::text::probe::Caret;
     #[cfg(test)]
-    use crate::text::request::test_support::TestShape;
+    use crate::text::request::internals::TestShape;
     #[cfg(test)]
     use crate::text::wrap::TextWrap;
 
@@ -434,7 +434,7 @@ pub(crate) mod test_support {
         /// same pair layout carries out of `TextSystem::measure`, so it
         /// is that rather than a second spelling of it.
         ///
-        /// Deliberately not a [`TestMeasure`](crate::text::root::test_support::TestMeasure):
+        /// Deliberately not a [`TestMeasure`](crate::text::root::internals::TestMeasure):
         /// the probe keeps only the
         /// extent — the wrap floor and the line count are the root's — so
         /// handing one back meant inventing two of its four fields, and a

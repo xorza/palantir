@@ -50,7 +50,7 @@ use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::raster_program::RasterProgram;
 use crate::gpu::stencil_variant::StencilVariant;
 use crate::gpu::text::TextBackend;
-use crate::gpu::text::encode::cache::test_support::{ChurnBench, SweepBench};
+use crate::gpu::text::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::viewport::ViewportPush;
 use crate::layout::types::align::Align;
 use crate::primitives::color::rgba_f16::RgbaF16;

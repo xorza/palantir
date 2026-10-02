@@ -58,23 +58,23 @@
 //! All four arrive in [`Run::fixture`] — this bench reads no environment
 //! of its own.
 //!
-//! The shared workload lives in [`crate::frame_fixture`] and also drives
+//! The shared workload lives in [`crate::internals::frame_fixture`] and also drives
 //! the allocation gates in `tests/alloc/gates/` and the showcase's
 //! `frame bench` page — run `cargo run --example showcase` to eyeball the
 //! tree these numbers come from.
 
-use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::gpu::texture_region::counters::WriteStats;
 use crate::host::offscreen::OffscreenHost;
+use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::frontend_harness::FrontendHarness;
+use crate::internals::record_app::RecordApp;
 use crate::primitives::color::RgbaF32;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::frontend_harness::FrontendHarness;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::fs::OpenOptions;
@@ -804,7 +804,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 #[cfg(test)]
 mod tests {
     use crate::bench::Fixture;
-    use crate::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
+    use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
     use crate::ui::bench::{RESIZE_POOL, Surface, estimates_path, prepend_block};
 
     /// The results directory is gitignored, so the common case on a

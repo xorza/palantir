@@ -214,10 +214,10 @@ impl Composer {
 }
 
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     //! Replay driver for the composer tests and the compose bench.
 
-    use crate::renderer::frontend::capture::PaintCapture;
+    use crate::internals::paint_capture::PaintCapture;
     use crate::renderer::frontend::composer::session::ComposeSession;
 
     impl ComposeSession<'_> {

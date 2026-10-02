@@ -1,8 +1,8 @@
 //! The two clocks, and the step sizes that would silently clamp.
 
-use crate::common::panic_probe;
-use crate::ui::harness::tests::support::{INSIDE, SURFACE, button, target};
-use crate::ui::harness::*;
+use crate::internals::harness::tests::support::{INSIDE, SURFACE, button, target};
+use crate::internals::harness::*;
+use crate::internals::panic_probe;
 
 #[test]
 fn one_clock_stamps_both_frames_and_input() {

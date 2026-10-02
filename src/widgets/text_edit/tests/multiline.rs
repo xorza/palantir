@@ -1,4 +1,4 @@
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 #[test]

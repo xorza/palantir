@@ -2,6 +2,7 @@
 //! caps on both.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::tests::support::cell;
@@ -10,7 +11,6 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};

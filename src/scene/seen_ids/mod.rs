@@ -282,7 +282,7 @@ impl SeenIds {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::primitives::widget_id::WidgetIdMap;
     use crate::scene::endpoint::Endpoint;
     use crate::scene::seen_ids::SeenIds;

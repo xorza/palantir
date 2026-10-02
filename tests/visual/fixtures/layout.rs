@@ -2,9 +2,10 @@
 //! exercise-everything sizes.
 
 use glam::UVec2;
+use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
-    Align, Background, Block, Button, Configure, Corners, FrameFixture, Grid, GridCell, Panel,
-    RgbaF32, Shadow, Sizing, Stroke, Text, TextStyle, TextWrap, Track,
+    Align, Background, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Shadow,
+    Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::goldens::assert_matches_golden;

@@ -165,7 +165,7 @@ impl TextEncoder {
 /// Reach-in for the GPU text tests, which assert on what a hit and an
 /// invalidation leave in the encoded cache.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::gpu::text::encode::cache::EncodedCache;
     use crate::gpu::text::encode::encoder::TextEncoder;
 

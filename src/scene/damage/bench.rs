@@ -14,6 +14,7 @@
 //! benches).
 
 use crate::bench::Run;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -23,7 +24,6 @@ use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;

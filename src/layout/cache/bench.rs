@@ -29,7 +29,8 @@
 //! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
 use crate::bench::Run;
-use crate::layout::cache::test_support::{build_broad, build_broad_variant, build_deep};
+use crate::internals::harness::UiHarness;
+use crate::layout::cache::internals::{build_broad, build_broad_variant, build_deep};
 use crate::layout::counters::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -40,7 +41,6 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::grid::Grid;

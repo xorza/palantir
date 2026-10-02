@@ -634,7 +634,7 @@ pub struct TextEditResponse<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::widgets::text_edit::TextEditResponse;
 
     /// A [`TextEditResponse`]'s edges, copied out of the record pass

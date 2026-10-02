@@ -1,6 +1,6 @@
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::size_trio::SizeTrio;
 use crate::primitives::size::Size;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::size_trio::SizeTrio;
 use std::f32::consts::TAU;
 
 use crate::layout::types::sizing::Sizing;

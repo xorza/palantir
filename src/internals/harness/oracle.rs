@@ -12,6 +12,7 @@
 //! this check after each frame finds a missed input without anyone having
 //! to think of it.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::layer_layout::LayerLayout;
@@ -21,10 +22,9 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::Cascade;
 use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::engine::CascadeEngine;
-use crate::scene::cascade::test_support::OwnedPaint;
+use crate::scene::cascade::internals::OwnedPaint;
 use crate::scene::damage::Damage;
 use crate::ui::frame_report::FrameReport;
-use crate::ui::harness::UiHarness;
 
 /// The previous frame's paint rows, and the scratch the next check fills.
 #[derive(Debug, Default)]
@@ -59,10 +59,10 @@ impl Oracle {
     /// the order check asks about overlaps, not positions.
     fn check_damage(&mut self, h: &UiHarness, report: &FrameReport) {
         self.curr.clear();
-        h.ui.cascade.owned_paints(&h.ui.forest, &mut self.curr);
+        h.ui.cascade().owned_paints(h.ui.forest(), &mut self.curr);
         if self.primed {
-            let surface = h.ui.display.logical_rect();
-            let margin = RenderPlan::cull_margin(h.ui.display.scale_factor());
+            let surface = h.ui.display().logical_rect();
+            let margin = RenderPlan::cull_margin(h.ui.display().scale_factor());
             let damage: Vec<Rect> = match report.plan.as_ref().map(|plan| &plan.damage) {
                 None => Vec::new(),
                 Some(Damage::Full) => vec![surface],
@@ -119,18 +119,18 @@ impl Oracle {
 /// cache, no retained text rows — and assert every node's result equals
 /// the one the frame produced.
 fn assert_layout_matches_cold(h: &UiHarness) {
-    let mut engine = LayoutEngine::new(h.ui.resources.text().clone());
+    let mut engine = LayoutEngine::new(h.ui.shaper().clone());
     let mut cold = Layout::default();
-    let store = &h.ui.forest.record_store;
+    let store = &h.ui.forest().record_store;
     let interned_text = store.interned_text();
     engine.run(
-        &h.ui.forest,
+        h.ui.forest(),
         &interned_text,
-        h.ui.display.logical_rect(),
+        h.ui.display().logical_rect(),
         &mut cold,
     );
-    for (layer, tree) in h.ui.forest.trees.iter_paint_order() {
-        let (warm, cold) = (&h.ui.layout[layer], &cold[layer]);
+    for (layer, tree) in h.ui.forest().trees.iter_paint_order() {
+        let (warm, cold) = (h.ui.layout(layer), &cold[layer]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
             let at = || format!("{layer:?} node {node} ({id:?})");
             assert_eq!(warm.rect[node], cold.rect[node], "rect of {}", at());
@@ -156,17 +156,29 @@ fn assert_layout_matches_cold(h: &UiHarness) {
 /// equals it. Against the frame's layout rather than the cold one so a
 /// layout disagreement is reported once, by the layout oracle.
 fn assert_cascade_matches_cold(h: &UiHarness) {
-    let key = CascadeKey::new(&h.ui.forest, &h.ui.layout, h.ui.display, h.ui.font_epoch());
+    let key = CascadeKey::new(
+        h.ui.forest(),
+        h.ui.layout_tables(),
+        h.ui.display(),
+        h.ui.font_epoch(),
+    );
     let mut cold = Cascade::default();
-    CascadeEngine::default().run(&h.ui.forest, &h.ui.layout, h.ui.display, &key, &mut cold);
+    CascadeEngine::default().run(
+        h.ui.forest(),
+        h.ui.layout_tables(),
+        h.ui.display(),
+        &key,
+        &mut cold,
+    );
     assert_eq!(
-        h.ui.cascade.key, cold.key,
+        h.ui.cascade().key,
+        cold.key,
         "the key the cascade was built from"
     );
-    h.ui.cascade.assert_same_as(&cold, &h.ui.forest);
+    h.ui.cascade().assert_same_as(&cold, h.ui.forest());
     assert_eq!(
-        h.ui.cascade.by_id,
-        *h.ui.forest.ids.last_frame(),
+        h.ui.cascade().by_id,
+        *h.ui.forest().ids.last_frame(),
         "id lookup"
     );
 }

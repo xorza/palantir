@@ -307,7 +307,7 @@ impl NanCheck for ImageFit {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::panic_probe;
+    use crate::internals::panic_probe;
     use crate::primitives::color::srgba_u8::SrgbaU8;
     use crate::primitives::image::{Image, ImageFit};
     use crate::primitives::rect::Rect;

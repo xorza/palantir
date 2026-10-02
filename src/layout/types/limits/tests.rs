@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::layout::types::limits::{
     MAX_PACKED_GAP, assert_valid_bounds, valid_lower_bound, valid_packed_gap, valid_upper_bound,
 };

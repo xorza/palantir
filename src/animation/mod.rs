@@ -120,7 +120,7 @@ impl AnimMap {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::animation::AnimMap;
     use crate::animation::animatable::Animatable;
 

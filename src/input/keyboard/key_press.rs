@@ -65,7 +65,7 @@ impl KeyPress {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_press::KeyPress;
     use crate::input::keyboard::key_text::KeyText;

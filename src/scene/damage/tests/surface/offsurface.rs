@@ -1,6 +1,7 @@
 //! Rects that lie partly or wholly outside the surface.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
@@ -10,7 +11,6 @@ use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;

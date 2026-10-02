@@ -160,7 +160,7 @@ pub struct InnerResponse<'a, R> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
     use crate::widgets::response::Response;

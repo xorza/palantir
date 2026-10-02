@@ -146,7 +146,7 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use serde::Serialize;
     use serde::de::DeserializeOwned;
 

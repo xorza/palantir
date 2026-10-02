@@ -1,3 +1,4 @@
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
@@ -5,7 +6,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;

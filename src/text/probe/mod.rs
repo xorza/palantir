@@ -504,7 +504,7 @@ impl<'a> LineMap<'a> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
 
     impl TextProbe<'_> {

@@ -52,7 +52,7 @@ const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape:
      and the policy asking for it have drifted apart";
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     use crate::text::key::TextShapeKey;
 

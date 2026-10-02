@@ -1,8 +1,8 @@
 //! Cross-frame state: the row a widget keeps, and the scope a subtree
 //! borrows it in.
 
+use crate::internals::harness::UiHarness;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 

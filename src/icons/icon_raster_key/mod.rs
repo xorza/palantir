@@ -100,7 +100,7 @@ const fn snap_px(px: u32) -> u32 {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_set::IconRef;
     use glam::U16Vec2;

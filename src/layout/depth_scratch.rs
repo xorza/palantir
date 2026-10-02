@@ -63,7 +63,7 @@ impl<T: Copy> DepthScratch<T> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::layout::depth_scratch::DepthScratch;
 
     impl<T> DepthScratch<T> {

@@ -197,7 +197,7 @@ impl LayoutCounters {
 /// timings, and only tests read the rest. Nothing in a shipping build has
 /// a reason to ask, which is what lets the counters themselves be absent.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #[cfg(test)]
     use crate::common::counters::CounterSet;
     use crate::layout::counters::LayoutCounters;

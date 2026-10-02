@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use crate::fmt;
-use crate::frame_fixture::FrameFixture;
-use crate::frame_fixture::tokens;
+use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::tokens;
 use crate::layout::types::align::Align;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;

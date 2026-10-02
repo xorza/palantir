@@ -1,4 +1,4 @@
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::bezier;
 use crate::primitives::bezier::*;
 

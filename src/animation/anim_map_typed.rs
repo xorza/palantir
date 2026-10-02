@@ -204,7 +204,7 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
 /// the count is `cfg(test)` too — the benches compile under `internals`
 /// without it.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
     use crate::animation::anim_slot::AnimSlot;
     use crate::animation::anim_spec::AnimSpec;

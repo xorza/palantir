@@ -1,4 +1,5 @@
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::{SizeSpec, Sizing};
@@ -6,7 +7,6 @@ use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::grid::Grid;

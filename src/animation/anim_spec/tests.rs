@@ -2,7 +2,7 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::primitives::approx::EPS;
 
 #[test]

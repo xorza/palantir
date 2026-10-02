@@ -25,7 +25,7 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
     }
 }
 
-use crate::primitives::serde::test_support::{from_ron, ron_text};
+use crate::primitives::serde::internals::{from_ron, ron_text};
 use crate::primitives::spacing::*;
 
 #[test]

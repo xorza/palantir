@@ -91,7 +91,7 @@ impl<'a> TextShapeRequest<'a> {
 // `unbounded_request`. Everything else here is assertion-side and says so
 // item by item.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::layout::types::align::HAlign;

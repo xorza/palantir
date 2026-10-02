@@ -4,7 +4,7 @@
 //! The GPU-wire layout pins live with the type they pin, in
 //! `raster_atlas::raster_quad` — both passes draw through it, so neither owns it.
 
-use crate::gpu::raster_atlas::test_support::unallocated_dies_at;
+use crate::gpu::raster_atlas::internals::unallocated_dies_at;
 use crate::gpu::text::TextBackend;
 use crate::gpu::text::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::color::rgba_f16::RgbaF16;

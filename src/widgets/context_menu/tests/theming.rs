@@ -3,6 +3,7 @@
 
 use crate::Ui;
 use crate::input::shortcut::Shortcut;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
@@ -12,7 +13,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;

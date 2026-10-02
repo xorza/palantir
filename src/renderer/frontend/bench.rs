@@ -1,12 +1,12 @@
 //! Record-to-compose comparison for repeated solid and gradient chrome.
 
 use crate::bench::Run;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::frontend_harness::FrontendHarness;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::RgbaF32;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::frontend_harness::FrontendHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use criterion::{BenchmarkId, Criterion, Throughput};

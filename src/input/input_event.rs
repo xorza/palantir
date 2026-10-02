@@ -114,7 +114,7 @@ impl InputEvent {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_text::KeyText;

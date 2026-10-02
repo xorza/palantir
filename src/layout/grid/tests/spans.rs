@@ -3,13 +3,13 @@
 
 use crate::layout::axis::Axis;
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid};

@@ -2,20 +2,20 @@
 //! arranged extent, clamping at explicit and content-driven stops,
 //! the resulting pane re-layout, and the resize-cursor request.
 
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::passes::Passes;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::frame_report::FrameProcessing;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::passes::Passes;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::splitter::{Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
-use crate::widgets::value_response::test_support::ValueEdges;
+use crate::widgets::value_response::internals::ValueEdges;
 use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
 

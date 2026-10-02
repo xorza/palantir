@@ -1,3 +1,4 @@
+use crate::internals::harness::UiHarness;
 use crate::layout::types::align::Align;
 use crate::primitives::size::Size;
 use crate::text::font_family::FontFamily;
@@ -6,7 +7,6 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 
 /// The whole public probe surface, against the mono shaper's exact
 /// metric: every glyph is `font_size_px * 0.5` wide, so at 16 px a

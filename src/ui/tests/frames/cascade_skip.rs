@@ -2,12 +2,12 @@
 //! everything that moves it.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::text::font_scope::test_support::INTER;
-use crate::ui::harness::UiHarness;
+use crate::text::font_scope::internals::INTER;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;

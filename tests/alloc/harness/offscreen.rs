@@ -14,7 +14,8 @@
 use std::time::Duration;
 
 use glam::UVec2;
-use palantir::internals::{HeadlessTestGpuLease, RecordApp};
+use palantir::internals::HeadlessTestGpuLease;
+use palantir::internals::record_app::RecordApp;
 use palantir::{FixedClock, FrameReport, OffscreenHost, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.

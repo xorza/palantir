@@ -1,6 +1,7 @@
 //! The commands one recorded frame lowers to.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::brush::gradient::Spread;
@@ -20,7 +21,6 @@ use crate::scene::layer::Layer;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};

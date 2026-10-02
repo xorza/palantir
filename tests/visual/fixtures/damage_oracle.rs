@@ -1,7 +1,7 @@
 //! The pixel damage oracle: a frame repainted only where it was damaged
 //! must equal the same frame painted in full, bit for bit.
 //!
-//! The CPU oracle (`ui::harness::oracle`) checks that damage covers every
+//! The CPU oracle (`internals::harness::oracle`) checks that damage covers every
 //! paint row that changed. This one checks the pixels themselves, so it
 //! also sees what no row describes. Each script runs through two renderers
 //! side by side: one repaints only the damage, the other is told before

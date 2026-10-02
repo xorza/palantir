@@ -18,8 +18,6 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod capture;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 pub(crate) mod paint_sink;
@@ -105,7 +103,7 @@ impl Frontend {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::renderer::frontend::Frontend;
     use std::num::NonZeroU32;
 

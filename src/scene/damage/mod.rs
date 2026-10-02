@@ -156,12 +156,10 @@ fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
     }
 }
 
-/// In-tree-test-only reach-in. `#[cfg(test)]` rather than the
-/// feature-gated `internals` mod, because only the crate's own unit
-/// tests call it — so it needs no `allow(dead_code)` for the
-/// feature-only build.
+/// Gated on `test` alone, because only the crate's own unit tests call
+/// it — so it needs no `allow(dead_code)` for the feature-only build.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::scene::damage::Damage;
     use crate::scene::damage::region::DamageRegion;
 

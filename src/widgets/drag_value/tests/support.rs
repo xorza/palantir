@@ -1,12 +1,12 @@
 //! The deferred-commit frame a drag test drives, and the signals it counts.
 
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::passes::Passes;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::passes::Passes;
 use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::DragValue;
-use crate::widgets::value_response::test_support::ValueEdges;
+use crate::widgets::value_response::internals::ValueEdges;
 
 /// Drive one frame of a `DragValue` through a commit-deferring caller:
 /// the draft re-seeds from `canonical` every record pass and is adopted

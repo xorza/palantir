@@ -16,7 +16,7 @@
 
 use crate::harness::{Audit, new_ui};
 use palantir::Stroke;
-use palantir::internals::FrontendHarness;
+use palantir::internals::harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
     Block, Configure, FramePaint, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,

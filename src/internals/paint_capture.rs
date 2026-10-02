@@ -144,8 +144,8 @@ impl PaintCapture {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
-    use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
+pub(crate) mod internals {
+    use crate::internals::paint_capture::{PaintCall, PaintCapture};
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
     use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;

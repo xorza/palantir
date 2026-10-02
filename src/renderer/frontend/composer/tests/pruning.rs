@@ -1,10 +1,10 @@
 //! What the occlusion pass drops, and what it must not.
 
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::{
     color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, translate_scale::TranslateScale,
 };
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{

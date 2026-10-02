@@ -1,7 +1,7 @@
 use crate::input::keyboard::key_text::KeyText;
-use crate::ui::harness::UiHarness;
-use crate::ui::harness::passes::Passes;
-use crate::widgets::text_edit::test_support::EditEdges;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::passes::Passes;
+use crate::widgets::text_edit::internals::EditEdges;
 use crate::widgets::text_edit::tests::*;
 
 const EDITOR: &str = "response-editor";

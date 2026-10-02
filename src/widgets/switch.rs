@@ -176,7 +176,7 @@ fn switch_geom(track_h: f32, inset: f32, border: f32, aspect: f32) -> SwitchGeom
 
 #[cfg(test)]
 mod tests {
-    use crate::ui::harness::UiHarness;
+    use crate::internals::harness::UiHarness;
 
     use crate::Ui;
     use crate::primitives::widget_id::WidgetId;

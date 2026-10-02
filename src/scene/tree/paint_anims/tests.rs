@@ -1,4 +1,4 @@
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
 use crate::scene::tree::paint_anims::*;

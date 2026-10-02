@@ -929,18 +929,18 @@ impl std::fmt::Debug for CosmicMeasure {
 }
 
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
     #[cfg(test)]
-    use crate::text::cosmic::shaped_buffer_cache::test_support::RecyclePoolStats;
+    use crate::text::cosmic::shaped_buffer_cache::internals::RecyclePoolStats;
     #[cfg(test)]
     use crate::text::glyph_font::GlyphFont;
     #[cfg(test)]
-    use crate::text::request::test_support::TestShape;
+    use crate::text::request::internals::TestShape;
     #[cfg(test)]
-    use crate::text::root::test_support::TestMeasure;
+    use crate::text::root::internals::TestMeasure;
 
     /// A measurer over the bundled faces, which is what every fixture
     /// here wants and what no production caller asks for — a shipping

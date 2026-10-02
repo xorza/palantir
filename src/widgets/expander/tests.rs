@@ -5,12 +5,12 @@ use glam::{UVec2, Vec2};
 
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::keyboard::key::Key;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx::test_support::assert_close;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::arrow::Arrow;
 use crate::widgets::configure::Configure;
 use crate::widgets::expander::{Expander, ExpanderState};

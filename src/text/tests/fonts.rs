@@ -4,12 +4,12 @@
 use super::*;
 use crate::Ui;
 use crate::common::clipboard::Clipboard;
+use crate::internals::harness::UiHarness;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::error::FontLoadError;
-use crate::text::font_scope::test_support::{INTER, MONO};
+use crate::text::font_scope::internals::{INTER, MONO};
 use crate::text::font_slant::FontSlant;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;

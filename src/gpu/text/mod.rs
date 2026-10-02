@@ -173,7 +173,7 @@ impl TextBackend {
 }
 
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::gpu::text::TextBackend;
 
     impl TextBackend {

@@ -1,6 +1,7 @@
 //! What every widget's `style` setter is: the `Option`-taking setter, and the one
 //! naming of a widget's theme slot that resolves it.
 
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::spacing::Spacing;
@@ -10,7 +11,6 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;

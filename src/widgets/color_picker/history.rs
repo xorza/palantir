@@ -80,7 +80,7 @@ impl History {
 /// Reach-in for the picker's tests, which read the row a picker kept
 /// without seeding one where it has not.
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::primitives::color::RgbaF32;
     use crate::widgets::color_picker::history::History;
 

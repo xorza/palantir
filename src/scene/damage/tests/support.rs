@@ -3,11 +3,11 @@
 use crate::Ui;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;

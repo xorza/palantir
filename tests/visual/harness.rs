@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::internals::{HeadlessTestGpuLease, RecordApp, headless_test_gpu};
+use palantir::internals::record_app::RecordApp;
+use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
 use palantir::{
     DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RgbaF32, TextShaper, Theme,
     Ui,

@@ -3,7 +3,7 @@
 //! own `tests.rs`; tests here exercise multiple drivers together.
 //!
 //! Internals access (`pub(crate)` fields on `Layout`,
-//! `renderer::frontend::capture::PaintCall`, the `UiHarness` reach-ins)
+//! `internals::paint_capture::PaintCall`, the `UiHarness` reach-ins)
 //! is intentional — moving these to crate-root `tests/` would force
 //! widening half a dozen items to `pub` purely for tests.
 

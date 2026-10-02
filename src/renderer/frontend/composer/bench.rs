@@ -1,10 +1,10 @@
 use crate::bench::Run;
 use crate::display::Display;
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;

@@ -1,5 +1,5 @@
+use crate::internals::harness::UiHarness;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;

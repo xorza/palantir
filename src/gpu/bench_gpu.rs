@@ -87,7 +87,7 @@ impl BenchGpu {
     /// A render target of `size`, with the usages every driver needs:
     /// draw into it, and copy either way for readback and clears.
     pub(crate) fn target(&self, size: UVec2, label: &str) -> BenchTarget {
-        BenchTarget(render_target::test_support::texture(
+        BenchTarget(render_target::internals::texture(
             &self.gpu.device,
             label,
             size,

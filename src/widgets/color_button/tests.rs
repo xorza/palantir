@@ -1,10 +1,10 @@
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::color_picker::ColorPickerTheme;

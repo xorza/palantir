@@ -1,7 +1,7 @@
 //! Window requests a frame queues, and the close veto's one-frame life.
 
 use crate::display::user_scale::UserScale;
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_placement::WindowPlacement;

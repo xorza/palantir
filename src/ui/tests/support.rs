@@ -1,11 +1,11 @@
 //! The `Ui` a test drives, and the frames it records into.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;

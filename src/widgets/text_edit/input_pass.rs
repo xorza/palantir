@@ -412,7 +412,7 @@ pub(super) enum KeyOutcome {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::input::keyboard::modifiers::Modifiers;
 
     /// The platform's word-motion chord, for the cases that press it.

@@ -3,10 +3,10 @@
 
 use crate::display::Display;
 use crate::icons::icon_set::IconRef;
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;

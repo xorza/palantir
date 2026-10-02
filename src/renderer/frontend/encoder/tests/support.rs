@@ -1,10 +1,10 @@
 //! Reading a `PaintCapture` back: what counts as a rect, a shadow, a clip
 //! pair.
 
+use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::{rect::Rect, translate_scale::TranslateScale};
-use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 

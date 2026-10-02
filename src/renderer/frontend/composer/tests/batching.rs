@@ -1,6 +1,7 @@
 //! Which draws share a group and a batch, and what forces a split.
 
 use crate::icons::icon_set::IconRef;
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
@@ -8,7 +9,6 @@ use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
     color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, urect::URect,
 };
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{

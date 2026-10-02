@@ -1,6 +1,6 @@
 use super::*;
 use crate::common::hash;
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::primitives::recorded_text::RecordedText;
 
 #[test]

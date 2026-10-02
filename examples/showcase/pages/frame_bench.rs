@@ -13,7 +13,8 @@
 //! widgets. Anything that looks broken here is a layout or paint
 //! regression the timing numbers alone would not have caught.
 
-use palantir::{FrameFixture, Ui};
+use palantir::Ui;
+use palantir::internals::frame_fixture::FrameFixture;
 
 /// Content multiplier. The benches use 32 against a 3840x6000 offscreen
 /// target; this is sized so the card column fills a normal window instead

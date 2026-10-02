@@ -1,4 +1,4 @@
-use crate::common::panic_probe;
+use crate::internals::panic_probe;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::approx::EPS;
 use crate::primitives::span::Span;

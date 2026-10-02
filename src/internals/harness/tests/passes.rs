@@ -1,8 +1,8 @@
 //! Which record pass a read observes, warm against cold.
 
+use crate::internals::harness::tests::support::{INSIDE, SURFACE, button, target};
+use crate::internals::harness::*;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
-use crate::ui::harness::tests::support::{INSIDE, SURFACE, button, target};
-use crate::ui::harness::*;
 
 #[test]
 fn warm_constructors_run_one_pass_and_cold_runs_two() {

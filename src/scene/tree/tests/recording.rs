@@ -1,11 +1,12 @@
 //! What a record pass puts in the arena, and in what order.
 
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
@@ -13,7 +14,6 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
 use crate::shape::rect::{RectKind, RectShape};
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 

@@ -2,6 +2,7 @@
 //! opened from.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::placement::{Origin, Placement};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::RgbaF32;
@@ -13,7 +14,6 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
 use crate::shape::rect::{RectKind, RectShape};
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;

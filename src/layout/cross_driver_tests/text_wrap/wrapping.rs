@@ -2,6 +2,7 @@
 //! report.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::PARAGRAPH;
@@ -14,7 +15,6 @@ use crate::scene::layer::Layer;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 use glam::UVec2;

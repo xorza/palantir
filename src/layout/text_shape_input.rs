@@ -138,7 +138,7 @@ fn checked_text_ordinal(index: usize) -> u16 {
 #[cfg(test)]
 mod tests {
     use crate::common::hash;
-    use crate::common::panic_probe;
+    use crate::internals::panic_probe;
     use crate::layout::text_shape_input::{TextShapeInput, checked_text_ordinal};
     use crate::layout::types::align::HAlign;
     use crate::text::font_family::FontFamily;

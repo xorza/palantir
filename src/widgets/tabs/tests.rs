@@ -5,11 +5,11 @@ use glam::{UVec2, Vec2};
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
@@ -481,7 +481,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
 /// others down; moving D to the front (gap 0) shifts the others up.
 #[test]
 fn a_move_carries_every_index_with_its_page() {
-    use crate::widgets::tabs::tabbed_view::test_support::moved_index;
+    use crate::widgets::tabs::tabbed_view::internals::moved_index;
     for (from, to, before, after) in [
         (0, 4, [0, 1, 2, 3], [3, 0, 1, 2]),
         (3, 0, [0, 1, 2, 3], [1, 2, 3, 0]),
