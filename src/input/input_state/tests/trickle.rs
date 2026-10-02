@@ -91,9 +91,10 @@ fn each_batch_lands_one_button_change_per_frame() {
     );
 }
 
-/// The batch that used to fail `ButtonState::new`'s invariant: a drag
-/// stopped and a fresh press, fed together. Spread, the stop and the new
-/// press land in different frames and every state is a legal pair.
+/// A drag stopped and a fresh press, fed together — the batch that, in
+/// one frame, would break `ButtonState::new`'s invariant. Spread, the
+/// stop and the new press land in different frames and every state is a
+/// legal pair.
 #[test]
 fn a_drag_stop_and_a_new_press_never_share_a_frame() {
     let mut h = UiHarness::new(UVec2::new(200, 200));

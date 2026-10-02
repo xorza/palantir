@@ -1,11 +1,11 @@
 //! A wrapping leaf's height, its truncating peer, and the intrinsics both
 //! report.
 
-use crate::TextStyle;
 use crate::Ui;
 use crate::layout::axis::Axis;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::PARAGRAPH;
+use crate::layout::cross_driver_tests::support::lines_h;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::sizing::Sizing;
@@ -18,14 +18,6 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 use glam::UVec2;
-
-/// The measured height of `lines` lines of `font_px` text: the default
-/// style's line height per line, on the shaper's 1/64-px grid, ceiled to
-/// whole pixels as the measurer does. Widths have no such formula — they are the bundled faces' glyph
-/// advances, the same on every machine.
-fn lines_h(lines: u32, font_px: f32) -> f32 {
-    (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
-}
 
 /// The wrap mode `node`'s first text shape records.
 fn text_wrap_of(h: &UiHarness, node: NodeId) -> TextWrap {

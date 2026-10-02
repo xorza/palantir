@@ -89,7 +89,7 @@ pub(crate) mod wrap;
 
 /// Additive step on the text-scale ladder. The composer snaps a
 /// continuous zoom scale to a rung of this ladder before it picks a
-/// glyph-cache key (`composer::snap_text_scale`).
+/// glyph-cache key (`composer::geometry::snap_text_scale`).
 ///
 /// **Additive, not proportional.** The same step in *scale units* across
 /// the range makes the step in *percent of current size* shrink as zoom
@@ -113,7 +113,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// of the protected tier of the shaped-buffer cache, which each entry
 /// extends by its own share of [`RENDERED_RUN_KEEP_SPREAD_MASK`], and
 /// the ceiling the backend's glyph-template window
-/// (`gpu::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
+/// (`gpu::text::encode::cache::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
 ///
 /// **The relation between the two windows is an ordering, not an
@@ -179,24 +179,25 @@ pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use crate::text;
+    use crate::text::cosmic::shaped_buffer_cache;
+
     /// The raster-scale quantum, so the allocation suite's scale ramp can
     /// step exactly one rung a frame. A ramp that spelled the number
     /// itself would stop minting fresh raster keys the moment this moved,
     /// and a gate that stops missing stops measuring.
-    pub const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
+    pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;
 
     /// The shaped-buffer cache's short window, so a text audit can warm
     /// through the first expiry drain it schedules — a one-off that comes
     /// due this many frames after the first shape, whatever the frames
     /// between look like.
-    pub const PROBATION_KEEP_FRAMES: u64 =
-        crate::text::cosmic::shaped_buffer_cache::PROBATION_KEEP_FRAMES;
+    pub const PROBATION_KEEP_FRAMES: u64 = shaped_buffer_cache::PROBATION_KEEP_FRAMES;
 
     /// Frames one revolution of the shaped-buffer expiry ring takes. A
     /// text audit warms and measures in whole revolutions, so a cost the
     /// ring incurs once per revolution lands inside its window.
-    pub const SHAPED_BUFFER_RING_FRAMES: u64 =
-        crate::text::cosmic::shaped_buffer_cache::internals::RING_FRAMES;
+    pub const SHAPED_BUFFER_RING_FRAMES: u64 = shaped_buffer_cache::test_support::RING_FRAMES;
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::RgbaF32;
@@ -138,11 +139,11 @@ fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
     // A new pass retires it.
     store.clear();
     let fresh = store.intern_str("this frame");
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
         || store.record_text(stale),
     );
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
         || store.reuse(stale),
     );

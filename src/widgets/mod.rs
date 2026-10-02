@@ -54,6 +54,3 @@ pub(crate) mod toggle_chrome;
 pub(crate) mod tooltip;
 pub(crate) mod value_response;
 pub(crate) mod widget;
-
-#[cfg(test)]
-pub(crate) mod size_trio;

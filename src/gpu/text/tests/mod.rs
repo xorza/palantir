@@ -4,7 +4,7 @@
 //! The GPU-wire layout pins live with the type they pin, in
 //! `raster_atlas::raster_quad` — both passes draw through it, so neither owns it.
 
-use crate::gpu::raster_atlas::unallocated_dies_at;
+use crate::gpu::raster_atlas::test_support::unallocated_dies_at;
 use crate::gpu::text::TextBackend;
 use crate::gpu::text::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::color::rgba_f16::RgbaF16;
@@ -302,14 +302,13 @@ fn partially_culled_run_is_not_cached() {
 /// ages neither — and one that draws text ages both by the same
 /// step.
 ///
-/// The regression: this side used to run its own counter, bumped in
-/// `end_frame`, which returned early whenever the frame prepared
-/// no text batch. A recorded frame whose damage missed every text
-/// run therefore aged the shaped-buffer cache and not this one, so
-/// `RENDERED_RUN_KEEP_FRAMES` — one constant precisely so a buffer
-/// outlives the encoded entry that would come asking for it —
-/// described two windows measured in different units. Nothing could
-/// catch it: each suite drove one clock.
+/// A counter of this side's own, bumped in `end_frame`, would miss every
+/// frame that prepared no text batch: a recorded frame whose damage
+/// missed every text run would age the shaped-buffer cache and not this
+/// one, and `RENDERED_RUN_KEEP_FRAMES` — one constant precisely so a
+/// buffer outlives the encoded entry that would come asking for it —
+/// would describe two windows measured in different units. Each suite
+/// drives one clock, so only this cross-check can catch it.
 #[test]
 fn both_caches_age_on_one_clock_including_text_free_frames() {
     let mut rig = TextRig::new();
@@ -320,7 +319,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
     rig.backend.tick_frame();
 
     // Text-free frames: `prepare_batch` is never called, so `ranges`
-    // stays empty — the exact shape that used to freeze this side.
+    // stays empty — the shape a counter of this side's own would freeze on.
     // Both clocks must still move, in lockstep.
     for _ in 0..8 {
         let before = rig.shaper.frame();

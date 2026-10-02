@@ -156,7 +156,7 @@ fn zstack_fill_child_stretches_to_inner() {
 fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     // A Fill child reports its content at measure, whatever extent it is
     // offered, and a Block has none — so a Hug ZStack has no content to
-    // grow to, though it now offers its children the full 200 px.
+    // grow to, though it offers its children the full 200 px.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let panel = h.under_outer(|ui| {
         Panel::zstack()

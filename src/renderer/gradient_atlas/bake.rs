@@ -29,7 +29,7 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
 
     let mut linear_stops = [RgbaF32::TRANSPARENT; MAX_STOPS];
     for index in 0..count {
-        linear_stops[index] = premultiplied(stops[index].color());
+        linear_stops[index] = stops[index].color().premultiplied();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     // Only the Oklab ramp reads these, and an empty slice is what says so:
@@ -168,16 +168,6 @@ impl Iterator for RampTexels<'_> {
 }
 
 impl ExactSizeIterator for RampTexels<'_> {}
-
-/// `c` with its colour channels multiplied by its alpha.
-const fn premultiplied(c: RgbaF32) -> RgbaF32 {
-    RgbaF32 {
-        r: c.r * c.a,
-        g: c.g * c.a,
-        b: c.b * c.a,
-        a: c.a,
-    }
-}
 
 /// Interpolate two premultiplied stops in Oklab, premultiplied there too:
 /// each stop's Oklab coordinates weigh by its alpha, and the blend divides

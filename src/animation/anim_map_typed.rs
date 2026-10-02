@@ -47,10 +47,10 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// **A motion that starts from rest spends nothing on its first
     /// frame**, as a CSS transition shows its start value on the frame of
     /// the change: the `dt` before it is time that passed while the row was
-    /// at rest — after an idle window, the whole 0.1 s clamp, which used to
-    /// spend 99.5 % of `AnimSpec::FAST` before anything was painted. A row
-    /// already in flight spends `dt` as usual, so a target that moves every
-    /// frame keeps moving.
+    /// at rest — after an idle window, the whole 0.1 s clamp, and spending
+    /// it would use up 99.5 % of `AnimSpec::FAST` before anything was
+    /// painted. A row already in flight spends `dt` as usual, so a target
+    /// that moves every frame keeps moving.
     ///
     /// Caller (`Ui::animate`) is responsible for filtering instant
     /// specs (`AnimSpec::is_instant()`) before calling this — tick

@@ -21,8 +21,8 @@ use glam::{UVec2, Vec2};
 /// - **Polyline** (10,10)..(70,30): max corner distance from c is
 ///   dx = 30, dy = 10, r = √(30² + 10²) = √1000 ≈ 31.6228. The far
 ///   endpoint (70,30) rotated 90° CCW about c — c + (−10,30) = (30,50)
-///   — lies outside the owner box the old code shipped as the bbox, but
-///   inside the square: rotation-safety is what the old bound lacked.
+///   — lies outside the owner box but inside the square: an owner-box
+///   bound is not rotation-safe.
 /// - **Arc** about (50,20), radius 10, 0..π: the centerline bbox spans
 ///   (40,20)..(60,30) — endpoints and the π/2 crossing — so
 ///   r = √(20² + 10²). Its geometry lanes ride owner-local and
@@ -116,7 +116,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
         assert_eq!(cull, square, "{spun:?}");
     }
     // The polyline's far endpoint rotated 90° about c stays inside its
-    // square, and outside the owner box the old code used.
+    // square, and outside the owner box.
     let p_rot = c + Vec2::new(-10.0, 30.0);
     let r = (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt();
     assert!(Rect::new(c.x - r, c.y - r, 2.0 * r, 2.0 * r).contains(p_rot));

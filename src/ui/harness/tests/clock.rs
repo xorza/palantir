@@ -1,5 +1,6 @@
 //! The two clocks, and the step sizes that would silently clamp.
 
+use crate::common::panic_probe;
 use crate::ui::harness::tests::support::{INSIDE, SURFACE, button, target};
 use crate::ui::harness::*;
 
@@ -65,10 +66,10 @@ fn advance_frames_rejects_a_step_that_would_be_clamped() {
     harness.advance_frames(3, Duration::from_millis(16), button);
     assert_eq!(harness.time, Duration::from_millis(48));
 
-    crate::common::panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
+    panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
         UiHarness::new(SURFACE).advance_frames(1, Duration::from_millis(500), button);
     });
-    crate::common::panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
+    panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
         UiHarness::new(SURFACE).frames_until_idle(1, Duration::from_millis(500), button);
     });
 }

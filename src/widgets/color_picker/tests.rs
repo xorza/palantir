@@ -273,8 +273,8 @@ fn history_shows_the_preset_row_only_when_asked() {
 
 /// Keyboard nudges commit, but the history keeps only picks: a click on
 /// the field puts its colour at the front, and sixteen arrow presses
-/// after it — each a commit — leave the row as it was, where each used to
-/// push and evict a preset.
+/// after it — each a commit — leave the row as it was, where pushing each
+/// would evict a preset.
 #[test]
 fn keyboard_nudges_leave_the_history_alone() {
     use crate::input::keyboard::key::Key;

@@ -120,6 +120,7 @@ fn compose_intersects_nested_clips() {
 /// corner, so two rows of the kind survive.
 #[test]
 fn cull_drops_only_draws_wholly_outside_the_active_clip() {
+    #[derive(Debug)]
     struct Kind {
         name: &'static str,
         draw: fn(&mut PaintCapture, Rect),

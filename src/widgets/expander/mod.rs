@@ -1,5 +1,7 @@
 //! The disclosure control: a header that reveals or hides a body.
 
+pub(crate) mod expander_response;
+
 use crate::animation::anim_slot::AnimSlot;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
@@ -316,6 +318,5 @@ fn activation_key(ui: &mut Ui, header: WidgetId) -> bool {
     space || enter
 }
 
-pub(crate) mod expander_response;
 #[cfg(test)]
 mod tests;

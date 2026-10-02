@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
@@ -76,8 +77,8 @@ fn intersects_cases() {
         (Rect::NAN, Rect::new(0.0, 0.0, 10.0, 10.0)),
         (Rect::new(0.0, 0.0, 10.0, 10.0), Rect::NAN),
     ] {
-        crate::common::panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
-        crate::common::panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
+        panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
+        panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
     }
 
     // Clamping is not symmetric the way overlapping is: it keeps the *origin*

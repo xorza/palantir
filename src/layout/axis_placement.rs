@@ -129,9 +129,9 @@ impl AxisPlacement {
 /// exception, because clipping its content is exactly what it is for.
 /// `Scroll::measure` reports the content extent so a `Hug` wrapper can size
 /// to it, so the desired that reaches placement is the content's rather
-/// than anything the slot can hold. Both axes, not just the panned ones: a viewport clips
-/// on every side, and a cross axis wider than the slot would paint outside
-/// the clip its own subtree is scissored to.
+/// than anything the slot can hold. Both axes, not just the panned ones:
+/// a viewport clips on every side, and a cross axis wider than the slot
+/// would paint outside the clip its own subtree is scissored to.
 ///
 /// Stated here rather than in one driver because *every* placement goes
 /// through [`AxisPlacement::arrange`]. Stated per driver instead, a scroll

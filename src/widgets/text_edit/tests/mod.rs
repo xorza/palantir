@@ -157,14 +157,11 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
     }
 }
 
-/// `ui_at_no_cosmic` constructs a Ui without cosmic, so the mono
-/// fallback drives caret-x (8 px/char at 16 px font) — predictable
-/// widths the click-positioning tests rely on.
 /// Multi-line builder flag: `Enter` inserts `\n` (instead of being
 /// ignored), `Cmd/Ctrl+V` preserves clipboard newlines, and cursor
 /// navigation works in 2D. Driven via `apply_key` directly for the
 /// state-machine assertions; the full show()+layout path is exercised
-/// separately by `multiline_renders_multiple_visual_lines`.
+/// separately by `align_per_line::multiline_widget_right_aligns_each_line`.
 fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

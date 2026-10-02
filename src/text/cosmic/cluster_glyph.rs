@@ -1,9 +1,10 @@
 //! One shaped glyph as the truncation cut reads it, and the prefix scan
 //! that spends a width budget over a run of them.
 //!
-//! The cut is measured against the cached *unbounded* shape rather than
-//! by reshaping the whole string per width, which is what keeps a resize
-//! drag cheap — [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated)
+//! The cut is measured against the cached *unbounded* shape rather than by
+//! reshaping the whole string per width, which is what keeps a resize drag
+//! cheap —
+//! [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated)
 //! carries the measurement that settled it, including why delegating to
 //! cosmic's own `set_ellipsize` was written, benchmarked and reverted.
 
@@ -28,8 +29,8 @@ impl ClusterGlyph {
     ///
     /// The result is always strictly below `max_end`, so passing the previous
     /// answer retires at least one more cluster — that is what makes
-    /// [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated)'s back-off terminate. Pass
-    /// `usize::MAX` for an unbounded first cut.
+    /// [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated)'s
+    /// back-off terminate. Pass `usize::MAX` for an unbounded first cut.
     ///
     /// Glyphs arrive in visual order, so a glyph's `x` follows the reading
     /// direction rather than the logical prefix — an RTL run's first glyph sits

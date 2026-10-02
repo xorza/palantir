@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::hash;
+use crate::common::panic_probe;
 use crate::primitives::recorded_text::RecordedText;
 
 #[test]
@@ -163,20 +164,17 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
     let widget_id = WidgetId::from_hash("invalid metrics");
     let calls = text.shaper().measure_calls();
 
-    crate::common::panic_probe::assert_panics_with(
-        "a shaping fixture needs text and a usable face",
-        || {
-            text.shape_run(
-                slot(widget_id),
-                "hi",
-                shape(EPS * 0.5)
-                    .leading(16.0)
-                    .width(40.0)
-                    .halign(HAlign::Center),
-                TextWrap::Ellipsis,
-            )
-        },
-    );
+    panic_probe::assert_panics_with("a shaping fixture needs text and a usable face", || {
+        text.shape_run(
+            slot(widget_id),
+            "hi",
+            shape(EPS * 0.5)
+                .leading(16.0)
+                .width(40.0)
+                .halign(HAlign::Center),
+            TextWrap::Ellipsis,
+        )
+    });
     assert!(
         !text.has_entry(widget_id, 0),
         "invalid metrics entered the reuse cache",

@@ -39,7 +39,7 @@ pub(crate) struct InputQueue {
 
 impl InputQueue {
     /// Whether nothing waits.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.pending.is_empty()
     }
 
@@ -51,7 +51,7 @@ impl InputQueue {
     /// applying the event — [`Self::note_button`] and
     /// [`Self::note_command_key`] — because only then is it known whether
     /// the press latched a capture or the key reached a reader.
-    pub(crate) fn admits(&self, event: &InputEvent) -> bool {
+    pub(super) fn admits(&self, event: &InputEvent) -> bool {
         match *event {
             InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
                 !self.buttons[button.idx()]
@@ -73,31 +73,31 @@ impl InputQueue {
     /// `button`'s capture began or ended this frame. A press that hit
     /// nothing, or a release with no capture to end, changes no widget's
     /// state and is not noted: a frame can hold any number of those.
-    pub(crate) fn note_button(&mut self, button: PointerButton) {
+    pub(super) fn note_button(&mut self, button: PointerButton) {
         self.buttons[button.idx()] = true;
     }
 
     /// A reader received `key`, a command key — a press that typed
     /// nothing and is not a bare modifier. Key presses after it wait for
     /// the next frame, except repeats of it.
-    pub(crate) fn note_command_key(&mut self, key: Key) {
+    pub(super) fn note_command_key(&mut self, key: Key) {
         self.command_key.get_or_insert(key);
     }
 
     /// Hold `event` for a later frame.
-    pub(crate) fn defer(&mut self, event: InputEvent, now: Duration) {
+    pub(super) fn defer(&mut self, event: InputEvent, now: Duration) {
         self.pending.push_back((event, now));
     }
 
     /// Start the next frame: forget what this one changed.
-    pub(crate) fn next_frame(&mut self) {
+    pub(super) fn next_frame(&mut self) {
         self.buttons = [false; PointerButton::COUNT];
         self.command_key = None;
     }
 
     /// The oldest held event, if the frame now admits it, taken off the
     /// queue. Applying it notes what it changes.
-    pub(crate) fn pop_admitted(&mut self) -> Option<(InputEvent, Duration)> {
+    pub(super) fn pop_admitted(&mut self) -> Option<(InputEvent, Duration)> {
         let (event, _) = self.pending.front()?;
         if !self.admits(event) {
             return None;
@@ -107,7 +107,7 @@ impl InputQueue {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::input::input_event::InputEvent;
     use crate::input::input_queue::InputQueue;
     use crate::input::keyboard::modifiers::Modifiers;

@@ -1,5 +1,5 @@
 //! Tests for `TextEdit::text_align` and the default alignment per
-//! mode. Mono fallback (`ui_at_no_cosmic`): 8 px / char @ 16 px font,
+//! mode. Mono fallback (`UiHarness::new`): 8 px / char @ 16 px font,
 //! `LINE_HEIGHT_MULT = 1.2` → canonical line height
 //! `round(19.2 × 64) / 64 = 19.203125` px. Editor is 280×40
 //! with theme padding (5, 3) plus the 1.5 px chrome stroke that

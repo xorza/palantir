@@ -235,13 +235,7 @@ impl CascadeEngine {
         // for good and make every later full rebuild free and allocate.
         // `clear` keeps this table's own capacity.
         cascade.by_id.clear();
-        cascade.by_id.extend(
-            forest
-                .ids
-                .curr
-                .iter()
-                .map(|(id, endpoint)| (*id, *endpoint)),
-        );
+        cascade.by_id.extend(&forest.ids.curr);
         cascade.key = Some(*key);
     }
 }

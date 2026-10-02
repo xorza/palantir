@@ -56,8 +56,9 @@ pub struct TextProbe<'a> {
     ///
     /// Not read off `key`, although the key carries one: the align bits of
     /// its `face_q` are a *cache discriminator*, projected onto what
-    /// shaping actually varies on — an unbounded key stores `Auto` for every alignment, because
-    /// an unbounded shape has no per-line offsets to vary. Asked where a
+    /// shaping actually varies on — an unbounded key stores `Auto` for
+    /// every alignment, because an unbounded shape has no per-line offsets
+    /// to vary. Asked where a
     /// glyphless line's caret sits, it would answer `Auto` for a
     /// right-aligned run and put the caret at the block's left edge.
     halign: HAlign,

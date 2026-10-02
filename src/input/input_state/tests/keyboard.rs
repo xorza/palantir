@@ -3,7 +3,7 @@ use crate::KeyFilter;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::input_state::tests::{
-    BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, key_down, sample_layers,
+    BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, sample_layers,
 };
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
@@ -25,7 +25,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
     state.scroll_target = Some(target);
     state.feed(InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)));
     let before_scroll = state.frame_target_deltas.clone();
-    state.feed(key_down(Key::ArrowLeft));
+    state.feed(InputEvent::key_down(Key::ArrowLeft));
     state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
     assert_eq!(state.frame_target_deltas, before_scroll);
 }
@@ -41,7 +41,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         ctrl: true,
         ..Modifiers::NONE
     }));
-    state.feed(key_down(Key::Char('a')));
+    state.feed(InputEvent::key_down(Key::Char('a')));
     state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
     state.feed(InputEvent::KeyDown {
         key: Key::Char('b'),
@@ -258,7 +258,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
 /// land.
 #[test]
 fn a_close_takes_effect_at_the_next_resolution() {
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct Reads {
         at_root: bool,
         inner_before: bool,
@@ -495,7 +495,7 @@ fn post_record_clears_keys_but_preserves_modifiers() {
         shift: true,
         ..Modifiers::NONE
     }));
-    state.feed(key_down(Key::ArrowLeft));
+    state.feed(InputEvent::key_down(Key::ArrowLeft));
     let buf_cap_before = state.frame_keyboard_events.capacity();
 
     state.end_frame(&cascade);

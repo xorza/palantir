@@ -1,4 +1,4 @@
-use crate::widgets::text_edit::input_pass::WORD_NAV;
+use crate::widgets::text_edit::input_pass::test_support::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
 
 #[test]

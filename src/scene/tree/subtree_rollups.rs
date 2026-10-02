@@ -1,19 +1,24 @@
-//! The two per-node authoring-hash columns a finalized tree carries.
+//! The per-node authoring-hash columns a finalized tree carries.
 
 use crate::common::content_hash::ContentHash;
 
 /// Per-node hash columns populated by
-/// [`Tree::post_record`](crate::scene::tree::Tree::post_record). Both
-/// index by `NodeId.0` and are length `records.len()` afterwards;
+/// [`Tree::post_record`](crate::scene::tree::Tree::post_record). Each
+/// indexes by `NodeId.0` and is length `records.len()` afterwards;
 /// storage capacity is retained across frames.
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
-///   extras / shapes / grid def). Read by damage diff and the leaf
-///   intrinsic cache.
+///   extras / shapes / grid def). Read by the damage diff.
 /// - `subtree[i]` — rollup of `node[i]` together with the subtree
 ///   hashes of `i`'s direct children, in declaration order. Equality
-///   across frames means nothing in the subtree changed; the
-///   cross-frame measure cache keys on this.
+///   across frames means nothing in the subtree changed; the cascade
+///   and the damage diff key on this.
+/// - `layout_subtree[i]` — the same rollup over the layout half of each
+///   node, the part measure and arrange read. The measure cache and the
+///   root intrinsic cache key on this, so a hover tint or a paint
+///   animation still hits them. Each node's full hash is built from its
+///   layout half, so nothing in this rollup can be missing from
+///   `subtree`.
 ///
 /// Per-chrome authoring hash lives inline on `ChromeRow.hash` (only
 /// chromed nodes pay storage); per-shape canonical hash lives on
@@ -21,15 +26,8 @@ use crate::common::content_hash::ContentHash;
 /// see [`TreeFingerprint`](crate::scene::tree::tree_fingerprint::TreeFingerprint).
 #[derive(Debug, Default)]
 pub(crate) struct SubtreeRollups {
-    /// Everything a node paints and lays out, in record order — what the
-    /// cascade's repair and damage compare.
     pub(crate) node: Vec<ContentHash>,
     pub(crate) subtree: Vec<ContentHash>,
-    /// The part of [`Self::node`] that measure and arrange read — what
-    /// the measure cache keys on, so a hover tint or a paint animation
-    /// still hits it. [`Self::node`] is built from this, so nothing in it
-    /// can be missing there.
-    pub(crate) layout_node: Vec<ContentHash>,
     pub(crate) layout_subtree: Vec<ContentHash>,
 }
 
@@ -44,7 +42,6 @@ impl SubtreeRollups {
         // avoids the truncate-then-grow round trip when `n` is steady.
         self.node.resize(n, ContentHash::default());
         self.subtree.resize(n, ContentHash::default());
-        self.layout_node.resize(n, ContentHash::default());
         self.layout_subtree.resize(n, ContentHash::default());
     }
 }

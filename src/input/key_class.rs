@@ -206,12 +206,7 @@ mod tests {
     use crate::input::key_class::{KeyClass, KeyFilter};
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_press::KeyPress;
-
     use crate::input::keyboard::modifiers::Modifiers;
-
-    fn press(key: Key, mods: Modifiers) -> KeyPress {
-        KeyPress::with(key, mods)
-    }
 
     /// `accepts` is `takes` over a press: it classifies the press the way
     /// [`KeyClass::of`] does, so one gate serves every reader of the
@@ -219,8 +214,8 @@ mod tests {
     #[test]
     fn accepts_gates_the_stream_on_the_declared_classes() {
         let field = KeyFilter::TEXT_FIELD;
-        let typed = press(Key::Char('a'), Modifiers::default());
-        let escape = press(Key::Escape, Modifiers::default());
+        let typed = KeyPress::with(Key::Char('a'), Modifiers::default());
+        let escape = KeyPress::with(Key::Escape, Modifiers::default());
 
         assert_eq!(field.accepts(typed), Some(typed), "a field takes text");
         assert_eq!(field.accepts(escape), Some(escape), "and Escape, to cancel");
@@ -234,7 +229,7 @@ mod tests {
 
         // `ACCEL` is out of `TEXT_FIELD`, so an application chord walks
         // past a focused field while the bare key it shares still types.
-        let save = press(
+        let save = KeyPress::with(
             Key::Char('S'),
             Modifiers {
                 ctrl: true,
@@ -243,7 +238,7 @@ mod tests {
         );
         assert_eq!(KeyClass::of(save), KeyClass::Accel);
         assert_eq!(field.accepts(save), None);
-        let shifted = press(Key::Char('S'), Modifiers::default());
+        let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
         assert_eq!(field.accepts(shifted), Some(shifted));
     }
 }

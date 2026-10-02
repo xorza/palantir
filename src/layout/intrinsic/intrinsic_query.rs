@@ -40,9 +40,10 @@ impl IntrinsicQuery {
     /// Drivers whose own size on an axis is "the largest child wants this
     /// much" (ZStack, Stack cross-axis, WrapStack) call
     /// [`Self::children_max_at_origin`] — Canvas is the one that folds in
-    /// each child's declared position. Same closure-parameter shape the measure side uses for the
-    /// identical split (`LayoutPass::measure_per_axis_hug`, shared by
-    /// `ZStack::measure` and `Canvas::measure`).
+    /// each child's declared position. Same closure-parameter shape the
+    /// measure side uses for the identical split
+    /// (`LayoutPass::measure_per_axis_hug`, shared by `ZStack::measure`
+    /// and `Canvas::measure`).
     pub(crate) fn children_max(
         self,
         layout: &mut LayoutEngine,

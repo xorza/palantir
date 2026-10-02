@@ -113,6 +113,28 @@ impl InputEvent {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    use crate::input::input_event::InputEvent;
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_text::KeyText;
+
+    impl InputEvent {
+        /// A first press of `key`, typing what the key types on a plain
+        /// layout. `physical` is [`Key::Other`]: only a non-ASCII `Char`
+        /// under a command modifier consults it (`Shortcut::matches`), so
+        /// it is inert for every other key.
+        pub(crate) fn key_down(key: Key) -> Self {
+            Self::KeyDown {
+                key,
+                repeat: false,
+                physical: Key::Other,
+                text: KeyText::of_key(key),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::input::input_event::InputEvent;

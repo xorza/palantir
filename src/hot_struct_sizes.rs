@@ -109,7 +109,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 6440;
+const UI_SIZE: usize = 6296;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -163,10 +163,8 @@ const PINS: &[Pin] = &[
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 64, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
-    // Grew from 1 byte to 2 when `Sense::PINCH` claimed bit 4, pushing
-    // `DISABLED`/`CLIP`/`FOCUSABLE` past the u8 ceiling. Still packed:
-    // sense (5 bits) + disabled (1) + clip (2) + focusable (1) = 9 bits,
-    // fitting in a u16 with 7 spare.
+    // Sense (5 bits), disabled (1), clip (2), focusable (1) and the key
+    // scope (5): 14 bits, past a `u8`, with 2 spare in the `u16`.
     pin::<NodeFlags>("scene::NodeFlags", 2, 2),
     pin::<LayoutMode>("layout::LayoutMode", 4, 2),
     pin::<PackedLayoutMeta>("layout::PackedLayoutMeta", 4, 4),

@@ -90,6 +90,7 @@ impl NanCheck for ShapeBrush {
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 
     /// A gradient's hash payload is the lowering-time content hash, not
@@ -115,9 +116,6 @@ mod tests {
 
         let solid = ShapeBrush::Solid(RgbaF32::WHITE.into()).hash_parts();
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
-        assert_eq!(
-            solid.payload,
-            crate::primitives::color::rgba_f16::RgbaF16::from(RgbaF32::WHITE).as_u64(),
-        );
+        assert_eq!(solid.payload, RgbaF16::from(RgbaF32::WHITE).as_u64(),);
     }
 }

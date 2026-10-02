@@ -3,6 +3,7 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
+use crate::widgets::theme::palette::Palette;
 use glam::{UVec2, Vec2};
 
 /// The tick is themed, not baked in: `ToggleTheme::check_pts` holds it
@@ -46,7 +47,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
 
     // Stock 16 px box: unit coords land back on the hand-tuned pixels
     // they were derived from (3.5/16 * 16 = 3.5, and so on).
-    let stock = ToggleTheme::checkbox(&crate::widgets::theme::palette::Palette::DEFAULT);
+    let stock = ToggleTheme::checkbox(&Palette::DEFAULT);
     assert_eq!(stock.box_size, 16.0);
     assert_eq!(
         drawn(stock.clone()),

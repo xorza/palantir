@@ -5,6 +5,7 @@ use crate::animation::anim_row::MotionRow;
 use crate::animation::anim_spec::{AnimMotion, AnimSpec};
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{AnimUi, SLOT, linear_100ms, setup_anim_ui, wid};
+use crate::common::panic_probe;
 use crate::common::time::MAX_ANIM_DT;
 use crate::primitives::approx::test_support::assert_close;
 use crate::primitives::color::RgbaF32;
@@ -109,9 +110,9 @@ fn target_below_snap_floor_snaps_without_animating() {
 /// retarget frame starts from rest and shows the start value; the next
 /// frame moves toward the target without reaching it.
 ///
-/// The spring case is the dark-theme hover the old pixel-scale floor
-/// swallowed: `#121212 → #1c1c1c` is about 0.0056 linear a channel, under
-/// that floor's 0.01 and well over this one.
+/// The spring case is a dark-theme hover: `#121212 → #1c1c1c` is about
+/// 0.0056 linear a channel, under a pixel-scale floor of 0.01 and well
+/// over this one.
 #[test]
 fn one_floor_animates_a_small_change_under_either_motion() {
     let delta = 5.0e-4_f32;
@@ -282,7 +283,7 @@ fn a_non_finite_target_is_refused() {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid("nan");
         let _ = map.step(id, SLOT, 0.0, AnimSpec::FAST, 0.016);
-        crate::common::panic_probe::assert_panics_with("is not finite", || {
+        panic_probe::assert_panics_with("is not finite", || {
             map.step(id, SLOT, target, AnimSpec::FAST, 0.016)
         });
     }

@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::widgets::scroll::{ZoomConfig, ZoomModifier, ZoomPivot};
 use std::ops::RangeInclusive;
 
@@ -99,7 +100,7 @@ fn zoom_config_rejects_every_invalid_boundary() {
         } else {
             "zoom step must be finite and positive"
         };
-        crate::common::panic_probe::assert_panics_with(expected, || {
+        panic_probe::assert_panics_with(expected, || {
             ZoomConfig::new(case.range.clone(), case.step)
         });
     }

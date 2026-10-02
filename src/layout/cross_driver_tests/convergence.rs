@@ -1,15 +1,15 @@
-//! Regression: `LayoutPass::measure`'s second-pass convergence path
-//! used to assert `final_desired <= new_available`. That assumption
-//! breaks when a descendant subtree contains non-monotonic measure —
+//! `LayoutPass::measure`'s second-pass convergence path must not assume
+//! `final_desired <= new_available`. That assumption breaks when a descendant subtree contains non-monotonic measure —
 //! e.g. a `wrap_hstack` whose row-pack changes shape under different
 //! available widths, combined with sibling `Fill` cells that hug to
 //! padded content. Specific trigger from the showcase: a vstack root
 //! with a 18-button toolbar `wrap_hstack` plus a central zstack
 //! holding `panels::build`'s 4-cell hstack. At certain window widths
 //! the second-pass measure produces a desired ~10 px wider than the
-//! grown `new_available`, which used to panic.
+//! grown `new_available`.
 //!
-//! Sweeps a width range and asserts the frame doesn't panic.
+//! Sweeps a width range: no frame panics, and every toolbar button stays
+//! inside the toolbar it wrapped in.
 use crate::primitives::widget_id::WidgetId;
 
 use crate::layout::types::sizing::Sizing;

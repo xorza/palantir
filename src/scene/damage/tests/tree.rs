@@ -207,10 +207,8 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
         );
 
         // The reorder costs exactly the frame it happens on: once the
-        // retained order is the new one, the O(n²) overlap scan is never
-        // entered again. The scan's cost is bearable precisely because
-        // it is one frame per raise rather than one per frame the order
-        // stays flipped.
+        // retained order is the new one, the inversion pass is never
+        // entered again.
         frame(&mut h, |ui| record(ui, [b, c, a]));
         assert!(
             h.damage_region().is_empty(),

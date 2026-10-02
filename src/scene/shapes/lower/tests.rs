@@ -11,6 +11,7 @@ use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
+use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::brush::gradient::{Interp, Spread};
 
 use crate::scene::record_store::RecordStore;
@@ -81,8 +82,8 @@ fn nan_backgrounds() -> [(&'static str, Background); 4] {
 fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
     let mut store = RecordStore::default();
     let stops = [
-        crate::primitives::brush::gradient::stops::Stop::new(0.0, RgbaF32::BLACK),
-        crate::primitives::brush::gradient::stops::Stop::new(1.0, RgbaF32::WHITE),
+        Stop::new(0.0, RgbaF32::BLACK),
+        Stop::new(1.0, RgbaF32::WHITE),
     ];
     let centre = glam::Vec2::splat(0.5);
     let hashes = [

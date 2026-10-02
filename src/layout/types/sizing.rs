@@ -323,6 +323,7 @@ impl From<Size> for SizeSpec {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::panic_probe;
     use crate::layout::types::sizing::{SizeSpec, Sizing};
 
     /// The two shares always partition 1.0, so the first lands at exactly
@@ -428,7 +429,7 @@ mod tests {
             (SHARE, || Sizing::share(f32::INFINITY)),
         ];
         for &(expected, construct) in cases {
-            crate::common::panic_probe::assert_panics_with(expected, construct);
+            panic_probe::assert_panics_with(expected, construct);
         }
     }
 }

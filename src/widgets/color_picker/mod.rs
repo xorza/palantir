@@ -1,7 +1,6 @@
 //! The assembled colour picker: the panel, what it retains between frames,
 //! and the rule that decides which control's write reaches the bound colour.
 
-use crate::input::response::response_state::ResponseState;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -255,7 +254,7 @@ struct Edit {
 /// Which control wrote, and so which part of the colour to rebuild.
 #[derive(Debug, Default)]
 struct Writes {
-    /// The field, the hue bar, or the H / S values moved.
+    /// The field, the hue bar, or the H / S / V values moved.
     axes: bool,
     /// The alpha bar or the opacity value moved.
     alpha: f32,
@@ -286,12 +285,6 @@ fn shown(state: &PickerState, bound: RgbaF32, writes: &Writes) -> RgbaF32 {
 /// Whether two colours have the same sRGB channels, alpha aside.
 fn same_rgb(a: SrgbaU8, b: SrgbaU8) -> bool {
     (a.r, a.g, a.b) == (b.r, b.g, b.b)
-}
-
-/// Whether `response` ended a pointer gesture this frame — a commit the
-/// history keeps, where a keyboard nudge's is not.
-fn pointer_released(response: &ResponseState) -> bool {
-    response.left.released()
 }
 
 fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
@@ -331,7 +324,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
         .show(ui);
     writes.axes |= field.changed;
     writes.committed |= field.committed;
-    writes.remember |= field.committed && pointer_released(&field.response);
+    writes.remember |= field.committed && field.response.left.released();
 
     let bound = *color;
     let preview = shown(state, bound, &writes);
@@ -358,7 +351,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                         .show(ui);
                     writes.axes |= hue.changed;
                     writes.committed |= hue.committed;
-                    writes.remember |= hue.committed && pointer_released(&hue.response);
+                    writes.remember |= hue.committed && hue.response.left.released();
                     if alpha_on {
                         let mut working = preview;
                         let strip = ColorStrip::for_alpha(&mut working)
@@ -372,7 +365,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                             writes.alpha_moved = true;
                         }
                         writes.committed |= strip.committed;
-                        writes.remember |= strip.committed && pointer_released(&strip.response);
+                        writes.remember |= strip.committed && strip.response.left.released();
                     }
                 });
         });

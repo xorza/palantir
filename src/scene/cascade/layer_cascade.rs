@@ -25,14 +25,15 @@ use crate::scene::cascade::paint::PaintArena;
 ///   paint" — the encoder's cull, and damage's two moved-subtree
 ///   pushes. One column rather than a fold each caller runs over the
 ///   rows, so the answer cannot depend on who asked.
-/// - [`Self::subtree_ends`] is read only by [`Cascade::is_within`](crate::scene::cascade::Cascade::is_within)
-///   ancestry lookups — sparse random access, never a walk, so it
-///   must not fatten the walked columns.
+/// - [`Self::subtree_ends`] is read only by
+///   [`Cascade::is_within`](crate::scene::cascade::Cascade::is_within) ancestry
+///   lookups — sparse random access, never a walk, so it must not fatten the
+///   walked columns.
 /// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
-///   [`Paint`](crate::scene::cascade::paint::Paint)s plus the `node_spans` index). Read only on damage's
-///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
-///   so it sits behind a `node_spans[i]` indirection that damage's
-///   subtree-skip fast path skips entirely.
+///   [`Paint`](crate::scene::cascade::paint::Paint)s plus the `node_spans`
+///   index). Read only on damage's per-shape legs (vacant insert, hash
+///   mismatch, paint-anim lookup), so it sits behind a `node_spans[i]`
+///   indirection that damage's subtree-skip fast path skips entirely.
 /// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with
 ///   the authoring rollup they were built from — provenance, not a
 ///   walked column.
@@ -45,9 +46,9 @@ pub(crate) struct LayerCascade {
     /// The encoder reads `.invisible()`; damage pairs the full u64 with
     /// `Tree.rollups.subtree[i]` for its subtree-skip fast path.
     pub(crate) cascade_inputs: Vec<CascadeInputHash>,
-    /// Per-node subtree paint rect — the node's own paint extent rolled
-    /// up with every descendant's `subtree_paint_rects[i]`. Computed
-    /// inline in [`CascadeEngine::run_tree`](crate::scene::cascade::engine::CascadeEngine::run_tree)
+    /// Per-node subtree paint rect — the node's own paint extent rolled up with
+    /// every descendant's `subtree_paint_rects[i]`. Computed inline in
+    /// [`CascadeEngine::run_tree`](crate::scene::cascade::engine::CascadeEngine::run_tree)
     /// via a stack-frame accumulator.
     ///
     /// Read by the encoder for the viewport + damage subtree culls where
@@ -65,11 +66,11 @@ pub(crate) struct LayerCascade {
     /// own visible rect is in here and in no row, which only ever makes
     /// the answer cover more than the subtree's rows do.
     pub(crate) subtree_paint_rects: Vec<Rect>,
-    /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid
-    /// flag stripped), snapshotted so ancestry queries
-    /// ([`Cascade::is_within`](crate::scene::cascade::Cascade::is_within)) can run against the frozen cascade
-    /// result *during the next record* — by then the live tree's
-    /// columns are already being rebuilt. Indexed like
+    /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid flag
+    /// stripped), snapshotted so ancestry queries
+    /// ([`Cascade::is_within`](crate::scene::cascade::Cascade::is_within)) can
+    /// run against the frozen cascade result *during the next record* — by then
+    /// the live tree's columns are already being rebuilt. Indexed like
     /// `cascade_inputs`.
     pub(super) subtree_ends: Vec<u32>,
     /// Unified paint arena (rows + per-node spans).
@@ -82,22 +83,23 @@ pub(crate) struct LayerCascade {
     /// recompute their own paint rows, so no separate per-node paint hash
     /// or own extent is retained.
     ///
-    /// **Not the damage engine's snapshot of the same rollup.** The two
-    /// hold equal values and cannot be merged: this one is node-indexed,
-    /// and [`NodeSnapshot::subtree_hash`](crate::scene::damage::node_snapshot::NodeSnapshot)
-    /// is keyed by [`WidgetId`](crate::primitives::widget_id::WidgetId) because a widget outlives the index it
-    /// occupied. The frames where a widget's index moves are exactly the
-    /// frames a full rebuild overwrites this whole column, so neither
-    /// reader can answer from the other's copy without a per-node hash
-    /// probe on the repair path.
+    /// **Not the damage engine's snapshot of the same rollup.** The two hold
+    /// equal values and cannot be merged: this one is node-indexed, and
+    /// [`NodeSnapshot::subtree_hash`](crate::scene::damage::node_snapshot::NodeSnapshot)
+    /// is keyed by [`WidgetId`](crate::primitives::widget_id::WidgetId) because
+    /// a widget outlives the index it occupied. The frames where a widget's
+    /// index moves are exactly the frames a full rebuild overwrites this whole
+    /// column, so neither reader can answer from the other's copy without a
+    /// per-node hash probe on the repair path.
     pub(super) arena_hashes: Vec<ContentHash>,
     /// Offset of this layer's first `EntryRow` in
-    /// [`Cascade::entries`](crate::scene::cascade::Cascade::entries) — fixed for the layer's run, set at
-    /// `reset_for` time. A full rebuild pushes one entry per node;
-    /// paint-only runs retain the block. The entry index is therefore
-    /// always `entries_base + node.0`. Combined with the per-pass
-    /// [`Cascade::by_id`](crate::scene::cascade::Cascade::by_id) snapshot this gives O(1) `WidgetId → entry`
-    /// without a per-widget `WidgetId → u32` hashmap fill.
+    /// [`Cascade::entries`](crate::scene::cascade::Cascade::entries) — fixed
+    /// for the layer's run, set at `reset_for` time. A full rebuild pushes one
+    /// entry per node; paint-only runs retain the block. The entry index is
+    /// therefore always `entries_base + node.0`. Combined with the per-pass
+    /// [`Cascade::by_id`](crate::scene::cascade::Cascade::by_id) snapshot this
+    /// gives O(1) `WidgetId → entry` without a per-widget `WidgetId → u32`
+    /// hashmap fill.
     pub(crate) entries_base: u32,
 }
 

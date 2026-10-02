@@ -134,6 +134,7 @@ fn hug_vstack(name: &str) -> Panel {
 ///   non-wrap hstack (CSS `max-height`).
 #[test]
 fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
+    #[derive(Debug)]
     struct Case {
         name: &'static str,
         build: fn(&mut Ui),

@@ -17,6 +17,7 @@ enum Pick {
 ///
 /// The rects are the click targets: a test has to hit the actually
 /// painted area, which font metrics decide.
+#[derive(Debug)]
 struct Rows {
     rects: [Option<Rect>; 3],
     changed: [bool; 3],

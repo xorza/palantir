@@ -1,3 +1,4 @@
+use crate::common::panic_probe;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
@@ -90,7 +91,7 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
 #[test]
 fn set_mode_refines_a_node_and_never_rekinds_it() {
     let mut grid = Node::new(NodeMode::PendingGrid);
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "grid node recorded before its definition was installed",
         || LayoutCore::from_node(&grid),
     );
@@ -99,7 +100,7 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
     assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
 
     let mut bars = Node::new(NodeMode::PendingScrollbars);
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "scrollbar overlay recorded before its definition was installed",
         || LayoutCore::from_node(&bars),
     );
@@ -117,26 +118,22 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
         NodeMode::Resolved(LayoutMode::Scroll(ScrollAxes::BOTH))
     );
     // A pending grid takes only a grid definition.
-    crate::common::panic_probe::assert_panics_with(
-        "ZStack installed on a PendingGrid node",
-        || Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack),
-    );
+    panic_probe::assert_panics_with("ZStack installed on a PendingGrid node", || {
+        Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack)
+    });
     // A pending bar overlay takes only a bar definition.
-    crate::common::panic_probe::assert_panics_with("installed on a PendingScrollbars node", || {
+    panic_probe::assert_panics_with("installed on a PendingScrollbars node", || {
         Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
     });
     // A resolved mode is not re-kinded.
-    crate::common::panic_probe::assert_panics_with(
-        "installed on a Resolved(Stack(Y)) node",
-        || {
-            Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
-                .set_mode(LayoutMode::Grid(grid_id))
-        },
-    );
+    panic_probe::assert_panics_with("installed on a Resolved(Stack(Y)) node", || {
+        Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
+            .set_mode(LayoutMode::Grid(grid_id))
+    });
 
     let last_grid = GridDefId::from_index(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
-    crate::common::panic_probe::assert_panics_with("exceeded its 65535 row ceiling", || {
+    panic_probe::assert_panics_with("exceeded its 65535 row ceiling", || {
         GridDefId::from_index(65_535)
     });
 }
@@ -266,12 +263,12 @@ fn themed_bounds_yield_to_authored_ones() {
     node.fill_min_size(Size::new(280.0, 10.0));
     assert_eq!(node.min_size, Some(Size::new(280.0, 10.0)));
 
-    crate::common::panic_probe::assert_panics_with("node minimums must be finite", || {
+    panic_probe::assert_panics_with("node minimums must be finite", || {
         let mut node = leaf();
         node.set_max_size(Size::new(240.0, 400.0));
         node.set_min_size(Size::new(280.0, 0.0));
     });
-    crate::common::panic_probe::assert_panics_with("node minimums must be finite", || {
+    panic_probe::assert_panics_with("node minimums must be finite", || {
         let mut node = leaf();
         node.set_max_size(Size::new(240.0, 400.0));
         node.fill_min_size(Size::new(f32::NAN, 0.0));

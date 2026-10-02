@@ -3,9 +3,9 @@
 //! This module owns:
 //! - The query types: `LenReq`, `IntrinsicQuery`, and the ranges a walk
 //!   answers with.
-//! - The central `IntrinsicQuery::walk` dispatch that handles `Sizing` overrides,
-//!   padding/margin, and `min_size`/`max_size` clamps before delegating to
-//!   each driver's `intrinsic()` for content-driven sizes.
+//! - The central `IntrinsicQuery::walk` dispatch that handles `Sizing`
+//!   overrides, padding/margin, and `min_size`/`max_size` clamps before
+//!   delegating to each driver's `intrinsic()` for content-driven sizes.
 //! - Leaf intrinsics (no driver module owns leaves).
 //!
 //! Per-driver intrinsic logic lives alongside that driver's

@@ -254,20 +254,6 @@ pub(crate) fn text_paint_bbox_local(
     }
 }
 
-/// **The backstop behind the NaN gate**, not the gate itself:
-/// `Shapes::add` screens the authored shape, and debug-asserts this on
-/// the record that screening let through.
-///
-/// It is a second reading of the same inputs one tier down, which is what
-/// makes it worth having as an assertion and worth nothing as a check —
-/// by here a gradient's geometry has gone into the store behind a
-/// `GradientId` and a triangle's `radius` has been laundered through
-/// `radius.max(0.0)`, so a record that reports clean is not proof that
-/// the shape was.
-///
-/// Every bulk input (polyline points, mesh vertices, curve control
-/// points) reaches it as a `bbox` folded under the AABB NaN contract, so
-/// one `Rect` test stands in for an `O(n)` scan of the data behind it.
 impl ShapeRecord {
     /// Feed what layout reads from this record into `h`, answering
     /// whether there was anything. Only a text run is read by layout —
@@ -303,6 +289,20 @@ impl ShapeRecord {
     }
 }
 
+/// **The backstop behind the NaN gate**, not the gate itself:
+/// `Shapes::add` screens the authored shape, and debug-asserts this on
+/// the record that screening let through.
+///
+/// It is a second reading of the same inputs one tier down, which is what
+/// makes it worth having as an assertion and worth nothing as a check —
+/// by here a gradient's geometry has gone into the store behind a
+/// `GradientId` and a triangle's `radius` has been laundered through
+/// `radius.max(0.0)`, so a record that reports clean is not proof that
+/// the shape was.
+///
+/// Every bulk input (polyline points, mesh vertices, curve control
+/// points) reaches it as a `bbox` folded under the AABB NaN contract, so
+/// one `Rect` test stands in for an `O(n)` scan of the data behind it.
 impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {

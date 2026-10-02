@@ -2,6 +2,7 @@
 
 use crate::InternedStr;
 use crate::Ui;
+use crate::common::panic_probe;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -572,7 +573,7 @@ fn interned_handles_do_not_outlive_their_record_pass() {
     // A later frame in the same window.
     let mut h = UiHarness::new(SURFACE);
     let stale = intern_in_own_pass(&mut h);
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
         || {
             h.frame(|ui| {
@@ -585,7 +586,7 @@ fn interned_handles_do_not_outlive_their_record_pass() {
     // pass B records the handle pass A minted.
     let mut h = UiHarness::new(SURFACE);
     let mut held = None;
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
         || {
             h.frame(|ui| match held {
@@ -604,7 +605,7 @@ fn interned_handles_do_not_outlive_their_record_pass() {
     let mut source = UiHarness::new(SURFACE);
     let foreign = intern_in_own_pass(&mut source);
     let mut destination = UiHarness::new(SURFACE);
-    crate::common::panic_probe::assert_panics_with(
+    panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
         || {
             destination.frame(|ui| {
