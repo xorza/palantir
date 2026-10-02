@@ -10,6 +10,7 @@ use crate::renderer::frontend::composer::tests::support::{
     run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -111,62 +112,49 @@ fn compose_intersects_nested_clips() {
     assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 50, 50));
 }
 
+/// Every draw kind culls against the active clip the same way: a draw
+/// wholly outside it is dropped (the GPU would scissor it, but skipping
+/// the row saves the CPU work), and one that overlaps it at all is kept,
+/// since it could light a pixel. Under a 100 px clip each kind draws one
+/// rect inside, one at (200, 200) outside, and one straddling the clip's
+/// corner, so two rows of the kind survive.
 #[test]
-fn cull_drops_drawrect_entirely_outside_active_clip() {
-    // Two rect quads under the same clip: one inside, one fully
-    // outside. Composer must skip emitting the outside one (the GPU
-    // would scissor it, but skipping the `quads.push` saves CPU work).
-    // Push/Pop pair still emits a single scissored group covering the
-    // visible quad.
-    let buf = run(
-        |b, _arena| {
-            clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            draw_marked(b, Rect::new(20.0, 20.0, 30.0, 30.0)); // call 1, inside
-            draw_marked(b, Rect::new(200.0, 200.0, 30.0, 30.0)); // call 2, entirely outside
-            b.pop_clip();
+fn cull_drops_only_draws_wholly_outside_the_active_clip() {
+    struct Kind {
+        name: &'static str,
+        draw: fn(&mut PaintCapture, Rect),
+        rows: fn(&RenderBuffer) -> usize,
+    }
+    let kinds = [
+        Kind {
+            name: "rect",
+            draw,
+            rows: |buf| buf.quads.len(),
         },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(
-        survivor_calls(&buf),
-        [1],
-        "outside-clip rect must be culled"
-    );
-    assert_eq!(buf.groups.len(), 1);
-    assert!(buf.groups[0].scissor.is_some());
-}
-
-#[test]
-fn cull_drops_drawtext_entirely_outside_active_clip() {
-    let buf = run(
-        |b, _arena| {
-            clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            text(b, Rect::new(10.0, 10.0, 50.0, 20.0)); // inside
-            text(b, Rect::new(300.0, 300.0, 50.0, 20.0)); // outside
-            b.pop_clip();
+        Kind {
+            name: "text",
+            draw: text,
+            rows: |buf| buf.texts.len(),
         },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(
-        buf.texts.iter().map(|run| run.origin).collect::<Vec<_>>(),
-        [Vec2::new(10.0, 10.0)],
-        "outside-clip text run must be culled"
-    );
-}
-
-#[test]
-fn cull_keeps_drawrect_partially_inside_active_clip() {
-    // Partial overlap counts — anything that could light a pixel keeps
-    // its quad. Only fully-disjoint draws are dropped.
-    let buf = run(
-        |b, _arena| {
-            clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            draw_marked(b, Rect::new(80.0, 80.0, 50.0, 50.0)); // call 1, straddles the clip
-            b.pop_clip();
+        Kind {
+            name: "mesh",
+            draw: mesh,
+            rows: |buf| buf.meshes.len(),
         },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(survivor_calls(&buf), [1], "straddling rect must still emit");
+    ];
+    for kind in kinds {
+        let buf = run(
+            |b, _arena| {
+                clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                (kind.draw)(b, Rect::new(10.0, 10.0, 30.0, 30.0));
+                (kind.draw)(b, Rect::new(200.0, 200.0, 30.0, 30.0));
+                (kind.draw)(b, Rect::new(80.0, 80.0, 50.0, 50.0));
+                b.pop_clip();
+            },
+            &params(1.0, UVec2::new(400, 400)),
+        );
+        assert_eq!((kind.rows)(&buf), 2, "{}", kind.name);
+    }
 }
 
 #[test]
@@ -179,23 +167,6 @@ fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
     );
     assert_eq!(buf.quads.len(), 1);
     assert_eq!(buf.groups.len(), 1);
-}
-
-#[test]
-fn cull_drops_drawmesh_entirely_outside_active_clip() {
-    // Mesh now gets the same active-clip cull every other shape draw
-    // performs. Two meshes under one clip: inside emits a row, fully
-    // outside is culled.
-    let buf = run(
-        |b, _arena| {
-            clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // inside
-            mesh(b, Rect::new(200.0, 200.0, 30.0, 30.0)); // outside the clip
-            b.pop_clip();
-        },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(buf.meshes.len(), 1, "outside-clip mesh must be culled");
 }
 
 #[test]

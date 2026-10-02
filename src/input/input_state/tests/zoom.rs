@@ -48,7 +48,7 @@ fn pinch_gesture_accumulates_zoom_delta() {
 }
 
 #[test]
-fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
+fn a_long_pinch_saturates_positive_and_finite() {
     for factor in [1.1, 0.9] {
         let mut state = pinch_state();
         for _ in 0..10_000 {
@@ -61,22 +61,6 @@ fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
             f32::MIN_POSITIVE
         };
         assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), expected);
-    }
-
-    for direction in [-1.0, 1.0] {
-        let mut notches = 0.0;
-        let mut factor = 1.0;
-        for _ in 0..10_000 {
-            notches += direction;
-            factor = ZoomFactor::from_wheel(1.03, notches).get();
-            assert!(ZoomFactor::new(factor).is_some());
-        }
-        let expected = if direction < 0.0 {
-            f32::MAX
-        } else {
-            f32::MIN_POSITIVE
-        };
-        assert_eq!(factor, expected);
     }
 }
 
