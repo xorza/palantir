@@ -5,8 +5,15 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
+use crate::input::capture::DOUBLE_CLICK_WINDOW;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
+
+/// A gap between two presses that stays inside [`DOUBLE_CLICK_WINDOW`].
+/// Stated rather than left to the harness clock, which stands still
+/// until a test moves it — every click would otherwise be simultaneous.
+const IN_WINDOW: Duration = Duration::from_millis(100);
+const _: () = assert!(IN_WINDOW.as_millis() < DOUBLE_CLICK_WINDOW.as_millis());
 
 #[test]
 fn input_state_press_release_emits_click() {
@@ -401,8 +408,8 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     assert!(single, "first click should fire `clicked`");
     assert!(!double, "first click must not fire `double_clicked`");
 
-    // Second click — must report both. Tests run in real time but
-    // well under the 400ms window.
+    // Second click, 100 ms on — must report both.
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "second click should still fire `clicked`");
@@ -415,6 +422,7 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     // Third click within the window must NOT re-fire double_clicked —
     // the timer reset on the previous fire so the third click is the
     // first half of a potential new pair.
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "third click should fire `clicked`");
@@ -457,7 +465,7 @@ fn a_double_click_survives_the_idle_before_it() {
     assert!(!double, "and the first of a pair is not a double");
 
     // 100 ms later, well inside the window that separates the two.
-    h.advance(Duration::from_millis(100));
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "the second click is a click");
@@ -499,7 +507,9 @@ fn two_clicks_outside_radius_do_not_double_click() {
         "control: the first click"
     );
 
-    // Second click on the same Button but ~20px away — must NOT double.
+    // Second click on the same Button, inside the window but ~20px
+    // away — must NOT double.
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(40.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "control: the second press lands on the button");
@@ -538,6 +548,7 @@ fn click_on_different_widget_resets_double_click() {
 
     h.click_at(Vec2::new(50.0, 20.0)); // hits A
     assert_eq!(h.frame_value(build), [1, 0], "control: A takes one click");
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(150.0, 20.0)); // hits B
     assert_eq!(
         h.frame_value(build),
@@ -632,17 +643,21 @@ fn press_started_counts_multi_press_runs() {
         "edge + count clear off the press frame"
     );
 
+    h.advance(IN_WINDOW);
     h.press();
     assert_eq!(probe(&mut h), (true, 2), "same-spot follow-up chains");
     h.release();
     probe(&mut h);
 
+    h.advance(IN_WINDOW);
     h.press();
     assert_eq!(probe(&mut h), (true, 3), "third press keeps counting");
     h.release();
     probe(&mut h);
 
-    // Past DOUBLE_CLICK_RADIUS (5 px): the run restarts.
+    // Past DOUBLE_CLICK_RADIUS (5 px), inside the window: the run
+    // restarts.
+    h.advance(IN_WINDOW);
     h.press_at(Vec2::new(80.0, 20.0));
     assert_eq!(probe(&mut h), (true, 1), "far press restarts the run");
     h.release();

@@ -27,12 +27,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 - [ ] `RasterProgram::new(device)` is rebuilt in 13 GPU tests. One program on the shared device could serve them. (judgement)
 
-## 13. Slow and environment-dependent tests
-
-- [ ] `host/winit/input/tests.rs:91` branches on `PLATFORM`, so Linux never checks the macOS Cmd→ctrl table. Let `normalize_modifiers` take the `Platform`. (judgement)
-- [ ] Multi-click tests depend on the frozen harness clock without saying so (`input_state/tests/click.rs:356,454,486,580`), and `:383-384` says "real time … 400ms window" (it is a frozen clock and 500 ms). Advance a stated in-window gap.
-- [ ] `ui/tests/frames/settle.rs:59-66` calls `h.at(16ms)` every frame, which parks the clock while the code reads as a 16 ms cadence.
-
 ## 14. Missing coverage for computable logic
 
 - [ ] Widgets: `Switch` has no click, disabled or knob-position test; `ColorSwatch` has no test; no test calls `Modal::backdrop`, `Separator::thickness`, `Spinner::thickness`, `Scroll::zoomable_with`, `ComboBox::button_style`, `ColorPicker::history`, `ColorButton::history`, `GpuView::repaint`, `Popup::default_background`, `MenuItem::shortcut_hint`. `TextEdit::max_chars` is not checked through `show` or paste. Extend `toggle_chrome/tests.rs` into a click / disabled / `clicked()==changed` sweep over Checkbox, RadioButton and Switch.
