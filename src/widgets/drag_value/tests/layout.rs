@@ -146,17 +146,25 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     /// a line-height floor a chip does not), so they are not carried by the
     /// node policy and comparing them would pin theme configuration rather
     /// than this fix.
-    fn placement(ui: &Ui, id: WidgetId) -> (Spacing, Align, Vec2, Size) {
+    #[derive(Debug, PartialEq)]
+    struct Placement {
+        margin: Spacing,
+        align: Align,
+        position: Vec2,
+        max_size: Size,
+    }
+
+    fn placement(ui: &Ui, id: WidgetId) -> Placement {
         let node = ui.cascade().endpoint(id).expect("drag value node").node;
         let tree = ui.tree(Layer::Main);
         let layout = tree.records.layout()[node.idx()];
         let bounds = tree.bounds(node);
-        (
-            layout.margin,
-            layout.meta.align(),
-            bounds.position,
-            bounds.max_size,
-        )
+        Placement {
+            margin: layout.margin,
+            align: layout.meta.align(),
+            position: bounds.position,
+            max_size: bounds.max_size,
+        }
     }
 
     let mut h = UiHarness::new(UVec2::new(300, 100));

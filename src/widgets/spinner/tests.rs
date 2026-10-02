@@ -42,7 +42,16 @@ fn arc_and_spin_follow_the_spinner_theme() {
     use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use crate::scene::shapes::record::ShapeRecord;
 
-    fn recorded(theme: SpinnerTheme, diameter: f32, thickness: Option<f32>) -> (f32, f32, f32) {
+    /// What one spinner recorded: its arc's sweep and stroke width, and
+    /// its spin in radians per second.
+    #[derive(Debug)]
+    struct Recorded {
+        sweep: f32,
+        width: f32,
+        speed: f32,
+    }
+
+    fn recorded(theme: SpinnerTheme, diameter: f32, thickness: Option<f32>) -> Recorded {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.ui.theme_mut().spinner = theme;
         h.frame(|ui| {
@@ -84,13 +93,21 @@ fn arc_and_spin_follow_the_spinner_theme() {
                     .map(|_| TAU / e.anim.timing.period.as_secs_f32())
             })
             .expect("spinner registers a turning anim");
-        (arc.0, arc.1, speed)
+        Recorded {
+            sweep: arc.0,
+            width: arc.1,
+            speed,
+        }
     }
 
     // Stock theme: stroke is the ratio applied to the diameter,
     // clear of the floor at 50 px.
     let stock = SpinnerTheme::default();
-    let (sweep, width, speed) = recorded(stock.clone(), 50.0, None);
+    let Recorded {
+        sweep,
+        width,
+        speed,
+    } = recorded(stock.clone(), 50.0, None);
     assert_eq!(sweep, stock.sweep, "sweep is themed");
     assert_eq!(speed, stock.speed, "spin rate is themed");
     let expected = 50.0 * stock.thickness_ratio;
@@ -98,14 +115,14 @@ fn arc_and_spin_follow_the_spinner_theme() {
 
     // Quarter the diameter and the stroke follows it down, rather
     // than staying put.
-    let (_, small, _) = recorded(stock.clone(), 12.5, None);
+    let small = recorded(stock.clone(), 12.5, None).width;
     let expected_small = 12.5 * stock.thickness_ratio;
     assert_eq!(small, expected_small);
     assert_ne!(width, small);
 
     // Below the floor the derived value loses.
     let tiny = stock.min_thickness / stock.thickness_ratio * 0.5;
-    let (_, floored, _) = recorded(stock.clone(), tiny, None);
+    let floored = recorded(stock.clone(), tiny, None).width;
     assert_eq!(
         floored, stock.min_thickness,
         "tiny spinner floors at min_thickness, got {floored}"
@@ -114,7 +131,10 @@ fn arc_and_spin_follow_the_spinner_theme() {
     // An explicit width replaces the derived one outright — the floor
     // included, which only guards the derivation.
     let explicit = stock.min_thickness * 0.5;
-    assert_eq!(recorded(stock.clone(), 50.0, Some(explicit)).1, explicit);
+    assert_eq!(
+        recorded(stock.clone(), 50.0, Some(explicit)).width,
+        explicit
+    );
 
     // Retheme: every one of the three moves.
     let loud = SpinnerTheme {
@@ -123,7 +143,11 @@ fn arc_and_spin_follow_the_spinner_theme() {
         thickness_ratio: 0.5,
         ..SpinnerTheme::default()
     };
-    let (sweep_b, width_b, speed_b) = recorded(loud, 50.0, None);
+    let Recorded {
+        sweep: sweep_b,
+        width: width_b,
+        speed: speed_b,
+    } = recorded(loud, 50.0, None);
     assert_eq!(sweep_b, 1.0);
     assert_eq!(speed_b, 9.0);
     assert_eq!(width_b, 25.0);

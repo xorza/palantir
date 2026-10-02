@@ -4,7 +4,6 @@ use crate::Ui;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::UVec2;
@@ -15,18 +14,11 @@ pub(super) fn theme() -> ScrollbarTheme {
 
 /// Build a scroll over two frames so the second frame's record
 /// settles `ScrollState` before the bar-emit check.
-pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(
-    surface: UVec2,
-    build: F,
-) -> (UiHarness, NodeId) {
+pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> UiHarness {
     let mut h = UiHarness::new(surface);
     h.frame(build);
     h.frame(build);
-    let node = h
-        .node_of(WidgetId::from_hash("scroll"))
-        .expect("scroll widget recorded")
-        .node;
-    (h, node)
+    h
 }
 
 /// Thumb rects (in *outer-local* coords) for `scroll_key`. Thumbs

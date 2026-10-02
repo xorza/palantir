@@ -50,5 +50,4 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ## 17. Structure-rule violations
 
-- [ ] Tuple-returning test helpers: `record_two_frames`, `placement`, `shape_origins`, `recorded`, `settle.rs:48` `warm`, `click.rs:583` `probe`. (judgement: whether the rule binds test code)
 - [ ] `TestShape`'s `cfg(test)` fields (`text/request.rs:117-120`) force `#[cfg(test)]` inside a const literal in `text/bench.rs:66-69`. (judgement)

@@ -116,12 +116,19 @@ fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
     of(block_of(ui, field)).min - of(field).min
 }
 
-/// `(text_origin, caret_origin)` in the field's own coordinates. The paint
+/// Where the text and the caret start, in the field's own coordinates.
+#[derive(Debug)]
+struct Origins {
+    text: Option<glam::Vec2>,
+    caret: Option<glam::Vec2>,
+}
+
+/// [`Origins`] of the field at `node`. The paint
 /// order is selection-wash → text → caret, so the text shape is the only
 /// `Shape::Text` and the caret is the *last* rounded rect with a `local_rect`
 /// (selection rects come before the text; the caret comes after — for empty
 /// focused editors it's the only rounded rect in the stream).
-fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
+fn shape_origins(ui: &Ui, node: NodeId) -> Origins {
     let at = block_at(ui, node);
     let block = block_of(ui, node);
     let tree = ui.tree(Layer::Main);
@@ -141,7 +148,10 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
             _ => {}
         }
     }
-    (text_origin, caret_origin)
+    Origins {
+        text: text_origin,
+        caret: caret_origin,
+    }
 }
 
 /// **The first frame an editor exists on aligns like the ones after it.**
@@ -166,7 +176,7 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
         let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
-        shape_origins(&h.ui, node).0.expect("text shape emitted")
+        shape_origins(&h.ui, node).text.expect("text shape emitted")
     };
     // Centred rather than left, so a zero-sized box is a wrong answer rather
     // than accidentally the right one.
@@ -175,7 +185,7 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let node = frame(&mut h, &mut buf, Some(Align::CENTER), None);
-    let first = shape_origins(&h.ui, node).0.expect("text shape emitted");
+    let first = shape_origins(&h.ui, node).text.expect("text shape emitted");
     assert_eq!(
         first.x, settled.x,
         "first frame painted x = {} where the settled frame paints {}",
@@ -196,7 +206,7 @@ fn single_line_default_is_left_vcenter() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let node = warmup_then(&mut h, &mut buf, None, None);
-    let (origin, _) = shape_origins(&h.ui, node);
+    let origin = shape_origins(&h.ui, node).text;
     let o = origin.expect("text shape emitted for non-empty buffer");
     assert_eq!(o.x, PAD_L, "x = {}", o.x);
     let dy = (INNER_H - LINE_H) * 0.5;
@@ -228,7 +238,7 @@ fn single_line_text_align_table() {
         let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
-        let (origin, _) = shape_origins(&h.ui, node);
+        let origin = shape_origins(&h.ui, node).text;
         let o = origin.expect("text shape emitted");
         assert_eq!(
             o.x,
@@ -263,7 +273,10 @@ fn caret_tracks_aligned_text() {
     h.key(Key::End);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    let (text_origin, caret_origin) = shape_origins(&h.ui, node);
+    let Origins {
+        text: text_origin,
+        caret: caret_origin,
+    } = shape_origins(&h.ui, node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 233.5
@@ -298,7 +311,7 @@ fn empty_focused_caret_vcenters_against_one_line() {
     h.click_at(glam::Vec2::new(50.0, 20.0));
     frame(&mut h, &mut buf, None, None);
     let node = frame(&mut h, &mut buf, None, None);
-    let (_, caret_origin) = shape_origins(&h.ui, node);
+    let caret_origin = shape_origins(&h.ui, node).caret;
     let c = caret_origin.expect("focused empty editor still paints caret");
     let authored_line_height = 16.0 * LINE_HEIGHT_MULT;
     let dy = (INNER_H - authored_line_height) * 0.5;
@@ -314,7 +327,7 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
     let node = warmup_then(&mut h, &mut buf, Some(Align::RIGHT), Some("wxyz"));
-    let (origin, _) = shape_origins(&h.ui, node);
+    let origin = shape_origins(&h.ui, node).text;
     let o = origin.expect("placeholder paints when unfocused + empty");
     let dx = ALIGN_W - TEXT_W_4CH;
     assert_eq!(
@@ -370,7 +383,7 @@ fn align_overflow_clamps_to_zero() {
         let mut h = UiHarness::new(NARROW);
         let mut buf = "a".repeat(100);
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
-        let (origin, _) = shape_origins(&h.ui, node);
+        let origin = shape_origins(&h.ui, node).text;
         let o = origin.expect("text shape");
         assert_eq!(
             o.x, PAD_L,
@@ -449,7 +462,7 @@ fn multiline_default_is_top_left() {
     // Two frames: first to warm up the cascade.
     h.frame(&mut record);
     h.frame(&mut record);
-    let (origin, _) = shape_origins(&h.ui, node.unwrap());
+    let origin = shape_origins(&h.ui, node.unwrap()).text;
     let o = origin.expect("text shape");
     assert_eq!(o.x, PAD_L, "x = {}", o.x);
     assert_eq!(o.y, PAD_T, "y = {}", o.y);
@@ -490,7 +503,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
         // the one whose `response.layout_rect` drives the offset math.
         h.frame(&mut record);
         h.frame(&mut record);
-        let (origin, _) = shape_origins(&h.ui, node.unwrap());
+        let origin = shape_origins(&h.ui, node.unwrap()).text;
         origin.expect("text shape emitted for non-empty buffer")
     }
     let unscaled = run(1.0);
@@ -574,7 +587,7 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
         field.min
     );
     let origin = shape_origins(&h.ui, node.unwrap())
-        .0
+        .text
         .expect("text shape emitted");
     let centre = field.min + origin + glam::Vec2::new(text.w, text.h) * 0.5;
     assert_eq!(
