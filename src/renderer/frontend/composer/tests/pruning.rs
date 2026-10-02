@@ -6,8 +6,8 @@ use crate::primitives::{
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, composer, draw, draw_marked, params, rect, render_buffer, run, survivor_calls, survivors,
-    text,
+    clip, composer, draw, draw_marked, params, params_unsnapped, rect, render_buffer, run,
+    survivor_calls, survivors, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -68,7 +68,7 @@ fn prune_non_fast_cover_insets_exact_half_pixel_aa_fringe() {
                 draw(b, case.under);
                 draw(b, rect(10.25, 10.25, 100.0, 100.0));
             },
-            &params(1.0, UVec2::new(200, 200)),
+            &params_unsnapped(1.0, UVec2::new(200, 200)),
         );
         assert_eq!(buf.quads.len(), case.expected_quads, "{}", case.label);
     }

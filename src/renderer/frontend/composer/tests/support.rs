@@ -2,7 +2,6 @@
 //! back through.
 
 use crate::display::Display;
-use crate::display::user_scale::UserScale;
 use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
@@ -115,13 +114,18 @@ pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
     );
 }
 
+/// The display production composes under: pixel snap on.
 pub(super) fn params(scale: f32, physical: UVec2) -> Display {
+    Display::from_physical(physical, scale)
+}
+
+/// [`params`] with the pixel snap off — for a case about fractional
+/// physical geometry, which the snap would round away before it reached
+/// the code under test.
+pub(super) fn params_unsnapped(scale: f32, physical: UVec2) -> Display {
     Display {
-        physical,
-        system_scale: scale,
-        user_scale: UserScale::ONE,
         pixel_snap: false,
-        refresh_millihertz: None,
+        ..params(scale, physical)
     }
 }
 

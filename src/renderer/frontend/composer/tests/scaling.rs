@@ -5,7 +5,9 @@ use crate::primitives::{
     urect::URect,
 };
 use crate::renderer::frontend::composer::geometry::StrokeBbox;
-use crate::renderer::frontend::composer::tests::support::{clip, draw, params, rect, run, text};
+use crate::renderer::frontend::composer::tests::support::{
+    clip, draw, params, params_unsnapped, rect, run, text,
+};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
@@ -249,7 +251,9 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
             draw(b, rect(0.0, 0.0, 100.0, 50.0));
             b.pop_transform();
         },
-        &params(1.0, UVec2::new(400, 400)),
+        // Unsnapped: the pixel snap rounds every quad's edges, zoomed or
+        // not; what this pins is that no scale rung applies on top.
+        &params_unsnapped(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
     // 100 × 1.013 and 50 × 1.013 — preserved, not snapped.
@@ -430,4 +434,26 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         );
     }
     assert_eq!(half::f16::from_bits(radius).to_f32(), 2.0);
+}
+
+/// The display's pixel snap reaches the composed quad: the same
+/// fractional rect at DPR 1.5 lands on whole pixels with the snap on and
+/// keeps its exact quarter-pixel edges with it off — see
+/// `Rect::scaled_by` for the arithmetic.
+#[test]
+fn compose_snaps_quad_edges_only_under_pixel_snap() {
+    for (display, want) in [
+        (
+            params(1.5, UVec2::new(400, 400)),
+            rect(15.0, 16.0, 31.0, 8.0),
+        ),
+        (
+            params_unsnapped(1.5, UVec2::new(400, 400)),
+            rect(15.375, 16.125, 30.75, 7.875),
+        ),
+    ] {
+        let buf = run(|b, _| draw(b, rect(10.25, 10.75, 20.5, 5.25)), &display);
+        assert_eq!(buf.quads.len(), 1);
+        assert_eq!(buf.quads[0].rect, want, "snap {}", display.pixel_snap);
+    }
 }

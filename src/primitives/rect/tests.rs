@@ -193,3 +193,23 @@ fn inflate_and_deflate_are_inverses_until_the_clamp() {
     assert_eq!(flattened, Rect::new(35.0, 45.0, 50.0, 0.0));
     assert_eq!(flattened.inflated(25.0), Rect::new(10.0, 20.0, 100.0, 50.0));
 }
+
+/// Logical → physical, with and without the pixel snap. Every input is
+/// a multiple of 1/4, so the scaled edges are exact: at 1.5 the rect runs
+/// from (15.375, 16.125) to (46.125, 24.0). Snapped, the edges round to
+/// (15, 16) and (46, 24), and the size comes from the rounded edges —
+/// 31 × 8, not the 30.75 × 7.875 a scaled size would round to. A rect
+/// thinner than half a pixel at both edges snaps to nothing.
+#[test]
+fn scaled_by_rounds_edges_only_when_snapping() {
+    let r = Rect::new(10.25, 10.75, 20.5, 5.25);
+    assert_eq!(
+        r.scaled_by(1.5, false),
+        Rect::new(15.375, 16.125, 30.75, 7.875)
+    );
+    assert_eq!(r.scaled_by(1.5, true), Rect::new(15.0, 16.0, 31.0, 8.0));
+
+    let sliver = Rect::new(10.125, 0.0, 0.25, 1.0);
+    assert_eq!(sliver.scaled_by(1.0, false).size.w, 0.25);
+    assert_eq!(sliver.scaled_by(1.0, true), Rect::new(10.0, 0.0, 0.0, 1.0));
+}
