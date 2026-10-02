@@ -15,6 +15,7 @@ use crate::gpu::power_preference::PowerPreference;
 use crate::gpu::render_target::{self, RenderTarget};
 use crate::gpu::requested_gpu::Gpu;
 use crate::gpu::requested_gpu::RequestedGpu;
+use crate::gpu::test_gpu::HeadlessTestGpuLease;
 use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 use glam::UVec2;
 use std::sync::OnceLock;
@@ -85,22 +86,14 @@ impl BenchGpu {
 
     /// A render target of `size`, with the usages every driver needs:
     /// draw into it, and copy either way for readback and clears.
-    ///
-    /// `label` shows up in RenderDoc and in wgpu's validation errors, so
-    /// it should name the driver, not the shape.
     pub(crate) fn target(&self, size: UVec2, label: &str) -> BenchTarget {
-        BenchTarget(self.gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: render_target::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TARGET_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        }))
+        BenchTarget(render_target::test_support::texture(
+            &self.gpu.device,
+            label,
+            size,
+            TARGET_FORMAT,
+            HeadlessTestGpuLease::TARGET_USAGES,
+        ))
     }
 
     /// Drain one round of completed submissions without blocking. The

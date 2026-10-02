@@ -62,16 +62,7 @@ impl HeadlessTestGpuLease {
         format: wgpu::TextureFormat,
         usage: wgpu::TextureUsages,
     ) -> wgpu::Texture {
-        self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: render_target::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        })
+        render_target::test_support::texture(&self.device, label, size, format, usage)
     }
 
     /// Block until every submission on the device has finished.

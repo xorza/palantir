@@ -7,9 +7,7 @@ use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::renderer::gradient_atlas::tests::support::{
-    assert_real_row, distinct_grad, register_for,
-};
+use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::*;
 use crate::renderer::texture_limit::TextureLimit;
 use glam::Vec2;
@@ -34,7 +32,7 @@ fn row_zero_reserved_as_magenta_fallback() {
 #[test]
 fn register_returns_nonzero_row_and_marks_dirty() {
     let mut atlas = CpuGradientAtlas::default();
-    let g = distinct_grad(0.1);
+    let g = distinct_grad(10);
     let row = atlas.register(&g.ramp);
     assert_real_row(&atlas, row);
     // The magenta row 0 is still waiting from construction, so the span
@@ -51,7 +49,7 @@ fn register_returns_nonzero_row_and_marks_dirty() {
 #[test]
 fn register_same_gradient_twice_reuses_row() {
     let mut atlas = CpuGradientAtlas::default();
-    let g = distinct_grad(0.5);
+    let g = distinct_grad(50);
     let r1 = atlas.register(&g.ramp);
     // Flush so subsequent registrations of the same content can
     // be detected as no-ops.
@@ -98,8 +96,8 @@ fn near_identical_keys_never_share_a_row() {
 fn register_distinct_gradients_get_distinct_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush();
-    let ra = register_for(&mut atlas, distinct_grad(0.1));
-    let rb = register_for(&mut atlas, distinct_grad(0.2));
+    let ra = atlas.register(&distinct_grad(10).ramp);
+    let rb = atlas.register(&distinct_grad(20).ramp);
     assert_ne!(ra, rb);
     // Flushed first, so the span covers exactly the two new rows.
     assert_eq!(
@@ -115,9 +113,7 @@ fn register_distinct_gradients_get_distinct_rows() {
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let mut seen = HashSet::new();
-    for i in 0..(INITIAL_ATLAS_ROWS - 1) {
-        let g = distinct_grad(i as f32 * 0.01);
-        let row = atlas.register(&g.ramp);
+    for row in fill_rows(&mut atlas, INITIAL_ATLAS_ROWS - 1) {
         assert!(
             seen.insert(row),
             "row {} reused across distinct gradients",

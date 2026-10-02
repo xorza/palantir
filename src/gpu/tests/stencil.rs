@@ -4,7 +4,7 @@
 use crate::gpu::schedule::RenderStep;
 use crate::gpu::schedule::{MaskPlan, build_mask_plan};
 use crate::gpu::tests::support::{
-    DrawOp, buf_with, buf_with_batches, collect, scissor_count, simplify, text_batch,
+    DrawOp, buf_with, buf_with_batches, collect, group, scissor_count, simplify, text_batch,
 };
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -30,9 +30,8 @@ use glam::Vec2;
 fn stencil_group_brackets_draws_with_mask_write() {
     let mut buf = buf_with_batches(
         vec![DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(0, 2),
+            ..group(Span::new(0, 2))
         }],
         vec![TextBatch {
             texts: Span::new(0, 1),
@@ -107,16 +106,11 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
         vec![
             // Group 0: rounded clip
             DrawGroup {
-                scissor: Some(URect::new(0, 0, 100, 100)),
                 rounded_clips: Span::new(0, 1),
-                quads: Span::new(0, 1),
+                ..group(Span::new(0, 1))
             },
             // Group 1: plain (no rounded clip), with text
-            DrawGroup {
-                scissor: Some(URect::new(0, 0, 100, 100)),
-                rounded_clips: Span::default(),
-                quads: Span::new(1, 1),
-            },
+            group(Span::new(1, 1)),
         ],
         vec![text_batch(Span::new(0, 1), 1)],
     );
@@ -155,20 +149,17 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
         // Groups 0 and 1: identical chain values (same span, as the
         // composer emits while the chain is unchanged).
         DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(0, 1),
+            ..group(Span::new(0, 1))
         },
         DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(1, 1),
+            ..group(Span::new(1, 1))
         },
         // Group 2: different clip — full transition required.
         DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
             rounded_clips: Span::new(1, 1),
-            quads: Span::new(2, 1),
+            ..group(Span::new(2, 1))
         },
     ]);
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0), rounded(50.0, 50.0, 4.0)];
@@ -232,12 +223,11 @@ fn stencil_same_mask_wider_scissor_restamps() {
         DrawGroup {
             scissor: Some(URect::new(0, 0, 50, 100)),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(0, 1),
+            ..group(Span::new(0, 1))
         },
         DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(1, 1),
+            ..group(Span::new(1, 1))
         },
     ]);
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0)];
@@ -269,9 +259,8 @@ fn stencil_same_mask_wider_scissor_restamps() {
 fn stencil_text_only_group_still_writes_mask() {
     let mut buf = buf_with_batches(
         vec![DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(0, 0),
+            ..group(Span::new(0, 0))
         }],
         vec![TextBatch {
             texts: Span::new(0, 1),
@@ -305,7 +294,7 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     let group = |scissor, chain, q| DrawGroup {
         scissor: Some(scissor),
         rounded_clips: chain,
-        quads: Span::new(q, 1),
+        ..group(Span::new(q, 1))
     };
     let clips = vec![rounded(40.0, 40.0, 8.0), rounded(40.0, 40.0, 4.0)];
     let mut buf = buf_with(vec![
@@ -426,7 +415,7 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     let group = |chain, q| DrawGroup {
         scissor: Some(e),
         rounded_clips: chain,
-        quads: Span::new(q, 1),
+        ..group(Span::new(q, 1))
     };
     let mut buf = buf_with(vec![
         group(Span::new(0, 2), 0),
@@ -512,12 +501,12 @@ fn stencil_drained_batch_stamps_own_mask_before_text() {
             DrawGroup {
                 scissor: Some(URect::new(0, 0, 40, 40)),
                 rounded_clips: chain,
-                quads: Span::new(0, 1),
+                ..group(Span::new(0, 1))
             },
             DrawGroup {
                 scissor: Some(URect::new(50, 50, 40, 40)),
                 rounded_clips: chain,
-                quads: Span::new(1, 1),
+                ..group(Span::new(1, 1))
             },
         ],
         vec![TextBatch {
@@ -580,19 +569,18 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
             DrawGroup {
                 scissor: Some(sa),
                 rounded_clips: chain,
-                quads: Span::new(0, 1),
+                ..group(Span::new(0, 1))
             },
             // Anchor group: same chain, below the damage rect.
             DrawGroup {
                 scissor: Some(URect::new(0, 50, 40, 40)),
                 rounded_clips: chain,
-                quads: Span::new(1, 1),
+                ..group(Span::new(1, 1))
             },
             // Plain group after the skipped anchor — the drain point.
             DrawGroup {
                 scissor: Some(URect::new(45, 0, 50, 40)),
-                rounded_clips: Span::default(),
-                quads: Span::new(2, 1),
+                ..group(Span::new(2, 1))
             },
         ],
         vec![TextBatch {
@@ -647,13 +635,12 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
             DrawGroup {
                 scissor: Some(sa),
                 rounded_clips: Span::new(0, 1),
-                quads: Span::new(0, 1),
+                ..group(Span::new(0, 1))
             },
             // Plain anchor group, outside the damage rect.
             DrawGroup {
                 scissor: Some(URect::new(50, 0, 40, 40)),
-                rounded_clips: Span::default(),
-                quads: Span::new(1, 1),
+                ..group(Span::new(1, 1))
             },
         ],
         vec![TextBatch {
@@ -705,7 +692,7 @@ fn stencil_dedups_a_chain_seen_before_the_previous_group() {
     let group = |chain, q| DrawGroup {
         scissor: Some(e),
         rounded_clips: chain,
-        quads: Span::new(q, 1),
+        ..group(Span::new(q, 1))
     };
     let mut buf = buf_with(vec![
         group(Span::new(0, 1), 0),
@@ -757,18 +744,18 @@ fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
         DrawGroup {
             scissor: Some(e),
             rounded_clips: Span::new(0, 1),
-            quads: Span::new(0, 1),
+            ..group(Span::new(0, 1))
         },
         // Entirely outside the damage rect below, so the walk skips it.
         DrawGroup {
             scissor: Some(URect::new(200, 200, 10, 10)),
             rounded_clips: Span::new(1, 1),
-            quads: Span::new(1, 1),
+            ..group(Span::new(1, 1))
         },
         DrawGroup {
             scissor: Some(e),
             rounded_clips: Span::new(2, 1),
-            quads: Span::new(2, 1),
+            ..group(Span::new(2, 1))
         },
     ]);
     buf.rounded_clips = vec![outer, inner, outer];

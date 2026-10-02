@@ -52,6 +52,12 @@ pub(super) fn collect(
     steps
 }
 
+/// The steps with no damage scissor, no mask plan and no stencil — the
+/// schedule a test of plain group order reads.
+pub(super) fn plain_steps(buffer: &RenderBuffer) -> Vec<RenderStep> {
+    collect(buffer, None, &MaskPlan::default(), false)
+}
+
 pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
     // A quad step names its group by span, so two groups sharing a
     // non-empty span would read as the first of them.
@@ -128,6 +134,16 @@ fn dummy_text() -> TextDrawRow {
     }
 }
 
+/// A group scissored to the whole 100×100 fixture viewport, under no
+/// rounded clip, drawing `quads`.
+pub(super) fn group(quads: Span) -> DrawGroup {
+    DrawGroup {
+        scissor: Some(URect::new(0, 0, 100, 100)),
+        rounded_clips: Span::default(),
+        quads,
+    }
+}
+
 /// Builds a 100×100 buffer with the given groups and no text batches.
 /// Quads/texts pools have four slots each so any small span is valid.
 pub(super) fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
@@ -154,11 +170,16 @@ pub(super) fn text_batch(texts: Span, last_group: u32) -> TextBatch {
     }
 }
 
-/// Same shape as [`buf_with_mesh_anchors`] but for image batches.
-pub(super) fn buf_with_image_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
+/// [`buf_with`], plus one single-item batch on `tier` per entry of
+/// `anchors`, each anchored at that group.
+pub(super) fn buf_with_tier_anchors(
+    groups: Vec<DrawGroup>,
+    tier: PaintTier,
+    anchors: &[u32],
+) -> RenderBuffer {
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.batches_mut(PaintTier::Image).push(GroupBatch {
+        buf.batches_mut(tier).push(GroupBatch {
             items: Span::new(i as u32, 1),
             last_group: g,
         });

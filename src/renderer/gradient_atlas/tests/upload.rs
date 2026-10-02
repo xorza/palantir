@@ -2,9 +2,7 @@
 //! rebakes.
 
 use crate::common::counters::CounterSet;
-use crate::renderer::gradient_atlas::tests::support::{
-    assert_real_row, distinct_grad, register_for,
-};
+use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad};
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
 
@@ -13,7 +11,7 @@ use std::collections::HashSet;
 #[test]
 fn flush_returns_bytes_once_then_none() {
     let mut atlas = CpuGradientAtlas::default();
-    register_for(&mut atlas, distinct_grad(0.3));
+    atlas.register(&distinct_grad(30).ramp);
     assert!(atlas.flush().is_some(), "dirty atlas must yield bytes");
     assert!(
         atlas.flush().is_none(),
@@ -46,15 +44,15 @@ fn flush_range_covers_min_to_max_dirty_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
     // Single row: range is exactly [row, row].
-    let ra = register_for(&mut atlas, distinct_grad(0.1));
+    let ra = atlas.register(&distinct_grad(10).ramp);
     {
         let f = atlas.flush().expect("one baked row must flush");
         assert_eq!(f.first_row, ra.0);
         assert_eq!(f.bytes.len(), size_of::<LutRowTexels>());
     }
     // Two scattered rows: range spans min..=max, whole rows.
-    let rb = register_for(&mut atlas, distinct_grad(0.2));
-    let rc = register_for(&mut atlas, distinct_grad(0.3));
+    let rb = atlas.register(&distinct_grad(20).ramp);
+    let rc = atlas.register(&distinct_grad(30).ramp);
     let (min, max) = (rb.0.min(rc.0), rb.0.max(rc.0));
     {
         let f = atlas.flush().expect("two baked rows must flush");
@@ -81,9 +79,9 @@ fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
     let _ = atlas.flush(); // drain the magenta init row
 
     // Three consecutive rows, then a flush that clears the dirty range.
-    let a = register_for(&mut atlas, distinct_grad(0.1));
-    let b = register_for(&mut atlas, distinct_grad(0.2));
-    let c = register_for(&mut atlas, distinct_grad(0.3));
+    let a = atlas.register(&distinct_grad(10).ramp);
+    let b = atlas.register(&distinct_grad(20).ramp);
+    let c = atlas.register(&distinct_grad(30).ramp);
     assert_eq!((a.0, b.0, c.0), (1, 2, 3), "claims walk ascending from 1");
     let _ = atlas.flush();
     let before = atlas.counters.counts();
@@ -118,12 +116,10 @@ fn steady_state_frames_never_rebake() {
     const FRAMES: u32 = 10;
 
     let mut atlas = CpuGradientAtlas::default();
-    let content: Vec<_> = (0..GRADIENTS)
-        .map(|i| distinct_grad(i as f32 * 0.01))
-        .collect();
+    let content: Vec<_> = (0..GRADIENTS).map(distinct_grad).collect();
     let rows: Vec<LutRow> = content
         .iter()
-        .map(|g| register_for(&mut atlas, g.clone()))
+        .map(|g| atlas.register(&g.clone().ramp))
         .collect();
     let after_warmup = atlas.counters.counts().bakes;
     assert_eq!(after_warmup, GRADIENTS);
@@ -132,7 +128,7 @@ fn steady_state_frames_never_rebake() {
         atlas.flush();
         for (g, &row) in content.iter().zip(&rows) {
             assert_eq!(
-                register_for(&mut atlas, g.clone()),
+                atlas.register(&g.clone().ramp),
                 row,
                 "steady-state frame moved a gradient off its row",
             );
@@ -172,14 +168,12 @@ fn steady_state_frames_never_rebake() {
 fn cross_epoch_churn_evicts_without_growing() {
     let working_set = (INITIAL_ATLAS_ROWS * 2) as usize;
     let mut atlas = CpuGradientAtlas::default();
-    let content: Vec<_> = (0..working_set)
-        .map(|i| distinct_grad(i as f32 * 0.01))
-        .collect();
+    let content: Vec<_> = (0..working_set).map(|i| distinct_grad(i as u32)).collect();
 
     for round in 0..4 {
         for g in &content {
             atlas.flush();
-            let row = register_for(&mut atlas, g.clone());
+            let row = atlas.register(&g.clone().ramp);
             assert_real_row(&atlas, row);
         }
         assert_eq!(
@@ -213,7 +207,7 @@ fn every_miss_bakes_exactly_one_row() {
     let mut atlas = CpuGradientAtlas::default();
     // Mixed traffic: fresh content, immediate repeats, and repeats of
     // content registered several steps back.
-    let content: Vec<_> = (0..40).map(|i| distinct_grad(i as f32 * 0.01)).collect();
+    let content: Vec<_> = (0..40).map(|i| distinct_grad(i as u32)).collect();
     let sequence: Vec<usize> = (0..40).chain(0..40).chain([3, 3, 17, 39, 0]).collect();
 
     let mut expected_bakes = 0u32;
@@ -222,7 +216,7 @@ fn every_miss_bakes_exactly_one_row() {
         if seen.insert(i) {
             expected_bakes += 1;
         }
-        register_for(&mut atlas, content[i].clone());
+        atlas.register(&content[i].clone().ramp);
     }
 
     let counts = atlas.counters.counts();
