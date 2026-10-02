@@ -1,5 +1,6 @@
 //! Which draws share a group and a batch, and what forces a split.
 
+use crate::icons::icon_set::IconRef;
 use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
@@ -11,8 +12,8 @@ use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, curve, draw, gpu_view_payload, icon, icon_ref, image, mesh, params,
-    params_unsnapped, polyline_cmd, run, text,
+    clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, mesh, params, params_unsnapped,
+    polyline_cmd, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -790,7 +791,11 @@ fn labelled_toolbar_costs_one_icon_batch_and_one_text_batch() {
         |buf, _| {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
-                icon(buf, Rect::new(x, 0.0, 16.0, 16.0), icon_ref(i as u16));
+                icon(
+                    buf,
+                    Rect::new(x, 0.0, 16.0, 16.0),
+                    IconRef::fixture(0, i as u16),
+                );
                 text(buf, Rect::new(x + 20.0, 0.0, 60.0, 16.0));
             }
         },
@@ -866,7 +871,11 @@ fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
         let out = run(
             |buf, _| {
                 text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
-                icon(buf, Rect::new(40.0, 0.0, 16.0, 16.0), icon_ref(0));
+                icon(
+                    buf,
+                    Rect::new(40.0, 0.0, 16.0, 16.0),
+                    IconRef::fixture(0, 0),
+                );
                 text(buf, Rect::new(case.trailing_x, 0.0, 60.0, 16.0));
             },
             &params(1.0, UVec2::new(1024, 64)),

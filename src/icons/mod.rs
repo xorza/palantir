@@ -23,3 +23,5 @@ pub(crate) mod icon_registry;
 pub(crate) mod icon_set;
 pub(crate) mod icon_table;
 pub(crate) mod svg_facts;
+#[cfg(test)]
+pub(crate) mod test_svgs;

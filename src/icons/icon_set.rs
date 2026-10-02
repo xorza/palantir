@@ -155,3 +155,20 @@ impl IconSet {
         Shape::icon(self.handle(icon))
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::icons::icon_registry::IconSetId;
+    use crate::icons::icon_set::IconRef;
+    use crate::icons::icon_table::IconId;
+
+    impl IconRef {
+        /// Icon `icon` of the first generation of set slot `set`.
+        pub(crate) const fn fixture(set: u16, icon: u16) -> Self {
+            Self {
+                set: IconSetId::new(set, 0),
+                icon: IconId(icon),
+            }
+        }
+    }
+}
