@@ -100,7 +100,7 @@ impl<'a> FrameCycle<'a> {
             display: stamp.display,
             damage_baseline_valid,
             input_policy: self.ui.input_policy(),
-            input_signal: self.ui.input.signal_since_last_frame,
+            input_signal: self.ui.input.signal_since_last_frame(),
             close_requested: self.ui.close_requested(),
         });
 

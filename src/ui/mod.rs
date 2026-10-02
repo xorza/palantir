@@ -1264,7 +1264,7 @@ impl Ui {
     /// Currently focused widget id, or `None`.
     #[inline]
     pub fn focused_id(&self) -> Option<WidgetId> {
-        self.input.focused
+        self.input.focused()
     }
 
     /// True when keyboard focus sits on `ancestor` or any widget
@@ -1278,7 +1278,7 @@ impl Ui {
     #[inline]
     pub fn focus_within(&self, ancestor: WidgetId) -> bool {
         self.input
-            .focused
+            .focused()
             .is_some_and(|f| self.cascade.is_within(f, ancestor))
     }
 
@@ -1294,7 +1294,7 @@ impl Ui {
     #[inline]
     pub fn hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
-            .hovered
+            .hovered()
             .is_some_and(|h| self.cascade.is_within(h, ancestor))
     }
 
@@ -1484,7 +1484,7 @@ impl Ui {
     #[inline]
     pub fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
-        self.input.pointer_pos
+        self.input.pointer_pos()
     }
 
     /// Current pointer position in `id`'s pre-transform local logical
@@ -1513,7 +1513,7 @@ impl Ui {
     #[inline]
     pub fn modifiers(&mut self) -> Modifiers {
         self.watch_keyboard(KeyboardWake::MODIFIER);
-        self.input.modifiers
+        self.input.modifiers()
     }
 
     /// [`Self::pointer_pos`] without the [`PointerWake::MOVE`] watch.
@@ -1525,7 +1525,7 @@ impl Ui {
     /// stale result stays on screen.
     #[inline]
     pub fn peek_pointer_pos(&self) -> Option<Vec2> {
-        self.input.pointer_pos
+        self.input.pointer_pos()
     }
 
     /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch.
@@ -1547,27 +1547,27 @@ impl Ui {
     /// the pointer holds still.
     #[inline]
     pub fn peek_modifiers(&self) -> Modifiers {
-        self.input.modifiers
+        self.input.modifiers()
     }
 
     /// What a press on a non-focusable widget does to focus. See
     /// [`FocusPolicy`].
     #[inline]
     pub fn focus_policy(&self) -> FocusPolicy {
-        self.input.focus_policy
+        self.input.focus_policy()
     }
 
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     #[inline]
     pub fn set_focus_policy(&mut self, p: FocusPolicy) {
-        self.input.focus_policy = p;
+        self.input.set_focus_policy(p);
     }
 
     /// Which "did input arrive?" signal the frame gate consults before
     /// it commits to a full record pass. See [`InputPolicy`].
     #[inline]
     pub fn input_policy(&self) -> InputPolicy {
-        self.input.input_policy
+        self.input.input_policy()
     }
 
     /// Set the record gate's input signal. Default
@@ -1576,7 +1576,7 @@ impl Ui {
     /// custom canvases that need every event.
     #[inline]
     pub fn set_input_policy(&mut self, p: InputPolicy) {
-        self.input.input_policy = p;
+        self.input.set_input_policy(p);
     }
 }
 

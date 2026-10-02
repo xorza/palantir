@@ -162,7 +162,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     h.frame(|ui| build(ui, true, &mut dismissed));
 
     // Escape dismisses it. Focus makes the wake-gate deliver the chord.
-    h.ui.input_mut().focused = Some(content);
+    h.ui.input_mut().set_focus(Some(content));
     h.key(Key::Escape);
     h.frame(|ui| build(ui, true, &mut dismissed));
     assert!(
@@ -174,7 +174,8 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     // popup is still in last frame's cascade, so only the close makes
     // this true. Counted inside the record, the only place the queue is
     // live, and maxed across the double-layout passes.
-    h.ui.input_mut().focused = Some(WidgetId::from_hash("main-bg"));
+    h.ui.input_mut()
+        .set_focus(Some(WidgetId::from_hash("main-bg")));
     h.key(Key::Escape);
     let mut seen = 0usize;
     h.frame(|ui| {

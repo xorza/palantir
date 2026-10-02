@@ -115,7 +115,7 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
 
     let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
     cold_frame(&mut h, |ui| {
-        observed.borrow_mut().push(ui.input.pointer_pos);
+        observed.borrow_mut().push(ui.input.pointer_pos());
     });
     let observed = observed.into_inner();
     assert_eq!(observed.len(), 2, "warmup + real");
@@ -142,7 +142,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     // (0,0) with 60×30 size below). Delivered before any frame ran;
     // cascade is empty so on_input can't resolve a target.
     h.move_to(Vec2::new(20.0, 10.0));
-    assert_eq!(h.ui.input.hovered, None, "pre-frame: no cascade, no hit");
+    assert_eq!(h.ui.input.hovered(), None, "pre-frame: no cascade, no hit");
 
     let button_id = WidgetId::from_hash("btn");
     cold_frame(&mut h, |ui| {
@@ -154,7 +154,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     });
 
     assert_eq!(
-        h.ui.input.hovered,
+        h.ui.input.hovered(),
         Some(button_id),
         "warmup builds cascade; refresh_pointer_targets routes held \
          pointer onto the button before the real record pass",

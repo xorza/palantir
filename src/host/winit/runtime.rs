@@ -60,7 +60,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         handle: HostHandle<T>,
     ) -> Result<Self, WinitHostError> {
         let token = bootstrap.token;
-        let config = bootstrap.config.clone();
+        let config = &bootstrap.config;
         // Started before the window exists and joined below, so the font
         // scan overlaps window creation and GPU init rather than adding to
         // them. An early return leaves the thread to finish and drop.
@@ -69,7 +69,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let SurfaceStartup {
             surfaces,
             first_surface,
-        } = SurfaceManager::start(&window, native::physical_size(&window), gpu_config(&config))
+        } = SurfaceManager::start(&window, native::physical_size(&window), gpu_config(config))
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let core = HostCore::new(
             surfaces.gpu.clone(),

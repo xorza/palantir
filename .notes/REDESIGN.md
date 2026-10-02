@@ -805,6 +805,5 @@ output, cost, cleanup.
 
 ## Phase 10. Cleanup (D15 rest, D17)
 
-- [ ] REVIEW design groups that stay internal: `InputState` field encapsulation, `OffscreenHost` gated impl, `WinitHostConfig` clone.
 - [ ] ISSUES.md items.
 - [ ] TEST_REVIEW groups 2, 6, 7, 9, 11–18 that no earlier phase closed.
