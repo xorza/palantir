@@ -21,6 +21,7 @@ use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
+use std::num::NonZeroU32;
 use std::time::Duration;
 use strum::{IntoStaticStr, VariantArray};
 
@@ -38,7 +39,7 @@ impl ComposeBench {
         Self {
             cmds,
             store: RecordStore::default(),
-            composer: Composer::new(8192),
+            composer: Composer::new(NonZeroU32::new(8192).unwrap()),
             out: RenderBuffer::new(),
             display: Display::from_physical(physical, 1.0),
         }

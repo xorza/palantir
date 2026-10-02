@@ -120,8 +120,10 @@ pub(crate) struct CurveInstance {
     pub(crate) kind: u32,
 }
 
-/// Pack per-end cap kinds into the [`CurveInstance::cap`] lane.
-#[inline]
-pub(crate) fn cap_lanes(start: u32, end: u32) -> u32 {
-    start | (end << 8)
+impl CurveInstance {
+    /// Pack per-end cap kinds into the [`Self::cap`] lane.
+    #[inline]
+    pub(crate) const fn cap_lanes(start: u32, end: u32) -> u32 {
+        start | (end << 8)
+    }
 }

@@ -84,7 +84,7 @@ impl HostCore {
                 collect_gpu_stats: config.collect_gpu_stats,
             },
         );
-        let frontend = Frontend::new(max_texture_dim.get(), resources.gradient_atlas().clone());
+        let frontend = Frontend::new(max_texture_dim, resources.gradient_atlas().clone());
         Self {
             resources,
             frontend,

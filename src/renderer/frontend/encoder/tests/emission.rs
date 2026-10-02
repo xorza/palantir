@@ -34,16 +34,19 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     };
     let gradients = [gradient];
     let atlas = SharedGradientAtlas::default();
-    let mut resolver = GradientResolver::default();
+    let mut resolver = GradientResolver {
+        atlas: atlas.clone(),
+        resolved: Vec::new(),
+    };
     let brush = ShapeBrush::Gradient {
         id: GradientId(0),
         hash: 0,
     };
 
-    resolver.reset_for(gradients.len());
-    let first = resolver.source(&gradients, &atlas, brush);
+    let mut pass = resolver.begin(&gradients);
+    let first = pass.source(brush);
     let registered = atlas.registrations();
-    let repeated = resolver.source(&gradients, &atlas, brush);
+    let repeated = pass.source(brush);
     assert_eq!(atlas.registrations(), registered);
     match (first, repeated) {
         (BrushSource::Gradient(first), BrushSource::Gradient(repeated)) => {
@@ -54,9 +57,9 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         _ => panic!("gradient brush resolved to a solid source"),
     }
 
-    resolver.reset_for(gradients.len());
-    assert!(resolver.resolved[0].is_none());
-    let _ = resolver.source(&gradients, &atlas, brush);
+    let mut pass = resolver.begin(&gradients);
+    assert!(pass.resolved[0].is_none());
+    let _ = pass.source(brush);
     assert_eq!(atlas.registrations(), registered + 1);
 }
 

@@ -24,6 +24,7 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::record_store::RecordStore;
+use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -85,7 +86,8 @@ fn windowed_rect_is_not_an_opaque_cover() {
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0));
             b.draw_quad(
-                DrawQuadPayload::rect_window(
+                DrawQuadPayload::rect_of_kind(
+                    RectKind::Windowed,
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
@@ -283,7 +285,7 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
         assert_eq!(buf.frame_targets.len(), 1, "{case:?}");
         let target = &buf.frame_targets[0];
         assert_eq!(target.used, case.expected_size, "{case:?}");
-        assert_eq!(target.display_scale, case.dpr, "{case:?}");
+        assert_eq!(buf.frame_views().display_scale, case.dpr, "{case:?}");
         assert_eq!(target.raster_scale, case.expected_raster_scale, "{case:?}");
         assert_eq!(
             buf.images.instance()[0].rect.size,
@@ -460,7 +462,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
         assert_eq!(buf.frame_targets.len(), 1, "{case:?}");
         let target = &buf.frame_targets[0];
         assert_eq!(target.used, case.expected_target, "{case:?}");
-        assert_eq!(target.display_scale, 1.0, "{case:?}");
+        assert_eq!(buf.frame_views().display_scale, 1.0, "{case:?}");
         assert_eq!(target.raster_scale, 0.5, "{case:?}");
         assert_eq!(
             buf.images.instance()[0].rect.size,

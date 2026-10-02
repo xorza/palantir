@@ -55,13 +55,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Dependencies that could go
 
-## Renderer design and duplication
-- [ ] `src/renderer/frontend/mod.rs:73` with `composer/mod.rs:91,163-174`: the host holds a `NonZeroU32` or `TextureLimit`, calls `.get()`, and `Composer::new` rewraps it with `.expect(...)`. The round trip adds a panic path and threads the device ceiling as a bare `u32`, which `TextureLimit`'s doc says it exists to prevent.
-- [ ] `src/renderer/render_buffer/image.rs:35` with `session.rs:477`: `RenderTargetDraw.display_scale` copies `RenderBuffer.display.scale_factor()` into every target — a second source of truth for one per-frame value.
-- [ ] `src/renderer/frontend/encoder/mod.rs:26-79` with `layer_ctx.rs:66-68,86-97`: `gradients`, `gradient_atlas` and `gradient_resolver` are three `LayerCtx` fields for one concern, and both resolver methods take the slice and the atlas on every call.
-- [ ] `src/renderer/frontend/payload/draw_quad_payload.rs:114-156` with `layer_ctx.rs:166-174`: `rect` / `rect_window` / `rect_impl(window: bool)` exist only so the encoder can match on `RectKind` to pick one. Taking `RectKind` removes the bool parameter and the dispatch.
-- [ ] Style: `pub(crate)` free functions that could be methods: `stroke_bounds::bbox` (`shape/stroke_bounds/mod.rs:17`), `bake::row` (`bake.rs:95`), `cap_lanes` (`render_buffer/curve.rs:115`). Missing `const fn`: `RenderPlan::cull_margin`, `TextureLimit::{from_device,max_dimension}`, `PaintTier::idx`, `cap_lanes`, `geometry::phys_scale`, `Display::{scale_factor,from_physical}`. Comments that narrate history: `text_grid/mod.rs:1-3` ("Replaces a flat…"), `:279-283` ("Profiling motivation"), `session.rs:439-445` ("which is how this was found"), `encoder/mod.rs:106-109` ("pre-fusion capture").
-
 ## Duplication and asymmetry in the GPU render loop
 - [ ] `src/gpu/mod.rs:892-901`: `macro_rules! rebind` breaks the no-macro rule. A small helper taking `&mut Bound` plus a bind closure does the same.
 - [ ] `src/gpu/mod.rs:450` vs `:868`: `ViewportPush::for_buffer` is computed in `submit` and recomputed inside `render_groups` once per damage rect. The dim and overlay passes are handed `viewport`. The main pass should be too.

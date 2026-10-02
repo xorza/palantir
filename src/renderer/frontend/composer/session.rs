@@ -27,7 +27,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance, cap_lanes,
+    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance,
 };
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
@@ -459,7 +459,7 @@ impl PaintSink for ComposeSession<'_> {
         // — and a scroll can put most of a view outside its viewport. Following
         // the rect would allocate, and ask the app to draw, pixels that are
         // then thrown away: a status line long enough to widen the window's
-        // root is enough to do it, which is how this was found.
+        // root is enough to do it.
         if let Some(view) = view {
             let scale = self.out.display.scale_factor();
             let cap = i64::from(self.composer.max_texture_dim.get());
@@ -491,7 +491,6 @@ impl PaintSink for ComposeSession<'_> {
                 used: UVec2::new(px(used.w), px(used.h)),
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
-                display_scale: scale,
                 raster_scale: geometry::phys_scale(self.composer.transform.current(), scale)
                     * downsample,
                 paint: view.paint.clone(),
@@ -536,7 +535,7 @@ impl PaintSink for ComposeSession<'_> {
             width: width_phys,
             color0: p.fill.color,
             color1: p.fill.color,
-            cap: cap_lanes(cap as u32, cap as u32),
+            cap: CurveInstance::cap_lanes(cap as u32, cap as u32),
             fill_kind: p.fill.kind,
             fill_lut_row: p.fill.lut_row,
             ..bytemuck::Zeroable::zeroed()
@@ -773,7 +772,7 @@ impl PaintSink for ComposeSession<'_> {
                 width: width_phys,
                 color0: color,
                 color1,
-                cap: cap_lanes(start_cap, end_cap),
+                cap: CurveInstance::cap_lanes(start_cap, end_cap),
                 kind: CURVE_KIND_SEGMENT,
                 ..bytemuck::Zeroable::zeroed()
             });

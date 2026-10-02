@@ -35,11 +35,12 @@ use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
 use std::cell::RefCell;
+use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
 pub(super) fn composer() -> Composer {
-    Composer::new(16_384)
+    Composer::new(NonZeroU32::new(16_384).unwrap())
 }
 
 pub(super) fn render_buffer() -> RenderBuffer {
@@ -109,7 +110,7 @@ pub(super) fn run_with_texture_cap(
     let mut recorded = PaintCapture::default();
     let mut store = RecordStore::default();
     build(&mut recorded, &mut store);
-    let mut composer = Composer::new(max_texture_dim);
+    let mut composer = Composer::new(NonZeroU32::new(max_texture_dim).unwrap());
     let mut out = render_buffer();
     composer
         .begin(*display, Duration::ZERO, &store, &mut out)

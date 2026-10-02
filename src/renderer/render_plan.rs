@@ -34,7 +34,7 @@ impl RenderPlan {
 
     /// Logical-pixel culling slack matching the backend's scissor
     /// padded by [`Self::AA_PADDING`].
-    pub(crate) fn cull_margin(scale: f32) -> f32 {
+    pub(crate) const fn cull_margin(scale: f32) -> f32 {
         (Self::AA_PADDING as f32 + 1.0) / scale
     }
 

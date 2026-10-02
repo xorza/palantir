@@ -121,6 +121,7 @@ mod output_validity_tests {
     use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::render_plan::RenderPlan;
     use crate::renderer::texture_limit::TextureLimit;
     use crate::scene::damage::Damage;
@@ -325,7 +326,7 @@ mod output_validity_tests {
             Clipboard::memory(),
             TextureLimit::default(),
         );
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         assert!(!driver.output_valid, "first frame has no presented output");
 
@@ -438,6 +439,7 @@ mod record_store_tests {
     use crate::primitives::stroke::Stroke;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::test_support::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::texture_limit::TextureLimit;
     use crate::shape::Shape;
     use crate::text::shaper::TextShaper;
@@ -519,7 +521,7 @@ mod record_store_tests {
             Clipboard::memory(),
             TextureLimit::default(),
         );
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let token = WindowToken(17);
         let mut window = WindowDriver::builder(token, &shared, false)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
@@ -552,7 +554,7 @@ mod record_store_tests {
             Clipboard::memory(),
             TextureLimit::default(),
         );
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut window_a = WindowDriver::builder(WindowToken(1), &shared, true)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
