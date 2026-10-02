@@ -21,15 +21,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/shape/triangle.rs:224-241` **bug (plausible)**: `triangle_paint_empty` ignores `radius`. A thin triangle (0,0),(100,0),(50,0.004) with `radius(3)` has normalized area 4e-5 and is dropped, yet its rounded SDF (`sdf_triangle − r`) would paint a 6 px-thick bar. Confirm what `sdf_triangle` returns once the winding sign `s` reaches 0.
 - [ ] `src/renderer/frontend/encoder/collision_overlay.rs:43-62` **bug (debug-only)**: the magenta outline uses `layout[layer].rect`, which is pre-transform layout space, and is emitted with an empty transform stack. A duplicate id inside a panned or zoomed subtree is outlined at the wrong place.
 
-## Platform key events the translation layer gets wrong
-- [ ] `src/host/winit/input/mod.rs:88` **bug**: the `KeyboardInput` arm drops `is_synthetic` (`{ event, .. }`). On X11 and Windows, winit 0.30 sends a synthetic Pressed event for every key still held when the window gains focus. Example: the user confirms a dialog in another app with Enter, or dismisses it with Escape, and focus comes back while the key is still down. That key arrives as a real `KeyDown` and reaches the focused TextEdit or an `escape_pressed()` overlay, so it submits a form or closes a modal.
-- [ ] `src/input/key_class.rs:87` with `src/host/winit/input/mod.rs:244` **bug (macOS)**: `normalize_modifiers` maps Option to `alt`, and `Modifiers::any_command()` counts `alt` as a command modifier. So any character typed with Option is never classified `KeyClass::Text`:
-  - German Mac `@`=⌥L, `{`=⌥8, `[`=⌥5, `|`=⌥7 classify as `Accel`.
-  - US ⌥A=`å` classifies as `Edit`, through the `layout_retry` of physical `a`.
-  - `TEXT_FIELD` excludes `Accel`, and TextEdit's `apply_key` (`widgets/text_edit/input_pass.rs:254`) also requires `!any_command()`, so none of these characters can be typed into a TextEdit on macOS.
-  - Also ™ (⌥2) on US layouts. Windows AltGr arrives as Ctrl+Alt and hits the same gate (**plausible**: confirm with a winit AltGr `KeyboardInput` dump).
-  - **plausible**, opposite direction on Linux/Windows: `Modifiers` has no super bit, so Super+L arrives as bare `l` with `text="l"` and a focused field types it. Confirm what winit puts in `text` under Super on X11/Wayland.
-
 ## Hug WrapStack: arrange breaks lines against a rounded-down budget
 - [ ] `src/layout/wrapstack/mod.rs:183` **bug**: arrange takes its line budget from the arranged `inner.size`, but measure took it from `inner_avail` (`:140`). For a Hug wrap stack the arranged width is `max_line_main`, and `canonical_px` rounds half away from zero (`src/primitives/num/mod.rs:258`). So when the widest line's extent has a fractional part in (0, 0.5), the budget lands below that line. Example: Hug `wrap_hstack` with two children 100.2 wide, gap 0. Measure budget is `round(INF)`, giving one line, desired w = 200.4. Arrange budget is `round(200.4) = 200`, and 100.2 + 100.2 > 200, so the second child wraps onto a second line below the measured height. It overflows the rect and overlaps whatever follows. Text widths are fractional, so this is the common case. The test `a_subpixel_resize_keeps_the_break_its_cache_key_stands_for` covers only the measure side.
 
@@ -102,12 +93,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - Unselected tab chips render at 16 px while the selected chip uses 13 px.
   - Pressing an unselected chip flips it to 13 px while held, because `inactive.active` is `None`.
   - The close glyph resizes on hover.
-
-## Input uses clock and scale state that differ from what the layout used
-- [ ] `src/host/winit/window.rs:207` with `mod.rs:393` **bug**: events are converted with `effective_scale()`, which reads the live app-global user scale. `set_user_scale` takes effect on layout only at the next frame. A click queued between the write and the relayout (Ctrl+= then click) is divided by the new scale and hit-tested against a cascade laid out at the old one, so it lands on the wrong widget. The same holds for `ScaleFactorChanged`. The laid-out `ui.display().scale_factor()` is the correct divisor, and the doc on `effective_scale` states the reverse rationale.
-- [ ] `src/host/winit/window.rs:245-252` with `:174-178` **bug**: `clock.skip(hidden)` rewinds the one clock that also stamps input (`Window::on_input`). Press A, hide the window for 5 s, show it, press A again within 500 ms of clock time: `count=2`, a double-click across a 5 s gap. Input stamped while occluded is also later than post-skip `now`, and `saturating_sub` turns that into 0.
-- [ ] `src/host/winit/mod.rs:426-446` with `gpu/surface_manager` `clamp_extent` **bug (plausible, Windows)**: Windows reports minimize as `Resized(0,0)`, and winit does not support `Occluded` there. The size is clamped to 1×1, so the minimized window keeps laying out the whole UI at about 0.67 logical px and painting, animations included. Layout-sensitive widget state (scroll-to-caret) can be mutated by the 1×1 layout.
-- [ ] `src/host/winit/window.rs:394-405` **bug (plausible)**: a `Suboptimal` texture is dropped unpresented and the swapchain is reconfigured with the same config. If suboptimal persists, every frame does a full CPU frame plus reconfigure and presents nothing.
 
 ## TextProbe byte↔cursor mapping disagrees with what cosmic shaped
 - [ ] `src/text/probe/mod.rs:437,450` **bug**: `cursor_from_byte` and `cursor_to_byte` count only `\n`, but cosmic's `LineIter` also splits on lone `\r` and on `\n\r` (and treats `\r\n` as one ending).
@@ -231,9 +216,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 - [ ] `src/gpu/icon/mod.rs:124` **bug (plausible)**: prewarm keys on `def.view_box * display_scale`. The composer keys on the drawn box `phys_rect.size`, which includes ancestor transforms (`composer/session.rs:381`). So prewarm hits only icons drawn at exactly their view-box size. Any other size still takes the 10-20× filtered raster lazily.
   - Prewarm rasterizes every filtered icon of every loaded set in one frame on each DPI change or set load: a worst-case-frame spike. Those slots are stamped current-frame, so they cannot be evicted while that frame's real draws compete for space.
   - To confirm: compare showcase icon box sizes against their SVG view boxes.
-
-## Input per-event and per-frame cost
-- [ ] `src/host/winit/mod.rs:427`: `Resized` invalidates all `SystemFacts`. During an interactive resize every frame is preceded by `Resized`, so `outer_position`, `is_maximized` and `current_monitor` (X11 round trips plus a `String` allocation) run per frame — the hot path the cache's doc says it removed. A resize can change only `maximized`; position changes arrive as `Moved`.
 
 ## Small widgets per-frame cost
 - [ ] `src/widgets/color_picker/mod.rs:197` with `history.rs:68`: `with_state` does `mem::take`, which runs `PickerState::default()` → `History::presets()`. That is 16 Okhsv→RGB conversions per picker per frame, to build a placeholder that is immediately overwritten.

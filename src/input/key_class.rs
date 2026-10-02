@@ -77,14 +77,17 @@ impl KeyClass {
     /// compile until it declares which class it belongs to, rather than
     /// falling into a catch-all and quietly becoming an accelerator.
     pub fn of(press: KeyPress) -> Self {
-        // A press that produced text *is* text, whatever its key is
-        // called: a layout can put a character on a key this vocabulary
-        // has no name for, and a dead-key sequence resolves to text the
-        // key that carried it never held. No named key reaches here with
+        // A press that typed text *is* text, whatever its key is called:
+        // a layout can put a character on a key this vocabulary has no
+        // name for, and a dead-key sequence resolves to text the key that
+        // carried it never held. Whether the modifiers held composed that
+        // text or made a command is the platform's rule —
+        // `KeyPress::types_text` — so Option+L is `@` on macOS and Alt+L
+        // is a mnemonic on Windows. No named key reaches here with
         // text — what Enter, Tab and Escape produce is a control
         // character, which never enters a `KeyText` — so the match below
         // keeps answering for every key that typed nothing.
-        if !press.mods.any_command() && !press.text.is_empty() {
+        if press.types_text() {
             return Self::Text;
         }
         match press.key {

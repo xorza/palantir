@@ -13,7 +13,6 @@
 
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -85,18 +84,6 @@ impl InputQueue {
         self.command_key.get_or_insert(key);
     }
 
-    /// The modifier set the last held `ModifiersChanged` carries, if one
-    /// is held — what the modifiers will be once everything held lands.
-    pub(crate) fn last_held_modifiers(&self) -> Option<Modifiers> {
-        self.pending
-            .iter()
-            .rev()
-            .find_map(|(event, _)| match event {
-                InputEvent::ModifiersChanged(mods) => Some(*mods),
-                _ => None,
-            })
-    }
-
     /// Hold `event` for a later frame.
     pub(crate) fn defer(&mut self, event: InputEvent, now: Duration) {
         self.pending.push_back((event, now));
@@ -116,6 +103,28 @@ impl InputQueue {
             return None;
         }
         self.pending.pop_front()
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::input::input_event::InputEvent;
+    use crate::input::input_queue::InputQueue;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    impl InputQueue {
+        /// The modifier set the last held `ModifiersChanged` carries, if
+        /// one is held — what the modifiers will be once everything held
+        /// lands.
+        pub(crate) fn last_held_modifiers(&self) -> Option<Modifiers> {
+            self.pending
+                .iter()
+                .rev()
+                .find_map(|(event, _)| match event {
+                    InputEvent::ModifiersChanged(mods) => Some(*mods),
+                    _ => None,
+                })
+        }
     }
 }
 

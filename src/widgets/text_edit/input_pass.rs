@@ -271,8 +271,10 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
         // its own newline above.
         //
         // Command chords type nothing, whatever the platform reports
-        // under them: macOS gives Cmd+A the text `"a"`.
-        _ if !keypress.mods.any_command() && !keypress.text.is_empty() => {
+        // under them: macOS gives Cmd+A the text `"a"`. Which modifiers
+        // compose and which command is `KeyPress::types_text`, the rule
+        // the key classifier reads too.
+        _ if keypress.types_text() => {
             editor.insert_str(keypress.text.as_str());
         }
         _ => {}

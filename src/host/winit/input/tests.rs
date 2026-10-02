@@ -7,11 +7,20 @@ use winit::keyboard::{
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::host::winit::input::{
-    PointerTrace, logical_key, normalize_modifiers, physical_key, translate,
+    KeyDownFacts, PointerTrace, Translation, key_down, logical_key, normalize_modifiers,
+    physical_key, shift_wheel, translate,
 };
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+
+fn at(scale_factor: f32) -> Translation {
+    Translation {
+        scale_factor,
+        modifiers: ModifiersState::empty(),
+        platform: PLATFORM,
+    }
+}
 
 fn wheel(delta: MouseScrollDelta) -> WindowEvent {
     WindowEvent::MouseWheel {
@@ -87,43 +96,63 @@ fn physical_keys_map_layout_independent_identities() {
     );
 }
 
+/// Each winit modifier on each platform: on macOS Cmd (Super) is the
+/// primary command bit and raw Control is `mac_ctrl`; elsewhere Control
+/// is the command bit and Super maps to nothing.
 #[test]
 fn modifier_normalization_translates_each_bit() {
-    let mac = matches!(PLATFORM, Platform::Mac);
-    assert_eq!(
-        normalize_modifiers(&ModifiersState::empty()),
-        Modifiers::NONE
-    );
-
-    let modifiers = normalize_modifiers(&ModifiersState::SHIFT);
-    assert!(modifiers.shift && !modifiers.ctrl && !modifiers.alt && !modifiers.mac_ctrl);
-    let modifiers = normalize_modifiers(&ModifiersState::ALT);
-    assert!(modifiers.alt && !modifiers.shift && !modifiers.ctrl && !modifiers.mac_ctrl);
-
-    let primary = if mac {
-        ModifiersState::SUPER
-    } else {
-        ModifiersState::CONTROL
-    };
-    let modifiers = normalize_modifiers(&primary);
-    assert!(modifiers.ctrl && !modifiers.shift && !modifiers.alt && !modifiers.mac_ctrl);
-
-    let modifiers = normalize_modifiers(&ModifiersState::CONTROL);
-    if mac {
-        assert!(modifiers.mac_ctrl && !modifiers.ctrl);
-    } else {
-        assert!(modifiers.ctrl && !modifiers.mac_ctrl);
+    let none = Modifiers::NONE;
+    let rows: [(ModifiersState, Platform, Modifiers); 8] = [
+        (ModifiersState::empty(), Platform::Mac, none),
+        (
+            ModifiersState::SHIFT,
+            Platform::Linux,
+            Modifiers {
+                shift: true,
+                ..none
+            },
+        ),
+        (
+            ModifiersState::ALT,
+            Platform::Mac,
+            Modifiers { alt: true, ..none },
+        ),
+        (
+            ModifiersState::SUPER,
+            Platform::Mac,
+            Modifiers { ctrl: true, ..none },
+        ),
+        (
+            ModifiersState::CONTROL,
+            Platform::Mac,
+            Modifiers {
+                mac_ctrl: true,
+                ..none
+            },
+        ),
+        (
+            ModifiersState::CONTROL,
+            Platform::Win,
+            Modifiers { ctrl: true, ..none },
+        ),
+        (ModifiersState::SUPER, Platform::Linux, none),
+        (
+            ModifiersState::SHIFT | ModifiersState::CONTROL,
+            Platform::Linux,
+            Modifiers {
+                shift: true,
+                ctrl: true,
+                ..none
+            },
+        ),
+    ];
+    for (state, platform, expected) in rows {
+        assert_eq!(
+            normalize_modifiers(&state, platform),
+            expected,
+            "{state:?} on {platform:?}"
+        );
     }
-
-    let modifiers = normalize_modifiers(&ModifiersState::SUPER);
-    if mac {
-        assert!(modifiers.ctrl && !modifiers.mac_ctrl);
-    } else {
-        assert!(!modifiers.ctrl && !modifiers.mac_ctrl);
-    }
-
-    let modifiers = normalize_modifiers(&(ModifiersState::SHIFT | primary));
-    assert!(modifiers.shift && modifiers.ctrl && !modifiers.alt);
 }
 
 #[test]
@@ -131,7 +160,7 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
     let mut got = None;
     translate(
         &wheel(MouseScrollDelta::LineDelta(2.0, 1.0)),
-        1.0,
+        at(1.0),
         |event| got = Some(event),
     );
     assert!(matches!(
@@ -143,7 +172,7 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
         &wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
             60.0, -120.0,
         ))),
-        2.0,
+        at(2.0),
         |event| got = Some(event),
     );
     assert!(matches!(
@@ -160,13 +189,13 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
 #[test]
 fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
     let mut emitted = None;
-    translate(&pinch(0.5), 1.0, |event| emitted = Some(event));
+    translate(&pinch(0.5), at(1.0), |event| emitted = Some(event));
     assert!(matches!(emitted, Some(InputEvent::Zoom(1.5))));
     assert!(emitted.is_some_and(|event| event.is_valid()));
 
     for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let mut emitted = None;
-        translate(&pinch(delta), 1.0, |event| emitted = Some(event));
+        translate(&pinch(delta), at(1.0), |event| emitted = Some(event));
         let event = emitted.expect("translation always emits");
         assert!(
             !event.is_valid(),
@@ -238,7 +267,7 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
 #[test]
 fn a_move_emits_logical_and_traces_physical() {
     let mut emitted = None;
-    let trace = translate(&cursor_moved(300.0, 120.0), 2.5, |event| {
+    let trace = translate(&cursor_moved(300.0, 120.0), at(2.5), |event| {
         emitted = Some(event)
     });
 
@@ -258,18 +287,92 @@ fn a_departure_traces_gone_and_other_events_trace_nothing() {
     };
     let mut emitted = None;
     assert_eq!(
-        translate(&left, 1.0, |event| emitted = Some(event)),
+        translate(&left, at(1.0), |event| emitted = Some(event)),
         PointerTrace::Gone,
     );
     assert!(matches!(emitted, Some(InputEvent::PointerLeft)));
 
     assert_eq!(
-        translate(&pinch(0.5), 1.0, |_| {}),
+        translate(&pinch(0.5), at(1.0), |_| {}),
         PointerTrace::Unchanged,
         "a gesture says nothing about where the pointer is",
     );
     assert_eq!(
-        translate(&wheel(MouseScrollDelta::LineDelta(1.0, 1.0)), 1.0, |_| {}),
+        translate(
+            &wheel(MouseScrollDelta::LineDelta(1.0, 1.0)),
+            at(1.0),
+            |_| {}
+        ),
         PointerTrace::Unchanged,
     );
+}
+
+/// A synthetic press — winit's replay of a key still held when the
+/// window gains focus — is not input. A real press with the same key
+/// and text is.
+#[test]
+fn a_synthetic_press_is_dropped() {
+    let logical = WinitKey::Named(NamedKey::Enter);
+    let physical = PhysicalKey::Code(KeyCode::Enter);
+    let facts = |is_synthetic| KeyDownFacts {
+        logical: &logical,
+        physical: &physical,
+        text: Some("\r"),
+        repeat: false,
+        is_synthetic,
+    };
+    assert!(key_down(facts(true), ModifiersState::empty()).is_none());
+    assert!(matches!(
+        key_down(facts(false), ModifiersState::empty()),
+        Some(InputEvent::KeyDown {
+            key: Key::Enter,
+            ..
+        })
+    ));
+}
+
+/// Super is a command modifier everywhere and has no `Modifiers` bit
+/// off macOS, so text typed under it is cleared here. Without Super the
+/// same press keeps its text.
+#[test]
+fn text_under_super_is_cleared() {
+    let logical = WinitKey::Character("l".into());
+    let physical = PhysicalKey::Code(KeyCode::KeyL);
+    let facts = KeyDownFacts {
+        logical: &logical,
+        physical: &physical,
+        text: Some("l"),
+        repeat: false,
+        is_synthetic: false,
+    };
+    let text_of = |modifiers| match key_down(facts, modifiers) {
+        Some(InputEvent::KeyDown { text, .. }) => text,
+        other => panic!("a press translates to a KeyDown, got {other:?}"),
+    };
+    assert!(text_of(ModifiersState::SUPER).is_empty());
+    assert_eq!(text_of(ModifiersState::empty()).as_str(), "l");
+    assert_eq!(text_of(ModifiersState::SHIFT).as_str(), "l");
+}
+
+/// Shift+wheel scrolls sideways on Windows and Linux, and only a purely
+/// vertical delta is moved; macOS sends the horizontal delta itself.
+#[test]
+fn shift_wheel_turns_vertical_into_horizontal_off_macos() {
+    let down = Vec2::new(0.0, 3.0);
+    let diagonal = Vec2::new(1.0, 3.0);
+    let shift = ModifiersState::SHIFT;
+    let rows = [
+        (down, shift, Platform::Linux, Vec2::new(3.0, 0.0)),
+        (down, shift, Platform::Win, Vec2::new(3.0, 0.0)),
+        (down, shift, Platform::Mac, down),
+        (down, ModifiersState::empty(), Platform::Linux, down),
+        (diagonal, shift, Platform::Linux, diagonal),
+    ];
+    for (delta, modifiers, platform, expected) in rows {
+        assert_eq!(
+            shift_wheel(delta, modifiers, platform),
+            expected,
+            "{delta} {modifiers:?} on {platform:?}",
+        );
+    }
 }
