@@ -18,7 +18,7 @@ use crate::scene::cascade::paint::{Paint, PaintRows};
 use crate::scene::damage;
 use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
-use crate::scene::damage::row_matcher::{ROW_UNMATCHED, RowMatcher};
+use crate::scene::damage::row_matcher::RowMatcher;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
@@ -349,32 +349,15 @@ impl LayerWalk<'_> {
     }
 
     /// Damage the extent overlap of every exact-matched row pair whose
-    /// relative paint order inverted since last frame.
-    ///
-    /// `O(rows²)` pair enumeration, reached only behind
-    /// [`RowMatcher::has_order_inversion`](crate::scene::damage::row_matcher::RowMatcher::has_order_inversion) on the rare frame an order actually
-    /// flipped. Rows that merely shifted because a sibling was added or
-    /// removed keep their relative order and contribute nothing.
-    /// [`damage::push_screen`] drops degenerate results — a zero-size
-    /// extent pinned strictly inside a sibling does pass `intersects`,
-    /// and a sub-EPS overlap sliver paints nothing. Neither earns a
-    /// merge slot.
+    /// relative paint order inverted since last frame. Reached only
+    /// behind [`RowMatcher::has_order_inversion`](crate::scene::damage::row_matcher::RowMatcher::has_order_inversion).
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
-        let matched = self.matcher.matched_positions();
-        let extents = &self.order_extents;
-        for j2 in 1..matched.len() {
-            let p2 = matched[j2];
-            if p2 == ROW_UNMATCHED {
-                continue;
-            }
-            for (j1, &p1) in matched.iter().enumerate().take(j2) {
-                if p1 == ROW_UNMATCHED || p1 < p2 {
-                    continue;
-                }
-                damage::push_screen(self.raw_rects, extents[j1].clamp_to(extents[j2]));
-            }
-        }
+        damage::push_inverted_overlaps(
+            self.raw_rects,
+            self.matcher.matched_positions(),
+            self.order_extents,
+        );
     }
 
     /// Screen-space extent per row of `node`'s paint span, in row order:

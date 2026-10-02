@@ -357,7 +357,15 @@ pub(crate) mod test_support {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::cascade::Cascade;
     #[cfg(test)]
+    use crate::scene::cascade::LayerCascade;
+    #[cfg(test)]
     use crate::scene::forest::Forest;
+    #[cfg(test)]
+    use crate::scene::tree::Tree;
+    #[cfg(test)]
+    use crate::scene::tree::iter::TreeItem;
+    #[cfg(test)]
+    use crate::scene::tree::node_id::NodeId;
     use glam::Vec2;
 
     /// One paint row with the widget that owns it — what the damage
@@ -368,6 +376,44 @@ pub(crate) mod test_support {
         pub(crate) owner: WidgetId,
         pub(crate) screen: Rect,
         pub(crate) hash: ContentHash,
+        /// Position in the frame's paint order.
+        pub(crate) rank: u32,
+    }
+
+    #[cfg(test)]
+    impl LayerCascade {
+        fn owned_paints_of(&self, tree: &Tree, node: NodeId, out: &mut Vec<OwnedPaint>) {
+            let arena = &self.paint_arena;
+            let span = arena.node_spans[node.idx()];
+            // An invisible node's span is empty, and so is every one
+            // under it.
+            if span.len == 0 {
+                return;
+            }
+            let owner = tree.records.widget_id()[node.idx()];
+            let mut row = span.start as usize;
+            let push = |row: usize, out: &mut Vec<OwnedPaint>| {
+                let paint = arena.rows[row];
+                out.push(OwnedPaint {
+                    owner,
+                    screen: paint.screen,
+                    hash: paint.hash,
+                    rank: out.len() as u32,
+                });
+            };
+            if tree.chrome(node).is_some() {
+                push(row, out);
+                row += 1;
+            }
+            for item in tree.tree_items(node) {
+                match item {
+                    TreeItem::ShapeRecord(..) => push(row, out),
+                    TreeItem::Child(child) => self.owned_paints_of(tree, child.id, out),
+                }
+                row += 1;
+            }
+            debug_assert_eq!(row, span.range().end, "rows out of sync with the span");
+        }
     }
 
     impl Cascade {
@@ -382,20 +428,15 @@ pub(crate) mod test_support {
             self.hits.iter().map(|row| row.widget_id)
         }
 
-        /// Append every paint row with the widget that owns it, layer by
-        /// layer in paint order and node by node in pre-order — the rows
-        /// the encoder draws and damage diffs.
+        /// Append every row that paints, with the widget that owns it, in
+        /// the order the encoder draws them: layer by layer, root by root,
+        /// and inside a node its chrome, then each shape and child subtree
+        /// in record order. Child markers paint nothing and are left out.
         #[cfg(test)]
         pub(crate) fn owned_paints(&self, forest: &Forest, out: &mut Vec<OwnedPaint>) {
             for (layer, tree) in forest.trees.iter_paint_order() {
-                let arena = &self.layers[layer].paint_arena;
-                let ids = tree.records.widget_id();
-                for (node, owner) in ids.iter().enumerate() {
-                    out.extend(arena.rows_of(node).iter().map(|row| OwnedPaint {
-                        owner: *owner,
-                        screen: row.screen,
-                        hash: row.hash,
-                    }));
+                for slot in &tree.roots {
+                    self.layers[layer].owned_paints_of(tree, slot.first_node, out);
                 }
             }
         }
