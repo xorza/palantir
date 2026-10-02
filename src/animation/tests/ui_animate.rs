@@ -68,17 +68,17 @@ fn animate_drives_repaint_until_settle() {
 fn animate_with_none_spec_snaps_and_skips_repaint() {
     for (label, spec) in [("none", None), ("snap", Some(AnimSpec::SNAP))] {
         let AnimUi { mut h, id } = setup_anim_ui("anim-none");
-        let repaint = h
-            .at(Duration::from_millis(16))
-            .frame(|ui| {
-                let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
-                let v2 = ui.animate(id, SLOT, 9.0_f32, spec);
-                assert_eq!(v1, 7.0, "{label}");
-                assert_eq!(v2, 9.0, "{label}");
-                Block::new().id(WidgetId::from_hash("anim-none")).show(ui);
-            })
-            .repaint_requested;
-        assert!(!repaint, "{label} spec must never request a repaint");
+        let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
+            let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
+            let v2 = ui.animate(id, SLOT, 9.0_f32, spec);
+            Block::new().id(WidgetId::from_hash("anim-none")).show(ui);
+            [v1, v2]
+        });
+        assert_eq!(*passes.a(), [7.0, 9.0], "{label}");
+        assert!(
+            !passes.report().repaint_requested,
+            "{label} spec must never request a repaint"
+        );
         assert!(
             h.anim_row_count::<f32>() == 0,
             "{label} spec must not allocate a row",

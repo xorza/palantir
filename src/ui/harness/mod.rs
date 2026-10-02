@@ -370,11 +370,17 @@ impl UiHarness {
         self.deliver_held_input(&mut RecordApp::new(|ui: &mut Ui| {
             record(ui);
         }));
+        self.step_passes(record)
+    }
+
+    /// [`Self::frame_passes`] over exactly one host frame, delivering
+    /// nothing held, like [`Self::step`].
+    pub fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
         // A cold recorder runs the input-blind warmup pass first; it is
         // not one of the passes a caller asks about.
         let mut warmup = self.ui.frame_runtime.prev_stamp.is_none();
         let mut values = Vec::new();
-        self.step(|ui| {
+        let report = self.step(|ui| {
             // `record` runs on *every* pass — it is the scene, and a pass
             // that skipped it would record an empty tree and wipe the
             // cascade the next frame reads.
@@ -385,7 +391,7 @@ impl UiHarness {
                 values.push(value);
             }
         });
-        Passes::new(values)
+        Passes::new(values, report)
     }
 
     /// The value from the **input-observing** pass — pass A, the one

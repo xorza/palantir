@@ -136,17 +136,13 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
 
     let content = WidgetId::from_hash("popup-content");
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    let build = |ui: &mut Ui, open: bool, dismissed: &mut bool| {
+    let build = |ui: &mut Ui, open: bool| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .sense(Sense::CLICK)
             .show(ui, |ui| {
-                if !open {
-                    return;
-                }
-                let r = Popup::new(Anchor::at_point(ANCHOR))
+                open && Popup::new(Anchor::at_point(ANCHOR))
                     .id(WidgetId::from_hash("test-popup"))
                     .click_outside(ClickOutside::Dismiss)
                     .show(ui, |ui, _popup| {
@@ -154,34 +150,34 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
                             .id(content)
                             .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
                             .show(ui, |_| {});
-                    });
-                *dismissed |= r.dismissed;
-            });
+                    })
+                    .dismissed
+            })
+            .inner
     };
 
-    h.frame(|ui| build(ui, true, &mut dismissed));
-    h.frame(|ui| build(ui, true, &mut dismissed));
+    h.prime(2, |ui| {
+        build(ui, true);
+    });
 
     // Escape dismisses it. Focus makes the wake-gate deliver the chord.
     h.ui.input_mut().set_focus(Some(content));
     h.key(Key::Escape);
-    h.frame(|ui| build(ui, true, &mut dismissed));
     assert!(
-        dismissed,
+        h.frame_value(|ui| build(ui, true)),
         "escape must dismiss a ClickOutside::Dismiss popup"
     );
 
     // Host stops showing it. `Main` must read again immediately — the
     // popup is still in last frame's cascade, so only the close makes
     // this true. Counted inside the record, the only place the queue is
-    // live, and maxed across the double-layout passes.
+    // live.
     h.ui.input_mut()
         .set_focus(Some(WidgetId::from_hash("main-bg")));
     h.key(Key::Escape);
-    let mut seen = 0usize;
-    h.frame(|ui| {
-        build(ui, false, &mut dismissed);
-        seen = seen.max(ui.input().keyboard_events(Layer::Main).len());
+    let seen = h.frame_value(|ui| {
+        build(ui, false);
+        ui.input().keyboard_events(Layer::Main).len()
     });
     assert_eq!(seen, 1, "the frame after dismissal must reach Main");
 }

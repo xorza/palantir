@@ -147,7 +147,7 @@ fn field() -> WidgetId {
     WidgetId::from_hash("field")
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 struct FieldPass {
     submitted: bool,
 }
@@ -213,12 +213,8 @@ fn a_key_after_enter_is_typed_after_the_submit() {
     });
     h.key(Key::Enter);
     h.key(Key::Char('x'));
-    let mut enter = FieldPass::default();
-    h.step(|ui| {
-        let pass = record_field(ui, &mut buffer);
-        enter.submitted |= pass.submitted;
-    });
-    assert!(enter.submitted);
+    let enter = h.step_passes(|ui| record_field(ui, &mut buffer));
+    assert!(enter.a().submitted);
     assert_eq!(buffer, "hello", "the submitted value is the one before `x`");
     h.step(|ui| {
         record_field(ui, &mut buffer);

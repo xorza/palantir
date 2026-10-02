@@ -634,4 +634,30 @@ pub struct TextEditResponse<'a> {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use crate::widgets::text_edit::TextEditResponse;
+
+    /// A [`TextEditResponse`]'s edges, copied out of the record pass
+    /// whose `ui` borrow the response holds.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) struct EditEdges {
+        pub(crate) changed: bool,
+        pub(crate) submitted: bool,
+        pub(crate) gained_focus: bool,
+        pub(crate) lost_focus: bool,
+    }
+
+    impl TextEditResponse<'_> {
+        pub(crate) const fn edges(&self) -> EditEdges {
+            EditEdges {
+                changed: self.changed,
+                submitted: self.submitted,
+                gained_focus: self.gained_focus,
+                lost_focus: self.lost_focus,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

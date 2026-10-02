@@ -24,59 +24,66 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let xform = TranslateScale::new(Vec2::new(5.0, 7.0), 2.0);
 
     let surface = UVec2::new(400, 400);
-    let build = |ui: &mut Ui, capture: &mut (bool, bool, bool)| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Panel::canvas()
-                .id(WidgetId::from_hash("mid"))
-                .size(200.0)
-                .clip_rect()
-                .transform(xform)
-                .show(ui, |ui| {
-                    capture.0 |= Block::new()
-                        .id(WidgetId::from_hash("V"))
-                        .position((0.0, 0.0))
-                        .size(30.0)
-                        .background(Background {
-                            fill: v_color.into(),
-                            ..Default::default()
-                        })
-                        .sense(Sense::CLICK)
-                        .show(ui)
-                        .left
-                        .clicked();
-                    capture.1 |= Block::new()
-                        .id(WidgetId::from_hash("D"))
-                        .position((40.0, 0.0))
-                        .size(30.0)
-                        .background(Background {
-                            fill: d_color.into(),
-                            ..Default::default()
-                        })
-                        .sense(Sense::CLICK)
-                        .disabled(true)
-                        .show(ui)
-                        .left
-                        .clicked();
-                    capture.2 |= Block::new()
-                        .id(WidgetId::from_hash("H"))
-                        .position((80.0, 0.0))
-                        .size(30.0)
-                        .background(Background {
-                            fill: h_color.into(),
-                            ..Default::default()
-                        })
-                        .sense(Sense::CLICK)
-                        .hidden()
-                        .show(ui)
-                        .left
-                        .clicked();
-                });
-        });
+    // Whether V, D and H clicked this pass.
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("mid"))
+                    .size(200.0)
+                    .clip_rect()
+                    .transform(xform)
+                    .show(ui, |ui| {
+                        let v = Block::new()
+                            .id(WidgetId::from_hash("V"))
+                            .position((0.0, 0.0))
+                            .size(30.0)
+                            .background(Background {
+                                fill: v_color.into(),
+                                ..Default::default()
+                            })
+                            .sense(Sense::CLICK)
+                            .show(ui)
+                            .left
+                            .clicked();
+                        let d = Block::new()
+                            .id(WidgetId::from_hash("D"))
+                            .position((40.0, 0.0))
+                            .size(30.0)
+                            .background(Background {
+                                fill: d_color.into(),
+                                ..Default::default()
+                            })
+                            .sense(Sense::CLICK)
+                            .disabled(true)
+                            .show(ui)
+                            .left
+                            .clicked();
+                        let h = Block::new()
+                            .id(WidgetId::from_hash("H"))
+                            .position((80.0, 0.0))
+                            .size(30.0)
+                            .background(Background {
+                                fill: h_color.into(),
+                                ..Default::default()
+                            })
+                            .sense(Sense::CLICK)
+                            .hidden()
+                            .show(ui)
+                            .left
+                            .clicked();
+                        [v, d, h]
+                    })
+                    .inner
+            })
+            .inner
     };
 
     let mut h = UiHarness::new(surface);
-    let mut sink = (false, false, false);
-    h.frame(|ui| build(ui, &mut sink));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     let cmds = h.encode_paint();
     let drawn = screen_rects_by_fill(&cmds);
@@ -117,17 +124,22 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // uninterrupted gestures would leave only the last one to read, and
     // `D` absorbing its press is exactly what makes that visible.
     let h_hit = h.ui.response_for(h_id).rect.unwrap();
-    let mut got = (false, false, false);
-    for target in [v_hit, d_hit, h_hit] {
+    for (target, expected, why) in [
+        (v_hit, [true, false, false], "the visible widget clicks"),
+        (
+            d_hit,
+            [false, false, false],
+            "a disabled widget absorbs its press without clicking",
+        ),
+        (
+            h_hit,
+            [false, false, false],
+            "a hidden widget does not click (visibility cascade)",
+        ),
+    ] {
         h.click_at(target.min + Vec2::new(target.size.w, target.size.h) * 0.5);
-        h.frame(|ui| build(ui, &mut got));
+        assert_eq!(h.frame_value(build), expected, "{why}");
     }
-    assert!(got.0, "visible widget should click");
-    assert!(
-        !got.1,
-        "a disabled widget absorbs its press without clicking"
-    );
-    assert!(!got.2, "hidden widget must not click (visibility cascade)");
 }
 
 #[test]

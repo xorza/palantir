@@ -25,17 +25,15 @@ fn instant_duration_is_noop_and_drops_row() {
     let AnimUi { mut h, id } = setup_anim_ui("anim-instant");
 
     // Instant on a fresh slot: snaps, no row, no repaint.
-    let repaint = h
-        .at(Duration::from_millis(0))
-        .frame(|ui| {
-            let v = ui.animate(id, SLOT, 1.0_f32, instant);
-            assert_eq!(v, 1.0);
-            Block::new()
-                .id(WidgetId::from_hash("anim-instant"))
-                .show(ui);
-        })
-        .repaint_requested;
-    assert!(!repaint);
+    let passes = h.at(Duration::from_millis(0)).frame_passes(|ui| {
+        let v = ui.animate(id, SLOT, 1.0_f32, instant);
+        Block::new()
+            .id(WidgetId::from_hash("anim-instant"))
+            .show(ui);
+        v
+    });
+    assert_eq!(*passes.a(), 1.0);
+    assert!(!passes.report().repaint_requested);
     assert_eq!(h.anim_row_count::<f32>(), 0);
 
     // Mid-flight on FAST: row gets allocated.
@@ -54,13 +52,14 @@ fn instant_duration_is_noop_and_drops_row() {
     assert!(h.anim_row_count::<f32>() > 0);
 
     // Switching to instant mid-flight: snap and drop.
-    let _ = h.at(Duration::from_millis(60)).frame(|ui| {
+    let v = h.at(Duration::from_millis(60)).frame_value(|ui| {
         let v = ui.animate(id, SLOT, 1.0_f32, instant);
-        assert_eq!(v, 1.0);
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
+        v
     });
+    assert_eq!(v, 1.0);
     assert_eq!(
         h.anim_row_count::<f32>(),
         0,
@@ -68,13 +67,14 @@ fn instant_duration_is_noop_and_drops_row() {
     );
 
     // Switching back to FAST with a new target: first-touch snaps.
-    let _ = h.at(Duration::from_millis(70)).frame(|ui| {
+    let v = h.at(Duration::from_millis(70)).frame_value(|ui| {
         let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimSpec::FAST));
-        assert_eq!(v, 5.0, "post-instant first-touch snaps to new target");
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
+        v
     });
+    assert_eq!(v, 5.0, "post-instant first-touch snaps to new target");
 }
 
 /// Sub-perceptual drift between `target` and `current` must snap rather

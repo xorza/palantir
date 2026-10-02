@@ -26,9 +26,6 @@ harness has `frame_value` and `response_in` for this, but nothing stops a test f
 last pass or reading between frames. In each case below, the bug that the test guards against
 forces pass B, and pass B erases the evidence.
 
-- [ ] `animation/tests/snap.rs:173-175`: `current = ui.animate(..)` keeps the last pass.
-- [ ] About 10 asserts sit inside the record closure (`animation/tests/duration.rs:31,58,72`, `snap.rs:152,162-163,176,192`, `ui_animate.rs:76-77`). A `PaintOnly` frame skips them silently.
-- [ ] Then delete the OR-accumulators: 22 `|=` sites in 14 widget files, 22 in `input/input_state/tests/click.rs`, 7 in `keyboard.rs`, the `max` folds in `click.rs:583-596`, `keyboard.rs:364`, `watch.rs:448`, `modal/tests.rs:84,196-203`. Delete the four near-identical `Signals` helpers (`drag_value/tests/support.rs:9-55`, `slider/tests.rs:12-45`, `splitter/tests.rs:24-52`, `text_edit/tests/response.rs:8-35`) and the seven comments that re-derive rule 4. OR accepts a signal from the wrong pass, and the `commits` counters exist only because OR cannot see a double fire.
 - [ ] Replace hand-counted passes (`passes += 1`) with `FrameReport::processing`: `combo_box/tests.rs:130`, `popup/tests/placement.rs:319`, `splitter/tests.rs:48,219`, `tooltip/tests.rs:72,205,215`, `scroll/tests/bars/presence.rs:47`, `cold_mount.rs:47`, `ui/tests/frames/settle.rs:59-66`, `frames/passes.rs:58,175,222,242`, `ui/tests/text.rs:689`, `starting.rs:200`. Keep a counter only where the warmup pass matters.
 - [ ] Remove the reason for between-frame `response_for` reads. 34 widget sites use `h.ui.response_for` because `ui` is a `pub(crate)` field. `h.rect` and `h.layout_rect` cover geometry. Add `h.transform(id)` for the rest.
 
@@ -49,10 +46,6 @@ The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass
 - [ ] Negative tests where a miss passes: `checkbox/tests.rs:179`, `radio/tests.rs:111`, `drag_value/tests/scrub.rs:223`, `scroll/tests/panning.rs:33-46`, `input_state/tests/click.rs:226,258,454,486`, `keyboard.rs:521`. Give each a control row, and assert `h.hit_at(p) == Some(id)` (or `!=` for a deliberate miss) before the gesture.
 - [ ] `context_menu/tests/interaction.rs:77-81` clicks `(90, 80)`, "well inside any plausible row layout". Use `menu_rows()` from `theming.rs:385`.
 - [ ] Add `UiHarness::point_in(id, local) -> Vec2` (layout-local to screen, hit-checked) plus `click_in` / `press_in`. It replaces 5 hand-rolled transform copies (`splitter/tests.rs:167-171`, `slider/tests.rs:280-284`, `drag_value/tests/scrub.rs:81-88`, `scroll/tests/panning.rs:259-266`, `scroll/tests/pivot.rs:43-45`) and makes the 19 caret clicks in `text_edit/tests/click.rs` relative to the field.
-
-## 5. Panic tests accept any panic
-
-- [ ] `ui/tests/text.rs:634-665` `interned_handles_do_not_outlive_their_record_pass` documents three cases and tests two. Add the pass-B case.
 
 ## 7. The visual suite's tolerance and capture lose information
 

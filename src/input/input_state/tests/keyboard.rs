@@ -117,10 +117,9 @@ fn a_tree_with_no_scopes_still_reads_every_chord() {
     };
     h.frame(bare);
     press_escape(&mut h);
-    let mut pressed = false;
-    h.frame(|ui| {
+    let pressed = h.frame_value(|ui| {
         bare(ui);
-        pressed |= ui.escape_pressed();
+        ui.escape_pressed()
     });
     assert!(pressed, "no scopes declared must not gate the chord out");
 }
@@ -141,7 +140,7 @@ fn a_scope_silences_the_layers_strictly_below_it() {
     // path resolves from the cascade at the start of the next.
     h.frame(popup_with_scope);
     press_escape(&mut h);
-    let seen = sample_layers(&mut h, popup_with_scope);
+    let seen = sample_layers(&mut h, popup_with_scope).layers;
 
     assert_eq!(seen[Layer::Popup.idx()], 1, "the scope's own layer reads");
     // Strictly below — cut off, which is the whole point.
@@ -160,7 +159,7 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
     h.frame(popup_with_scope);
     press_escape(&mut h);
     assert_eq!(
-        sample_layers(&mut h, popup_with_scope)[Layer::Main.idx()],
+        sample_layers(&mut h, popup_with_scope).layers[Layer::Main.idx()],
         0
     );
 
@@ -168,7 +167,7 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
     // hands `Main` the stream back.
     h.frame(|_| {});
     press_escape(&mut h);
-    assert_eq!(sample_layers(&mut h, |_| {})[Layer::Main.idx()], 1);
+    assert_eq!(sample_layers(&mut h, |_| {}).layers[Layer::Main.idx()], 1);
 }
 
 /// A layer's fallback grant is its **outermost** scope, not its
@@ -182,27 +181,32 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
 #[test]
 fn the_layer_fallback_grant_is_the_outermost_scope() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-    let (mut at_root, mut at_inner) = (false, false);
-    let nested = |ui: &mut Ui, at_root: &mut bool, at_inner: &mut bool| {
+    // Whether Escape reads at the root and inside the inner scope.
+    let nested = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                *at_root |= ui.escape_pressed();
-                Panel::vstack()
+                let at_root = ui.escape_pressed();
+                let at_inner = Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .show(ui, |ui| *at_inner |= ui.escape_pressed());
-            });
+                    .show(ui, |ui| ui.escape_pressed())
+                    .inner;
+                [at_root, at_inner]
+            })
+            .inner
     };
-    h.frame(|ui| nested(ui, &mut at_root, &mut at_inner));
+    h.frame(|ui| {
+        nested(ui);
+    });
     press_escape(&mut h);
     // Focus sits on an unrecorded id, so no scope path anchors and the
     // grant falls through to the layer's outermost scope — the case this
     // is about.
-    h.frame(|ui| nested(ui, &mut at_root, &mut at_inner));
+    let [at_root, at_inner] = h.frame_value(nested);
 
     assert!(
         at_root,
@@ -229,31 +233,34 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     for closed in ["first", "second"] {
         let survivor = if closed == "first" { "second" } else { "first" };
         let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-        let mut read_by_survivor = false;
         // Read from inside the survivor, which is where a scoped chord
-        // has to land now that its sibling is gone. `&mut` through the
-        // closure, so `two` takes it as an argument rather than
-        // capturing.
-        let two = |ui: &mut Ui, read: &mut bool| {
+        // has to land now that its sibling is gone.
+        let two = |ui: &mut Ui| {
+            let mut read_by_survivor = false;
             for id in ["first", "second"] {
                 scope_leaf(ui, Layer::Popup, id, |ui| {
                     if id == survivor {
-                        *read |= ui.escape_pressed();
+                        read_by_survivor = ui.escape_pressed();
                     }
                 });
             }
+            read_by_survivor
         };
-        h.frame(|ui| two(ui, &mut read_by_survivor));
+        h.frame(|ui| {
+            two(ui);
+        });
         press_escape(&mut h);
         h.frame(|ui| {
-            two(ui, &mut read_by_survivor);
+            two(ui);
             ui.release_input_scope(WidgetId::from_hash(closed));
         });
 
         // The next resolution honours the close, and the sibling holds.
         press_escape(&mut h);
-        read_by_survivor = false;
-        let seen = sample_layers(&mut h, |ui| two(ui, &mut read_by_survivor));
+        let Sample {
+            layers: seen,
+            value: read_by_survivor,
+        } = sample_layers(&mut h, two);
         assert_eq!(
             seen[Layer::Main.idx()],
             0,
@@ -292,13 +299,14 @@ fn a_close_takes_effect_at_the_next_resolution() {
         inner_before: bool,
         inner_after: bool,
     }
-    let nested = |ui: &mut Ui, focus_inside: bool, closes: bool, reads: &mut Reads| {
+    let nested = |ui: &mut Ui, focus_inside: bool, closes: bool| {
+        let mut reads = Reads::default();
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                reads.at_root |= ui.escape_pressed();
+                reads.at_root = ui.escape_pressed();
                 Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
@@ -310,23 +318,25 @@ fn a_close_takes_effect_at_the_next_resolution() {
                                 .size(10.0)
                                 .show(ui);
                         }
-                        reads.inner_before |= ui.escape_pressed();
+                        reads.inner_before = ui.escape_pressed();
                         if closes {
                             ui.release_input_scope(WidgetId::from_hash("inner"));
                         }
-                        reads.inner_after |= ui.escape_pressed();
+                        reads.inner_after = ui.escape_pressed();
                     });
             });
+        reads
     };
     for focus_inside in [false, true] {
         let mut h = UiHarness::new(glam::UVec2::new(200, 200));
         // `closes` is false on the setup frame: a close outlives its own
         // frame, so closing there would leave `inner` already withdrawn
         // when the pass under test starts.
-        h.frame(|ui| nested(ui, focus_inside, false, &mut Reads::default()));
+        h.frame(|ui| {
+            nested(ui, focus_inside, false);
+        });
         press_escape(&mut h);
-        let mut closing = Reads::default();
-        h.frame(|ui| nested(ui, focus_inside, true, &mut closing));
+        let closing = h.frame_value(|ui| nested(ui, focus_inside, true));
         assert_eq!(
             (closing.inner_before, closing.at_root),
             (focus_inside, !focus_inside),
@@ -338,8 +348,7 @@ fn a_close_takes_effect_at_the_next_resolution() {
              must get the answer the read before it got",
         );
         press_escape(&mut h);
-        let mut next = Reads::default();
-        h.frame(|ui| nested(ui, focus_inside, false, &mut next));
+        let next = h.frame_value(|ui| nested(ui, focus_inside, false));
         assert!(
             next.at_root && next.inner_before && next.inner_after,
             "focus inside inner = {focus_inside}: on the next frame inner is withdrawn, \
@@ -357,20 +366,26 @@ fn press_escape(h: &mut UiHarness) {
     h.key(Key::Escape);
 }
 
-/// Per-layer keyboard-event counts read *inside* the record — the only
-/// place they are live, since `end_frame` drains the queue. Maxed across
-/// passes: action input makes `Ui::frame` record twice and the second
-/// pass sees a drained queue.
-fn sample_layers(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) -> [usize; Layer::COUNT] {
-    let mut seen = [0usize; Layer::COUNT];
-    h.frame(|ui| {
-        record(ui);
-        for layer in Layer::PAINT_ORDER {
-            let n = ui.input().keyboard_events(layer).len();
-            seen[layer.idx()] = seen[layer.idx()].max(n);
+/// What [`sample_layers`] read in pass A: the per-layer keyboard-event
+/// counts, and the record closure's own value.
+#[derive(Debug)]
+struct Sample<R> {
+    layers: [usize; Layer::COUNT],
+    value: R,
+}
+
+/// Per-layer keyboard-event counts read *inside* pass A's record — the
+/// only place they are live, since `end_frame` drains the queue and
+/// pass B sees it drained.
+fn sample_layers<R>(h: &mut UiHarness, mut record: impl FnMut(&mut Ui) -> R) -> Sample<R> {
+    h.frame_value(|ui| {
+        let value = record(ui);
+        Sample {
+            // `PAINT_ORDER[i]` is the layer whose `idx()` is `i`.
+            layers: Layer::PAINT_ORDER.map(|layer| ui.input().keyboard_events(layer).len()),
+            value,
         }
-    });
-    seen
+    })
 }
 
 /// A node on `layer` declaring an all-taking scope — the shape every

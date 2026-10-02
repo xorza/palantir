@@ -278,14 +278,14 @@ fn warmup_keeps_scope_releases() {
     h.key(Key::Escape);
 
     let mut records = 0_u32;
-    let mut at_root = false;
-    cold_frame(&mut h, |ui| {
-        Panel::vstack()
+    // Whether the root reads the Escape, per pass after warmup.
+    let passes = h.frame_passes(|ui| {
+        let at_root = Panel::vstack()
             .id(root)
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                at_root |= ui.escape_pressed();
+                let at_root = ui.escape_pressed();
                 Panel::vstack()
                     .id(inner)
                     .input_scope(KeyFilter::ALL)
@@ -296,8 +296,11 @@ fn warmup_keeps_scope_releases() {
                             ui.release_input_scope(inner);
                         }
                     });
-            });
+                at_root
+            })
+            .inner;
         records += 1;
+        at_root
     });
-    assert!(at_root, "the withdrawn scope cannot hold the grant");
+    assert!(*passes.a(), "the withdrawn scope cannot hold the grant");
 }

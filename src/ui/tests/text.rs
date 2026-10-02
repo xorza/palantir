@@ -657,6 +657,25 @@ fn interned_handles_do_not_outlive_their_record_pass() {
         },
     );
 
+    // Pass B of one frame: pass A interns and asks for a relayout, and
+    // pass B records the handle pass A minted.
+    let mut h = UiHarness::new(SURFACE);
+    let mut held = None;
+    crate::common::panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || {
+            h.frame(|ui| match held {
+                None => {
+                    held = Some(ui.intern("escapee"));
+                    ui.request_relayout();
+                }
+                Some(stale) => {
+                    Text::new(stale).id(WidgetId::from_hash("pass-b")).show(ui);
+                }
+            });
+        },
+    );
+
     // Another window, which never shared the epoch.
     let mut source = UiHarness::new(SURFACE);
     let foreign = intern_in_own_pass(&mut source);

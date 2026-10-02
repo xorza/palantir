@@ -4,45 +4,30 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
+use crate::ui::harness::passes::Passes;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
+use crate::widgets::value_response::test_support::ValueEdges;
 use glam::{UVec2, Vec2};
-
-#[derive(Debug)]
-struct Signals {
-    changed: bool,
-    committed: bool,
-    /// Record passes that reported `committed` this frame. A frame
-    /// records twice on action input, and an undo pusher applies once
-    /// per pass — so a commit has to fire in exactly one of them.
-    commits: u32,
-}
 
 /// One frame driven by a commit-deferring caller: the draft re-seeds
 /// from `canonical` every record pass and is adopted only on
-/// `committed`. Signals OR-accumulate across the frame's passes,
-/// because a one-frame edge only shows in the first.
-fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Signals {
-    let mut s = Signals {
-        changed: false,
-        committed: false,
-        commits: 0,
-    };
-    h.frame(|ui| {
+/// `committed`. One snapshot per record pass, since a one-frame edge only
+/// shows in pass A and an undo pusher applies once per pass — so a commit
+/// has to fire in exactly one of them.
+fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
+    h.frame_passes(|ui| {
         let mut draft = *canonical;
         let r = Slider::new(&mut draft, 0.0..=1.0)
             .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
             .id(id)
             .show(ui);
-        s.changed |= r.changed;
         if r.committed {
-            s.committed = true;
-            s.commits += 1;
             *canonical = draft;
         }
-    });
-    s
+        r.edges()
+    })
 }
 
 /// The release frame re-writes the value, so a caller that re-seeds its
@@ -65,22 +50,32 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
 
     h.press_at(Vec2::new(59.0, 9.0));
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.changed && !s.committed, "press: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "press: live write, no commit"
+    );
     assert_eq!(canonical, 0.0, "deferred caller ignores mid-drag writes");
 
     h.drag_to(Vec2::new(89.0, 9.0));
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.changed && !s.committed, "drag: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "drag: live write, no commit"
+    );
     assert_eq!(canonical, 0.0);
 
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.committed, "release commits the gesture");
-    assert_eq!(s.commits, 1, "one commit, one record pass");
+    assert!(s.a().committed, "release commits the gesture");
+    assert_eq!(
+        s.count_where(|e| e.committed),
+        1,
+        "one commit, one record pass"
+    );
     assert_eq!(canonical, 0.8, "the commit frame carries the final value");
 
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(!s.changed && !s.committed, "no residual signals");
+    assert!(!s.a().changed && !s.a().committed, "no residual signals");
     assert_eq!(canonical, 0.8);
 }
 
@@ -102,7 +97,10 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
 
     h.press_at(Vec2::new(59.0, 9.0));
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.changed && !s.committed, "press: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "press: live write, no commit"
+    );
     assert_eq!(
         canonical, 0.0,
         "deferred caller ignores the mid-gesture write"
@@ -110,15 +108,19 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
 
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.committed, "the click's release commits it");
-    assert_eq!(s.commits, 1, "one commit, one record pass");
+    assert!(s.a().committed, "the click's release commits it");
+    assert_eq!(
+        s.count_where(|e| e.committed),
+        1,
+        "one commit, one record pass"
+    );
     assert_eq!(
         canonical, 0.5,
         "the commit frame carries the value it wrote"
     );
 
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(!s.changed && !s.committed, "no residual signals");
+    assert!(!s.a().changed && !s.a().committed, "no residual signals");
     assert_eq!(canonical, 0.5);
 }
 

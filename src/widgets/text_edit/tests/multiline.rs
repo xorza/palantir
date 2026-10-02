@@ -41,13 +41,12 @@ fn single_line_enter_does_not_insert_newline() {
 fn single_line_widget_normalizes_host_newlines() {
     let mut h = UiHarness::with_text(UVec2::new(300, 80));
     let mut text = String::from("first\r\nsecond\nthird");
-    let mut changed = false;
-    h.frame(|ui| {
-        changed |= TextEdit::new(&mut text)
+    let changed = h.frame_value(|ui| {
+        TextEdit::new(&mut text)
             .id(WidgetId::from_hash("single-line"))
             .size((Sizing::fixed(240.0), Sizing::fixed(40.0)))
             .show(ui)
-            .changed;
+            .changed
     });
     assert_eq!(text, "first second third");
     assert!(changed, "normalizing host content is an observable edit");

@@ -569,7 +569,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
         let mut h = UiHarness::new(SURFACE);
         let trigger_id = WidgetId::from_hash("disabled-trigger");
         let record = |h: &mut UiHarness, secs: f32| {
-            h.at(Duration::from_secs_f32(secs)).frame(|ui| {
+            h.at(Duration::from_secs_f32(secs)).frame_value(|ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("root"))
                     .size((Sizing::FILL, Sizing::FILL))
@@ -580,17 +580,18 @@ fn when_disabled_reaches_a_disabled_trigger() {
                             .disabled(true)
                             .show(ui)
                             .snapshot();
-                        assert!(r.state.disabled, "fixture: the trigger is disabled");
                         Tooltip::on(&r)
                             .label("nothing to save yet")
                             .when_disabled(allow)
                             .delay(Duration::from_millis(300))
                             .show(ui);
-                    });
-            });
+                        r.state.disabled
+                    })
+                    .inner
+            })
         };
 
-        record(&mut h, 0.0);
+        assert!(record(&mut h, 0.0), "fixture: the trigger is disabled");
         let mut t = 0.0_f32;
         for _ in 0..10 {
             t += 0.1;

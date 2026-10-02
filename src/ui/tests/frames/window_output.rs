@@ -90,24 +90,20 @@ fn close_request_veto_protocol() {
     let mut h = UiHarness::new(SURFACE);
 
     // No close pending: the flag is false and keep_open never fires.
-    h.frame(|ui| {
-        assert!(
-            !ui.close_requested(),
-            "no close pending ⇒ close_requested() false"
-        );
-    });
+    assert!(
+        !h.frame_value(|ui| ui.close_requested()),
+        "no close pending ⇒ close_requested() false"
+    );
     assert!(!h.ui.window_requests.close_vetoed);
 
     // Host signals a close; an app that vetoes keeps the window open.
     h.ui.window_frame.close_requested = true;
     h.ui.window_requests.close_vetoed = false;
-    h.frame(|ui| {
-        assert!(
-            ui.close_requested(),
-            "host signalled close ⇒ close_requested() true"
-        );
+    let requested = h.frame_value(|ui| {
         ui.keep_open();
+        ui.close_requested()
     });
+    assert!(requested, "host signalled close ⇒ close_requested() true");
     assert!(
         h.ui.window_requests.close_vetoed,
         "keep_open must set the veto the host reads"
@@ -121,9 +117,7 @@ fn close_request_veto_protocol() {
     // Same signal, app ignores it: resolves to a real close. (The host
     // resets the veto before every draw.)
     h.ui.window_requests.close_vetoed = false;
-    h.frame(|ui| {
-        assert!(ui.close_requested());
-    });
+    assert!(h.frame_value(|ui| ui.close_requested()));
     assert!(!h.ui.window_requests.close_vetoed, "untouched ⇒ no veto");
     let should_close = h.ui.window_frame.close_requested && !h.ui.window_requests.close_vetoed;
     assert!(should_close, "an un-vetoed request must resolve to a close");

@@ -1,3 +1,5 @@
+use crate::ui::frame_report::FrameReport;
+
 /// The values one frame's record closure returned, one per record pass
 /// in the order the passes ran, warmup excluded.
 ///
@@ -10,11 +12,17 @@
 #[derive(Debug)]
 pub struct Passes<R> {
     values: Vec<R>,
+    report: FrameReport,
 }
 
 impl<R> Passes<R> {
-    pub(crate) const fn new(values: Vec<R>) -> Self {
-        Self { values }
+    pub(crate) const fn new(values: Vec<R>, report: FrameReport) -> Self {
+        Self { values, report }
+    }
+
+    /// What the frame reported to its host.
+    pub fn report(&self) -> &FrameReport {
+        &self.report
     }
 
     /// Pass A's value.
@@ -42,8 +50,8 @@ impl<R> Passes<R> {
         self.values.is_empty()
     }
 
-    /// How many passes returned a value matching `pred` — the question
-    /// an OR-accumulator was answering, without hiding a double fire.
+    /// How many passes returned a value matching `pred`, so a signal
+    /// both passes reported reads as the double fire it is.
     pub fn count_where(&self, pred: impl Fn(&R) -> bool) -> usize {
         self.values.iter().filter(|value| pred(value)).count()
     }
