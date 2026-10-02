@@ -259,35 +259,28 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(draws, 2, "only the two Visible frames should paint");
 }
 
+/// The visible row is the control: the same click lands there.
 #[test]
 fn hidden_button_does_not_click() {
     use glam::Vec2;
 
-    let surface = UVec2::new(400, 200);
-    let mut h = UiHarness::new(surface);
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("invisible"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .hidden()
-                .show(ui);
+    for (hidden, clicks) in [(true, false), (false, true)] {
+        let mut h = UiHarness::new(UVec2::new(400, 200));
+        let body = |ui: &mut Ui| {
+            let mut clicked = false;
+            Panel::hstack().auto_id().show(ui, |ui| {
+                let button = Button::new()
+                    .id(WidgetId::from_hash("invisible"))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)));
+                let button = if hidden { button.hidden() } else { button };
+                clicked = button.show(ui).left.clicked();
+            });
+            clicked
+        };
+        h.frame(|ui| {
+            body(ui);
         });
-    });
-
-    h.click_at(Vec2::new(50.0, 20.0));
-
-    let mut clicked = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            clicked = Button::new()
-                .id(WidgetId::from_hash("invisible"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .hidden()
-                .show(ui)
-                .left
-                .clicked();
-        });
-    });
-    assert!(!clicked, "hidden button should not receive clicks");
+        h.click_at(Vec2::new(50.0, 20.0));
+        assert_eq!(*h.frame_passes(body).a(), clicks, "hidden = {hidden}");
+    }
 }

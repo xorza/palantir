@@ -10,9 +10,7 @@ use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::tests::support::{
-    ANCHOR, BODY_H, BODY_W, SURFACE, main_panel_clicked, record_body,
-};
+use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::{Sense, Ui};
 use glam::Vec2;
@@ -20,20 +18,17 @@ use glam::Vec2;
 #[test]
 fn click_inside_popup_does_not_dismiss() {
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Dismiss);
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
     h.click_at(inside);
 
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
-    assert!(!dismissed, "click inside body must not signal dismissal");
+    let pass = frame_body(&mut h, ClickOutside::Dismiss);
     assert!(
-        !main_panel_clicked(&h.ui),
+        !pass.dismissed,
+        "click inside body must not signal dismissal"
+    );
+    assert!(
+        !pass.main_clicked,
         "click inside body must not leak to Main"
     );
 }
@@ -47,22 +42,16 @@ fn click_inside_popup_does_not_dismiss() {
 fn outside_click_dismisses_on_any_button_and_blocks_main() {
     for button in PointerButton::all() {
         let mut h = UiHarness::new(SURFACE);
-        let mut dismissed = false;
-        h.frame(|ui| {
-            record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-        });
+        frame_body(&mut h, ClickOutside::Dismiss);
         h.click_button_at(button, Vec2::new(300.0, 300.0));
 
-        let mut dismissed = false;
-        h.frame(|ui| {
-            record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-        });
+        let pass = frame_body(&mut h, ClickOutside::Dismiss);
         assert!(
-            dismissed,
+            pass.dismissed,
             "{button:?} outside click with `Dismiss` must signal dismissal",
         );
         assert!(
-            !main_panel_clicked(&h.ui),
+            !pass.main_clicked,
             "{button:?} outside click must be eaten by the popup eater, not leak to Main",
         );
     }
@@ -72,30 +61,22 @@ fn outside_click_dismisses_on_any_button_and_blocks_main() {
 fn escape_dismisses_dismiss_popup_but_not_block() {
     // `Dismiss`: Esc folds into `dismissed`.
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Dismiss);
     h.key(Key::Escape);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
-    assert!(dismissed, "Esc dismisses a `Dismiss` popup");
+    assert!(
+        frame_body(&mut h, ClickOutside::Dismiss).dismissed,
+        "Esc dismisses a `Dismiss` popup",
+    );
 
     // `Block`: Esc is ignored (stop-the-world prompts close only on the
     // host's terms).
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Block, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Block);
     h.key(Key::Escape);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Block, &mut dismissed);
-    });
-    assert!(!dismissed, "Esc does not dismiss a `Block` popup");
+    assert!(
+        !frame_body(&mut h, ClickOutside::Block).dismissed,
+        "Esc does not dismiss a `Block` popup",
+    );
 }
 
 /// `Ui::frame` settles popup dismissal in a single host call.

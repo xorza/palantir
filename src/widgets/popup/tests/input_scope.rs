@@ -9,9 +9,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::tests::support::{
-    ANCHOR, BODY_H, BODY_W, SURFACE, main_panel_clicked, record_body,
-};
+use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::{Sense, Ui};
 use glam::Vec2;
@@ -20,81 +18,74 @@ use glam::Vec2;
 /// absorbed by the eater — not leak through to a `Main` widget below
 /// that senses the same gesture. Earlier the eater only sensed
 /// `CLICK`, so a graph canvas underneath would still receive scroll /
-/// pinch / drag while the popup was open.
+/// pinch / drag while the popup was open. `PassThrough` is the control
+/// row: the same burst reaches `Main` there, so the `Block` row cannot
+/// pass for want of an eater.
 #[test]
 fn outside_pointer_gestures_do_not_leak_to_main() {
-    let mut h = UiHarness::new(SURFACE);
-    let bg_id = WidgetId::from_hash("scroll-bg");
-    let scene = |ui: &mut Ui| {
-        // Main-layer background that senses everything pan/zoom-shaped.
-        Panel::vstack()
-            .id(bg_id)
-            .size((Sizing::FILL, Sizing::FILL))
-            .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
-            .show(ui, |ui| {
-                Popup::new(Anchor::at_point(ANCHOR))
-                    .id(WidgetId::from_hash("test-popup"))
-                    .click_outside(ClickOutside::Block)
-                    .padding(4.0)
-                    .show(ui, |ui, _| {
-                        Panel::vstack()
-                            .id(WidgetId::from_hash("popup-content"))
-                            .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
-                            .show(ui, |_| {});
-                    });
-            });
-    };
-    h.frame(scene);
+    for (mode, leaks) in [
+        (ClickOutside::Block, false),
+        (ClickOutside::PassThrough, true),
+    ] {
+        let mut h = UiHarness::new(SURFACE);
+        let bg_id = WidgetId::from_hash("scroll-bg");
+        let scene = |ui: &mut Ui| {
+            // Main-layer background that senses everything pan/zoom-shaped.
+            Panel::vstack()
+                .id(bg_id)
+                .size((Sizing::FILL, Sizing::FILL))
+                .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
+                .show(ui, |ui| {
+                    Popup::new(Anchor::at_point(ANCHOR))
+                        .id(WidgetId::from_hash("test-popup"))
+                        .click_outside(mode)
+                        .padding(4.0)
+                        .show(ui, |ui, _| {
+                            Panel::vstack()
+                                .id(WidgetId::from_hash("popup-content"))
+                                .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
+                                .show(ui, |_| {});
+                        });
+                });
+        };
+        h.frame(scene);
 
-    // Move pointer well outside the popup body, then send a scroll
-    // + zoom + middle-drag burst.
-    let outside = Vec2::new(300.0, 300.0);
-    h.scroll_pixels_at(outside, Vec2::new(0.0, 25.0));
-    h.scroll_lines(Vec2::new(0.0, 3.0));
-    h.pinch(1.4);
-    h.press_button(PointerButton::Middle);
-    h.move_to(outside + Vec2::new(40.0, 0.0));
-    h.release_button(PointerButton::Middle);
+        // Move pointer well outside the popup body, then send a scroll
+        // + zoom burst and start a middle-drag.
+        let outside = Vec2::new(300.0, 300.0);
+        h.scroll_pixels_at(outside, Vec2::new(0.0, 25.0));
+        h.scroll_lines(Vec2::new(0.0, 3.0));
+        h.pinch(1.4);
+        h.press_button(PointerButton::Middle);
+        h.move_to(outside + Vec2::new(40.0, 0.0));
 
-    h.frame(scene);
-    let bg = h.ui.response_for(bg_id);
-    assert_eq!(
-        bg.scroll.pixels,
-        Vec2::ZERO,
-        "scroll-pixels under popup must not reach Main",
-    );
-    assert_eq!(
-        bg.scroll.lines,
-        Vec2::ZERO,
-        "scroll-lines under popup must not reach Main",
-    );
-    assert_eq!(
-        bg.scroll.zoom.get(),
-        1.0,
-        "pinch zoom under popup must not reach Main",
-    );
-    assert!(
-        !bg.middle.drag.dragging(),
-        "middle-drag under popup must not latch on Main",
-    );
+        let bg = h.response_in(bg_id, scene);
+        assert_eq!(
+            bg.scroll.pixels != Vec2::ZERO,
+            leaks,
+            "{mode:?}: scroll pixels"
+        );
+        assert_eq!(
+            bg.scroll.lines != Vec2::ZERO,
+            leaks,
+            "{mode:?}: scroll lines"
+        );
+        assert_eq!(bg.scroll.zoom.get() != 1.0, leaks, "{mode:?}: pinch zoom");
+        assert_eq!(bg.middle.drag.dragging(), leaks, "{mode:?}: middle drag");
+        h.release_button(PointerButton::Middle);
+    }
 }
 
 #[test]
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Block, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Block);
     h.click_at(Vec2::new(300.0, 300.0));
 
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Block, &mut dismissed);
-    });
-    assert!(!dismissed, "`Block` mode must not signal dismissal");
+    let pass = frame_body(&mut h, ClickOutside::Block);
+    assert!(!pass.dismissed, "`Block` mode must not signal dismissal");
     assert!(
-        !main_panel_clicked(&h.ui),
+        !pass.main_clicked,
         "`Block` mode must still eat the click — no leak to Main",
     );
 }
@@ -114,28 +105,18 @@ fn each_click_outside_mode_decides_whether_main_sees_the_press() {
         (ClickOutside::PassThrough, true, false),
     ] {
         let mut h = UiHarness::new(SURFACE);
-        let mut dismissed = false;
-        h.frame(|ui| {
-            record_body(ui, mode, &mut dismissed);
-        });
+        frame_body(&mut h, mode);
         h.click_at(Vec2::new(300.0, 300.0));
 
-        // Both reads OR across passes, for the reason `record_body`
-        // already does: a click Main *acts* on makes `Ui::frame` re-run
-        // the closure, and pass B sees the edge gone. Reading Main's
-        // response after the frame samples that second pass and reports
-        // a click that did land as though it never had.
-        let mut dismissed = false;
-        let mut reached = false;
-        h.frame(|ui| {
-            record_body(ui, mode, &mut dismissed);
-            reached |= main_panel_clicked(ui);
-        });
+        let pass = frame_body(&mut h, mode);
         assert_eq!(
-            reached, reaches_main,
+            pass.main_clicked, reaches_main,
             "{mode:?}: whether an outside click reaches Main",
         );
-        assert_eq!(dismissed, signals, "{mode:?}: whether it signals dismissal");
+        assert_eq!(
+            pass.dismissed, signals,
+            "{mode:?}: whether it signals dismissal"
+        );
     }
 }
 

@@ -35,15 +35,21 @@ fn assert_warm_rects_match_cold(
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     h.resize(size);
-    let mut cold_nodes = Vec::new();
-    h.frame(|ui| record(ui, &mut cold_nodes));
+    let cold_nodes = h.frame_value(|ui| {
+        let mut nodes = Vec::new();
+        record(ui, &mut nodes);
+        nodes
+    });
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|&n| h.ui.arranged_rect(Layer::Main, n))
         .collect();
 
-    let mut warm_nodes = Vec::new();
-    h.frame(|ui| record(ui, &mut warm_nodes));
+    let warm_nodes = h.frame_value(|ui| {
+        let mut nodes = Vec::new();
+        record(ui, &mut nodes);
+        nodes
+    });
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|&n| h.ui.arranged_rect(Layer::Main, n))

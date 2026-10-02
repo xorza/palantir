@@ -265,40 +265,46 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     );
 }
 
+/// The enabled row is the control: the same click on the same button
+/// lands there, so the disabled row cannot pass because the click missed.
 #[test]
 fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
 
-    let surface = UVec2::new(400, 200);
-    let mut h = UiHarness::new(surface);
-    let body = |ui: &mut Ui, captured: Option<&mut bool>| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Panel::zstack()
-                .id(WidgetId::from_hash("locked"))
-                .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
-                .padding(20.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    ..Default::default()
-                })
-                .disabled(true)
-                .show(ui, |ui| {
-                    let r = Button::new()
-                        .id(WidgetId::from_hash("inside"))
-                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                        .show(ui);
-                    if let Some(c) = captured {
-                        *c = r.left.clicked();
-                    }
-                });
+    for (disabled, clicks) in [(true, false), (false, true)] {
+        let mut h = UiHarness::new(UVec2::new(400, 200));
+        let body = |ui: &mut Ui| {
+            let mut clicked = false;
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("locked"))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
+                    .padding(20.0)
+                    .background(Background {
+                        fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
+                        ..Default::default()
+                    })
+                    .disabled(disabled)
+                    .show(ui, |ui| {
+                        clicked = Button::new()
+                            .id(WidgetId::from_hash("inside"))
+                            .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                            .show(ui)
+                            .left
+                            .clicked();
+                    });
+            });
+            clicked
+        };
+        h.frame(|ui| {
+            body(ui);
         });
-    };
-    h.frame(|ui| body(ui, None));
-    h.click_at(Vec2::new(40.0, 40.0));
+        h.click_at(Vec2::new(40.0, 40.0));
 
-    let mut clicked = false;
-    h.frame(|ui| body(ui, Some(&mut clicked)));
-    assert!(!clicked, "button inside disabled panel should not click");
+        let passes = h.frame_passes(body);
+        assert_eq!(*passes.a(), clicks, "disabled = {disabled}");
+        assert_eq!(passes.count_where(|clicked| *clicked), usize::from(clicks));
+    }
 }
 
 #[test]
