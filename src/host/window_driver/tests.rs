@@ -191,6 +191,9 @@ mod output_validity_tests {
         closer.deny_window_commands();
     }
 
+    /// A close request reaches the recorder only from the winit host, so
+    /// the veto half needs its write door.
+    #[cfg(feature = "winit")]
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {
         let shared = UiResources::isolated_mono();
