@@ -12,6 +12,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -24,6 +25,17 @@ use glam::UVec2;
 /// advances, the same on every machine.
 fn lines_h(lines: u32, font_px: f32) -> f32 {
     (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
+}
+
+/// The wrap mode `node`'s first text shape records.
+fn text_wrap_of(h: &UiHarness, node: NodeId) -> TextWrap {
+    h.ui.tree(Layer::Main)
+        .shapes_of(node)
+        .find_map(|s| match s {
+            ShapeRecord::Text { wrap, .. } => Some(*wrap),
+            _ => None,
+        })
+        .expect("a text shape")
 }
 
 #[test]
@@ -52,17 +64,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         Size::new(60.0, lines_h(8, 16.0)),
         "eight lines in 60 px"
     );
-
-    let shape =
-        h.ui.tree(Layer::Main)
-            .shapes_of(node)
-            .next()
-            .expect("text shape");
-    let wrap = match shape {
-        ShapeRecord::Text { wrap, .. } => *wrap,
-        _ => panic!("expected ShapeRecord::Text"),
-    };
-    assert_eq!(wrap, TextWrap::WrapWithOverflow);
+    assert_eq!(text_wrap_of(&h, node), TextWrap::WrapWithOverflow);
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
     assert_eq!(shaped.measured, r.size);
 }
@@ -87,16 +89,8 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     });
     let node = node.unwrap();
 
-    let wrap =
-        h.ui.tree(Layer::Main)
-            .shapes_of(node)
-            .find_map(|s| match s {
-                ShapeRecord::Text { wrap, .. } => Some(*wrap),
-                _ => None,
-            })
-            .expect("button label text shape");
     assert_eq!(
-        wrap,
+        text_wrap_of(&h, node),
         TextWrap::Truncate,
         "a button label defaults to the truncating wrap mode"
     );
