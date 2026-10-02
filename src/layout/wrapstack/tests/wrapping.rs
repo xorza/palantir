@@ -2,7 +2,7 @@
 //! its line.
 
 use crate::layout::types::sizing::Sizing;
-use crate::layout::wrapstack::tests::support::{cell, rect_of};
+use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -44,7 +44,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                 .node()
         });
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
-            let r = rect_of(&h, ["a", "b", "c", "d"][i]);
+            let r = h.arranged(WidgetId::from_hash(["a", "b", "c", "d"][i]));
             assert_eq!(
                 (r.min.x, r.min.y),
                 (*want_x, *want_y),
@@ -73,9 +73,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
             .response
             .node()
     });
-    let small = rect_of(&h, "small");
-    let wide = rect_of(&h, "wide");
-    let tail = rect_of(&h, "tail");
+    let small = h.arranged(WidgetId::from_hash("small"));
+    let wide = h.arranged(WidgetId::from_hash("wide"));
+    let tail = h.arranged(WidgetId::from_hash("tail"));
     // line 0: small alone (50+10+200 > 100, wide overflows → wraps)
     assert_eq!((small.min.x, small.min.y), (0.0, 0.0));
     // line 1: wide alone (overflowed)
@@ -104,9 +104,9 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
             .response
             .node()
     });
-    let a = rect_of(&h, "a");
-    let b = rect_of(&h, "b");
-    let c = rect_of(&h, "c");
+    let a = h.arranged(WidgetId::from_hash("a"));
+    let b = h.arranged(WidgetId::from_hash("b"));
+    let c = h.arranged(WidgetId::from_hash("c"));
     // Column 0: a, b at x=0.
     assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
     assert_eq!((b.min.x, b.min.y), (0.0, 50.0));
@@ -144,7 +144,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         );
         wrap_node.unwrap()
     });
-    let r = h.layout_rect(WidgetId::from_hash("w")).expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("w"));
     assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
@@ -178,9 +178,9 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
             .response
             .node()
     });
-    let ia = rect_of(&h, "ia");
-    let ib = rect_of(&h, "ib");
-    let ob = rect_of(&h, "ob");
+    let ia = h.arranged(WidgetId::from_hash("ia"));
+    let ib = h.arranged(WidgetId::from_hash("ib"));
+    let ob = h.arranged(WidgetId::from_hash("ob"));
     // Inner card lays out two cells side by side: ia at 0, ib at 55.
     assert_eq!(ia.min.x, 0.0);
     assert_eq!(ib.min.x, 55.0);
@@ -219,7 +219,7 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
                 cell(ui, "b", 50.0625, 20.0);
             });
     }
-    let height = |h: &UiHarness| rect_of(h, "w").size.h;
+    let height = |h: &UiHarness| h.arranged(WidgetId::from_hash("w")).size.h;
 
     let mut cold = UiHarness::new(UVec2::new(401, 300)).scale(4.0);
     cold.frame(build);
@@ -250,6 +250,14 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
                 cell(ui, "b", 100.2, 20.0);
             });
     });
-    assert_eq!(rect_of(&h, "w").size.h, 20.0, "one line, as measured");
-    assert_eq!(rect_of(&h, "b").min.y, rect_of(&h, "a").min.y, "b beside a");
+    assert_eq!(
+        h.arranged(WidgetId::from_hash("w")).size.h,
+        20.0,
+        "one line, as measured"
+    );
+    assert_eq!(
+        h.arranged(WidgetId::from_hash("b")).min.y,
+        h.arranged(WidgetId::from_hash("a")).min.y,
+        "b beside a"
+    );
 }

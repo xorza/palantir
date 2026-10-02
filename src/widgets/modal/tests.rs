@@ -225,8 +225,6 @@ fn an_authored_max_below_the_themed_min_width_wins() {
             .max_size((240.0, 400.0))
             .show(ui, |_, _| {});
     });
-    let panel = h
-        .layout_rect(root_id.with("panel"))
-        .expect("panel arranged");
+    let panel = h.arranged(root_id.with("panel"));
     assert_eq!(panel.size.w, 240.0);
 }

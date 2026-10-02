@@ -3,7 +3,6 @@
 
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::wrapstack::tests::support::rect_of;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -77,7 +76,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
         let wrap_rect = h.ui.arranged_rect(Layer::Main, wrap);
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for label in LABELS {
-            let r = rect_of(&h, label);
+            let r = h.arranged(WidgetId::from_hash(label));
             let right = r.min.x + r.size.w;
             assert!(
                 right <= wrap_right + 0.5,
@@ -120,7 +119,7 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
                     });
             });
     });
-    let rect = |i: u32| rect_of(&h, ("c", i));
+    let rect = |i: u32| h.arranged(WidgetId::from_hash(("c", i)));
     // Column 0 holds cells 0 and 1 (x = 0); cell 2 wraps to column 1.
     assert_eq!(rect(0).min.x, 0.0);
     assert_eq!(rect(1).min.x, 0.0);
@@ -165,7 +164,7 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
                     });
             });
     });
-    let rect = |i: u32| rect_of(&h, ("c", i));
+    let rect = |i: u32| h.arranged(WidgetId::from_hash(("c", i)));
     assert_eq!(rect(0).min.x, 0.0);
     assert_eq!(rect(1).min.x, 0.0);
     assert_eq!(
@@ -224,7 +223,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
     // and the wrap ends at 15 + 90 = 105, past the cap — the stack's
     // overflow rule for a child measured against the full bound. Columns
     // step by 50 + 12.
-    let rect = |i: u32| rect_of(&h, ("f", i));
+    let rect = |i: u32| h.arranged(WidgetId::from_hash(("f", i)));
     for (i, (x, y)) in [
         (0.0, 15.0),
         (0.0, 65.0),
@@ -237,7 +236,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
     {
         assert_eq!(rect(i as u32).min, Vec2::new(x, y), "func {i}");
     }
-    assert_eq!(rect_of(&h, "wrap").max().y, 105.0);
+    assert_eq!(h.arranged(WidgetId::from_hash("wrap")).max().y, 105.0);
 }
 
 /// A `max_size` on a `VStack` ancestor flows through a non-wrap `hstack`
@@ -282,7 +281,7 @@ fn capped_vstack_bounds_wrap_through_hstack() {
             });
     });
     assert_eq!(
-        rect_of(&h, ("f", 2u32)).min.x,
+        h.arranged(WidgetId::from_hash(("f", 2u32))).min.x,
         62.0,
         "func wrap respects the popup VStack's max-height, flowed through the hstack",
     );

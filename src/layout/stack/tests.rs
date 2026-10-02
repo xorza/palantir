@@ -295,9 +295,7 @@ fn negative_left_margin_spills_outside_slot() {
             );
         });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("spill"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("spill"));
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -489,9 +487,7 @@ fn hstack_fill_max_size_caps_arranged_share() {
                     .show(ui);
             });
     });
-    let arranged = h
-        .layout_rect(WidgetId::from_hash("fill"))
-        .expect("arranged");
+    let arranged = h.arranged(WidgetId::from_hash("fill"));
     assert_eq!(
         arranged.size.w, 50.0,
         "Fill arrange must clamp to max_size when leftover share > cap"
@@ -525,9 +521,7 @@ fn parent_max_size_clamps_children_available() {
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
     );
-    let inner_rect = h
-        .layout_rect(WidgetId::from_hash("inner"))
-        .expect("arranged");
+    let inner_rect = h.arranged(WidgetId::from_hash("inner"));
     assert_eq!(
         inner_rect.size.w, 200.0,
         "Fill child must not bleed past parent's max_size cap",

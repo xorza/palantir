@@ -87,12 +87,8 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         });
 
         let row = h.ui.arranged_rect(Layer::Main, row_node);
-        let left = h
-            .layout_rect(WidgetId::from_hash("left"))
-            .expect("arranged");
-        let right = h
-            .layout_rect(WidgetId::from_hash("right"))
-            .expect("arranged");
+        let left = h.arranged(WidgetId::from_hash("left"));
+        let right = h.arranged(WidgetId::from_hash("right"));
 
         // The right cell's intrinsic_min along X is the Fixed
         // descendant's 180 + the cell's 24 padding = 204. When the
@@ -217,13 +213,9 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
         // width — what a converged second pass promises. The toolbar
         // itself can be wider than the window: the cells below it have a
         // rigid floor of 536 px, and the root contains its content.
-        let toolbar = h
-            .layout_rect(WidgetId::from_hash("toolbar"))
-            .expect("the toolbar records");
+        let toolbar = h.arranged(WidgetId::from_hash("toolbar"));
         for label in LABELS {
-            let button = h
-                .layout_rect(WidgetId::from_hash(*label))
-                .expect("every button records");
+            let button = h.arranged(WidgetId::from_hash(*label));
             assert!(
                 toolbar.contains_rect(button),
                 "w={w}: {label} at {button:?} leaves the toolbar at {toolbar:?}",

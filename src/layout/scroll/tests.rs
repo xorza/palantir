@@ -169,10 +169,7 @@ fn content_margin_leaves_content_size_unchanged() {
 /// Arranged height of the scroll widget's outer wrapper (the node that
 /// carries the user's `id`).
 fn scroll_height(h: &UiHarness, id_salt: &'static str) -> f32 {
-    h.layout_rect(WidgetId::from_hash(id_salt))
-        .expect("arranged")
-        .size
-        .h
+    h.arranged(WidgetId::from_hash(id_salt)).size.h
 }
 
 /// Build a `count`-row vertical **Hug** scroll (each row 50px tall)

@@ -583,7 +583,7 @@ fn a_tap_places_the_caret() {
 
     // Mono metric, 8 px per char from the inner left edge: the tap at
     // x = inner.min + 14 is 1.75 glyphs in, nearest boundary 2 → caret 2.
-    let rect = h.layout_rect(ed_id).expect("arranged");
+    let rect = h.arranged(ed_id);
     let inner_left = h.ui.theme().text_edit.defaults.padding.as_array()[0];
     let mid = rect.size.h * 0.5;
     h.click_in(ed_id, glam::Vec2::new(inner_left + 14.0, mid));

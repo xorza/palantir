@@ -82,9 +82,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     assert_eq!(cmds.kinds(), ["Quad", "PushClip", "PopClip"]);
     let payload = cmds.calls[1].as_push_clip().unwrap();
 
-    let panel_rect = h
-        .layout_rect(WidgetId::from_hash("rounded"))
-        .expect("arranged");
+    let panel_rect = h.arranged(WidgetId::from_hash("rounded"));
     // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
     // encoder's `rect.deflated_by(padding)` insets the mask by 2 on
     // every side. Radius reduces by 2 to stay concentric with the

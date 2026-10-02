@@ -246,17 +246,12 @@ fn popup_placement_is_stable_across_frames() {
             });
     };
     let body_id = WidgetId::from_hash("stable-popup");
-    let body_rect_of = |ui: &Ui| {
-        ui.response_for(body_id)
-            .rect
-            .expect("popup body has an arranged rect after the opening frame")
-    };
     h.frame(scene);
-    let first = body_rect_of(&h.ui);
+    let first = body_rect(&h, body_id);
     // Pretend an input arrived (cursor move over the popup).
     h.move_to(Vec2::new(50.0, 100.0));
     h.frame(scene);
-    let second = body_rect_of(&h.ui);
+    let second = body_rect(&h, body_id);
     assert_eq!(
         first, second,
         "popup must not shift between opening frame and the next input-triggered frame",

@@ -32,8 +32,8 @@ fn hug_parent_with_fill_children_hugs_to_content() {
                     .show(ui);
             });
     });
-    let parent = h.ui.response_for(node_id).rect.expect("parent arranged");
-    let button = h.ui.response_for(button_id).rect.expect("button arranged");
+    let parent = h.arranged(node_id);
+    let button = h.arranged(button_id);
     // Parent hugs to button's content width — somewhere near the
     // "Hi" label width plus button padding, definitely less than 100.
     assert!(
@@ -68,7 +68,7 @@ fn fill_child_stretches_to_fixed_parent() {
                     .show(ui);
             });
     });
-    let r = h.ui.response_for(child_id).rect.expect("child arranged");
+    let r = h.arranged(child_id);
     assert_eq!(r.size.w, 400.0);
 }
 
@@ -94,8 +94,8 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
                     .show(ui);
             });
     });
-    let ra = h.ui.response_for(a).rect.expect("a arranged");
-    let rb = h.ui.response_for(b).rect.expect("b arranged");
+    let ra = h.arranged(a);
+    let rb = h.arranged(b);
     assert_eq!(ra.size.w, 200.0);
     assert_eq!(rb.size.w, 200.0);
 }
@@ -134,8 +134,8 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
                     });
             });
     });
-    let node = h.ui.response_for(node_id).rect.expect("node arranged");
-    let row = h.ui.response_for(row_id).rect.expect("row arranged");
+    let node = h.arranged(node_id);
+    let row = h.arranged(row_id);
     // The node hugs to its content (the 50-wide frame), not the
     // surface (1600).
     assert_eq!(node.size.w, 50.0, "Hug node must hug to content");
@@ -164,9 +164,9 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
                 .show(ui);
         });
     });
-    let r_root = h.ui.response_for(root).rect.expect("root");
-    let r_button = h.ui.response_for(button).rect.expect("button");
-    let r_spacer = h.ui.response_for(spacer).rect.expect("spacer");
+    let r_root = h.arranged(root);
+    let r_button = h.arranged(button);
+    let r_spacer = h.arranged(spacer);
     // Root hugs to the button — no expansion via the Fill spacer.
     assert_eq!(r_root.size.w, r_button.size.w);
     // The spacer in a Hug parent has zero leftover.
