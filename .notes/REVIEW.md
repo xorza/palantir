@@ -23,12 +23,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
   - Pressing an unselected chip flips it to 13 px while held, because `inactive.active` is `None`.
   - The close glyph resizes on hover.
 
-## Clipboard folds "no text" into "unavailable"
-- [ ] `src/common/clipboard.rs:44,114` **bug**: `map_err(|_| ClipboardUnavailable)` treats arboard's `ContentNotAvailable` (empty clipboard, or non-text content) as an unavailable backend.
-  - The documented contract "an empty clipboard answers `Ok("")`" (line 174) is false with the system backend.
-  - With `fallback_current` set (after any in-app copy or any successful paste), the error arm returns the stale in-process text. Scenario: paste "foo" from a browser, copy an image in another app, paste into a `TextEdit`: "foo" is inserted.
-- [ ] `src/common/clipboard.rs:101-103,130-132` **bug (plausible)**: one failed primary `set_text` makes `Authority::Fallback` sticky. Every later `text()` skips the system clipboard until the next successful in-app copy, so text copied in other apps meanwhile is invisible. A transient arboard/X11 write failure would confirm it.
-
 ## TabbedView reorder and identity
 - [ ] `src/widgets/tabs/tabbed_view.rs:276`: chips are keyed `i as u64`, which TabItem's doc (`tab_item.rs:8-12`) says hands one chip's state to another. After Closed/Reordered, the look animation and hover state of slot i transfer to whatever page slid in.
 
@@ -38,7 +32,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Smaller widget bugs
 - [ ] `src/widgets/expander/mod.rs:247-253` **bug (plausible)**: on the frame the reveal tween settles, `response_for(body_id)` returns the previous frame's clipped rect (`max_size = openness_prev * full`), and that is stored as `height`. A settled `animate` requests no repaint. If the next interaction is keyboard-only (Space on the focused header), the collapse tween clips against e.g. 0.97×full and the body visibly jumps.
-- [ ] `src/widgets/context_menu/menu_item.rs:88` **bug**: `MenuItem::separator()` lacks `#[track_caller]`. Every separator in the program gets this line's auto id and relies on occurrence-count disambiguation, against the contract in `widgets/mod.rs` ("every widget constructor is `#[track_caller]`").
 - [ ] `src/widgets/response.rs:65`: says external authors reach `Response::lazy` "through `Widget::response`". That returns a `ResponseState`. The lazy route is `Widget::show`.
 
 ## Frame-start snapshots read outside the pass that took them
@@ -150,9 +143,7 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Input and host structure
 - [ ] `src/host/winit/error.rs:63-88`: `WinitHostError::Gpu` and its `From<GpuRequestError>` are never constructed in production (only tests). Device failures surface as `Surface{source: SurfaceError::Device}`, so one failure has two documented routes. Public API: removal needs a go-ahead.
-- [ ] `src/window/window_commands.rs:33`: `open` dedupes per token but `close` does not. Replayed passes (warmup, pass A, pass B) push the same close up to three times, and the host drains them as no-ops.
 - [ ] `src/input/input_state/mod.rs:43-131`: `focused`, `modifiers`, `pointer_pos`, `hovered`, `focus_policy`, `input_policy` and `signal_since_last_frame` are `pub(crate)` fields read and written directly from `Ui` and `FrameCycle`, though `set_focus` exists as a method. This contradicts `Ui`'s own "every field is private" rule one layer down.
-- [ ] `src/ui/frame_runtime/mod.rs:165`: a mid-impl `#[cfg(test)] pub(crate) fn cascade_ran` is a mid-file gate that can move to the end-of-file test mod.
 - [ ] `src/host/winit/runtime.rs:63`: `bootstrap.config.clone()` deep-copies the whole `WinitHostConfig` (title `String`, icon pixel `Vec`) only to read fields that can be borrowed.
 
 ## Text and primitives duplicated sources of truth

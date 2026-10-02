@@ -416,3 +416,25 @@ fn popup_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
         .iter()
         .position(|recorded| *recorded == id)
 }
+
+/// Every widget constructor is `#[track_caller]`, the separator included:
+/// two separators written on two lines take two call-site ids, rather
+/// than one id and its second occurrence.
+#[test]
+fn separators_take_their_call_site_ids() {
+    use crate::widgets::panel::Panel;
+
+    let mut h = UiHarness::new(SURFACE);
+    let ids = h.frame_value(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("seps"))
+            .show(ui, |ui| {
+                let first = MenuItem::separator().show(ui).id;
+                let second = MenuItem::separator().show(ui).id;
+                (first, second)
+            })
+            .inner
+    });
+    assert_ne!(ids.0, ids.1);
+    assert_ne!(ids.1, ids.0.with(1), "not an occurrence of the first");
+}
