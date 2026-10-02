@@ -12,13 +12,12 @@ use crate::primitives::approx::paints_nothing;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
-use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::encoder::geometry;
-use crate::renderer::frontend::encoder::geometry::Resolved;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
@@ -51,7 +50,6 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
-use glam::UVec2;
 use std::time::Duration;
 
 /// Per-layer encode context: the fixed inputs one layer's walk reads,
@@ -340,7 +338,7 @@ impl LayerCtx<'_> {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
                 out.draw_icon(
                     DrawIconPayload {
-                        rect: geometry::resolve_icon_fit(base, handle.view_box(), *fit),
+                        rect: fit.resolve(base, handle.view_box()),
                         icon: handle.icon,
                         tint: *tint,
                         desaturate: *desaturate,
@@ -359,29 +357,26 @@ impl LayerCtx<'_> {
             } => {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
                 // The one thing the two sources don't share: where the
-                // texture comes from. A registered image carries its id +
-                // intrinsic dims inline (no registry borrow); a `GpuView`
-                // looks its stable target up in `Ui::gpu_views` by the owner
-                // node's `WidgetId` and hands back the app paint callback,
-                // which rides alongside the payload so the sink can list the
-                // off-screen target in `frame_targets`. A view reports an
-                // all-zero intrinsic size, which makes `resolve_fit` fall
-                // through to the base rect + full UV — the full-rect,
-                // untinted composite a view has always emitted.
-                // `epoch` only affects the shape hash (damage), not the draw.
-                let (handle, size, paint) = match source {
-                    ImageSource::Texture { id, size, .. } => (*id, *size, None),
+                // texture comes from. A registered image carries its id
+                // inline (no registry borrow); a `GpuView` looks its stable
+                // target up in `Ui::gpu_views` by the owner node's
+                // `WidgetId` and hands back the app paint callback, which
+                // rides alongside the payload so the sink can list the
+                // off-screen target in `frame_targets`. `epoch` only
+                // affects the shape hash (damage), not the draw.
+                let (handle, paint) = match source {
+                    ImageSource::Texture { id, .. } => (*id, None),
                     ImageSource::GpuView { epoch: _ } => {
                         let wid = self.tree.records.widget_id()[id.idx()];
                         let view = self.gpu_views.view(wid);
-                        (view.texture_id, UVec2::ZERO, Some(&view.paint))
+                        (view.texture_id, Some(&view.paint))
                     }
                 };
-                let Resolved {
+                let FitRect {
                     rect,
                     uv_min,
                     uv_size,
-                } = geometry::resolve_fit(base, size.as_vec2(), *fit);
+                } = fit.resolve(base, source.intrinsic());
                 let mut flags = 0;
                 if matches!(*fit, ImageFit::Tile { .. }) {
                     flags |= IMG_FLAG_TILED;

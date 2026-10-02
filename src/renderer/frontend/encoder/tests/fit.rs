@@ -9,65 +9,6 @@ use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-/// Pin: image `fit` resolution. A 100×50 image painted into a 200×200
-/// rect produces a different paint rect for each fit mode:
-/// - `Fill` keeps the full 200×200 rect (image stretched).
-/// - `Contain` scales by min(200/100, 200/50)=2 → 200×100, centered.
-/// - `Cover` scales by max(200/100, 200/50)=4 → 400×200 conceptually,
-///   but rendered at full 200×200 with UV-cropped to (0.5..1.0)
-///   vertical band of the texture (`uv_size.y = 50/200 = 0.25`).
-/// - `None` paints at intrinsic 100×50 centered.
-#[test]
-fn image_fit_modes_resolve_to_expected_rects_and_uv() {
-    use crate::ImageFit;
-    use crate::renderer::frontend::encoder::geometry;
-    use glam::Vec2;
-
-    let base = Rect::new(0.0, 0.0, 200.0, 200.0);
-    let img = Vec2::new(100.0, 50.0);
-
-    let r = geometry::resolve_fit(base, img, ImageFit::Fill);
-    assert_eq!(r.rect, base);
-    assert_eq!(r.uv_min, Vec2::ZERO);
-    assert_eq!(r.uv_size, Vec2::ONE);
-
-    let r = geometry::resolve_fit(base, img, ImageFit::Contain);
-    assert_eq!(r.rect, Rect::new(0.0, 50.0, 200.0, 100.0));
-    assert_eq!(r.uv_size, Vec2::ONE);
-
-    let r = geometry::resolve_fit(base, img, ImageFit::Cover);
-    assert_eq!(r.rect, base);
-    // 200×200 paint rect over a 400×200 scaled image → keep 0.5 of the
-    // width centered; full height. UVs sample the centered band.
-    assert!((r.uv_size.x - 0.5).abs() < 1e-5);
-    assert!((r.uv_size.y - 1.0).abs() < 1e-5);
-    assert!((r.uv_min.x - 0.25).abs() < 1e-5);
-    assert!((r.uv_min.y - 0.0).abs() < 1e-5);
-
-    let r = geometry::resolve_fit(base, img, ImageFit::None);
-    assert_eq!(r.rect, Rect::new(50.0, 75.0, 100.0, 50.0));
-    assert_eq!(r.uv_size, Vec2::ONE);
-
-    // Missing registry entry → falls through to base + full UV.
-    let r = geometry::resolve_fit(base, Vec2::ZERO, ImageFit::Contain);
-    assert_eq!(r.rect, base);
-    assert_eq!(r.uv_size, Vec2::ONE);
-
-    // Tile: raw caller UV, full rect, intrinsic size ignored. `scale`
-    // (3×2 repeats) → uv_size; `offset` (0.5, 0.25) → uv_min.
-    let r = geometry::resolve_fit(
-        base,
-        img,
-        ImageFit::Tile {
-            offset: Vec2::new(0.5, 0.25),
-            scale: Vec2::new(3.0, 2.0),
-        },
-    );
-    assert_eq!(r.rect, base);
-    assert_eq!(r.uv_min, Vec2::new(0.5, 0.25));
-    assert_eq!(r.uv_size, Vec2::new(3.0, 2.0));
-}
-
 /// Pin: each [`ImageDownsample`] mode reaches the shader as its own flag
 /// bit,
 /// and `Single` as none.
@@ -133,42 +74,78 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     }
 }
 
-/// `IconFit` picks a rasterization box, so every mode is a rect and the
-/// numbers are hand-checkable. A 24x12 artwork in a 100x100 rect:
-/// `Contain` scales by min(100/24, 100/12) = 4.166.., giving 100x50 centred
-/// vertically; `Fill` takes the rect whole; `None` paints 24x12 centred.
+/// The cascade bounds an image by the rect the encoder draws, under every
+/// fit — so an `ImageFit::None` image larger than its node, which
+/// overflows it, is damaged and culled where it paints. A 200×100 image
+/// in a 100×100 node at (40, 40), no transform and no clip, so the
+/// cascade's screen rect and the draw rect are in one space.
 #[test]
-fn icon_fit_resolves_to_hand_computed_rects() {
-    use crate::renderer::frontend::encoder::geometry;
-    use crate::shape::icon::IconFit;
+fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
+    use crate::primitives::image::{Image, ImageFit};
+    use crate::primitives::widget_id::WidgetId;
+    use crate::shape::Shape;
 
-    let base = Rect::new(10.0, 20.0, 100.0, 100.0);
-    let art = Vec2::new(24.0, 12.0);
-
-    // scale = 100/24 = 4.1666667 → 100 x 50, dy = (100 - 50)/2 = 25.
-    let contained = geometry::resolve_icon_fit(base, art, IconFit::Contain);
-    assert_eq!(contained.min, Vec2::new(10.0, 45.0));
-    assert_eq!((contained.size.w, contained.size.h), (100.0, 50.0));
-
-    assert_eq!(geometry::resolve_icon_fit(base, art, IconFit::Fill), base);
-
-    // Intrinsic px, centred: dx = (100-24)/2 = 38, dy = (100-12)/2 = 44.
-    let intrinsic = geometry::resolve_icon_fit(base, art, IconFit::None);
-    assert_eq!(intrinsic.min, Vec2::new(48.0, 64.0));
-    assert_eq!((intrinsic.size.w, intrinsic.size.h), (24.0, 12.0));
-
-    // A square artwork in a square rect is the same rect under every mode
-    // that preserves aspect — the case that would hide an axis mix-up.
-    let square = Rect::new(0.0, 0.0, 32.0, 32.0);
-    assert_eq!(
-        geometry::resolve_icon_fit(square, Vec2::splat(16.0), IconFit::Contain),
-        square,
-    );
-
-    // A degenerate viewBox falls through to the base rect rather than
-    // dividing by zero — the same fail-safe the image path takes.
-    assert_eq!(
-        geometry::resolve_icon_fit(base, Vec2::ZERO, IconFit::Contain),
-        base
-    );
+    let fits = [
+        ImageFit::Fill,
+        ImageFit::Contain,
+        ImageFit::Cover,
+        ImageFit::None,
+        ImageFit::Tile {
+            offset: Vec2::ZERO,
+            scale: Vec2::splat(2.0),
+        },
+    ];
+    // Drawn rects, hand-computed: Contain scales by min(100/200, 100/100)
+    // = 0.5 → 100×50, centred at y = 40 + 25; None paints 200×100 centred,
+    // x = 40 + (100 - 200)/2 = -10, y = 40.
+    let node = Rect::new(40.0, 40.0, 100.0, 100.0);
+    let drawn = [
+        node,
+        Rect::new(40.0, 65.0, 100.0, 50.0),
+        node,
+        Rect::new(-10.0, 40.0, 200.0, 100.0),
+        node,
+    ];
+    let mut h = UiHarness::new(UVec2::new(300, 300));
+    let handle = h
+        .ui()
+        .load_image(&Image::from_srgba8(
+            UVec2::new(200, 100),
+            vec![255; 200 * 100 * 4],
+        ))
+        .unwrap();
+    for (fit, expected) in fits.into_iter().zip(drawn) {
+        h.frame(|ui| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id(WidgetId::from_hash("frame"))
+                        .position((node.min.x, node.min.y))
+                        .size(node.size.w)
+                        .show(ui, |ui| {
+                            ui.add_shape(Shape::image(handle.clone()).fit(fit));
+                        });
+                });
+        });
+        let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 300.0, 300.0)));
+        let draws: Vec<Rect> = cmds
+            .calls
+            .iter()
+            .filter_map(|call| match call {
+                PaintCall::Image { payload, .. } => Some(payload.rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(draws, [expected], "{fit:?} draw");
+        let mut rows = Vec::new();
+        h.ui.cascade().owned_paints(h.ui.forest(), &mut rows);
+        let screens: Vec<Rect> = rows
+            .iter()
+            .filter(|row| row.owner == WidgetId::from_hash("frame"))
+            .map(|row| row.screen)
+            .collect();
+        assert_eq!(screens, [expected], "{fit:?} cascade bound");
+    }
 }

@@ -351,6 +351,17 @@ pub(crate) enum ImageSource {
     GpuView { epoch: u64 },
 }
 
+impl ImageSource {
+    /// The intrinsic size [`ImageFit::resolve`](crate::primitives::image::ImageFit::resolve)
+    /// fits. A view has none, so it paints its base rect at full UV.
+    pub(crate) const fn intrinsic(&self) -> Vec2 {
+        match self {
+            Self::Texture { size, .. } => Vec2::new(size.x as f32, size.y as f32),
+            Self::GpuView { .. } => Vec2::ZERO,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeRow {
     pub(crate) fill: ShapeBrush,
