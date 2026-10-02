@@ -40,15 +40,11 @@ pub(super) struct FormatPipelines {
 }
 
 /// The format-independent resource structs [`FormatPipelines::new`] reads shaders
-/// and layouts off. They live side by side on the backend and are handed over as a
+/// and pipeline layouts off. They live side by side on the backend and are handed over as a
 /// set, so a new pipeline kind is one field here rather than one more parameter at
 /// every call.
 #[derive(Debug)]
 pub(super) struct PipelineSources<'a> {
-    pub(super) gradient_bgl: &'a wgpu::BindGroupLayout,
-    /// The per-texture group-0 layout every image bind group is built
-    /// against — [`ImageBinding`](crate::gpu::image_binding::ImageBinding)'s.
-    pub(super) image_bgl: &'a wgpu::BindGroupLayout,
     pub(super) quad: &'a QuadPipeline,
     pub(super) mesh: &'a MeshPipeline,
     pub(super) image: &'a ImagePipeline,
@@ -64,8 +60,6 @@ impl FormatPipelines {
         sources: PipelineSources<'_>,
     ) -> Self {
         let PipelineSources {
-            gradient_bgl,
-            image_bgl,
             quad,
             mesh,
             image,
@@ -74,12 +68,12 @@ impl FormatPipelines {
             blit,
         } = sources;
         Self {
-            quad: quad.build_variants(device, gradient_bgl, format),
+            quad: quad.build_variants(device, format),
             mesh: mesh.build_variants(device, format),
-            image: image.build_variants(device, image_bgl, format),
-            curve: curve.build_variants(device, gradient_bgl, format),
+            image: image.build_variants(device, format),
+            curve: curve.build_variants(device, format),
             raster: raster.build_variants(device, format),
-            blit: blit.build(device, format, image_bgl),
+            blit: blit.build(device, format),
         }
     }
 }

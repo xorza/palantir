@@ -39,7 +39,7 @@ struct PrewarmMark {
 
 #[derive(Debug)]
 pub(crate) struct IconBackend {
-    pub(super) pass: RasterPass<IconRasterKey>,
+    pass: RasterPass<IconRasterKey>,
     rasterizer: IconRasterizer,
     /// The sets the `Ui` side has loaded. Shared, so an icon loaded on frame
     /// N is rasterizable on frame N.
@@ -200,6 +200,16 @@ impl IconBackend {
             });
         }
         self.pass.end_frame(frame);
+    }
+
+    /// Upload this frame's quads and any rasters queued for the atlas.
+    pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
+        self.pass.flush(ctx);
+    }
+
+    /// Draw the quads `batch_idx` prepared.
+    pub(super) fn render_batch<'a>(&'a self, batch_idx: usize, pass: &mut wgpu::RenderPass<'a>) {
+        self.pass.render_batch(batch_idx, pass);
     }
 }
 

@@ -66,13 +66,15 @@ pub(super) struct CurvePipeline {
     /// Curve shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl CurvePipeline {
     /// Format-independent curve resources; the pipelines are built by
     /// [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
         let wgsl = shader_template::specialize(
             shader_template::CURVE_WGSL,
             &[
@@ -106,6 +108,13 @@ impl CurvePipeline {
             instance_buffer,
             index_buffer,
             shader,
+            // Gradient at group 0 — viewport rides the shared immediate
+            // region, no bind-group slot needed for it.
+            pipeline_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.curve.pl",
+                &[Some(gradient_bgl)],
+            ),
         }
     }
 
@@ -117,27 +126,21 @@ impl CurvePipeline {
         }
     }
 
-    /// Build the base + stencil-test color pipelines against `format`.
-    /// Caller passes the shared `gradient_bgl` (owned by
-    /// `GpuGradientAtlas`) so the layout matches; the instance buffer
-    /// is format-independent. Called by `FormatPipelines` per format.
+    /// Build the base + stencil-test color pipelines against `format`;
+    /// the layout and the instance buffer are format-independent. Called
+    /// by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Gradient at group 0 — viewport rides the shared immediate
-        // region, no bind-group slot needed for it.
-        let layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.curve.pipeline",
                 stencil_label: "palantir.curve.pipeline.stencil_test",
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },

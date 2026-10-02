@@ -72,6 +72,8 @@ pub(super) struct QuadPipeline {
     /// Quad shader module — format-independent; the `build_*` methods
     /// read it to build each format's pipelines.
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl QuadPipeline {
@@ -193,7 +195,7 @@ impl QuadPipeline {
     /// pipelines are built separately by
     /// [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
         let wgsl = shader_template::specialize(
             shader_template::QUAD_WGSL,
             &[
@@ -232,6 +234,15 @@ impl QuadPipeline {
             masks: Vec::new(),
             clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
             shader,
+            // Gradient atlas at group 0 (viewport rides the shared
+            // immediate region, no bind-group slot needed). One layout for
+            // all three pipelines: neither the stencil state nor the
+            // fragment entry is part of a layout.
+            pipeline_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.quad.pl",
+                &[Some(gradient_bgl)],
+            ),
         }
     }
 
@@ -247,24 +258,11 @@ impl QuadPipeline {
     /// format-dependent quad objects; the gradient LUT atlas (texture +
     /// bind group + sampler) and the instance / clear buffers are
     /// reused. Called by `FormatPipelines` for each swapchain format.
-    ///
-    /// `gradient_bgl` is the group-0 layout owned by
-    /// [`GpuGradientAtlas`](crate::gpu::gpu_gradient_atlas::GpuGradientAtlas);
-    /// the pipeline composes its layout against it and the matching bind
-    /// group arrives at each `bind*` call.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> QuadVariants {
-        // Gradient atlas at group 0 (viewport rides the shared immediate
-        // region, no bind-group slot needed). One layout for all three
-        // pipelines: neither the stencil state nor the fragment entry is
-        // part of a layout, so building one apiece would be three
-        // identical objects.
-        let layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.quad.pl", &[Some(gradient_bgl)]);
         let instance = Some(Self::instance_layout());
         // The mask pair writes the stencil and no colour: `fs_mask`
         // discards outside the SDF, colour writes are off, and the blend
@@ -273,7 +271,7 @@ impl QuadPipeline {
             PipelineRecipe {
                 label,
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: std::slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_format: format,
@@ -291,7 +289,7 @@ impl QuadPipeline {
                     label: "palantir.quad.pipeline",
                     stencil_label: "palantir.quad.pipeline.stencil_test",
                     shader: &self.shader,
-                    layout: &layout,
+                    layout: &self.pipeline_layout,
                     vertex_buffers: std::slice::from_ref(&instance),
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                 },

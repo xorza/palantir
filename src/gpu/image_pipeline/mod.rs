@@ -42,6 +42,8 @@ pub(super) struct ImageBatch<'a> {
 pub(super) struct ImagePipeline {
     instance_buffer: DynamicBuffer<ImageInstance>,
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl ImagePipeline {
@@ -49,7 +51,7 @@ impl ImagePipeline {
     /// buffer. The pipelines are built by
     /// [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
         // Rust owns the flag bits; the shader declares them as markers so the
         // two cannot drift (`specialize` panics on an unsubstituted one).
         let wgsl = shader_template::specialize(
@@ -73,6 +75,11 @@ impl ImagePipeline {
         Self {
             instance_buffer,
             shader,
+            pipeline_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.image.pl",
+                &[Some(image_bgl)],
+            ),
         }
     }
 
@@ -91,18 +98,15 @@ impl ImagePipeline {
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
-        image_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        let layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.image.pl", &[Some(image_bgl)]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.image.pipeline",
                 stencil_label: "palantir.image.pipeline.stencil_test",
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },

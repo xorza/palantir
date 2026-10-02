@@ -45,7 +45,7 @@ use crate::text::shaper::TextShaper;
 pub(crate) struct TextBackend {
     shaper: TextShaper,
     encoder: TextEncoder,
-    pub(super) pass: RasterPass<GlyphRasterKey>,
+    pass: RasterPass<GlyphRasterKey>,
 }
 
 impl TextBackend {
@@ -158,6 +158,16 @@ impl TextBackend {
         self.pass.end_frame(frame);
         self.encoder.end_frame(frame);
         frame
+    }
+
+    /// Upload this frame's quads and any rasters queued for the atlas.
+    pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
+        self.pass.flush(ctx);
+    }
+
+    /// Draw the quads `batch_idx` prepared.
+    pub(super) fn render_batch<'a>(&'a self, batch_idx: usize, pass: &mut wgpu::RenderPass<'a>) {
+        self.pass.render_batch(batch_idx, pass);
     }
 }
 

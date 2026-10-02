@@ -316,13 +316,13 @@ impl WgpuBackend {
         // pipeline owns the other's input — each composes its layout
         // against `gradient.bgl` and binds `gradient.bg`.
         let gradient = GpuGradientAtlas::new(&device, resources.gradient_atlas.clone());
-        let quad = QuadPipeline::new(&device);
+        let quad = QuadPipeline::new(&device, &gradient.bgl);
         let mesh = MeshPipeline::new(&device);
-        let image = ImagePipeline::new(&device);
+        let image = ImagePipeline::new(&device, image_store.binding().layout());
         let gpu_view_targets = GpuViewTargets::new(image_store.binding().clone());
-        let curve = CurvePipeline::new(&device);
+        let curve = CurvePipeline::new(&device, &gradient.bgl);
         let raster = RasterProgram::new(&device);
-        let blit = BlitPipeline::new(&device);
+        let blit = BlitPipeline::new(&device, image_store.binding().layout());
         let text = TextBackend::new(&device, &raster, resources.text.clone());
         let icon = IconBackend::new(&device, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&device);
@@ -403,8 +403,6 @@ impl WgpuBackend {
                 &self.device,
                 format,
                 PipelineSources {
-                    gradient_bgl: &self.gradient.bgl,
-                    image_bgl: self.image_store.binding().layout(),
                     quad: &self.quad,
                     mesh: &self.mesh,
                     image: &self.image,
@@ -524,6 +522,7 @@ impl WgpuBackend {
             &mut encoder,
             buffer,
             &repaint_scissors,
+            viewport,
         );
 
         if let Some(bb) = via_backbuffer {
@@ -673,7 +672,7 @@ impl WgpuBackend {
         // they share the main render submit. The staging side of
         // those copies also routes through the belt — see
         // `RasterPass::flush` / `atlas::flush_pending_uploads`.
-        self.text.pass.flush(&mut ctx);
+        self.text.flush(&mut ctx);
 
         // Icons: prewarm any filtered icon at this frame's scale (an SVG
         // filter is 10-20x an ordinary raster, so meeting one lazily is a
@@ -690,7 +689,7 @@ impl WgpuBackend {
                 self.icon.prepare_batch(&mut ctx, i, rows);
             }
         }
-        self.icon.pass.flush(&mut ctx);
+        self.icon.flush(&mut ctx);
 
         overlay_count
     }
@@ -750,6 +749,7 @@ impl WgpuBackend {
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
         repaint_scissors: &RepaintScissors,
+        viewport: ViewportPush,
     ) {
         tracy::zone!();
         let PassTarget {
@@ -809,7 +809,7 @@ impl WgpuBackend {
             }
             match repaint_scissors {
                 RepaintScissors::Full => {
-                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil)
+                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil, viewport)
                 }
                 RepaintScissors::Partial(rects) => {
                     let rect_count = rects.len();
@@ -820,7 +820,7 @@ impl WgpuBackend {
                             scissor = ?r,
                             "wgpu_backend.submit.pass.partial_rect"
                         );
-                        self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil);
+                        self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil, viewport);
                     }
                 }
             }
@@ -846,6 +846,7 @@ impl WgpuBackend {
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
         use_stencil: bool,
+        viewport: ViewportPush,
     ) {
         tracy::zone!();
         let images = self.image_store.read();
@@ -881,7 +882,6 @@ impl WgpuBackend {
         }
         let mut bound = Bound::None;
         let raster_pipeline = fmt.raster.select(use_stencil);
-        let viewport = ViewportPush::for_buffer(buffer);
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
         // when per-batch timestamps are enabled. Coalesced inside
@@ -901,18 +901,22 @@ impl WgpuBackend {
         // corruption (wrong-scaled quads painting outside their
         // damage scissor). Re-push is the unambiguous fix.
         //
-        // `rebind!` bundles the "bind ⇒ re-push viewport ⇒ record bound"
+        // `rebind` bundles the "bind ⇒ re-push viewport ⇒ record bound"
         // triple so no draw arm can bind a pipeline and forget the
         // viewport push. `PreClear` stays open-coded: it draws off a
         // vertex buffer of its own and resets `bound` to `None`.
-        macro_rules! rebind {
-            ($target:expr, $bind:expr) => {
-                if bound != $target {
-                    $bind;
-                    viewport.push_into(pass);
-                    bound = $target;
-                }
-            };
+        fn rebind<'p>(
+            bound: &mut Bound,
+            target: Bound,
+            pass: &mut wgpu::RenderPass<'p>,
+            viewport: &ViewportPush,
+            bind: impl FnOnce(&mut wgpu::RenderPass<'p>),
+        ) {
+            if *bound != target {
+                bind(pass);
+                viewport.push_into(pass);
+                *bound = target;
+            }
         }
 
         for_each_step(
@@ -948,41 +952,40 @@ impl WgpuBackend {
                 RenderStep::MaskStamp(mi) => {
                     mark(pass, BatchKind::Mask);
                     debug_marker::push(pass, "mask_stamp");
-                    rebind!(
-                        Bound::MaskStamp,
+                    rebind(&mut bound, Bound::MaskStamp, pass, &viewport, |pass| {
                         self.quad
                             .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg)
-                    );
+                    });
                     self.quad.draw_mask(pass, mi);
                     debug_marker::pop(pass);
                 }
                 RenderStep::MaskClear(mi) => {
                     mark(pass, BatchKind::Mask);
                     debug_marker::push(pass, "mask_clear");
-                    rebind!(
-                        Bound::MaskClear,
+                    rebind(&mut bound, Bound::MaskClear, pass, &viewport, |pass| {
                         self.quad
                             .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg)
-                    );
+                    });
                     self.quad.draw_mask(pass, mi);
                     debug_marker::pop(pass);
                 }
                 RenderStep::Quads { range } => {
                     mark(pass, BatchKind::Quads);
                     debug_marker::push(pass, "quads");
-                    rebind!(
-                        Bound::QuadInstance,
+                    rebind(&mut bound, Bound::QuadInstance, pass, &viewport, |pass| {
                         self.quad
                             .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg)
-                    );
+                    });
                     self.quad.draw(pass, range);
                     debug_marker::pop(pass);
                 }
                 RenderStep::Text { batch } => {
                     mark(pass, BatchKind::Text);
                     debug_marker::push(pass, "text");
-                    rebind!(Bound::Raster, pass.set_pipeline(raster_pipeline));
-                    self.text.pass.render_batch(batch, pass);
+                    rebind(&mut bound, Bound::Raster, pass, &viewport, |pass| {
+                        pass.set_pipeline(raster_pipeline)
+                    });
+                    self.text.render_batch(batch, pass);
                     debug_marker::pop(pass);
                 }
                 RenderStep::TierBatch { tier, batch } => {
@@ -996,7 +999,9 @@ impl WgpuBackend {
                     let items = || buffer.batches(tier)[batch].items;
                     match tier {
                         PaintTier::Mesh => {
-                            rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
+                            rebind(&mut bound, Bound::Mesh, pass, &viewport, |pass| {
+                                self.mesh.bind(pass, &fmt.mesh, use_stencil)
+                            });
                             self.mesh.draw(
                                 pass,
                                 MeshBatch {
@@ -1006,7 +1011,9 @@ impl WgpuBackend {
                             );
                         }
                         PaintTier::Image => {
-                            rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
+                            rebind(&mut bound, Bound::Image, pass, &viewport, |pass| {
+                                self.image.bind(pass, &fmt.image, use_stencil)
+                            });
                             self.image.draw(
                                 pass,
                                 ImageBatch {
@@ -1021,15 +1028,16 @@ impl WgpuBackend {
                             // The pipeline text draws through, so a text
                             // step followed by an icon one rebinds
                             // nothing — see [`Bound::Raster`].
-                            rebind!(Bound::Raster, pass.set_pipeline(raster_pipeline));
-                            self.icon.pass.render_batch(batch, pass);
+                            rebind(&mut bound, Bound::Raster, pass, &viewport, |pass| {
+                                pass.set_pipeline(raster_pipeline)
+                            });
+                            self.icon.render_batch(batch, pass);
                         }
                         PaintTier::Curve => {
-                            rebind!(
-                                Bound::Curve,
+                            rebind(&mut bound, Bound::Curve, pass, &viewport, |pass| {
                                 self.curve
                                     .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
-                            );
+                            });
                             self.curve.draw(pass, items());
                         }
                     }
