@@ -55,12 +55,6 @@ Groups run from the most severe to the least: panics on reachable input first, t
 
 ## Dependencies that could go
 
-## Duplication and asymmetry in the GPU render loop
-- [ ] `src/gpu/mod.rs:892-901`: `macro_rules! rebind` breaks the no-macro rule. A small helper taking `&mut Bound` plus a bind closure does the same.
-- [ ] `src/gpu/mod.rs:450` vs `:868`: `ViewportPush::for_buffer` is computed in `submit` and recomputed inside `render_groups` once per damage rect. The dim and overlay passes are handed `viewport`. The main pass should be too.
-- [ ] `src/gpu/quad_pipeline.rs:283`, `mesh_pipeline.rs:103`, `image_pipeline/mod.rs:97`, `curve_pipeline/mod.rs:132`, `raster_program.rs:363`, `blit_pipeline.rs:46`: each `build_variants`/`build` creates its pipeline layout per swapchain format. Layouts are format-independent, so they belong in each pipeline's `new`, beside the shader.
-- [ ] `src/gpu/mod.rs:660,677,969,1009` with `text/mod.rs:46`, `icon/mod.rs:42`: the backend reaches `self.text.pass.flush` / `self.text.pass.render_batch` through a `pub(super)` field but calls `prepare_batch` as a method. Each raster tenant's API is split between methods and a reached-through field.
-
 ## Scene design and simplification
 - [ ] `src/scene/cascade/engine.rs:254-266`: the `layout_hashes` doc says layers with no tree "keep the default" because `iter_paint_order` skips them. It skips nothing: every layer is visited, and the `PerLayer::default()` it overwrites is dead.
 - [ ] `src/scene/damage/mod.rs:97-101`: `DamageEngine::budget_px` is a production field that exists only so a test can change it. Production always uses `DEFAULT_PASS_BUDGET_PX`.

@@ -53,6 +53,8 @@ pub(super) struct MeshPipeline {
     /// Mesh shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl MeshPipeline {
@@ -78,6 +80,9 @@ impl MeshPipeline {
             index_buffer,
             instance_buffer,
             shader,
+            // No bind groups — only the shared immediate region for the
+            // viewport.
+            pipeline_layout: PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]),
         }
     }
 
@@ -98,16 +103,13 @@ impl MeshPipeline {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Mesh shader uses no bind groups — only the shared immediate
-        // region for viewport. Empty bind-group-layout list.
-        let layout = PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.mesh.pipeline",
                 stencil_label: "palantir.mesh.pipeline.stencil_test",
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },

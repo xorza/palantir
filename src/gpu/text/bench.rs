@@ -162,7 +162,7 @@ impl BenchText {
     }
 
     fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.backend.pass.flush(ctx);
+        self.backend.flush(ctx);
     }
 
     /// `render_batch` binds neither the pipeline nor the viewport — the
@@ -174,7 +174,7 @@ impl BenchText {
             size: glam::Vec2::ZERO,
         }
         .push_into(pass);
-        self.backend.pass.render_batch(batch_index, pass);
+        self.backend.render_batch(batch_index, pass);
     }
 
     /// Frame teardown for the harness, matching `TextSystem`'s

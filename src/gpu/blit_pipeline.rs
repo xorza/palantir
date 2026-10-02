@@ -19,17 +19,26 @@ use crate::gpu::shader_template;
 #[derive(Debug)]
 pub(super) struct BlitPipeline {
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl BlitPipeline {
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.blit.shader"),
             source: wgpu::ShaderSource::Wgsl(
                 shader_template::specialize(shader_template::BLIT_WGSL, &[]).into(),
             ),
         });
-        Self { shader }
+        Self {
+            shader,
+            pipeline_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.blit.pl",
+                &[Some(image_bgl)],
+            ),
+        }
     }
 
     /// The pipeline for one target format.
@@ -41,14 +50,11 @@ impl BlitPipeline {
         &self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        image_bgl: &wgpu::BindGroupLayout,
     ) -> wgpu::RenderPipeline {
-        let layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.blit.pl", &[Some(image_bgl)]);
         PipelineRecipe {
             label: "palantir.blit.pipeline",
             shader: &self.shader,
-            layout: &layout,
+            layout: &self.pipeline_layout,
             vertex_buffers: &[],
             topology: wgpu::PrimitiveTopology::TriangleList,
             color_format: format,
