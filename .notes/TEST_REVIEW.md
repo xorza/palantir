@@ -19,16 +19,6 @@ Correction to three of the agent reports: libtest runs each test on a new thread
 
 ---
 
-## 1. Tests read the wrong record pass, or read one-frame edges between frames
-
-The closure runs once per record pass, and pass B sees drained edges (harness rules 3–5). The
-harness has `frame_value` and `response_in` for this, but nothing stops a test from reading the
-last pass or reading between frames. In each case below, the bug that the test guards against
-forces pass B, and pass B erases the evidence.
-
-- [ ] Replace hand-counted passes (`passes += 1`) with `FrameReport::processing`: `combo_box/tests.rs:130`, `popup/tests/placement.rs:319`, `splitter/tests.rs:48,219`, `tooltip/tests.rs:72,205,215`, `scroll/tests/bars/presence.rs:47`, `cold_mount.rs:47`, `ui/tests/frames/settle.rs:59-66`, `frames/passes.rs:58,175,222,242`, `ui/tests/text.rs:689`, `starting.rs:200`. Keep a counter only where the warmup pass matters.
-- [ ] Remove the reason for between-frame `response_for` reads. 34 widget sites use `h.ui.response_for` because `ui` is a `pub(crate)` field. `h.rect` and `h.layout_rect` cover geometry. Add `h.transform(id)` for the rest.
-
 ## 2. Asserts that cannot fail
 
 Each test below passes when the behaviour it names is broken.
@@ -37,15 +27,6 @@ Each test below passes when the behaviour it names is broken.
 - [ ] Encoder tests filter paint calls by kind in 13 hand-written closures. `PaintCapture::kinds()` now exists; assert sequences with it instead.
 - [ ] `renderer/frontend/composer/tests/clipping.rs:121-197`: the cull tests count identical white quads. Use `draw_marked` and `survivor_calls` to name which survived, as the pruning tests now do.
 - [ ] `gpu/shader_template.rs` tests keep their own list of shader sources. Share one array with production, so a new shader cannot skip the check.
-
-## 4. Input aimed by literal coordinates, with no check that it lands
-
-The `_on` helpers check that the pointer reaches the widget. Tests mostly bypass them.
-
-- [ ] Counts: widgets 95 literal-position sites against 16 `_on` uses; input 72 (`click_at` 29, `press_at` 43) against 10. 18 widget sites compute `center_of` and then call `click_at`, which skips the occlusion check: `expander/tests.rs:99,119,138,202,241,256`, `tabs/tests.rs:158,179,334,381-382,448,450`, `dock/tests.rs:944,970,1029,1036`, `splitter/tests.rs:166`, `text_edit/tests/context_menu.rs:53`. Swap them to `click_on` / `press_on`.
-- [ ] Negative tests where a miss passes: `checkbox/tests.rs:179`, `radio/tests.rs:111`, `drag_value/tests/scrub.rs:223`, `scroll/tests/panning.rs:33-46`, `input_state/tests/click.rs:226,258,454,486`, `keyboard.rs:521`. Give each a control row, and assert `h.hit_at(p) == Some(id)` (or `!=` for a deliberate miss) before the gesture.
-- [ ] `context_menu/tests/interaction.rs:77-81` clicks `(90, 80)`, "well inside any plausible row layout". Use `menu_rows()` from `theming.rs:385`.
-- [ ] Add `UiHarness::point_in(id, local) -> Vec2` (layout-local to screen, hit-checked) plus `click_in` / `press_in`. It replaces 5 hand-rolled transform copies (`splitter/tests.rs:167-171`, `slider/tests.rs:280-284`, `drag_value/tests/scrub.rs:81-88`, `scroll/tests/panning.rs:259-266`, `scroll/tests/pivot.rs:43-45`) and makes the 19 caret clicks in `text_edit/tests/click.rs` relative to the field.
 
 ## 7. The visual suite's tolerance and capture lose information
 

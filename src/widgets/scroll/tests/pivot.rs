@@ -45,9 +45,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         };
         h.frame(build);
 
-        let response = h.ui.response_for(id);
-        let layout = response.layout_rect.expect("scroll arranged");
-        let pointer = response.transform.apply_point(layout.min + logical_pointer);
+        let pointer = h.point_in(id, logical_pointer);
         h.pinch_at(pointer, 1.5);
         h.frame(build);
 

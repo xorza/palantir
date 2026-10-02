@@ -561,10 +561,7 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     h.frame(&mut record);
     h.frame(&mut record);
 
-    let field =
-        h.ui.response_for(ed_id())
-            .layout_rect
-            .expect("the field was arranged");
+    let field = h.layout_rect(ed_id()).expect("the field was arranged");
     assert!(
         (field.min - corner).abs().max_element() < 1e-3,
         "the field was put at {:?} having been placed at {corner:?}",

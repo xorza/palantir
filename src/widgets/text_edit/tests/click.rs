@@ -11,7 +11,7 @@ fn typing_inserts_text_when_focused() {
     let id = WidgetId::from_hash("editor");
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
     h.type_text("hi");
@@ -33,7 +33,7 @@ fn a_field_types_the_text_a_press_produced() {
     let id = WidgetId::from_hash("editor");
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
     // A dead-key fallback: two characters from one press, and the key
@@ -68,7 +68,7 @@ fn a_command_chord_types_nothing_it_reports() {
     let id = WidgetId::from_hash("editor");
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
     h.set_modifiers(Modifiers {
@@ -108,7 +108,7 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     assert!(!h.key(Key::Escape).requests_repaint,);
     assert!(!h.key(Key::Char('s')).requests_repaint);
 
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
     h.frame(editor_only(&mut buf));
 
@@ -127,7 +127,7 @@ fn escape_blurs_focus() {
     let id = WidgetId::from_hash("editor");
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
     h.key(Key::Escape);
@@ -143,7 +143,7 @@ fn caret_clamps_after_external_buffer_shrink() {
     let mut buf = String::from("hello");
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.key(Key::End);
     h.frame(editor_only(&mut buf));
 
@@ -162,7 +162,7 @@ fn typed_text_inserts_at_caret_when_focused() {
     let mut buf = String::new();
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
 
     h.type_text("héllo");
     h.frame(editor_only(&mut buf));
@@ -177,7 +177,7 @@ fn pointer_state_respects_pointer_left() {
     let mut buf = String::new();
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.pointer_left();
     h.key(Key::Char('z'));
 
@@ -192,11 +192,11 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     let mut buf = String::new();
 
     h.frame(editor_and_button(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editor")));
 
     h.frame(editor_and_button(&mut buf));
-    h.click_at(Vec2::new(200.0, 20.0));
+    h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
     assert_eq!(
         h.focused_id(),
         None,
@@ -215,9 +215,9 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     let mut buf = String::new();
 
     h.frame(editor_and_button(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.frame(editor_and_button(&mut buf));
-    h.click_at(Vec2::new(200.0, 20.0));
+    h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
 
     h.key(Key::Char('x'));
     h.frame(editor_and_button(&mut buf));
@@ -231,7 +231,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     let mut buf = String::from("ab");
 
     h.frame(editor_only(&mut buf));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.key(Key::End);
     h.frame(editor_only(&mut buf));
 
@@ -250,7 +250,7 @@ fn click_lands_caret_at_pressed_position() {
     let mut buf = String::from("hello world");
 
     h.frame(editor_at(&mut buf, None));
-    h.press_at(Vec2::new(32.0, 20.0));
+    h.press_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0));
 
     h.frame(editor_at(&mut buf, None));
     h.key(Key::Char('X'));
@@ -269,7 +269,7 @@ fn click_uses_overridden_padding() {
     let mut buf = String::from("hello world");
 
     h.frame(editor_at(&mut buf, pad));
-    h.press_at(Vec2::new(32.0, 20.0));
+    h.press_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0));
 
     h.frame(editor_at(&mut buf, pad));
     h.key(Key::Char('X'));
@@ -306,7 +306,7 @@ fn drag_select_continues_past_editor_bounds() {
     h.frame(|ui| body(ui, &mut buf));
 
     // Press inside: caret lands mid-text and the anchor latches there.
-    h.press_at(Vec2::new(22.0, 20.0));
+    h.press_in(ed_id, Vec2::new(22.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     let anchor = h.state::<TextEditState>(ed_id).edit.caret;
     assert!(
@@ -413,7 +413,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     };
 
     h.frame(|ui| body(ui, &mut a, &mut b));
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(id_a, Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id_a));
 
     h.key(Key::Char('1'));
@@ -421,7 +421,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     assert_eq!(a, "1");
     assert_eq!(b, "");
 
-    h.click_at(Vec2::new(250.0, 20.0));
+    h.click_in(id_b, Vec2::new(70.0, 20.0));
     assert_eq!(h.focused_id(), Some(id_b));
 
     h.key(Key::Char('2'));
@@ -505,14 +505,9 @@ fn caret_click_is_scale_invariant_under_zoom() {
                 });
         };
         h.frame(|ui| render(ui, &mut buf));
-        // 40% into the widget's on-screen width — the same logical point at any
-        // zoom, so the resulting caret byte must match.
-        let rect = h.ui.response_for(id).rect.expect("editor laid out");
-        let click = Vec2::new(
-            rect.min.x + rect.size.w * 0.4,
-            rect.min.y + rect.size.h * 0.5,
-        );
-        h.press_at(click);
+        // 40% into the 200 × 40 field, mid-height — the same logical point
+        // at any zoom, so the resulting caret byte must match.
+        h.press_in(id, Vec2::new(80.0, 20.0));
         h.frame(|ui| render(ui, &mut buf));
         h.state::<TextEditState>(id).edit.caret
     }
@@ -562,7 +557,7 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
         "nothing focused → no ancestor owns focus"
     );
 
-    h.click_at(Vec2::new(50.0, 20.0));
+    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(editor));
     // The focused editor is within itself and its ancestor, not
     // within a sibling or an id that was never recorded.
@@ -589,8 +584,9 @@ fn a_tap_places_the_caret() {
     // Mono metric, 8 px per char from the inner left edge: the tap at
     // x = inner.min + 14 is 1.75 glyphs in, nearest boundary 2 → caret 2.
     let rect = h.layout_rect(ed_id).expect("arranged");
-    let inner_left = rect.min.x + h.ui.theme().text_edit.defaults.padding.as_array()[0];
-    h.click_at(glam::Vec2::new(inner_left + 14.0, rect.center().y));
+    let inner_left = h.ui.theme().text_edit.defaults.padding.as_array()[0];
+    let mid = rect.size.h * 0.5;
+    h.click_in(ed_id, glam::Vec2::new(inner_left + 14.0, mid));
     h.frame(editor_at(&mut buf, None));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
 
@@ -600,7 +596,7 @@ fn a_tap_places_the_caret() {
         shift: true,
         ..Modifiers::NONE
     });
-    h.click_at(glam::Vec2::new(inner_left + 30.0, rect.center().y));
+    h.click_in(ed_id, glam::Vec2::new(inner_left + 30.0, mid));
     h.frame(editor_at(&mut buf, None));
     let edit = &h.state::<TextEditState>(ed_id).edit;
     assert_eq!(

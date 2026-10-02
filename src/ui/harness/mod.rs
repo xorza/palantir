@@ -177,6 +177,7 @@ use crate::input::response::input_delta::InputDelta;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::texture_limit::TextureLimit;
 // Carries `damage_region`'s gate: this whole module is build-gated test
@@ -613,6 +614,14 @@ impl UiHarness {
         let pos = response.transform.apply_point(layout.min + local);
         self.assert_reaches(id, pos);
         pos
+    }
+
+    /// `id`'s map from its arranged space to the screen: every ancestor's
+    /// transform, scroll and zoom composed. Unchecked, unlike
+    /// [`Self::point_in`] — for a point or a rect that need not land on
+    /// `id`, such as a drag target or an edge carried off the surface.
+    pub fn transform(&self, id: WidgetId) -> TranslateScale {
+        self.ui.response_for(id).transform
     }
 
     /// Click `id` at [`Self::point_in`]`(id, local)`.

@@ -96,8 +96,7 @@ fn an_untouched_section_mints_no_state_row() {
     );
 
     // Opening it is what mints one, and it survives the next frame.
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     frame(&mut h, false);
     let row = h
         .ui()
@@ -116,8 +115,7 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
     frame(&mut h, false);
     assert!(h.rect(body()).is_none());
 
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     let open = h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
@@ -136,8 +134,7 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
     h.frame(|ui| {
         Expander::new("section").id(root()).show(ui, |_| {});
     });
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     frame(&mut h, false);
     frame(&mut h, false);
     assert!(h.rect(body()).is_none(), "a second click closed it again");
@@ -151,8 +148,7 @@ fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
     let mut h = UiHarness::new(SURFACE);
     frame(&mut h, false);
     frame(&mut h, false);
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     let open = h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
@@ -223,8 +219,7 @@ fn a_bound_flag_is_read_and_written() {
         "the binding won over start_open(false)",
     );
 
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     h.frame(|ui| record(ui, &mut open));
     assert!(!open, "the toggle was written back through the binding");
 
@@ -262,8 +257,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         record(ui);
     });
 
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     assert_eq!(
         h.frame_value(&mut record),
         1.0,
@@ -278,8 +272,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     h.frame(|ui| {
         record(ui);
     });
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     // The click frame carries the new target but no elapsed time, so the
     // tween has not moved yet; the frame after it is the one that shows.
     assert_eq!(h.frame_value(&mut record), 1.0);
@@ -408,8 +401,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         h.frame(|ui| {
             record(ui);
         });
-        let at = h.center_of(header());
-        h.click_at(at);
+        h.click_on(header());
         h.frame_value(&mut *record);
     };
 

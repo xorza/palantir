@@ -38,14 +38,9 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
     };
 
     let mut h = UiHarness::new(surface);
-    let mut records = 0;
-    let report = h.frame(|ui| {
-        records += 1;
-        build(ui);
-    });
-    assert_eq!(report.processing, FrameProcessing::SingleLayout);
     assert_eq!(
-        records, 1,
+        h.frame(build).processing,
+        FrameProcessing::SingleLayout,
         "hidden cold mount must not settle bar visibility"
     );
 

@@ -104,7 +104,7 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     let chrome = tree
         .chrome(NodeId(body as u32))
         .expect("the popup body paints chrome");
-    let rect = |id: WidgetId| h.ui.response_for(id).rect.expect("arranged");
+    let rect = |id: WidgetId| h.rect(id).expect("arranged");
     Opened {
         corners: chrome.corners,
         height: rect(body_id).size.h,

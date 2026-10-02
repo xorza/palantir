@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
 use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::configure::Configure;
@@ -125,18 +126,14 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     h.frame(|ui| build(ui, &mut selected));
     h.ui.state_or_default::<ComboState>(id).open = true;
 
-    let mut passes = 0;
-    h.frame(|ui| {
-        passes += 1;
-        build(ui, &mut selected);
-    });
-    assert_eq!(passes, 1, "dropdown placement must converge in one pass");
+    assert_eq!(
+        h.frame(|ui| build(ui, &mut selected)).processing,
+        FrameProcessing::SingleLayout,
+        "dropdown placement must converge in one pass"
+    );
 
-    let trigger = h.ui.response_for(id).rect.expect("combo trigger arranged");
-    let list =
-        h.ui.response_for(id.with("list"))
-            .rect
-            .expect("combo list arranged");
+    let trigger = h.rect(id).expect("combo trigger arranged");
+    let list = h.rect(id.with("list")).expect("combo list arranged");
     assert_eq!(list.min.x, trigger.min.x, "list starts at trigger left");
     assert_eq!(
         list.max().y,
@@ -179,14 +176,8 @@ fn trigger_geometry_follows_the_combo_box_theme() {
                         .show(ui);
                 });
         });
-        let label =
-            h.ui.response_for(id.with("label"))
-                .rect
-                .expect("label arranged");
-        let arrow_rect =
-            h.ui.response_for(id.with("arrow"))
-                .rect
-                .expect("arrow arranged");
+        let label = h.rect(id.with("label")).expect("label arranged");
+        let arrow_rect = h.rect(id.with("arrow")).expect("arrow arranged");
         (
             Vec2::new(arrow_rect.size.w, arrow_rect.size.h),
             arrow_rect.min.x - label.max().x,
@@ -252,11 +243,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
         h.frame(|ui| build(ui, &mut selected));
         h.ui.state_or_default::<ComboState>(id).open = true;
         h.frame(|ui| build(ui, &mut selected));
-        h.ui.response_for(id.with("list"))
-            .rect
-            .expect("combo list arranged")
-            .size
-            .h
+        h.rect(id.with("list")).expect("combo list arranged").size.h
     };
 
     // Two edges of padding, and one gap between the two rows.
@@ -287,8 +274,7 @@ fn disabling_an_open_trigger_closes_its_list() {
     let mut h = UiHarness::new(SURFACE);
     record(&mut h, false, &mut selected);
     record(&mut h, false, &mut selected);
-    let at = h.center_of(combo);
-    h.click_at(at);
+    h.click_on(combo);
     record(&mut h, false, &mut selected);
     let rows = h.rect(list).expect("premise: the click opened the list");
     let last_row = Vec2::new(rows.min.x + rows.size.w * 0.5, rows.max().y - 4.0);

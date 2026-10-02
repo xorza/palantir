@@ -192,8 +192,16 @@ fn input_state_release_outside_does_not_click() {
                 .show(ui);
         });
     });
-    h.press_at(Vec2::new(50.0, 20.0));
-    h.drag_to(Vec2::new(300.0, 20.0));
+    let target = WidgetId::from_hash("target");
+    let (inside, outside) = (Vec2::new(50.0, 20.0), Vec2::new(300.0, 20.0));
+    assert_eq!(
+        h.hit_at(inside),
+        Some(target),
+        "the press lands on the button"
+    );
+    assert_ne!(h.hit_at(outside), Some(target), "the release is off it");
+    h.press_at(inside);
+    h.drag_to(outside);
     h.release();
 
     let got_click = h.frame_value(|ui| {
@@ -242,10 +250,21 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     h.frame(|ui| {
         build(ui);
     });
-    h.click_at(Vec2::new(150.0, 150.0));
-    let clicked = h.frame_value(build);
+    // The control: the same button clicks where the clip shows it.
+    let inner = WidgetId::from_hash("inner");
+    let (shown, overflow) = (Vec2::new(50.0, 50.0), Vec2::new(150.0, 150.0));
+    assert_eq!(h.hit_at(shown), Some(inner));
+    h.click_at(shown);
+    assert!(h.frame_value(build), "a click inside the clip registers");
+
+    assert_ne!(
+        h.hit_at(overflow),
+        Some(inner),
+        "the clip hides the overflow"
+    );
+    h.click_at(overflow);
     assert!(
-        !clicked,
+        !h.frame_value(build),
         "click on overflow outside clip should not register"
     );
 }
