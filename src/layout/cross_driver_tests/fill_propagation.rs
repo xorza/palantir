@@ -196,49 +196,44 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 #[test]
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     let mut h = UiHarness::with_text(UVec2::new(400, 600));
-    let mut grid_node = None;
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                grid_node = Some(
-                    Grid::new()
-                        .id(WidgetId::from_hash("pg"))
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::HUG, Track::FILL])
-                        .rows([Track::HUG, Track::HUG])
-                        .show(ui, |ui| {
-                            Text::new("Title:")
-                                .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
-                                .grid_cell((0, 0))
-                                .show(ui);
-                            Text::new(
-                                "the quick brown fox jumps over the lazy dog \
+                Grid::new()
+                    .id(WidgetId::from_hash("pg"))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .cols([Track::HUG, Track::FILL])
+                    .rows([Track::HUG, Track::HUG])
+                    .show(ui, |ui| {
+                        Text::new("Title:")
+                            .auto_id()
+                            .style(&TextStyle::default().with_font_size(14.0))
+                            .grid_cell((0, 0))
+                            .show(ui);
+                        Text::new(
+                            "the quick brown fox jumps over the lazy dog \
                                  pack my box with five dozen liquor jugs how \
                                  vexingly quick daft zebras jump",
-                            )
+                        )
+                        .auto_id()
+                        .style(&TextStyle::default().with_font_size(14.0))
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .grid_cell((0, 1))
+                        .show(ui);
+                        Text::new("Tags:")
+                            .auto_id()
+                            .style(&TextStyle::default().with_font_size(14.0))
+                            .grid_cell((1, 0))
+                            .show(ui);
+                        Text::new("layout, grid, intrinsic, wrapping, css")
                             .auto_id()
                             .style(&TextStyle::default().with_font_size(14.0))
                             .text_wrap(TextWrap::WrapWithOverflow)
-                            .grid_cell((0, 1))
+                            .grid_cell((1, 1))
                             .show(ui);
-                            Text::new("Tags:")
-                                .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
-                                .grid_cell((1, 0))
-                                .show(ui);
-                            Text::new("layout, grid, intrinsic, wrapping, css")
-                                .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
-                                .text_wrap(TextWrap::WrapWithOverflow)
-                                .grid_cell((1, 1))
-                                .show(ui);
-                        })
-                        .response
-                        .node(),
-                );
+                    });
             });
     });
     let h = h.arranged(WidgetId::from_hash("pg")).size.h;
@@ -254,7 +249,6 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 #[test]
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     let mut h = UiHarness::with_text(UVec2::new(400, 600));
-    let mut grid_node = None;
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
@@ -264,31 +258,27 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     .id(WidgetId::from_hash("hug-z"))
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
-                        grid_node = Some(
-                            Grid::new()
-                                .id(WidgetId::from_hash("nested-grid"))
-                                .size((Sizing::FILL, Sizing::HUG))
-                                .cols([Track::HUG, Track::FILL])
-                                .rows([Track::HUG])
-                                .show(ui, |ui| {
-                                    Text::new("Label:")
-                                        .auto_id()
-                                        .style(&TextStyle::default().with_font_size(14.0))
-                                        .grid_cell((0, 0))
-                                        .show(ui);
-                                    Text::new(
-                                        "the quick brown fox jumps over the lazy dog \
-                                         pack my box with five dozen liquor jugs",
-                                    )
+                        Grid::new()
+                            .id(WidgetId::from_hash("nested-grid"))
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .cols([Track::HUG, Track::FILL])
+                            .rows([Track::HUG])
+                            .show(ui, |ui| {
+                                Text::new("Label:")
                                     .auto_id()
                                     .style(&TextStyle::default().with_font_size(14.0))
-                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                    .grid_cell((0, 1))
+                                    .grid_cell((0, 0))
                                     .show(ui);
-                                })
-                                .response
-                                .node(),
-                        );
+                                Text::new(
+                                    "the quick brown fox jumps over the lazy dog \
+                                         pack my box with five dozen liquor jugs",
+                                )
+                                .auto_id()
+                                .style(&TextStyle::default().with_font_size(14.0))
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .grid_cell((0, 1))
+                                .show(ui);
+                            });
                     });
             });
     });

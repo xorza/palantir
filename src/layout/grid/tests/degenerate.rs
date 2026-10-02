@@ -15,28 +15,23 @@ use glam::UVec2;
 #[test]
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut grid_node = None;
     let empty: [Track; 0] = [];
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                grid_node = Some(
-                    Grid::new()
-                        .id(WidgetId::from_hash("empty-grid"))
-                        .cols([Track::fixed(50.0)])
-                        .rows(empty)
-                        .size((Sizing::HUG, Sizing::HUG))
-                        .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("ghost"))
-                                .size((20.0, 20.0))
-                                .show(ui);
-                        })
-                        .response
-                        .node(),
-                );
+                Grid::new()
+                    .id(WidgetId::from_hash("empty-grid"))
+                    .cols([Track::fixed(50.0)])
+                    .rows(empty)
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Block::new()
+                            .id(WidgetId::from_hash("ghost"))
+                            .size((20.0, 20.0))
+                            .show(ui);
+                    });
             });
     });
     let r = h.arranged(WidgetId::from_hash("empty-grid"));
@@ -108,24 +103,19 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     const COLS: usize = 64;
     let cols: [Track; COLS] = std::array::from_fn(|i| Track::fixed((i + 1) as f32));
     let mut h = UiHarness::new(UVec2::new(3_000, 100));
-    let mut grid_node = None;
     h.frame(|ui| {
-        grid_node = Some(
-            Grid::new()
-                .id(WidgetId::from_hash("large-grid"))
-                .rows([Track::fixed(10.0)])
-                .cols(cols)
-                .line_gap(0.0)
-                .gap(2.0)
-                .show(ui, |ui| {
-                    Block::new()
-                        .id(WidgetId::from_hash("last-cell"))
-                        .grid_cell((0, (COLS - 1) as u16))
-                        .show(ui);
-                })
-                .response
-                .node(),
-        );
+        Grid::new()
+            .id(WidgetId::from_hash("large-grid"))
+            .rows([Track::fixed(10.0)])
+            .cols(cols)
+            .line_gap(0.0)
+            .gap(2.0)
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("last-cell"))
+                    .grid_cell((0, (COLS - 1) as u16))
+                    .show(ui);
+            });
     });
 
     // Sum 1..=64 = 2,080; 63 gaps × 2 = 126.

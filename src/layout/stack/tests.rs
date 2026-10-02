@@ -282,17 +282,13 @@ fn hstack_align_center_centers_child_on_cross_axis() {
 fn negative_left_margin_spills_outside_slot() {
     // CSS-style negative margin: smaller slot, larger render, shifted negative.
     let mut h = UiHarness::new(UVec2::new(200, 100));
-    let mut button_node = None;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            button_node = Some(
-                Button::new()
-                    .id(WidgetId::from_hash("spill"))
-                    .size((Sizing::fixed(50.0), Sizing::fixed(30.0)))
-                    .margin((-10.0, 0.0, 0.0, 0.0))
-                    .show(ui)
-                    .node(),
-            );
+            Button::new()
+                .id(WidgetId::from_hash("spill"))
+                .size((Sizing::fixed(50.0), Sizing::fixed(30.0)))
+                .margin((-10.0, 0.0, 0.0, 0.0))
+                .show(ui);
         });
     });
     let r = h.arranged(WidgetId::from_hash("spill"));

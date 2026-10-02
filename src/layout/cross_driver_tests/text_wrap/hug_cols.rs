@@ -131,22 +131,8 @@ fn nonwrapping_text_minconent_equals_full_width() {
             .show(ui)
             .node()
     });
-    let store = h.ui.record_store();
-    let interned_text = store.interned_text();
-    let max_w = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        label_node,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
-    let min_w = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        label_node,
-        Axis::X,
-        LenReq::MinContent,
-        &interned_text,
-    );
+    let max_w = h.intrinsic(label_node, Axis::X, LenReq::MaxContent);
+    let min_w = h.intrinsic(label_node, Axis::X, LenReq::MinContent);
     assert_eq!(
         min_w, max_w,
         "non-wrapping Text MinContent must equal MaxContent (full width)",
@@ -195,15 +181,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // Probe label's natural unbroken width at an unconstrained surface.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(|ui| build(ui).1);
-    let store = probe.ui.record_store();
-    let interned_text = store.interned_text();
-    let label_full = probe.engines.layout.intrinsic(
-        probe.ui.tree(Layer::Main),
-        probe_label,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // At a surface narrower than the paragraph max-content but wider
@@ -259,15 +237,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
     // Label's natural unbroken width, probed unconstrained.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(build);
-    let store = probe.ui.record_store();
-    let interned_text = store.interned_text();
-    let label_full = probe.engines.layout.intrinsic(
-        probe.ui.tree(Layer::Main),
-        probe_label,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // The long paragraph's max-content dwarfs these surfaces, so the grid

@@ -24,7 +24,7 @@ fn wrap_hstack_justify_per_line() {
     ];
     for (label, justify, expected) in cases {
         let mut h = UiHarness::new(UVec2::new(400, 400));
-        let _wrap = h.under_outer(|ui| {
+        h.under_outer(|ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
                 .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -34,9 +34,7 @@ fn wrap_hstack_justify_per_line() {
                 .show(ui, |ui| {
                     cell(ui, "a", 60.0, 20.0);
                     cell(ui, "b", 60.0, 20.0);
-                })
-                .response
-                .node()
+                });
         });
         // 200 wide, 60 + 10 + 60 = 130 used, 70 to place; each x is a
         // multiple of 0.5, so exact in f32.
@@ -56,7 +54,7 @@ fn wrap_hstack_justify_per_line() {
 #[test]
 fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _ = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -69,9 +67,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
                     .collapsed()
                     .show(ui);
                 cell(ui, "b", 60.0, 20.0);
-            })
-            .response
-            .node()
+            });
     });
     let a = h.arranged(WidgetId::from_hash("a"));
     let hidden = h.arranged(WidgetId::from_hash("hidden"));
@@ -91,7 +87,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _ = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(300.0), Sizing::HUG))
@@ -105,9 +101,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
                     // number even with no row-leftover distribution.
                     .min_size((40.0, 0.0))
                     .show(ui);
-            })
-            .response
-            .node()
+            });
     });
     let r = h.arranged(WidgetId::from_hash("filler"));
     // Fill child got its min_size width (40), NOT the row leftover
