@@ -71,7 +71,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
 
 #[test]
 fn vertical_overflow_emits_thumb_shape_after_settle() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 600), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -162,7 +162,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
 
 #[test]
 fn no_bar_when_content_fits_viewport() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -185,7 +185,7 @@ fn no_bar_when_content_fits_viewport() {
 
 #[test]
 fn both_axes_overflow_emits_two_thumbs() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -211,7 +211,7 @@ fn both_axes_overflow_emits_two_thumbs() {
 /// bars overlap at the bottom-right corner.
 #[test]
 fn both_axes_bars_dont_overlap_at_corner() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {

@@ -77,7 +77,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
 /// inside any user-set padding.
 #[test]
 fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
-    let (ui, node) = record_two_frames(UVec2::new(400, 600), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -93,7 +93,6 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
                     });
             });
     });
-    let _ = node;
     let theme = theme();
     let expected_x = 200.0 - theme.thickness;
     let overlays = thumb_rects(&ui.ui, "scroll");

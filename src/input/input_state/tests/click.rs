@@ -607,16 +607,16 @@ fn drain_per_frame_queues_clears_action_latch() {
     assert!(!input.take_action_flag());
 }
 
-/// `press_started` is a press-edge (unlike `clicked`, which fires on
-/// the release), and `press_count` numbers the multi-press run: presses
-/// on the same target within the double-click window + radius chain
-/// 1 → 2 → 3; a press past the radius restarts at 1. Both ride only
-/// the frame that processed the press — other frames read `(false, 0)`.
+/// `press_count` numbers the multi-press run on the press edge (unlike
+/// `clicked`, which fires on the release): presses on the same target
+/// within the double-click window + radius chain 1 → 2 → 3; a press past
+/// the radius restarts at 1. It rides only the frame that processed the
+/// press — other frames read 0.
 #[test]
 fn press_started_counts_multi_press_runs() {
     const SURFACE: UVec2 = UVec2::new(200, 80);
 
-    fn probe(h: &mut UiHarness) -> (bool, u8) {
+    fn probe(h: &mut UiHarness) -> u8 {
         let id = WidgetId::from_hash("target");
         h.frame_value(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -627,7 +627,7 @@ fn press_started_counts_multi_press_runs() {
                     .show(ui);
             });
             let r = ui.response_for(id);
-            (r.left.press_count() > 0, r.left.press_count())
+            r.left.press_count()
         })
     }
 
@@ -635,23 +635,19 @@ fn press_started_counts_multi_press_runs() {
     probe(&mut h); // settle layout
 
     h.press_on(WidgetId::from_hash("target"));
-    assert_eq!(probe(&mut h), (true, 1), "first press starts a run");
+    assert_eq!(probe(&mut h), 1, "first press starts a run");
     h.release();
-    assert_eq!(
-        probe(&mut h),
-        (false, 0),
-        "edge + count clear off the press frame"
-    );
+    assert_eq!(probe(&mut h), 0, "the count clears off the press frame");
 
     h.advance(IN_WINDOW);
     h.press();
-    assert_eq!(probe(&mut h), (true, 2), "same-spot follow-up chains");
+    assert_eq!(probe(&mut h), 2, "same-spot follow-up chains");
     h.release();
     probe(&mut h);
 
     h.advance(IN_WINDOW);
     h.press();
-    assert_eq!(probe(&mut h), (true, 3), "third press keeps counting");
+    assert_eq!(probe(&mut h), 3, "third press keeps counting");
     h.release();
     probe(&mut h);
 
@@ -659,7 +655,7 @@ fn press_started_counts_multi_press_runs() {
     // restarts.
     h.advance(IN_WINDOW);
     h.press_at(Vec2::new(80.0, 20.0));
-    assert_eq!(probe(&mut h), (true, 1), "far press restarts the run");
+    assert_eq!(probe(&mut h), 1, "far press restarts the run");
     h.release();
 }
 

@@ -42,16 +42,24 @@ fn button_watching_buttons(ui: &mut Ui) {
     ui.watch_pointer(PointerWake::BUTTONS);
 }
 
-/// One warm frame of `record`, plus the button's arranged rect — the
-/// press/release coordinates are derived from it rather than assumed, so
-/// the tests don't silently drift with root alignment.
-fn warm(record: fn(&mut Ui)) -> (UiHarness, Rect) {
+/// A harness one frame into `record`, and where its button landed.
+#[derive(Debug)]
+struct Warm {
+    h: UiHarness,
+    /// The button's rect — the press/release coordinates are derived
+    /// from it rather than assumed, so the tests don't silently drift
+    /// with root alignment.
+    button: Rect,
+}
+
+/// One warm frame of `record`.
+fn warm(record: fn(&mut Ui)) -> Warm {
     let mut h = UiHarness::new(SURFACE);
     h.frame(record);
     let rect = h
         .rect(button_id())
         .expect("the button arranged on the warm frame");
-    (h, rect)
+    Warm { h, button: rect }
 }
 
 /// Record passes the next frame, 16 ms on, runs — 1 for no settle, 2 for
@@ -69,7 +77,10 @@ fn passes(h: &mut UiHarness, record: fn(&mut Ui)) -> usize {
 fn a_bare_press_does_not_settle_but_a_watched_one_does() {
     // The capture reaches only the press target and `focused` is read
     // live, so nothing recorded earlier in the pass can be stale.
-    let (mut h, rect) = warm(button);
+    let Warm {
+        mut h,
+        button: rect,
+    } = warm(button);
     h.press_at(rect.center());
     assert_eq!(
         passes(&mut h, button),
@@ -79,7 +90,10 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
 
     // Same press, but a `BUTTONS` subscriber makes the write opaque —
     // this is the arm `Modal` relies on to dismiss itself.
-    let (mut h, rect) = warm(button_watching_buttons);
+    let Warm {
+        mut h,
+        button: rect,
+    } = warm(button_watching_buttons);
     h.press_at(rect.center());
     assert_eq!(
         passes(&mut h, button_watching_buttons),
@@ -89,7 +103,7 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
 
     // A press that hits nothing at all still settles nothing, and (unlike
     // the two above) does not even need to record.
-    let (mut h, _) = warm(button);
+    let Warm { mut h, .. } = warm(button);
     h.press_at(Vec2::new(180.0, 180.0));
     assert_eq!(
         passes(&mut h, button),
@@ -104,7 +118,10 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
     // this edge, so it keeps its settle.
     // The press lands a frame before its release (`InputQueue`), so the
     // release frame is the one measured.
-    let (mut h, rect) = warm(button);
+    let Warm {
+        mut h,
+        button: rect,
+    } = warm(button);
     h.press_at(rect.center());
     h.frame(button);
     h.release();
@@ -113,7 +130,10 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
     // Slip off the button and release: `ReleaseKind::Miss`. The travel is
     // under DRAG_THRESHOLD so no drag latches — otherwise this would be a
     // `DragStopped` and settle for a different reason.
-    let (mut h, rect) = warm(button);
+    let Warm {
+        mut h,
+        button: rect,
+    } = warm(button);
     let edge = Vec2::new(rect.max().x - 1.0, rect.center().y);
     let off = edge + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0);
     assert!(
@@ -137,7 +157,10 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
 /// cost exactly one record pass each.
 #[test]
 fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
-    let (mut h, rect) = warm(button);
+    let Warm {
+        mut h,
+        button: rect,
+    } = warm(button);
     let origin = rect.center();
     let (base_settles, base_records) = (h.ui.frame_runtime().settle_frames, h.ui.frame_id());
 
@@ -165,7 +188,10 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
 
 #[test]
 fn a_drag_settles_on_its_latch_and_again_on_its_stop() {
-    let (mut h, rect) = warm(button);
+    let Warm {
+        mut h,
+        button: rect,
+    } = warm(button);
     let origin = rect.center();
 
     // Frame 1 of the gesture: crossing the threshold latches the drag,
