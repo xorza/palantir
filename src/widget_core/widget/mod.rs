@@ -84,6 +84,14 @@ impl Widget {
         Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
     }
 
+    /// Stack container along `axis`: [`Self::hstack`] for [`Axis::X`],
+    /// [`Self::vstack`] for [`Axis::Y`]. For code that picks the
+    /// direction at run time.
+    #[track_caller]
+    pub fn stack(axis: Axis) -> Self {
+        Self::new(NodeMode::Resolved(LayoutMode::Stack(axis)))
+    }
+
     /// Wrapping horizontal stack container for custom widgets.
     #[track_caller]
     pub fn wrap_hstack() -> Self {

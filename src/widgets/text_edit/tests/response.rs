@@ -122,10 +122,7 @@ fn reports_changed_on_same_length_overwrite() {
     h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     // Ctrl+A select-all, then type the replacement.
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.set_modifiers(Modifiers::NONE);
     let _ = frame(&mut h, &mut buf);
@@ -249,14 +246,8 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
             })
             .inner
     };
-    let shift = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
-    let ctrl = Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    };
+    let shift = Modifiers::SHIFT;
+    let ctrl = Modifiers::CTRL;
     for (key, mods, probe_mods, reaches_root) in [
         (Key::ArrowLeft, Modifiers::NONE, ShortcutMods::NONE, false),
         (Key::End, Modifiers::NONE, ShortcutMods::NONE, false),

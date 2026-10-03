@@ -719,10 +719,7 @@ fn surface_focus_loss_ends_every_capture_and_clears_modifiers() {
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(build_clickable);
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    }));
+    h.on_input(InputEvent::ModifiersChanged(Modifiers::CTRL));
     h.press_at(Vec2::new(40.0, 40.0));
     h.drag_to(Vec2::new(90.0, 40.0));
 

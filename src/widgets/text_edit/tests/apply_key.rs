@@ -308,10 +308,7 @@ fn max_chars_caps_typing_and_paste_through_show() {
     assert_eq!(buf, "abcd", "typing below the cap lands");
 
     h.set_clipboard_text("xyz");
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(buf, "abcdx", "the paste is cut to the one char that fits");

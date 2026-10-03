@@ -142,11 +142,8 @@ fn modifiers_wake_only_for_a_watcher() {
     // Focus alone still does not.
     h.set_focus(forged_focus());
     assert!(
-        !h.on_input(InputEvent::ModifiersChanged(Modifiers {
-            shift: true,
-            ..Modifiers::NONE
-        }))
-        .repaint_requested,
+        !h.on_input(InputEvent::ModifiersChanged(Modifiers::SHIFT))
+            .repaint_requested,
     );
     h.clear_focus();
 

@@ -69,10 +69,7 @@ fn a_command_chord_types_nothing_it_reports() {
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.on_input(InputEvent::KeyDown {
         key: Key::Char('a'),
         repeat: false,
@@ -591,10 +588,7 @@ fn a_tap_places_the_caret() {
 
     // Shift held, a tap at x = inner.min + 30 — 3.75 glyphs, boundary 4 —
     // extends from the caret at 2 instead of moving it: selection 2..4.
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::SHIFT);
     h.click_in(ed_id, Vec2::new(inner_left + 30.0, mid));
     h.frame(editor_at(&mut buf, None));
     let edit = &h.state::<TextEditState>(ed_id).edit;

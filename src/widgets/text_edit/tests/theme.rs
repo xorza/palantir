@@ -414,10 +414,7 @@ fn shift_end_paints_selection_highlight() {
     h.frame(|ui| {
         body(ui, &mut buf);
     });
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::End);
     let leaf = h.frame_value(|ui| body(ui, &mut buf));
 
@@ -480,10 +477,7 @@ fn click_without_drag_clears_prior_selection() {
 
     h.frame(editor_at(&mut buf, None));
     h.click_at(Vec2::new(60.0, 20.0));
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.set_modifiers(Modifiers::NONE);
     h.frame(editor_at(&mut buf, None));

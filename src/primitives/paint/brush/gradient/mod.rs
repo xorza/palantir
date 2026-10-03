@@ -52,27 +52,46 @@ pub enum Interp {
 }
 
 /// The per-kind half of a gradient: the geometry the shader projects a
-/// fragment onto, plus the two policies that follow from it.
+/// fragment onto. One implementor per gradient kind — [`LinearGeometry`],
+/// [`RadialGeometry`] and [`ConicGeometry`] — each beside the [`Gradient`]
+/// alias it names.
 ///
-/// One implementor per gradient kind, each in its own file beside the
-/// [`Gradient`] alias it names.
-pub trait GradientGeometry {
-    /// Interpolation space a freshly authored gradient of this kind
-    /// starts in, before [`Gradient::with_interp`] overrides it.
-    const DEFAULT_INTERP: Interp;
+/// Sealed: the renderer draws exactly these three kinds, so an outside
+/// implementation could not paint. The items live on `sealed::Geometry`,
+/// in a module private to the crate; the public trait is only the bound on
+/// [`Gradient`].
+///
+/// [`LinearGeometry`]: crate::LinearGeometry
+/// [`RadialGeometry`]: crate::RadialGeometry
+/// [`ConicGeometry`]: crate::ConicGeometry
+pub trait GradientGeometry: sealed::Geometry {}
 
-    /// The four axis lanes the shader reads, before `FillAxis` packs
-    /// them to f16. The layout is per-kind.
-    fn axis_lanes(&self) -> [f32; 4];
+impl<T: sealed::Geometry> GradientGeometry for T {}
 
-    /// Fold the geometry into a cache key.
-    ///
-    /// f32 fields go through `float_hash::canon_bits`, so `-0.0` / `+0.0` and
-    /// NaN bit patterns don't fragment command-buffer dedup.
-    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H);
+pub(crate) mod sealed {
+    use crate::primitives::paint::brush::gradient::Interp;
+    use std::hash;
 
-    /// Whether the geometry holds a NaN.
-    fn has_nan(&self) -> bool;
+    /// The items behind [`GradientGeometry`](super::GradientGeometry): the
+    /// renderer's view of one gradient kind.
+    pub trait Geometry {
+        /// Interpolation space a freshly authored gradient of this kind
+        /// starts in, before `Gradient::with_interp` overrides it.
+        const DEFAULT_INTERP: Interp;
+
+        /// The four axis lanes the shader reads, before `FillAxis` packs
+        /// them to f16. The layout is per-kind.
+        fn axis_lanes(&self) -> [f32; 4];
+
+        /// Fold the geometry into a cache key.
+        ///
+        /// f32 fields go through `float_hash::canon_bits`, so `-0.0` /
+        /// `+0.0` and NaN bit patterns don't fragment command-buffer dedup.
+        fn hash_geometry<H: hash::Hasher>(&self, state: &mut H);
+
+        /// Whether the geometry holds a NaN.
+        fn has_nan(&self) -> bool;
+    }
 }
 
 /// A gradient of any kind: `geometry` maps each point of the fill to a

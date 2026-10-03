@@ -355,7 +355,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
     ] {
         let mut h = UiHarness::new(case.viewport);
         let root = h.frame_value(|ui| {
-            let panel = Panel::stack_on(case.axis);
+            let panel = Panel::stack(case.axis);
             panel
                 .auto_id()
                 .size(case.axis.compose_size(200.0, 40.0))
@@ -367,7 +367,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                         .show(ui);
 
                     let hug_size = case.axis.compose_sizing(Sizing::HUG, Sizing::fixed(10.0));
-                    let hug = Panel::stack_on(case.axis);
+                    let hug = Panel::stack(case.axis);
                     hug.id(WidgetId::from_hash((case.label, "hug")))
                         .size(hug_size)
                         .show(ui, |ui| {

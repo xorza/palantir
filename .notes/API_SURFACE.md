@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `a488e118`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `21eb3fad`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -280,6 +280,7 @@ struct           widget::Widget
     fn leaf()
     fn hstack()
     fn vstack()
+    fn stack(axis)
     fn wrap_hstack()
     fn wrap_vstack()
     fn zstack()
@@ -553,10 +554,14 @@ struct           KeyText
     fn is_empty(self)
     traits: Clone, Copy, Debug, Default, Eq, PartialEq, StructuralPartialEq
 struct           Modifiers
-    fields: shift, ctrl, alt, mac_ctrl
+    fields: ctrl, shift, alt, mac_ctrl
     assoc_const NONE
+    assoc_const SHIFT
+    assoc_const CTRL
+    assoc_const ALT
+    assoc_const CTRL_SHIFT
     const fn any_command(self)
-    traits: Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
+    traits: Clone, Copy, Debug, Default, Eq, From, Hash, PartialEq, StructuralPartialEq
 enum             PointerButton
     variants: Left, Right, Middle
     traits: Clone, Copy, Debug, Eq, Hash, PartialEq, StructuralPartialEq
@@ -601,9 +606,9 @@ struct           ShortcutMods
     assoc_const NONE
     assoc_const SHIFT
     assoc_const CTRL
+    assoc_const ALT
     assoc_const CTRL_SHIFT
-    const fn from_event(m)
-    traits: Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
+    traits: Clone, Copy, Debug, Default, Eq, From, Hash, PartialEq, StructuralPartialEq
 struct           KeyboardWake
     assoc_const KEY
     assoc_const MODIFIER
@@ -805,7 +810,7 @@ struct           ColorRamp
     traits: Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize, StructuralPartialEq
 struct           ConicGeometry
     fields: center, start_angle
-    traits: Clone, Copy, Debug, Deserialize, GradientGeometry, PartialEq, Serialize, StructuralPartialEq
+    traits: Clone, Copy, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 type_alias       ConicGradient
 type_alias       ConicGradientBuilder
 struct           GradientBuilder
@@ -816,12 +821,12 @@ struct           GradientBuilder
     traits: Clone, Debug, From
 struct           LinearGeometry
     fields: angle
-    traits: Clone, Copy, Debug, Deserialize, GradientGeometry, PartialEq, Serialize, StructuralPartialEq
+    traits: Clone, Copy, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 type_alias       LinearGradient
 type_alias       LinearGradientBuilder
 struct           RadialGeometry
     fields: center, radius
-    traits: Clone, Copy, Debug, Deserialize, GradientGeometry, PartialEq, Serialize, StructuralPartialEq
+    traits: Clone, Copy, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 type_alias       RadialGradient
 type_alias       RadialGradientBuilder
 struct           GradientStops
@@ -848,7 +853,7 @@ struct           Gradient
     const fn is_noop(self)
     traits: Clone, Debug, Deserialize, From, Hash, PartialEq, Serialize, StructuralPartialEq
 trait            GradientGeometry
-    items: DEFAULT_INTERP, axis_lanes, hash_geometry, has_nan
+    items: 
 enum             Interp
     variants: Oklab, Linear
     traits: Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize, StructuralPartialEq
@@ -1392,6 +1397,7 @@ struct           Panel
     fn show(self, ui, body)
     fn hstack()
     fn vstack()
+    fn stack(axis)
     fn wrap_hstack()
     fn wrap_vstack()
     fn zstack()

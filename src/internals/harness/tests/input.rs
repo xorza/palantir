@@ -83,10 +83,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
 fn modifiers_are_sticky_until_set_back() {
     // Rule 13. `ModifiersChanged` carries a snapshot that persists, so
     // every later key inherits it until something sets it back.
-    let ctrl = Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    };
+    let ctrl = Modifiers::CTRL;
     let mut harness = UiHarness::new(SURFACE);
 
     // The set under test is `InputState`'s, not a copy on the harness —

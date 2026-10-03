@@ -315,13 +315,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
     assert_eq!(painted, RgbaF32::BLACK);
 
     let states = [
-        (
-            Modifiers {
-                alt: true,
-                ..Modifiers::NONE
-            },
-            RgbaF32::srgb(1.0, 0.0, 0.0),
-        ),
+        (Modifiers::ALT, RgbaF32::srgb(1.0, 0.0, 0.0)),
         (
             Modifiers {
                 alt: true,
@@ -330,13 +324,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
             },
             RgbaF32::WHITE,
         ),
-        (
-            Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-            RgbaF32::srgb(0.0, 0.0, 1.0),
-        ),
+        (Modifiers::CTRL, RgbaF32::srgb(0.0, 0.0, 1.0)),
         (Modifiers::NONE, RgbaF32::BLACK),
     ];
     for (modifiers, expected) in states {
@@ -365,10 +353,7 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     // (Avoid ctrl here: on macOS, raw Ctrl isn't represented in
     // `Shortcut`'s `ShortcutMods` vocabulary, so ctrl+Escape would *match*
     // Shortcut::key(Escape) — a documented platform compromise.)
-    let alt = Modifiers {
-        alt: true,
-        ..Modifiers::NONE
-    };
+    let alt = Modifiers::ALT;
     h.set_modifiers(alt);
     let delta = h.key(Key::Escape);
     assert!(!delta.repaint_requested);
@@ -533,10 +518,7 @@ fn peeks_return_the_watched_value_without_asserting_the_watch() {
         "peek_pointer_pos must not",
     );
 
-    let mods = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
+    let mods = Modifiers::SHIFT;
     assert!(
         watched
             .on_input(InputEvent::ModifiersChanged(mods))

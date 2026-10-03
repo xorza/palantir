@@ -402,10 +402,7 @@ fn selection_rects_offset_matches_text() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click_at(Vec2::new(260.0, 20.0));
     h.key(Key::Home);
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowRight);
     h.key(Key::ArrowRight);
     h.set_modifiers(Modifiers::NONE);

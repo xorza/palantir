@@ -61,10 +61,7 @@ fn multiline_paste_keeps_newlines() {
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
     h.frame(multiline_editor(&mut buf));
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
@@ -87,10 +84,7 @@ fn multiline_selection_crosses_newline() {
         st.edit.caret = 3;
     }
     h.frame(multiline_editor(&mut buf));
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowDown);
     h.frame(multiline_editor(&mut buf));
     let st = h.state::<TextEditState>(ed_id).clone();

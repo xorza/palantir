@@ -381,14 +381,8 @@ fn is_document_nav(keypress: KeyPress) -> bool {
 /// The chord that moves by word with an arrow: Alt on macOS, where Cmd
 /// is the line chord, and Ctrl elsewhere.
 const WORD_NAV: Modifiers = match PLATFORM {
-    Platform::Mac => Modifiers {
-        alt: true,
-        ..Modifiers::NONE
-    },
-    _ => Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    },
+    Platform::Mac => Modifiers::ALT,
+    _ => Modifiers::CTRL,
 };
 
 /// [`WORD_NAV`] held without the other of Ctrl and Alt.

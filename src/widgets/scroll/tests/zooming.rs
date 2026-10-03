@@ -314,10 +314,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
     h.move_onto(scroll_id);
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     let line_px = TextStyle::default().line_height_for(16.0);
     h.scroll_pixels(Vec2::new(0.0, 2.0 * line_px));
     h.frame(build_zoom);
@@ -359,10 +356,7 @@ fn wheel_zoom_step_is_font_independent() {
         h.frame(build_zoom);
 
         h.move_onto(WidgetId::from_hash("fz"));
-        h.set_modifiers(Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        });
+        h.set_modifiers(Modifiers::CTRL);
         h.scroll_lines(Vec2::new(0.0, 1.0));
         h.frame(build_zoom);
 
@@ -562,10 +556,7 @@ fn zoom_modifier_picks_which_wheel_zooms() {
         (ZoomModifier::Always, step, step),
         (ZoomModifier::PinchOnly, 1.0, 1.0),
     ] {
-        let ctrl_held = Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        };
+        let ctrl_held = Modifiers::CTRL;
         for (held, want) in [(Modifiers::NONE, bare), (ctrl_held, ctrl)] {
             let mut h = UiHarness::new(SURFACE);
             let config = ZoomConfig::default().with_modifier(modifier);
