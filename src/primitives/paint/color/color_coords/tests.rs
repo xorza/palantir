@@ -89,6 +89,13 @@ fn raw_axes_coerce_on_conversion() {
             let want = axes(model, ch, cs, cv).to_color();
             assert_eq!(got, want, "{model:?} ({h}, {s}, {v})");
             assert!(domain::is_color(got), "{model:?}: {got:?}");
+            let read = axes(model, h, s, v);
+            for axis in [read.hue(), read.sat(), read.val()] {
+                assert!(
+                    domain::is_fraction(axis),
+                    "{model:?}: the getters read {axis}"
+                );
+            }
         }
     }
 }
