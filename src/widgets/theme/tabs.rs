@@ -10,8 +10,9 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 
 /// Visuals for [`crate::TabStrip`], and so for [`crate::TabbedView`] and
 /// every [`crate::DockView`] pane that records one.
@@ -103,7 +104,7 @@ pub struct TabsTheme {
 impl TabsTheme {
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             active,
             inactive,
@@ -156,23 +157,23 @@ impl TabsTheme {
     pub fn from_palette(p: &Palette) -> Self {
         let corner = 4.0;
         let top = Corners::top(corner);
-        let inactive_text = Some(TextStyle::default().with_color(p.text_muted));
-        let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
-        let chip = |fill: RgbaF32, text: Option<TextStyle>| WidgetLook {
+        let inactive_text = TextStyleOverrides::NONE.with_color(p.text_muted);
+        let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
+        let chip = |fill: RgbaF32, text: TextStyleOverrides| WidgetLook {
             background: Background::rounded(fill, top),
             text,
         };
         Self {
             active: StatefulLook {
-                normal: chip(p.window_bg, None),
-                hovered: chip(p.window_bg, None),
-                active: chip(p.window_bg, None),
+                normal: chip(p.window_bg, TextStyleOverrides::NONE),
+                hovered: chip(p.window_bg, TextStyleOverrides::NONE),
+                active: chip(p.window_bg, TextStyleOverrides::NONE),
                 disabled: chip(p.window_bg, disabled_text),
             },
             inactive: StatefulLook {
                 normal: chip(p.elem_mid, inactive_text),
                 hovered: chip(p.elem_strong, inactive_text),
-                active: chip(p.elem_strong, None),
+                active: chip(p.elem_strong, TextStyleOverrides::NONE),
                 disabled: chip(p.elem, disabled_text),
             },
             accent: p.accent,
@@ -195,12 +196,12 @@ impl TabsTheme {
                 },
                 hovered: WidgetLook {
                     background: Background::rounded(p.elem_strong, Corners::all(3.0)),
-                    text: None,
+                    text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
                     background: Background::rounded(p.elem_strong, Corners::all(3.0))
                         .with_border(Stroke::new(p.border_focused, 1.0)),
-                    text: None,
+                    text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
                     background: Background::NONE,

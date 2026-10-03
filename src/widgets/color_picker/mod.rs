@@ -468,7 +468,7 @@ fn values_grid(
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("HEX")
-                        .style(&theme.label)
+                        .style(&theme.label.apply(&ui.theme().text))
                         .id(id.with("hex-label"))
                         .show(ui);
                     let hex = TextEdit::new(&mut state.hex)
@@ -574,7 +574,7 @@ fn value_cell(
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             Text::new(caption)
-                .style(&theme.label)
+                .style(&theme.label.apply(&ui.theme().text))
                 .id(cell_id.with("label"))
                 .show(ui);
             let r = DragValue::new(value)

@@ -10,8 +10,9 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live
@@ -50,19 +51,19 @@ impl ButtonTheme {
             looks: StatefulLook {
                 normal: WidgetLook {
                     background: bg(p.elem_mid),
-                    text: None,
+                    text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
                     background: bg(p.elem_strong),
-                    text: None,
+                    text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
                     background: pressed_bg,
-                    text: None,
+                    text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
                     background: bg(p.elem),
-                    text: Some(TextStyle::default().with_color(p.text_disabled)),
+                    text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },
             defaults: SlotDefaults {
@@ -73,10 +74,10 @@ impl ButtonTheme {
         }
     }
 
-    /// Visit every `TextStyle` this theme owns — drives `Theme::scale_text`.
+    /// Visit every text slot this theme owns — drives `Theme::scale_text`.
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self { looks, defaults: _ } = self;
         looks.for_each_text(f);
     }
@@ -101,7 +102,7 @@ impl ButtonTheme {
     pub fn menu_button(p: &Palette) -> Self {
         let flat = |fill: Brush| WidgetLook {
             background: Background::rounded(fill, Corners::all(4.0)),
-            text: None,
+            text: TextStyleOverrides::NONE,
         };
         Self {
             looks: StatefulLook {

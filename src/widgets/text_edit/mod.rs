@@ -144,13 +144,12 @@ impl<'a> TextEdit<'a> {
             .clip_rect();
         // `Node::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
-        // `.padding(...)`. Same renderer semantics as before; the
-        // value just lives on the theme instead of hard-coded here.
+        // `.padding(...)`.
         Self {
             widget,
             text,
             style: None,
-            overrides: TextStyleOverrides::default(),
+            overrides: TextStyleOverrides::NONE,
             placeholder: "",
             multiline: false,
             text_align: None,
@@ -165,9 +164,10 @@ impl<'a> TextEdit<'a> {
     ///
     /// All-or-nothing. To tweak one axis, build and share a bundle:
     /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`.
-    /// Buffer font/leading/color live on the per-state `text` slot (a
-    /// [`crate::TextStyle`]) — `None` there inherits [`crate::Theme::text`]
-    /// like every other text-rendering widget.
+    /// Buffer font/leading/color live on the per-state `text` overrides (a
+    /// [`crate::TextStyleOverrides`]) — every axis left unset there
+    /// inherits [`crate::Theme::text`] like every other text-rendering
+    /// widget.
     pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
         self.style = s.into();
         self
@@ -360,12 +360,6 @@ impl<'a> TextEdit<'a> {
         // this one value — a second copy taken before the fold would
         // report a freshly disabled field as live.
         let mut response = self.widget.response(ui);
-        // Pick the per-state look + animate its visual components.
-        // Disabled wins over focus — a disabled editor that still
-        // happens to hold focus paints with its disabled visuals
-        // (mirrors Button). State.disabled comes from the cascade
-        // (one-frame stale); OR self-disabled in for lag-free
-        // response to a freshly toggled `.disabled(true)`.
         // A disabled editor must not keep keyboard focus — it would
         // paint disabled while still routing typing / paste / undo
         // into the host's buffer. Kick focus out (mirrors `DragValue`'s

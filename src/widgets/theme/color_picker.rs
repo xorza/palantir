@@ -5,13 +5,12 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
-use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
-use crate::widgets::theme::Theme;
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 
 /// Visuals and geometry for [`crate::ColorPicker`] and the four widgets it
 /// arranges — [`crate::ColorField`], [`crate::ColorStrip`],
@@ -86,8 +85,10 @@ pub struct ColorPickerTheme {
     /// changing rather than a row rearranging itself.
     ///
     /// Built from the stock bundle at [`Self::from_palette`], so an app that
-    /// restyles [`Theme::text`](crate::Theme) does not move these with it.
-    /// Rebuild this field alongside it if that matters.
+    /// restyles [`Theme::drag_value`](crate::Theme) does not move these with
+    /// it. Rebuild this field alongside it if that matters. The text names
+    /// only its face and size, so every other axis follows
+    /// [`Theme::text`](crate::Theme).
     pub value: DragValueTheme,
     /// What the hex field wears: [`Theme::text_edit`](crate::Theme) in the
     /// same face, for the same reason.
@@ -97,7 +98,10 @@ pub struct ColorPickerTheme {
     /// Over rather than beside: a four-column row of a 208 px panel leaves
     /// about 35 px beside a label, which is two digits and a half. Above it,
     /// the number gets the whole column.
-    pub label: TextStyle,
+    ///
+    /// Text axes the caption sets over [`Theme::text`](crate::Theme).
+    #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
+    pub label: TextStyleOverrides,
 }
 
 /// Font size the channel values and the hex field are set at.
@@ -110,37 +114,23 @@ const VALUE_FONT_PX: f32 = 13.0;
 /// Padding a value chip takes, so the column's width goes to the number.
 const VALUE_PADDING: f32 = 5.0;
 
-/// Put `look`'s text in the monospace face at the value size, keeping
-/// whatever colour it already carries — or the ambient style's, where it
-/// carries none.
-fn mono_look(look: &mut WidgetLook, ambient: TextStyle) {
-    let base = look.text.unwrap_or(ambient);
-    look.text = Some(TextStyle {
-        family: FontFamily::MONO,
-        ..base.with_font_size(VALUE_FONT_PX)
-    });
-}
-
-fn mono_states(looks: &mut StatefulLook, ambient: TextStyle) {
+/// Put every state's text in the monospace face at the value size. The
+/// other axes stay whatever each look already overrides, or inherits.
+fn mono_states(looks: &mut StatefulLook) {
     for look in [
         &mut looks.normal,
         &mut looks.hovered,
         &mut looks.active,
         &mut looks.disabled,
     ] {
-        mono_look(look, ambient);
+        look.text.family = Some(FontFamily::MONO);
+        look.text.font_size_px = Some(VALUE_FONT_PX);
     }
-}
-
-/// The style a look without one of its own inherits: the theme's own
-/// `text`, from the one place `Theme::from_palette` builds it.
-fn ambient(p: &Palette) -> TextStyle {
-    Theme::text_from_palette(p)
 }
 
 fn mono_edit(p: &Palette) -> TextEditTheme {
     let mut edit = TextEditTheme::from_palette(p);
-    mono_states(&mut edit.looks, ambient(p));
+    mono_states(&mut edit.looks);
     edit.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
     edit
 }
@@ -150,7 +140,7 @@ impl ColorPickerTheme {
     /// field. Destructures the whole struct so a new field has to be
     /// classified here before it compiles, which is the guarantee
     /// [`Theme::scale_text`](crate::Theme::scale_text) rides on.
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             value,
             hex,
@@ -175,7 +165,7 @@ impl ColorPickerTheme {
         } = self;
         value.for_each_text(f);
         hex.for_each_text(f);
-        f(label);
+        f(ThemeText::Overrides(label));
     }
 
     /// The picker's geometry is fixed; only its handle and swatch colours
@@ -204,14 +194,14 @@ impl ColorPickerTheme {
             // its text exactly where they were.
             value: {
                 let mut chip = DragValueTheme::from_palette(p).chip;
-                mono_states(&mut chip.looks, ambient(p));
+                mono_states(&mut chip.looks);
                 chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
                 DragValueTheme::from_chip(chip, &TextEditTheme::from_palette(p))
             },
             hex: mono_edit(p),
-            label: TextStyle {
-                family: FontFamily::MONO,
-                ..TextStyle::default()
+            label: TextStyleOverrides {
+                family: Some(FontFamily::MONO),
+                ..TextStyleOverrides::NONE
                     .with_color(p.text_muted)
                     .with_font_size(10.0)
             },

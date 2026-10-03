@@ -8,10 +8,10 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::separator::SeparatorTheme;
-use crate::widgets::theme::text_style::TextStyle;
 
 /// Visuals for [`crate::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
@@ -50,7 +50,7 @@ impl ContextMenuTheme {
     /// `panel` / `separator` are chrome only; the rows carry the text.
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             item,
             panel: _,

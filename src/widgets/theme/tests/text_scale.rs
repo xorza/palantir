@@ -5,39 +5,66 @@ use super::pretty;
 use crate::widgets::theme::Theme;
 use ron::ser;
 
+/// The size a disabled button shapes its label at. The look names only
+/// the colour, so this is always `theme.text`'s size.
 fn disabled_size(theme: &Theme) -> f32 {
     theme
         .button
         .looks
         .disabled
+        .to_animated(theme.text)
         .text
-        .as_ref()
-        .expect("button disabled has a text override")
         .font_size_px
+}
+
+/// The size the tooltip names for its text.
+fn tooltip_size(theme: &Theme) -> f32 {
+    theme
+        .tooltip
+        .text
+        .font_size_px
+        .expect("the tooltip overrides the size")
+}
+
+/// The size the picker's value chips name for themselves.
+fn value_size(theme: &Theme) -> f32 {
+    theme
+        .color_picker
+        .value
+        .chip
+        .looks
+        .normal
+        .text
+        .font_size_px
+        .expect("the picker's value chips override the size")
 }
 
 #[test]
 fn scale_text_is_relative_and_total() {
     let mut theme = Theme::default();
     let body = theme.text.font_size_px;
-    let tooltip = theme.tooltip.text.font_size_px;
-    let disabled = disabled_size(&theme);
+    let tooltip = tooltip_size(&theme);
+    let value = value_size(&theme);
+    assert_eq!(disabled_size(&theme), body);
 
     theme.scale_text(2.0);
     assert_eq!(theme.text.font_size_px, body * 2.0);
-    assert_eq!(theme.tooltip.text.font_size_px, tooltip * 2.0);
-    assert_eq!(disabled_size(&theme), disabled * 2.0);
+    assert_eq!(tooltip_size(&theme), tooltip * 2.0);
+    assert_eq!(value_size(&theme), value * 2.0);
+    assert_eq!(disabled_size(&theme), body * 2.0);
 
     // Composes: 2.0 × 0.75 = 1.5, not 0.75.
     theme.scale_text(0.75);
     assert_eq!(theme.text.font_size_px, body * 1.5);
-    assert_eq!(theme.tooltip.text.font_size_px, tooltip * 1.5);
+    assert_eq!(tooltip_size(&theme), tooltip * 1.5);
+    assert_eq!(value_size(&theme), value * 1.5);
 
     // And inverts back to the baseline: 1.5 × (1 / 1.5) = 1.0.
     theme.scale_text(1.0 / 1.5);
     assert_eq!(theme.text.font_size_px, body);
-    assert_eq!(theme.tooltip.text.font_size_px, tooltip);
-    assert_eq!(disabled_size(&theme), disabled);
+    assert_eq!(tooltip_size(&theme), tooltip);
+    assert_eq!(value_size(&theme), value);
+    assert_eq!(disabled_size(&theme), body);
 }
 
 #[test]
@@ -140,10 +167,21 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
             "line_height_mult: 1.2",
             "line_height_mult: inf",
         ),
+        (
+            "zero override font",
+            "font_size_px: Some(13.0)",
+            "font_size_px: Some(0.0)",
+        ),
+        (
+            "NaN override font",
+            "font_size_px: Some(13.0)",
+            "font_size_px: Some(NaN)",
+        ),
     ];
 
     for (label, from, to) in cases {
         let invalid = valid.replacen(from, to, 1);
+        assert_ne!(invalid, valid, "{label}: `{from}` is not in the theme");
         let error = ron::from_str::<Theme>(&invalid).expect_err(label);
         assert!(
             error.to_string().contains(GlyphFont::METRICS_ERROR),
@@ -157,19 +195,39 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::math::approx::EPS;
     const FACTOR: &str = "text scale factor must be finite and positive";
     const RESULT: &str = "text scale would make font size or line height invalid";
-    for (label, factor, expected) in [
-        ("zero", 0.0, FACTOR),
-        ("negative", -1.0, FACTOR),
-        ("not a number", f32::NAN, FACTOR),
-        ("infinite", f32::INFINITY, FACTOR),
-        ("overflow", f32::MAX, RESULT),
-        ("sub-epsilon result", EPS / 32.0, RESULT),
+    // A look's override is checked as the face it folds into. The first
+    // overflows on its own size: f32::MAX / 2 × 4 is inf, while the ambient
+    // 16 × 4 = 64 is fine. The second is valid alone and against the ambient
+    // at 1×, but at 1/1000 its leading is 16 × 0.001 × 0.001 = 0.000016 px,
+    // under EPS = 0.0001, while the ambient's own 0.016 × 1.2 is above it.
+    let big_override = |theme: &mut Theme| {
+        theme.button.looks.normal.text.font_size_px = Some(f32::MAX / 2.0);
+    };
+    let tight_override = |theme: &mut Theme| {
+        theme.button.looks.normal.text.line_height_mult = Some(0.001);
+    };
+    let untouched = |_: &mut Theme| {};
+    for (label, setup, factor, expected) in [
+        ("zero", &untouched as &dyn Fn(&mut Theme), 0.0, FACTOR),
+        ("negative", &untouched, -1.0, FACTOR),
+        ("not a number", &untouched, f32::NAN, FACTOR),
+        ("infinite", &untouched, f32::INFINITY, FACTOR),
+        ("overflow", &untouched, f32::MAX, RESULT),
+        ("sub-epsilon result", &untouched, EPS / 32.0, RESULT),
+        ("override size overflow", &big_override, 4.0, RESULT),
+        ("override leading", &tight_override, 0.001, RESULT),
     ] {
         let mut theme = Theme::default();
+        setup(&mut theme);
         let before = pretty(&theme);
         panic_probe::assert_panics_with(expected, || theme.scale_text(factor));
         let after = pretty(&theme);
         assert_eq!(after, before, "{label}: theme was partially mutated");
+    }
+    // The default theme takes both override cases' factors, so the
+    // override is what each of them rejects.
+    for factor in [4.0, 0.001] {
+        Theme::default().scale_text(factor);
     }
 }
 
@@ -181,46 +239,19 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
 fn scaled_theme_survives_a_serde_roundtrip() {
     let baseline = Theme::default();
     let body_font_size = baseline.text.font_size_px;
-    let tooltip_font_size = baseline.tooltip.text.font_size_px;
-    let disabled_font_size = baseline
-        .button
-        .looks
-        .disabled
-        .text
-        .as_ref()
-        .expect("button disabled has a text override")
-        .font_size_px;
+    let tooltip_font_size = tooltip_size(&baseline);
+    let value_font_size = value_size(&baseline);
     let mut scaled = baseline;
     scaled.scale_text(2.0);
 
     let serialized = pretty(&scaled);
     let mut parsed = ron::from_str::<Theme>(&serialized).expect("parse scaled theme");
     assert_eq!(parsed.text.font_size_px, body_font_size * 2.0);
-    assert_eq!(parsed.tooltip.text.font_size_px, tooltip_font_size * 2.0);
-    assert_eq!(
-        parsed
-            .button
-            .looks
-            .disabled
-            .text
-            .as_ref()
-            .expect("button disabled has a text override")
-            .font_size_px,
-        disabled_font_size * 2.0,
-    );
+    assert_eq!(tooltip_size(&parsed), tooltip_font_size * 2.0);
+    assert_eq!(value_size(&parsed), value_font_size * 2.0);
 
     parsed.scale_text(0.75);
     assert_eq!(parsed.text.font_size_px, body_font_size * 1.5);
-    assert_eq!(parsed.tooltip.text.font_size_px, tooltip_font_size * 1.5);
-    assert_eq!(
-        parsed
-            .button
-            .looks
-            .disabled
-            .text
-            .as_ref()
-            .expect("button disabled has a text override")
-            .font_size_px,
-        disabled_font_size * 1.5,
-    );
+    assert_eq!(tooltip_size(&parsed), tooltip_font_size * 1.5);
+    assert_eq!(value_size(&parsed), value_font_size * 1.5);
 }

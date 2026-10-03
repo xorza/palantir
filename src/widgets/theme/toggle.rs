@@ -12,8 +12,9 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for two-state toggles — [`crate::Checkbox`],
@@ -24,9 +25,9 @@ use glam::Vec2;
 /// The chrome painted on the small box/pip comes from
 /// `checked.pick(state)` or `unchecked.pick(state)`; the indicator
 /// (check polyline, radio dot) uses [`Self::indicator`]. The label
-/// reads through the same `pick`'s `text` slot (defaults: `None` on
-/// active states inherits `Theme::text`, `disabled` carries
-/// `TEXT_DISABLED`) — same flow as Button.
+/// reads through the same `pick`'s `text` overrides (defaults: none on
+/// active states, so they inherit `Theme::text`; `disabled` names the
+/// palette's `text_disabled` colour alone) — same flow as Button.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToggleTheme {
     /// Chrome for the box or pip while the value is `false`.
@@ -70,7 +71,7 @@ pub struct ToggleTheme {
 impl ToggleTheme {
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             unchecked,
             checked,
@@ -161,19 +162,19 @@ impl ToggleTheme {
         let edge = p.border_strong();
         let bg =
             |fill: RgbaF32, stroke: Stroke| Background::rounded(fill, radius).with_border(stroke);
-        let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
+        let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {
                 background: bg(p.elem_mid, Stroke::new(edge, 1.0)),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
                 background: bg(p.elem_strong, Stroke::new(edge, 1.0)),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
                 background: bg(p.elem_strong, Stroke::new(p.border_focused, 1.0)),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
                 background: bg(p.elem, Stroke::new(p.border_soft(), 1.0)),
@@ -184,15 +185,15 @@ impl ToggleTheme {
         let checked = StatefulLook {
             normal: WidgetLook {
                 background: bg(acc, Stroke::ZERO),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
                 background: bg(acc, Stroke::ZERO),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
                 background: bg(acc, Stroke::new(p.border_focused, 1.0)),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
                 background: bg(acc.with_alpha(0.45), Stroke::ZERO),

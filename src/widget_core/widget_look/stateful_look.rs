@@ -3,7 +3,7 @@
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::widget_core::widget_look::WidgetLook;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::ThemeText;
 
 /// The uniform four-state look pack every state-styled widget theme
 /// carries: `normal` / `hovered` / `active` / `disabled`. `active` is
@@ -46,7 +46,7 @@ impl StatefulLook {
 
     /// Destructured so a new state fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             normal,
             hovered,

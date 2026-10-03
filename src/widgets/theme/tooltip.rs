@@ -8,8 +8,9 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 use std::time::Duration;
 
@@ -21,8 +22,9 @@ use std::time::Duration;
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
     pub panel: Background,
-    /// Text inside the bubble.
-    pub text: TextStyle,
+    /// Text axes the bubble sets over [`Theme::text`](crate::Theme).
+    #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
+    pub text: TextStyleOverrides,
     /// Padding between chrome and the text.
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is
@@ -45,10 +47,10 @@ pub struct TooltipTheme {
 }
 
 impl TooltipTheme {
-    /// Visit every `TextStyle` this theme owns — drives `Theme::scale_text`.
+    /// Visit every text slot this theme owns — drives `Theme::scale_text`.
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             text,
             panel: _,
@@ -58,7 +60,7 @@ impl TooltipTheme {
             warmup: _,
             gap: _,
         } = self;
-        f(text);
+        f(ThemeText::Overrides(text));
     }
 
     /// A small raised bubble with a soft drop shadow.
@@ -72,7 +74,7 @@ impl TooltipTheme {
             ));
         Self {
             panel,
-            text: TextStyle::default().with_font_size(13.0).with_color(p.text),
+            text: TextStyleOverrides::NONE.with_font_size(13.0),
             padding: Spacing::xy(6.0, 4.0),
             max_size: Size::new(280.0, f32::INFINITY),
             delay: Duration::from_millis(500),

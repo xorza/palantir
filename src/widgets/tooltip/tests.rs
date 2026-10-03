@@ -127,6 +127,35 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     );
 }
 
+/// The bubble's text names only its 13 px size, so the leading is
+/// `Theme::text`'s, set after the theme was built: "tip" at 2× leads at
+/// 13 × 2 = 26 px rather than the stock 15.59375, and stays 3 × 6.5 wide.
+#[test]
+fn tooltip_text_inherits_the_ambient_leading() {
+    let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().text.line_height_mult = 2.0;
+    let snapshot = ResponseSnapshot {
+        id: WidgetId::from_hash("leading-trigger"),
+        state: ResponseState {
+            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+            pointer_over: true,
+            ..ResponseState::default()
+        },
+    };
+    h.frame(|ui| {
+        Tooltip::on(&snapshot)
+            .label("tip")
+            .delay(Duration::ZERO)
+            .show(ui);
+    });
+    let shaped =
+        h.ui.layout(Layer::Tooltip)
+            .text_shapes
+            .first()
+            .expect("tooltip text shaped");
+    assert_eq!(shaped.extent.size, Size::new(19.5, 26.0));
+}
+
 /// The bubble takes its box from [`Configure`] like any other widget —
 /// `Tooltip` used to hand-roll `padding` / `max_size` and offer nothing
 /// else, so `margin` here is a setter it simply did not have.
@@ -464,7 +493,6 @@ fn hover_clears_after_tooltip_visible() {
         "precondition: tooltip visible while hovering"
     );
 
-    // Move the pointer far away from both trigger and bubble.
     let away = Vec2::new(350.0, 250.0);
     h.move_to(away);
     t += 0.1;

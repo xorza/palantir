@@ -7,8 +7,9 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`] — and only for what is dock-specific.
@@ -46,7 +47,7 @@ pub struct DockTheme {
 impl DockTheme {
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             ghost,
             preview_fill: _,
@@ -70,7 +71,7 @@ impl DockTheme {
             ghost: WidgetLook {
                 background: Background::rounded(p.elem, Corners::all(4.0))
                     .with_border(Stroke::new(p.accent, 1.0)),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             ghost_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),
             ghost_offset: Vec2::new(14.0, 18.0),

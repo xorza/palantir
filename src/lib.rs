@@ -329,7 +329,6 @@ pub mod widget {
     pub use crate::widget_core::widget::Widget;
     pub use crate::widget_core::widget_look::look_plan::LookPlan;
     pub use crate::widget_core::widget_look::theme_slot::ThemeSlot;
-    pub use crate::widgets::theme::text_style::TextStyleOverrides;
     pub use palantir_anim_derive::Animatable;
 }
 
@@ -541,7 +540,7 @@ pub use widgets::theme::spinner::SpinnerTheme;
 pub use widgets::theme::splitter::SplitterTheme;
 pub use widgets::theme::tabs::TabsTheme;
 pub use widgets::theme::text_edit::TextEditTheme;
-pub use widgets::theme::text_style::TextStyle;
+pub use widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::tooltip::Tooltip;

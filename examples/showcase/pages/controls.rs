@@ -11,8 +11,8 @@ use crate::support::{note_style, row, section};
 use palantir::{
     Align, AnimSpec, Background, Button, ButtonTheme, Checkbox, Configure, Corners, DragValue,
     Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator, Sizing, Slider,
-    SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit, TextStyle, TextWrap,
-    Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
+    SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit, TextStyleOverrides,
+    TextWrap, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -439,22 +439,22 @@ fn outlined_style() -> ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
                 background: bg(RgbaF32::TRANSPARENT, stroke),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
                 background: bg(accent.with_alpha(0.18), stroke),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
                 background: bg(accent.with_alpha(0.35), stroke),
-                text: None,
+                text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
                 background: bg(
                     RgbaF32::TRANSPARENT,
                     Stroke::new(accent.with_alpha(0.35), 1.5),
                 ),
-                text: Some(TextStyle::default().with_color(support::INK_FAINT)),
+                text: TextStyleOverrides::NONE.with_color(support::INK_FAINT),
             },
         },
         ..Default::default()
@@ -465,7 +465,7 @@ fn danger_style() -> ButtonTheme {
     let red = support::E;
     let look = |fill: RgbaF32, ink: RgbaF32| WidgetLook {
         background: Background::rounded(fill, Corners::all(4.0)),
-        text: Some(TextStyle::default().with_color(ink)),
+        text: TextStyleOverrides::NONE.with_color(ink),
     };
     ButtonTheme {
         looks: StatefulLook {

@@ -71,7 +71,7 @@ impl<'a> Text<'a> {
             widget: Widget::leaf(),
             text: text.into(),
             style: None,
-            overrides: TextStyleOverrides::default(),
+            overrides: TextStyleOverrides::NONE,
             wrap: TextWrap::SingleLine,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;

@@ -1,18 +1,17 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::widgets::text_edit::tests::*;
-use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
+use crate::widgets::theme::text_style::{LINE_HEIGHT_MULT, TextStyle, TextStyleOverrides};
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
-    use crate::TextStyle;
     use crate::shape::record::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(UVec2::new(600, 200));
     h.ui.theme_mut().text.font_size_px = 22.0;
-    h.ui.theme_mut().text_edit.looks.normal.text = Some(TextStyle::default().with_font_size(24.0));
+    h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE.with_font_size(24.0);
     let mut buf = String::from("hi");
 
     let [btn_node, txt_node, ed_node] = h.frame_value(|ui| {
@@ -84,7 +83,6 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
 
 #[test]
 fn text_widget_color_override_wins_over_theme() {
-    use crate::TextStyle;
     use crate::primitives::paint::color::RgbaF32;
     use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
@@ -115,7 +113,6 @@ fn text_widget_color_override_wins_over_theme() {
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_line_height() {
-    use crate::TextStyle;
     use crate::shape::record::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
@@ -123,7 +120,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let mut h = UiHarness::new(UVec2::new(600, 200));
     h.ui.theme_mut().text.line_height_mult = 2.0;
     h.ui.theme_mut().text_edit.looks.normal.text =
-        Some(TextStyle::default().with_line_height_mult(3.0));
+        TextStyleOverrides::NONE.with_line_height_mult(3.0);
     let mut buf = String::from("hi");
 
     let [btn_node, txt_node, ed_node] = h.frame_value(|ui| {
@@ -171,7 +168,6 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 
 #[test]
 fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
-    use crate::TextStyle;
     use crate::primitives::math::approx::EPS;
     use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
@@ -218,7 +214,9 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             st.edit.selection = Some(1);
         }
 
-        h.ui.theme_mut().text_edit.looks.normal.text = Some(style);
+        h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE
+            .with_font_size(font_size_px)
+            .with_line_height_mult(line_height_mult);
         let calls = h.ui.shaper().measure_calls();
 
         let nodes = h.frame_value(|ui| {
@@ -268,7 +266,6 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
 #[test]
 fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
-    use crate::TextStyle;
     use crate::shape::record::ShapeRecord;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
@@ -282,7 +279,7 @@ fn textedit_style_override_replaces_default_theme() {
         let style = TextEditTheme {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    text: Some(TextStyle::default().with_line_height_mult(mult)),
+                    text: TextStyleOverrides::NONE.with_line_height_mult(mult),
                     ..TextEditTheme::default().looks.normal
                 },
                 ..TextEditTheme::default().looks
@@ -461,7 +458,6 @@ fn drag_select_extends_selection() {
     h.frame(editor_at(&mut buf, None));
     h.release();
 
-    // Type 'X' — replaces the selected range.
     h.key(Key::Char('X'));
     h.frame(editor_at(&mut buf, None));
     assert_eq!(
@@ -510,7 +506,6 @@ fn line_height_override_changes_caret_rect_height() {
     // Pin: caret rect height tracks the leading carried on the
     // theme's `text` style.
     use crate::TextEditTheme;
-    use crate::TextStyle;
     use crate::shape::record::ShapeRecord;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
@@ -553,7 +548,7 @@ fn line_height_override_changes_caret_rect_height() {
     let doubled = caret_height(Some(&TextEditTheme {
         looks: StatefulLook {
             active: WidgetLook {
-                text: Some(TextStyle::default().with_line_height_mult(2.0)),
+                text: TextStyleOverrides::NONE.with_line_height_mult(2.0),
                 ..TextEditTheme::default().looks.active
             },
             ..TextEditTheme::default().looks

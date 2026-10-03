@@ -81,7 +81,6 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
 #[test]
 fn animate_some_then_none_drops_stale_row() {
     let AnimUi { mut h, id } = setup_anim_ui("anim-toggle");
-    // Frame A: animate to 1.0 with FAST (in flight).
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
         Block::new().id(id).show(ui);
@@ -96,7 +95,6 @@ fn animate_some_then_none_drops_stale_row() {
         "Some(FAST) must allocate a row mid-flight",
     );
 
-    // Frame B: switch to None — the stale row should drop.
     let _ = h.at(Duration::from_millis(60)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
         Block::new().id(id).show(ui);
@@ -108,8 +106,8 @@ fn animate_some_then_none_drops_stale_row() {
     );
 }
 
-/// `WidgetLook::animate` resolves the look's optional components to
-/// flat values and returns an `AnimatedLook` with the right defaults.
+/// `WidgetLook::animate` folds the look's text overrides onto the
+/// ambient style and returns an `AnimatedLook` of flat values.
 /// Walks both branches: with `spec = None` (snap, no rows) and with a
 /// real spec (rows allocated for non-trivial components).
 #[test]
@@ -120,7 +118,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::paint::stroke::Stroke;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::animated_look::AnimatedLook;
-    use crate::widgets::theme::text_style::TextStyle;
+    use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
     use std::cell::Cell;
 
     let AnimUi { mut h, id } = setup_anim_ui("look-test");
@@ -133,12 +131,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     };
     let look = WidgetLook {
         background: bg.clone(),
-        text: None, // → falls back to TextStyle default
+        text: TextStyleOverrides::NONE,
     };
     let fallback = TextStyle::default();
 
-    // None spec: snaps to target, no rows allocated. Use Cell to
-    // capture out of the FnMut closure.
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
         let target = look.to_animated(fallback);
@@ -154,11 +150,9 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     assert_eq!(snap.background.border.color, bg.border.color);
     assert_eq!(snap.background.corners, bg.corners);
     assert_eq!(
-        snap.text.color, fallback.color,
-        "None: text falls back to fallback_text",
+        snap.text, fallback,
+        "a look that overrides nothing takes the ambient style whole",
     );
-    assert_eq!(snap.text.font_size_px, fallback.font_size_px);
-    assert_eq!(snap.text.line_height_mult, fallback.line_height_mult);
     assert_eq!(
         h.anim_row_count::<AnimatedLook>(),
         0,
@@ -174,7 +168,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
             fill: RgbaF32::hex(0xff0000).into(),
             ..bg.clone()
         },
-        text: None,
+        text: TextStyleOverrides::NONE,
     };
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
@@ -187,16 +181,12 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
 
-    // The other half of the `fallback_text` contract: a look that
-    // overrides `text` must not read the fallback at all. The fallback is
-    // made wrong in every field so any read shows up.
-    let own_text = TextStyle {
-        font_size_px: fallback.font_size_px + 7.0,
-        color: RgbaF32::hex(0x00ff00),
-        line_height_mult: fallback.line_height_mult + 0.5,
-        ..fallback
-    };
-    let unread = TextStyle {
+    // The other half of the contract: the axes a look names win, and only
+    // the rest come from the ambient style. Ambient and override differ on
+    // every axis involved, so a value from the wrong source shows up.
+    let own_size = fallback.font_size_px + 7.0;
+    let own_color = RgbaF32::hex(0x00ff00);
+    let ambient = TextStyle {
         font_size_px: fallback.font_size_px + 99.0,
         color: RgbaF32::hex(0xff00ff),
         line_height_mult: fallback.line_height_mult + 9.0,
@@ -204,11 +194,13 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     };
     let look3 = WidgetLook {
         background: bg.clone(),
-        text: Some(own_text),
+        text: TextStyleOverrides::NONE
+            .with_font_size(own_size)
+            .with_color(own_color),
     };
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(48)).frame(|ui| {
-        let target = look3.to_animated(unread);
+        let target = look3.to_animated(ambient);
         captured.set(Some(ui.animate(
             id.with("own"),
             WidgetLook::SLOT_LOOK,
@@ -219,12 +211,14 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     });
     let snap = captured.take().expect("animate ran");
     assert_eq!(
-        snap.text.font_size_px,
-        fallback.font_size_px + 7.0,
-        "an overriding look keeps its own size, not the fallback's",
+        snap.text,
+        TextStyle {
+            font_size_px: own_size,
+            color: own_color,
+            ..ambient
+        },
+        "named axes come from the look, the leading from the ambient style",
     );
-    assert_eq!(snap.text.color, own_text.color);
-    assert_eq!(snap.text.line_height_mult, own_text.line_height_mult);
 }
 
 /// `AnimSpec::FAST` from rest after a second of idle: the frame of the

@@ -2,10 +2,10 @@
 //! while it is being typed into.
 
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::TextStyle;
 
 /// Theme for [`crate::DragValue`]: the scrub `chip` (a [`ButtonTheme`]) and the
 /// inline `editor` (a [`TextEditTheme`]) it swaps to under
@@ -49,7 +49,7 @@ impl DragValueTheme {
 
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self { chip, editor } = self;
         chip.for_each_text(f);
         editor.for_each_text(f);

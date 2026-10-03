@@ -49,7 +49,14 @@ impl GlyphFont {
     /// because the theme validates a line height it has just derived
     /// from a scaled size, before any face exists to hold them.
     pub(crate) const fn metrics_are_valid(size_px: f32, line_height_px: f32) -> bool {
-        size_px.is_finite() && size_px > EPS && line_height_px.is_finite() && line_height_px > EPS
+        Self::length_is_valid(size_px) && Self::length_is_valid(line_height_px)
+    }
+
+    /// The half of [`Self::metrics_are_valid`] one metric answers alone —
+    /// for a theme override that names a size but leaves the leading to
+    /// the style it lands on.
+    pub(crate) const fn length_is_valid(px: f32) -> bool {
+        px.is_finite() && px > EPS
     }
 
     /// This face's own metrics, per [`Self::metrics_are_valid`].
