@@ -172,7 +172,7 @@ impl<'a> ColorField<'a> {
             ));
             ui.add_shape(Shape::circle(
                 marker,
-                handle_radius - handle_width,
+                domain::length_at_least(handle_radius - handle_width, 0.0),
                 Stroke::new(handle_inner, handle_width),
             ));
         });

@@ -1,5 +1,6 @@
 //! A line's colour and width, as a border or as a path's stroke.
 
+use crate::primitives::math::domain;
 use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
@@ -23,6 +24,16 @@ pub struct Stroke {
 }
 
 impl Stroke {
+    /// Panics unless the width is a [length](domain::length) and the
+    /// colour a [colour](domain::color) — the check a stroke faces where it
+    /// enters a shape or a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        domain::length(self.width);
+        let _ = domain::color(self.color);
+    }
+
     /// Canonical "no stroke" — width 0, transparent color. Equivalent
     /// to `Stroke::default()` but `const`, so callers can use it in
     /// const contexts and read it as the sentinel "this background

@@ -234,13 +234,25 @@ fn two_stop_gradients_take_their_kind_defaults() {
     assert_eq!(radial.axis().lanes(), [0.5, 0.5, 0.5, 0.5]);
 }
 
+/// In code a stop's offset is a fraction, coerced: out of range clamps to
+/// the end it overshot, a non-finite one reads as 0. Its colour is checked
+/// and panics on a non-finite channel. A file refuses either, since its
+/// author can fix it.
 #[test]
-fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
-    for offset in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        panic_probe::assert_panics_with("gradient stop offset must be finite", || {
-            Stop::new(offset, RgbaF32::WHITE)
-        });
+fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
+    for (offset, want) in [
+        (f32::NAN, 0.0),
+        (f32::INFINITY, 0.0),
+        (f32::NEG_INFINITY, 0.0),
+        (-0.5, 0.0),
+        (1.5, 1.0),
+        (0.5, 128.0 / 255.0),
+    ] {
+        assert_eq!(Stop::new(offset, RgbaF32::WHITE).offset(), want, "{offset}");
     }
+    panic_probe::assert_panics_with("a color must have finite channels", || {
+        Stop::new(0.5, RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0))
+    });
 
     for literal in ["NaN", "inf", "-inf"] {
         let document = format!(

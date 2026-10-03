@@ -322,7 +322,7 @@ fn a_settled_animation_stops_modifying_the_shape() {
 /// Zero steps would read as a shape that never animates, with nothing
 /// else to say the animation was asked for.
 #[test]
-#[should_panic = "zero steps"]
+#[should_panic = "a count must be at least 1"]
 fn zero_steps_is_a_caller_bug() {
     let _ = PaintAnim::alpha(0.0, 1.0).with_steps(0);
 }

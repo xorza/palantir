@@ -243,8 +243,6 @@ fn the_nan_gate_drops_every_shape_kind() {
     }
 
     use crate::primitives::geometry::mesh::Mesh;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
     use crate::shape::{Lower, Shape};
     use glam::Vec2;
@@ -276,31 +274,9 @@ fn the_nan_gate_drops_every_shape_kind() {
         Shape::rect(ok_rect).fill(white),
     );
     gate(
-        "rect_corners",
-        Shape::rect(ok_rect).fill(white).corners(N),
-        Shape::rect(ok_rect).fill(white).corners(2.0),
-    );
-    gate(
-        "rect_stroke_colour",
-        Shape::rect(ok_rect)
-            .fill(white)
-            .border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)),
-        Shape::rect(ok_rect)
-            .fill(white)
-            .border(Stroke::new(RgbaF32::BLACK, 2.0)),
-    );
-    gate(
         "triangle_corner",
         tri(nan_pt, 0.0),
         tri(Vec2::new(0.0, 4.0), 0.0),
-    );
-    // `radius` reaches lowering only through `radius.max(0.0)`, which
-    // launders NaN to `0.0`, so the bbox it would have shown up in comes
-    // out finite and only the authored screen can catch it.
-    gate(
-        "triangle_radius",
-        tri(Vec2::new(0.0, 4.0), N),
-        tri(Vec2::new(0.0, 4.0), 1.0),
     );
     gate(
         "curve_control_point",
@@ -337,25 +313,52 @@ fn the_nan_gate_drops_every_shape_kind() {
         Shape::mesh(&mesh_ok).at(Rect::new(0.0, N, 8.0, 8.0)),
         Shape::mesh(&mesh_ok).at(ok_rect),
     );
-    // A gradient's geometry is the one authoring input that does not
-    // survive lowering: it interns behind a `GradientId`, so a record
-    // gate could not see it and a shape rejected afterwards would leave
-    // the pool row behind. The arena check above is what pins that.
-    let gradient = |angle| {
-        Shape::rect(ok_rect).fill(LinearGradient::two_stop(
-            angle,
-            RgbaF32::hex(0x1a1a2e),
-            RgbaF32::hex(0x4c5cdb),
-        ))
-    };
-    gate("rect_gradient_geometry", gradient(N), gradient(0.25));
-    let shadow = |blur| {
+}
+
+/// The inputs a shape builder checks never reach the record gate: a NaN
+/// corner radius, stroke colour or triangle radius, a gradient's geometry
+/// and a shadow's blur each panic with their kind's rule where they enter
+/// the shape. A gradient's geometry most of all, since it interns behind a
+/// `GradientId` that a record gate could not see.
+#[test]
+fn builders_refuse_what_they_check() {
+    use crate::internals::panic_probe;
+    use crate::primitives::math::domain;
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::shape::Shape;
+    use glam::Vec2;
+
+    const N: f32 = f32::NAN;
+    let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
+    let white = RgbaF32::WHITE;
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+        Shape::rect(ok_rect).fill(white).corners(N)
+    });
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+        Shape::rect(ok_rect).fill(white).corners(-1.0)
+    });
+    panic_probe::assert_panics_with("a color must have finite channels", || {
+        Shape::rect(ok_rect).border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0))
+    });
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+        Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y).radius(N)
+    });
+    panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
+        Shape::rect(ok_rect).fill(LinearGradient::two_stop(N, white, RgbaF32::BLACK))
+    });
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
         Shape::shadow(Shadow {
             color: white,
-            blur,
+            blur: N,
             ..Shadow::default()
         })
-        .at(ok_rect)
-    };
-    gate("shadow_blur", shadow(N), shadow(4.0));
+    });
+    panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
+        Shape::arc(Vec2::ZERO, 4.0, 0.0, f32::INFINITY, Stroke::new(white, 1.0))
+    });
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+        Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(white, -1.0))
+    });
 }

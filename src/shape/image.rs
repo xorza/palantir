@@ -1,6 +1,7 @@
 //! The textured-rectangle builder. Lowers to `ShapeRecord::Image`.
 
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
@@ -74,8 +75,9 @@ impl ImageShape {
     }
 
     /// Multiplied onto every texel. White leaves the image alone.
+    #[track_caller]
     pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
-        self.tint = tint.into();
+        self.tint = domain::color(tint.into());
         self
     }
 }
