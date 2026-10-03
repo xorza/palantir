@@ -113,8 +113,13 @@ A/B protocol and the traps that cost a wasted capture each.
 ```
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --lib --test alloc --features internals,bench,golden,gpu-debug-markers
+cargo test --lib --test alloc --features bench,golden,gpu-debug-markers
 ```
+
+Every test run needs a GPU adapter: the self dev-dependency turns
+`internals` on in every test build, and the GPU tests it brings panic
+without one. A headless machine needs a software Vulkan driver (Mesa
+lavapipe, `mesa-vulkan-drivers`), as CI installs.
 
 `--all-features` is clippy's alone: `profile-with-tracy` starts the Tracy
 client before `main`, so a test binary under it opens the profiler's socket
@@ -125,7 +130,7 @@ Rendering changes (shaders, encoder/composer, atlases, colour pipeline, layout
 that moves pixels) also run the visual suite:
 
 ```
-cargo test --test visual --features internals,golden
+cargo test --test visual --features golden
 ```
 
 Its goldens in `tests/visual/golden/` are local and show whatever tree last
