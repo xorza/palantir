@@ -3,18 +3,18 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::placement::{Origin, Placement};
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::placement::{Origin, Placement};
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::quad_shape::QuadShape;
-use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::record::ShapeRecord;
 use crate::shape::rect::{RectKind, RectShape};
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;
 
@@ -79,7 +79,7 @@ fn ui_layer_records_popup_into_separate_tree() {
 /// surface; remaining viewport from that anchor is (350, 260).
 #[test]
 fn ui_layer_size_caps_overlay_available() {
-    use crate::primitives::size::Size;
+    use crate::primitives::geometry::size::Size;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = glam::Vec2::new(50.0, 40.0);
     let cases: &[(Option<Size>, Size)] = &[

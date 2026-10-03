@@ -12,7 +12,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Icon, Window as WinitWindow, WindowAttributes};
 
 use crate::host::winit::error::WinitHostError;
-use crate::primitives::image::Image;
+use crate::primitives::paint::image::Image;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
@@ -150,7 +150,7 @@ pub(super) fn physical_size(window: &WinitWindow) -> UVec2 {
 #[cfg(test)]
 mod tests {
     use crate::host::winit::native;
-    use crate::primitives::image::Image;
+    use crate::primitives::paint::image::Image;
     use glam::{IVec2, UVec2};
 
     /// A restored position must land on a screen: inside one of two

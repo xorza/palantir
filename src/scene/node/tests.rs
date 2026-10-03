@@ -1,14 +1,14 @@
 use crate::input::sense::Sense;
 use crate::internals::panic_probe;
-use crate::layout::axis::Axis;
-use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
-use crate::layout::types::scroll_axes::ScrollAxes;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
+use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::layout::visibility::Visibility;
 use crate::scene::node::*;
-use crate::scene::visibility::Visibility;
-use crate::widgets::configure::Configure;
-use crate::widgets::widget::Widget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 
 #[test]
 fn flag_setters_round_trip_each_field_independently() {
@@ -140,8 +140,8 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
 
 #[test]
 fn layout_core_round_trips_mode_align_visibility() {
-    use crate::layout::types::align::{Align, HAlign, VAlign};
-    use crate::scene::visibility::Visibility;
+    use crate::primitives::layout::align::{Align, HAlign, VAlign};
+    use crate::primitives::layout::visibility::Visibility;
     let cases: &[(LayoutMode, Align, Visibility)] = &[
         (
             LayoutMode::Leaf,

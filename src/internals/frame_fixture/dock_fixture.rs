@@ -1,10 +1,10 @@
 //! A settled dock as a recordable scene, at the scale a real editor runs
 //! one.
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::dock::dock_op::{DockDrop, DockOp};
 use crate::widgets::dock::dock_state::DockState;
 use crate::widgets::dock::dock_tabs::DockTabs;

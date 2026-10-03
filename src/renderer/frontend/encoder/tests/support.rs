@@ -2,9 +2,10 @@
 //! pair.
 
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::{rect::Rect, translate_scale::TranslateScale};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 

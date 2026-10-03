@@ -1,0 +1,226 @@
+//! `LayoutPass::measure`'s second-pass convergence path must not assume
+//! `final_desired <= new_available`. That assumption breaks when a descendant subtree contains non-monotonic measure —
+//! e.g. a `wrap_hstack` whose row-pack changes shape under different
+//! available widths, combined with sibling `Fill` cells that hug to
+//! padded content. Specific trigger from the showcase: a vstack root
+//! with a 18-button toolbar `wrap_hstack` plus a central zstack
+//! holding `panels::build`'s 4-cell hstack. At certain window widths
+//! the second-pass measure produces a desired ~10 px wider than the
+//! grown `new_available`.
+//!
+//! Sweeps a width range: no frame panics, and every toolbar button stays
+//! inside the toolbar it wrapped in.
+use crate::primitives::identity::widget_id::WidgetId;
+
+use crate::internals::harness::UiHarness;
+use crate::primitives::layout::sizing::Sizing;
+use crate::scene::layer::Layer;
+use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
+use crate::widgets::button::Button;
+use crate::widgets::panel::Panel;
+use glam::UVec2;
+
+/// Z-order showcase repro: two FILL/FILL cells side-by-side in an
+/// HStack. The right cell has a Fixed(180×80) descendant; the left
+/// cell has no rigid descendants (its only child is FILL/FILL +
+/// Text). When the window is too narrow for both cells to fit at the
+/// right cell's min-content floor (204 = 180 + 24 padding), the right
+/// cell overflows the HStack — its arranged rect extends past the
+/// HStack's right edge.
+///
+/// Under correct flex-shrink semantics with min-content awareness,
+/// FILL siblings should split available proportionally to *shrink
+/// budget* (`available - intrinsic_min`), not weight alone — so the
+/// left cell (with shrink budget = full FILL share) absorbs the
+/// squeeze before the right cell (with no shrink budget below 204).
+///
+/// This pin asserts: at any window width where the HStack's
+/// available is >= sum of children's intrinsic_min, no child rect
+/// extends past the HStack's right edge.
+#[test]
+fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
+    for outer_w in (260u32..=600).step_by(10) {
+        let mut h = UiHarness::new(UVec2::new(outer_w, 400));
+        let row_node = h.frame_value(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .gap(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Left: FILL/FILL with a FILL/FILL child (no rigid
+                    // descendant). intrinsic_min ≈ 0 — fully shrinkable.
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("left"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(12.0)
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id(WidgetId::from_hash("left-bg"))
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui);
+                        });
+                    // Right: FILL/FILL with a Fixed(180×80) descendant.
+                    // intrinsic_min = 180 + 24 padding = 204 — rigid below.
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("right"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(12.0)
+                        .show(ui, |ui| {
+                            Panel::zstack()
+                                .id(WidgetId::from_hash("right-z"))
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui, |ui| {
+                                    Block::new()
+                                        .id(WidgetId::from_hash("right-bg"))
+                                        .size((Sizing::FILL, Sizing::FILL))
+                                        .show(ui);
+                                    Block::new()
+                                        .id(WidgetId::from_hash("right-fixed"))
+                                        .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
+                                        .show(ui);
+                                });
+                        });
+                })
+                .response
+                .node()
+        });
+
+        let row = h.ui.arranged_rect(Layer::Main, row_node);
+        let left = h.arranged(WidgetId::from_hash("left"));
+        let right = h.arranged(WidgetId::from_hash("right"));
+
+        // The right cell's intrinsic_min along X is the Fixed
+        // descendant's 180 + the cell's 24 padding = 204. When the
+        // HStack has enough room for that floor (outer_w >= 204 + 12
+        // gap + something for the left cell), FILL distribution
+        // should give the right cell at least 204 — letting the left
+        // cell absorb the squeeze instead. This is CSS Flexbox's
+        // default "items at min-content stop shrinking, others
+        // continue."
+        assert!(
+            right.size.w >= 204.0 - 0.5,
+            "outer_w={outer_w}: right cell shrunk below its 204 min-content floor; \
+             left.w={} right.w={}",
+            left.size.w,
+            right.size.w,
+        );
+        // And in all cases the row's children should be contained: no
+        // sibling reaches past the HStack's right edge.
+        let row_right_edge = row.min.x + row.size.w;
+        let right_right_edge = right.min.x + right.size.w;
+        assert!(
+            right_right_edge <= row_right_edge + 0.5,
+            "outer_w={outer_w}: right cell overflows HStack",
+        );
+    }
+}
+
+#[test]
+fn second_pass_grow_then_overshoot_does_not_panic() {
+    const LABELS: &[&str] = &[
+        "text",
+        "text layouts",
+        "text edit",
+        "z-order",
+        "panels",
+        "scroll",
+        "wrap",
+        "grid",
+        "sizing",
+        "alignment",
+        "justify",
+        "clip",
+        "transform",
+        "visibility",
+        "disabled",
+        "gap",
+        "spacing",
+        "buttons",
+    ];
+    // Sweep widths around the trigger zone (~620–700 wide on the live
+    // showcase) plus a wider band so a future regression in either
+    // direction shows up. Step 1 px to guarantee we hit whatever
+    // discrete width tips the toolbar's wrap count past a threshold.
+    //
+    // One harness across the sweep: each step is a resize, the path under
+    // test, rather than a fresh recorder that starts cold.
+    let mut h = UiHarness::new(UVec2::new(480, 600));
+    for w in (480u32..=900).step_by(1) {
+        h.resize(UVec2::new(w, 600));
+        h.frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(12.0)
+                .gap(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Toolbar — wrap_hstack of buttons. With theme padding
+                    // each button is `label + 24` wide; total `> w` so the
+                    // wrap_hstack reflows to multiple rows. Different widths
+                    // produce different row counts (non-monotonic
+                    // height-vs-width).
+                    Panel::wrap_hstack()
+                        .id(WidgetId::from_hash("toolbar"))
+                        .gap(6.0)
+                        .line_gap(6.0)
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .show(ui, |ui| {
+                            for label in LABELS {
+                                Button::new()
+                                    .id(WidgetId::from_hash(*label))
+                                    .label(*label)
+                                    .show(ui);
+                            }
+                        });
+
+                    // Central panel — zstack containing the panels-showcase
+                    // structure (4 FILL cells, padded, with varying inner
+                    // hug widths) that compounds into the second-pass
+                    // overshoot when the toolbar consumed more height than
+                    // expected.
+                    Panel::zstack()
+                        .auto_id()
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(16.0)
+                        .show(ui, |ui| {
+                            Panel::hstack()
+                                .auto_id()
+                                .gap(12.0)
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui, |ui| {
+                                    for (id, content_w) in
+                                        [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
+                                    {
+                                        Panel::vstack()
+                                            .id(WidgetId::from_hash(id))
+                                            .size((Sizing::FILL, Sizing::FILL))
+                                            .padding(12.0)
+                                            .show(ui, |ui| {
+                                                Block::new()
+                                                    .id(WidgetId::from_hash((id, "swatch")))
+                                                    .size((
+                                                        Sizing::fixed(content_w),
+                                                        Sizing::fixed(40.0),
+                                                    ))
+                                                    .show(ui);
+                                            });
+                                    }
+                                });
+                        });
+                });
+        });
+        // Every button sits inside the toolbar it wrapped in, at every
+        // width — what a converged second pass promises. The toolbar
+        // itself can be wider than the window: the cells below it have a
+        // rigid floor of 536 px, and the root contains its content.
+        let toolbar = h.arranged(WidgetId::from_hash("toolbar"));
+        for label in LABELS {
+            let button = h.arranged(WidgetId::from_hash(*label));
+            assert!(
+                toolbar.contains_rect(button),
+                "w={w}: {label} at {button:?} leaves the toolbar at {toolbar:?}",
+            );
+        }
+    }
+}

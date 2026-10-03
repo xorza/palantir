@@ -1,7 +1,7 @@
 //! The editor's text layout plus everything only the shape probe answers.
 
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::text::probe::Caret;
 use crate::ui::Ui;
 use crate::widgets::text_edit::text_layout::TextLayout;

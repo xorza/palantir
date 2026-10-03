@@ -2,23 +2,23 @@
 //! naming of a widget's theme slot that resolves it.
 
 use crate::internals::harness::UiHarness;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::record::ShapeRecord;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget_look::theme_slot::SlotDefaults;
 use crate::widgets::button::Button;
-use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 200);

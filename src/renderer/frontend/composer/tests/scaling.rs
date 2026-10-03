@@ -1,11 +1,13 @@
 //! What the display scale and a transform do to what is drawn.
 
 use crate::icons::icon_set::IconRef;
-use crate::primitives::rect::Rect;
-use crate::primitives::{
-    color::RgbaF32, corners::Corners, size::Size, stroke::Stroke, translate_scale::TranslateScale,
-    urect::URect,
-};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::geometry::urect::URect;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::geometry::StrokeBbox;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -15,7 +17,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
@@ -412,7 +414,7 @@ fn icons_batch_together_and_respect_tier_order() {
 }
 
 /// A triangle's corner points reach the GPU as unorm16 shares of the
-/// quad that covers it, so a 3000 px triangle decodes, the way `quad.wgsl`
+/// quad that covers it, so a 3000 px triangle decodes, the way `quad_pipeline/shader.wgsl`
 /// does it — `min + bits / 65535 · size` — to within `3000 / 65535 / 2`
 /// ≈ 0.023 px of each point. As f16 lanes they stepped 2 px past 2048.
 #[test]

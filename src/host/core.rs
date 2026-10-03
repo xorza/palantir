@@ -18,11 +18,11 @@
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::display::Display;
-use crate::gpu::WgpuBackend;
-use crate::gpu::backend_config::BackendConfig;
-use crate::gpu::backend_resources::BackendResources;
-use crate::gpu::render_target::RenderTarget;
-use crate::gpu::requested_gpu::Gpu;
+use crate::gpu::device::backend_config::BackendConfig;
+use crate::gpu::device::backend_resources::BackendResources;
+use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::window_driver::{CpuFrame, PresentPath, WindowDriver, WindowDriverBuilder};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;

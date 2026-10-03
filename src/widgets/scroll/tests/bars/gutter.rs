@@ -2,10 +2,10 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::configure::Configure;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::tests::bars::support::{record_two_frames, theme, thumb_rects};

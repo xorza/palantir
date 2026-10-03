@@ -2,8 +2,8 @@
 //! [`IconSet`] drives.
 
 use super::*;
+use crate::common::span::Span;
 use crate::icons::icon_table::{IconDef, IconId};
-use crate::primitives::span::Span;
 use glam::Vec2;
 
 const A_ICONS: &[IconDef] = &[IconDef {

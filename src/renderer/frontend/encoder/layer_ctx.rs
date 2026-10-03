@@ -5,17 +5,19 @@
 //! everything from there down to the emitted paint commands is the recursion
 //! below.
 
+use crate::cascade::cascade_input_hash::CascadeInputHash;
+use crate::damage::region::DamageRegion;
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::text_runs::TextRuns;
-use crate::layout::types::clip_mode::ClipMode;
-use crate::primitives::approx::paints_nothing;
-use crate::primitives::corners::Corners;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
-use crate::primitives::lut_row::LutRow;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::rect::Rect;
+use crate::layout::text::text_runs::TextRuns;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::encoder::GradientPass;
 use crate::renderer::frontend::encoder::geometry;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -37,20 +39,18 @@ use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED,
 };
-use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
-use crate::scene::damage::region::DamageRegion;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::image_source::ImageSource;
-use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
-use crate::scene::shapes::paint::lowered_shadow::ShadowGeom;
-use crate::scene::shapes::paint::quad_shape::QuadShape;
-use crate::scene::shapes::paint::shape_brush::CurveRamp;
-use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
+use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
+use crate::shape::paint::lowered_shadow::ShadowGeom;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::shape_brush::CurveRamp;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::record::{self, ShapeRecord};
 use crate::text::shaped_ref::ShapedTextRef;
 use std::time::Duration;
 

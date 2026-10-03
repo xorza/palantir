@@ -3,7 +3,7 @@
 //! pipeline or shader changes.
 
 use crate::common::counters::TestOnly;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::composer::rect_grid::TILE_SIZE;
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::{UVec2, Vec2};
@@ -161,7 +161,7 @@ impl OcclusionPruner {
             if cursor >= occluders {
                 break;
             }
-            // `q.rect` is the painted extent: quad.wgsl borders are
+            // `q.rect` is the painted extent: quad_pipeline/shader.wgsl borders are
             // inner-edge, and the shared ½px AA fringe is what every
             // cover's AA inset answers.
             let covered = if indexed {

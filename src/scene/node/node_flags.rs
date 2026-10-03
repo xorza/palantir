@@ -2,7 +2,7 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::types::clip_mode::ClipMode;
+use crate::primitives::layout::clip_mode::ClipMode;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct NodeFlags {

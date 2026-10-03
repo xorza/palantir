@@ -2,8 +2,8 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::UVec2;
@@ -34,7 +34,7 @@ pub(super) fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
     for tag in ["vthumb", "hthumb"] {
         if let Some(thumb) = node(scroll_id.with(tag)) {
             let r = layout.rect[thumb.idx()];
-            // Both thumbs are recorded every frame — `layout::scrollbars`
+            // Both thumbs are recorded every frame — `layout::drivers::scrollbars`
             // collapses the ones with nothing to show to zero extent
             // rather than dropping them, so their ids and state rows
             // survive an overflow toggle. A collapsed thumb is not a

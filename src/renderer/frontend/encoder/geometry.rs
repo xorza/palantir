@@ -1,6 +1,6 @@
 //! How an owner-relative rect lands on its owner.
 
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
 
 /// Resolve a shape's owner-relative `local_rect` against the owner's
 /// arranged rect. `None` means "paint the owner's full rect"; `Some(lr)`

@@ -1,34 +1,34 @@
 //! The assembled colour picker: the panel, what it retains between frames,
 //! and the rule that decides which control's write reaches the bound colour.
 
-use crate::layout::types::grid_cell::GridCell;
-use crate::layout::types::sizing::Sizing;
-use crate::layout::types::track::Track;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::color_coords::ColorCoords;
-use crate::primitives::color::color_model::ColorModel;
-use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::primitives::num::F32Ext;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::grid_cell::GridCell;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::track::Track;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::Response;
+use crate::widget_core::value_response::ValueResponse;
+use crate::widget_core::widget::Widget;
 use crate::widgets::color_field::ColorField;
 use crate::widgets::color_picker::history::History;
 use crate::widgets::color_strip::ColorStrip;
 use crate::widgets::color_surface;
 use crate::widgets::color_swatch::ColorSwatch;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
-use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
-use crate::widgets::value_response::ValueResponse;
-use crate::widgets::widget::Widget;
 use std::fmt::Write as _;
 use std::rc::Rc;
 

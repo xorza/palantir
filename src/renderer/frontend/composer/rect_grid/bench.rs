@@ -19,7 +19,7 @@
 //!   every query walks its tile's chain.
 
 use crate::bench::Run;
-use crate::primitives::urect::URect;
+use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP, TILE_SIZE};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;

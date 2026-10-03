@@ -1,11 +1,11 @@
 //! What a modal wears: the dialog surface, and the backdrop that dims
 //! everything behind it.
 
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::widgets::modal::Modal`]: the centered dialog
@@ -24,7 +24,7 @@ pub struct ModalTheme {
     pub padding: Spacing,
     /// Minimum panel width in logical px (the panel hugs its content
     /// above this floor).
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_width: f32,
 }
 

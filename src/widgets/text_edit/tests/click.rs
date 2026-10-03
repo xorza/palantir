@@ -483,7 +483,7 @@ fn select_all_on_focus_gates_on_the_flag() {
 
 #[test]
 fn caret_click_is_scale_invariant_under_zoom() {
-    use crate::primitives::translate_scale::TranslateScale;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
 
     // Clicking the same fraction of the field must land the caret on the same
     // glyph whether the canvas is zoomed or not: the click arrives in surface

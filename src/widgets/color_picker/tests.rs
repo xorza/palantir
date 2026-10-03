@@ -1,12 +1,12 @@
 use crate::internals::harness::UiHarness;
-use crate::primitives::approx::internals::assert_close;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::color_model::ColorModel;
-use crate::primitives::color::okhsv::Okhsv;
-use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::color::okhsv::Okhsv;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::widget_core::configure::Configure;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::configure::Configure;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 

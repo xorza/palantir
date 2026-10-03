@@ -1,17 +1,17 @@
 //! Where the body lands: sizing, the upward flip near an edge, and
 //! stability across frames.
 
-use crate::layout::types::anchor::Anchor;
+use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::tests::support::SURFACE;

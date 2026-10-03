@@ -1,8 +1,8 @@
 //! Composited image and off-screen `GpuView` draw records.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::rect::Rect;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use glam::{UVec2, Vec2};
 use soa_rs::Soars;

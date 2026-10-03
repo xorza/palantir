@@ -50,10 +50,10 @@
 
 use crate::bench::Run;
 use crate::common::counters::CounterSet;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::stops::Stop;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;

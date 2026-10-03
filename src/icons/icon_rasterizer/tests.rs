@@ -1,12 +1,12 @@
+use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::{IconDef, IconId, IconTable};
 use crate::icons::internals::BROKEN;
-use crate::primitives::content_type::ContentType;
-use crate::primitives::raster_image::RasterImage;
-use crate::primitives::span::Span;
+use crate::primitives::paint::content_type::ContentType;
+use crate::primitives::paint::raster_image::RasterImage;
 use glam::{IVec2, U16Vec2, UVec2, Vec2};
 
 /// A solid black square filling its whole 8x8 viewBox: every pixel is

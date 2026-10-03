@@ -1,15 +1,17 @@
 //! Fills, images and raster targets: what each emits and what rides with it.
 
+use crate::common::span::Span;
 use crate::internals::paint_capture::PaintCapture;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::lut_row::LutRow;
-use crate::primitives::span::Span;
-use crate::primitives::texture_id::TextureId;
-use crate::primitives::{
-    color::RgbaF32, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
-    translate_scale::TranslateScale,
-};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::lut_row::LutRow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -64,7 +66,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 /// window bit this exact draw would trigger all three.
 #[test]
 fn windowed_rect_is_not_an_opaque_cover() {
-    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::packed::fill_kind::FillKind;
     let buf = run(
         |b, _| {
             draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
@@ -101,9 +103,9 @@ fn windowed_rect_is_not_an_opaque_cover() {
 /// paint payload; composer pipes them through to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
-    use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::Spread;
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g =
         LinearGradient::two_stop(0.0, RgbaF32::WHITE, RgbaF32::BLACK).with_spread(Spread::Reflect);
@@ -136,8 +138,8 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 /// frames and across multiple emitting widgets.
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
-    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g = LinearGradient::two_stop(0.5, RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44));
     let atlas = SharedGradientAtlas::default();

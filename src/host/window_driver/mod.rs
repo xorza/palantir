@@ -20,19 +20,19 @@
 
 use crate::app::App;
 use crate::common::tracy;
+use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
-use crate::gpu::WgpuBackend;
-use crate::gpu::backbuffer::Backbuffer;
-use crate::gpu::render_target::{RenderTarget, TargetFormat};
-use crate::gpu::stencil::Stencil;
-use crate::gpu::submission::Submission;
-use crate::gpu::submission::SubmissionTargets;
+use crate::gpu::frame::submission::Submission;
+use crate::gpu::frame::submission::SubmissionTargets;
+use crate::gpu::surface::backbuffer::Backbuffer;
+use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+use crate::gpu::surface::stencil::Stencil;
+use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
@@ -161,7 +161,7 @@ pub(super) enum PresentStrategy {
     /// A surface that cannot be copied into is served the same way: the
     /// backbuffer reaches it by being drawn rather than copied, so damage
     /// stays cheap there too. See
-    /// [`Backbuffer::draw_onto`](crate::gpu::backbuffer::Backbuffer::draw_onto).
+    /// [`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto).
     DirectAdaptive,
 }
 

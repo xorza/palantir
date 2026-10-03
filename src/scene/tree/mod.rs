@@ -37,23 +37,20 @@ pub(crate) mod tree_fingerprint;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::index16::Index16;
-use crate::layout::scrollbars::scrollbars_def::ResolvedScrollbarsDef;
-use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
-use crate::layout::types::track::{GridDef, Track};
-use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::span::Span;
-use crate::primitives::translate_scale::TranslateScale;
-use crate::primitives::widget_id::WidgetId;
+use crate::common::span::Span;
+use crate::layout::drivers::scrollbars::scrollbars_def::ResolvedScrollbarsDef;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
+use crate::primitives::layout::track::{GridDef, Track};
+use crate::primitives::paint::background::Background;
 use crate::scene::node::Node;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::Shapes;
-use crate::scene::shapes::lower;
-use crate::scene::shapes::paint::chrome_row::ChromeRow;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
@@ -64,6 +61,9 @@ use crate::scene::tree::root_slot::RootSlot;
 use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::scene::tree::tree_fingerprint::TreeFingerprint;
+use crate::shape::lower;
+use crate::shape::paint::chrome_row::ChromeRow;
+use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
@@ -510,7 +510,7 @@ impl Tree {
         }
         if let Some(ChromeInput { bg, store }) = chrome {
             // A chrome border paints fully inside the node's arranged
-            // rect (see `quad.wgsl` SDF stroke band), so `padding` grows
+            // rect (see `quad_pipeline/shader.wgsl` SDF stroke band), so `padding` grows
             // by the border on every side and children sit inside it
             // without the user having to add it by hand.
             // Done here (not in the layout pass) so the layout columns
@@ -747,9 +747,9 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::node_id::NodeId;
     use crate::scene::tree::*;
+    use crate::shape::record::ShapeRecord;
 
     impl Tree {
         /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.

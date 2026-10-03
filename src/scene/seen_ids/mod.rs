@@ -22,7 +22,7 @@
 //!    on hand.
 //! 3. **Removed-widget diff + rollover.** [`SeenIds::rollover`] computes
 //!    which ids were present last painted frame but absent this pass
-//!    (populating `removed` for [`crate::scene::damage::engine::DamageEngine`] /
+//!    (populating `removed` for [`crate::damage::engine::DamageEngine`] /
 //!    [`crate::text::shaper::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per application frame from
@@ -34,7 +34,7 @@
 //!    final `curr`, and without the fold their state/anim/text rows
 //!    would leak and resume stale if the widget later reappeared.
 
-use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
 use std::collections::hash_map::Entry;
 
@@ -76,14 +76,14 @@ pub(crate) struct SeenIds {
     /// resolution (the first endpoint lives under `raw_id`, which is
     /// the un-disambiguated form of any subsequent occurrence). Same
     /// keys feed the [`Self::rollover`] removed-diff and the
-    /// [`crate::scene::cascade::Cascade::by_id`] snapshot taken at
+    /// [`crate::cascade::Cascade::by_id`] snapshot taken at
     /// the end of each `CascadeEngine::run`.
     pub(crate) curr: WidgetIdMap<Endpoint>,
     /// Last *painted* frame's `curr`. Only the keys matter for the
     /// rollover diff — values are stale across frames. Same type as
     /// `curr` so `std::mem::swap` is alloc-free.
     ///
-    /// [`Cascade::by_id`](crate::scene::cascade::Cascade) holds the same
+    /// [`Cascade::by_id`](crate::cascade::Cascade) holds the same
     /// entries with live values and still cannot serve this diff: it is
     /// refreshed at every cascade *run*, so a two-pass frame overwrites
     /// it before rollover and the diff would compare pass A against
@@ -283,7 +283,7 @@ impl SeenIds {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::primitives::widget_id::WidgetIdMap;
+    use crate::primitives::identity::widget_id::WidgetIdMap;
     use crate::scene::endpoint::Endpoint;
     use crate::scene::seen_ids::SeenIds;
 

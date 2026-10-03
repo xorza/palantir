@@ -1,9 +1,9 @@
 //! What is known about an editor's text box before the shape probe runs.
 
-use crate::layout::types::align::Align;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::align::Align;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use glam::Vec2;

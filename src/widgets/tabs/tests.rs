@@ -6,11 +6,11 @@ use glam::{UVec2, Vec2};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
@@ -276,7 +276,7 @@ fn arrows_home_and_end_travel_and_wrap() {
 /// inside the band's clip — the band's rect deflated by its padding.
 #[test]
 fn a_keyboard_move_pans_the_band_to_the_chip() {
-    use crate::primitives::approx::EPS;
+    use crate::primitives::math::approx::EPS;
 
     let record = |h: &mut UiHarness, selected: usize| {
         h.frame_value(|ui| {

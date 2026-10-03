@@ -1,35 +1,35 @@
 //! The chip row on its own: geometry, the selection cap, the close
 //! button, the badge, overflow, keyboard travel, and drag sensing.
 
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
-use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
-use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx::EPS;
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::approx::EPS;
+use crate::primitives::paint::background::Background;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::response::Response;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tabs::tab_item::TabItem;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::rc::Rc;
 

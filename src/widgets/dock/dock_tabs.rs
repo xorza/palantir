@@ -4,7 +4,7 @@
 use glam::Vec2;
 
 use crate::icons::icon_set::IconHandle;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::dock::dock_op::DockOp;

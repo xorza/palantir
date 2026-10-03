@@ -1,6 +1,6 @@
 use super::*;
 use crate::internals::harness::UiHarness;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::frame_report::FramePaint;
 use crate::widgets::button::Button;
 use std::cell::RefCell;
@@ -79,19 +79,6 @@ const EXCLUDED: &[(&str, &str)] = &[
     (
         "gpu_view",
         "needs a `wgpu::Device` the deviceless CPU/alloc harnesses don't have",
-    ),
-    (
-        "value_response",
-        "a return type, not a widget — `slider` and `drag_value` cover what \
-             produces it",
-    ),
-    (
-        "select_response",
-        "a return type, not a widget — `combo_box` covers what produces it",
-    ),
-    (
-        "overlay_response",
-        "a return type, not a widget — `popup` covers what produces it",
     ),
     (
         "close_handle",
@@ -177,9 +164,8 @@ fn every_excluded_widget_is_actually_absent() {
 /// live under `widgets::` without being one.
 #[test]
 fn covered_and_excluded_account_for_every_public_widget() {
-    /// Exported from `widgets::` but not widgets: themes, the shared
-    /// response types, the `Widget` entity and its `Configure` mixin.
-    const NOT_WIDGETS: &[&str] = &["theme", "response", "widget", "configure"];
+    /// Exported from `widgets::` but not a widget: the theme.
+    const NOT_WIDGETS: &[&str] = &["theme"];
 
     let mut classified: Vec<&str> = COVERED.to_vec();
     classified.extend(EXCLUDED.iter().map(|(m, _)| *m));

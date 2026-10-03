@@ -1,7 +1,7 @@
 //! Coalesced glyph draws deferred to the last group they reach into.
 
-use crate::primitives::span::Span;
-use crate::primitives::urect::URect;
+use crate::common::span::Span;
+use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 
 /// A coalesced text batch anchored to the final group it contributes to.

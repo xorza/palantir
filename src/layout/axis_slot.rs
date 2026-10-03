@@ -1,9 +1,9 @@
 //! The per-axis inputs the measure pass resolves an outer extent from.
 
 use crate::layout::measured::Measured;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Sums;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Sums;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::node::layout_core::LayoutCore;
 
 /// What a parent grants one axis of one node, in the six numbers plus
@@ -191,7 +191,7 @@ impl AxisSlot {
     /// re-dispatch against the grown outer would converge to the same
     /// value, because every driver's content size is monotone in
     /// `available` and pass 1 already saturated at the floor. Pinned by
-    /// `cross_driver_tests::convergence`.
+    /// `layout::tests::convergence`.
     #[inline]
     pub(super) fn resolve_node(
         layout: LayoutCore,

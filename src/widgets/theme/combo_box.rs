@@ -16,14 +16,14 @@ pub struct ComboBoxTheme {
     /// Gutter between the selected label and the chevron. The trigger
     /// justifies its two children apart, so this is the *minimum* gap,
     /// not the rendered one.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Chevron bounding box in logical px. Drawn as a polyline rather
     /// than a glyph, so it stays font-independent.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length2")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
     pub arrow_size: Vec2,
     /// Stroke width of the chevron polyline.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub arrow_stroke: f32,
 }
 

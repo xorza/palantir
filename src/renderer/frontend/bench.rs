@@ -3,12 +3,12 @@
 use crate::bench::Run;
 use crate::internals::harness::UiHarness;
 use crate::internals::harness::frontend_harness::FrontendHarness;
-use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::color::RgbaF32;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;

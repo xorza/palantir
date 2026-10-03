@@ -1,0 +1,133 @@
+use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::color::hsv::Hsv;
+use crate::primitives::paint::color::okhsv::Okhsv;
+
+/// A model switch keeps the colour and moves only the axes.
+#[test]
+fn switching_model_keeps_the_colour() {
+    for model in ColorModel::ALL {
+        let start = ColorCoords::new(model, RgbaF32::hex(0x4cd3ff), 0.0);
+        let other = start.with_model(match model {
+            ColorModel::Okhsv => ColorModel::Hsv,
+            ColorModel::Hsv => ColorModel::Okhsv,
+        });
+        assert_ne!(other.model(), start.model());
+        let (got, want) = (
+            other.to_color().to_srgba_u8(),
+            start.to_color().to_srgba_u8(),
+        );
+        assert_eq!(got, want, "{model:?}");
+    }
+}
+
+/// Grey has no hue in either model, so a switch and a switch back must
+/// carry the retained one through.
+#[test]
+fn switching_model_keeps_greys_hue() {
+    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x808080), 0.0);
+    coords.set_hue(0.42);
+    let round_trip = coords
+        .with_model(ColorModel::Hsv)
+        .with_model(ColorModel::Okhsv);
+    assert_eq!(round_trip.hue(), 0.42, "{}", round_trip.hue());
+}
+
+/// Switching to the model already in use is the identity, axes included —
+/// re-deriving would quietly move the hue of a grey.
+#[test]
+fn switching_to_the_same_model_changes_nothing() {
+    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::BLACK, 0.0);
+    coords.set_hue(0.3);
+    assert_eq!(coords.with_model(ColorModel::Okhsv), coords);
+}
+
+/// Every setter clamps, the hue included: 1.0 stays 1.0 — red, as 0.0
+/// is — rather than wrapping to 0.0, and 1.25 clamps to it.
+#[test]
+fn setters_clamp() {
+    let mut coords = ColorCoords::default();
+    coords.set_hue(1.0);
+    assert_eq!(coords.hue(), 1.0);
+    coords.set_hue(1.25);
+    coords.set_sat(2.0);
+    coords.set_val(-1.0);
+    assert_eq!(coords.hue(), 1.0);
+    assert_eq!(coords.sat(), 1.0);
+    assert_eq!(coords.val(), 0.0);
+    assert_eq!(
+        coords.to_color().to_srgba_u8(),
+        ColorCoords::default().to_color().to_srgba_u8(),
+        "hue 1 is the colour hue 0 is",
+    );
+}
+
+/// `model`'s coordinates at the raw axes `(h, s, v)` — through the
+/// model's own constructor, which wraps and clamps, not the setters.
+fn axes(model: ColorModel, h: f32, s: f32, v: f32) -> ColorCoords {
+    match model {
+        ColorModel::Okhsv => ColorCoords::Okhsv(Okhsv::new(h, s, v)),
+        ColorModel::Hsv => ColorCoords::Hsv(Hsv::new(h, s, v)),
+    }
+}
+
+/// Distance between two hues the short way round the circle.
+fn hue_gap(a: f32, b: f32) -> f32 {
+    let raw = (a - b).abs();
+    raw.min(1.0 - raw)
+}
+
+/// What both models promise alike. Every triple in the unit cube is
+/// inside sRGB, so nothing clamps away and the round trip holds — 9 × 8
+/// × 8 samples, grey excluded, since it has no hue to recover. Grey
+/// keeps the fallback hue instead. And the axes past their ends take
+/// what a drag drives them to: the hue wraps, the other two clamp.
+#[test]
+fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
+    for model in ColorModel::ALL {
+        let mut worst = 0.0_f32;
+        for hi in 0..9 {
+            for si in 1..9 {
+                for vi in 1..9 {
+                    let (h, s, v) = (hi as f32 / 9.0, si as f32 / 8.0, vi as f32 / 8.0);
+                    let back = ColorCoords::new(model, axes(model, h, s, v).to_color(), h);
+                    worst = worst
+                        .max(hue_gap(back.hue(), h))
+                        .max((back.sat() - s).abs())
+                        .max((back.val() - v).abs());
+                }
+            }
+        }
+        assert_close(
+            worst,
+            0.0,
+            1e-3,
+            "the worst axis drift over the cube, through f32 conversions",
+        );
+
+        for level in [0.0, 0.25, 0.5, 1.0] {
+            let grey = ColorCoords::new(model, RgbaF32::srgb(level, level, level), 0.618);
+            assert_eq!(grey.hue(), 0.618, "{model:?}: grey at {level}");
+            assert_close(
+                grey.sat(),
+                0.0,
+                1e-3,
+                "grey's saturation, to the model's f32 rounding",
+            );
+        }
+
+        let byte = |c: ColorCoords| c.to_color().to_srgba_u8();
+        assert_eq!(
+            byte(axes(model, 1.25, 2.0, 2.0)),
+            byte(axes(model, 0.25, 1.0, 1.0)),
+            "{model:?}: past the top",
+        );
+        assert_eq!(
+            byte(axes(model, -0.75, -1.0, 0.5)),
+            byte(axes(model, 0.25, 0.0, 0.5)),
+            "{model:?}: past the bottom",
+        );
+    }
+}

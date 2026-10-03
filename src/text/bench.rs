@@ -1,7 +1,7 @@
 use crate::bench::Run;
-use crate::layout::shaped_text::ShapedText;
-use crate::layout::types::align::HAlign;
-use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use crate::layout::text::shaped_text::ShapedText;
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;

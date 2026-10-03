@@ -1,17 +1,17 @@
 //! What a button wears in each of its four interaction states.
 
-use crate::input::response::response_state::ResponseState;
-use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live

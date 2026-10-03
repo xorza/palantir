@@ -2,7 +2,7 @@
 //! written in.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::approx::FloatHash;
+use crate::primitives::math::approx::FloatHash;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_mod::PaintMod;
 use std::f32::consts::TAU;

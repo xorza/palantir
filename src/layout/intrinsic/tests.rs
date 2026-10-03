@@ -1,16 +1,16 @@
-use crate::layout::axis::Axis;
 use crate::layout::intrinsic::*;
+use crate::primitives::layout::axis::Axis;
 use crate::scene::tree::node_id::NodeId;
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
-use crate::layout::types::scroll_axes::ScrollAxes;
-use crate::layout::types::sizing::Sizing;
-use crate::layout::types::track::Track;
+use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
+use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::track::Track;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;

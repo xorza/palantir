@@ -9,7 +9,7 @@
 //! a press origin, a drag latch always has a capture, click and
 //! drag-stop never coexist, and the run tracker never half-exists.
 
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
 use glam::Vec2;
 use std::time::Duration;
 

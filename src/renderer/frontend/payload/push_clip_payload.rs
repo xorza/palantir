@@ -1,7 +1,7 @@
 //! The clip-scope push the encoder hands the sink.
 
-use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
 
 /// Scissor clip payload. `corners` is all-zero for plain rect clips
 /// and non-zero for rounded-mask clips — the composer decides which

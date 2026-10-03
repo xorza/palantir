@@ -2,10 +2,10 @@
 //! draw.
 
 use crate::internals::paint_capture::PaintCapture;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;

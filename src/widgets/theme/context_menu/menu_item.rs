@@ -1,15 +1,15 @@
 //! What one menu row wears in each of its four interaction states.
 
-use crate::input::response::response_state::ResponseState;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 
 /// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`]
 /// (`active` = pressed). The default `active` look equals `hovered` —
@@ -28,7 +28,7 @@ pub struct MenuItemTheme {
     /// hint. The row is `SpaceBetween`, so this is the floor the two
     /// texts are held apart by while the menu hugs its widest row —
     /// it is what stops "Copy ⌘C" from reading as one word.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`]. `margin` is
     /// `ZERO` by default: rows stack flush inside the menu's own padding

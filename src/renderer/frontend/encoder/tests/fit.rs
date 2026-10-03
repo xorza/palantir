@@ -1,10 +1,10 @@
 //! How an image or icon resolves its destination rect and UVs.
 
+use crate::damage::region::DamageRegion;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
-use crate::scene::damage::region::DamageRegion;
-use crate::widgets::configure::Configure;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -23,7 +23,7 @@ use glam::{UVec2, Vec2};
 /// carries both and the shader masks them apart.
 #[test]
 fn downsample_modes_encode_to_distinct_tap_flags() {
-    use crate::primitives::image::{Image, ImageDownsample};
+    use crate::primitives::paint::image::{Image, ImageDownsample};
     use crate::renderer::render_buffer::image::{
         IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     };
@@ -73,8 +73,8 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
 /// cascade's screen rect and the draw rect are in one space.
 #[test]
 fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
-    use crate::primitives::image::{Image, ImageFit};
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::paint::image::{Image, ImageFit};
     use crate::shape::Shape;
 
     let fits = [

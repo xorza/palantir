@@ -1,12 +1,12 @@
 //! A decorated rectangle with nothing inside it: background, size and
 //! margin, and none of the interaction a container carries.
 
-use crate::primitives::background::Background;
+use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::Response;
-use crate::widgets::widget::Widget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 
 /// A leaf rectangle: optional background / size / margin plus an optional
 /// `Sense`. Dividers, hit areas, colour swatches, spacers. Chrome + clip

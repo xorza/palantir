@@ -1,6 +1,6 @@
 use crate::internals::harness::UiHarness;
-use crate::layout::types::align::Align;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::align::Align;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;

@@ -11,6 +11,7 @@ mod collision_overlay;
 mod geometry;
 mod layer_ctx;
 
+use crate::damage::Damage;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::encoder::layer_ctx::LayerCtx;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -18,10 +19,9 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::shape_brush::ShapeBrush;
 
 /// Retained encoder state.
 #[derive(Debug)]

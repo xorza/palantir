@@ -1,18 +1,18 @@
 //! What a text field wears in each of its four states, plus the caret and
 //! selection colours that have no state of their own.
 
-use crate::input::response::response_state::ResponseState;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` =
@@ -41,7 +41,7 @@ pub struct TextEditTheme {
     /// Width of the caret rect in logical px. The caret is painted as
     /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
     /// a hairline, two as a chunkier i-beam. Default 1.5 px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub caret_width: f32,
     /// Selection highlight fill, painted as a wash behind the selected
     /// glyphs (see `TextEdit::show`).

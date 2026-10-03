@@ -1,8 +1,8 @@
 //! The transform in force during a compose pass, and the stack it comes
 //! off.
 
-use crate::primitives::rect::Rect;
-use crate::primitives::translate_scale::TranslateScale;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 
 /// The walk transform: the live product every draw is placed by, plus the
 /// ancestors a `PopTransform` restores it from.

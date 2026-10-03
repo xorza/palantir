@@ -1,7 +1,7 @@
 //! Mesh payload spans and per-draw GPU instance data.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::span::Span;
+use crate::common::span::Span;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::Vec2;
 use soa_rs::Soars;
 

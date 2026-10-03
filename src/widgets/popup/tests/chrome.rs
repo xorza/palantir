@@ -1,14 +1,14 @@
 //! Which background a popup body paints.
 
 use crate::internals::harness::UiHarness;
-use crate::layout::types::anchor::Anchor;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::widgets::configure::Configure;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::widget_core::configure::Configure;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::tests::support::{ANCHOR, SURFACE};
 

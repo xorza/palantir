@@ -3,7 +3,7 @@ use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
 use crate::internals::panic_probe;
-use crate::primitives::approx::EPS;
+use crate::primitives::math::approx::EPS;
 
 #[test]
 fn anim_spec_construction_validates_and_canonicalizes() {

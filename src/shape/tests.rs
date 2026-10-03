@@ -1,12 +1,12 @@
-use crate::layout::types::align::Align;
-use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::primitives::mesh::Mesh;
-use crate::primitives::rect::Rect;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::align::Align;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
 use crate::shape::rect::RectKind;
@@ -169,7 +169,7 @@ fn typed_builders_set_the_fields_they_name() {
 
 #[test]
 fn text_noop_rejects_invalid_metrics() {
-    use crate::primitives::approx::EPS;
+    use crate::primitives::math::approx::EPS;
 
     let mut store = RecordStore::default();
     let cases = [

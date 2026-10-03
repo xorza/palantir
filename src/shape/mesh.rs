@@ -1,13 +1,13 @@
 //! The triangle-mesh builder. Lowers to `ShapeRecord::Mesh`, with the
 //! vertices and indices copied into the record store.
 
-use crate::primitives::color::RgbaF32;
-use crate::primitives::mesh::Mesh;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::lower;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::lower;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 
 /// User-supplied colored triangle mesh.

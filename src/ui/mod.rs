@@ -23,6 +23,7 @@ use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::app::App;
+use crate::cascade::Cascade;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
@@ -32,33 +33,32 @@ use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
+use crate::input::interaction::input_delta::InputDelta;
+use crate::input::interaction::pointer_action::PointerAction;
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
-use crate::input::response::input_delta::InputDelta;
-use crate::input::response::pointer_action::PointerAction;
-use crate::input::response::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::layout::Layout;
-use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
-use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
-use crate::layout::types::track::Track;
-use crate::primitives::background::Background;
-use crate::primitives::image::Image;
-use crate::primitives::interned_str::InternedStr;
-use crate::primitives::size::Size;
-use crate::primitives::text_input::TextInput;
-use crate::primitives::widget_id::WidgetId;
+use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
+use crate::primitives::layout::track::Track;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::image::Image;
+use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageLoadError;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -387,7 +387,7 @@ impl Ui {
     /// **The whole second pass is the record closure**, which makes this
     /// roughly a 2× frame; measure and arrange are ~2% of it. No widget
     /// this crate ships calls it any more. `Scroll` was the last, and it
-    /// now resolves its bar geometry in the `layout::scrollbars` driver
+    /// now resolves its bar geometry in the `layout::drivers::scrollbars` driver
     /// after measure instead. Prefer that shape — or handling the edge in
     /// [`App::update`], which runs before any
     /// recording — and reach for this only when neither fits.
@@ -932,9 +932,9 @@ impl Ui {
 
     /// Record a `GpuView` for widget `id`: refresh its row in
     /// [`Self::gpu_views`], then append a
-    /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
+    /// [`ShapeRecord::Image`](crate::shape::record::ShapeRecord::Image)
     /// sourced from an
-    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::image_source::ImageSource::GpuView)
+    /// [`ImageSource::GpuView`](crate::shape::paint::image_source::ImageSource::GpuView)
     /// carrying the row's `epoch` to the active node — the encoder
     /// recovers id and paint from the store by `id`.
     ///
@@ -1601,6 +1601,7 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     use crate::animation::AnimMap;
+    use crate::cascade::Cascade;
     use crate::display::Display;
     use crate::input::input_state::InputState;
     #[cfg(any(test, feature = "bench"))]
@@ -1608,8 +1609,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::layout::layer_layout::LayerLayout;
     #[cfg(test)]
-    use crate::primitives::rect::Rect;
-    use crate::scene::cascade::Cascade;
+    use crate::primitives::geometry::rect::Rect;
     #[cfg(test)]
     use crate::scene::endpoint::Endpoint;
     #[cfg(any(test, feature = "bench"))]

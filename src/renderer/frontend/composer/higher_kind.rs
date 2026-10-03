@@ -17,7 +17,7 @@
 //!
 //! [`RectGrid`]: crate::renderer::frontend::composer::rect_grid::RectGrid
 
-use crate::primitives::urect::URect;
+use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use glam::UVec2;
@@ -129,7 +129,7 @@ impl HigherKindRects {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::urect::URect;
+    use crate::primitives::geometry::urect::URect;
     use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
     use crate::renderer::render_buffer::paint_tier::PaintTier;
 

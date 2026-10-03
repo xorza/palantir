@@ -1,7 +1,7 @@
 //! What one measure produced: an extent, the least of it the content
 //! can give way to, and the offers it holds under.
 
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 
 /// An extent, its floor, and where it holds, from one measure.
 ///

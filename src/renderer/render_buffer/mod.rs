@@ -5,12 +5,12 @@
 //! Every buffer here is retained and refilled, so a steady-state frame
 //! allocates nothing for its output.
 
+use crate::common::span::Span;
 use crate::display::Display;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
-use crate::primitives::span::Span;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;

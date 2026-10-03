@@ -4,11 +4,11 @@
 use crate::Ui;
 use crate::common::time::MAX_ANIM_DT;
 use crate::internals::harness::UiHarness;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::tests::support::SURFACE;
-use crate::widgets::configure::Configure;
-use crate::widgets::response::ResponseSnapshot;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
@@ -80,7 +80,7 @@ fn frame_pass_count_matches_action_trigger() {
     use crate::input::keyboard::modifiers::Modifiers;
 
     use crate::input::sense::Sense;
-    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::layout::sizing::Sizing;
     use glam::Vec2;
 
     fn build_target(ui: &mut Ui) {

@@ -94,7 +94,7 @@ impl<'a> TextShapeRequest<'a> {
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
-    use crate::layout::types::align::HAlign;
+    use crate::primitives::layout::align::HAlign;
     #[cfg(test)]
     use crate::text::wrap::LineFit;
     // The face is a `GlyphFont` now, so only the assertion-side builders

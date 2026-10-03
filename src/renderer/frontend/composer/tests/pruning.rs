@@ -1,10 +1,12 @@
 //! What the occlusion pass drops, and what it must not.
 
 use crate::internals::paint_capture::PaintCapture;
-use crate::primitives::lut_row::LutRow;
-use crate::primitives::{
-    color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, translate_scale::TranslateScale,
-};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::lut_row::LutRow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -109,7 +111,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
 /// rect is invisible and pruned, exactly like an unbordered one.
 #[test]
 fn prune_drops_bordered_quad_under_solid_cover() {
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::paint::stroke::Stroke;
 
     let buf = run(
         |b, _| {
@@ -237,8 +239,8 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
 
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
-    use crate::primitives::fill_axis::FillAxis;
-    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::packed::fill_axis::FillAxis;
+    use crate::primitives::packed::fill_kind::FillKind;
     // A shadow's blur fringe extends past the stored rect — even if
     // a later opaque solid fully contains its rect, the visible
     // outer halo would be lost. Predicate must never drop shadows.
@@ -287,12 +289,12 @@ fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
 #[test]
 fn prune_stroked_occluder_drops_smaller_sharp_under() {
     // A solid-opaque occluder with a fully-OPAQUE stroke covers its
-    // whole rect: quad.wgsl strokes are inner-edge and coverage-
+    // whole rect: quad_pipeline/shader.wgsl strokes are inner-edge and coverage-
     // partitioned with the fill, so opaque annulus + opaque fill =
     // opaque rect. A sharp under entirely inside should be dropped.
     // (Translucent strokes shrink the cover — see
     // `prune_occluder_stroke_translucency_gates_cover`.)
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::paint::stroke::Stroke;
 
     let buf = run(
         |b, _| {
@@ -310,7 +312,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     );
 }
 
-/// FIX-pin: quad.wgsl strokes are INNER-edge and coverage-partitioned
+/// FIX-pin: quad_pipeline/shader.wgsl strokes are INNER-edge and coverage-partitioned
 /// with the fill — the annulus's alpha is the stroke's alpha, not the
 /// fill's. An opaque-fill quad is fully opaque only when its stroke is
 /// a noop or fully opaque; a translucent stroke leaves a see-through
@@ -330,7 +332,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
 /// painted (10,10)..(60,60), inside (4,4)..(96,96).
 #[test]
 fn prune_occluder_stroke_translucency_gates_cover() {
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::paint::stroke::Stroke;
 
     #[derive(Debug)]
     struct Case {
@@ -488,10 +490,10 @@ fn prune_steady_state_across_repeated_compose_calls() {
 /// prior scene.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
-    use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::color::rgba_f16::RgbaF16;
-    use crate::primitives::fill_axis::FillAxis;
-    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::packed::fill_axis::FillAxis;
+    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::Spread;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
     let vp = UVec2::new(200, 200);
     let bg = RgbaF32::srgb(0.14, 0.16, 0.22);
@@ -627,7 +629,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
 /// cover lands survives the discard (its pops are still ahead).
 #[test]
 fn clear_fold_discards_hidden_underlay_mid_stream() {
-    use crate::primitives::color::rgba_f16::RgbaF16;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
     let vp = UVec2::new(200, 200);
 

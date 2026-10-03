@@ -10,11 +10,11 @@
 //! adapter; a bench must not block for minutes behind someone else's
 //! lock.
 
-use crate::gpu::device_requirements::DeviceRequirements;
-use crate::gpu::power_preference::PowerPreference;
-use crate::gpu::render_target::{self, RenderTarget};
-use crate::gpu::requested_gpu::Gpu;
-use crate::gpu::requested_gpu::RequestedGpu;
+use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::power_preference::PowerPreference;
+use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::requested_gpu::RequestedGpu;
+use crate::gpu::surface::render_target::{self, RenderTarget};
 use crate::gpu::test_gpu::HeadlessTestGpuLease;
 use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 use glam::UVec2;

@@ -16,30 +16,30 @@
 //! [`LayoutPass::intrinsic_range`] are one-line forwarders so driver call
 //! sites stay short without widening what the query can touch.
 
-use crate::layout::axis::Axis;
+use crate::common::span::Span;
 use crate::layout::axis_placement::Placed;
 use crate::layout::axis_slot::AxisSlot;
 use crate::layout::cache::{Arranged, MeasureCache};
 use crate::layout::counters::PhaseSpan;
-use crate::layout::driver::{DriverOp, LayoutDriver, ReplayOp};
+use crate::layout::drivers::grid::grid_context::GridContext;
+use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
+use crate::layout::drivers::stack::stack_scratch::StackScratch;
+use crate::layout::drivers::wrapstack::WrapScratch;
+use crate::layout::drivers::{DriverOp, LayoutDriver, ReplayOp};
 use crate::layout::engine::LayoutEngine;
-use crate::layout::grid::grid_context::GridContext;
-use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::layout_scratch::NO_ARRANGE_SRC;
 use crate::layout::measured::Measured;
-use crate::layout::stack::stack_scratch::StackScratch;
-use crate::layout::text_shape_input::TextShapeInput;
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::wrapstack::WrapScratch;
-use crate::primitives::interned_text::InternedText;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::span::Span;
-use crate::primitives::widget_id::WidgetId;
+use crate::layout::text::text_shape_input::TextShapeInput;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::text::interned_text::InternedText;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;

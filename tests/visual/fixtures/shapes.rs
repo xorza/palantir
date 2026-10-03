@@ -371,7 +371,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 /// bright green tint, green channel >220.
 ///
 /// Test asserts `green - max(red, blue) < 32` at the polyline's
-/// center pixel. A regression of the `curve.wgsl::fs` premultiply
+/// center pixel. A regression of the `curve_pipeline/shader.wgsl::fs` premultiply
 /// step fails this with `delta ≈ 60+`.
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
@@ -408,7 +408,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
         dominant_green < 32,
         "translucent polyline over magenta backdrop should blend to ~grey \
          (g - max(r,b) ≈ 0 under correct premul); got rgb=({r}, {g}, {b}), \
-         green-dominance={dominant_green}. mesh.wgsl::fs probably forgot to \
+         green-dominance={dominant_green}. mesh_pipeline/shader.wgsl::fs probably forgot to \
          premultiply."
     );
 }

@@ -6,10 +6,10 @@
 //! [`retention`] the shaped-buffer cache's windows, [`reuse`] the
 //! per-window rows and the supersede signal they carry.
 
-use crate::layout::types::align::{Align, HAlign};
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::layout::align::{Align, HAlign};
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;

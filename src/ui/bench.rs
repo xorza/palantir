@@ -65,13 +65,13 @@
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::gpu::texture_region::counters::WriteStats;
+use crate::gpu::resource::texture_region::counters::WriteStats;
 use crate::host::offscreen::OffscreenHost;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::internals::harness::UiHarness;
 use crate::internals::harness::frontend_harness::FrontendHarness;
 use crate::internals::record_app::RecordApp;
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use criterion::measurement::WallTime;

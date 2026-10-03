@@ -1,30 +1,27 @@
 //! The disclosure control: a header that reveals or hides a body.
 
-pub(crate) mod expander_response;
-
 use crate::animation::anim_slot::AnimSlot;
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
-use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
-use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::text_input::TextInput;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::arrow::Arrow;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::expander::expander_response::ExpanderResponse;
-use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::expander::ExpanderTheme;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// A header that reveals or hides a body — `<details>` / `<summary>` in
@@ -316,6 +313,21 @@ fn activation_key(ui: &mut Ui, header: WidgetId) -> bool {
     let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
     let enter = ui.key_pressed(Shortcut::key(Key::Enter));
     space || enter
+}
+
+/// What one pass over an [`Expander`] produced.
+#[derive(Debug)]
+pub struct ExpanderResponse<'a, R> {
+    /// The header's response — the whole row is the hit target.
+    pub response: Response<'a>,
+    /// What the body closure returned, or `None` on a frame the body did
+    /// not record. A collapsed [`Expander::keep_body`](crate::Expander::keep_body) section still
+    /// records, so it still answers `Some`.
+    pub inner: Option<R>,
+    /// The header was activated this frame, by click or by key.
+    pub toggled: bool,
+    /// `0.0` closed, `1.0` open, in between while the reveal animates.
+    pub openness: f32,
 }
 
 #[cfg(test)]

@@ -1,15 +1,15 @@
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -230,7 +230,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 /// visible in the showcase as a flash of "alive" disabled buttons.
 #[test]
 fn child_inside_disabled_panel_sees_disabled_at_record_time() {
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let child_id = WidgetId::from_hash("child");
     let observed = h.frame_value(|ui| {

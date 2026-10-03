@@ -2,11 +2,11 @@
 
 use crate::internals::harness::UiHarness;
 use crate::internals::harness::passes::Passes;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::configure::Configure;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::drag_value::DragValue;
-use crate::widgets::value_response::internals::ValueEdges;
 
 /// Drive one frame of a `DragValue` through a commit-deferring caller:
 /// the draft re-seeds from `canonical` every record pass and is adopted

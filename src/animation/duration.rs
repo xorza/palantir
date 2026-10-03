@@ -7,7 +7,7 @@
 //! numbers.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::approx::EPS;
+use crate::primitives::math::approx::EPS;
 
 const MAX_DURATION_SECS: f32 = 60.0;
 

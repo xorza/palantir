@@ -1,14 +1,14 @@
 //! What a disclosure header wears, and how far its body is inset.
 
-use crate::input::response::response_state::ResponseState;
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
@@ -28,18 +28,18 @@ pub struct ExpanderTheme {
     /// **Square, unless the angles below leave it unturned.** A quarter
     /// turn swaps the triangle's extents, so an oblong box clips it on
     /// one axis.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length2")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
     pub arrow_size: Vec2,
     /// Corner radius of the triangle, in logical px. The tip and both base
     /// corners take it, and `0.0` is a sharp triangle. At most half the
     /// smaller side of [`Self::arrow_size`], which the vertices sit inside
     /// by this much.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub arrow_radius: f32,
     /// Angle the arrow wears while the body is closed, in radians. The
     /// default quarter turn anticlockwise points it at the label, which
     /// is the disclosure triangle every file tree draws.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
     pub arrow_closed_angle: f32,
     /// Angle the arrow wears while the body is open. The default leaves
     /// it upright, pointing down at what it revealed.
@@ -47,13 +47,13 @@ pub struct ExpanderTheme {
     /// Set the pair to `0.0` and `-PI` for the other convention — down
     /// when closed, up when open — which reads better for a column of
     /// sibling sections than for one disclosure.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
     pub arrow_open_angle: f32,
     /// Gutter between the arrow and the label.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// How far the body is inset from the header's leading edge.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indent: f32,
     /// Inset between the body's edges and its content.
     ///

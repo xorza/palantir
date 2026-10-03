@@ -24,7 +24,7 @@ use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::common::typed_stores::{Drained, TypedStores};
-use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 
 /// Central animation table on [`crate::Ui`]. Typed maps allocated on demand
 /// keyed by `TypeId`. Adding a new [`Animatable`] type costs no

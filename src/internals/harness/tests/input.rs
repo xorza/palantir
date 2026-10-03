@@ -3,9 +3,9 @@
 use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
 use crate::internals::harness::*;
 use crate::internals::panic_probe;
-use crate::layout::types::sizing::Sizing;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 
 #[test]

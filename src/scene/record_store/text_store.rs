@@ -1,10 +1,10 @@
 //! The record pass's text arena.
 
 use crate::common::hash;
-use crate::primitives::interned_str::InternedStr;
-use crate::primitives::recorded_text::RecordedText;
-use crate::primitives::span::Span;
-use crate::primitives::text_epoch::TextEpoch;
+use crate::common::span::Span;
+use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::recorded_text::RecordedText;
+use crate::primitives::text::text_epoch::TextEpoch;
 use std::fmt::Write as _;
 
 /// One window's record-pass text. A single arena cleared at the start of

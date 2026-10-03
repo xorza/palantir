@@ -10,8 +10,8 @@ use crate::animation::tests::support::{
 };
 use crate::animation::*;
 use crate::common::time::ANIM_SUBSTEP_DT;
-use crate::primitives::approx::internals::assert_close;
-use crate::primitives::color::RgbaF32;
+use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::paint::color::RgbaF32;
 
 /// Accepted springs stay finite and settle on their target under a mixed
 /// frame sequence, on the step the closed form names or within the f32
@@ -392,7 +392,7 @@ fn color_spring_converges_to_target() {
 
 #[test]
 fn solid_brush_spring_matches_color_trajectory() {
-    use crate::primitives::brush::Brush;
+    use crate::primitives::paint::brush::Brush;
 
     let mut color_map = AnimMapTyped::<RgbaF32>::default();
     let mut brush_map = AnimMapTyped::<Brush>::default();

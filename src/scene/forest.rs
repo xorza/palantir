@@ -4,12 +4,12 @@
 //! per-frame data input and rendering read.
 
 use crate::common::tracy;
-use crate::layout::scrollbars::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
-use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
-use crate::layout::types::placement::Placement;
-use crate::layout::types::track::Track;
-use crate::primitives::background::Background;
-use crate::primitives::widget_id::WidgetId;
+use crate::layout::drivers::scrollbars::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
+use crate::primitives::layout::placement::Placement;
+use crate::primitives::layout::track::Track;
+use crate::primitives::paint::background::Background;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -307,9 +307,9 @@ impl Forest {
     }
 
     /// Append a `GpuView` shape (a
-    /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
+    /// [`ShapeRecord::Image`](crate::shape::record::ShapeRecord::Image)
     /// sourced from an
-    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::image_source::ImageSource::GpuView))
+    /// [`ImageSource::GpuView`](crate::shape::paint::image_source::ImageSource::GpuView))
     /// to the active node. Only the redraw `epoch` rides the shape — the
     /// view's `id` + app `paint` live in `Ui::gpu_views` keyed by the
     /// owner's `WidgetId`; this is assembled by `Ui::add_gpu_view`, not lowered
@@ -471,7 +471,7 @@ impl Forest {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::WidgetId;
     use crate::scene::forest::Forest;
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;

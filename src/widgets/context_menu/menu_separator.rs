@@ -1,13 +1,13 @@
 //! The rule a context menu draws between groups of rows.
 
-use crate::layout::axis::Axis;
+use crate::primitives::layout::axis::Axis;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
-use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// The rule [`MenuItem::separator`](crate::widgets::context_menu::menu_item::MenuItem::separator)

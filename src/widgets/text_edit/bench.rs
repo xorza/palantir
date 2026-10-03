@@ -1,8 +1,8 @@
 use crate::bench::Run;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::configure::Configure;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::text_edit::{TextEdit, TextEditState};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};

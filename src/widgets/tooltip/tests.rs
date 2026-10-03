@@ -3,23 +3,23 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
-use crate::layout::types::anchor::Anchor;
+use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
-use crate::input::response::response_state::ResponseState;
+use crate::input::interaction::response_state::ResponseState;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::button::Button;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::tooltip::{Tooltip, TooltipGlobal, TooltipState, global_state_id};
 use glam::{UVec2, Vec2};
 use std::time::Duration;

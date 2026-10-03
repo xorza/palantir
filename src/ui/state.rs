@@ -15,7 +15,7 @@
 //! parallel `owners` vec.
 
 use crate::common::typed_stores::{Drained, TypedStore, TypedStores};
-use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 
 #[derive(Debug, Default)]
 pub(crate) struct StateMap {

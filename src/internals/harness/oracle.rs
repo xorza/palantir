@@ -12,18 +12,18 @@
 //! this check after each frame finds a missed input without anyone having
 //! to think of it.
 
+use crate::cascade::Cascade;
+use crate::cascade::cascade_key::CascadeKey;
+use crate::cascade::engine::CascadeEngine;
+use crate::cascade::internals::OwnedPaint;
+use crate::damage::Damage;
 use crate::internals::harness::UiHarness;
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::shaped_text::ShapedText;
-use crate::primitives::rect::Rect;
+use crate::layout::text::shaped_text::ShapedText;
+use crate::primitives::geometry::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade::Cascade;
-use crate::scene::cascade::cascade_key::CascadeKey;
-use crate::scene::cascade::engine::CascadeEngine;
-use crate::scene::cascade::internals::OwnedPaint;
-use crate::scene::damage::Damage;
 use crate::ui::frame_report::FrameReport;
 
 /// The previous frame's paint rows, and the scratch the next check fills.
@@ -299,7 +299,7 @@ fn covered(rect: Rect, cover: &[Rect]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::covered;
-    use crate::primitives::rect::Rect;
+    use crate::primitives::geometry::rect::Rect;
 
     #[test]
     fn coverage_is_exact_over_a_union() {

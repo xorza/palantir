@@ -8,16 +8,16 @@ pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
-use crate::layout::grid::grid_track_store::GridTrackStore;
+use crate::common::span::Span;
+use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::measured::Measured;
-use crate::layout::shaped_text::ShapedText;
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::primitives::num::F32Px;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::span::Span;
-use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::layout::text::shaped_text::ShapedText;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::math::num::F32Px;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
@@ -253,7 +253,7 @@ pub(crate) struct MeasureCache {
     /// Accumulates for the life of the cache rather than resetting per
     /// frame, so readers take a delta — the shape every counter over a
     /// pass that may not run takes, for the reason
-    /// [`CascadeCounters`](crate::scene::cascade::counters::CascadeCounters)
+    /// [`CascadeCounters`](crate::cascade::counters::CascadeCounters)
     /// states.
     pub(crate) snapshot_rebuilds: BenchOnly<u32>,
 }
@@ -575,10 +575,10 @@ impl MeasureCache {
 pub(crate) mod internals {
     #[cfg(test)]
     use super::*;
-    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::layout::sizing::Sizing;
     use crate::ui::Ui;
+    use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
-    use crate::widgets::configure::Configure;
     use crate::widgets::panel::Panel;
 
     /// Nested panels in the deep chain, above its one leaf.

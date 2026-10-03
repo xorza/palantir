@@ -4,7 +4,6 @@
 
 use crate::common::tracy;
 use crate::layout::Layout;
-use crate::layout::axis::Axis;
 use crate::layout::axis_placement::{AxisPlacement, Placed};
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
 use crate::layout::counters::PhaseSpan;
@@ -13,10 +12,11 @@ use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
-use crate::layout::text_shape_input::TextShapeInput;
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::primitives::interned_text::InternedText;
-use crate::primitives::rect::Rect;
+use crate::layout::text::text_shape_input::TextShapeInput;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::text::interned_text::InternedText;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
@@ -321,9 +321,9 @@ impl LayoutEngine {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::layout::axis::Axis;
     use crate::layout::engine::LayoutEngine;
     use crate::layout::intrinsic::len_req::{LenReq, SLOT_COUNT};
+    use crate::primitives::layout::axis::Axis;
     use crate::scene::forest::Forest;
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;

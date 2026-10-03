@@ -5,10 +5,10 @@ use crate::Ui;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::drag_value::tests::support::deferred_frame;
 use crate::widgets::panel::Panel;
@@ -62,7 +62,7 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
 
 #[test]
 fn scrub_distance_is_scale_invariant() {
-    use crate::primitives::translate_scale::TranslateScale;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
 
     let id = WidgetId::from_hash("scaled-drag-value");
     for scale in [0.5, 1.0, 2.0] {

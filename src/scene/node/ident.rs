@@ -1,9 +1,9 @@
 //! How a widget's `WidgetId` is derived — an explicit id, a caller-supplied
 //! salt, or the call site itself — and the id it became once derived.
 
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
 
-/// A [`Widget`](crate::widgets::widget::Widget)'s identity, in one of two
+/// A [`Widget`](crate::widget_core::widget::Widget)'s identity, in one of two
 /// halves of its life. Before the widget's first contact with `Ui` it is a
 /// *recipe*, mirroring egui's `Option<Id>` "raw `id_salt`, resolve at
 /// record" pattern: the builder stores the user's intent, and resolution

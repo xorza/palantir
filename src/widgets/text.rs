@@ -1,20 +1,20 @@
 //! The standalone text leaf: labels, paragraphs and headings, shaped and
 //! measured like any other content.
 
-use crate::layout::types::align::Align;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::text_input::TextInput;
+use crate::primitives::layout::align::Align;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
-use crate::widgets::widget::Widget;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size when it has room;

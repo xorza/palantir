@@ -1,20 +1,20 @@
 //! Everything the painter needs to record one editor's frame.
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use crate::widgets::text_edit::text_layout::TextLayout;
-use crate::widgets::widget::Widget;
 use glam::Vec2;
 
 #[derive(Debug)]

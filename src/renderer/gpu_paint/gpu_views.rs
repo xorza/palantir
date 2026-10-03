@@ -1,7 +1,7 @@
 //! The `Ui`'s live-`GpuView` bookkeeping, and the per-view row it keeps.
 
-use crate::primitives::texture_id::TextureId;
-use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use std::collections::hash_map::Entry;
 
@@ -118,7 +118,7 @@ impl GpuViews {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+    use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use crate::renderer::gpu_paint::gpu_views::GpuViews;
 

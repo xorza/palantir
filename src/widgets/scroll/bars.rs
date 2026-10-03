@@ -2,22 +2,22 @@
 //! per-axis track/thumb pair, and how a frame's bar interaction folds
 //! back into the scroll offset.
 
-use crate::input::response::response_state::ResponseState;
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
-use crate::layout::axis::Axis;
-use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
-use crate::layout::types::scroll_axes::ScrollAxes;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
+use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::ScrollGeometry;
 use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
-use crate::widgets::widget::Widget;
 
 /// One scrollbar axis: the two leaves the overlay records for it, and
 /// last frame's interaction on each.

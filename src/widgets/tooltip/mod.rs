@@ -2,25 +2,22 @@
 //! honour a delay, and the app-global state that lets a second tooltip
 //! appear without re-serving the delay.
 
-pub(crate) mod tooltip_response;
-
 use crate::input::sense::Sense;
-use crate::layout::types::anchor::Anchor;
-use crate::primitives::background::Background;
-use crate::primitives::text_input::TextInput;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::paint::background::Background;
+use crate::primitives::text::text_input::TextInput;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
-use crate::widgets::response::ResponseSnapshot;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
+use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
-use crate::widgets::tooltip::tooltip_response::TooltipResponse;
-use crate::widgets::widget::Widget;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -268,6 +265,19 @@ impl Configure for Tooltip<'_> {
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()
     }
+}
+
+/// What one pass over a [`Tooltip`] produced.
+///
+/// No [`Response`](crate::Response) here, unlike the other widget results:
+/// the bubble senses nothing and does not record at all on the frames it is
+/// down, so there is no node an application would ask about. Whether it is
+/// up is the whole answer — for a trigger that wants to paint differently
+/// while its hint is showing.
+#[derive(Debug, Clone, Copy)]
+pub struct TooltipResponse {
+    /// The bubble recorded this frame.
+    pub visible: bool,
 }
 
 #[cfg(test)]

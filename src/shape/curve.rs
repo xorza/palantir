@@ -2,13 +2,13 @@
 //! `ShapeRecord::Curve`, and the stroke properties travel beside the
 //! geometry so only the geometry varies between the entry points.
 
-use crate::primitives::approx::{paints_nothing, vec2_approx_eq};
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::math::approx::{paints_nothing, vec2_approx_eq};
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::lower;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::lower;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::shape::style::LineCap;
 use glam::Vec2;

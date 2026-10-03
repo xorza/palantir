@@ -1,8 +1,8 @@
 //! One shaped-text run draw.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::rect::Rect;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::shaped_ref::ShapedTextRef;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

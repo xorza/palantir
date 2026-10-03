@@ -2,21 +2,21 @@
 //! all four `Brush` variants as chrome fills at once.
 
 use crate::internals::frame_fixture::tokens;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
-use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::stroke::Stroke;
-use crate::scene::visibility::Visibility;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+use crate::primitives::paint::brush::gradient::stops::Stop;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;

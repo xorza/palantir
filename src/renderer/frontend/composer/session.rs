@@ -1,20 +1,20 @@
 //! One frame being composed, and the sink the paint calls arrive through.
 
+use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
-use crate::primitives::approx::{EPS, paints_nothing};
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::corners::Corners;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::half_simd::{self, F16x4};
-use crate::primitives::num::{F32Px, Vec2Ext};
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::span::Span;
-use crate::primitives::translate_scale::TranslateScale;
-use crate::primitives::urect::URect;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::approx::{EPS, paints_nothing};
+use crate::primitives::math::num::{F32Px, Vec2Ext};
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::packed::half_simd::{self, F16x4};
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -39,8 +39,8 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::curve_basis::CurveBasis;
-use crate::scene::shapes::record::ColorMode;
+use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::record::ColorMode;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
@@ -915,7 +915,7 @@ impl ComposeSession<'_> {
                 };
                 // The radii fit the box the shader rounds. For a drop
                 // shadow that is the shadow box inside the blur halo, the
-                // same arithmetic as `quad.wgsl`'s drop arm, and the radii
+                // same arithmetic as `quad_pipeline/shader.wgsl`'s drop arm, and the radii
                 // grow by the spread first; every other quad rounds its
                 // own rect.
                 let corners = if p.fill.kind == FillKind::SHADOW_DROP {

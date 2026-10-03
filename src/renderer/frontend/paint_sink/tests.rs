@@ -2,10 +2,10 @@
 //! faded payload it judges.
 
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::rect::Rect;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_image_payload::{
     DrawImagePayload, ImageDraw, ViewPaint,
@@ -16,7 +16,7 @@ use glam::Vec2;
 
 #[test]
 fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
-    use crate::primitives::approx::EPS;
+    use crate::primitives::math::approx::EPS;
 
     #[derive(Debug)]
     struct Case {

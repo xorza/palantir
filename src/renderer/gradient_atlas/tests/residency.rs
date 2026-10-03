@@ -1,12 +1,12 @@
 //! Row assignment: reuse, dedup, and the reserved fallback at row zero.
 
-use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
-use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::brush::gradient::Interp;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+use crate::primitives::paint::brush::gradient::stops::Stop;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::*;
 use crate::renderer::texture_limit::TextureLimit;

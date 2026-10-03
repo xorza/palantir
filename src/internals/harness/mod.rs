@@ -164,17 +164,17 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
+use crate::input::interaction::input_delta::InputDelta;
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
-use crate::input::response::input_delta::InputDelta;
-use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::internals::harness::passes::Passes;
 use crate::internals::record_app::RecordApp;
-use crate::primitives::rect::Rect;
-use crate::primitives::translate_scale::TranslateScale;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
@@ -936,8 +936,8 @@ impl UiHarness {
 /// a non-test `internals` build has no caller.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
+    use crate::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
     use crate::internals::harness::UiHarness;
-    use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
     impl UiHarness {
         /// Collapse this frame's accumulated raw rects the way
@@ -963,25 +963,25 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod unit {
     use crate::animation::animatable::Animatable;
+    use crate::damage::Damage;
+    use crate::damage::region::DamageRegion;
     use crate::internals::harness::UiHarness;
     use crate::internals::paint_capture::PaintCapture;
     use crate::internals::record_app::RecordApp;
-    use crate::layout::axis::Axis;
     use crate::layout::intrinsic::len_req::LenReq;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::rect::Rect;
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::layout::axis::Axis;
+    use crate::primitives::layout::sizing::Sizing;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::scene::damage::Damage;
-    use crate::scene::damage::region::DamageRegion;
     use crate::scene::endpoint::Endpoint;
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameReport;
-    use crate::widgets::configure::Configure;
+    use crate::widget_core::configure::Configure;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
 

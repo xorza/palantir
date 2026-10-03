@@ -33,7 +33,7 @@
 pub(crate) mod bench;
 
 use crate::common::counters::TestOnly;
-use crate::primitives::urect::URect;
+use crate::primitives::geometry::urect::URect;
 use glam::UVec2;
 use std::cell::Cell;
 

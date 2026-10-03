@@ -15,8 +15,8 @@
 //! scale 1.5 is 312 × 240 physical, which the divisor reduces from there.
 
 use crate::bench::Run;
-use crate::primitives::color::color_model::ColorModel;
-use crate::primitives::image::Image;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::image::Image;
 use crate::widgets::color_field::fill;
 use criterion::Criterion;
 use glam::UVec2;

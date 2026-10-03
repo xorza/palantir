@@ -1,9 +1,9 @@
 //! Reading a baked row back, and minting gradients that differ only where
 //! intended.
 
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::*;
 
 /// Fresh f16 LUT row, all texels transparent before bake.

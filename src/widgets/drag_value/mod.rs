@@ -3,24 +3,24 @@
 //! drag and edit state, and what a frame of either reports.
 
 use crate::input::sense::Sense;
-use crate::layout::types::align::Align;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::Align;
+use crate::primitives::layout::sizing::Sizing;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::value_response::ValueResponse;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::drag_num::DragNum;
 use crate::widgets::drag_num::Num;
-use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::value_response::ValueResponse;
-use crate::widgets::widget::Widget;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 

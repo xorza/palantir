@@ -1,9 +1,9 @@
 //! The per-node container column: gaps, justification, child alignment, transform.
 
-use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::justify::Justify;
-use crate::primitives::approx::FloatHash;
-use crate::primitives::translate_scale::TranslateScale;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::math::approx::FloatHash;
 use crate::scene::node::gaps::Gaps;
 use std::hash::Hash;
 

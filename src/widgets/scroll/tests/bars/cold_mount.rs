@@ -3,14 +3,14 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::ui::frame_report::FrameProcessing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
@@ -18,7 +18,7 @@ use crate::widgets::scroll::tests::support::{fixed_block, scroll_content, scroll
 use glam::UVec2;
 use std::time::Duration;
 
-/// The reason `layout::scrollbars` exists. A scroll that has never
+/// The reason `layout::drivers::scrollbars` exists. A scroll that has never
 /// recorded has no arranged viewport and no measured content — both
 /// terms of the thumb's size ratio — so it used to call
 /// `Ui::request_relayout` and re-record the entire frame to get them.
@@ -104,7 +104,7 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
 /// geometry.
 #[test]
 fn cold_mount_bar_geometry_matches_frame_two() {
-    use crate::primitives::rect::Rect;
+    use crate::primitives::geometry::rect::Rect;
     let surface = UVec2::new(400, 600);
     let mut h = UiHarness::new(surface);
     let scene = |ui: &mut Ui| {

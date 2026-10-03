@@ -1,7 +1,7 @@
 //! The font, size, weight, colour and leading a run of text is shaped and
 //! painted with — the vocabulary every other theme carries a copy of.
 
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;

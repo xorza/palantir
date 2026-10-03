@@ -2,14 +2,14 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::primitives::approx::EPS;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::math::approx::EPS;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record};
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 
 #[test]
@@ -99,7 +99,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
 /// keys self-paint damage off `node_hash`, so the bit must live there.
 #[test]
 fn self_transform_change_flips_node_hash() {
-    use crate::primitives::translate_scale::TranslateScale;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
     use glam::Vec2;
     fn build(ui: &mut Ui, t: TranslateScale) -> NodeId {
         Panel::hstack()
@@ -140,7 +140,7 @@ fn self_transform_change_flips_node_hash() {
 /// the same.
 #[test]
 fn grid_per_node_hash_independent_of_arena_slot() {
-    use crate::layout::types::track::Track;
+    use crate::primitives::layout::track::Track;
     use crate::widgets::grid::Grid;
 
     let cols = [Track::FILL, Track::FILL];

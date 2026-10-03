@@ -11,12 +11,12 @@
 
 use crate::Align;
 use crate::internals::harness::UiHarness;
-use crate::primitives::size::Size;
-use crate::primitives::translate_scale::TranslateScale;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::quad_shape::QuadShape;
-use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::record::ShapeRecord;
 use crate::shape::rect::RectKind;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::tests::*;

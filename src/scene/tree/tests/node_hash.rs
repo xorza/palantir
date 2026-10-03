@@ -3,18 +3,19 @@
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::{justify::Justify, sizing::Sizing};
-use crate::primitives::approx::EPS;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::stroke::Stroke;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::approx::EPS;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record};
 use crate::shape::Shape;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
 
@@ -149,7 +150,7 @@ fn widget_id_only_affects_cascade_static_hash() {
 
 #[test]
 fn changing_layout_property_changes_hash() {
-    use crate::scene::visibility::Visibility;
+    use crate::primitives::layout::visibility::Visibility;
     type Build = fn(&mut Ui) -> NodeId;
     let cases: &[(&str, Build, Build)] = &[
         (

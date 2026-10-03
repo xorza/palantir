@@ -23,8 +23,8 @@ use std::hash::Hash;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};

@@ -1,15 +1,15 @@
 //! The quad-tier draw: rounded rects, windowed rects, box-shadows and
 //! rounded triangles, which all lower to one `Quad` instance.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::corners::Corners;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::lut_row::LutRow;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
@@ -229,20 +229,20 @@ impl DrawQuadPayload {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::color::RgbaF32;
-    use crate::primitives::color::rgba_f16::RgbaF16;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::fill_axis::FillAxis;
-    use crate::primitives::fill_kind::FillKind;
-    use crate::primitives::lut_row::LutRow;
-    use crate::primitives::rect::Rect;
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::packed::fill_axis::FillAxis;
+    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::Spread;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::primitives::paint::lut_row::LutRow;
+    use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::payload::brush_source::BrushSource;
     use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
     use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
     use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-    use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
+    use crate::shape::paint::shape_stroke::ShapeStroke;
     use glam::Vec2;
 
     /// Every quad-tier constructor runs one stroke normalization

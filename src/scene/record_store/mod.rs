@@ -11,7 +11,7 @@
 //!
 //! This module is storage and the staging calls that fill it: the
 //! authoring `Shape` → `ShapeRecord` / `ChromeRow` lowering that decides
-//! *what* to stage lives in [`crate::scene::shapes::lower`].
+//! *what* to stage lives in [`crate::shape::lower`].
 //!
 //! [`Forest`]: crate::scene::forest::Forest
 
@@ -19,14 +19,14 @@ pub(crate) mod recorded_gradient;
 pub(crate) mod recorded_gradients;
 pub(crate) mod text_store;
 
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::interned_str::InternedStr;
-use crate::primitives::interned_text::InternedText;
-use crate::primitives::mesh::Mesh;
-use crate::primitives::recorded_text::RecordedText;
-use crate::primitives::span::Span;
-use crate::primitives::text_input::TextInput;
+use crate::common::span::Span;
+use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::interned_text::InternedText;
+use crate::primitives::text::recorded_text::RecordedText;
+use crate::primitives::text::text_input::TextInput;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::{GradientId, RecordedGradients};
 use crate::scene::record_store::text_store::TextStore;
@@ -62,16 +62,16 @@ pub(crate) struct RecordStore {
 
 /// Where [`RecordStore::stage_mesh`] put one mesh's geometry.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct MeshSpans {
-    pub(super) vertices: Span,
-    pub(super) indices: Span,
+pub(crate) struct MeshSpans {
+    pub(crate) vertices: Span,
+    pub(crate) indices: Span,
 }
 
 /// Where [`RecordStore::stage_polyline`] put one polyline's geometry.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct PolylineSpans {
-    pub(super) points: Span,
-    pub(super) colors: Span,
+pub(crate) struct PolylineSpans {
+    pub(crate) points: Span,
+    pub(crate) colors: Span,
 }
 
 impl RecordStore {
@@ -148,13 +148,13 @@ impl RecordStore {
 
     /// Intern one gradient payload under its content `hash`, returning
     /// the id a `ShapeBrush::Gradient` carries.
-    pub(super) fn intern_gradient(&mut self, hash: u64, gradient: RecordedGradient) -> GradientId {
+    pub(crate) fn intern_gradient(&mut self, hash: u64, gradient: RecordedGradient) -> GradientId {
         self.gradients.intern(hash, gradient)
     }
 
     /// Copy one mesh's vertices and indices in, returning the spans a
     /// `ShapeRecord::Mesh` carries.
-    pub(super) fn stage_mesh(&mut self, mesh: &Mesh) -> MeshSpans {
+    pub(crate) fn stage_mesh(&mut self, mesh: &Mesh) -> MeshSpans {
         let meshes = &mut self.meshes;
         let vertices = Span::new(meshes.vertices.len() as u32, mesh.vertices.len() as u32);
         meshes.vertices.extend_from_slice(&mesh.vertices);
@@ -166,7 +166,7 @@ impl RecordStore {
     /// Copy one polyline's points and colours in, each colour multiplied
     /// by `tint` and packed once here rather than per emitted instance.
     /// Returns the spans a `ShapeRecord::Polyline` carries.
-    pub(super) fn stage_polyline(
+    pub(crate) fn stage_polyline(
         &mut self,
         points: &[Vec2],
         colors: &[RgbaF32],

@@ -1,6 +1,6 @@
 //! Where a justified row starts, and what gap it uses.
 
-use crate::layout::types::justify::Justify;
+use crate::primitives::layout::justify::Justify;
 
 /// Main-axis offset + effective inter-child gap for one row of
 /// `justify`-distributed children. Single source of truth for Stack and

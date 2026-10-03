@@ -1,13 +1,13 @@
 //! What a tooltip wears, and how long a hover has to last before it
 //! appears.
 
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use glam::Vec2;
@@ -40,7 +40,7 @@ pub struct TooltipTheme {
     #[serde(with = "crate::widgets::theme::serde::duration_seconds")]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
 }
 

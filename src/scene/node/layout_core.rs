@@ -1,10 +1,10 @@
 //! The per-node sizing column every measure and arrange pass reads.
 
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::types::packed_layout_meta::PackedLayoutMeta;
-use crate::layout::types::sizing::SizeSpec;
-use crate::primitives::rect::Rect;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
+use crate::primitives::layout::sizing::SizeSpec;
 use crate::scene::node::Node;
 use crate::scene::node::node_flags::NodeFlags;
 use std::hash::Hash;

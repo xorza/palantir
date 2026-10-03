@@ -1,14 +1,14 @@
 //! How a widget is named, and what happens when two ask for one name.
 
 use crate::Ui;
+use crate::common::span::Span;
 use crate::internals::harness::UiHarness;
-use crate::primitives::rect::Rect;
-use crate::primitives::span::Span;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::tests::support::SURFACE;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
@@ -27,9 +27,9 @@ use std::cell::Cell;
 /// encoder emits.
 #[cfg(debug_assertions)]
 fn collision_outlines(ui: &Ui) -> Vec<Rect> {
+    use crate::damage::Damage;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::scene::damage::Damage;
 
     // Share Ui's record store so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the WindowDriver
@@ -131,8 +131,8 @@ fn duplicate_explicit_widget_ids_are_outlined() {
 #[cfg(debug_assertions)]
 #[test]
 fn a_collision_under_a_transform_is_outlined_where_it_paints() {
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::translate_scale::TranslateScale;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
+    use crate::primitives::layout::sizing::Sizing;
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
@@ -357,7 +357,7 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
 /// duplicate-record panic.
 #[test]
 fn two_widgets_resolved_before_recording_get_distinct_ids() {
-    use crate::widgets::widget::Widget;
+    use crate::widget_core::widget::Widget;
 
     let mut h = UiHarness::new(SURFACE);
     let ids = h.frame_value(|ui| {

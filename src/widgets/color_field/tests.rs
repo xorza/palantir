@@ -1,14 +1,14 @@
+use crate::damage::Damage;
 use crate::internals::harness::UiHarness;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::color_coords::ColorCoords;
-use crate::primitives::color::color_model::ColorModel;
-use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::primitives::image::Image;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::Image;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
+use crate::widget_core::configure::Configure;
 use crate::widgets::color_field::{ColorField, fill};
-use crate::widgets::configure::Configure;
 use glam::{UVec2, Vec2};
 
 const FIELD: UVec2 = UVec2::new(208, 160);

@@ -1,18 +1,18 @@
-use crate::input::response::button_phase::ButtonPhase;
-use crate::input::response::button_state::ButtonState;
-use crate::input::response::response_state::ResponseState;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::interaction::button_state::ButtonState;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
 #[test]
 fn button_theme_pick_precedence() {

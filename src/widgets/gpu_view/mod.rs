@@ -1,14 +1,14 @@
 //! The escape hatch to raw `wgpu`: a widget whose rect an app paints
 //! itself, into a texture the encoder composites like any other image.
 
-use crate::layout::types::sizing::Sizing;
+use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::Response;
-use crate::widgets::widget::Widget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use std::cell::RefCell;
 use std::rc::Rc;
 

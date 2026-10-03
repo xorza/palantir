@@ -3,7 +3,7 @@
 //! transient state — `Tree` itself is the finalized output. Cleared by
 //! `Forest::pre_record`.
 
-use crate::layout::types::placement::Placement;
+use crate::primitives::layout::placement::Placement;
 use crate::scene::tree::node_id::NodeId;
 
 /// One entry on the recording ancestor stack

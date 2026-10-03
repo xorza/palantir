@@ -1,15 +1,15 @@
 //! The triangle builder. Lowers to
 //! `ShapeRecord::Quad(QuadShape::Triangle)`.
 
-use crate::primitives::approx::paints_nothing;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::rect::aabb::Aabb;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::rect::aabb::Aabb;
+use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::quad_shape::QuadShape;
-use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::shape_stroke::ShapeStroke;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 use glam::Vec2;
 

@@ -49,7 +49,7 @@
 //! `drifting_run_lengths_strand_a_block_in_every_class_they_leave`.
 
 use crate::common::counters::counter_snapshot;
-use crate::primitives::span::Span;
+use crate::common::span::Span;
 
 /// End of a size class's free list. Distinguishable from every real
 /// block start: a start is an index into the arena, which is bounded by

@@ -1,6 +1,6 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
-use crate::gpu::power_preference::PowerPreference;
+use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
 use std::fs::{File, OpenOptions};
@@ -9,10 +9,10 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::error::GpuRequestError;
-use crate::gpu::render_target;
-use crate::gpu::requested_gpu::Gpu;
-use crate::gpu::requested_gpu::RequestedGpu;
+use crate::gpu::surface::render_target;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);

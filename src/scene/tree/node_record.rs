@@ -1,7 +1,7 @@
 //! Per-`NodeId` record stored in `Tree`'s SoA arena.
 
-use crate::primitives::span::Span;
-use crate::primitives::widget_id::WidgetId;
+use crate::common::span::Span;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::tree::extras_idx::ExtrasIdx;

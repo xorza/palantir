@@ -1,33 +1,33 @@
 //! The live input state machine — what survives across input events
 //! independently of whether the tree was rebuilt.
 
+use crate::cascade::Cascade;
 use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
 use crate::input::event_outcome::EventOutcome;
 use crate::input::input_event::InputEvent;
 use crate::input::input_queue::InputQueue;
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::interaction::button_state::ButtonState;
+use crate::input::interaction::drag::Drag;
+use crate::input::interaction::input_delta::InputDelta;
+use crate::input::interaction::pointer_action::PointerAction;
+use crate::input::interaction::pointer_edge::PointerEdge;
+use crate::input::interaction::response_state::ResponseState;
+use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
-use crate::input::response::button_phase::ButtonPhase;
-use crate::input::response::button_state::ButtonState;
-use crate::input::response::drag::Drag;
-use crate::input::response::input_delta::InputDelta;
-use crate::input::response::pointer_action::PointerAction;
-use crate::input::response::pointer_edge::PointerEdge;
-use crate::input::response::response_state::ResponseState;
-use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::scope::Scopes;
 use crate::input::shortcut::Shortcut;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::Layout;
-use crate::primitives::translate_scale::TranslateScale;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascade;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::time::Duration;
@@ -40,7 +40,7 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
-/// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
+/// (last-frame rects, cascade scratch) lives in [`crate::cascade::Cascade`].
 #[derive(Debug, Default)]
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.

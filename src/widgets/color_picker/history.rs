@@ -1,7 +1,7 @@
 //! The swatch row a picker keeps for itself, and the colours it starts with.
 
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::okhsv::Okhsv;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::okhsv::Okhsv;
 use tinyvec::ArrayVec;
 
 /// Recently committed colours, most recent first, seeded with a preset row.
@@ -81,7 +81,7 @@ impl History {
 /// without seeding one where it has not.
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::primitives::color::RgbaF32;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::widgets::color_picker::history::History;
 
     impl History {
@@ -93,7 +93,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::RgbaF32;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::widgets::color_picker::history::History;
 
     /// The row starts full, so it never changes length as colours arrive —
@@ -110,7 +110,7 @@ mod tests {
     /// row at black and white.
     #[test]
     fn presets_are_the_derived_list() {
-        use crate::primitives::color::okhsv::Okhsv;
+        use crate::primitives::paint::color::okhsv::Okhsv;
         let mut history = History::default();
         let colors = history.colors();
         assert_eq!(colors[11], Okhsv::new(11.0 / 12.0, 1.0, 1.0).to_color());

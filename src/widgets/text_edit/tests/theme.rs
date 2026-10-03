@@ -1,4 +1,4 @@
-use crate::scene::shapes::paint::quad_shape::QuadShape;
+use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 use crate::{scene::tree::node_id::NodeId, widgets::text_edit::tests::*};
@@ -6,7 +6,7 @@ use crate::{scene::tree::node_id::NodeId, widgets::text_edit::tests::*};
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::TextStyle;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -60,8 +60,8 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
 #[test]
 fn theme_text_color_used_when_text_widget_does_not_override() {
-    use crate::primitives::color::RgbaF32;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(NARROW);
@@ -85,8 +85,8 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
 #[test]
 fn text_widget_color_override_wins_over_theme() {
     use crate::TextStyle;
-    use crate::primitives::color::RgbaF32;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(NARROW);
@@ -116,7 +116,7 @@ fn text_widget_color_override_wins_over_theme() {
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::TextStyle;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -172,8 +172,8 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 #[test]
 fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
     use crate::TextStyle;
-    use crate::primitives::approx::EPS;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::primitives::math::approx::EPS;
+    use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEditState;
 
@@ -269,9 +269,9 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
 fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::scene::shapes::record::ShapeRecord;
-    use crate::widgets::theme::widget_look::WidgetLook;
-    use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+    use crate::shape::record::ShapeRecord;
+    use crate::widget_core::widget_look::WidgetLook;
+    use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
     for (label, mult, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
@@ -315,7 +315,7 @@ fn textedit_style_override_replaces_default_theme() {
 
 #[test]
 fn pushed_shape_carries_default_line_height_from_theme() {
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hi");
     let leaf_node = h.frame_value(|ui| {
@@ -351,7 +351,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
 fn no_selection_paints_no_highlight_rect() {
     // Focused TextEdit with no selection paints exactly one
     // rounded rect (the caret). No selection wash.
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
@@ -392,7 +392,7 @@ fn no_selection_paints_no_highlight_rect() {
 fn shift_end_paints_selection_highlight() {
     // Programmatic Shift+End extends to len; expect a rounded rect for
     // the selection wash, painted *before* the caret rect.
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
@@ -511,9 +511,9 @@ fn line_height_override_changes_caret_rect_height() {
     // theme's `text` style.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::scene::shapes::record::ShapeRecord;
-    use crate::widgets::theme::widget_look::WidgetLook;
-    use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+    use crate::shape::record::ShapeRecord;
+    use crate::widget_core::widget_look::WidgetLook;
+    use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
         let mut h = UiHarness::new(NARROW);

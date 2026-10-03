@@ -3,12 +3,12 @@
 use crate::internals::harness::frontend_harness::FrontendHarness;
 use crate::internals::harness::tests::support::SURFACE;
 use crate::internals::harness::*;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::ui::frame_report::FramePaint;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 
 fn tile(ui: &mut Ui) {
     Block::new()

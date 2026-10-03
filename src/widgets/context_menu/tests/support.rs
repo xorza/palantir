@@ -1,8 +1,8 @@
 //! Opening the menu and reading its rows back.
 
 use crate::internals::harness::UiHarness;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use glam::UVec2;

@@ -4,16 +4,17 @@
 use crate::Ui;
 use crate::input::shortcut::Shortcut;
 use crate::internals::harness::UiHarness;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::corners::Corners;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::widgets::configure::Configure;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget_look::theme_slot::SlotDefaults;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::context_menu::tests::support::{
@@ -22,7 +23,6 @@ use crate::widgets::context_menu::tests::support::{
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
-use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
 use glam::Vec2;
 
 /// Both menu gutters are theme knobs, not literals baked into the

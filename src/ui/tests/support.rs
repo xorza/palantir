@@ -2,13 +2,14 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::primitives::background::Background;
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::RgbaF32, rect::Rect};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::resources::UiResources;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use glam::UVec2;
 use std::time::Duration;
 

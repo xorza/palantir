@@ -1,8 +1,8 @@
 //! One scissor + rounded-clip scope's worth of quads, the unit the
 //! backend replays a render pass in.
 
-use crate::primitives::span::Span;
-use crate::primitives::urect::URect;
+use crate::common::span::Span;
+use crate::primitives::geometry::urect::URect;
 
 /// A contiguous quad range sharing one clip scope. The composer opens a
 /// new group whenever the scissor or the rounded-mask chain changes, so

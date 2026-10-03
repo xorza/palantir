@@ -1,8 +1,8 @@
 //! Everything the shaper is asked for when laying out an editor's text.
 
-use crate::layout::types::align::Align;
-use crate::layout::types::align::HAlign;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::align::Align;
+use crate::primitives::layout::align::HAlign;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;

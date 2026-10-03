@@ -1,14 +1,14 @@
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::corners::Corners;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::widgets::configure::Configure;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 

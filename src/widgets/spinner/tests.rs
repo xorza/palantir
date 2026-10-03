@@ -1,13 +1,13 @@
 use crate::internals::harness::UiHarness;
 use crate::internals::harness::size_trio::SizeTrio;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 use std::f32::consts::TAU;
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::spinner::{ArcGeometry, arc_geometry, comet};
@@ -41,8 +41,8 @@ fn arc_geometry_insets_by_half_width() {
 /// floor is what a tiny one lands on.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
-    use crate::scene::shapes::paint::curve_basis::CurveBasis;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::paint::curve_basis::CurveBasis;
+    use crate::shape::record::ShapeRecord;
 
     /// What one spinner recorded: its arc's sweep and stroke width, and
     /// its spin in radians per second.

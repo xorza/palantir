@@ -1,7 +1,7 @@
 use crate::internals::harness::UiHarness;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::configure::Configure;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
 use glam::UVec2;

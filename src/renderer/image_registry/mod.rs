@@ -10,9 +10,9 @@
 //! recorder: it keeps ids, sizes and generations and discards the texels.
 //!
 //! The pure data types live elsewhere —
-//! [`Image`] / [`ImageFit`](crate::primitives::image::ImageFit) in
+//! [`Image`] / [`ImageFit`](crate::primitives::paint::image::ImageFit) in
 //! `primitives`, [`TextureId`] and the counter it is minted from in
-//! `primitives::texture_id`, and the device ceiling a source is
+//! `primitives::identity::texture_id`, and the device ceiling a source is
 //! measured against in
 //! [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) — so this
 //! module owns only the lifecycle. `UiResources` mints the id and applies
@@ -21,8 +21,8 @@
 pub(crate) mod image_handle;
 pub(crate) mod image_store;
 
-use crate::primitives::image::Image;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::image::Image;
 use crate::renderer::image_registry::image_store::ImageStore;
 use std::cell::OnceCell;
 use std::rc::Rc;

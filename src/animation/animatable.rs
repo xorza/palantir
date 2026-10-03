@@ -113,7 +113,7 @@ impl Animatable for Vec2 {
     }
 }
 
-// `RgbaF32` derives `Animatable` (see `primitives/color.rs`); the
+// `RgbaF32` derives `Animatable` (see `primitives/paint/color/mod.rs`); the
 // generated impl is per-component lerp/add/sub/scale,
 // sum-of-squared-component magnitude_squared, all-zeros for `zero()`.
 //

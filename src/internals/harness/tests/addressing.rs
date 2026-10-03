@@ -4,11 +4,11 @@
 use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
 use crate::internals::harness::*;
 use crate::internals::panic_probe;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 
 #[test]
@@ -104,7 +104,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     // disagree only there — so a test that reaches for the wrong one
     // passes everywhere except the scroll and canvas cases. Pinning both
     // sides here is what keeps that from being discovered the hard way.
-    use crate::primitives::translate_scale::TranslateScale;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
 
     let inner = WidgetId::from_hash("scaled-inner");
     let scaled = |ui: &mut Ui| {

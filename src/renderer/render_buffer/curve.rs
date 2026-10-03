@@ -1,14 +1,14 @@
 //! Curve-pipeline wire constants and per-instance GPU data.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::lut_row::LutRow;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::lut_row::LutRow;
 use glam::Vec2;
 
 /// Chord-subdivisions per curve sub-instance. The shader expands one
 /// instance into this many quads (= 2× this many triangles = 6× this
 /// many indices). Has to stay in lockstep with the constant of the
-/// same name in `curve.wgsl` (the curve pipeline stamps this value
+/// same name in `curve_pipeline/shader.wgsl` (the curve pipeline stamps this value
 /// into the shader source at module creation). Lives here, next to
 /// [`CurveInstance`], because it's part of the composer↔backend wire
 /// contract: the composer's sub-instance math and the backend's
@@ -16,7 +16,7 @@ use glam::Vec2;
 pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 
 /// Basis tags for [`CurveInstance::kind`]. Pinned against the
-/// `KIND_*` constants in `curve.wgsl` — bump together.
+/// `KIND_*` constants in `curve_pipeline/shader.wgsl` — bump together.
 pub(crate) const CURVE_KIND_CUBIC: u32 = 0;
 pub(crate) const CURVE_KIND_ARC: u32 = 1;
 /// Straight polyline segment with bisector-clipped joint ends.
@@ -30,7 +30,7 @@ pub(crate) const CURVE_KIND_JOIN_ROUND: u32 = 3;
 pub(crate) const CURVE_KIND_JOIN_BEVEL: u32 = 4;
 pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
 
-// `curve.wgsl` splits on `kind >= KIND_JOIN_ROUND`: every basis below it,
+// `curve_pipeline/shader.wgsl` splits on `kind >= KIND_JOIN_ROUND`: every basis below it,
 // every join at or above it.
 const _: () = assert!(
     CURVE_KIND_CUBIC < CURVE_KIND_JOIN_ROUND

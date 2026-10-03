@@ -1,7 +1,7 @@
 //! A child's resolved horizontal and vertical alignment.
 
-use crate::layout::axis::Axis;
-use crate::layout::types::align::{Align, AxisAlign};
+use crate::primitives::layout::align::{Align, AxisAlign};
+use crate::primitives::layout::axis::Axis;
 use crate::scene::node::layout_core::LayoutCore;
 
 /// Per-axis alignment after the child→parent `Auto` fallback — what

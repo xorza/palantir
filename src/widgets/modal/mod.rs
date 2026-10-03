@@ -1,21 +1,21 @@
 //! The centred dialog and its input-blocking backdrop.
 
 use crate::input::sense::Sense;
-use crate::layout::types::align::Align;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::align::Align;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
+use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::overlay_response::OverlayResponse;
-use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::theme::modal::ModalTheme;
-use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop, recorded

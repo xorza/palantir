@@ -1,0 +1,446 @@
+//! How one axis of a node resolves: a fixed extent, a share of what is
+//! left, or whatever its content needs.
+
+use crate::primitives::geometry::size::Size;
+use crate::primitives::math::approx;
+use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::num::{F32Ext, Num};
+use glam::BVec2;
+
+/// How one axis of a node resolves during layout.
+///
+/// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
+/// Fill = Star (take remainder, distributed by `weight` across Fill siblings).
+///
+/// The floor under Hug and Fill is the node's *intrinsic minimum* — the
+/// largest non-shrinkable thing on that axis (a fixed descendant, an
+/// explicit `min_size`, the longest unbreakable word) — and a Hug axis
+/// is also floored at what its content takes at the size it is laid out
+/// at, such as the height of a paragraph wrapped to its width. The
+/// ceiling is its `max_size`.
+///
+/// Siblings that share an axis — a stack's children, a grid's tracks —
+/// share it the same way in every container, CSS-Flexbox style: each
+/// Fill participant's floor is set aside first; the Hug participants
+/// then share what is left, each giving way from what it wants toward
+/// its floor, in proportion to how far it can give, when they do not
+/// all fit; and the Fill participants divide the rest by `weight`,
+/// taking any bound their share violates while the rest re-divide. So
+/// `Hug` and `Fill` mean the same thing in a `Panel` and in a `Grid`. A
+/// parent never grows to fit a child, so overflow only happens when
+/// rigid descendants genuinely do not fit.
+///
+/// # Which constructors panic, and why
+///
+/// [`Self::fixed`], [`Self::fill`] and [`Self::share`] each state a
+/// contract and **panic** when a caller breaks it. A negative or
+/// non-finite extent is arithmetic that already went wrong upstream, and
+/// clamping it here would put a collapsed row on screen with nothing
+/// pointing at the divide that produced the NaN.
+///
+/// [`Self::split`] is the one **total** constructor, and deliberately: it
+/// is the only one a widget feeds a number it took from application code,
+/// where the widget has no standing to assert. A caller wanting the same
+/// guarantee for an extent clamps before it gets here.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Sizing(SizingValue);
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+enum SizingValue {
+    Fixed(f32),
+    #[default]
+    Hug,
+    Fill(f32),
+}
+
+impl Sizing {
+    /// Shrink-wrap the content: `min(content, available)`, floored at the
+    /// smallest extent the content takes at the size it is laid out at —
+    /// its wrapped text, its fixed and minimum sizes. Content that can
+    /// give way, such as a scroll on its panned axis, still shrinks, to
+    /// what its parent has and to what its siblings leave. The default.
+    pub const HUG: Self = Self(SizingValue::Hug);
+    /// Take the leftover space at weight `1.0` — [`Self::fill`] with the
+    /// weight you'd almost always pass.
+    pub const FILL: Self = Self::fill(1.0);
+
+    /// An exact pixel extent.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `value` is negative or non-finite.
+    #[inline]
+    pub const fn fixed(value: f32) -> Self {
+        assert!(
+            value.is_finite() && value >= 0.0,
+            "fixed sizing must be finite and non-negative",
+        );
+        Self(SizingValue::Fixed(value))
+    }
+
+    /// A positive relative share of remaining space.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `weight` is zero, negative, or non-finite.
+    #[inline]
+    pub const fn fill(weight: f32) -> Self {
+        assert!(
+            weight.is_finite() && weight > 0.0,
+            "fill weight must be finite and positive",
+        );
+        Self(SizingValue::Fill(weight))
+    }
+
+    /// A relative share that may be zero. Zero becomes `fixed(0.0)`;
+    /// positive values become [`Self::fill`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `weight` is negative or non-finite.
+    #[inline]
+    pub const fn share(weight: f32) -> Self {
+        assert!(
+            weight.is_finite() && weight >= 0.0,
+            "share weight must be finite and non-negative",
+        );
+        if weight == 0.0 {
+            Self(SizingValue::Fixed(0.0))
+        } else {
+            Self(SizingValue::Fill(weight))
+        }
+    }
+
+    /// Split the parent's space into `[fraction, 1 - fraction]` shares.
+    ///
+    /// The two-leaf trick a `ProgressBar` (fill / remainder) and a
+    /// `Slider` (rail / knob / rail) both lay out with: neither knows the
+    /// resolved extent at record time, so the split rides on `Fill`
+    /// weights and arrange resolves it against whatever width lands.
+    ///
+    /// **Total over every `f32`** — see [`Sizing`]'s own doc for why this
+    /// one is. `fraction` goes through `F32Ext::unit_fraction_or`, so an
+    /// endpoint collapses one share to a zero-extent `Fixed` rather than
+    /// tripping [`Self::share`]'s non-negative assert, and a fraction that
+    /// names no share — a `0 / 0` progress ratio, an unseeded slider
+    /// value — reads as empty instead of reaching that assert with a NaN.
+    pub fn split(fraction: f32) -> [Self; 2] {
+        let f = fraction.unit_fraction_or(0.0);
+        [Self::share(f), Self::share(1.0 - f)]
+    }
+
+    /// The pixel extent if this is a [`Self::fixed`], else `None`.
+    #[inline]
+    pub const fn fixed_value(self) -> Option<f32> {
+        match self.0 {
+            SizingValue::Fixed(value) => Some(value),
+            SizingValue::Hug | SizingValue::Fill(_) => None,
+        }
+    }
+
+    /// The weight if this is a [`Self::fill`], else `None`.
+    #[inline]
+    pub const fn fill_weight(self) -> Option<f32> {
+        match self.0 {
+            SizingValue::Fill(weight) => Some(weight),
+            SizingValue::Fixed(_) | SizingValue::Hug => None,
+        }
+    }
+
+    /// `true` for [`Self::HUG`].
+    #[inline]
+    pub const fn is_hug(self) -> bool {
+        matches!(self.0, SizingValue::Hug)
+    }
+
+    /// Feed the whole value through `bits` in one `u64` write: tag in the
+    /// low byte, canonicalized payload above it.
+    ///
+    /// Tagged-union with niche-uninit padding in the inactive variant, so
+    /// a raw `bytes_of` would hash junk. One write rather than two small
+    /// ones costs one hasher round instead of two.
+    #[inline]
+    pub(crate) fn hash_bits<H: std::hash::Hasher, F: Fn(f32) -> u32>(&self, h: &mut H, bits: F) {
+        let (tag, value) = match self.0 {
+            SizingValue::Fixed(value) => (0u8, value),
+            SizingValue::Hug => (1, 0.0),
+            SizingValue::Fill(value) => (2, value),
+        };
+        h.write_u64((tag as u64) | ((bits(value) as u64) << 8));
+    }
+}
+
+impl FloatHash for Sizing {
+    #[inline]
+    fn hash_eq<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_bits(h, approx::eq_bits);
+    }
+
+    #[inline]
+    fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_bits(h, approx::canon_bits);
+    }
+}
+
+impl<T: Num> From<T> for Sizing {
+    fn from(v: T) -> Self {
+        Sizing::fixed(v.as_f32())
+    }
+}
+
+impl std::hash::Hash for Sizing {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_eq(h);
+    }
+}
+
+/// Per-axis `Sizing`, packed into 8 B (two `u32` slots) with no loss.
+/// Each slot holds its value's `f32` bits, and the tag rides in bit
+/// patterns no other variant can hold:
+///
+/// - `Fixed(v)` is `v` itself. It is non-negative, and `-0.0` folds to
+///   `+0.0`, so the sign bit is clear.
+/// - `Fill(w)` is `-w`. The weight is positive, so the sign bit is set.
+/// - `Hug` is `+∞`, which both of the others exclude: they are finite.
+///
+/// Saves 8 B per `LayoutCore` (36 → 28) across the per-node SoA column.
+///
+/// Construct via `Default` (Hug × Hug), `SizeSpec::from(s)` (uniform),
+/// `SizeSpec::from(n)` (uniform Fixed via `Num`), or `SizeSpec::from((w, h))`
+/// for asymmetric. The `From` impls are the public surface —
+/// `Configure::size` takes `impl Into<SizeSpec>` so call sites stay terse:
+/// `.size(100.0)`, `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
+/// Read components via `SizeSpec::w()` / `SizeSpec::h()`.
+#[derive(Clone, Copy)]
+pub struct SizeSpec {
+    w_packed: u32,
+    h_packed: u32,
+}
+
+impl Default for SizeSpec {
+    #[inline]
+    fn default() -> Self {
+        Self::new(Sizing::HUG, Sizing::HUG)
+    }
+}
+
+/// `Hug`'s slot — see [`SizeSpec`] for why no other variant can hold it.
+const HUG_BITS: u32 = f32::INFINITY.to_bits();
+
+#[inline]
+const fn encode_sizing(s: Sizing) -> u32 {
+    match s.0 {
+        SizingValue::Fixed(value) => approx::eq_bits(value),
+        SizingValue::Hug => HUG_BITS,
+        SizingValue::Fill(weight) => (-weight).to_bits(),
+    }
+}
+
+#[inline]
+const fn decode_sizing(packed: u32) -> Sizing {
+    let value = f32::from_bits(packed);
+    if packed == HUG_BITS {
+        Sizing::HUG
+    } else if value.is_sign_negative() {
+        Sizing(SizingValue::Fill(-value))
+    } else {
+        Sizing(SizingValue::Fixed(value))
+    }
+}
+
+impl SizeSpec {
+    /// Both axes, packed into eight bytes.
+    #[inline]
+    pub const fn new(w: Sizing, h: Sizing) -> Self {
+        Self {
+            w_packed: encode_sizing(w),
+            h_packed: encode_sizing(h),
+        }
+    }
+    /// Packed 8-byte form: `w_packed` low, `h_packed` high. Used by
+    /// `LayoutCore::hash_with_flags` to fold size into a single hasher write.
+    #[inline]
+    pub(crate) const fn as_u64(self) -> u64 {
+        ((self.h_packed as u64) << 32) | self.w_packed as u64
+    }
+    /// The horizontal axis.
+    #[inline]
+    pub const fn w(self) -> Sizing {
+        decode_sizing(self.w_packed)
+    }
+    /// The vertical axis.
+    #[inline]
+    pub const fn h(self) -> Sizing {
+        decode_sizing(self.h_packed)
+    }
+
+    /// Which axes hug their content, as a lane mask — what a driver
+    /// hands [`Size::select`](crate::primitives::geometry::size::Size::select) to
+    /// pick per axis between "measure unbounded" and "measure against the
+    /// room I have".
+    #[inline]
+    pub(crate) fn hug_mask(self) -> BVec2 {
+        BVec2::new(self.w().is_hug(), self.h().is_hug())
+    }
+}
+
+impl PartialEq for SizeSpec {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.w_packed == other.w_packed && self.h_packed == other.h_packed
+    }
+}
+
+impl std::fmt::Debug for SizeSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SizeSpec")
+            .field("w", &self.w())
+            .field("h", &self.h())
+            .finish()
+    }
+}
+
+impl From<Sizing> for SizeSpec {
+    fn from(s: Sizing) -> Self {
+        Self::new(s, s)
+    }
+}
+
+impl std::hash::Hash for SizeSpec {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write_u64(self.as_u64());
+    }
+}
+
+impl<T: Num> From<T> for SizeSpec {
+    fn from(v: T) -> Self {
+        Sizing::from(v).into()
+    }
+}
+
+impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for SizeSpec {
+    fn from((w, h): (W, H)) -> Self {
+        Self::new(w.into(), h.into())
+    }
+}
+
+impl From<Size> for SizeSpec {
+    fn from(s: Size) -> Self {
+        (s.w, s.h).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::internals::panic_probe;
+    use crate::primitives::layout::sizing::{SizeSpec, Sizing};
+
+    /// The two shares always partition 1.0, so the first lands at exactly
+    /// `fraction` of the parent — and an out-of-range input clamps rather
+    /// than reaching `share`'s non-negative assert.
+    ///
+    /// Both endpoints matter: `share(0.0)` collapses to a zero-extent
+    /// `Fixed`, not a zero-weight `Fill`, which is what keeps a full or
+    /// empty `ProgressBar` / `Slider` from handing arrange a degenerate
+    /// weight.
+    #[test]
+    fn split_partitions_one_and_clamps_out_of_range() {
+        let cases = [
+            (0.0, 0.0, 1.0),
+            (0.25, 0.25, 0.75),
+            (0.5, 0.5, 0.5),
+            (1.0, 1.0, 0.0),
+            (-0.3, 0.0, 1.0), // below range clamps to empty
+            (1.7, 1.0, 0.0),  // above range clamps to full
+            // No share at all — a `0 / 0` progress ratio, an unseeded
+            // slider value — reads as empty rather than reaching
+            // `share`'s finite assert.
+            (f32::NAN, 0.0, 1.0),
+            (f32::INFINITY, 0.0, 1.0),
+            (f32::NEG_INFINITY, 0.0, 1.0),
+        ];
+        for (input, want_a, want_b) in cases {
+            let got = Sizing::split(input);
+            let want = [Sizing::share(want_a), Sizing::share(want_b)];
+            assert_eq!(got, want, "fraction {input}");
+        }
+        assert_eq!(
+            Sizing::split(0.0)[0],
+            Sizing::fixed(0.0),
+            "a zero share is a zero-extent Fixed, not a zero-weight Fill",
+        );
+    }
+
+    /// Every `Fixed` extent and `Fill` weight comes back bit for bit, on
+    /// both axes, beside a `Hug` on the other. The values reach every
+    /// part of the `f32` range a valid variant can hold: zero, the
+    /// smallest subnormal, the smallest normal, fractions whose low
+    /// mantissa bits a lossy packing would drop (`4097.7`), and the
+    /// largest finite value. `-0.0` is the one input that changes:
+    /// it folds to `+0.0`.
+    #[test]
+    fn packing_round_trips_every_value_exactly() {
+        let values = [
+            0.0,
+            -0.0,
+            f32::from_bits(1),
+            f32::MIN_POSITIVE,
+            0.1,
+            1279.9,
+            4097.7,
+            f32::MAX,
+        ];
+        for v in values {
+            let folded = if v == 0.0 { 0.0f32 } else { v };
+            let fixed = SizeSpec::new(Sizing::fixed(v), Sizing::HUG);
+            assert_eq!(
+                fixed.w().fixed_value().map(f32::to_bits),
+                Some(folded.to_bits()),
+                "Fixed({v:e})",
+            );
+            assert!(fixed.h().is_hug(), "the Hug beside Fixed({v:e})");
+            if v > 0.0 {
+                let fill = SizeSpec::new(Sizing::HUG, Sizing::fill(v));
+                assert_eq!(
+                    fill.h().fill_weight().map(f32::to_bits),
+                    Some(v.to_bits()),
+                    "Fill({v:e})",
+                );
+                assert!(fill.w().is_hug(), "the Hug beside Fill({v:e})");
+            }
+        }
+    }
+
+    #[test]
+    fn constructors_accept_only_finite_valid_payloads() {
+        assert_eq!(Sizing::fixed(f32::MAX).fixed_value(), Some(f32::MAX));
+        assert_eq!(Sizing::fill(f32::MAX).fill_weight(), Some(f32::MAX));
+        assert_eq!(Sizing::share(0.0), Sizing::fixed(0.0));
+        assert_eq!(Sizing::share(-0.0), Sizing::fixed(0.0));
+        assert_eq!(Sizing::share(2.5), Sizing::fill(2.5));
+
+        const FIXED: &str = "fixed sizing must be finite and non-negative";
+        const FILL: &str = "fill weight must be finite and positive";
+        const SHARE: &str = "share weight must be finite and non-negative";
+        type Case = (&'static str, fn() -> Sizing);
+        let cases: &[Case] = &[
+            (FIXED, || Sizing::fixed(-1.0)),
+            (FIXED, || Sizing::fixed(f32::NAN)),
+            (FIXED, || Sizing::fixed(f32::INFINITY)),
+            (FIXED, || Sizing::fixed(f32::NEG_INFINITY)),
+            (FILL, || Sizing::fill(0.0)),
+            (FILL, || Sizing::fill(-0.0)),
+            (FILL, || Sizing::fill(-1.0)),
+            (FILL, || Sizing::fill(f32::NAN)),
+            (FILL, || Sizing::fill(f32::INFINITY)),
+            (SHARE, || Sizing::share(-1.0)),
+            (SHARE, || Sizing::share(f32::NAN)),
+            (SHARE, || Sizing::share(f32::INFINITY)),
+        ];
+        for &(expected, construct) in cases {
+            panic_probe::assert_panics_with(expected, construct);
+        }
+    }
+}

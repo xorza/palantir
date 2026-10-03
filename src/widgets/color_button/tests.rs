@@ -1,12 +1,12 @@
 use crate::internals::harness::UiHarness;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
-use crate::widgets::configure::Configure;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 

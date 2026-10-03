@@ -1,9 +1,9 @@
 //! One shaped run's render-handoff identity, carried from the encoder to
 //! the text backend.
 
-use crate::primitives::interned_text::InternedText;
-use crate::primitives::recorded_text::RecordedText;
-use crate::primitives::span::Span;
+use crate::common::span::Span;
+use crate::primitives::text::interned_text::InternedText;
+use crate::primitives::text::recorded_text::RecordedText;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 

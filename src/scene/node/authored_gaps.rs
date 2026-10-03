@@ -1,6 +1,6 @@
 //! A panel's two inter-child gaps while a builder still owns them.
 
-use crate::layout::types::limits::valid_packed_gap;
+use crate::primitives::layout::limits::valid_packed_gap;
 use crate::scene::node::gaps::Gaps;
 use half::f16;
 

@@ -12,7 +12,7 @@
 //! store of live views: the app hands its renderer to the widget every
 //! frame, so [`Ui::gpu_view`](crate::Ui::gpu_view) records it there —
 //! minting the stable backend
-//! [`TextureId`](crate::primitives::texture_id::TextureId) once from
+//! [`TextureId`](crate::primitives::identity::texture_id::TextureId) once from
 //! `UiResources`' shared authority, so it cannot collide with registered
 //! images or other windows, and refreshing the
 //! [`GpuPaintRef`](crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef).
@@ -30,8 +30,8 @@
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;
 
-use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
-use crate::gpu::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.

@@ -7,8 +7,8 @@
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
+use crate::damage::Damage;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
 use std::time::Duration;
 
 /// How `Ui::frame` resolved this frame: which passes actually ran.
@@ -86,11 +86,11 @@ impl FrameReport {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::RgbaF32;
-    use crate::primitives::rect::Rect;
+    use crate::damage::Damage;
+    use crate::damage::region::DamageRegion;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::scene::damage::Damage;
-    use crate::scene::damage::region::DamageRegion;
     use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 
     #[test]
