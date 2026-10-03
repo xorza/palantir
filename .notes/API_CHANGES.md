@@ -241,21 +241,6 @@ the flag back only on a flip; `open()` answers and `close()` closes. Read `Popup
 `ContextMenu` first and match their shape. Touches `ColorButton`, `ComboBox` and any app that
 drops its own panel from a button.
 
-## A24. `const` on public functions that can take it
-
-**Findings.** REVIEW "Text and primitives style-rule violations" and "Renderer design and
-duplication": `Rect::deflated`, `Display::from_physical` and `Display::scale_factor` are public
-`fn`s that can be `const`. Adding `const` re-signs an exported item, so it waits here; the
-crate-internal ones are done.
-
-**Recommendation.** Make it `const`, and sweep the rest of the public surface for the same in
-one pass. Candidates the surface review found: `Corners::{all, new, top, bottom, left, right,
-top_bottom, diag_main, diag_anti, scaled_by, as_array, from_array}`, `Spacing::{all, xy, new,
-as_array, from_array, horizontal_sum, vertical_sum}`, `Background::{fill, rounded, is_noop}`,
-`Slider::step`, `ButtonState::{click_count, double_clicked}`, `ResponseState::{double_clicked,
-any_clicked}`, `ZoomFactor::new`, `Sizing::split`, `TextStyle::line_height_for`. Check each
-against the guide's exception (a `const` that costs run time).
-
 ## A25. Golden tolerance that bounds how far a pixel may differ
 
 **Findings.** TEST_REVIEW "The visual suite's tolerance and capture lose information":
@@ -289,7 +274,7 @@ from one test that names them all. Touches `golden::Goldens`.
 The items below come from a review of the whole exported surface, listed in `API_SURFACE.md`
 (rustdoc JSON of `59b93e30`). Each item names what reads inconsistent, asymmetric, or
 non-canonical, and what to do about it. Where a finding extends an earlier item, the earlier item
-took it: A6, A7, A9, A10, A11, A15, A18, A19 and A24. The plan at the end of the file orders all
+took it: A6, A7, A9, A10, A11, A15, A18 and A19. The plan at the end of the file orders all
 items, old and new.
 
 ## A27. One response type for a value a widget writes
@@ -726,7 +711,7 @@ All seven are decided. Each item named here carries its decision in its own text
 ## Phase 1 — foundations the later phases build on
 
 1. Done: the `domain` module (A50 mechanism, A36).
-2. **`const` sweep** (A24), after step 1 so the setters that will call `domain` stay `const`.
+2. Done: the `const` sweep (A24).
 3. **Flag sets** (A32): `NONE` and `ALL` on every flag type; `empty`, `all`, `bits` and
    `from_bits_truncate` become `pub(crate)`. Before A22 adds bits to `Sense`.
 4. **No strum on public types** (A6): `BatchKind`, `PointerButton`, `Layer`.

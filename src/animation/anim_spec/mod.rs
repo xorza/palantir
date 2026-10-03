@@ -127,7 +127,7 @@ impl AnimSpec {
     /// `Duration` canonicalized to zero seconds. Springs are never instant by
     /// construction. `Ui::animate` short-circuits on this and on `None`.
     #[inline(always)]
-    pub fn is_instant(self) -> bool {
+    pub const fn is_instant(self) -> bool {
         match self.motion {
             AnimMotion::Duration { secs, .. } => secs == 0.0,
             AnimMotion::Spring { .. } => false,

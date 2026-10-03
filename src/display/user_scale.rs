@@ -120,7 +120,7 @@ impl UserScale {
         clippy::cast_sign_loss,
         reason = "a user scale is a positive factor, so its percent is positive"
     )]
-    pub fn percent(self) -> u32 {
+    pub const fn percent(self) -> u32 {
         (self.0 * 100.0).round() as u32
     }
 }

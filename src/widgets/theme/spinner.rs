@@ -33,7 +33,7 @@ pub struct SpinnerTheme {
 
 impl SpinnerTheme {
     /// An accent arc sweeping three quarters of the circle.
-    pub fn from_palette(p: &Palette) -> Self {
+    pub const fn from_palette(p: &Palette) -> Self {
         Self {
             color: p.accent,
             diameter: 24.0,

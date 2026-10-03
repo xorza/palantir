@@ -205,7 +205,7 @@ impl Rect {
     /// not symmetric: growing a rect cannot collapse it, and an inset
     /// deeper than the extent has no rect to name.
     #[inline]
-    pub fn deflated(self, amount: f32) -> Self {
+    pub const fn deflated(self, amount: f32) -> Self {
         Self {
             min: Vec2::new(self.min.x + amount, self.min.y + amount),
             size: Size::new(

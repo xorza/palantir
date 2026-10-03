@@ -126,7 +126,7 @@ impl Sizing {
     /// tripping [`Self::share`]'s non-negative assert, and a fraction that
     /// names no share — a `0 / 0` progress ratio, an unseeded slider
     /// value — reads as empty instead of reaching that assert with a NaN.
-    pub fn split(fraction: f32) -> [Self; 2] {
+    pub const fn split(fraction: f32) -> [Self; 2] {
         let f = domain::fraction(fraction);
         [Self::share(f), Self::share(1.0 - f)]
     }

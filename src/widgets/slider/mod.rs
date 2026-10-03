@@ -78,10 +78,11 @@ impl<'a> Slider<'a> {
     /// Panics unless `step` is finite and greater than zero. A slider
     /// that should not snap simply never calls this — there is no second
     /// spelling of "off".
-    pub fn step(mut self, step: f64) -> Self {
+    #[track_caller]
+    pub const fn step(mut self, step: f64) -> Self {
         assert!(
             step.is_finite() && step > 0.0,
-            "slider step must be finite and greater than zero, got {step}",
+            "slider step must be finite and greater than zero",
         );
         self.step = Some(step);
         self

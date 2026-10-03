@@ -274,7 +274,7 @@ impl PaintAnim {
 
     /// The shape of one pass. Any `fn(f32) -> f32` over `0.0..=1.0`,
     /// including the ones in [`curves`].
-    pub fn curve(mut self, curve: PaintCurve) -> Self {
+    pub const fn curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self
     }

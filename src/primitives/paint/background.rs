@@ -81,7 +81,7 @@ impl Background {
     /// without considering shadow would silently kill a shadow-only
     /// background.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         self.fill.is_noop() && self.border.is_noop() && self.shadow.is_noop()
     }
 

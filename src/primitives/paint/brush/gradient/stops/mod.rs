@@ -131,6 +131,12 @@ impl GradientStops {
         builder.build()
     }
 
+    /// The stops in use, for a `const fn` that cannot reach them through
+    /// `Deref`.
+    pub(crate) const fn as_slice(&self) -> &[Stop] {
+        self.stops.split_at(self.len as usize).0
+    }
+
     /// True when the stops hold [`Self::sorted`]'s ascending order — for
     /// a consumer that relies on it to `debug_assert` it rather than
     /// re-spell the comparison over a quantization it should not read.
@@ -205,7 +211,7 @@ impl ops::Deref for GradientStops {
     type Target = [Stop];
 
     fn deref(&self) -> &Self::Target {
-        &self.stops[..usize::from(self.len)]
+        self.as_slice()
     }
 }
 

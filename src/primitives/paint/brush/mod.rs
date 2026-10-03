@@ -55,7 +55,7 @@ impl Brush {
 
     /// Paints nothing visible.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         match self {
             Brush::Solid(c) => c.is_noop(),
             Brush::Linear(g) => g.is_noop(),

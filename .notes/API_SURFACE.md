@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `96e65669`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `129db05a`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -17,7 +17,7 @@ struct           golden::Tolerance
     traits: Clone, Copy, Debug, Default
 struct           golden::DiffReport
     fields: max_channel_delta, differing_pixels, differing_ratio, diff_image, tolerance
-    fn passes(self)
+    const fn passes(self)
     traits: Debug
 struct           golden::Goldens
     fn new(root)
@@ -117,7 +117,7 @@ struct           widget::PaintAnim
     const fn started_at(self, at)
     const fn repeat(self, repeat)
     const fn steps(self, n)
-    fn curve(self, curve)
+    const fn curve(self, curve)
     traits: Clone, Copy, Debug
 struct           widget::PaintChannel
     fields: alpha, turn
@@ -342,11 +342,11 @@ struct           AnimSpec
     assoc_const SPRING
     const fn duration(secs, ease)
     fn spring(stiffness, damping)
-    fn is_instant(self)
+    const fn is_instant(self)
     traits: Clone, Copy, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 enum             Easing
     variants: Linear, OutCubic, InOutCubic, OutQuart, OutBack
-    fn apply(self, t)
+    const fn apply(self, t)
     traits: Clone, Copy, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 trait            App
     items: update, record
@@ -365,7 +365,7 @@ struct           DebugOverlayConfig
     traits: Clone, Copy, Debug, Default, Eq, PartialEq, StructuralPartialEq
 struct           Display
     fields: physical, system_scale, user_scale, pixel_snap, refresh_millihertz
-    fn from_physical(physical, system_scale)
+    const fn from_physical(physical, system_scale)
     const fn scale_factor(self)
     fn logical_size(self)
     fn system_logical_size(self)
@@ -382,7 +382,7 @@ struct           UserScale
     const fn applied_to(self, system_scale)
     fn stepped_up(self)
     fn stepped_down(self)
-    fn percent(self)
+    const fn percent(self)
     traits: Clone, Copy, Debug, Default, PartialEq, PartialOrd, StructuralPartialEq
 struct           DeviceRequirements
     fields: features, limits
@@ -427,7 +427,7 @@ struct           RealtimeClock
     traits: Clock, Debug, Default
 struct           OffscreenHost
     assoc_const WINDOW
-    fn builder(gpu)
+    const fn builder(gpu)
     const fn ui(self)
     fn on_input(self, event)
     fn frame(self, target, system_scale, app)
@@ -487,8 +487,8 @@ struct           ButtonState
     const fn clicked(self)
     const fn released(self)
     const fn press_count(self)
-    fn click_count(self)
-    fn double_clicked(self)
+    const fn click_count(self)
+    const fn double_clicked(self)
     traits: Clone, Copy, Debug, Default, PartialEq, StructuralPartialEq
 enum             Drag
     variants: None, Started, Active, Stopped
@@ -510,7 +510,7 @@ struct           ResponseState
     fields: rect, layout_rect, transform, pointer_local, pointer_over, disabled, focused, left, right, middle, scroll
     const fn hovered(self)
     const fn clicked(self)
-    fn double_clicked(self)
+    const fn double_clicked(self)
     fn any_clicked(self)
     const fn button(self, button)
     const fn pressed(self)
@@ -657,7 +657,7 @@ struct           PointerWake
     traits: BitOr, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
 struct           ZoomFactor
     assoc_const ONE
-    fn new(factor)
+    const fn new(factor)
     fn from_wheel(step, notches)
     fn combine(self, rhs)
     const fn get(self)
@@ -690,7 +690,7 @@ struct           Rect
     const fn contains(self, p)
     const fn contains_rect(self, other)
     const fn inflated(self, amount)
-    fn deflated(self, amount)
+    const fn deflated(self, amount)
     fn inscribed_for_corners(self, corners)
     fn inflated_by(self, s)
     fn deflated_by(self, s)
@@ -783,7 +783,7 @@ struct           Sizing
     const fn fixed(value)
     const fn fill(weight)
     const fn share(weight)
-    fn split(fraction)
+    const fn split(fraction)
     const fn fixed_value(self)
     const fn fill_weight(self)
     const fn is_hug(self)
@@ -805,7 +805,7 @@ enum             Visibility
 struct           Background
     fields: fill, border, corners, shadow
     assoc_const NONE
-    fn is_noop(self)
+    const fn is_noop(self)
     fn fill(brush)
     fn rounded(brush, corners)
     const fn with_border(self, border)
@@ -814,7 +814,7 @@ struct           Background
 enum             Brush
     variants: Solid, Linear, Radial, Conic
     assoc_const TRANSPARENT
-    fn is_noop(self)
+    const fn is_noop(self)
     const fn as_solid(self)
     traits: Animatable, Clone, Debug, Default, Deserialize, From, PartialEq, Serialize, StructuralPartialEq
 struct           ColorRamp
@@ -822,7 +822,7 @@ struct           ColorRamp
     fn new(stops)
     fn two_stop(c0, c1)
     const fn with_interp(self, interp)
-    fn is_noop(self)
+    const fn is_noop(self)
     traits: Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize, StructuralPartialEq
 struct           ConicGeometry
     fields: center, start_angle
@@ -866,7 +866,7 @@ struct           Gradient
     fn two_stop(c0, c1)
     const fn with_spread(self, spread)
     const fn with_interp(self, interp)
-    fn is_noop(self)
+    const fn is_noop(self)
     traits: Clone, Debug, Deserialize, From, Hash, PartialEq, Serialize, StructuralPartialEq
 trait            GradientGeometry
     items: DEFAULT_INTERP, axis_lanes, hash_geometry, has_nan
@@ -1489,7 +1489,7 @@ struct           Separator
     traits: Configure, Debug
 struct           Slider
     fn new(value, range)
-    fn step(self, step)
+    const fn step(self, step)
     const fn decimals(self, n)
     fn style(self, s)
     fn show(self, ui)
@@ -1670,7 +1670,7 @@ struct           SliderTheme
     traits: Clone, Debug, Default, Deserialize, Serialize
 struct           SpinnerTheme
     fields: color, diameter, sweep, speed, thickness_ratio, min_thickness
-    fn from_palette(p)
+    const fn from_palette(p)
     traits: Clone, Debug, Default, Deserialize, Serialize
 struct           SplitterTheme
     fields: grab_thickness, rule, rule_thickness, hovered, active

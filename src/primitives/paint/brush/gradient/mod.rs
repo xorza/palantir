@@ -123,7 +123,7 @@ impl<G> Gradient<G> {
 
     /// Paints nothing visible when every stop is transparent.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         self.ramp.is_noop()
     }
 }
