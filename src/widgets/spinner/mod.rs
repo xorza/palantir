@@ -2,7 +2,7 @@
 //! paint clock, so an idle window animates it without recording.
 
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -95,7 +95,7 @@ impl<'a> Spinner<'a> {
     /// recorded.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
-        let diameter = self.diameter.unwrap_or(theme.diameter).themed_length(1.0);
+        let diameter = domain::length_at_least(self.diameter.unwrap_or(theme.diameter), 1.0);
         let width = self
             .thickness
             .unwrap_or((diameter * theme.thickness_ratio).max(theme.min_thickness));

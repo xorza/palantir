@@ -3,7 +3,7 @@ use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
 use crate::internals::panic_probe;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use ron::ser;
 
 #[test]

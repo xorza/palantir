@@ -36,7 +36,7 @@
 //! candidate-vs-existing cost.
 
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use tinyvec::ArrayVec;
 
 /// Maximum disjoint damage rects retained per frame. The merge

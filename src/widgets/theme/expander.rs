@@ -40,7 +40,7 @@ pub struct ExpanderTheme {
     /// Angle the arrow wears while the body is closed, in radians. The
     /// default quarter turn anticlockwise points it at the label, which
     /// is the disclosure triangle every file tree draws.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_closed_angle: f32,
     /// Angle the arrow wears while the body is open. The default leaves
     /// it upright, pointing down at what it revealed.
@@ -48,7 +48,7 @@ pub struct ExpanderTheme {
     /// Set the pair to `0.0` and `-PI` for the other convention — down
     /// when closed, up when open — which reads better for a column of
     /// sibling sections than for one disclosure.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_open_angle: f32,
     /// Gutter between the arrow and the label.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]

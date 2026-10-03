@@ -14,7 +14,7 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::image::ImageFit;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::image_source::ImageSource;

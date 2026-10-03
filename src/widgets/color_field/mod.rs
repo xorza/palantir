@@ -5,7 +5,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::image::Image;
@@ -125,11 +125,11 @@ impl<'a> ColorField<'a> {
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let themed = Size::new(
-            theme.field_width.themed_length(1.0),
-            theme.field_height.themed_length(1.0),
+            domain::length_at_least(theme.field_width, 1.0),
+            domain::length_at_least(theme.field_height, 1.0),
         );
-        let handle_radius = theme.handle_radius.themed_length(1.0);
-        let handle_width = theme.handle_width.themed_length(0.0);
+        let handle_radius = domain::length_at_least(theme.handle_radius, 1.0);
+        let handle_width = domain::length_at_least(theme.handle_width, 0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
 

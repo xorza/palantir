@@ -3,7 +3,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -82,9 +82,9 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // leaves `self` unborrowable.
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.radio);
-        let pip_size = slot.box_size.themed_length(1.0);
+        let pip_size = domain::length_at_least(slot.box_size, 1.0);
         let indicator = slot.indicator;
-        let dot_inset = slot.indicator_inset.themed_length(0.0);
+        let dot_inset = domain::length_at_least(slot.indicator_inset, 0.0);
 
         let mut selected = *self.current == self.value;
         let mut changed = false;

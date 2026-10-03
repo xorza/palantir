@@ -3,7 +3,7 @@
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::justify::Justify;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::scene::node::gaps::Gaps;
 use std::hash;
 use std::hash::Hash;

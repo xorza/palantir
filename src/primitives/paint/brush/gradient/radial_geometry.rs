@@ -1,7 +1,7 @@
 //! The radial gradient's axis: colour runs outward from a centre, with a
 //! radius per axis so an ellipse is expressible.
 
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::paint::brush::gradient::stops::Stop;

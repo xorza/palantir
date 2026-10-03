@@ -35,7 +35,7 @@ pub struct DockTheme {
     /// Inset between the ghost chip's edges and its label.
     pub ghost_padding: Spacing,
     /// Where the ghost chip sits relative to the pointer.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite2")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub ghost_offset: Vec2,
     /// How far in from each edge the split wedges reach, as a fraction
     /// of the pane's content rect. `0.25` leaves the inner half as the

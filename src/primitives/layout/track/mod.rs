@@ -2,10 +2,9 @@
 //! a whole grid by.
 
 use crate::common::span::Span;
-use crate::primitives::layout::limits::{valid_lower_bound, valid_upper_bound};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use std::hash;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
@@ -67,7 +66,7 @@ impl Track {
     /// maximum.
     pub const fn min(mut self, min: f32) -> Self {
         assert!(
-            valid_lower_bound(min) && min <= self.max,
+            domain::is_length(min) && min <= self.max,
             "Track minimum must be finite, non-negative, and not exceed its maximum",
         );
         self.min = min;
@@ -82,7 +81,7 @@ impl Track {
     /// Positive infinity is the unbounded sentinel.
     pub const fn max(mut self, max: f32) -> Self {
         assert!(
-            valid_upper_bound(max) && max >= self.min,
+            domain::is_extent(max) && max >= self.min,
             "Track maximum must be non-negative and not be less than its minimum",
         );
         self.max = max;
@@ -108,12 +107,12 @@ impl From<Sizing> for Track {
 impl FloatHash for Track {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, h: &mut H) {
-        self.hash_bits(h, approx::eq_bits);
+        self.hash_bits(h, float_hash::eq_bits);
     }
 
     #[inline]
     fn hash_visual<H: hash::Hasher>(&self, h: &mut H) {
-        self.hash_bits(h, approx::canon_bits);
+        self.hash_bits(h, float_hash::canon_bits);
     }
 }
 

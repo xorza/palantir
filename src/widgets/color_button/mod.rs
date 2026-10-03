@@ -4,7 +4,7 @@
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::ui::Ui;
@@ -94,7 +94,7 @@ impl<'a> ColorButton<'a> {
         // chrome out of it across the `&mut Ui` the chip's record takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
-        let side = slot.chip_size.themed_length(1.0);
+        let side = domain::length_at_least(slot.chip_size, 1.0);
         let checker = Checkerboard::new(slot);
         let mut widget = self
             .widget

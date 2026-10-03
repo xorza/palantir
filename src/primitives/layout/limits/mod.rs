@@ -1,8 +1,8 @@
 //! What layout treats as a usable bound: the screens every measured lower
 //! bound, upper bound and gap passes before the pass math trusts it.
 //!
-//! Named predicates rather than an assert per site, so "a bound layout can
-//! work with" has one definition and one call checks a whole pair.
+//! The scalar rules are the [`domain`] kinds — a lower bound is a length, an
+//! upper bound an extent — and one call checks a whole pair.
 //!
 //! **Checked in release**, at one strictness for every bound the crate
 //! takes — a node's, a grid track's, a gap's. The pass math downstream
@@ -14,25 +14,11 @@
 //! deliberately.
 
 use crate::primitives::geometry::size::Size;
+use crate::primitives::math::domain;
 use crate::primitives::packed::half_simd::F16x4;
 
 /// A gap travels in one f16 lane.
 pub(crate) const MAX_PACKED_GAP: f32 = F16x4::MAX_LANE;
-
-#[inline]
-pub(crate) const fn valid_lower_bound(value: f32) -> bool {
-    value >= 0.0 && value < f32::INFINITY
-}
-
-#[inline]
-pub(crate) const fn valid_upper_bound(value: f32) -> bool {
-    value >= 0.0
-}
-
-#[inline]
-pub(crate) const fn valid_packed_gap(value: f32) -> bool {
-    valid_lower_bound(value) && value <= MAX_PACKED_GAP
-}
 
 /// # Panics
 ///
@@ -42,10 +28,10 @@ pub(crate) const fn valid_packed_gap(value: f32) -> bool {
 #[inline]
 pub(crate) fn assert_valid_bounds(min_size: Size, max_size: Size) {
     assert!(
-        valid_lower_bound(min_size.w)
-            && valid_lower_bound(min_size.h)
-            && valid_upper_bound(max_size.w)
-            && valid_upper_bound(max_size.h)
+        domain::is_length(min_size.w)
+            && domain::is_length(min_size.h)
+            && domain::is_extent(max_size.w)
+            && domain::is_extent(max_size.h)
             && min_size.w <= max_size.w
             && min_size.h <= max_size.h,
         "node minimums must be finite, bounds must be non-negative and ordered, and only \

@@ -1,7 +1,7 @@
 //! The scale the *user* chose, held apart from the scale the *system*
 //! reported.
 
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 
 /// A chrome scale the application chooses, multiplied onto the scale the
 /// platform reported — `Display::scale_factor` is the product of the two.

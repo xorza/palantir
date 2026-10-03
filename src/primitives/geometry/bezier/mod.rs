@@ -91,7 +91,7 @@ pub(crate) fn cubic_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
 fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
     /// Below this a coefficient carries no root worth recovering.
     ///
-    /// Not the crate's visual [`EPS`](crate::primitives::math::approx::EPS),
+    /// Not the crate's visual [`EPS`](crate::primitives::math::domain::EPS),
     /// which answers a question about painted distance: these
     /// coefficients are differences of control-point coordinates in a
     /// derivative, so their scale is the curve's, not the screen's, and a

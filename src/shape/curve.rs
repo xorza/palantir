@@ -2,7 +2,8 @@
 //! `ShapeRecord::Curve`, and the stroke properties travel beside the
 //! geometry so only the geometry varies between the entry points.
 
-use crate::primitives::math::approx::{paints_nothing, vec2_approx_eq};
+use crate::primitives::math::domain::paints_nothing;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::stroke::Stroke;
@@ -96,12 +97,12 @@ impl sealed::LowerShape for CurveShape {
             return true;
         }
         match &self.geometry {
-            CurveGeometry::Line { a, b } => vec2_approx_eq(*a, *b),
+            CurveGeometry::Line { a, b } => vec2::approx_eq(*a, *b),
             CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
-                vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2) && vec2_approx_eq(*p0, *p3)
+                vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2) && vec2::approx_eq(*p0, *p3)
             }
             CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
-                vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2)
+                vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2)
             }
             CurveGeometry::Arc { radius, sweep, .. } => {
                 paints_nothing(*radius) || paints_nothing(sweep.abs())

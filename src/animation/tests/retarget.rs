@@ -4,7 +4,7 @@ use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{SLOT, duration_motion, linear_100ms, spring_velocity, wid};
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain::internals::assert_close;
 
 #[test]
 fn retarget_mid_flight_starts_new_segment_from_current() {

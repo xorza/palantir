@@ -9,7 +9,7 @@
 //! swapped pair of metrics is a type error rather than a silent mis-key
 //! that only shows up as a cache miss.
 
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::math::nan::NanCheck;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;

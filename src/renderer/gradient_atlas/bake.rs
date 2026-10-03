@@ -6,7 +6,7 @@
 //! The shaders filter between texels in the same space.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::math::approx;
+use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interp;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
@@ -129,7 +129,7 @@ impl<'a> RampTexels<'a> {
         let lower_offset = self.stops[upper - 1].offset();
         let upper_offset = self.stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if approx::approx_zero(denominator) {
+        if domain::approx_zero(denominator) {
             return self.linear[upper];
         }
         let amount = (t - lower_offset) / denominator;
@@ -198,7 +198,7 @@ fn lerp_oklab(
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::math::approx::internals::assert_close;
+    use crate::primitives::math::domain::internals::assert_close;
     use crate::primitives::paint::brush::gradient::Interp;
     use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
     use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};

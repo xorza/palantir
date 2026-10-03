@@ -4,7 +4,7 @@
 use crate::animation::duration::{DURATION_ERROR, duration_is_valid};
 use crate::animation::easing::Easing;
 use crate::animation::spring::{SPRING_ERROR, params_are_valid as spring_params_are_valid};
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 

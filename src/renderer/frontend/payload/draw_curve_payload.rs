@@ -1,6 +1,6 @@
 //! One native GPU stroke — a cubic or an arc.
 
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::paint::curve_basis::CurveBasis;

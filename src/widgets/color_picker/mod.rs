@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -171,13 +171,13 @@ impl<'a> ColorPicker<'a> {
         // styles out of it across the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
-        let gap = slot.gap.themed_length(0.0);
+        let gap = domain::length_at_least(slot.gap, 0.0);
 
         // The panel is as wide as its field and no wider. Every row below is
         // `FILL` inside that, which is what keeps the value grid's columns a
         // fixed width instead of one the digits inside them push around.
         let mut widget = self.widget.gap(gap).default_size((
-            Sizing::fixed(slot.field_width.themed_length(1.0)),
+            Sizing::fixed(domain::length_at_least(slot.field_width, 1.0)),
             Sizing::HUG,
         ));
         let response = widget.response(ui);
@@ -297,9 +297,9 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
         swatches,
         downsample,
     } = inputs;
-    let gap = theme.gap.themed_length(0.0);
-    let bar = theme.bar_thickness.themed_length(1.0);
-    let chip = theme.chip_size.themed_length(1.0);
+    let gap = domain::length_at_least(theme.gap, 0.0);
+    let bar = domain::length_at_least(theme.bar_thickness, 1.0);
+    let chip = domain::length_at_least(theme.chip_size, 1.0);
 
     // An edit from outside moves the handles; the picker's own writes do not
     // come back through here, which is what lets black keep its hue.
@@ -431,7 +431,7 @@ fn values_grid(
     shown: RgbaF32,
     writes: &mut Writes,
 ) {
-    let gap = theme.gap.themed_length(0.0);
+    let gap = domain::length_at_least(theme.gap, 0.0);
     let quantized = shown.to_srgba_u8();
     let hex_id = id.with("hex");
     if ui.focused_id() != Some(hex_id) {
@@ -624,7 +624,7 @@ fn swatch_row(
     let mut picked = None;
     Panel::wrap_hstack()
         .id(id.with("swatches"))
-        .gap(theme.gap.themed_length(0.0))
+        .gap(domain::length_at_least(theme.gap, 0.0))
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for (index, color) in colors.iter().enumerate() {

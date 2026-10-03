@@ -6,7 +6,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
-use crate::primitives::math::approx;
+use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
@@ -127,7 +127,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         let lower_offset = stops[upper - 1].offset();
         let upper_offset = stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if approx::approx_zero(denominator) {
+        if domain::approx_zero(denominator) {
             return linear[upper];
         }
         RgbaF32::lerp(

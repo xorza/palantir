@@ -1,7 +1,7 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::mesh::*;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::approx;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 
 #[test]
@@ -159,11 +159,11 @@ fn content_hash_stable_for_identical_input() {
     let make = |first| Mesh::filled_triangle(first, Vec2::X, Vec2::Y, RgbaF32::WHITE);
     assert_eq!(
         make(Vec2::ZERO).content_hash(),
-        make(Vec2::new(approx::EPS * 0.5, -approx::EPS * 0.5)).content_hash(),
+        make(Vec2::new(domain::EPS * 0.5, -domain::EPS * 0.5)).content_hash(),
     );
     assert_ne!(
         make(Vec2::ZERO).content_hash(),
-        make(Vec2::new(approx::EPS * 2.0, 0.0)).content_hash(),
+        make(Vec2::new(domain::EPS * 2.0, 0.0)).content_hash(),
     );
 }
 

@@ -7,7 +7,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::math::approx;
+use crate::primitives::math::domain;
 use glam::Vec2;
 
 /// Where a viewport is scrolled to, and the interaction state that moves
@@ -115,7 +115,7 @@ impl ThumbTravel {
     /// rate the thumb does not follow.
     pub(super) const fn of(thumb: BarGeometry) -> Self {
         Self {
-            factor: approx::share_of(thumb.max_offset, thumb.travel),
+            factor: domain::share_of(thumb.max_offset, thumb.travel),
             domain: BarDomain::new(thumb.max_offset),
         }
     }
@@ -217,7 +217,7 @@ impl ScrollState {
         } else {
             1.0
         };
-        if !approx::approx_zero(dz_eff - 1.0) {
+        if !domain::approx_zero(dz_eff - 1.0) {
             self.offset = (self.offset + pivot) * dz_eff - pivot;
             self.zoom = new_zoom;
         }

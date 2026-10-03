@@ -1,6 +1,6 @@
 //! A panel's two inter-child gaps while a builder still owns them.
 
-use crate::primitives::layout::limits::valid_packed_gap;
+use crate::primitives::math::domain;
 use crate::scene::node::gaps::Gaps;
 use half::f16;
 use std::fmt;
@@ -29,7 +29,7 @@ impl fmt::Debug for AuthoredGaps {
 impl AuthoredGaps {
     /// The bit pattern no lane can otherwise hold: an f16 quiet NaN.
     ///
-    /// A gap is finite and non-negative ([`valid_packed_gap`]), so no
+    /// A gap is finite and non-negative ([`domain::is_gap`]), so no
     /// value a caller can store lands here. That makes NaN free to carry
     /// the untouched state without widening the packed pair.
     const UNSET: u16 = 0x7E00;
@@ -64,7 +64,7 @@ impl AuthoredGaps {
     #[inline]
     pub(crate) fn set_gap(&mut self, v: f32) {
         assert!(
-            valid_packed_gap(v),
+            domain::is_gap(v),
             "gap must be finite, non-negative, and no greater than the f16 maximum, got {v}",
         );
         self.0[0] = f16::from_f32(v).to_bits();
@@ -76,7 +76,7 @@ impl AuthoredGaps {
     #[inline]
     pub(crate) fn set_line_gap(&mut self, v: f32) {
         assert!(
-            valid_packed_gap(v),
+            domain::is_gap(v),
             "line gap must be finite, non-negative, and no greater than the f16 maximum, got {v}",
         );
         self.0[1] = f16::from_f32(v).to_bits();

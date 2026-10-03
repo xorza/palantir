@@ -2,7 +2,8 @@
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::math::approx::{self, FloatHash};
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::FloatHash;
 use glam::Vec2;
 use std::hash;
 use std::hash::Hash;
@@ -40,8 +41,8 @@ impl BoundsExtras {
 
     #[inline]
     pub(crate) fn is_default(&self) -> bool {
-        approx::approx_zero(self.position.x)
-            && approx::approx_zero(self.position.y)
+        domain::approx_zero(self.position.x)
+            && domain::approx_zero(self.position.y)
             && self.grid == Self::DEFAULT.grid
             && self.min_size.approx_zero()
             && self.max_size == Self::DEFAULT.max_size

@@ -1,6 +1,6 @@
 //! One stroked-polyline draw.
 
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};

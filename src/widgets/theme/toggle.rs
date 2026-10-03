@@ -48,7 +48,7 @@ pub struct ToggleTheme {
     /// space rather than pixels so the tick keeps its proportions at any
     /// box size, and so the shape carries no reference size of its own
     /// to fall out of step with `box_size`.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite_points3")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset_points3")]
     pub check_pts: [Vec2; 3],
     /// Inset of the filled dot inside the pip (RadioButton).
     /// Dot side = `box_size - 2 * indicator_inset`.

@@ -168,7 +168,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 
 #[test]
 fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
     use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEditState;

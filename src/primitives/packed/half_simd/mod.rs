@@ -24,7 +24,7 @@
 //! fallback goes through `half`'s slice path (`fcvtl` on aarch64-fp16),
 //! where the dispatch is the point.
 
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use std::hash;
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
@@ -51,7 +51,7 @@ impl F16x4 {
     /// mask and exponent the lane predicates classify against.
     ///
     /// Here rather than beside [`EPS`] itself, because the encoding is
-    /// this type's business: `approx` answers f32 questions, and a lane
+    /// this type's business: `domain` answers f32 questions, and a lane
     /// pattern is not one.
     const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
     const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();

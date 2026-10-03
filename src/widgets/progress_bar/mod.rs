@@ -3,7 +3,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -60,7 +60,7 @@ impl<'a> ProgressBar<'a> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().progress_bar);
         let [fill, spacer] = Sizing::split(self.fraction);
-        let thickness = theme.thickness.themed_length(0.0);
+        let thickness = domain::length_at_least(theme.thickness, 0.0);
         let radius = Corners::all(thickness * 0.5);
 
         let mut widget = self

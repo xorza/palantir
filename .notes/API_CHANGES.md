@@ -390,25 +390,6 @@ already state the pairing.
 
 **Recommendation.** Remove both impls.
 
-## A36. One public home for scalar rules
-
-**Findings.** `widget::approx` re-exports a crate module wholesale: `EPS` and four free functions
-(`approx_zero`, `paints_nothing`, `share_of`, `vec2_approx_eq`). `widget::F32Ext` already exists to
-put exactly this kind of scalar rule on `f32` and `Vec2` as methods, and the style guide prefers
-methods to exported free functions.
-
-**Findings, continued.** A50's kind functions are a third set of scalar rules, and they must be
-public too: AGENTS.md lets a widget reach only the public API, so a widget outside the crate has to
-validate and read theme values the way a bundled one does.
-
-**Recommendation.** One public home for every scalar rule: the `widget::domain` module of A50.
-It holds `EPS`, the predicates (`approx_zero`, `paints_nothing`, `approx_eq`), `share_of`,
-`band_fraction`, and the kind functions, which absorb `themed_length` (`length_at_least(v, min)`)
-and `unit_fraction_or` (`fraction_or(v, fallback)`). They are `const fn`s on `f32`; the `Vec2`
-forms a two-axis widget needs have the same names in `domain::vec2`. Free functions rather than
-`F32Ext` methods, against the guide's preference for methods, because a trait method cannot be
-`const` on stable and the setters that call these are. `widget::approx` and `F32Ext` are removed.
-
 ## A37. Seal `GradientGeometry`
 
 **Findings.** `GradientGeometry` is a public, implementable trait whose items are renderer
@@ -638,8 +619,8 @@ caller bugs that are hidden (`GridCell::span(0, _)`) while others are ordinary d
    `DockSplit` (ratio), which have public fields now. Theme fields stay public and are read
    through the kind functions (what `themed_length` does today, for lengths only).
 
-**The mechanism.** A public `widget::domain` module (A36 merges `widget::approx` and `F32Ext`
-into it). Each validating kind is two `const fn`s — an `is_*` predicate and an asserting
+**The mechanism (landed).** The public `widget::domain` module, which replaced `widget::approx`
+and `F32Ext`: one public home for every scalar rule. Each validating kind is two `const fn`s — an `is_*` predicate and an asserting
 checker — with one message; each coercing kind is one total `const fn`. Public, because AGENTS.md
 lets a widget reach only the public API, and a widget outside the crate validates its own setters
 and reads theme values through the same functions:
@@ -744,13 +725,7 @@ All seven are decided. Each item named here carries its decision in its own text
 
 ## Phase 1 — foundations the later phases build on
 
-1. **The `domain` module** (A50 mechanism, A36). Add `widget::domain`: `EPS`, the predicates,
-   `share_of`, `band_fraction`, and one `const fn` per kind in A50's table, with `domain::vec2`
-   twins where a widget needs both axes. Move every `widget::approx` and `F32Ext` caller onto it
-   (about 75 call sites), then remove both. Rewrite `primitives::packed::serde::checked` over the
-   same predicates. Tests: a table per kind (`NaN`, `±inf`, `-1`, `0`, the boundary, a valid
-   value) for the panic message or the coerced value. Setters do not call it yet, so no behaviour
-   changes.
+1. Done: the `domain` module (A50 mechanism, A36).
 2. **`const` sweep** (A24), after step 1 so the setters that will call `domain` stay `const`.
 3. **Flag sets** (A32): `NONE` and `ALL` on every flag type; `empty`, `all`, `bits` and
    `from_bits_truncate` become `pub(crate)`. Before A22 adds bits to `Sense`.

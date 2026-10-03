@@ -5,7 +5,7 @@
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;

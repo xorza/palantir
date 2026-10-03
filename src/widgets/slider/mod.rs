@@ -5,7 +5,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -118,8 +118,8 @@ impl<'a> Slider<'a> {
         let id = self.widget.resolve(ui);
 
         let theme = self.style.unwrap_or(&ui.theme().slider);
-        let knob = theme.knob_size.themed_length(1.0);
-        let track_h = theme.track_thickness.themed_length(0.0);
+        let knob = domain::length_at_least(theme.knob_size, 1.0);
+        let track_h = domain::length_at_least(theme.track_thickness, 0.0);
         let fill_color = theme.fill;
         let track_color = theme.track;
         let knob_color = theme.knob;
@@ -204,7 +204,7 @@ impl Configure for Slider<'_> {
 /// *distance* answers to, one past `f32`'s reach, one whose share alone
 /// is past it.
 ///
-/// The end of it is [`F32Ext::unit_fraction_or`]'s policy in the value
+/// The end of it is [`domain::fraction_or`](crate::widget::domain::fraction_or)'s policy in the value
 /// domain: a share that is no share reads as the low end, and every
 /// other share is pinned into `0..=1`. Non-finite covers the ranges
 /// geometry can collapse — a range whose ends coincide divides by zero,

@@ -6,7 +6,7 @@ use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain::vec2;
 use glam::Vec2;
 
 /// Snapshot of one widget's interaction state for the current frame.
@@ -251,7 +251,7 @@ impl ResponseState {
     /// are named once. `band` is the width of a centred thing the pointer
     /// drags, a knob, and comes off each end before the division; pass
     /// zero when the pointer itself is the position — see
-    /// [`F32Ext::band_fraction`]. Clamped,
+    /// [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped,
     /// so a pointer past an edge reports that edge, which is the only way
     /// a drag reaches an axis end.
     #[inline]
@@ -262,10 +262,9 @@ impl ResponseState {
         }
         let local = self.pointer_local?;
         let rect = self.layout_rect?;
-        Some(
-            local
-                .band_fraction(rect.size.into(), Vec2::splat(band))
-                .unit_fraction_or(Vec2::ZERO),
-        )
+        Some(vec2::fraction_or(
+            vec2::band_fraction(local, rect.size.into(), Vec2::splat(band)),
+            Vec2::ZERO,
+        ))
     }
 }
