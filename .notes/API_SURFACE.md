@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `c8dfbd2d`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `1cbf22e1`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -1242,8 +1242,8 @@ struct           ComboBox
     traits: Configure, Debug
 struct           ContextMenu
     fn for_id(for_id)
+    fn on(snapshot)
     fn style(self, s)
-    fn attach(ui, snapshot)
     fn show(self, ui, body)
     fn open(ui, for_id, point)
     fn close(ui, for_id)
@@ -1412,6 +1412,7 @@ struct           Popup
     fn above(rect)
     fn left_of(rect)
     fn right_of(rect)
+    fn at_point(point)
     const fn layer(self, layer)
     const fn click_outside(self, m)
     const fn anchored(self, anchor)
@@ -1703,9 +1704,8 @@ struct           TooltipTheme
     fn from_palette(p)
     traits: Clone, Debug, Default, Deserialize, Serialize
 struct           Tooltip
-    fn on(snapshot)
+    fn on(snapshot, text)
     fn style(self, s)
-    fn label(self, label)
     const fn delay(self, delay)
     const fn when_disabled(self, yes)
     fn show(self, ui)

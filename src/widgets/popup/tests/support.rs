@@ -1,8 +1,6 @@
 //! The anchored body a popup test records, and the main-panel probe under
 //! it.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -40,7 +38,7 @@ pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
         .size((Sizing::FILL, Sizing::FILL))
         .sense(Sense::CLICK)
         .show(ui, |ui| {
-            dismissed = Popup::new(Anchor::at_point(ANCHOR))
+            dismissed = Popup::at_point(ANCHOR)
                 .id(WidgetId::from_hash("test-popup"))
                 .click_outside(config)
                 .padding(4.0)

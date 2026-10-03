@@ -129,7 +129,7 @@ impl fmt::Debug for Response<'_> {
 /// Owned snapshot of a widget's response state — what [`Response::snapshot`]
 /// produces. Same deref surface as [`Response`] but doesn't borrow `Ui`,
 /// so it can be stored across `&mut Ui` operations and passed to
-/// consumers like [`crate::Tooltip::on`] / [`crate::ContextMenu::attach`]
+/// consumers like [`crate::Tooltip::on`] / [`crate::ContextMenu::on`]
 /// that need a stable trigger anchor.
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseSnapshot {

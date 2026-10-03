@@ -70,7 +70,7 @@ impl<'a> Editor<'a> {
     ) -> bool {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
-        ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
+        ContextMenu::on(snapshot).show(ui, |ui, popup| {
             for press in ui.keyboard_events() {
                 let Some(keypress) = filter.accepts(*press) else {
                     continue;

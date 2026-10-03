@@ -59,7 +59,7 @@ fn global_state_id() -> WidgetId {
 /// # use palantir::{Button, Tooltip, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let r = Button::new().label("Save").show(ui).snapshot();
-/// Tooltip::on(&r).label("Persist changes (Ctrl+S)").show(ui);
+/// Tooltip::on(&r, "Persist changes (Ctrl+S)").show(ui);
 /// # }
 /// ```
 ///
@@ -85,18 +85,21 @@ pub struct Tooltip<'a> {
 }
 
 impl<'a> Tooltip<'a> {
-    /// Attach a tooltip to the given trigger response snapshot. The
-    /// snapshot carries the trigger's `WidgetId` and last-frame rect
-    /// — both drive timer keying and anchor computation. Pass via
-    /// `trigger.snapshot()` to detach from the trigger's `&Ui`
+    /// Attach a tooltip showing `text` to the given trigger response
+    /// snapshot. The snapshot carries the trigger's `WidgetId` and
+    /// last-frame rect — both drive timer keying and anchor computation.
+    /// Pass via `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before recording the tooltip body.
+    ///
+    /// `text` is the bubble's whole content, so it is required. An empty
+    /// one records no bubble at all.
     #[track_caller]
-    pub fn on(snapshot: &'a ResponseSnapshot) -> Self {
+    pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self {
         // Bubble must never claim hover — would shadow its own trigger.
         let widget = Widget::vstack().sense(Sense::NONE);
         Self {
             snapshot,
-            label: TextInput::default(),
+            label: text.into(),
             delay: None,
             when_disabled: false,
             widget,
@@ -111,15 +114,6 @@ impl<'a> Tooltip<'a> {
     /// Per-field [`Self::background`] / [`Self::delay`] still win over it.
     pub fn style(mut self, s: impl Into<Option<&'a TooltipTheme>>) -> Self {
         self.style = s.into();
-        self
-    }
-
-    /// The text this widget draws. Empty (the default) draws none —
-    /// no text child is recorded at all.
-    ///
-    /// The bubble's whole content — a tooltip draws nothing else.
-    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
         self
     }
 

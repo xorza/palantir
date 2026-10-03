@@ -290,7 +290,7 @@ fn clipboard_shortcut_does_not_insert_char() {
 }
 
 /// Right-click on the editor opens the menu — pins the secondary-
-/// click → `ContextMenu::attach` wiring.
+/// click → `ContextMenu::on` wiring.
 #[test]
 fn secondary_click_opens_text_edit_menu() {
     fn body(ui: &mut Ui, buf: &mut String) {

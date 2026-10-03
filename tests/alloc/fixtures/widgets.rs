@@ -6,8 +6,6 @@
 //! touches the heap not at all. `churn.rs` covers the scenes that
 //! change, `renderer.rs` the shape counts that stress the frontend.
 
-use palantir::Anchor;
-
 use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
@@ -282,7 +280,7 @@ fn open_context_menu_shortcuts_alloc_free() {
             ContextMenu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
             needs_open = false;
         }
-        ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+        ContextMenu::on(&trigger).show(ui, |ui, popup| {
             MenuItem::new("Copy")
                 .shortcut(Shortcut::ctrl('C'))
                 .show(ui, popup);
@@ -386,8 +384,7 @@ fn tooltip_bubble_alloc_free() {
     let host = WidgetId::from_hash("tip-host");
     let scene = |ui: &mut Ui| {
         let trigger = Button::new().id(host).label("hover").show(ui).snapshot();
-        Tooltip::on(&trigger)
-            .label("a tooltip body")
+        Tooltip::on(&trigger, "a tooltip body")
             .delay(Duration::ZERO)
             .show(ui)
     };
@@ -423,7 +420,7 @@ fn overlays_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::new(Anchor::at_point(Vec2::new(40.0, 40.0)))
+                Popup::at_point(Vec2::new(40.0, 40.0))
                     .id_salt("pop")
                     .show(ui, |ui, _handle| {
                         Text::new("popup body").id_salt("pop-text").show(ui);

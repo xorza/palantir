@@ -3,7 +3,6 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
-use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
 use crate::input::interaction::response_state::ResponseState;
@@ -68,10 +67,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     let bubble_id = trigger_id.with("bubble");
     let frame = |h: &mut UiHarness, text: &str| {
         let report = h.frame(|ui| {
-            Tooltip::on(&snapshot)
-                .label(text)
-                .delay(Duration::ZERO)
-                .show(ui);
+            Tooltip::on(&snapshot, text).delay(Duration::ZERO).show(ui);
         });
         assert_eq!(
             report.processing,
@@ -143,10 +139,7 @@ fn tooltip_text_inherits_the_ambient_leading() {
         },
     };
     h.frame(|ui| {
-        Tooltip::on(&snapshot)
-            .label("tip")
-            .delay(Duration::ZERO)
-            .show(ui);
+        Tooltip::on(&snapshot, "tip").delay(Duration::ZERO).show(ui);
     });
     let shaped =
         h.ui.layout(Layer::Tooltip)
@@ -179,8 +172,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
 
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        Tooltip::on(&snapshot)
-            .label("tip")
+        Tooltip::on(&snapshot, "tip")
             .background(Background::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(7.0))
@@ -202,8 +194,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let explicit = WidgetId::from_hash("my-own-bubble");
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        Tooltip::on(&snapshot)
-            .label("tip")
+        Tooltip::on(&snapshot, "tip")
             .id(explicit)
             .delay(Duration::ZERO)
             .show(ui);
@@ -236,10 +227,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
         "a measured tooltip stays single-pass",
     ] {
         let report = h.frame(|ui| {
-            Tooltip::on(&snapshot)
-                .label(text)
-                .delay(Duration::ZERO)
-                .show(ui);
+            Tooltip::on(&snapshot, text).delay(Duration::ZERO).show(ui);
         });
         assert_eq!(report.processing, FrameProcessing::SingleLayout, "{why}");
     }
@@ -291,8 +279,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     };
     let record_at = |h: &mut UiHarness, time: Duration| {
         h.at(time).frame(|ui| {
-            Tooltip::on(&snapshot)
-                .label("tip")
+            Tooltip::on(&snapshot, "tip")
                 .delay(Duration::from_millis(250))
                 .show(ui);
         });
@@ -322,7 +309,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let record = |ui: &mut Ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
-            Tooltip::on(&trigger).label("tip").show(ui);
+            Tooltip::on(&trigger, "tip").show(ui);
         });
     };
 
@@ -382,8 +369,7 @@ fn delay_gates_visibility() {
                         .show(ui)
                         .snapshot();
                     *captured = Some(r.id);
-                    Tooltip::on(&r)
-                        .label("tip")
+                    Tooltip::on(&r, "tip")
                         .delay(Duration::from_millis(300))
                         .show(ui);
                 });
@@ -471,8 +457,7 @@ fn hover_clears_after_tooltip_visible() {
                         .show(ui)
                         .snapshot();
                     *captured = Some(r.id);
-                    Tooltip::on(&r)
-                        .label("tip")
+                    Tooltip::on(&r, "tip")
                         .delay(Duration::from_millis(300))
                         .show(ui);
                 });
@@ -528,7 +513,7 @@ fn tooltip_inside_popup_records_without_panic() {
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::new(Anchor::at_point(popup_anchor))
+                    Popup::at_point(popup_anchor)
                         .id(WidgetId::from_hash("popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .padding(4.0)
@@ -539,8 +524,7 @@ fn tooltip_inside_popup_records_without_panic() {
                                 .show(ui)
                                 .snapshot();
                             *captured = Some(r.id);
-                            Tooltip::on(&r)
-                                .label("tip")
+                            Tooltip::on(&r, "tip")
                                 .delay(Duration::from_millis(300))
                                 .show(ui);
                         });
@@ -615,8 +599,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
                             .disabled(true)
                             .show(ui)
                             .snapshot();
-                        Tooltip::on(&r)
-                            .label("nothing to save yet")
+                        Tooltip::on(&r, "nothing to save yet")
                             .when_disabled(allow)
                             .delay(Duration::from_millis(300))
                             .show(ui);
@@ -665,8 +648,7 @@ fn an_authored_min_above_the_themed_max_width_wins() {
         },
     };
     h.prime(2, |ui| {
-        Tooltip::on(&snapshot)
-            .label("wide")
+        Tooltip::on(&snapshot, "wide")
             .delay(Duration::ZERO)
             .min_size((300.0, 0.0))
             .show(ui);
