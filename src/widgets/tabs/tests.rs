@@ -526,6 +526,68 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
     }
 }
 
+/// A keyed view names each chip by its page, not its slot: after the
+/// first page goes, "Geometry"'s chip keeps its id and moves to the left
+/// edge, where an index-keyed view would hand slot 1's id to "Metadata".
+/// A drag reads the same keys: "Colour" dropped past the last chip is the
+/// append, exactly as on an index-keyed view.
+#[test]
+fn a_keyed_view_keeps_each_chip_with_its_page() {
+    let view = WidgetId::from_hash("test.keyed");
+    let strip = view.with("strip");
+    let chip = |name: &str| TabStrip::chip_id(strip, WidgetId::from_hash(name).0);
+    let record = |ui: &mut Ui, page: &mut usize, pages: &[&str]| {
+        TabbedView::new(page, pages)
+            .id(view)
+            .reorderable(true)
+            .keyed(|name: &&str| *name)
+            .show(ui, |ui, _| {
+                Panel::vstack()
+                    .id_salt("page")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |_| {});
+            })
+            .action
+    };
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut page = 0usize;
+    h.prime(2, |ui| {
+        record(ui, &mut page, &PAGES);
+    });
+    let geometry_before = h.rect(chip("Geometry")).expect("Geometry's chip");
+    let colour = h.rect(chip("Colour")).expect("Colour's chip");
+    assert!(
+        h.rect(TabStrip::chip_id(strip, 1)).is_none(),
+        "no index keys"
+    );
+    h.frame(|ui| {
+        record(ui, &mut page, &PAGES[1..]);
+    });
+    let geometry_after = h.rect(chip("Geometry")).expect("Geometry's chip survives");
+    assert_eq!(
+        geometry_after.min.x, colour.min.x,
+        "it moved to the left edge"
+    );
+    assert!(geometry_after.min.x < geometry_before.min.x);
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut page = 0usize;
+    h.prime(2, |ui| {
+        record(ui, &mut page, &PAGES);
+    });
+    h.press_on(chip("Colour"));
+    let onto = h.center_of(chip("Metadata"));
+    h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
+    h.frame(|ui| {
+        record(ui, &mut page, &PAGES);
+    });
+    h.release();
+    let action = h.frame_value(|ui| record(ui, &mut page, &PAGES));
+    assert_eq!(action, Some(TabsAction::Reordered { from: 0, to: 3 }));
+    assert_eq!(page, 2, "the bound page followed Colour to the end");
+}
+
 /// Where an index lands when `from` moves into the gap `to`, for pages
 /// [A, B, C, D]. Moving A to the end (gap 4) puts it at 3 and shifts the
 /// others down; moving D to the front (gap 0) shifts the others up.

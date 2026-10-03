@@ -41,18 +41,6 @@ W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key
 Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
 display gets the platform glyph. Low priority.
 
-## A12. TabbedView page identity
-
-**Findings.** REVIEW "TabbedView reorder and identity": chips are keyed by index, so after a close
-or reorder, slot `i`'s hover and look animation move to the page that slid into it.
-
-**Options.** A key function, `TabbedView::keyed(|page: &S| -> u64)`, or a bound `S: Hash`.
-
-**Decided 2026-10-04.** A builder setter `TabbedView::keyed(|page: &S| key)` whose key is any
-`impl Hash`, hashed the way `DockState::tab_key` hashes a tab, so the two widgets derive chip
-identity one way. Without it, index keys as today, so a static page list needs nothing. A bare
-name, because `TabbedView` is a builder (A47).
-
 ## A15. ColorButton parity with ColorPicker
 
 **Findings.** REVIEW "Small widgets design": ColorButton lacks `swatches(&[RgbaF32])` and the
@@ -376,8 +364,7 @@ Each line is one commit; none depends on another inside the phase.
 1. Done: one value response (A27).
 2. Done: wrappers (A39).
 3. Done: overlays (A14 with A51, A41, A23).
-4. **Dock and tabs**: A11 (model and view split, ids move to `DockView`), then A12 (`TabbedView`
-   keys).
+4. Done: dock and tabs (A11, A12).
 5. **Colour button** (A15), after phase 2 step 1 renamed `downsample`.
 
 ## Phase 4 — the validation rollout (A50 rules 2–4)
