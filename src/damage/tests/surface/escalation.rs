@@ -45,7 +45,7 @@ fn display_change_forces_full_repaint() {
         (
             "user_scale",
             Display {
-                user_scale: UserScale::new(1.25),
+                user_scale: UserScale::new(1.25).unwrap(),
                 ..DISPLAY
             },
         ),
@@ -78,7 +78,6 @@ fn display_change_forces_full_repaint() {
             one_frame(ui, BLUE);
         };
 
-        // Steady-state: Full first frame, then Skip on identical re-record.
         let f1 = frame_without_baseline(&mut h, &mut build);
         assert!(matches!(f1, Some(Damage::Full)), "case: {label} f1");
         let f2 = frame(&mut h, &mut build);
@@ -87,7 +86,6 @@ fn display_change_forces_full_repaint() {
             h.engines.damage.counters.dirty().is_empty(),
             "case: {label} steady"
         );
-        // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_plan = frame(h.set_display(*mutated), &mut build);
         assert!(
             matches!(mutated_plan, Some(Damage::Full)),
@@ -98,7 +96,6 @@ fn display_change_forces_full_repaint() {
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
-        // Stable surface at the new size, identical authoring → back to Skip.
         let stable = frame(&mut h, &mut build);
         assert!(
             stable.is_none(),
@@ -193,7 +190,6 @@ fn stable_surface_does_not_short_circuit() {
         one_frame(ui, color);
     };
 
-    // Warm up: two identical frames bring damage to steady state.
     h.frame(|ui| build(ui, BLUE));
     let warm = frame(&mut h, |ui| build(ui, BLUE));
     assert!(warm.is_none(), "warm steady-state must Skip");

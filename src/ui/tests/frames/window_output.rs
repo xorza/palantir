@@ -169,7 +169,7 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
 
     let mut zoomed = UiHarness::new(SURFACE)
         .scale(2.0)
-        .user_scale(UserScale::new(1.25));
+        .user_scale(UserScale::new(1.25).unwrap());
     zoomed.frame(|_| {});
     assert_eq!(
         zoomed.ui.display.logical_size().w,

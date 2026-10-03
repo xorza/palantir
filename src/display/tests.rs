@@ -12,7 +12,7 @@ fn the_two_spaces_divide_by_different_factors() {
         (
             "2× at 125%",
             Display {
-                user_scale: UserScale::new(1.25),
+                user_scale: UserScale::new(1.25).unwrap(),
                 ..Display::from_physical(surface, 2.0)
             },
             2.5,
@@ -72,7 +72,7 @@ fn raster_eq_compares_every_raster_axis_and_only_those() {
         (
             "user scale",
             Display {
-                user_scale: UserScale::new(1.25),
+                user_scale: UserScale::new(1.25).unwrap(),
                 ..base
             },
             false,
@@ -88,7 +88,7 @@ fn raster_eq_compares_every_raster_axis_and_only_those() {
         (
             "same product",
             Display {
-                user_scale: UserScale::new(2.0),
+                user_scale: UserScale::new(2.0).unwrap(),
                 ..Display::from_physical(UVec2::new(800, 600), 1.0)
             },
             false,

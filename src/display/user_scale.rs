@@ -27,6 +27,9 @@ use crate::primitives::math::approx::EPS;
 /// Not serializable on purpose. An app persisting the preference stores
 /// the `f32` from [`Self::get`] and reads it back through [`Self::new`],
 /// so the range check runs on the way in rather than being derived around.
+/// A stored value that is not a number comes back as `None`, which the
+/// app answers — `UserScale::new(saved).unwrap_or_default()` falls back
+/// to [`Self::ONE`].
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[must_use]
 pub struct UserScale(f32);
@@ -52,29 +55,26 @@ impl UserScale {
         0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
     ];
 
-    /// Smallest value [`Self::new`] accepts.
+    /// Smallest value [`Self::new`] yields.
     pub const MIN: f32 = Self::LADDER[0];
 
-    /// Largest value [`Self::new`] accepts.
+    /// Largest value [`Self::new`] yields.
     pub const MAX: f32 = Self::LADDER[Self::LADDER.len() - 1];
 
-    /// `factor` clamped to [`Self::MIN`] ..= [`Self::MAX`].
+    /// `factor` clamped to [`Self::MIN`] ..= [`Self::MAX`], or `None` when
+    /// it is not finite.
     ///
     /// The clamp is a policy — a UI at 20× is not a UI — so a value
-    /// outside the range is answered rather than refused.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `factor` is not finite. That is not a value out of
-    /// range but a number that never was one, and it would divide every
-    /// pointer coordinate and every logical size into nonsense several
-    /// layers below here.
-    pub fn new(factor: f32) -> Self {
-        assert!(
-            factor.is_finite(),
-            "UserScale::new needs a finite factor, got {factor}",
-        );
-        Self(factor.clamp(Self::MIN, Self::MAX))
+    /// outside the range is answered rather than refused. A non-finite
+    /// factor is refused: it is not a value out of range but a number
+    /// that never was one, and it would divide every pointer coordinate
+    /// and every logical size into nonsense several layers below here.
+    pub const fn new(factor: f32) -> Option<Self> {
+        if factor.is_finite() {
+            Some(Self(factor.clamp(Self::MIN, Self::MAX)))
+        } else {
+            None
+        }
     }
 
     /// The factor itself, for a caller doing its own arithmetic with it.
@@ -129,19 +129,23 @@ impl UserScale {
 mod tests {
     use super::*;
 
+    /// In range stands, out of range clamps to the nearer end, and only a
+    /// value that is not a number is refused — infinities included, since
+    /// clamping one would pass off a corrupt preference as a choice.
     #[test]
-    fn new_clamps_to_the_ladder_ends() {
-        assert_eq!(UserScale::new(1.37).get(), 1.37);
-        assert_eq!(UserScale::new(12.0).get(), UserScale::MAX);
-        assert_eq!(UserScale::new(0.01).get(), UserScale::MIN);
-        assert_eq!(UserScale::new(-1.0).get(), UserScale::MIN);
+    fn new_clamps_to_the_ladder_ends_and_refuses_non_numbers() {
+        for (factor, want) in [
+            (1.37, Some(1.37)),
+            (12.0, Some(UserScale::MAX)),
+            (0.01, Some(UserScale::MIN)),
+            (-1.0, Some(UserScale::MIN)),
+            (f32::NAN, None),
+            (f32::INFINITY, None),
+            (f32::NEG_INFINITY, None),
+        ] {
+            assert_eq!(UserScale::new(factor).map(UserScale::get), want, "{factor}");
+        }
         assert_eq!(UserScale::default(), UserScale::ONE);
-    }
-
-    #[test]
-    #[should_panic(expected = "UserScale::new needs a finite factor")]
-    fn new_rejects_a_non_finite_factor() {
-        let _ = UserScale::new(f32::NAN);
     }
 
     /// The ladder has to be sorted for the two step searches to be the
@@ -162,9 +166,9 @@ mod tests {
         assert_eq!(one.stepped_up().stepped_up().get(), 1.25);
         assert_eq!(one.stepped_up().stepped_up().stepped_down().get(), 1.1);
 
-        let top = UserScale::new(UserScale::MAX);
+        let top = UserScale::new(UserScale::MAX).unwrap();
         assert_eq!(top.stepped_up(), top, "the top rung has nothing above it");
-        let bottom = UserScale::new(UserScale::MIN);
+        let bottom = UserScale::new(UserScale::MIN).unwrap();
         assert_eq!(
             bottom.stepped_down(),
             bottom,
@@ -185,7 +189,7 @@ mod tests {
             (1.0 + EPS * 2.0, 1.1, 1.0),
             (1.0 - EPS * 2.0, 1.0, 0.9),
         ] {
-            let scale = UserScale::new(factor);
+            let scale = UserScale::new(factor).unwrap();
             assert_eq!(scale.stepped_up().get(), up, "{factor} up");
             assert_eq!(scale.stepped_down().get(), down, "{factor} down");
         }
@@ -194,7 +198,7 @@ mod tests {
     #[test]
     fn percent_reads_as_a_label() {
         assert_eq!(UserScale::ONE.percent(), 100);
-        assert_eq!(UserScale::new(1.25).percent(), 125);
-        assert_eq!(UserScale::new(0.67).percent(), 67);
+        assert_eq!(UserScale::new(1.25).unwrap().percent(), 125);
+        assert_eq!(UserScale::new(0.67).unwrap().percent(), 67);
     }
 }
