@@ -6,7 +6,7 @@
 use crate::input::zoom_factor::ZoomFactor;
 use std::ops::RangeInclusive;
 
-/// What kind of input triggers a zoom step. See [`ZoomConfig::modifier`].
+/// What kind of input triggers a zoom step. See [`ZoomConfig::with_modifier`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomModifier {
     /// Hold `Ctrl` and turn the wheel. Default. Bare wheel pans as
@@ -33,13 +33,12 @@ pub enum ZoomPivot {
 /// Per-widget zoom configuration. Attach to a `Scroll::both` via
 /// [`Scroll::zoomable`](crate::Scroll::zoomable) / [`Scroll::zoomable_with`](crate::Scroll::zoomable_with).
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct ZoomConfig {
     pub(super) range: RangeInclusive<f32>,
     pub(super) step: f32,
-    /// Wheel-vs-pinch routing. Default [`ZoomModifier::Ctrl`].
-    pub modifier: ZoomModifier,
-    /// Where the zoom step pivots. Default [`ZoomPivot::Pointer`].
-    pub pivot: ZoomPivot,
+    pub(super) modifier: ZoomModifier,
+    pub(super) pivot: ZoomPivot,
 }
 
 const ZOOM_RANGE_ERROR: &str = "zoom range must satisfy 0 < min <= max with finite bounds";
@@ -67,6 +66,18 @@ impl ZoomConfig {
             modifier: ZoomModifier::Ctrl,
             pivot: ZoomPivot::Pointer,
         }
+    }
+
+    /// Wheel-vs-pinch routing. Default [`ZoomModifier::Ctrl`].
+    pub const fn with_modifier(mut self, modifier: ZoomModifier) -> Self {
+        self.modifier = modifier;
+        self
+    }
+
+    /// Where the zoom step pivots. Default [`ZoomPivot::Pointer`].
+    pub const fn with_pivot(mut self, pivot: ZoomPivot) -> Self {
+        self.pivot = pivot;
+        self
     }
 }
 

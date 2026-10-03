@@ -88,7 +88,7 @@ fn three_stop_quarter_brackets_first_pair() {
         .stop(0.0, linear(0, 0, 0))
         .stop(0.5, linear(255, 0, 0))
         .stop(1.0, linear(0, 0, 255))
-        .with_interp(Interp::Linear)
+        .interp(Interp::Linear)
         .build();
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);

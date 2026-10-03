@@ -73,7 +73,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("body"))
-                    .grid_cell(GridCell::at(0, 1).span(2, 1))
+                    .grid_cell(GridCell::at(0, 1).with_span(2, 1))
                     .show(ui);
             })
             .response
@@ -164,7 +164,7 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::HUG.max(150.0)])
+            .cols([Track::HUG.with_max(150.0)])
             .rows([Track::HUG])
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
@@ -183,7 +183,7 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
 
     // The track caps at 150, but the Fixed(200) child remains exact.
-    let rigid = rigid_first_col_rects(Track::HUG.max(150.0), 100);
+    let rigid = rigid_first_col_rects(Track::HUG.with_max(150.0), 100);
     assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(
         rigid[1].min.x, 150.0,
@@ -210,14 +210,14 @@ fn grid_fill_weights_and_clamps() {
         ),
         (
             "min_clamp_steals_from_other_stars",
-            Track::fill(1.0).min(200.0),
+            Track::fill(1.0).with_min(200.0),
             Track::fill(3.0),
             200.0,
             200.0,
         ),
         (
             "max_clamp_donates_to_other_stars",
-            Track::fill(3.0).max(150.0),
+            Track::fill(3.0).with_max(150.0),
             Track::fill(1.0),
             150.0,
             250.0,
@@ -258,7 +258,7 @@ fn grid_fill_weights_and_clamps() {
 
     // The first track caps at 100px and donates the 300px remainder to col 1;
     // its Fixed(200) child overflows without changing track distribution.
-    let rigid = rigid_first_col_rects(Track::FILL.max(100.0), 400);
+    let rigid = rigid_first_col_rects(Track::FILL.with_max(100.0), 400);
     assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(rigid[1].min.x, 100.0, "col 0 track is capped at 100px");
     assert_eq!(rigid[1].size.w, 300.0, "col 1 receives 400 - 100");

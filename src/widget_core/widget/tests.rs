@@ -107,7 +107,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .padding(padding)
         .margin(margin)
         .position(position)
-        .grid_cell(GridCell::at(2, 3).span(4, 5))
+        .grid_cell(GridCell::at(2, 3).with_span(4, 5))
         .gap(6.0)
         .line_gap(7.0)
         .justify(Justify::SpaceBetween)

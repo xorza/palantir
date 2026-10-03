@@ -17,7 +17,7 @@ pub const fn linear(t: f32) -> f32 {
 /// One for the first half of the period, zero for the second — the caret
 /// blink.
 ///
-/// Pair it with [`PaintAnim::steps(2)`](crate::widget::PaintAnim::steps): the
+/// Pair it with [`PaintAnim::with_steps(2)`](crate::widget::PaintAnim::with_steps): the
 /// value changes twice a period, so a frame in between buys an identical
 /// picture.
 #[inline]

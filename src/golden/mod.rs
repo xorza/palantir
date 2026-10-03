@@ -153,7 +153,7 @@ impl Goldens {
     /// The default suits flat, mostly axis-aligned drawing. A scene made of
     /// antialiased curves wants a looser ratio: the edge pixels are where two
     /// runs disagree, and a curve is nearly all edge.
-    pub const fn tolerance(mut self, tolerance: Tolerance) -> Self {
+    pub const fn with_tolerance(mut self, tolerance: Tolerance) -> Self {
         self.tolerance = tolerance;
         self
     }

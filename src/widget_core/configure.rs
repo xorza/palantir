@@ -492,7 +492,7 @@ pub trait Configure: Sized {
 
     /// Placement inside a `Grid` parent: a bare `(row, col)` for a
     /// single-track cell, or a [`GridCell`] for one that spans — see
-    /// [`GridCell::at`] and [`GridCell::span`]. Default `(0, 0)`.
+    /// [`GridCell::at`] and [`GridCell::with_span`]. Default `(0, 0)`.
     ///
     /// One setter for one field, so the placement cannot arrive half
     /// written and no chain order can drop a span. Ignored outside a Grid

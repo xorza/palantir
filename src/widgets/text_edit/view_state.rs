@@ -157,11 +157,11 @@ impl ViewState {
         // cutoff arrived.
         input.focused.then_some(
             PaintAnim::alpha(0.0, 1.0)
-                .started_at(self.last_caret_change)
-                .period(BLINK_HALF * 2)
-                .steps(2)
-                .repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
-                .curve(curves::square),
+                .with_started_at(self.last_caret_change)
+                .with_period(BLINK_HALF * 2)
+                .with_steps(2)
+                .with_repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
+                .with_curve(curves::square),
         )
     }
 }

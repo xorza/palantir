@@ -379,10 +379,10 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
                                 Stroke::new(RED, 1.0),
                             ),
                             PaintAnim::turn(0.0, 1.0)
-                                .started_at(Duration::ZERO)
-                                .period(Duration::from_secs_f32(TAU / 1.0))
-                                .repeat(PaintRepeat::Forever)
-                                .curve(curves::linear),
+                                .with_started_at(Duration::ZERO)
+                                .with_period(Duration::from_secs_f32(TAU / 1.0))
+                                .with_repeat(PaintRepeat::Forever)
+                                .with_curve(curves::linear),
                         );
                     });
             });

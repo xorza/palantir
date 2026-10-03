@@ -13,10 +13,10 @@ fn last_shape_registry() -> PaintAnims {
     let mut anims = PaintAnims::default();
     anims.push_entry(PaintAnimEntry {
         anim: PaintAnim::alpha(0.0, 1.0)
-            .period(Duration::from_secs(1))
-            .steps(2)
-            .repeat(PaintRepeat::Settle(Duration::MAX))
-            .curve(curves::square),
+            .with_period(Duration::from_secs(1))
+            .with_steps(2)
+            .with_repeat(PaintRepeat::Settle(Duration::MAX))
+            .with_curve(curves::square),
         shape_idx: SHAPE_COUNT - 1,
         row: 0,
         node: NodeId(0),

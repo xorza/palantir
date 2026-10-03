@@ -287,8 +287,8 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .stop(-1.0, RgbaF32::hex(0x000000))
         .stop(0.5, RgbaF32::hex(0x808080))
         .stop(2.0, RgbaF32::hex(0xffffff))
-        .with_spread(Spread::Reflect)
-        .with_interp(Interp::Linear)
+        .spread(Spread::Reflect)
+        .interp(Interp::Linear)
         .build();
     assert_eq!(linear.geometry.angle, PI / 2.0);
     assert_eq!(linear.ramp.stops.len(), 3);

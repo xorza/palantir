@@ -546,3 +546,80 @@ fn zoomable_with_clamps_to_its_own_range() {
         assert_eq!(h.state::<ScrollState>(id).zoom, want);
     }
 }
+
+/// The modifier decides which wheel zooms. One line down with and without
+/// Ctrl, under each setting: `Ctrl` zooms only the Ctrl wheel, `Always`
+/// zooms both, and `PinchOnly` neither. One line is one step, `1.03^-1`.
+#[test]
+fn zoom_modifier_picks_which_wheel_zooms() {
+    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::widgets::scroll::zoom_config::ZoomModifier;
+
+    let id = WidgetId::from_hash("modded");
+    let step = 1.03_f32.powf(-1.0);
+    for (modifier, bare, ctrl) in [
+        (ZoomModifier::Ctrl, 1.0, step),
+        (ZoomModifier::Always, step, step),
+        (ZoomModifier::PinchOnly, 1.0, 1.0),
+    ] {
+        let ctrl_held = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        };
+        for (held, want) in [(Modifiers::NONE, bare), (ctrl_held, ctrl)] {
+            let mut h = UiHarness::new(SURFACE);
+            let config = ZoomConfig::default().with_modifier(modifier);
+            let build = |ui: &mut Ui| {
+                Scroll::both()
+                    .id(id)
+                    .zoomable_with(config.clone())
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                    .show(ui, |ui| {
+                        fixed_block(ui, WidgetId::from_hash("modded-content"), 800.0, 800.0);
+                    });
+            };
+            h.frame(build);
+            h.move_onto(id);
+            h.set_modifiers(held);
+            h.scroll_lines(Vec2::new(0.0, 1.0));
+            h.frame(build);
+            assert_eq!(
+                h.state::<ScrollState>(id).zoom,
+                want,
+                "{modifier:?} with {held:?}",
+            );
+        }
+    }
+}
+
+/// The pivot is the point a zoom step holds still. A 2× pinch at (50, 50)
+/// over a 200 × 200 viewport at the origin: under `Pointer` content point
+/// (50, 50) stays under the pointer, so it moves to (100, 100) and the
+/// offset becomes 100 − 50 = 50; under `Center` the viewport centre
+/// (100, 100) stays, so it moves to (200, 200) and the offset becomes
+/// 200 − 100 = 100.
+#[test]
+fn zoom_pivot_picks_the_point_a_step_holds() {
+    use crate::widgets::scroll::zoom_config::ZoomPivot;
+
+    let id = WidgetId::from_hash("pivoted");
+    for (pivot, want) in [(ZoomPivot::Pointer, 50.0), (ZoomPivot::Center, 100.0)] {
+        let mut h = UiHarness::new(SURFACE);
+        let config = ZoomConfig::default().with_pivot(pivot);
+        let build = |ui: &mut Ui| {
+            Scroll::both()
+                .id(id)
+                .zoomable_with(config.clone())
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    fixed_block(ui, WidgetId::from_hash("pivoted-content"), 800.0, 800.0);
+                });
+        };
+        h.frame(build);
+        h.pinch_at(Vec2::new(50.0, 50.0), 2.0);
+        h.frame(build);
+        let state = h.state::<ScrollState>(id);
+        assert_eq!(state.zoom, 2.0, "{pivot:?}");
+        assert_eq!(state.offset, Vec2::splat(want), "{pivot:?}");
+    }
+}

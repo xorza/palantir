@@ -67,10 +67,10 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                     .show(ui, |ui| {
                         let turn = PaintAnim::turn(0.0, 1.0)
-                            .started_at(Duration::ZERO)
-                            .period(Duration::from_secs_f32(TAU / 1.0))
-                            .repeat(PaintRepeat::Forever)
-                            .curve(curves::linear);
+                            .with_started_at(Duration::ZERO)
+                            .with_period(Duration::from_secs_f32(TAU / 1.0))
+                            .with_repeat(PaintRepeat::Forever)
+                            .with_curve(curves::linear);
                         match spun {
                             Spun::Polyline => ui.add_shape_animated(
                                 Shape::polyline(

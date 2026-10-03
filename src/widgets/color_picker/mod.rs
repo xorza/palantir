@@ -464,7 +464,7 @@ fn values_grid(
             Panel::vstack()
                 .id(id.with("hex-cell"))
                 .gap(LABEL_GAP)
-                .grid_cell(GridCell::at(0, 0).span(1, 2))
+                .grid_cell(GridCell::at(0, 0).with_span(1, 2))
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("HEX")

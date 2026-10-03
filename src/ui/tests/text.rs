@@ -283,11 +283,11 @@ fn blinking_text(ui: &mut Ui, text: &str) {
             .family(FontFamily::SANS)
             .weight(FontWeight::REGULAR),
             PaintAnim::alpha(0.0, 1.0)
-                .started_at(HALF)
-                .period(HALF * 2)
-                .steps(2)
-                .repeat(PaintRepeat::Settle(Duration::MAX))
-                .curve(curves::square),
+                .with_started_at(HALF)
+                .with_period(HALF * 2)
+                .with_steps(2)
+                .with_repeat(PaintRepeat::Settle(Duration::MAX))
+                .with_curve(curves::square),
         );
     });
 }

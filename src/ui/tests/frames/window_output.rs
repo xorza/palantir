@@ -75,7 +75,7 @@ fn window_requests_queue_and_survive_the_frame() {
     assert_eq!(geometry.placement, placed);
     assert_eq!(
         WindowConfig::new("restored")
-            .placement(geometry.placement)
+            .with_placement(geometry.placement)
             .placement,
         placed,
     );

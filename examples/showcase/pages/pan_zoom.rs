@@ -149,7 +149,7 @@ fn property_grid(ui: &mut Ui) {
     const ROWS: usize = 12;
     Grid::new()
         .id_salt("props")
-        .cols([Track::HUG.min(96.0), Track::FILL, Track::fixed(72.0)])
+        .cols([Track::HUG.with_min(96.0), Track::FILL, Track::fixed(72.0)])
         .rows([Track::HUG; ROWS])
         .line_gap(6.0).gap(6.0)
         .padding(4.0)
