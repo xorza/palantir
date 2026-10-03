@@ -73,7 +73,6 @@ pub(super) fn arrange_inner(
         let s_node = layouts[c.idx()];
         let bounds = tree.bounds(c);
         let cell = bounds.grid;
-        let d = pass.desired(c);
 
         let slot = {
             let s = pass.grid_mut().depth_stack.at(depth);
@@ -94,7 +93,7 @@ pub(super) fn arrange_inner(
         let align = AxisAlignPair::resolve(&s_node, parent_child_align).or_stretch_if_auto();
         pass.arrange(
             c,
-            AxisPlacement::arrange_rect(align, &s_node, bounds, d, slot),
+            AxisPlacement::arrange_rect(align, &s_node, bounds, pass.placed(c), slot),
         );
     }
 }

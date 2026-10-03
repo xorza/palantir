@@ -14,10 +14,33 @@ use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use glam::Vec2;
+use glam::{BVec2, Vec2};
 
 #[derive(Debug)]
 pub(super) struct ZStack;
+
+impl ZStack {
+    /// [`LayoutDriver::arrange`], with the children given no give on the
+    /// axes `rigid` sets — a scroll's panned axes, where its content
+    /// takes what it measured to however small the viewport.
+    pub(super) fn arrange_in(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, rigid: BVec2) {
+        let tree = pass.tree;
+        let parent_child_align = tree.panel(node).child_align;
+        let layouts = tree.records.layout();
+        for child in tree.children(node) {
+            let c = child.id;
+            let i = c.idx();
+            let s = layouts[i];
+            let bounds = tree.bounds(c);
+            let placed = pass.placed(c).rigid_on(rigid);
+            let align = AxisAlignPair::resolve(&s, parent_child_align);
+            pass.arrange(
+                c,
+                AxisPlacement::arrange_rect(align, &s, bounds, placed, inner),
+            );
+        }
+    }
+}
 
 impl LayoutDriver for ZStack {
     type Payload = ();
@@ -50,18 +73,7 @@ impl LayoutDriver for ZStack {
     /// Defaults pin to top-left unless the child has `Sizing::fill` — then `Auto`
     /// falls back to stretch on that axis.
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Rect) {
-        let tree = pass.tree;
-        let parent_child_align = tree.panel(node).child_align;
-        let layouts = tree.records.layout();
-        for child in tree.children(node) {
-            let c = child.id;
-            let i = c.idx();
-            let s = layouts[i];
-            let bounds = tree.bounds(c);
-            let d = pass.desired(c);
-            let align = AxisAlignPair::resolve(&s, parent_child_align);
-            pass.arrange(c, AxisPlacement::arrange_rect(align, &s, bounds, d, inner));
-        }
+        Self::arrange_in(pass, node, inner, BVec2::FALSE);
     }
 
     /// Intrinsic size of a ZStack: max over children on the queried axis.

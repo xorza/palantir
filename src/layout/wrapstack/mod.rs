@@ -162,11 +162,6 @@ impl LayoutDriver for WrapStack {
             total_cross += line_cross;
             line_count += 1;
         };
-        // The floor keeps the lines as packed: the widest child's floor
-        // along them, and across, each line's tallest floor.
-        let mut floor_main = 0.0f32;
-        let mut floor_cross = 0.0f32;
-        let mut line_floor_cross = 0.0f32;
         // Every child is offered an unbounded main, so only the cross
         // carries their ranges.
         let mut stable_cross = 0.0f32;
@@ -178,22 +173,14 @@ impl LayoutDriver for WrapStack {
                 gap,
                 budget,
                 child_pack(axis, d.size),
-                |line_main, line_cross| {
-                    complete_line(line_main, line_cross);
-                    floor_cross += line_floor_cross;
-                    line_floor_cross = 0.0;
-                },
+                &mut complete_line,
             );
-            line_floor_cross = line_floor_cross.max(axis.cross(d.floor));
-            floor_main = floor_main.max(axis.main(d.floor));
         }
         // Flush last line.
         if line.occupied {
             complete_line(line.main, line.cross);
-            floor_cross += line_floor_cross;
         }
-        let line_gaps = line_gap.gaps_between(line_count);
-        total_cross += line_gaps;
+        total_cross += line_gap.gaps_between(line_count);
         // One line stays one line under every budget past its length, and
         // under every budget past this one, which already held it. A
         // break was taken at this budget and moves with it.
@@ -203,9 +190,14 @@ impl LayoutDriver for WrapStack {
             Measured::AT_OFFER_ONLY
         };
 
+        // The lines are packed against the budget this measure was given,
+        // and arrange packs them again against the extent it is handed: a
+        // wrap stack placed smaller than it measured would break them
+        // elsewhere. So it gives way to nothing, on either axis.
+        let size = axis.compose_size(max_line_main, total_cross);
         Measured {
-            size: axis.compose_size(max_line_main, total_cross),
-            floor: axis.compose_size(floor_main, floor_cross + line_gaps),
+            size,
+            floor: size,
             stable_from: axis.compose_size(stable_main, stable_cross),
         }
     }
@@ -273,8 +265,14 @@ impl LayoutDriver for WrapStack {
                 // extent. Same rule as Stack cross — Fill stretches to
                 // line_cross, Hug aligns per child.
                 let bounds = tree.bounds(c);
-                let cross_p =
-                    AxisPlacement::cross(axis, &s, bounds, parent_child_align, d, line_cross);
+                let cross_p = AxisPlacement::cross(
+                    axis,
+                    &s,
+                    bounds,
+                    parent_child_align,
+                    pass.placed(c),
+                    line_cross,
+                );
                 let main_size = axis.main(d);
                 let child_rect = axis.compose_rect(
                     main_cursor,

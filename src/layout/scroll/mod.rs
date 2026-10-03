@@ -59,8 +59,10 @@ impl LayoutDriver for Scroll {
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axes: Self::Payload, inner: Rect) {
         match axes.child_layout() {
-            ScrollChildLayout::Layered => ZStack::arrange(pass, node, (), inner),
-            ScrollChildLayout::Flow(main) => Stack::arrange(pass, node, main, inner),
+            ScrollChildLayout::Layered => ZStack::arrange_in(pass, node, inner, axes.pan_mask()),
+            ScrollChildLayout::Flow(main) => {
+                Stack::arrange_in(pass, node, main, inner, axes.pan_mask());
+            }
         }
     }
 

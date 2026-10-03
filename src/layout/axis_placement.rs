@@ -8,7 +8,41 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
-use glam::Vec2;
+use glam::{BVec2, Vec2};
+
+/// What a child measured to, as its parent places it: the extent it
+/// wants, and the floor it gives way to no further.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Placed {
+    pub(super) desired: Size,
+    pub(super) floor: Size,
+}
+
+impl Placed {
+    /// A child that measured to `desired` over `floor`, placed.
+    ///
+    /// **Width in, height out.** A child's width is decided before it
+    /// measures — its parent shares widths first, and its text shapes to
+    /// the width it is given — so arrange never takes a width back: a
+    /// child placed narrower than it measured would paint text shaped for
+    /// the wider box. Its floor across is its width. Only a height, which
+    /// is what a child measures *to*, gives way after measure.
+    pub(super) const fn of(desired: Size, floor: Size) -> Self {
+        Self {
+            desired,
+            floor: Size::new(desired.w, floor.h),
+        }
+    }
+
+    /// This child with no give on the axes `rigid` sets: its floor there
+    /// is what it measured to.
+    pub(super) const fn rigid_on(self, rigid: BVec2) -> Self {
+        Self {
+            desired: self.desired,
+            floor: self.desired.select(rigid, self.floor),
+        }
+    }
+}
 
 /// Per-axis placement: chosen extent + offset within the parent's inner span.
 #[derive(Debug)]
@@ -20,28 +54,31 @@ pub(super) struct AxisPlacement {
 impl AxisPlacement {
     /// Resolve the outer extent and alignment offset for one arranged axis.
     /// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
-    /// grow to their slot without shrinking below measured content, while the
-    /// node's outer min/max bounds remain authoritative.
+    /// grow to their slot. In a slot smaller than what it measured to, a
+    /// child gives way to the slot but not below its floor — see
+    /// [`give_way_floor`]. The node's outer min/max bounds remain
+    /// authoritative.
     pub(super) fn arrange(
         axis: Axis,
         align: AxisAlign,
         child: &LayoutCore,
         bounds: &BoundsExtras,
-        desired: Size,
+        measured: Placed,
         slot: f32,
     ) -> Self {
         let margin = axis.spacing(child.margin);
         let min = axis.main(bounds.min_size) + margin;
         let max = axis.main(bounds.max_size) + margin;
-        let desired = clip_scroll_to_slot(child, axis.main(desired), slot).clamp(min, max);
+        let floor = give_way_floor(child, axis.main(measured.floor));
         let sizing = axis.main_sizing(child.size);
         let stretch = sizing.fill_weight().is_some()
             || matches!(align, AxisAlign::Stretch) && sizing.fixed_value().is_none();
         let size = if stretch {
-            slot.max(desired).clamp(min, max)
+            slot.max(floor)
         } else {
-            desired
-        };
+            axis.main(measured.desired).min(slot.max(floor))
+        }
+        .clamp(min, max);
         // Through `offset_in`, the one definition of what an alignment
         // means as a number, floored at zero the way `Align::place_in`
         // floors it — oversized content pins to the leading edge rather
@@ -63,11 +100,11 @@ impl AxisPlacement {
         align: AxisAlignPair,
         child: &LayoutCore,
         bounds: &BoundsExtras,
-        desired: Size,
+        measured: Placed,
         slot: Rect,
     ) -> Rect {
-        let x = Self::arrange(Axis::X, align.h, child, bounds, desired, slot.size.w);
-        let y = Self::arrange(Axis::Y, align.v, child, bounds, desired, slot.size.h);
+        let x = Self::arrange(Axis::X, align.h, child, bounds, measured, slot.size.w);
+        let y = Self::arrange(Axis::Y, align.v, child, bounds, measured, slot.size.h);
         Rect {
             min: slot.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),
@@ -86,14 +123,14 @@ impl AxisPlacement {
     pub(super) fn arrange_size(
         child: &LayoutCore,
         bounds: &BoundsExtras,
-        desired: Size,
+        measured: Placed,
         slot: Size,
     ) -> Size {
         Self::arrange_rect(
             AxisAlignPair::AUTO,
             child,
             bounds,
-            desired,
+            measured,
             Rect {
                 min: Vec2::ZERO,
                 size: slot,
@@ -112,39 +149,36 @@ impl AxisPlacement {
         child: &LayoutCore,
         bounds: &BoundsExtras,
         parent_child_align: Align,
-        desired: Size,
+        measured: Placed,
         inner_cross: f32,
     ) -> Self {
         let cross_axis = main_axis.other();
         let cross_align = AxisAlignPair::resolve_axis(cross_axis, child, parent_child_align);
-        Self::arrange(cross_axis, cross_align, child, bounds, desired, inner_cross)
+        Self::arrange(
+            cross_axis,
+            cross_align,
+            child,
+            bounds,
+            measured,
+            inner_cross,
+        )
     }
 }
 
-/// **The one node that does not overflow its slot.**
+/// What a child gives way to in a slot smaller than what it measured
+/// to: its floor — on its width the width itself, on its height its
+/// measured floor (see [`Placed::of`]) — so content that cannot shrink
+/// overflows its parent rather than its own rect, the contains-content
+/// rule, while a stack, a grid or a scroll that can shrink takes the
+/// slot and shares it among its own children at arrange.
 ///
-/// A non-stretching child otherwise keeps its measured extent whatever the
-/// parent reserved — the contains-content rule: a node overflows its parent
-/// rather than clipping its own content. A `Scroll` viewport is the
-/// exception, because clipping its content is exactly what it is for.
-/// `Scroll::measure` reports the content extent so a `Hug` wrapper can size
-/// to it, so the desired that reaches placement is the content's rather
-/// than anything the slot can hold. Both axes, not just the panned ones:
-/// a viewport clips on every side, and a cross axis wider than the slot
-/// would paint outside the clip its own subtree is scissored to.
-///
-/// Stated here rather than in one driver because *every* placement goes
-/// through [`AxisPlacement::arrange`]. Stated per driver instead, a scroll
-/// inside a Grid, a Canvas or a stack's cross axis gets no such clamp.
-/// A stack's *main* axis needs none for a `Fill` scroll: its flex solver
-/// shrinks the scroll against the zero min-content a panned scroll
-/// reports. A `Hug` scroll there keeps the stack contract every non-`Fill`
-/// child keeps — measured against the stack's whole extent and never
-/// shrunk to what its siblings leave — so it can run past the stack; a
-/// scroll meant to take the remaining space is `Fill`.
-fn clip_scroll_to_slot(child: &LayoutCore, desired: f32, slot: f32) -> f32 {
+/// A `Scroll` viewport gives way all the way, on both axes: it clips its
+/// content, which is what it is for, so nothing it measured is a minimum
+/// of the viewport's — a viewport larger than its slot would paint
+/// outside the clip its own subtree is scissored to.
+fn give_way_floor(child: &LayoutCore, floor: f32) -> f32 {
     match LayoutMode::from(child.meta) {
-        LayoutMode::Scroll(_) => desired.min(slot),
-        _ => desired,
+        LayoutMode::Scroll(_) => 0.0,
+        _ => floor,
     }
 }

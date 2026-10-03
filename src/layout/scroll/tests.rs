@@ -236,7 +236,8 @@ fn hug_scroll_clamps_viewport_to_content() {
 /// One Hug stack further in, below a fixed 30 px header, the stack
 /// shrinks too: a scroll's floor on its panned axis is zero, so the Hug
 /// stack around it takes the parent's 100 rather than the 30 + 400 its
-/// content wants.
+/// content wants, and the viewport gives way to the 100 − 30 = 70 its
+/// rigid sibling leaves.
 #[test]
 fn hug_scroll_viewport_follows_parent_cap() {
     let scroll = |ui: &mut Ui| {
@@ -285,6 +286,12 @@ fn hug_scroll_viewport_follows_parent_cap() {
         100.0,
         "the Hug stack shrinks to the parent cap",
     );
+    let st = layout_for(&h.ui, "parent-capped-scroll");
+    assert_eq!(
+        st.viewport.h, 70.0,
+        "the viewport takes what the header leaves"
+    );
+    assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
 }
 
 /// Counterpart guard: a `Fill` scroll keeps the content-independent

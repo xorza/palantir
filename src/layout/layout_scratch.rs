@@ -7,7 +7,7 @@ use crate::layout::grid::grid_context::GridContext;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::measured::Measured;
-use crate::layout::stack::StackScratch;
+use crate::layout::stack::stack_scratch::StackScratch;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
@@ -36,25 +36,27 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///   [`MeasureCache`](crate::layout::cache::MeasureCache) records a subtree under.
 /// - `arrange_src` — snapshot arena row of each node whose subtree
 ///   measure was restored from the cache this frame.
-/// - `stack_fill` — Fill-freeze scratch, same depth-shared shape as
-///   `wrap`.
+/// - `stack` — the stack's Fill and Hug share pools, same depth-shared
+///   shape as `wrap`.
 /// - `counters` — test-only observability for the run.
 /// ## Cache-hit contract
 ///
 /// Fields split into three lifecycle categories:
 ///
-/// 1. **Drained on measure exit** — `wrap.pool`, `stack_fill.pool`,
-///    `grid.depth_stack`, `grid.track_aggregator`. Driver stacks:
-///    pushed on enter, truncated on exit, so a [`MeasureCache`](crate::layout::cache::MeasureCache) hit that
+/// 1. **Drained on measure exit** — `wrap.pool`, `stack`,
+///    `grid.depth_stack`, `grid.track_aggregator`.
+///    Driver stacks: pushed on enter, truncated on exit, so a
+///    [`MeasureCache`](crate::layout::cache::MeasureCache) hit that
 ///    skips a subtree's measure is invisible to them — they were never
-///    going to carry state out. (`stack_fill.pool` and
+///    going to carry state out. (`stack` and
 ///    `grid.depth_stack` are used by arrange too, but rebuild their own
 ///    state rather than reading measure's.)
 ///
-/// 2. **Retained measure → arrange/record** — `desired`,
+/// 2. **Retained measure → arrange/record** — `desired`, `floor`,
 ///    `LayerLayout::scroll_content`, and `grid.track_state`.
 ///    `desired` is node-indexed and the cache transparently round-
-///    trips it through [`CachedSubtree::desired`]. Scroll content is
+///    trips it through [`CachedSubtree::desired`]; `floor` rides
+///    [`CachedSubtree::floor`] the same way. Scroll content is
 ///    likewise node-indexed and restored into the current layout
 ///    result for the next record pass. `grid.track_state` is
 ///    indexed per-grid (not per-node) so the cache hit path has to
@@ -63,7 +65,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
 ///
 /// 3. **Node-indexed measure memos, round-tripped by the cache** —
-///    `intrinsics`, `available_q`, `floor` and `stable_from`. Not
+///    `intrinsics`, `available_q` and `stable_from`. Not
 ///    stacks: `resize_for` fills them per node and nothing truncates
 ///    them. They look drainable because arrange never queries them, but
 ///    they *do* carry state out —
@@ -73,7 +75,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///    [`Self::restore_after_cache_hit`] first or the next snapshot records
 ///    NaN for `intrinsics` and `INVALID_AVAILABLE` for `available_q` —
 ///    which silently makes that subtree uncacheable from then on — and
-///    zeroes for the floor and range a later hit hands its parent.
+///    zeroes for the range a later hit hands its parent.
 ///
 /// **Adding a new field to category (2)** takes three coordinated
 /// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
@@ -100,15 +102,15 @@ pub(crate) struct LayoutScratch {
     pub(crate) counters: LayoutCounters,
     pub(super) grid: GridContext,
     pub(super) wrap: WrapScratch,
-    pub(super) stack_fill: StackScratch,
+    pub(super) stack: StackScratch,
     pub(super) desired: Vec<Size>,
     /// Each node's measured floor, margin-inclusive — see
-    /// [`Measured`](crate::layout::measured::Measured). Read by no pass
-    /// after measure; kept per node so the measure cache can hand a hit
-    /// subtree's floor back to the parent that asks for it.
+    /// [`Measured`](crate::layout::measured::Measured). Arrange reads it
+    /// beside `desired`: what a node is placed at when its slot is
+    /// smaller than what it wants.
     pub(super) floor: Vec<Size>,
-    /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from),
-    /// kept beside `floor` for the same reader.
+    /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from).
+    /// Read by no pass after measure; kept per node for the next capture.
     pub(super) stable_from: Vec<Size>,
     /// Snapshot arena row of each node whose subtree measure was restored
     /// from the cache this frame — the hit root and every node under it —
@@ -141,7 +143,7 @@ impl LayoutScratch {
             cache_rebuild: _,
             grid,
             wrap: _,
-            stack_fill: _,
+            stack: _,
             desired,
             floor,
             stable_from,
@@ -234,6 +236,9 @@ impl LayoutScratch {
                 }
             };
         }
+        // Arrange reads the floor beside `desired`, so it is restored on
+        // every hit, not only for the next capture.
+        self.floor[subtree.clone()].copy_from_slice(floor);
         if self.cache_rebuild {
             for (dst, src) in self.intrinsics[subtree.clone()].iter_mut().zip(*intrinsics) {
                 for (dst_slot, src_slot) in dst.iter_mut().zip(src) {
@@ -243,7 +248,6 @@ impl LayoutScratch {
                 }
             }
             self.available_q[subtree.clone()].copy_from_slice(available_q);
-            self.floor[subtree.clone()].copy_from_slice(floor);
             self.stable_from[subtree.clone()].copy_from_slice(stable_from);
         }
         // `grid.track_state` — gated on `Tree::subtree_has_grid` (one bit-test

@@ -12,6 +12,7 @@
 pub(crate) mod axis;
 mod axis_align_pair;
 mod axis_placement;
+mod axis_share;
 mod axis_slot;
 pub(crate) mod cache;
 mod canvas;
@@ -21,6 +22,7 @@ mod driver;
 pub(crate) mod engine;
 mod fill_item;
 pub(crate) mod grid;
+mod hug_item;
 pub(crate) mod intrinsic;
 mod justify_offsets;
 pub(crate) mod layer_layout;

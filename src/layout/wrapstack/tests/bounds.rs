@@ -127,8 +127,8 @@ fn hug_vstack(name: &str) -> Panel {
 ///   `[60×15 header, wrap]` — the hstack's cross bound becomes each
 ///   column's height. The column forwards its whole 100 px, not the 85
 ///   left under the header, so the wrap ends at 15 + 90 = 105, past the
-///   cap: the stack's overflow rule for a child measured against the full
-///   bound;
+///   cap: a wrap stack's lines are packed against the extent it measured
+///   at, so it gives way to nothing and overflows;
 /// - on a vstack popup above that hstack — a bounded stack constrains its
 ///   children on the main axis, so the cap reaches the wrap through the
 ///   non-wrap hstack (CSS `max-height`).
