@@ -103,12 +103,16 @@ impl AnimSpec {
     ///
     /// The step is a closed-form transition, so stiffness costs nothing
     /// and carries no stability bound. What is still checked is that the
-    /// spring *arrives*: it must decay at 1/s or faster.
+    /// spring *arrives*, decaying at 1/s or faster, and that a 60 Hz
+    /// display can show it: an underdamped spring must swing slower than
+    /// 30 Hz, `√(stiffness − damping²/4) < 60π` rad/s. A faster swing lands
+    /// each frame on an arbitrary phase.
     ///
     /// # Panics
     ///
-    /// Panics when either parameter is non-positive or non-finite, or
-    /// when the slowest decay rate is below 1/s.
+    /// Panics when either parameter is non-positive or non-finite, when
+    /// the slowest decay rate is below 1/s, or when the spring swings at
+    /// 30 Hz or faster. Raise `damping` or lower `stiffness` for the last.
     pub fn spring(stiffness: f32, damping: f32) -> Self {
         assert!(
             spring_params_are_valid(stiffness, damping),

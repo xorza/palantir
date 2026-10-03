@@ -40,15 +40,23 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         (1.0, f32::INFINITY),
         (1.0, 1.0),
         (1.0, 100.0),
+        // Underdamped past 30 Hz. (60π)² ≈ 35 530.6, so at damping 2
+        // (`h² = 1`) stiffness 35 600 swings at √35 599 ≈ 188.7 rad/s.
+        (35_600.0, 2.0),
+        // ζ = 0.05: ψ = √(1e6 − 2 500) ≈ 999 rad/s, a 159 Hz buzz.
+        (1_000_000.0, 100.0),
+        (f32::MAX, 2.0),
     ] {
         panic_probe::assert_panics_with(SPRING_ERROR, || AnimSpec::spring(stiffness, damping));
     }
 
     assert!(!AnimSpec::spring(1.0, 2.0).is_instant());
-    assert!(!AnimSpec::spring(1_000_000.0, 100.0).is_instant());
-    // No stiffness is too stiff: the settle bound has no velocity floor
-    // for a stiff spring to linger above.
-    assert!(!AnimSpec::spring(f32::MAX, 2.0).is_instant());
+    // The swing bound's other side, √35 499 ≈ 188.4 rad/s, under 60π.
+    assert!(!AnimSpec::spring(35_500.0, 2.0).is_instant());
+    // No stiffness is too stiff when the spring does not swing: critically
+    // damped at `h² = k`, overdamped past it.
+    assert!(!AnimSpec::spring(1_000_000.0, 2_000.0).is_instant());
+    assert!(!AnimSpec::spring(f32::MAX, 4.0e19).is_instant());
 }
 
 #[test]
@@ -66,8 +74,8 @@ fn anim_spec_serde_validates_and_roundtrips() {
         AnimSpec::duration(0.3, Easing::OutQuart),
         AnimSpec::duration(0.4, Easing::OutBack),
         AnimSpec::spring(100.0, 15.0),
-        AnimSpec::spring(1_000_000.0, 100.0),
-        AnimSpec::spring(f32::MAX, 2.0),
+        AnimSpec::spring(1_000_000.0, 2_000.0),
+        AnimSpec::spring(f32::MAX, 4.0e19),
     ];
     for spec in cases {
         let h = Holder { spec };
@@ -105,6 +113,11 @@ fn anim_spec_serde_validates_and_roundtrips() {
         (
             "slow spring",
             r#"(spec: (kind: "spring", stiffness: 1.0, damping: 100.0))"#,
+            SPRING_ERROR,
+        ),
+        (
+            "swing past 30 Hz",
+            r#"(spec: (kind: "spring", stiffness: 1000000.0, damping: 100.0))"#,
             SPRING_ERROR,
         ),
     ];
