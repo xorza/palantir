@@ -21,7 +21,7 @@ use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
-use glam::IVec2;
+use glam::{IVec2, Vec2};
 
 #[derive(Clone, Copy, Debug)]
 struct ArenaSnapshot {
@@ -61,12 +61,21 @@ pub(super) struct CachedSubtree<'a> {
     pub(super) text_shapes_base: u32,
 }
 
+/// A subtree's arrange as last frame captured it: each node's rect, and
+/// its slot origin in its parent's inner box.
+#[derive(Debug)]
+pub(super) struct Arranged<'a> {
+    pub(super) rects: &'a [Rect],
+    pub(super) locals: &'a [Vec2],
+}
+
 #[derive(Debug)]
 pub(super) struct CaptureTreeInput<'a> {
     pub(super) desired: &'a [Size],
     pub(super) floor: &'a [Size],
     pub(super) stable_from: &'a [Size],
     pub(super) rect: &'a [Rect],
+    pub(super) local: &'a [Vec2],
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(super) available_q: &'a [AvailableKey],
@@ -92,11 +101,14 @@ pub(crate) struct NodeArenas {
     desired: Vec<Size>,
     floor: Vec<Size>,
     stable_from: Vec<Size>,
-    /// Arranged rect per node, captured after `arrange` wrote it. The
-    /// only column produced by the *second* half of the layout pass;
+    /// Arranged rect per node, captured after `arrange` wrote it. One of
+    /// the two columns produced by the *second* half of the layout pass;
     /// `LayoutPass::arrange` replays it instead of re-running the
     /// drivers when a subtree's slot is unchanged or merely translated.
     rect: Vec<Rect>,
+    /// Each node's slot origin in its parent's inner box — the other
+    /// arrange column, and what a translated replay rebuilds `rect` from.
+    local: Vec<Vec2>,
     scroll_content: Vec<Size>,
     text_spans: Vec<Span>,
     intrinsics: Vec<[f32; SLOT_COUNT]>,
@@ -114,6 +126,7 @@ impl NodeArenas {
             floor,
             stable_from,
             rect,
+            local,
             scroll_content,
             text_spans,
             intrinsics,
@@ -123,6 +136,7 @@ impl NodeArenas {
         floor.clear();
         stable_from.clear();
         rect.clear();
+        local.clear();
         scroll_content.clear();
         text_spans.clear();
         intrinsics.clear();
@@ -291,12 +305,16 @@ impl MeasureCache {
         true
     }
 
-    /// Last frame's arranged rects for a subtree of `len` nodes whose
-    /// capture starts at `base` — the third snapshot read, beside
+    /// Last frame's arrange of a subtree of `len` nodes whose capture
+    /// starts at `base` — the third snapshot read, beside
     /// [`Self::try_lookup`] and [`Self::lookup_root_intrinsic`], rather
     /// than an index into the arena from outside.
-    pub(super) fn arranged_rects(&self, base: usize, len: usize) -> &[Rect] {
-        &self.previous.nodes.rect[base..base + len]
+    pub(super) fn arranged(&self, base: usize, len: usize) -> Arranged<'_> {
+        let nodes = base..base + len;
+        Arranged {
+            rects: &self.previous.nodes.rect[nodes.clone()],
+            locals: &self.previous.nodes.local[nodes],
+        }
     }
 
     /// Last frame's measure of `wid`'s subtree, if its authoring is
@@ -376,6 +394,7 @@ impl MeasureCache {
             floor,
             stable_from,
             rect,
+            local,
             scroll_content,
             intrinsics,
             available_q,
@@ -390,6 +409,7 @@ impl MeasureCache {
         debug_assert_eq!(floor.len(), node_count);
         debug_assert_eq!(stable_from.len(), node_count);
         debug_assert_eq!(rect.len(), node_count);
+        debug_assert_eq!(local.len(), node_count);
         debug_assert_eq!(scroll_content.len(), node_count);
         debug_assert_eq!(intrinsics.len(), node_count);
         debug_assert_eq!(available_q.len(), node_count);
@@ -399,6 +419,7 @@ impl MeasureCache {
         let text_base = self.current.text_shapes.len() as u32;
 
         self.current.nodes.rect.extend_from_slice(rect);
+        self.current.nodes.local.extend_from_slice(local);
         self.current.nodes.intrinsics.extend_from_slice(intrinsics);
         self.current
             .nodes

@@ -15,7 +15,7 @@ pub(super) fn arrange_inner(
     node: NodeId,
     idx: GridDefId,
     depth: usize,
-    inner: Rect,
+    inner: Size,
 ) {
     let tree = pass.tree;
     let def = tree.grid_defs[usize::from(idx)];
@@ -32,7 +32,7 @@ pub(super) fn arrange_inner(
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node).map(|c| c.id) {
-            pass.zero_subtree(c, inner.min);
+            pass.zero_subtree(c, Vec2::ZERO);
         }
         return;
     }
@@ -59,9 +59,9 @@ pub(super) fn arrange_inner(
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
         s.col
-            .resolve_or_reuse(col_tracks, track_state, idx, Axis::X, inner.size.w, col_gap);
+            .resolve_or_reuse(col_tracks, track_state, idx, Axis::X, inner.w, col_gap);
         s.row
-            .resolve_or_reuse(row_tracks, track_state, idx, Axis::Y, inner.size.h, row_gap);
+            .resolve_or_reuse(row_tracks, track_state, idx, Axis::Y, inner.h, row_gap);
         s.col.compute_offsets(col_gap);
         s.row.compute_offsets(row_gap);
     }
@@ -77,11 +77,10 @@ pub(super) fn arrange_inner(
         let slot = {
             let s = pass.grid_mut().depth_stack.at(depth);
             Rect {
-                min: inner.min
-                    + Vec2::new(
-                        s.col.offsets[cell.col as usize],
-                        s.row.offsets[cell.row as usize],
-                    ),
+                min: Vec2::new(
+                    s.col.offsets[cell.col as usize],
+                    s.row.offsets[cell.row as usize],
+                ),
                 size: Size::new(
                     s.col.span_size(cell.track_span(Axis::X), col_gap),
                     s.row.span_size(cell.track_span(Axis::Y), row_gap),

@@ -64,10 +64,10 @@ impl LayoutDriver for Canvas {
         pass.measure_per_axis_hug(node, inner_avail, |tree, c| tree.bounds(c).position)
     }
 
-    /// Each child gets a slot at `inner.min + bounds.position`, sized per its
+    /// Each child gets a slot at `bounds.position`, sized per its
     /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
     /// `measure`.
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Size) {
         let tree = pass.tree;
         let layouts = tree.records.layout();
         let canvas_size = layouts[node.idx()].size;
@@ -83,10 +83,10 @@ impl LayoutDriver for Canvas {
             // offered exactly this, so a child that wraps is arranged at
             // the width it shaped against. A Hug axis has no extent of its
             // own to divide and gives the child its desired.
-            let room = inner.size.room_past(pos);
+            let room = inner.room_past(pos);
             let slot = d.select(canvas_size.hug_mask(), room);
             let child_rect = Rect {
-                min: inner.min + pos,
+                min: pos,
                 size: AxisPlacement::arrange_size(&child_layout, bounds, pass.placed(c), slot),
             };
             pass.arrange(c, child_rect);

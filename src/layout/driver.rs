@@ -24,7 +24,7 @@ use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapStack;
 use crate::layout::zstack::ZStack;
 use crate::primitives::interned_text::InternedText;
-use crate::primitives::rect::Rect;
+
 use crate::primitives::size::Size;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -88,7 +88,15 @@ pub(super) trait LayoutDriver {
 
     /// Top-down. Assigns each child a final rect and recurses through
     /// `pass.arrange(..)`.
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, payload: Self::Payload, inner: Rect);
+    ///
+    /// **Local coordinates.** `inner` is the size of the node's inner box
+    /// and nothing else: a driver places its children in that box's own
+    /// coordinates, its top-left at the origin, and `LayoutPass::arrange`
+    /// moves each one onto the page with a single add. So a child's place
+    /// never depends on where its parent sits, and a moved subtree is
+    /// rebuilt from those offsets exactly — see
+    /// `LayoutPass::replay_arranged`.
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, payload: Self::Payload, inner: Size);
 
     /// Pure on-demand query, and the one step that takes no pass: it must
     /// not reach the frame's text shapes. Driven by `Grid`'s Phase-1

@@ -280,6 +280,7 @@ impl LayoutEngine {
                         floor: &self.scratch.floor,
                         stable_from: &self.scratch.stable_from,
                         rect: &layer_out.rect,
+                        local: &self.scratch.local,
                         scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
                         available_q: &self.scratch.available_q,

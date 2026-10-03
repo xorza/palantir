@@ -20,6 +20,7 @@ use crate::primitives::{
 };
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::scene::visibility::Visibility;
 use crate::widgets::configure::Configure;
 use crate::widgets::{
     block::Block, button::Button, grid::Grid, panel::Panel, scroll::Scroll, text::Text,
@@ -613,6 +614,29 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                                 .show(ui);
                         }
                     });
+                Panel::hstack()
+                    .id(WidgetId::from_hash("width-share"))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .show(ui, |ui| {
+                        for col in 0..2u16 {
+                            Text::new(&LONG_LABEL[..50])
+                                .id_salt(("width-share-cell", col))
+                                .font_size(14.0)
+                                .text_wrap(TextWrap::Truncate)
+                                .show(ui);
+                        }
+                    });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("height-share"))
+                    .show(ui, |ui| {
+                        Block::new()
+                            .id_salt("height-share-header")
+                            .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
+                            .show(ui);
+                        Scroll::vertical()
+                            .id(WidgetId::from_hash("height-share-scroll"))
+                            .show(ui, |ui| rows(ui, "height-share-row"));
+                    });
                 Panel::zstack()
                     .id(WidgetId::from_hash("canvas-wrap"))
                     .show(ui, |ui| {
@@ -624,29 +648,6 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                                     .id(WidgetId::from_hash("canvas-scroll"))
                                     .position((20.0, 30.0))
                                     .show(ui, |ui| rows(ui, "canvas-row"));
-                            });
-                        Panel::hstack()
-                            .id(WidgetId::from_hash("width-share"))
-                            .size((Sizing::FILL, Sizing::HUG))
-                            .show(ui, |ui| {
-                                for col in 0..2u16 {
-                                    Text::new(&LONG_LABEL[..50])
-                                        .id_salt(("width-share-cell", col))
-                                        .font_size(14.0)
-                                        .text_wrap(TextWrap::Truncate)
-                                        .show(ui);
-                                }
-                            });
-                        Panel::vstack()
-                            .id(WidgetId::from_hash("height-share"))
-                            .show(ui, |ui| {
-                                Block::new()
-                                    .id_salt("height-share-header")
-                                    .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
-                                    .show(ui);
-                                Scroll::vertical()
-                                    .id(WidgetId::from_hash("height-share-scroll"))
-                                    .show(ui, |ui| rows(ui, "height-share-row"));
                             });
                     });
             });
@@ -872,7 +873,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
 
 /// A subtree whose slot **moves without resizing** replays its rects
 /// translated rather than re-running the drivers
-/// (`LayoutEngine::replay_arranged`). This is the only replay branch that
+/// (`LayoutPass::replay_arranged`). This is the only replay branch that
 /// rewrites values instead of copying them verbatim, so it gets three
 /// independent assertions: the branch actually fired, the shift is exactly
 /// the header's growth on Y and zero on X, and the result still equals a
@@ -969,6 +970,98 @@ fn moved_subtree_replays_translated_rects() {
         rects(&h.ui, &cold_nodes),
         "translated replay diverged from a cold remeasure",
     );
+}
+
+/// A translated replay lands bit for bit where a cold arrange does, frame
+/// after frame. Fractional heights, gaps, padding and margins make every
+/// position inexact in floating point, where `old + (new − old)` and the
+/// cold sum down the tree round differently; the replay instead rebuilds
+/// each rect from its slot origin in its parent's inner box with the adds
+/// arrange makes. One harness moves the subtree through forty fractional
+/// header heights, so any error a replay left would carry into the next,
+/// and each frame is held against a fresh harness's cold arrange.
+///
+/// Every inset differs per side, so a left taken for a top shows, and each
+/// row holds a collapsed cell with a margin and a child of its own, which
+/// a replay anchors at its slot without the inset a placed node takes.
+#[test]
+fn translated_replay_lands_where_a_cold_arrange_does() {
+    let record = |ui: &mut Ui, header_h: f32| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("header"))
+                    .size((Sizing::FILL, Sizing::fixed(header_h)))
+                    .show(ui, |_ui| {});
+                Panel::vstack()
+                    .id(WidgetId::from_hash("stable"))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .gap(0.3)
+                    .padding(1.7)
+                    .show(ui, |ui| {
+                        for row in 0..12u32 {
+                            Panel::hstack()
+                                .id(WidgetId::from_hash(("row", row)))
+                                .size((Sizing::FILL, Sizing::fixed(13.37)))
+                                .margin((0.9, 1.3, 0.2, 0.7))
+                                .padding((0.45, 0.8, 1.1, 0.25))
+                                .gap(2.3)
+                                .show(ui, |ui| {
+                                    for cell in 0..3u32 {
+                                        let visibility = if cell == 1 {
+                                            Visibility::Collapsed
+                                        } else {
+                                            Visibility::Visible
+                                        };
+                                        Panel::zstack()
+                                            .id(WidgetId::from_hash(("cell", row, cell)))
+                                            .size((Sizing::fixed(30.7), Sizing::FILL))
+                                            .margin((0.6, 1.9, 0.3, 0.4))
+                                            .visibility(visibility)
+                                            .show(ui, |ui| {
+                                                Block::new()
+                                                    .id(WidgetId::from_hash(("dot", row, cell)))
+                                                    .size((Sizing::fixed(3.3), Sizing::fixed(2.1)))
+                                                    .margin((0.15, 0.35, 0.0, 0.0))
+                                                    .show(ui);
+                                            });
+                                    }
+                                });
+                        }
+                    });
+            });
+    };
+    let rects = |h: &UiHarness| -> Vec<_> {
+        (0..h.ui.tree(Layer::Main).records.len() as u32)
+            .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
+            .collect()
+    };
+    let size = UVec2::new(800, 2000);
+    let mut warm = UiHarness::new(size);
+    warm.frame(|ui| record(ui, 7.0));
+    for frame in 0..40u32 {
+        let header_h = 0.37 + frame as f32 * 29.13;
+        warm.frame(|ui| record(ui, header_h));
+        assert!(
+            warm.engines
+                .layout
+                .scratch
+                .counters
+                .arrange_replays()
+                .translated
+                > 0,
+            "frame {frame}: the subtree did not replay translated",
+        );
+        let mut cold = UiHarness::new(size);
+        cold.frame(|ui| record(ui, header_h));
+        assert_eq!(
+            rects(&warm),
+            rects(&cold),
+            "frame {frame}, header {header_h}"
+        );
+    }
 }
 
 /// A hit subtree whose root is arranged at a new size still replays the

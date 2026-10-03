@@ -23,7 +23,11 @@ impl ZStack {
     /// [`LayoutDriver::arrange`], with the children given no give on the
     /// axes `rigid` sets — a scroll's panned axes, where its content
     /// takes what it measured to however small the viewport.
-    pub(super) fn arrange_in(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, rigid: BVec2) {
+    pub(super) fn arrange_in(pass: &mut LayoutPass<'_>, node: NodeId, inner: Size, rigid: BVec2) {
+        let slot = Rect {
+            min: Vec2::ZERO,
+            size: inner,
+        };
         let tree = pass.tree;
         let parent_child_align = tree.panel(node).child_align;
         let layouts = tree.records.layout();
@@ -36,7 +40,7 @@ impl ZStack {
             let align = AxisAlignPair::resolve(&s, parent_child_align);
             pass.arrange(
                 c,
-                AxisPlacement::arrange_rect(align, &s, bounds, placed, inner),
+                AxisPlacement::arrange_rect(align, &s, bounds, placed, slot),
             );
         }
     }
@@ -72,7 +76,7 @@ impl LayoutDriver for ZStack {
     /// `child_align` as fallback when child's own axis is `Auto`).
     /// Defaults pin to top-left unless the child has `Sizing::fill` — then `Auto`
     /// falls back to stretch on that axis.
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Size) {
         Self::arrange_in(pass, node, inner, BVec2::FALSE);
     }
 

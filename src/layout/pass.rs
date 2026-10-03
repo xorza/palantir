@@ -19,7 +19,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::Placed;
 use crate::layout::axis_slot::AxisSlot;
-use crate::layout::cache::MeasureCache;
+use crate::layout::cache::{Arranged, MeasureCache};
 use crate::layout::counters::PhaseSpan;
 use crate::layout::driver::{DriverOp, LayoutDriver, ReplayOp};
 use crate::layout::engine::LayoutEngine;
@@ -37,6 +37,7 @@ use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;
@@ -61,6 +62,34 @@ pub(crate) struct LayoutPass<'a> {
     pub(super) tree: &'a Tree,
     pub(super) interned_text: &'a InternedText<'a>,
     out: &'a mut LayerLayout,
+    /// The page position of the inner box whose children are being
+    /// placed — the parent's, while its driver arranges them. Drivers
+    /// place children in local coordinates, and [`Self::arrange`] adds
+    /// this once to each.
+    origin: Vec2,
+}
+
+/// Where a node arranged into `slot` — in the inner box whose page
+/// position is `origin` — renders: the one add that puts the slot on the
+/// page, then the margin inset. [`LayoutPass::arrange`] places every node
+/// through here and a translated replay rebuilds every node through
+/// here, and the replay is bit-exact only because the two are one
+/// computation.
+#[inline]
+fn place(origin: Vec2, slot: Rect, margin: Spacing) -> Rect {
+    Rect {
+        min: origin + slot.min,
+        size: slot.size,
+    }
+    .deflated_by(margin)
+}
+
+/// One inner box a translated replay is inside: where its subtree ends,
+/// and its page position.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ReplayOrigin {
+    end: usize,
+    origin: Vec2,
 }
 
 impl<'a> LayoutPass<'a> {
@@ -145,6 +174,7 @@ impl<'a> LayoutPass<'a> {
             tree,
             interned_text,
             out,
+            origin: Vec2::ZERO,
         }
     }
 }
@@ -207,15 +237,17 @@ impl LayoutPass<'_> {
         self.out.scroll_content[node.idx()] = content;
     }
 
-    /// Anchor this node and every descendant at a zero-size rect —
-    /// what a collapsed subtree gets. Walks the contiguous pre-order
-    /// span directly; no recursion, no child cursors.
+    /// Anchor this node and every descendant at a zero-size rect, at
+    /// `anchor` in the parent's inner box — what a collapsed subtree gets.
+    /// Walks the contiguous pre-order span directly; no recursion, no
+    /// child cursors.
     #[inline]
     pub(super) fn zero_subtree(&mut self, node: NodeId, anchor: Vec2) {
         let start = node.idx();
+        self.engine.scratch.local[start] = anchor;
         let end = self.tree.subtree_end_of(start);
         self.out.rect[start..end].fill(Rect {
-            min: anchor,
+            min: self.origin + anchor,
             size: Size::ZERO,
         });
     }
@@ -401,33 +433,36 @@ impl LayoutPass<'_> {
             self.zero_subtree(node, slot.min);
             return;
         }
-        let rendered = slot.deflated_by(layout.margin);
+        self.engine.scratch.local[node.idx()] = slot.min;
+        let rendered = place(self.origin, slot, layout.margin);
         let mode = LayoutMode::from(layout.meta);
         if ReplayOp.dispatch(mode) && self.replay_arranged(node, rendered) {
             return;
         }
         self.out.rect[node.idx()] = rendered;
         let inner = layout.inner_rect(rendered);
-
+        let parent = std::mem::replace(&mut self.origin, inner.min);
         ArrangeOp {
             pass: self,
             node,
-            inner,
+            inner: inner.size,
         }
         .dispatch(mode);
+        self.origin = parent;
     }
 
     /// Replay a measure-cache-hit subtree's arranged rects instead of
     /// re-running the drivers over it. Returns `false` when the subtree
     /// must be arranged normally.
     ///
-    /// Sound because arrange's **only** output is `out.rect` — every
-    /// driver's `arrange` writes rects and recurses, and nothing else
-    /// (`Scroll::arrange` merely delegates to stack/zstack; container text
-    /// shapes later in [`LayoutEngine::run`], off this path). So for a
-    /// subtree whose authoring and `desired` are both known identical to
-    /// the snapshot — which is exactly what a measure hit proves — arrange
-    /// is a pure function of the slot it is handed.
+    /// Sound because arrange's **only** output is `out.rect` and the slot
+    /// origins beside it — every driver's `arrange` writes rects and
+    /// recurses, and nothing else (`Scroll::arrange` merely delegates to
+    /// stack/zstack; container text shapes later in
+    /// [`LayoutEngine::run`], off this path). So for a subtree whose
+    /// authoring and `desired` are both known identical to the snapshot —
+    /// which is exactly what a measure hit proves — arrange is a pure
+    /// function of the slot it is handed.
     ///
     /// That reasoning covers every driver whose arrange stays inside its
     /// own subtree, which is not all of them; the caller gates on
@@ -438,44 +473,89 @@ impl LayoutPass<'_> {
     ///
     /// - **Unchanged** rendered rect: a straight `copy_from_slice`.
     /// - **Translated** (same size, moved origin — a sibling above grew,
-    ///   so everything below shifts): one add per node over a contiguous
-    ///   `Rect` slice, which is what the drivers would have spent a full
-    ///   dispatch to arrive at.
+    ///   so everything below shifts): each rect is rebuilt from its slot
+    ///   origin in its parent's inner box with the very adds
+    ///   [`Self::arrange`] makes — parent origin plus slot origin, then
+    ///   the margin and padding insets — so it lands bit for bit where a
+    ///   cold arrange puts it. Drivers place children in local
+    ///   coordinates, which is what makes those origins independent of
+    ///   where the subtree sits.
     /// - **Resized**: bails to the normal path. A different size
     ///   redistributes `Fill` children, so nothing below is reusable.
     ///
     /// Indexing is safe by construction: the destination range comes from
     /// the *current* tree while the source is keyed by `WidgetId`, so a
     /// subtree that moved in pre-order still replays into its new slot.
-    /// Collapsed descendants ride along — [`Self::zero_subtree`] anchors
-    /// them at their parent's slot origin, which translates with
-    /// everything else.
     #[inline]
     fn replay_arranged(&mut self, node: NodeId, rendered: Rect) -> bool {
         let base = self.engine.scratch.arrange_src[node.idx()];
         if base == NO_ARRANGE_SRC {
             return false;
         }
+        let tree = self.tree;
         let start = node.idx();
-        let end = self.tree.subtree_end_of(start);
-        let base = base as usize;
-        let src = self.engine.cache.arranged_rects(base, end - start);
-        if src[0].size != rendered.size {
+        let end = tree.subtree_end_of(start);
+        let engine = &mut *self.engine;
+        let Arranged { rects, locals } = engine.cache.arranged(base as usize, end - start);
+        if rects[0].size != rendered.size {
             return false;
         }
-        let delta = rendered.min - src[0].min;
+        // For the next capture alone, so a frame that keeps the snapshot
+        // skips it. The root's own origin is this frame's, written by
+        // `arrange`.
+        if engine.scratch.cache_rebuild {
+            engine.scratch.local[start + 1..end].copy_from_slice(&locals[1..]);
+        }
         let dst = &mut self.out.rect[start..end];
-        if delta == Vec2::ZERO {
-            self.engine.scratch.counters.arrange_copied();
-            dst.copy_from_slice(src);
-        } else {
-            self.engine.scratch.counters.arrange_translated();
-            for (d, s) in dst.iter_mut().zip(src) {
-                *d = Rect {
-                    min: s.min + delta,
-                    size: s.size,
-                };
+        if rendered.min == rects[0].min {
+            engine.scratch.counters.arrange_copied();
+            dst.copy_from_slice(rects);
+            return true;
+        }
+        engine.scratch.counters.arrange_translated();
+        let layouts = tree.records.layout();
+        let origins = &mut engine.scratch.replay_origins;
+        origins.clear();
+        origins.push(ReplayOrigin {
+            end,
+            origin: layouts[start].inner_rect(rendered).min,
+        });
+        dst[0] = rendered;
+        let mut i = start + 1;
+        while i < end {
+            while origins.last().is_some_and(|open| i >= open.end) {
+                origins.pop();
             }
+            let parent = origins
+                .last()
+                .expect("the replay root encloses every node")
+                .origin;
+            let layout = layouts[i];
+            let local = locals[i - start];
+            let sub_end = tree.subtree_end_of(i);
+            if layout.meta.visibility().is_collapsed() {
+                dst[i - start..sub_end - start].fill(Rect {
+                    min: parent + local,
+                    size: Size::ZERO,
+                });
+                i = sub_end;
+                continue;
+            }
+            // The size is last frame's, which a translation leaves as it
+            // was; `place` contributes the corner alone.
+            let size = rects[i - start].size;
+            let placed = Rect {
+                min: place(parent, Rect { min: local, size }, layout.margin).min,
+                size,
+            };
+            dst[i - start] = placed;
+            if sub_end > i + 1 {
+                origins.push(ReplayOrigin {
+                    end: sub_end,
+                    origin: layout.inner_rect(placed).min,
+                });
+            }
+            i += 1;
         }
         true
     }
@@ -576,7 +656,7 @@ impl DriverOp for MeasureOp<'_, '_> {
 struct ArrangeOp<'op, 'pass> {
     pass: &'op mut LayoutPass<'pass>,
     node: NodeId,
-    inner: Rect,
+    inner: Size,
 }
 
 impl DriverOp for ArrangeOp<'_, '_> {

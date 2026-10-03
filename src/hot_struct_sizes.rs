@@ -121,7 +121,7 @@ const UI_SIZE: usize = 6296;
 /// cell are zero-sized in a release build, which leaves a shipped
 /// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
 /// the production footprint.
-const FRAME_ENGINES_SIZE: usize = 1928;
+const FRAME_ENGINES_SIZE: usize = 2024;
 
 /// Single source of truth for the per-frame hot-struct inventory.
 /// Each entry is `pin::<Type>("name", expected_size, expected_align)`.
@@ -225,7 +225,7 @@ const PINS: &[Pin] = &[
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
-    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 360, 8),
+    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 384, 8),
     pin::<AnimRow<AnimatedLook>>("animation::AnimRow<AnimatedLook>", 496, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),

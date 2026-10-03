@@ -31,7 +31,7 @@ use crate::layout::pass::LayoutPass;
 use crate::layout::stack::stack_scratch::StackScratch;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Px;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::size::Size;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use glam::BVec2;
@@ -159,7 +159,7 @@ impl Stack {
         pass: &mut LayoutPass<'_>,
         node: NodeId,
         axis: Axis,
-        inner: Rect,
+        inner: Size,
         rigid: BVec2,
     ) {
         let tree = pass.tree;
@@ -197,8 +197,8 @@ impl Stack {
             },
             |pass, c| axis.main(placed(pass, c).floor),
         );
-        let main_total = axis.main(inner.size);
-        let cross = axis.cross(inner.size);
+        let main_total = axis.main(inner);
+        let cross = axis.cross(inner);
         let StackScratch { fill, hug } = pass.stack_scratch_mut();
         axis_share::solve(
             hug.since(hug_start),
@@ -227,8 +227,8 @@ impl Stack {
             gap: effective_gap,
         } = JustifyOffsets::new(justify, leftover_for_justify, gap, count);
 
-        let cross_min = axis.cross_v(inner.min);
-        let mut cursor = axis.main_v(inner.min) + start_offset;
+        let cross_min = 0.0;
+        let mut cursor = start_offset;
         let mut first = true;
         let mut fill_cursor = fill_start;
         let mut hug_cursor = hug_start;
@@ -371,7 +371,7 @@ impl LayoutDriver for Stack {
         // reports its natural extent.
         //
         // Soundness: the `axis.main(inner_avail)` we use as the budget here
-        // must equal the `axis.main(inner.size)` the matching `arrange` call
+        // must equal the `axis.main(inner)` the matching `arrange` call
         // sees, otherwise wrap text in Fill children shapes against the wrong
         // width. It does, because the Stack's outer main size is a
         // deterministic function of (its own `Sizing` + parent-supplied
@@ -430,7 +430,7 @@ impl LayoutDriver for Stack {
         }
     }
 
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Size) {
         Self::arrange_in(pass, node, axis, inner, BVec2::FALSE);
     }
 
