@@ -21,7 +21,11 @@ fn validated_springs_remain_finite_and_settle() {
     let cases = [
         ("minimum-decay", AnimSpec::spring(1.0, 2.0), 488),
         ("default", AnimSpec::SPRING, 39),
-        ("stiff", AnimSpec::spring(1_000_000.0, 100.0), 9),
+        (
+            "stiff, critically damped",
+            AnimSpec::spring(1_000_000.0, 2_000.0),
+            2,
+        ),
     ];
     let dts = [0.1, 1.0 / 60.0, 0.0042, 0.033];
 
@@ -325,40 +329,6 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
         0.0,
         "opposing retarget must zero velocity to kill reversal overshoot",
     );
-}
-
-/// The stiffest spring there is stays finite and settles. Its velocity
-/// reaches `500 · √f32::MAX ≈ 9e21`, whose square would overflow `f32`;
-/// the settle bound scales it by `1/√k` before squaring.
-///
-/// Its oscillation is so fast that each frame lands on an arbitrary
-/// phase, but the settle bound does not depend on the phase: with
-/// `ω ≈ 1.8e19` the energy envelope is `500·e^(-t)` to within `h/ω`.
-/// It first falls under 1e-4 at `t > ln(5e6) = 15.4249 s`, which is
-/// frame 925.49 at 1/60 s — so step 926, at `9.94e-5`, where step 925
-/// still sat at `1.011e-4`. Loop step 0 is the change's frame and steps
-/// nothing, so loop step `n` is step `n`.
-#[test]
-fn the_stiffest_spring_stays_finite_and_settles() {
-    let spec = AnimSpec::spring(f32::MAX, 2.0);
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = wid("stiffest");
-    let _ = map.step(id, SLOT, 400.0, spec, 1.0 / 60.0);
-    let mut settled_at = None;
-    for i in 0..2_000 {
-        let result = map.step(id, SLOT, -100.0, spec, 1.0 / 60.0);
-        let velocity = *spring_velocity(&map.rows[&(id, SLOT)]);
-        assert!(
-            result.current.is_finite() && velocity.is_finite(),
-            "step {i}"
-        );
-        if result.settled {
-            assert_eq!(result.current, -100.0);
-            settled_at = Some(i);
-            break;
-        }
-    }
-    assert_eq!(settled_at, Some(926));
 }
 
 /// The settle bound is the spring's energy, `x² + v²/k`, measured in the

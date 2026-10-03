@@ -4,11 +4,22 @@
 
 use crate::animation::animatable::Animatable;
 use crate::common::time::MAX_ANIM_DT;
+use std::f64::consts::PI;
 
-pub(super) const SPRING_ERROR: &str =
-    "spring parameters must be positive, finite, and converge at 1/s or faster";
+pub(super) const SPRING_ERROR: &str = "spring parameters must be positive, finite, converge at 1/s or faster, and swing slower than 30 Hz";
 
 const MIN_DECAY_RATE: f64 = 1.0;
+
+/// The slowest panel a spring has to look right on. A spec is validated
+/// when a theme is built, before any display is known, and 60 Hz is the
+/// refresh rate nearly every panel runs at or above.
+const MIN_DISPLAY_HZ: f64 = 60.0;
+
+/// The fastest swing [`MIN_DISPLAY_HZ`] can show, in rad/s: its Nyquist
+/// frequency, half the frame rate. A swing at or past it lands each frame
+/// on an arbitrary phase, and the frames read as a slower wobble that the
+/// spring does not make.
+const MAX_SWING_RATE: f64 = PI * MIN_DISPLAY_HZ;
 
 /// `(displacement, velocity)` can never again carry the value a settle
 /// tolerance away from its target — the caller can snap to target and
@@ -105,7 +116,7 @@ impl SpringTransition {
         let stiffness = f64::from(stiffness);
         let half_damping = f64::from(damping) * 0.5;
         let dt = f64::from(dt);
-        let discriminant = half_damping * half_damping - stiffness;
+        let discriminant = discriminant(stiffness, half_damping);
         // `ec` and `es` are `e^(-h·t)·C(t)` and `e^(-h·t)·S(t)`.
         let (ec, es) = if discriminant < 0.0 {
             let decay = (-half_damping * dt).exp();
@@ -147,10 +158,8 @@ impl SpringTransition {
 
 /// The slower of the two decay rates — how fast the spring's *last*
 /// mode dies away, and so how long it takes to settle.
-fn decay_rate(stiffness: f32, damping: f32) -> f64 {
-    let stiffness = f64::from(stiffness);
-    let half_damping = f64::from(damping) * 0.5;
-    let discriminant = half_damping * half_damping - stiffness;
+fn decay_rate(stiffness: f64, half_damping: f64) -> f64 {
+    let discriminant = discriminant(stiffness, half_damping);
     if discriminant <= 0.0 {
         half_damping
     } else {
@@ -158,8 +167,16 @@ fn decay_rate(stiffness: f32, damping: f32) -> f64 {
     }
 }
 
-/// Whether a spring arrives: its slowest mode has to decay at
-/// [`MIN_DECAY_RATE`] or faster, or the motion never visibly ends.
+/// Whether a spring arrives, and whether a display can show it getting
+/// there.
+///
+/// Its slowest mode has to decay at [`MIN_DECAY_RATE`] or faster, or the
+/// motion never visibly ends. An underdamped one also has to swing slower
+/// than [`MAX_SWING_RATE`]: its swing is `ψ = √(k − h²)` with `h = c/2`.
+/// A critically damped or overdamped spring does not swing, so any
+/// stiffness passes that half. A swing that would die within one frame
+/// is refused all the same: it would read as a snap, which
+/// `AnimSpec::duration(0.0, ..)` already spells.
 ///
 /// **Not a stability bound.** The step is exact at any parameters and
 /// any `dt`, so nothing here is about the arithmetic surviving. And no
@@ -168,11 +185,18 @@ fn decay_rate(stiffness: f32, damping: f32) -> f64 {
 /// whatever the stiffness, so there is no velocity floor for a stiff
 /// spring to sit above after its motion stopped being visible.
 pub(super) fn params_are_valid(stiffness: f32, damping: f32) -> bool {
-    stiffness.is_finite()
-        && stiffness > 0.0
-        && damping.is_finite()
-        && damping > 0.0
-        && decay_rate(stiffness, damping) >= MIN_DECAY_RATE
+    if !(stiffness.is_finite() && stiffness > 0.0 && damping.is_finite() && damping > 0.0) {
+        return false;
+    }
+    let (stiffness, half_damping) = (f64::from(stiffness), f64::from(damping) * 0.5);
+    decay_rate(stiffness, half_damping) >= MIN_DECAY_RATE
+        && -discriminant(stiffness, half_damping) < MAX_SWING_RATE * MAX_SWING_RATE
+}
+
+/// `d = h² − k`, which sorts the damping regime: below zero a spring swings
+/// at `ψ = √(−d)`, at zero it is critically damped, above zero overdamped.
+const fn discriminant(stiffness: f64, half_damping: f64) -> f64 {
+    half_damping * half_damping - stiffness
 }
 
 /// One step of `dt` from `(offset, velocity)`, where `offset` is the
