@@ -196,15 +196,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 static_assertions = "1.1"
 ron = "0.12"
 
+# No suite names `internals`: the self dev-dependency below turns it on for
+# every test build.
 [[test]]
 name = "visual"
 path = "tests/visual/main.rs"
-required-features = ["internals", "golden"]
+required-features = ["golden"]
 
 [[test]]
 name = "alloc"
 path = "tests/alloc/main.rs"
-required-features = ["internals"]
 
 [[example]]
 name = "counter"

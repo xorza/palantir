@@ -99,24 +99,6 @@ usage (`RENDER_ATTACHMENT`, plus `COPY_DST` where the host presents through its 
 `TargetFormat::new(format)` asserts the same format rule. Both `From` impls go, because `From` must
 not fail; the entry points take `RenderTarget` itself instead of `impl Into<RenderTarget>`.
 
-## A17. Cargo features for tests
-
-**Findings.** TEST_REVIEW 8: the self dev-dependency enables `internals` in every test build, so
-seven comments that say a plain `cargo test` is GPU-free are false, and `all(test, internals)`
-equals `test`. REVIEW "Support-module docs": `lib.rs:209-212`.
-
-**Options.**
-
-1. Accept GPU tests in every run; delete the claims; drop the redundant gates and the
-   `required-features` on `[[test]] alloc`.
-2. Add a `gpu-tests` feature that the dev-dependency does not request.
-
-**Decided 2026-10-04.** Option 1: every test run needs an adapter. A GPU test panics without
-one, so the headless test server needs a software Vulkan driver (Mesa lavapipe, in
-`mesa-vulkan-drivers`) installed once — an install for you to run, not part of this item. Delete
-the seven false "GPU-free" claims, drop the `all(test, internals)` gates that equal `test`, and
-drop `required-features` on `[[test]] alloc`; then update the AGENTS.md test line.
-
 ## A18. Icon set limits and names
 
 **Findings.** REVIEW "`IconId` is u16 but icon sets are unbounded" and "`IconDef::name:
@@ -503,8 +485,7 @@ Each line is one commit; none depends on another inside the phase.
 2. Done: chainers (A47, A44).
 3. Done: removals (A8, A13, A34, A35, A38, A40, A43, A48, A49).
 4. Done: argument types (A33 with A9, A37). A31 waits on `QUESTIONS.md` Q1.
-5. **Test features** (A17): the false claims, the redundant gates and the `alloc`
-   `required-features` go.
+5. Done: test features (A17).
 
 ## Phase 3 — structural API
 
