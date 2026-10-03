@@ -1,6 +1,7 @@
 //! `#[derive(Animatable)]`, read back field by field on probe structs.
 
 use crate::animation::animatable::Animatable;
+use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
@@ -22,6 +23,24 @@ struct AllSnap {
     a: u8,
     #[animate(skip)]
     b: u16,
+}
+
+/// One tolerance for the whole struct: `0.5`, a power of two, so its
+/// square divides exactly.
+#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[animate(settle_eps = 0.5)]
+struct Scaled {
+    a: f32,
+    b: f32,
+}
+
+/// Two fields, each settling in its own unit.
+#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+struct Mixed {
+    colour: RgbaF32,
+    scaled: Scaled,
+    #[animate(snap)]
+    label: u8,
 }
 
 /// Generic over the animated field.
@@ -114,4 +133,25 @@ fn derived_methods_split_animated_from_snapped_fields() {
             second: 2.0,
         },
     );
+}
+
+/// The settle distance, which the spring and the duration snap compare
+/// against `1.0`. A struct that names a tolerance divides its magnitude by
+/// it: `(3² + 4²) / 0.5² = 100`. One that does not sums its fields', each
+/// in its own unit: a red channel of `1/4096` is exactly one `RgbaF32`
+/// tolerance, `2^-24 / 2^-24 = 1`, beside `Scaled`'s 100, for 101. At the
+/// unit-free `f32` tolerance the same channel would weigh
+/// `(2.44e-4 / 1e-4)² ≈ 5.96` — so the colour's own tolerance is the one
+/// the sum used. Snap fields weigh nothing.
+#[test]
+fn derived_settle_distance_measures_each_field_in_its_own_unit() {
+    let scaled = Scaled { a: 3.0, b: 4.0 };
+    assert_eq!(scaled.settle_distance_squared(), 100.0);
+    let mixed = Mixed {
+        colour: RgbaF32::new(1.0 / 4096.0, 0.0, 0.0, 0.0),
+        scaled,
+        label: 7,
+    };
+    assert_eq!(mixed.settle_distance_squared(), 101.0);
+    assert_eq!(AllSnap { a: 1, b: 2 }.settle_distance_squared(), 0.0);
 }

@@ -1,11 +1,12 @@
 //! Vocabulary for "things that can animate." A type is `Animatable`
-//! when it supports interpolation, spring displacement arithmetic,
-//! and a squared magnitude used by settle checks. Value-dependent
+//! when it supports interpolation, spring displacement arithmetic, and a
+//! squared distance measured in its own settle tolerance. Value-dependent
 //! snap-only fields normalize before that arithmetic. Built-in impls
 //! cover `f32`, `Vec2`, `RgbaF32`. Domain types (`Stroke`,
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
 //! `palantir-anim-derive` and the type-erased `AnimMap` storage.
 
+use crate::primitives::math::approx::EPS;
 use glam::Vec2;
 
 /// Math-only trait. Storage is decoupled (type-erased `AnimMap`
@@ -41,20 +42,42 @@ pub trait Animatable: Clone + PartialEq + 'static {
     /// Componentwise multiplication by a scalar.
     #[must_use]
     fn scale(self, k: f32) -> Self;
-    /// Squared length, compared against `EPS * EPS` for settle checks.
-    /// Squared form avoids a per-frame `sqrt` for the spring termination
-    /// path. For scalars: `self * self`. For vectors: dot(self, self).
-    /// For derived compound types: sum of component squared magnitudes.
+    /// Squared Euclidean length in the type's own unit. For scalars:
+    /// `self * self`. For vectors: dot(self, self). For derived compound
+    /// types: sum of component squared magnitudes.
     fn magnitude_squared(self) -> f32;
+    /// Squared length in units of this type's settle tolerance: under
+    /// `1.0`, a displacement this size is too small to see, and a motion
+    /// may end on its target instead of travelling it.
+    ///
+    /// **Unit-free by default.** An `f32` is a pixel in one animation and
+    /// a 0..1 fraction of a 200 px body in the next, so the default
+    /// divides [`Self::magnitude_squared`] by `EPS²` (`EPS = 1e-4`) — fine
+    /// enough for either. A type that knows its unit says so: `RgbaF32`
+    /// settles at `1/4096`, under one 8-bit sRGB step near black.
+    ///
+    /// The derive sums its fields' own distances, so a compound never
+    /// settles a pixel field at a colour's tolerance or the reverse. A
+    /// derive whose struct has one unit of its own names it with
+    /// `#[animate(settle_eps = ...)]` instead.
+    #[inline]
+    fn settle_distance_squared(self) -> f32 {
+        self.magnitude_squared() / (EPS * EPS)
+    }
     /// The additive identity — zero displacement, and the velocity a
     /// fresh spring starts at.
     fn zero() -> Self;
 
     /// Normalize fields that cannot participate in spring arithmetic.
     ///
-    /// Compound derives forward this hook fieldwise. Implementations can
-    /// install the target and clear only their matching velocity without
-    /// disturbing independently animated sibling fields.
+    /// Runs when a spring takes a new target or a row becomes a spring —
+    /// the only moments a value can meet a target it cannot do arithmetic
+    /// against. Between them the value is `target.add(offset)`, so an
+    /// [`Self::add`] that keeps `self` for such a field is what keeps it
+    /// compatible. Compound derives forward this hook fieldwise.
+    /// Implementations can install the target and clear only their
+    /// matching velocity without disturbing independently animated
+    /// sibling fields.
     #[inline]
     fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) {}
 }

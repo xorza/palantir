@@ -172,8 +172,8 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     });
     // The text colour moves black → white, √3 in linear RGB. The retarget
     // frame stepped nothing, so frame `n` after it is step `n`.
-    let step = closed_form_settle_step(170.0, 26.0, 3.0f64.sqrt(), |_| 0.016);
-    assert_eq!(step, 59);
+    let step = closed_form_settle_step(170.0, 26.0, 3.0f64.sqrt(), 1.0 / 4096.0, |_| 0.016);
+    assert_eq!(step, 56);
     assert_eq!(frames, Some(step), "the look's color spring settles");
     assert_eq!(last, Some(target.clone()));
 

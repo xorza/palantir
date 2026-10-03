@@ -103,16 +103,12 @@ impl AnimSpec {
     ///
     /// The step is a closed-form transition, so stiffness costs nothing
     /// and carries no stability bound. What is still checked is that the
-    /// spring *arrives* and then stops: it must decay at 1/s or faster,
-    /// and it must not be so stiff that its residual velocity keeps the
-    /// value unsettled long after the motion stopped being visible.
+    /// spring *arrives*: it must decay at 1/s or faster.
     ///
     /// # Panics
     ///
-    /// Panics when either parameter is non-positive or non-finite, when
-    /// the slowest decay rate is below 1/s, or when that decay would
-    /// take more than 4 s to bring the velocity down to its settle
-    /// floor. Raise `damping` or lower `stiffness` for the last one.
+    /// Panics when either parameter is non-positive or non-finite, or
+    /// when the slowest decay rate is below 1/s.
     pub fn spring(stiffness: f32, damping: f32) -> Self {
         assert!(
             spring_params_are_valid(stiffness, damping),

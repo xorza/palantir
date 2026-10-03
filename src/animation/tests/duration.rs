@@ -81,13 +81,16 @@ fn instant_duration_is_noop_and_drops_row() {
 /// than starting a full ease/spring cycle. Otherwise tiny float
 /// quantization in the caller (rounded theme colors, sub-pixel rect
 /// drift) would spuriously request repaints frame after frame for
-/// changes the user can't see. The duration floor is `approx::EPS`
-/// (1e-4), tighter than the spring floor (0.01), so a delta well under
-/// 1e-4 snaps on *both* specs.
+/// changes the user can't see. Both specs snap under the type's own
+/// settle tolerance, so `1e-5` on an `f32` (tolerance 1e-4) snaps on both.
+///
+/// The tolerance is the type's: `2e-4` on one channel is under a colour's
+/// `1/4096 ≈ 2.44e-4` and snaps, while the same `2e-4` on an `f32` is
+/// over its 1e-4 and animates.
 #[test]
 fn target_below_snap_floor_snaps_without_animating() {
     let duration = AnimSpec::duration(1.0, Easing::Linear);
-    let tiny = 1.0e-5; // below the duration floor (1e-4), the tighter one
+    let tiny = 1.0e-5;
     let cases: &[(&str, AnimSpec)] = &[("duration", duration), ("spring", AnimSpec::SPRING)];
     for (label, spec) in cases {
         let mut map = AnimMapTyped::<f32>::default();
@@ -102,17 +105,32 @@ fn target_below_snap_floor_snaps_without_animating() {
             r.settled,
             "case {label}: sub-eps drift must report settled (no repaint)",
         );
+
+        let mut scalars = AnimMapTyped::<f32>::default();
+        let _ = scalars.step(id, SLOT, 0.5, *spec, 0.016);
+        let r = scalars.step(id, SLOT, 0.5 + 2e-4, *spec, 0.016);
+        assert!(!r.settled, "case {label}: 2e-4 on an f32 animates");
+
+        let mut colours = AnimMapTyped::<RgbaF32>::default();
+        let (grey, nudged) = (
+            RgbaF32::new(0.5, 0.5, 0.5, 1.0),
+            RgbaF32::new(0.5 + 2e-4, 0.5, 0.5, 1.0),
+        );
+        let _ = colours.step(id, SLOT, grey, *spec, 0.016);
+        let r = colours.step(id, SLOT, nudged, *spec, 0.016);
+        assert_eq!(r.current, nudged, "case {label}: a colour lands on target");
+        assert!(r.settled, "case {label}: 2e-4 on a colour snaps");
     }
 }
 
-/// One floor for both motions: a delta of 5e-4 sits above `EPS = 1e-4`,
-/// so it animates under a duration and under a spring alike. The
+/// One tolerance for both motions: a delta of 5e-4 sits above an `f32`'s
+/// 1e-4, so it animates under a duration and under a spring alike. The
 /// retarget frame starts from rest and shows the start value; the next
 /// frame moves toward the target without reaching it.
 ///
 /// The spring case is a dark-theme hover: `#121212 → #1c1c1c` is about
 /// 0.0056 linear a channel, under a pixel-scale floor of 0.01 and well
-/// over this one.
+/// over a colour's 1/4096.
 #[test]
 fn one_floor_animates_a_small_change_under_either_motion() {
     let delta = 5.0e-4_f32;

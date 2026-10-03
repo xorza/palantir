@@ -42,6 +42,9 @@ use std::str;
     bytemuck::Zeroable,
     palantir_anim_derive::Animatable,
 )]
+// One 8-bit sRGB step is narrowest near black, at `1 / 255 / 12.92 ≈
+// 3.0e-4` linear; `1/4096 ≈ 2.4e-4` stays under it on every channel.
+#[animate(settle_eps = 1.0 / 4096.0)]
 /// An RGBA colour in **straight-alpha linear RGB**, the space every blend,
 /// anti-aliasing step, and tween in the crate operates in. The sRGB encode
 /// happens on the GPU when writing the swapchain.

@@ -4,44 +4,52 @@
 
 use crate::animation::animatable::Animatable;
 use crate::common::time::MAX_ANIM_DT;
-use crate::primitives::math::approx::EPS;
 
-pub(super) const SPRING_ERROR: &str = "spring parameters must be positive, finite, convergent, and settle without a long velocity tail";
+pub(super) const SPRING_ERROR: &str =
+    "spring parameters must be positive, finite, and converge at 1/s or faster";
 
 const MIN_DECAY_RATE: f64 = 1.0;
 
-/// How long [`VEL_EPS`] may keep a spring unsettled after [`POS_EPS`]
-/// is met — the seconds of repaint bought by a stiffness whose motion
-/// has already become invisible.
-const MAX_VELOCITY_TAIL_SECS: f64 = 4.0;
-
-// Spring settle tolerances. The position floor is the duration path's
-// one absolute floor, `EPS = 1e-4`: a spring animates colours as well as
-// pixels, and a pixel-scale floor of 0.01 snapped a dark-theme hover
-// (`#121212 → #1c1c1c`, 0.0056 linear a channel) with no animation at
-// all, and ended every colour fade with a jump of several 8-bit steps
-// near black. The cost is repaint time, not motion: the default spring
-// (stiffness 170, damping 26, near critical) decays at 13/s, so reaching
-// 1e-4 instead of 0.01 takes `ln(100) / 13 ≈ 0.35 s` longer on a pixel
-// travel, painting a motion too small to see. A per-type tolerance would
-// win that time back (API_CHANGES A5).
-const POS_EPS: f32 = EPS;
-const VEL_EPS: f32 = 0.1;
-const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
-const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
-
-/// `(displacement, velocity)` is at the spring's settle floor — the
-/// caller can snap to target and clear residual motion. Single source
-/// of truth for the threshold; consumed both by [`step`] and by the
-/// spring arm of the snap-if-close fast path in `AnimMapTyped::tick`.
+/// `(displacement, velocity)` can never again carry the value a settle
+/// tolerance away from its target — the caller can snap to target and
+/// clear residual motion. Single source of truth for the threshold;
+/// consumed both by [`step`] and by the spring arm of the snap-if-close
+/// fast path in `AnimMapTyped::tick`.
+///
+/// **An energy bound, not two floors.** With the target held still, the
+/// spring's energy `½v² + ½k·x²` only falls — damping takes `c·v²` out of
+/// it every instant and nothing puts any back — so no later `|x|` exceeds
+/// `√(x² + v²/k)`, in every damping regime. That is the one quantity to
+/// hold under the tolerance, measured per field by
+/// [`Animatable::settle_distance_squared`]. A separate velocity floor
+/// would need a ratio to position, and no fixed ratio is right: a swing
+/// of amplitude `A` crosses the target at speed `A·ω`, so a floor that
+/// suits a slow spring lets a bouncy one snap a visible swing, and one
+/// that suits a bouncy one holds a slow one long after it stopped
+/// moving. The energy bound uses the spring's own `ω² = k`.
 #[inline]
-pub(super) fn within_settle_eps<T: Animatable>(displacement: T, velocity: T) -> bool {
-    displacement.magnitude_squared() < POS_EPS_SQ && velocity.magnitude_squared() < VEL_EPS_SQ
+pub(super) fn within_settle_eps<T: Animatable>(
+    displacement: T,
+    velocity: T,
+    stiffness: f32,
+) -> bool {
+    displacement.settle_distance_squared()
+        + velocity_reach(velocity, stiffness).settle_distance_squared()
+        < 1.0
+}
+
+/// `velocity` in the offset's unit: `v/√k`, the farthest it alone could
+/// carry the value, from the energy bound on [`within_settle_eps`].
+/// Scaled before anything squares it, so a stiff spring's velocity cannot
+/// overflow.
+#[inline]
+pub(super) fn velocity_reach<T: Animatable>(velocity: T, stiffness: f32) -> T {
+    velocity.scale(stiffness.sqrt().recip())
 }
 
 #[derive(Debug)]
 pub(super) struct SpringStep<T: Animatable> {
-    pub(super) current: T,
+    pub(super) offset: T,
     pub(super) velocity: T,
     pub(super) settled: bool,
 }
@@ -150,42 +158,37 @@ fn decay_rate(stiffness: f32, damping: f32) -> f64 {
     }
 }
 
-/// Whether a spring both arrives and stops asking for frames.
-///
-/// Two policies, one decay rate. The rate itself has to clear
-/// [`MIN_DECAY_RATE`], or the motion never visibly ends. It also has to
-/// pay for the stiffness: [`within_settle_eps`] wants position *and*
-/// velocity under their floors, and a spring's velocity amplitude is
-/// `√stiffness` times its position amplitude, so a stiff spring reaches
-/// [`POS_EPS`] a long time before [`VEL_EPS`]. That gap is
-/// `ln(√stiffness · POS_EPS/VEL_EPS) / decay` seconds of repainting a
-/// motion nobody can see, and [`MAX_VELOCITY_TAIL_SECS`] is what it may
-/// come to.
+/// Whether a spring arrives: its slowest mode has to decay at
+/// [`MIN_DECAY_RATE`] or faster, or the motion never visibly ends.
 ///
 /// **Not a stability bound.** The step is exact at any parameters and
-/// any `dt`, so nothing here is about the arithmetic surviving. This is
-/// the same question [`MIN_DECAY_RATE`] asks — does the animation end —
-/// on the axis a decay rate alone cannot see.
+/// any `dt`, so nothing here is about the arithmetic surviving. And no
+/// stiffness is too stiff to settle: [`within_settle_eps`] holds the
+/// energy bound under the tolerance, which falls at the decay rate
+/// whatever the stiffness, so there is no velocity floor for a stiff
+/// spring to sit above after its motion stopped being visible.
 pub(super) fn params_are_valid(stiffness: f32, damping: f32) -> bool {
-    if !(stiffness.is_finite() && stiffness > 0.0 && damping.is_finite() && damping > 0.0) {
-        return false;
-    }
-    let decay = decay_rate(stiffness, damping);
-    if decay < MIN_DECAY_RATE {
-        return false;
-    }
-    // How far above `VEL_EPS` the spring still sits when it first
-    // reaches `POS_EPS`, and how long its own decay takes to close that.
-    let velocity_overshoot = f64::from(stiffness).sqrt() * f64::from(POS_EPS / VEL_EPS);
-    velocity_overshoot.ln().max(0.0) / decay <= MAX_VELOCITY_TAIL_SECS
+    stiffness.is_finite()
+        && stiffness > 0.0
+        && damping.is_finite()
+        && damping > 0.0
+        && decay_rate(stiffness, damping) >= MIN_DECAY_RATE
 }
 
+/// One step of `dt` from `(offset, velocity)`, where `offset` is the
+/// position measured from the target.
+///
+/// Stepped in offset space, where the small numbers keep their
+/// precision: the caller paints `target + offset`, rounded once on the
+/// way out and never fed back, so an increment under half an ulp of the
+/// value still moves the offset, and the decay reaches the settle
+/// tolerance however large the value is. A settled step is at rest, with
+/// a zero offset and velocity.
 pub(super) fn step<T: Animatable>(
     stiffness: f32,
     damping: f32,
-    current: T,
+    offset: T,
     velocity: T,
-    target: T,
     dt: f32,
 ) -> SpringStep<T> {
     debug_assert!(dt.is_finite() && (0.0..=MAX_ANIM_DT).contains(&dt));
@@ -194,50 +197,22 @@ pub(super) fn step<T: Animatable>(
     // `Background` only `Copy` when their fields actually are. For the
     // common scalar/vector animations these clones compile to noops;
     // for the few wide types they're explicit by design.
-    let before = current.clone();
-    let displacement = current.sub(target.clone());
-    let displacement_before = displacement.clone();
-    let moved = displacement
+    let moved = offset
         .clone()
         .scale(transition.pos_from_pos)
         .add(velocity.clone().scale(transition.pos_from_vel));
-    // Spring arithmetic carries an `#[animate(snap)]` field through
-    // `self`, so the left operand decides where one comes from: the old
-    // velocity here, and `target` below. A chain rooted at `current`
-    // would ride the first-touch value frame after frame and only catch
-    // up on settle.
     let velocity = velocity
         .scale(transition.vel_from_vel)
-        .add(displacement.scale(transition.vel_from_pos));
-    if within_settle_eps(moved.clone(), velocity.clone()) {
+        .add(offset.scale(transition.vel_from_pos));
+    if within_settle_eps(moved.clone(), velocity.clone(), stiffness) {
         return SpringStep {
-            current: target,
-            velocity: T::zero(),
-            settled: true,
-        };
-    }
-    // How far this step meant to move, in displacement space, where the
-    // small numbers keep their precision.
-    let progress = moved.clone().sub(displacement_before).magnitude_squared();
-    // `moved` *is* the new displacement, so adding it to `target` also
-    // spares the round trip back through a subtraction.
-    let next = target.clone().add(moved);
-    // A step that meant to move but left `current` where it was, with the
-    // velocity spent, is a value f32 cannot bring any closer at its
-    // magnitude: near 400 px a step of f32 is 3e-5, and the decay over one
-    // 1/240 s substep is 5 %, so progress stops about 3e-4 short — above
-    // `POS_EPS`. No later step of that length could move it either, so it
-    // settles here. A step with no time to move (`dt = 0`) means nothing
-    // to move, and is not a stall.
-    if progress > 0.0 && next == before && velocity.clone().magnitude_squared() < VEL_EPS_SQ {
-        return SpringStep {
-            current: target,
+            offset: T::zero(),
             velocity: T::zero(),
             settled: true,
         };
     }
     SpringStep {
-        current: next,
+        offset: moved,
         velocity,
         settled: false,
     }

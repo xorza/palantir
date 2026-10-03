@@ -69,18 +69,19 @@ pub(super) fn setup_anim_ui(salt: &'static str) -> AnimUi {
 }
 
 /// The first step at which a spring released from rest `distance` from
-/// its target is inside both settle floors — from the closed form in
-/// `f64`, independent of the integrator. Step `n` lasts `dt_of(n)`.
+/// its target is inside its settle bound — from the closed form in `f64`,
+/// independent of the integrator. Step `n` lasts `dt_of(n)`.
 ///
 /// Released from rest, `x(t) = e^(-h·t)(C + h·S)` and
 /// `v(t) = -k·e^(-h·t)·S` per unit distance, with `h = c/2` and `(C, S)`
 /// the pair `SpringTransition` names: `cos`/`sin` over `ω` below critical
-/// damping, `1`/`t` at it, `cosh`/`sinh` over `ψ` above it. The floors are
-/// `POS_EPS = 1e-4` and `VEL_EPS = 0.1`.
+/// damping, `1`/`t` at it, `cosh`/`sinh` over `ψ` above it. The bound is
+/// the energy one, `x² + v²/k < eps²`, with `eps` the type's tolerance.
 pub(super) fn closed_form_settle_step(
     stiffness: f64,
     damping: f64,
     distance: f64,
+    eps: f64,
     dt_of: impl Fn(u32) -> f32,
 ) -> u32 {
     let h = damping / 2.0;
@@ -105,7 +106,7 @@ pub(super) fn closed_form_settle_step(
             let decay = (-h * t).exp();
             let x = distance * decay * (c + h * s);
             let v = distance * stiffness * decay * s;
-            x.abs() < 1e-4 && v.abs() < 0.1
+            x * x + v * v / stiffness < eps * eps
         })
         .unwrap()
 }

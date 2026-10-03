@@ -40,13 +40,15 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         (1.0, f32::INFINITY),
         (1.0, 1.0),
         (1.0, 100.0),
-        (f32::MAX, 2.0),
     ] {
         panic_probe::assert_panics_with(SPRING_ERROR, || AnimSpec::spring(stiffness, damping));
     }
 
     assert!(!AnimSpec::spring(1.0, 2.0).is_instant());
     assert!(!AnimSpec::spring(1_000_000.0, 100.0).is_instant());
+    // No stiffness is too stiff: the settle bound has no velocity floor
+    // for a stiff spring to linger above.
+    assert!(!AnimSpec::spring(f32::MAX, 2.0).is_instant());
 }
 
 #[test]
@@ -65,6 +67,7 @@ fn anim_spec_serde_validates_and_roundtrips() {
         AnimSpec::duration(0.4, Easing::OutBack),
         AnimSpec::spring(100.0, 15.0),
         AnimSpec::spring(1_000_000.0, 100.0),
+        AnimSpec::spring(f32::MAX, 2.0),
     ];
     for spec in cases {
         let h = Holder { spec };
@@ -102,11 +105,6 @@ fn anim_spec_serde_validates_and_roundtrips() {
         (
             "slow spring",
             r#"(spec: (kind: "spring", stiffness: 1.0, damping: 100.0))"#,
-            SPRING_ERROR,
-        ),
-        (
-            "long velocity tail",
-            r#"(spec: (kind: "spring", stiffness: 3.4028235e38, damping: 2.0))"#,
             SPRING_ERROR,
         ),
     ];
