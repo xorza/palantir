@@ -31,7 +31,7 @@ use glam::Vec2;
 ///
 /// Exact per texel. The field builds a CPU texture and refreshes it in place
 /// whenever the hue or the model moves, at a resolution
-/// [`downsample`](Self::downsample) below the display's, which the sampler
+/// [`texel_size`](Self::texel_size) below the display's, which the sampler
 /// then smooths back out. A gradient stack cannot draw this — it interpolates
 /// in linear light, which is neither model's geometry — and a vertex-coloured
 /// mesh pays eight *linear* bits, which crushes the darks.
@@ -43,7 +43,7 @@ use glam::Vec2;
 pub struct ColorField<'a> {
     widget: Widget,
     coords: &'a mut ColorCoords,
-    downsample: u32,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -81,19 +81,20 @@ impl<'a> ColorField<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             coords,
-            downsample: color_surface::DOWNSAMPLE,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
 
-    /// How far below the display's resolution the texture is built, as a
-    /// power of two. Default 4.
+    /// The edge of one texture texel, in physical pixels: how far below the
+    /// display's resolution the texture is built, as a power of two.
+    /// Default 4.
     ///
     /// Worst error against the exact colour, in 8-bit sRGB units, over a
     /// 208 × 160 field at display scale 1.5 and twelve hues — measured by
-    /// `tests::downsample_four_tracks_the_exact_colour`:
+    /// `tests::texel_size_four_tracks_the_exact_colour`:
     ///
-    /// | divisor | Okhsv | HSV | texels to convert |
+    /// | texel size | Okhsv | HSV | texels to convert |
     /// |---|---|---|---|
     /// | 1 | 0 | 0 | 74 880 |
     /// | 2 | 4 | 1 | 18 720 |
@@ -109,8 +110,8 @@ impl<'a> ColorField<'a> {
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = color_surface::checked_downsample(n);
+    pub fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = color_surface::checked_texel_size(n);
         self
     }
 
@@ -149,7 +150,7 @@ impl<'a> ColorField<'a> {
         changed |= keyed;
         let committed = !response.disabled && (response.left.released() || keyed);
 
-        let texels = color_surface::texel_size(size, self.downsample, ui);
+        let texels = color_surface::texture_size(size, self.texel_size, ui);
         let model = coords.model();
         let hue = coords.hue();
         let marker = Vec2::new(coords.sat() * size.w, (1.0 - coords.val()) * size.h);

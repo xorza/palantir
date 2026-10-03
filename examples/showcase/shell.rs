@@ -32,7 +32,7 @@ pub(crate) const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 /// is, so both the F8 shortcut and the `state` page's button ask it here
 /// rather than each tracking a bool of its own.
 pub(crate) fn toggle_inspector(ui: &mut Ui) {
-    if ui.window_open(INSPECTOR_WINDOW) {
+    if ui.is_window_open(INSPECTOR_WINDOW) {
         ui.close_window(INSPECTOR_WINDOW);
     } else {
         ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));

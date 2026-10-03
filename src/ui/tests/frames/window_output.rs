@@ -55,12 +55,12 @@ fn window_requests_queue_and_survive_the_frame() {
     assert!(h.ui.window_requests.commands.opens.is_empty());
     assert!(h.ui.window_requests.commands.closes.is_empty());
 
-    // `window_open` polls the host-refreshed live set (here set directly,
+    // `is_window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
-    assert!(!h.ui.window_open(open), "empty live set ⇒ nothing open");
+    assert!(!h.ui.is_window_open(open), "empty live set ⇒ nothing open");
     h.ui.window_directory().add(open);
-    assert!(h.ui.window_open(open));
-    assert!(!h.ui.window_open(close), "only `open` is live");
+    assert!(h.ui.is_window_open(open));
+    assert!(!h.ui.is_window_open(close), "only `open` is live");
 
     // The placement travels whole, so what the app persists is what a
     // `WindowConfig` takes back — no field-by-field translation between

@@ -18,7 +18,6 @@ pub(crate) mod oklab;
 pub(crate) mod rgba_f16;
 mod srgb_transfer;
 
-use crate::animation::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -62,6 +61,13 @@ use std::str;
 /// Writing an sRGB-encoded value straight into the fields skips the
 /// linearisation and will render too bright. Components may exceed `1.0`
 /// for HDR-shaped tween outputs. Hashing is approximate (`1e-4`).
+///
+/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends two colours
+/// per channel, unclamped. Storage is linear and straight-alpha, so a
+/// straight component blend is the correct one, and **alpha travels with the
+/// colour**: a caller that wants to keep its own opacity follows up with
+/// [`Self::with_alpha`]. [`Interp::Oklab`](crate::Interp) blends in a
+/// perceptual space instead, for gradients.
 #[must_use]
 pub struct RgbaF32 {
     /// Red, linear, nominally 0..1.
@@ -219,23 +225,6 @@ impl RgbaF32 {
             b: self.b * tint.b,
             a: self.a * tint.a,
         }
-    }
-
-    /// Per-channel linear interpolation toward `other`: `t = 0` is `self`,
-    /// `t = 1` is `other`. Storage is linear / straight-alpha (see the
-    /// [`RgbaF32`] docs), so a straight component blend is the correct one —
-    /// no gamma round-trip, no de-premultiply.
-    ///
-    /// **Alpha travels with the color.** A caller that wants to shift only the
-    /// hue and keep its own opacity — a resting tint pulled toward the
-    /// background, say, where a separate rule already owns alpha — follows up
-    /// with [`Self::with_alpha`].
-    ///
-    /// `t` is not clamped, so overshooting past either end is available on
-    /// purpose. Blending in a perceptual space instead is what
-    /// [`Interp::Oklab`](crate::Interp) does for gradients.
-    pub fn lerp(self, other: Self, t: f32) -> Self {
-        <Self as Animatable>::lerp(self, other, t)
     }
 
     /// Decode sRGB-encoded bytes. Alpha is not gamma-encoded — straight

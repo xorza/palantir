@@ -92,7 +92,7 @@ impl Background {
     /// chrome's padding, so children sit inside the border without the
     /// caller adding it by hand. The widgets that need the same inner
     /// rect before the tree has it — `TextEdit` for its glyph and caret
-    /// coordinates, `TextEditTheme::corner_centring` for a `DragValue`'s
+    /// coordinates, `TextEditTheme::corner_centering` for a `DragValue`'s
     /// in-place edit — read it here rather than each writing the gate
     /// out.
     ///

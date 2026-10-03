@@ -110,7 +110,7 @@ resolution setter (`downsample(n)` today, `texel_size(n)` after A28). Both take
 that half of the REVIEW finding is closed.
 
 **Recommendation.** Add `swatches` and `texel_size` to `ColorButton` with `ColorPicker`'s
-signatures, after A28.
+signatures.
 
 ## A16. A checked render target
 
@@ -279,36 +279,6 @@ once, so `RadioButton`, `ComboBox`, `Checkbox` and `Switch` set `committed == ch
 
 **Touches.** `Checkbox`, `Switch`, `RadioButton`, `ComboBox`, `Expander`, `SelectResponse`, prelude.
 
-## A28. `downsample` means two things
-
-**Findings.** `ImageShape::downsample(ImageDownsample)` picks a minification filter.
-`ColorField`, `ColorStrip` and `ColorPicker::downsample(n: u32)` set a power-of-two divisor for the
-resolution a texture is built at. One name, two unrelated settings.
-
-**Recommendation.** Rename the colour widgets' setter to `texel_size(n)`, the name their surface
-already uses internally (`ColorSurface::texel_size`). `ImageShape::downsample` keeps its name.
-
-## A29. One vocabulary for a split
-
-**Findings.** `Separator::horizontal()` is a horizontal *line*. `Splitter::horizontal(ratio)` is
-side-by-side panes with a *vertical* bar, so the same word names opposite orientations on two
-neighbouring widgets. The dock already says it without ambiguity: `SplitDir::{Row, Column}` and
-`AllowedSplits::{Row, Column}`.
-
-**Recommendation.** `Splitter::row(&mut ratio)` and `Splitter::column(&mut ratio)`, matching
-`SplitDir`. `Separator` keeps `horizontal` / `vertical` (it names the line, as other toolkits do),
-and so does `Scroll` (it names the scroll direction).
-
-## A30. Text setter names that disagree with `TextStyle`
-
-**Findings.** `Text::line_height(mult)` and `TextEdit::line_height(mult)` take a multiplier, but
-the name reads as pixels; the field is `TextStyle::line_height_mult` and its chainer
-`with_line_height_mult`. `Text`, `TextEdit` and `TextShape` have `family(..)`, while `TextStyle` and
-`TextStyleOverrides` have every other axis as `with_*` but no `with_family`.
-
-**Recommendation.** Rename the two widget setters to `line_height_mult`. Add `with_family` to
-`TextStyle` and `TextStyleOverrides`.
-
 ## A31. Text arguments take one type
 
 **Findings.** Every widget label and caption takes `impl Into<TextInput<'a>>`, so a caller passes
@@ -412,13 +382,6 @@ pointer needs is the one that has to be spelled long.
 **Recommendation.** Add `Popup::at_point(point)`, so the shorthand covers every `Anchor`
 constructor.
 
-## A42. `Ui::window_open` reads as an action
-
-**Findings.** `Ui::window_open(token)` is a query, but it sits beside `open_window` and
-`close_window`, which are actions, and reads like one of them.
-
-**Recommendation.** `is_window_open(token)`.
-
 ## A43. One way to configure the windowed host
 
 **Findings.** `WinitHostBuilder` has a setter per setting, a `config(WinitHostConfig)` that takes
@@ -435,27 +398,6 @@ configure the same way. Keep `title` as the documented shorthand for the bootstr
 
 **Recommendation.** All four private, with `with_modifier(m)` and `with_pivot(p)` after `new`,
 as A47's rule names chainers on a value.
-
-## A45. One name for "a repaint is owed"
-
-**Findings.** `InputDelta::requests_repaint` and `FrameReport::repaint_requested` carry the same
-fact with two word orders.
-
-**Recommendation.** `InputDelta::repaint_requested`.
-
-## A46. Identifier spelling and twin names
-
-**Findings.**
-
-- `TextEditTheme::corner_centring` is the one British spelling among identifiers; everything else
-  is `center` and `color`.
-- `WidgetId::auto_stable()` and `Configure::auto_id()` name the same call-site identity two ways.
-- `RgbaF32::lerp(self, other, t)` duplicates `Animatable::lerp(a, b, t)` with a different shape.
-- A single-value newtype unwraps through `get()` (`UserScale`, `ZoomFactor`, as `NonZeroU32` and
-  `Cell` do), except `FontWeight::value()`.
-
-**Recommendation.** `corner_centering`; `WidgetId::auto()`; remove the inherent `RgbaF32::lerp`;
-`FontWeight::get()`.
 
 ## A47. Chainer names on value types
 
@@ -696,9 +638,7 @@ All seven are decided. Each item named here carries its decision in its own text
 
 Each line is one commit; none depends on another inside the phase.
 
-1. **Names.** A28 (`texel_size`), A29 (`Splitter::row` / `column`), A30 (`line_height_mult`,
-   `with_family`), A42 (`is_window_open`), A45 (`repaint_requested`), A46 (`corner_centering`,
-   `WidgetId::auto`, `FontWeight::get`, no inherent `RgbaF32::lerp`).
+1. Done: names (A28, A29, A30, A42, A45, A46).
 2. **Chainers** (A47, A44): the `with_*` renames on values, `GradientBuilder::{spread, interp}`,
    and `ZoomConfig` with private fields.
 3. **Removals.** A8 (`WinitHostError::Gpu`), A13 (the five `pick` methods), A34 (`Sums`), A35

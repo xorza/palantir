@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `6f2d806d`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `dc90f337`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -500,7 +500,7 @@ enum             Drag
     const fn stopped(self)
     traits: Clone, Copy, Debug, Default, PartialEq, StructuralPartialEq
 struct           InputDelta
-    fields: requests_repaint
+    fields: repaint_requested
     traits: Clone, Copy, Debug, Default, Eq, PartialEq, StructuralPartialEq
 struct           PointerAction
     fields: id, button, edge
@@ -876,7 +876,6 @@ struct           RgbaF32
     const fn srgb(r, g, b)
     const fn srgba(r, g, b, a)
     const fn with_alpha(self, a)
-    fn lerp(self, other, t)
     const fn from_srgba(bytes)
     const fn hex(rgb)
     const fn hexa(rgba)
@@ -1007,7 +1006,7 @@ struct           TranslateScale
 struct           WidgetId
     fn from_hash(h)
     fn with(self, h)
-    fn auto_stable()
+    fn auto()
     traits: Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Pod, StructuralPartialEq, Zeroable
 struct           Stroke
     fields: color, width
@@ -1053,7 +1052,7 @@ struct           FontWeight
     assoc_const EXTRA_BOLD
     assoc_const BLACK
     const fn new(weight)
-    const fn value(self)
+    const fn get(self)
     traits: Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, StructuralPartialEq
 struct           TextShaper
     fn new()
@@ -1091,7 +1090,7 @@ struct           Ui
     fn window_geometry(self)
     fn debug_overlay(self)
     fn set_debug_overlay(self, overlay)
-    fn window_open(self, token)
+    fn is_window_open(self, token)
     fn add_shape(self, shape)
     fn load_icons(self, table)
     fn load_image(self, image)
@@ -1217,7 +1216,7 @@ struct           ColorButton
     traits: Configure, Debug
 struct           ColorField
     fn new(coords)
-    fn downsample(self, n)
+    fn texel_size(self, n)
     fn style(self, s)
     fn show(self, ui)
     traits: Configure, Debug
@@ -1227,14 +1226,14 @@ struct           ColorPicker
     const fn model(self, model)
     const fn history(self, on)
     const fn swatches(self, colors)
-    fn downsample(self, n)
+    fn texel_size(self, n)
     fn style(self, s)
     fn show(self, ui)
     traits: Configure, Debug
 struct           ColorStrip
     fn for_hue(coords)
     fn for_alpha(color)
-    fn downsample(self, n)
+    fn texel_size(self, n)
     fn style(self, s)
     fn show(self, ui)
     traits: Configure, Debug
@@ -1493,8 +1492,8 @@ struct           Spinner
     fn show(self, ui)
     traits: Configure, Debug
 struct           Splitter
-    fn horizontal(ratio)
-    fn vertical(ratio)
+    fn row(ratio)
+    fn column(ratio)
     const fn min_pane(self, px)
     fn style(self, s)
     fn show(self, ui, body)
@@ -1554,7 +1553,7 @@ struct           Text
     fn style(self, s)
     const fn color(self, color)
     const fn font_size(self, px)
-    const fn line_height(self, mult)
+    const fn line_height_mult(self, mult)
     const fn family(self, family)
     const fn weight(self, weight)
     const fn slant(self, slant)
@@ -1569,7 +1568,7 @@ struct           TextEdit
     fn style(self, s)
     const fn color(self, color)
     const fn font_size(self, px)
-    const fn line_height(self, mult)
+    const fn line_height_mult(self, mult)
     const fn family(self, family)
     const fn weight(self, weight)
     const fn slant(self, slant)
@@ -1675,7 +1674,7 @@ struct           TabsTheme
 struct           TextEditTheme
     fields: looks, placeholder, caret, caret_width, selection, defaults
     const fn pick(self, state)
-    fn corner_centring(self, text, at)
+    fn corner_centering(self, text, at)
     fn from_palette(p)
     traits: Clone, Debug, Default, Deserialize, Serialize, ThemeSlot
 struct           TextStyle
@@ -1685,6 +1684,7 @@ struct           TextStyle
     const fn with_font_size(self, px)
     const fn with_color(self, c)
     const fn with_line_height_mult(self, mult)
+    const fn with_family(self, family)
     const fn with_weight(self, weight)
     const fn with_slant(self, slant)
     const fn bold(self)
@@ -1697,6 +1697,7 @@ struct           TextStyleOverrides
     const fn with_font_size(self, px)
     const fn with_color(self, c)
     const fn with_line_height_mult(self, mult)
+    const fn with_family(self, family)
     const fn with_weight(self, weight)
     const fn with_slant(self, slant)
     traits: Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, StructuralPartialEq

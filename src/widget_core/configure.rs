@@ -57,7 +57,7 @@ impl ConfigureWidget<'_> {
     #[track_caller]
     #[inline]
     pub fn auto_id(&mut self) -> &mut Self {
-        self.widget.ident = Ident::Auto(WidgetId::auto_stable());
+        self.widget.ident = Ident::Auto(WidgetId::auto());
         self
     }
 

@@ -1,4 +1,4 @@
-//! `InputDelta::requests_repaint` gating: pointer moves over inert
+//! `InputDelta::repaint_requested` gating: pointer moves over inert
 //! surfaces leave it false so the host can skip a frame entirely.
 
 use crate::Ui;
@@ -46,7 +46,7 @@ fn move_over_inert_surface_does_not_request_repaint() {
     h.move_to(Vec2::new(200.0, 200.0));
     let delta = h.move_to(Vec2::new(250.0, 220.0));
     assert!(
-        !delta.requests_repaint,
+        !delta.repaint_requested,
         "move over empty surface: no repaint"
     );
 }
@@ -57,35 +57,35 @@ fn move_within_same_hovered_widget_does_not_request_repaint() {
     h.frame(build_hover_target);
     // First move: empty → over target. Repaint expected.
     let enter = h.move_to(Vec2::new(20.0, 20.0));
-    assert!(enter.requests_repaint, "enter hover target → repaint");
+    assert!(enter.repaint_requested, "enter hover target → repaint");
     // Second move: still over target. No hover change.
     let inside = h.move_to(Vec2::new(50.0, 50.0));
     assert!(
-        !inside.requests_repaint,
+        !inside.repaint_requested,
         "move inside same hover target: no repaint",
     );
 }
 
 #[test]
-fn move_from_inert_into_hover_target_requests_repaint() {
+fn move_from_inert_into_hover_target_repaint_requested() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     h.move_to(Vec2::new(300.0, 300.0));
     let delta = h.move_to(Vec2::new(20.0, 20.0));
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 }
 
 #[test]
-fn move_between_two_hover_targets_requests_repaint() {
+fn move_between_two_hover_targets_repaint_requested() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(build_two_hover_targets);
     h.move_to(Vec2::new(20.0, 20.0));
     let delta = h.move_to(Vec2::new(150.0, 20.0));
-    assert!(delta.requests_repaint, "hovered widget changed → repaint");
+    assert!(delta.repaint_requested, "hovered widget changed → repaint");
 }
 
 #[test]
-fn move_during_active_capture_requests_repaint() {
+fn move_during_active_capture_repaint_requested() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -100,18 +100,18 @@ fn move_during_active_capture_requests_repaint() {
     // No hover change — but `active.is_some()` so widget reads drag_delta.
     let delta = h.move_to(Vec2::new(51.0, 51.0));
     assert!(
-        delta.requests_repaint,
+        delta.repaint_requested,
         "move while capture is active → repaint (drag widgets consume delta)",
     );
 }
 
 #[test]
-fn pointer_left_after_hover_requests_repaint() {
+fn pointer_left_after_hover_repaint_requested() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     h.move_to(Vec2::new(50.0, 50.0));
     let delta = h.pointer_left();
-    assert!(delta.requests_repaint, "leave while hovered → repaint");
+    assert!(delta.repaint_requested, "leave while hovered → repaint");
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
     h.frame(build_hover_target);
     // Never moved over the target, never captured → leaving is a no-op.
     let delta = h.pointer_left();
-    assert!(!delta.requests_repaint);
+    assert!(!delta.repaint_requested);
 }
 
 /// `ModifiersChanged` wakes only with a `KeyboardWake::MODIFIER`
@@ -136,7 +136,7 @@ fn modifiers_wake_only_for_a_watcher() {
     // No focus, no watch → no wake.
     assert!(
         !h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
-            .requests_repaint,
+            .repaint_requested,
     );
 
     // Focus alone still does not.
@@ -146,7 +146,7 @@ fn modifiers_wake_only_for_a_watcher() {
             shift: true,
             ..Modifiers::NONE
         }))
-        .requests_repaint,
+        .repaint_requested,
     );
     h.clear_focus();
 
@@ -157,7 +157,7 @@ fn modifiers_wake_only_for_a_watcher() {
     });
     assert!(
         h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
-            .requests_repaint,
+            .repaint_requested,
     );
 }
 
@@ -174,7 +174,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
 
     // No focus, no chord sub → no wake.
     let delta = h.key(Key::Enter);
-    assert!(!delta.requests_repaint, "idle key must skip the frame");
+    assert!(!delta.repaint_requested, "idle key must skip the frame");
     assert!(
         !h.ui.input_mut().take_action_flag(),
         "unrouted key must not schedule a settling pass",
@@ -183,7 +183,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     // With focus held → wake.
     h.set_focus(forged_focus());
     let delta = h.key(Key::Enter);
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 
     // No focus, but chord watcher → wake. Watches are
     // cleared pre-record, so re-record with the sub re-asserted.
@@ -195,7 +195,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
         let _ = PointerWake::BUTTONS;
     });
     let delta = h.key(Key::Escape);
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 }
 
 /// Press + release on an inert surface with no focus and no popup is
@@ -209,11 +209,11 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
     // Pointer at (200, 200): well outside the 100×100 hover target.
     h.move_to(Vec2::new(200.0, 200.0));
     assert!(
-        !h.press().requests_repaint,
+        !h.press().repaint_requested,
         "press on inert surface, no focus → no repaint",
     );
     assert!(
-        !h.release().requests_repaint,
+        !h.release().repaint_requested,
         "stray release (no capture) → no repaint",
     );
     assert!(
@@ -228,7 +228,7 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
 /// press must request repaint even though it didn't hit anything
 /// clickable.
 #[test]
-fn press_on_inert_clears_focus_and_requests_repaint() {
+fn press_on_inert_clears_focus_and_repaint_requested() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Forge a focused widget — emulating a prior TextEdit interaction.
@@ -236,7 +236,7 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
     h.move_to(Vec2::new(200.0, 200.0));
     let delta = h.press();
     assert!(
-        delta.requests_repaint,
+        delta.repaint_requested,
         "press on inert with prior focus → focus clear → repaint",
     );
     assert_eq!(h.focused_id(), None, "focus must be cleared");
@@ -257,12 +257,12 @@ fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
     h.frame(build_hover_target);
 
     let modifier = h.key(Key::Other);
-    assert!(!modifier.requests_repaint, "a bare modifier wakes nothing");
+    assert!(!modifier.repaint_requested, "a bare modifier wakes nothing");
     assert!(!h.ui.input_mut().take_action_flag(), "and settles nothing");
 
     let typed = h.key(Key::Char('c'));
     assert!(
-        typed.requests_repaint,
+        typed.repaint_requested,
         "control: a typed key reaches the focus"
     );
     assert!(h.ui.input_mut().take_action_flag(), "and settles");

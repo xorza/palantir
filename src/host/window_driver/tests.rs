@@ -459,7 +459,7 @@ mod lifecycle_tests {
     ///
     /// Both halves matter. A registration made when the builder is created
     /// would leave a token live for the rest of the session whenever a
-    /// builder is dropped unbuilt, with `Ui::window_open` answering true
+    /// builder is dropped unbuilt, with `Ui::is_window_open` answering true
     /// for a window that never opened. A retirement left to the host would
     /// have to be remembered on two different close paths.
     #[test]

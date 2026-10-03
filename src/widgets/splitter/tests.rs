@@ -25,7 +25,7 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
-/// One frame: a 401×100 horizontal splitter at the surface origin.
+/// One frame: a 401×100 row splitter at the surface origin.
 /// Default theme reserves the 1 px rule, so the free span is 400 —
 /// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
 /// straddling it. Tests run two warm-up frames before interacting so
@@ -44,7 +44,7 @@ const CHANGED: ValueEdges = ValueEdges {
 
 fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Passes<ValueEdges> {
     h.frame_passes(|ui| {
-        Splitter::horizontal(ratio)
+        Splitter::row(ratio)
             .id(split_id())
             .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
             .min_pane(50.0)
@@ -168,7 +168,7 @@ fn divider_drag_is_scale_invariant() {
                     .transform(TranslateScale::from_scale(scale))
                     .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                     .show(ui, |ui| {
-                        Splitter::horizontal(ratio)
+                        Splitter::row(ratio)
                             .id(split_id())
                             .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                             .min_pane(50.0)
@@ -212,7 +212,7 @@ fn divider_drag_is_scale_invariant() {
 
 #[test]
 fn divider_and_pane_stop_together_when_content_is_rigid() {
-    for (horizontal, rigid_half, expected_ratio) in [
+    for (row, rigid_half, expected_ratio) in [
         (true, SplitHalf::First, 0.45),
         (true, SplitHalf::Second, 0.55),
         (false, SplitHalf::First, 0.45),
@@ -222,14 +222,14 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let mut ratio = 0.5;
         let frame = |h: &mut UiHarness, ratio: &mut f32| {
             h.frame(|ui| {
-                let splitter = if horizontal {
-                    Splitter::horizontal(ratio)
+                let splitter = if row {
+                    Splitter::row(ratio)
                 } else {
-                    Splitter::vertical(ratio)
+                    Splitter::column(ratio)
                 };
                 splitter
                     .id(split_id())
-                    .size(if horizontal {
+                    .size(if row {
                         (Sizing::fixed(401.0), Sizing::fixed(100.0))
                     } else {
                         (Sizing::fixed(100.0), Sizing::fixed(401.0))
@@ -239,7 +239,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                         if half == rigid_half {
                             Block::new()
                                 .id(split_id().with("rigid"))
-                                .size(if horizontal {
+                                .size(if row {
                                     (Sizing::fixed(180.0), Sizing::FILL)
                                 } else {
                                     (Sizing::FILL, Sizing::fixed(180.0))
@@ -253,13 +253,13 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        h.press_at(if horizontal {
+        h.press_at(if row {
             Vec2::new(200.5, 50.0)
         } else {
             Vec2::new(50.0, 200.5)
         });
         let activation_main = 210.5;
-        h.move_to(if horizontal {
+        h.move_to(if row {
             Vec2::new(activation_main, 50.0)
         } else {
             Vec2::new(50.0, activation_main)
@@ -271,7 +271,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             500.0
         };
-        h.move_to(if horizontal {
+        h.move_to(if row {
             Vec2::new(pointer_main, 50.0)
         } else {
             Vec2::new(50.0, pointer_main)
@@ -292,7 +292,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         }));
         let shrinking_rect = h.ui.arranged_rect(Layer::Main, shrinking);
         assert_eq!(
-            if horizontal {
+            if row {
                 shrinking_rect.size.w
             } else {
                 shrinking_rect.size.h
@@ -302,7 +302,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         );
         let rigid_rect = h.arranged(split_id().with("rigid"));
         assert_eq!(
-            if horizontal {
+            if row {
                 rigid_rect.size.w
             } else {
                 rigid_rect.size.h
@@ -314,12 +314,12 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let divider_rect = h
             .rect(split_id().with("divider"))
             .expect("divider arranged");
-        let divider_center = if horizontal {
+        let divider_center = if row {
             divider_rect.center().x
         } else {
             divider_rect.center().y
         };
-        let first_edge = if horizontal {
+        let first_edge = if row {
             first_rect.max().x
         } else {
             first_rect.max().y
@@ -335,7 +335,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             501.0
         };
-        h.move_to(if horizontal {
+        h.move_to(if row {
             Vec2::new(next_pointer, 50.0)
         } else {
             Vec2::new(50.0, next_pointer)
@@ -397,7 +397,7 @@ fn divider_requests_the_resize_cursor() {
     let mut ratio = 0.5;
     let frame = |h: &mut UiHarness, ratio: &mut f32| {
         h.frame(|ui| {
-            Splitter::vertical(ratio)
+            Splitter::column(ratio)
                 .id(split_id())
                 .size((Sizing::fixed(100.0), Sizing::fixed(201.0)))
                 .show(ui, |_, _| {});
@@ -424,7 +424,7 @@ fn divider_requests_the_resize_cursor() {
                     rule_thickness,
                     ..SplitterTheme::default()
                 };
-                Splitter::horizontal(ratio)
+                Splitter::row(ratio)
                     .id(split_id())
                     .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                     .style(&style)
@@ -488,7 +488,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         let mut h = UiHarness::new(SURFACE);
         let mut ratio = ratio;
         h.frame(|ui| {
-            Splitter::horizontal(&mut ratio)
+            Splitter::row(&mut ratio)
                 .id(split_id())
                 .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                 .show(ui, |_, _| {});

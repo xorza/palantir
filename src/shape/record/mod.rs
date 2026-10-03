@@ -280,7 +280,7 @@ impl ShapeRecord {
         // each, so the set needs a `u64`. Two runs that differ only in
         // weight, style or family must not collide here.
         let face = (u64::from(font.family.raw()) << 40)
-            | (u64::from(font.weight.value()) << 24)
+            | (u64::from(font.weight.get()) << 24)
             | ((font.slant as u64) << 16)
             | (u64::from(align.raw()) << 8)
             | (*wrap as u64);

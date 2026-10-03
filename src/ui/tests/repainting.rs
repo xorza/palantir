@@ -505,19 +505,19 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
 /// At an anim-only wake boundary, the classifier picks `PaintOnly`.
 /// Under `InputPolicy::OnDelta` (default) an inert pointer move
-/// since the last frame doesn't disqualify it — `requests_repaint`
+/// since the last frame doesn't disqualify it — `repaint_requested`
 /// stayed `false`. Under `InputPolicy::Always` the same input
 /// upgrades the frame to `SingleLayout`.
 ///
 /// Action input (click / key / IME) is unconditionally upgraded
 /// under both policies because `on_input` returns
-/// `requests_repaint = true` for them — exercised in the second
+/// `repaint_requested = true` for them — exercised in the second
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
     // Body declares an inert Frame *and* an anim shape so the next
     // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
-    // entry, so OnDelta sees `requests_repaint = false`.
+    // entry, so OnDelta sees `repaint_requested = false`.
     fn body(ui: &mut Ui, half: Duration) {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))

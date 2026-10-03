@@ -405,7 +405,7 @@ where
             platform: PLATFORM,
         };
         let trace = input::translate(&event, at, |ev| {
-            wants_repaint |= win.on_input(ev).requests_repaint;
+            wants_repaint |= win.on_input(ev).repaint_requested;
         });
         win.note_pointer(trace, scale);
         if wants_repaint {

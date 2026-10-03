@@ -27,7 +27,7 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn split_panes(ui: &mut Ui, s: &mut State) {
-    Splitter::horizontal(&mut s.h)
+    Splitter::row(&mut s.h)
         .id_salt("split-h")
         .min_pane(120.0)
         .show(ui, |ui, half| match half {
@@ -43,7 +43,7 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
                     });
             }),
             SplitHalf::Second => {
-                Splitter::vertical(&mut s.v)
+                Splitter::column(&mut s.v)
                     .id_salt("split-v")
                     .min_pane(100.0)
                     .show(ui, |ui, half| match half {

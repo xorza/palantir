@@ -54,7 +54,7 @@ pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {
                  source of truth, so there is no stale bool to track. F8 toggles \
                  it too.",
             );
-            let open = ui.window_open(shell::INSPECTOR_WINDOW);
+            let open = ui.is_window_open(shell::INSPECTOR_WINDOW);
             let label = if open {
                 "close inspector window"
             } else {

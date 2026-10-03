@@ -287,7 +287,7 @@ impl FaceBits {
     /// `1..=1000`, and the `const _` block below pins that inside
     /// [`WEIGHT_MASK`].
     const fn new(weight: FontWeight, slant: FontSlant, align: LineAlign, fit: LineFit) -> Self {
-        Self(weight.value() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit))
+        Self(weight.get() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit))
     }
 
     /// The two fields a committed width rewrites, as bits — the one place

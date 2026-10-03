@@ -227,8 +227,8 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 } = *split;
                 let mut live = ratio;
                 let splitter = match dir {
-                    SplitDir::Row => Splitter::horizontal(&mut live),
-                    SplitDir::Column => Splitter::vertical(&mut live),
+                    SplitDir::Row => Splitter::row(&mut live),
+                    SplitDir::Column => Splitter::column(&mut live),
                 };
                 let hit = splitter
                     .id(state.splitter_id(path))

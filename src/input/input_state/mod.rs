@@ -473,7 +473,7 @@ impl InputState {
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active
     /// capture, no hover/scroll target change) leaves
-    /// `requests_repaint` false so the frame can be skipped entirely.
+    /// `repaint_requested` false so the frame can be skipped entirely.
     ///
     /// `now` is when the event arrived, handed in by the host that read
     /// its own clock for it — see [`Ui::on_input`](crate::Ui::on_input).
@@ -502,7 +502,7 @@ impl InputState {
         if !self.queue.is_empty() || !self.queue.admits(&event) {
             self.queue.defer(event, now);
             return InputDelta {
-                requests_repaint: true,
+                repaint_requested: true,
             };
         }
         self.apply(event, cascade, now)
@@ -778,7 +778,7 @@ impl InputState {
         }
         self.frame_had_action |= outcome.settles;
         InputDelta {
-            requests_repaint: outcome.repaint,
+            repaint_requested: outcome.repaint,
         }
     }
 

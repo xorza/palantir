@@ -98,7 +98,7 @@ const fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -
         .family(Family::Name(name))
         // fontdb instantiates the `wght` axis at this value on a variable
         // face, and picks the nearest static face otherwise.
-        .weight(Weight(weight.value()));
+        .weight(Weight(weight.get()));
     match style {
         FontSlant::Normal => base,
         FontSlant::Italic => base.style(Style::Italic),

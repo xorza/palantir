@@ -190,7 +190,7 @@ impl<'a> TextEdit<'a> {
 
     /// Line height as a multiple of the font size, overriding the resolved
     /// look's `line_height_mult`. Sets the caret's height with it.
-    pub const fn line_height(mut self, mult: f32) -> Self {
+    pub const fn line_height_mult(mut self, mult: f32) -> Self {
         self.overrides.line_height_mult = Some(mult);
         self
     }

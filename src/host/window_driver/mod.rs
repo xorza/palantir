@@ -328,7 +328,7 @@ impl WindowDriverBuilder<'_> {
 ///
 /// Here rather than at whatever tore the window down, so the entry cannot
 /// outlive the driver: the two hosts close windows differently, and a
-/// close path that forgot the directory would leave `Ui::window_open`
+/// close path that forgot the directory would leave `Ui::is_window_open`
 /// answering true for a window that no longer exists.
 impl Drop for WindowDriver {
     fn drop(&mut self) {

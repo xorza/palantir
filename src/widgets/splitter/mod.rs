@@ -21,9 +21,9 @@ use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::cursor_icon::CursorIcon;
 
-/// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
-/// the panes side by side (vertical divider bar); [`Splitter::vertical`]
-/// stacks them (horizontal bar). The caller owns the split as `ratio` —
+/// Two panes split by a draggable divider. [`Splitter::row`] lays the panes
+/// side by side (vertical divider bar); [`Splitter::column`] stacks them
+/// (horizontal bar) — the words [`SplitDir`](crate::SplitDir) uses. The caller owns the split as `ratio` —
 /// the first pane's share of the free space, `0..1`. While dragging,
 /// the current pointer target feeds layout immediately; the widget writes
 /// the resulting content-constrained share back on the following record.
@@ -61,14 +61,14 @@ impl<'a> Splitter<'a> {
     /// Side-by-side panes with a vertical divider bar; `ratio` is the
     /// left pane's share.
     #[track_caller]
-    pub fn horizontal(ratio: &'a mut f32) -> Self {
+    pub fn row(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::X)
     }
 
     /// Stacked panes with a horizontal divider bar; `ratio` is the top
     /// pane's share.
     #[track_caller]
-    pub fn vertical(ratio: &'a mut f32) -> Self {
+    pub fn column(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::Y)
     }
 

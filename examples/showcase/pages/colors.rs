@@ -98,11 +98,11 @@ pub(crate) fn build(ui: &mut Ui) {
                             .id(state_id.with("part-chip"))
                             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                             .show(ui);
-                        Text::new("A downsample of 16, for the difference it makes:")
+                        Text::new("A texel size of 16, for the difference it makes:")
                             .style(&note_style())
                             .show(ui);
                         ColorField::new(&mut state.parts)
-                            .downsample(16)
+                            .texel_size(16)
                             .id(state_id.with("coarse"))
                             .size((Sizing::FILL, Sizing::fixed(80.0)))
                             .show(ui);

@@ -8,6 +8,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::record::ShapeRecord;
+use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
@@ -18,7 +19,7 @@ use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 200);
@@ -142,7 +143,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
             .color(axis_color)
             .weight(FontWeight::BOLD)
             .slant(FontSlant::Italic)
-            .line_height(2.0)
+            .line_height_mult(2.0)
             .show(ui);
         Text::new("m")
             .id(over_bundle)
@@ -166,7 +167,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
 
     let face = face_of(&h, axes);
     assert_eq!(face.font.size_px, PER_AXIS);
-    // `line_height(2.0)` is a multiple of the *overridden* size.
+    // `line_height_mult(2.0)` is a multiple of the *overridden* size.
     assert_eq!(face.font.line_height_px, PER_AXIS * 2.0);
     assert_eq!(face.font.weight, FontWeight::BOLD);
     assert_eq!(face.font.slant, FontSlant::Italic);
@@ -190,6 +191,25 @@ fn per_axis_setters_outrank_the_style_bundle() {
 struct RecordedFace {
     font: GlyphFont,
     color: RgbaF16,
+}
+
+/// The family chainers set that axis and no other, on a style and on an
+/// override set alike: the override replaces the base's `SANS` and keeps its
+/// size.
+#[test]
+fn with_family_sets_only_the_family_axis() {
+    let base = TextStyle::default();
+    assert_eq!(base.family, FontFamily::SANS);
+    let mono = base.with_family(FontFamily::MONO);
+    assert_eq!(mono.family, FontFamily::MONO);
+    assert_eq!(mono.font_size_px, base.font_size_px);
+
+    let over = TextStyleOverrides::NONE.with_family(FontFamily::MONO);
+    assert_eq!(over.family, Some(FontFamily::MONO));
+    assert_eq!(over.font_size_px, None);
+    let applied = over.apply(&base);
+    assert_eq!(applied.family, FontFamily::MONO);
+    assert_eq!(applied.font_size_px, base.font_size_px);
 }
 
 fn face_of(h: &UiHarness, id: WidgetId) -> RecordedFace {

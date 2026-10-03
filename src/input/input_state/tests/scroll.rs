@@ -80,7 +80,7 @@ fn non_finite_payloads_are_refused_before_they_reach_retained_state() {
                 InputEvent::PointerMoved(axis),
             ] {
                 assert!(
-                    !state.feed(event).requests_repaint,
+                    !state.feed(event).repaint_requested,
                     "{event:?} must be refused",
                 );
             }

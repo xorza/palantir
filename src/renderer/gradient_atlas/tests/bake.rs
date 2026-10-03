@@ -6,6 +6,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
+use crate::animation::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
