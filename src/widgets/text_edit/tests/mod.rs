@@ -8,6 +8,24 @@ use crate::widgets::text_edit::unicode::{
     word_range_at,
 };
 
+use crate::Spacing;
+use crate::Ui;
+use crate::common::clipboard::Clipboard;
+use crate::common::platform::{PLATFORM, Platform};
+use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::modifiers::Modifiers;
+use crate::internals::harness::UiHarness;
+use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::node_id::NodeId;
+use crate::widgets::configure::Configure;
+use crate::widgets::panel::Panel;
+use crate::widgets::text_edit::TextEdit;
+use glam::{UVec2, Vec2};
+
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     let clipboard = Clipboard::memory();
     apply_key_with_clipboard(text, state, kp, &clipboard)
@@ -30,25 +48,6 @@ fn apply_key_with_clipboard(
     ed.observe_text();
     blur
 }
-use crate::Spacing;
-use crate::Ui;
-use crate::common::clipboard::Clipboard;
-use crate::common::platform::{PLATFORM, Platform};
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::key_text::KeyText;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::layer::Layer;
-use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
-use crate::widgets::configure::Configure;
-use crate::widgets::panel::Panel;
-use crate::widgets::text_edit::TextEdit;
-use glam::{UVec2, Vec2};
 
 /// Every shape a widget paints, its descendants' included.
 ///
@@ -80,16 +79,7 @@ fn block_of(ui: &Ui, field: NodeId) -> NodeId {
 }
 
 fn press(key: Key) -> KeyPress {
-    KeyPress {
-        key,
-        mods: Modifiers::NONE,
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    KeyPress::with(key, Modifiers::NONE)
 }
 
 const SMALL: UVec2 = UVec2::new(200, 80);
@@ -108,19 +98,13 @@ fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
 }
 
 fn shift(key: Key) -> KeyPress {
-    KeyPress {
+    KeyPress::with(
         key,
-        mods: Modifiers {
+        Modifiers {
             shift: true,
             ..Modifiers::NONE
         },
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    )
 }
 
 /// Primary-modifier + key — the chord under which shortcuts like
@@ -128,19 +112,13 @@ fn shift(key: Key) -> KeyPress {
 /// platform-normalized command bit (Cmd on macOS, Ctrl elsewhere), so
 /// tests just set `ctrl`.
 fn ctrl_press(key: Key) -> KeyPress {
-    KeyPress {
+    KeyPress::with(
         key,
-        mods: Modifiers {
+        Modifiers {
             ctrl: true,
             ..Modifiers::NONE
         },
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    )
 }
 
 fn ctrl_shift_press(key: Key) -> KeyPress {
@@ -179,18 +157,11 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
     }
 }
 
-/// `ui_at_no_cosmic` constructs a Ui without cosmic, so the mono
-/// fallback drives caret-x (8 px/char at 16 px font) — predictable
-/// widths the click-positioning tests rely on.
-fn ui_at_no_cosmic(size: UVec2) -> UiHarness {
-    UiHarness::new(size)
-}
-
 /// Multi-line builder flag: `Enter` inserts `\n` (instead of being
 /// ignored), `Cmd/Ctrl+V` preserves clipboard newlines, and cursor
 /// navigation works in 2D. Driven via `apply_key` directly for the
 /// state-machine assertions; the full show()+layout path is exercised
-/// separately by `multiline_renders_multiple_visual_lines`.
+/// separately by `align_per_line::multiline_widget_right_aligns_each_line`.
 fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

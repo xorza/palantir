@@ -32,8 +32,12 @@ enum DragValueState {
     #[default]
     Idle,
     Scrubbing(Scrub),
+    /// `original` is the value the edit opened on, which Escape restores:
+    /// the buffer is parsed live, so by then the bound value holds the
+    /// typed text.
     Editing {
         buffer: String,
+        original: Num,
     },
 }
 
@@ -55,6 +59,13 @@ struct Scrub {
     travel: f32,
 }
 
+/// How the inline editor's frame ended the edit, if it did.
+#[derive(Clone, Copy, Debug)]
+struct EditEnd {
+    submitted: bool,
+    cancelled: bool,
+}
+
 impl Scrub {
     /// How far the anchor has moved, in value units.
     fn offset(self) -> f64 {
@@ -73,10 +84,10 @@ impl Scrub {
 /// With [`Self::editable`] the widget is a complete numeric editor: a plain
 /// click (no drag) focuses it and swaps the chip for an inline `TextEdit`
 /// (theme slot `drag_value.editor`, same box as the chip) for exact keyboard
-/// entry; Enter, Escape, or clicking away commits and returns to the scrub
-/// chip. The editor holds the chip's width and **scrolls** a longer
-/// full-precision value inside it, so it stays put even in a
-/// content-hugging parent.
+/// entry; Enter or clicking away commits and returns to the scrub chip, and
+/// Escape returns to it with the value the edit opened on. The editor holds the
+/// chip's width and **scrolls** a longer full-precision value inside it, so it
+/// stays put even in a content-hugging parent.
 ///
 /// The value is written live — every scrub step and edit-mode reparse lands
 /// in the bound target — and [`ValueResponse`] reports both grains:
@@ -154,7 +165,8 @@ impl<'a> DragValue<'a> {
 
     /// Enable click-to-type keyboard entry alongside drag-to-scrub. A click
     /// (that doesn't latch a drag) focuses the field and swaps the chip for
-    /// an inline `TextEdit`; Enter / click-away commits. Default off.
+    /// an inline `TextEdit`; Enter / click-away commits, Escape reverts.
+    /// Default off.
     pub fn editable(mut self, on: bool) -> Self {
         self.editable = on;
         self
@@ -225,10 +237,10 @@ impl<'a> DragValue<'a> {
             ui.state_mut::<DragValueState>(id)
         };
         if let Some(state) = state {
-            // Escape / click-away reaches the chip with the edit draft still
+            // A click-away reaches the chip with the edit draft still
             // present. Resolve it while editable and enabled, otherwise drop
             // it so a later focus cannot replay stale input.
-            if let DragValueState::Editing { buffer } = state {
+            if let DragValueState::Editing { buffer, .. } = state {
                 if self.editable && !response.disabled {
                     changed = self.value.parse_from(buffer, self.min, self.max);
                     committed = true;
@@ -322,8 +334,9 @@ impl<'a> DragValue<'a> {
     /// Edit mode: render the inline `TextEdit` over the same `id`, centered
     /// and same-styled as the chip (its box matches by theme, not by
     /// measuring the chip), parse the buffer back into the value each frame,
-    /// and blur on Enter (Escape / click-away blur themselves; the chip path
-    /// resolves the pending [`DragValueState::Editing`] draft).
+    /// and blur on Enter. Escape blurs itself and restores the value the edit
+    /// opened on; a click-away blurs itself and the chip path resolves the
+    /// pending [`DragValueState::Editing`] draft.
     fn show_editing(
         mut self,
         ui: &mut Ui,
@@ -360,11 +373,14 @@ impl<'a> DragValue<'a> {
         // Entry replaces any scrub state atomically, so its later release
         // cannot overwrite the typed result. Existing edit frames move the
         // same String through TextEdit without allocating a new buffer.
-        let mut buffer = match std::mem::take(ui.state_or_default::<DragValueState>(id)) {
-            DragValueState::Editing { buffer } => buffer,
-            DragValueState::Idle | DragValueState::Scrubbing(_) => self.value.edit_string(),
+        let (mut buffer, original) = match std::mem::take(ui.state_or_default::<DragValueState>(id))
+        {
+            DragValueState::Editing { buffer, original } => (buffer, original),
+            DragValueState::Idle | DragValueState::Scrubbing(_) => {
+                (self.value.edit_string(), self.value.read())
+            }
         };
-        let submitted = {
+        let ended = {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
                 .text_align(Align::CENTER)
@@ -377,21 +393,28 @@ impl<'a> DragValue<'a> {
             // visibly jumps mid-interaction; which fields that means is
             // `TextEdit`'s call, and documented there.
             let resp = edit.adopt_placement(&self.widget).show(ui);
-            resp.submitted
+            EditEnd {
+                submitted: resp.submitted,
+                cancelled: resp.cancelled,
+            }
         };
-        let changed = self.value.parse_from(&buffer, self.min, self.max);
-        *ui.state_or_default::<DragValueState>(id) = if submitted {
+        let changed = if ended.cancelled {
+            self.value.restore(original)
+        } else {
+            self.value.parse_from(&buffer, self.min, self.max)
+        };
+        *ui.state_or_default::<DragValueState>(id) = if ended.submitted || ended.cancelled {
             DragValueState::Idle
         } else {
-            DragValueState::Editing { buffer }
+            DragValueState::Editing { buffer, original }
         };
-        if submitted {
+        if ended.submitted {
             ui.clear_focus();
         }
         ValueResponse {
             response: Response::lazy(id, ui),
             changed,
-            committed: submitted,
+            committed: ended.submitted,
         }
     }
 }

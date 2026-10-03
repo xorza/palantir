@@ -1,9 +1,9 @@
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::color_strip::{ColorStrip, StripPaint};
 use crate::widgets::configure::Configure;
 use glam::{UVec2, Vec2};
@@ -124,4 +124,77 @@ fn a_click_commits_as_a_drag_does() {
     h.release();
     let (_, committed) = frame(&mut h, &mut color);
     assert!(committed, "the release is the edit");
+}
+
+/// The hue bar's right end is hue 1, not hue 0: a drag past the edge
+/// stores 1, End stores 1 and Home 0, and a step past either end wraps round.
+#[test]
+fn the_hue_bar_keeps_both_ends() {
+    use crate::input::keyboard::key::Key;
+
+    let id = WidgetId::from_hash("strip-hue-ends");
+    let mut h = harness();
+    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
+    let show = |h: &mut UiHarness, coords: &mut ColorCoords| {
+        h.frame(|ui| {
+            ColorStrip::for_hue(coords).id(id).show(ui);
+        });
+    };
+    show(&mut h, &mut coords);
+    h.press_at(Vec2::new(BAR.x as f32 - 8.0, 7.0));
+    show(&mut h, &mut coords);
+    h.drag_to(Vec2::new(BAR.x as f32 + 40.0, 7.0));
+    show(&mut h, &mut coords);
+    h.release();
+    show(&mut h, &mut coords);
+    assert_eq!(coords.hue(), 1.0, "past the right edge");
+
+    h.set_focus(id);
+    for (key, hue) in [(Key::Home, 0.0), (Key::End, 1.0)] {
+        h.key(key);
+        show(&mut h, &mut coords);
+        assert_eq!(coords.hue(), hue, "{key:?}");
+    }
+    h.key(Key::ArrowRight);
+    show(&mut h, &mut coords);
+    assert_eq!(
+        coords.hue(),
+        (1.0f32 + 0.005).rem_euclid(1.0),
+        "a step wraps"
+    );
+    h.key(Key::PageDown);
+    show(&mut h, &mut coords);
+    let paged = (1.0f32 + 0.005).rem_euclid(1.0) - 0.1;
+    assert_eq!(coords.hue(), paged.rem_euclid(1.0), "so does a page");
+}
+
+/// PageUp and PageDown step an alpha bar by 0.1, and a step past an end
+/// clamps rather than wraps.
+#[test]
+fn page_keys_step_the_alpha_bar() {
+    use crate::input::keyboard::key::Key;
+
+    let id = WidgetId::from_hash("strip-alpha-page");
+    let mut h = harness();
+    let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(0.5);
+    let show = |h: &mut UiHarness, color: &mut RgbaF32| {
+        h.frame(|ui| {
+            ColorStrip::for_alpha(color).id(id).show(ui);
+        });
+    };
+    show(&mut h, &mut color);
+    h.set_focus(id);
+    let steps = [
+        (Key::PageUp, 0.5 + 0.1),
+        (Key::PageDown, 0.5 + 0.1 - 0.1),
+        (Key::End, 1.0),
+        (Key::PageUp, 1.0),
+        (Key::Home, 0.0),
+        (Key::PageDown, 0.0),
+    ];
+    for (key, alpha) in steps {
+        h.key(key);
+        show(&mut h, &mut color);
+        assert_eq!(color.a, alpha, "{key:?}");
+    }
 }

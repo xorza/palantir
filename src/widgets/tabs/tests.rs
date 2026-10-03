@@ -5,12 +5,13 @@ use glam::{UVec2, Vec2};
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
+use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
@@ -155,8 +156,7 @@ fn a_close_click_reports_a_close_and_not_a_click() {
     strip_frame(&mut h, 0, TabBadge::None);
     strip_frame(&mut h, 0, TabBadge::None);
 
-    let at = h.center_of(TabStrip::close_id(strip_id(), 20));
-    h.click_at(at);
+    h.click_on(TabStrip::close_id(strip_id(), 20));
     let hit = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
@@ -176,8 +176,7 @@ fn a_chip_click_reports_its_slot() {
     strip_frame(&mut h, 0, TabBadge::None);
     strip_frame(&mut h, 0, TabBadge::None);
 
-    let at = h.center_of(TabStrip::chip_id(strip_id(), 30));
-    h.click_at(at);
+    h.click_on(TabStrip::chip_id(strip_id(), 30));
     let hit = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
@@ -260,6 +259,57 @@ fn arrows_home_and_end_travel_and_wrap() {
         Some(2),
         "Ctrl+Shift+Tab cycles back"
     );
+
+    // With nothing selected, a step lands on the end it moves from.
+    for (key, want) in [(Key::ArrowRight, 0), (Key::ArrowLeft, 2)] {
+        h.key(key);
+        let keyed = h.frame_value(|ui| {
+            let items = items(ui, TabBadge::None);
+            TabStrip::new(&items).id(strip_id()).show(ui).keyed
+        });
+        assert_eq!(keyed, Some(want), "{key:?} with no selection");
+    }
+}
+
+/// A keyboard move to a chip out of sight pans the band to it on the next
+/// frame: End in a strip too narrow for its last chip leaves that chip
+/// inside the band's clip — the band's rect deflated by its padding.
+#[test]
+fn a_keyboard_move_pans_the_band_to_the_chip() {
+    use crate::primitives::approx::EPS;
+
+    let record = |h: &mut UiHarness, selected: usize| {
+        h.frame_value(|ui| {
+            let items = items(ui, TabBadge::None);
+            TabStrip::new(&items)
+                .id(strip_id())
+                .selected(selected)
+                .size((Sizing::fixed(90.0), Sizing::HUG))
+                .show(ui)
+                .keyed
+        })
+    };
+    let mut h = UiHarness::new(SURFACE);
+    record(&mut h, 0);
+    record(&mut h, 0);
+    let in_clip = |h: &mut UiHarness| {
+        let padding = h.ui().theme().tabs.strip_padding;
+        let clip = h
+            .rect(strip_id().with("band"))
+            .unwrap()
+            .deflated_by(padding);
+        let chip = TabStrip::chip_id(strip_id(), 30);
+        let full = h.transform(chip).apply_rect(h.arranged(chip));
+        full.min.x >= clip.min.x - EPS && full.max().x <= clip.max().x + EPS
+    };
+    assert!(!in_clip(&mut h), "premise: the last chip is out of sight");
+    h.set_focus(strip_id());
+    record(&mut h, 0);
+    h.key(Key::End);
+    assert_eq!(record(&mut h, 0), Some(2));
+    record(&mut h, 2);
+    record(&mut h, 2);
+    assert!(in_clip(&mut h), "the band panned to the chip End selected");
 }
 
 /// Travel is scoped to focus: the same press with the strip unfocused
@@ -331,8 +381,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     assert_eq!((page, drawn), (0, 0));
 
     let strip = view.with("strip");
-    let at = h.center_of(TabStrip::chip_id(strip, 2));
-    h.click_at(at);
+    h.click_on(TabStrip::chip_id(strip, 2));
     let action = h.frame_value(|ui| record(ui, &mut page, &mut drawn));
     assert_eq!(action, Some(TabsAction::Activated { index: 2 }));
     assert_eq!(
@@ -360,38 +409,92 @@ fn a_tabbed_view_panics_on_an_index_it_cannot_show() {
 }
 
 /// A drag that releases over another slot reports the move rather than
-/// making it — the view holds a shared slice and cannot reorder it.
+/// making it — the view holds a shared slice and cannot reorder it — and
+/// moves the bound index with the page it named. A release in either gap
+/// beside the chip is no move, and a release off the strip is no drop.
 #[test]
 fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
-    let mut h = UiHarness::new(SURFACE);
     let view = WidgetId::from_hash("test.reorder");
-    let mut page = 0usize;
+    let strip = view.with("strip");
     let record = |ui: &mut Ui, page: &mut usize| {
         TabbedView::new(page, &PAGES)
             .id(view)
             .reorderable(true)
-            .show(ui, |_, _| {})
+            .show(ui, |ui, _| {
+                Panel::vstack()
+                    .id_salt("page")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |_| {});
+            })
             .action
     };
-    h.prime(2, |ui| {
-        record(ui, &mut page);
-    });
+    type Release = fn(&UiHarness, WidgetId) -> Vec2;
+    let rows: [(&str, Release, Option<TabsAction>, usize); 3] = [
+        (
+            "past the last centre: the append",
+            |h, strip| {
+                let onto = h.center_of(TabStrip::chip_id(strip, 2));
+                Vec2::new(onto.x + 4.0, onto.y)
+            },
+            Some(TabsAction::Reordered { from: 0, to: 3 }),
+            2,
+        ),
+        (
+            "just past its own centre: the gap beside it",
+            |h, strip| {
+                let own = h.center_of(TabStrip::chip_id(strip, 0));
+                Vec2::new(own.x + 4.0, own.y)
+            },
+            None,
+            0,
+        ),
+        (
+            "deep in the page: off the strip",
+            |h, strip| {
+                let onto = h.center_of(TabStrip::chip_id(strip, 2));
+                Vec2::new(onto.x + 4.0, onto.y + 120.0)
+            },
+            None,
+            0,
+        ),
+    ];
+    for (label, release, want, page_after) in rows {
+        let mut h = UiHarness::new(SURFACE);
+        let mut page = 0usize;
+        h.prime(2, |ui| {
+            record(ui, &mut page);
+        });
+        h.press_on(TabStrip::chip_id(strip, 0));
+        h.drag_to(release(&h, strip));
+        h.frame(|ui| {
+            record(ui, &mut page);
+        });
+        h.release();
+        let action = h.frame_value(|ui| record(ui, &mut page));
+        assert_eq!(action, want, "{label}");
+        assert_eq!(page, page_after, "{label}: the bound page");
+    }
+}
 
-    let strip = view.with("strip");
-    let from = h.center_of(TabStrip::chip_id(strip, 0));
-    let onto = h.center_of(TabStrip::chip_id(strip, 2));
-    h.press_at(from);
-    h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
-    h.frame(|ui| {
-        record(ui, &mut page);
-    });
-    h.release();
-    let action = h.frame_value(|ui| record(ui, &mut page));
-    assert_eq!(
-        action,
-        Some(TabsAction::Reordered { from: 0, to: 3 }),
-        "released past the last centre, so the target slot is the append"
-    );
+/// Where an index lands when `from` moves into the gap `to`, for pages
+/// [A, B, C, D]. Moving A to the end (gap 4) puts it at 3 and shifts the
+/// others down; moving D to the front (gap 0) shifts the others up.
+#[test]
+fn a_move_carries_every_index_with_its_page() {
+    use crate::widgets::tabs::tabbed_view::internals::moved_index;
+    for (from, to, before, after) in [
+        (0, 4, [0, 1, 2, 3], [3, 0, 1, 2]),
+        (3, 0, [0, 1, 2, 3], [1, 2, 3, 0]),
+        (1, 3, [0, 1, 2, 3], [0, 2, 1, 3]),
+    ] {
+        for (index, want) in before.into_iter().zip(after) {
+            assert_eq!(
+                moved_index(index, from, to),
+                want,
+                "{from} into {to}: {index}"
+            );
+        }
+    }
 }
 
 /// The chevron has to appear while a chip is *partly* out of sight, not
@@ -421,10 +524,9 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
 
     // Wide enough for all three: no chip is cut, and no chevron.
     let mut h = UiHarness::new(SURFACE);
-    h.frame(build(SURFACE.x as f32));
-    h.frame(build(SURFACE.x as f32));
-    let whole = h.layout_rect(last).expect("the last chip arranged");
-    let strip_left = h.layout_rect(strip_id()).expect("the strip arranged").min.x;
+    h.prime(2, build(SURFACE.x as f32));
+    let whole = h.arranged(last);
+    let strip_left = h.arranged(strip_id()).min.x;
     assert!(
         h.rect(chevron).is_none(),
         "premise: nothing is hidden, so nothing offers a menu",
@@ -435,8 +537,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // what the width below is a width of.
     let half_way = whole.min.x + whole.size.w * 0.5 - strip_left;
     let mut h = UiHarness::new(SURFACE);
-    h.frame(build(half_way));
-    h.frame(build(half_way));
+    h.prime(2, build(half_way));
     assert!(
         h.rect(chevron).is_some(),
         "a chip cut in half is a chip the strip cannot show whole",
@@ -445,9 +546,9 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // The hidden chip is one pick away: the chevron opens the menu, and
     // its row reports the chip as a menu pick, which `activated` merges
     // with a click and a keyboard move.
-    h.click_at(h.center_of(chevron));
+    h.click_on(chevron);
     h.frame(build(half_way));
-    h.click_at(h.center_of(strip_id().with("overflow_menu").with(30u64)));
+    h.click_on(strip_id().with("overflow_menu").with(30u64));
     let picked = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items)

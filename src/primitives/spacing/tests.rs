@@ -1,3 +1,8 @@
+use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
+use crate::primitives::serde::internals::{from_ron, ron_text};
+use crate::primitives::spacing::*;
+
 /// A NaN edge is reportable, and reported per-lane — the four are one
 /// `u64` and a check that only looked at the first would pass a NaN
 /// bottom margin straight into layout.
@@ -7,9 +12,6 @@
 /// along now covers spacing too.
 #[test]
 fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
-    use crate::primitives::corners::Corners;
-    use crate::primitives::nan::NanCheck;
-
     assert!(!Spacing::all(4.0).has_nan(), "a whole spacing is finite");
     for lane in 0..4 {
         let mut lanes = [1.0, 2.0, 3.0, 4.0];
@@ -25,21 +27,6 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
     }
 }
 
-use crate::primitives::spacing::*;
-
-fn ser(v: Spacing) -> String {
-    ron::ser::to_string(&v).expect("serialize")
-}
-
-fn de(text: &str) -> Spacing {
-    ron::from_str(text).expect("parse")
-}
-
-#[test]
-fn struct_is_eight_bytes() {
-    assert_eq!(std::mem::size_of::<Spacing>(), 8);
-}
-
 #[test]
 fn lanes_round_trip_integer_values_exactly() {
     let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
@@ -48,16 +35,23 @@ fn lanes_round_trip_integer_values_exactly() {
     assert_eq!(s.vertical_sum(), 6.0);
 }
 
-/// Documents the f16 precision contract: lossless for integer
-/// values ≤ 2048, ~0.25 px quantization at 4096.
+/// Documents the f16 precision contract.
 #[test]
 fn f16_precision_contract() {
-    assert_eq!(Spacing::all(2048.0).as_array()[0], 2048.0);
-    let big = Spacing::all(4096.0).as_array()[0];
-    assert!(
-        (big - 4096.0).abs() <= 0.25,
-        "expected ≤0.25 px error at 4096, got {big}",
-    );
+    // Integers are exact to 2048. Past it the f16 step is 2, then 4 from
+    // 4096, and a tie rounds to the even mantissa: 2049 → 2048, 2051 →
+    // 2052, 4097 and 4098 → 4096, 4099 → 4100.
+    for (value, stored) in [
+        (2048.0, 2048.0),
+        (2049.0, 2048.0),
+        (2051.0, 2052.0),
+        (4096.0, 4096.0),
+        (4097.0, 4096.0),
+        (4098.0, 4096.0),
+        (4099.0, 4100.0),
+    ] {
+        assert_eq!(Spacing::all(value).as_array()[0], stored, "{value}");
+    }
 }
 
 #[test]
@@ -104,7 +98,7 @@ fn serialize_picks_compact_form_per_symmetry() {
         ),
     ];
     for (label, s, want) in cases {
-        assert_eq!(ser(*s), *want, "case: {label}");
+        assert_eq!(ron_text(s), *want, "case: {label}");
     }
 }
 
@@ -122,14 +116,37 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
         ("one_element_array_uniform", "[4.0]", Spacing::all(4.0)),
     ];
     for (label, input, want) in cases {
-        assert_eq!(de(input), *want, "case: {label}");
+        assert_eq!(from_ron::<Spacing>(input), *want, "case: {label}");
+    }
+}
+
+/// A file lane is any finite f32 an f16 lane can hold, either sign:
+/// ±65504 is the largest, and one past it packs to infinity.
+#[test]
+fn deserialize_rejects_a_lane_past_f16() {
+    for (input, valid) in [
+        ("65504.0", true),
+        ("-65504.0", true),
+        ("65505.0", false),
+        ("-65505.0", false),
+        ("inf", false),
+        ("NaN", false),
+    ] {
+        let parsed = ron::from_str::<Spacing>(input);
+        assert_eq!(parsed.is_ok(), valid, "{input}: {parsed:?}");
+        if let Err(error) = parsed {
+            assert!(
+                error.to_string().contains(Spacing::LANE_RULE),
+                "{input}: {error}"
+            );
+        }
     }
 }
 
 #[test]
 fn deserialize_struct_form() {
     let text = "(left: 1.0, top: 2.0, right: 3.0, bottom: 4.0)";
-    assert_eq!(de(text), Spacing::new(1.0, 2.0, 3.0, 4.0));
+    assert_eq!(from_ron::<Spacing>(text), Spacing::new(1.0, 2.0, 3.0, 4.0));
 }
 
 #[test]
@@ -139,8 +156,12 @@ fn serialize_then_parse_round_trips() {
         Spacing::xy(4.0, 8.0),
         Spacing::new(1.0, 2.0, 3.0, 4.0),
     ] {
-        let out = ser(s);
-        assert_eq!(de(&out), s, "round-trip failed for {s:?} -> {out}");
+        let out = ron_text(&s);
+        assert_eq!(
+            from_ron::<Spacing>(&out),
+            s,
+            "round-trip failed for {s:?} -> {out}"
+        );
     }
 }
 

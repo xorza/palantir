@@ -51,8 +51,8 @@ impl<'a> TextShapeInput<'a> {
     }
 
     /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth
-    /// for the layout-side leaf walk — `LayoutPass::measure_dispatch`
-    /// drives wrap shaping, `intrinsic::leaf` drives the unbounded content
+    /// for the layout-side leaf walk — `MeasureOp::leaf` drives wrap
+    /// shaping, `intrinsic::leaf` drives the unbounded content
     /// axis. Filtering and destructuring happen here so neither side can
     /// drift on which shape variants contribute to size.
     pub(super) fn on_leaf(
@@ -138,6 +138,7 @@ fn checked_text_ordinal(index: usize) -> u16 {
 #[cfg(test)]
 mod tests {
     use crate::common::hash;
+    use crate::internals::panic_probe;
     use crate::layout::text_shape_input::{TextShapeInput, checked_text_ordinal};
     use crate::layout::types::align::HAlign;
     use crate::text::font_family::FontFamily;
@@ -151,9 +152,9 @@ mod tests {
     fn text_ordinal_covers_the_u16_domain_and_rejects_the_next_run() {
         assert_eq!(checked_text_ordinal(0), 0);
         assert_eq!(checked_text_ordinal(usize::from(u16::MAX)), u16::MAX);
-        assert!(
-            std::panic::catch_unwind(|| checked_text_ordinal(usize::from(u16::MAX) + 1)).is_err(),
-            "the 65537th direct text run must exceed the identity key",
+        panic_probe::assert_panics_with(
+            "more than 65536 direct ShapeRecord::Text runs on one node",
+            || checked_text_ordinal(usize::from(u16::MAX) + 1),
         );
     }
 

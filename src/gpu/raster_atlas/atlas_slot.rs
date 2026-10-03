@@ -2,7 +2,7 @@
 //! read on the atlas hit path.
 
 use crate::gpu::raster_atlas::raster_quad::RasterQuad;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::content_type::ContentType;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2};
@@ -37,15 +37,27 @@ impl SlotPlacement {
     /// and the tint is the slot's: the extents, the atlas origin, the
     /// side to sample.
     pub(crate) fn quad(self, pen: IVec2, color: RgbaF16) -> RasterQuad {
+        let dim = RasterQuad::dim(self.size.x, self.size.y);
         RasterQuad {
             // `y` up in the rasterizer's sense, `y` down on screen.
             pos: [
                 pen.x + i32::from(self.bearing.x),
                 pen.y - i32::from(self.bearing.y),
             ],
-            dim: RasterQuad::dim(self.size.x, self.size.y),
+            dim,
+            size: dim,
             uv_and_kind: RasterQuad::pack_uv(self.origin.x, self.origin.y, self.content),
             color,
+        }
+    }
+
+    /// [`Self::quad`] drawn at `size` physical px instead of the raster's
+    /// own extents, the raster resampled to fill it — an icon outside the
+    /// exact band, which rasterizes near its box rather than at it.
+    pub(crate) fn quad_sized(self, pen: IVec2, size: U16Vec2, color: RgbaF16) -> RasterQuad {
+        RasterQuad {
+            size: RasterQuad::dim(size.x, size.y),
+            ..self.quad(pen, color)
         }
     }
 }
@@ -96,7 +108,7 @@ pub(crate) struct AtlasSlot {
 }
 
 #[cfg(test)]
-pub(super) mod test_support {
+pub(super) mod internals {
     use crate::gpu::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
     use crate::primitives::content_type::ContentType;
     use etagere::AllocId;

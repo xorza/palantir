@@ -85,7 +85,7 @@ fn classify(rel: &str) -> FrameKind {
 
 /// Drop the `alloc::` test-binary-crate prefix from a demangled symbol
 /// name, including occurrences inside generic parameters
-/// (`frame<alloc::harness_tests::…>`). The test binary built from
+/// (`frame<alloc::harness::tests::…>`). The test binary built from
 /// `tests/alloc/main.rs` is named `alloc`, so the prefix is the same
 /// everywhere and adds no information.
 fn strip_test_crate_prefix(name: String) -> String {
@@ -118,6 +118,7 @@ fn user_relative(path: &str) -> Option<String> {
     Some(rel.trim_start_matches("./").to_owned())
 }
 
+#[cfg(test)]
 mod tests {
     use super::{FrameKind, classify, user_relative};
     use std::path::{MAIN_SEPARATOR_STR, Path};

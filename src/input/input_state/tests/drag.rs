@@ -2,10 +2,10 @@ use crate::Ui;
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::{block::Block, panel::Panel};
@@ -31,6 +31,20 @@ fn build_draggable(ui: &mut Ui) {
 
 fn id() -> WidgetId {
     WidgetId::from_hash("target")
+}
+
+/// The drag target beside a second draggable that the press does not
+/// land on, so an isolation test asks about a widget that recorded.
+fn build_target_and_bystander(ui: &mut Ui) {
+    Panel::hstack().auto_id().show(ui, |ui| {
+        for name in ["target", "other"] {
+            Panel::hstack()
+                .id(WidgetId::from_hash(name))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                .sense(Sense::DRAG)
+                .show(ui, |_| {});
+        }
+    });
 }
 
 #[test]
@@ -124,12 +138,10 @@ fn drag_delta_clears_on_release() {
     h.frame(build_clickable);
     h.press_at(Vec2::new(30.0, 30.0));
     h.drag_to(Vec2::new(70.0, 70.0));
-    assert!(
-        h.response_in(id(), build_clickable)
-            .left
-            .drag
-            .delta()
-            .is_some()
+    assert_eq!(
+        h.response_in(id(), build_clickable).left.drag.delta(),
+        Some(Vec2::new(40.0, 40.0)),
+        "press (30, 30) → drag (70, 70): 40 px of travel on each axis",
     );
 
     h.release();
@@ -197,7 +209,7 @@ fn drag_stopped_edge_fires_once_on_release() {
     let r = h.response_in(id(), build_draggable);
     assert!(!r.middle.drag.dragging(), "release destroys the drag state");
     assert!(r.middle.drag.stopped());
-    assert!(!r.left.drag.stopped(), "edge is button-filtered",);
+    assert!(!r.left.drag.stopped(), "edge is button-filtered");
 
     // One-frame edge: gone the next frame.
     let r = h.response_in(id(), build_draggable);
@@ -224,16 +236,16 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
 fn drag_delta_only_for_active_widget() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
-    h.frame(build_clickable);
+    h.frame(build_target_and_bystander);
     h.press_at(Vec2::new(20.0, 20.0));
     h.drag_to(Vec2::new(60.0, 50.0));
 
-    let other = WidgetId::from_hash("other");
-    assert_eq!(
-        h.response_in(other, build_clickable).left.drag.delta(),
-        None,
-        "only the captured widget sees the drag delta",
-    );
+    let [target, other] = h.frame_value(|ui| {
+        build_target_and_bystander(ui);
+        [id(), WidgetId::from_hash("other")].map(|w| ui.response_for(w).left.drag.delta())
+    });
+    assert_eq!(target, Some(Vec2::new(40.0, 30.0)), "the captured widget");
+    assert_eq!(other, None, "only the captured widget sees the drag delta");
 }
 
 #[test]
@@ -254,8 +266,6 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
         "drag-start edge must fire on the threshold-crossing move",
     );
     assert!(r.middle.drag.dragging());
-    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
-    assert!(r.middle.drag.started());
 }
 
 #[test]
@@ -275,12 +285,12 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
 }
 
 #[test]
-fn drag_started_is_one_frame_edge_then_clears_on_post_record() {
+fn drag_started_is_one_frame_edge_then_clears_on_the_next_frame() {
     // The `started` flag is a single-frame edge: true on the frame that
     // observes the latching move, false on the next frame even while the
-    // drag continues. Each `resp` runs one frame, so the first observes
-    // the edge (and its `post_record` clears it) and the second sees it
-    // gone.
+    // drag continues. Each `response_in` runs one frame, so the first
+    // observes the edge, its frame's end clears it, and the second sees
+    // it gone.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -332,16 +342,12 @@ fn left_wins_over_simultaneously_latched_middle() {
 
     let r = h.response_in(id(), build_draggable);
     let d = r.left.drag.delta().expect("a drag must be active");
-    assert!(
-        !r.middle.drag.dragging(),
-        "left has priority over middle — only one drag slot populates"
-    );
     // Left was pressed at (20, 20); current pointer (100, 60).
     assert_eq!(d, Vec2::new(80.0, 40.0));
     assert!(r.left.drag.dragging());
     assert!(
         !r.middle.drag.dragging(),
-        "middle is captured but not the active drag",
+        "left has priority: middle is captured but not the active drag",
     );
 }
 
@@ -368,7 +374,7 @@ fn releasing_priority_button_promotes_lower_priority() {
     assert!(!r.left.drag.dragging());
     // Middle's anchor is the middle press position (same frame as
     // left's, so (20, 20)); delta = current (80, 60) - press (20, 20).
-    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)),);
+    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
 }
 
 #[test]
@@ -377,15 +383,18 @@ fn drag_zero_state_for_uncaptured_widget() {
     // regardless of which button is being dragged elsewhere.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
-    h.frame(build_draggable);
+    h.frame(build_target_and_bystander);
     h.press_button_at(PointerButton::Middle, Vec2::new(50.0, 50.0));
     h.drag_to(Vec2::new(80.0, 70.0));
 
-    let other = WidgetId::from_hash("other");
-    let r = h.response_in(other, build_draggable);
-    assert_eq!(r.middle.drag.delta(), None);
-    assert!(!r.middle.drag.dragging());
-    assert!(!r.middle.drag.started());
+    let [target, other] = h.frame_value(|ui| {
+        build_target_and_bystander(ui);
+        [id(), WidgetId::from_hash("other")].map(|w| ui.response_for(w).middle.drag)
+    });
+    assert!(target.started(), "control: the captured widget latched");
+    assert_eq!(other.delta(), None);
+    assert!(!other.dragging());
+    assert!(!other.started());
 }
 
 #[test]
@@ -406,7 +415,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     h.frame(build);
     h.press_at(Vec2::new(200.0, 200.0));
     h.drag_to(Vec2::new(250.0, 220.0));
-    assert_eq!(h.response_in(id(), build).left.drag.delta(), None,);
+    assert_eq!(h.response_in(id(), build).left.drag.delta(), None);
 }
 
 // Drag-on-canvas composition, driven through the widget-facing
@@ -428,7 +437,10 @@ struct Card {
     label: &'static str,
     pos: Vec2,
     anchor: Vec2,
-    clicked: bool,
+    /// Clicks seen across every pass of every frame — a count rather
+    /// than a flag, so a click reported by both passes of one frame
+    /// reads as the double fire it is.
+    clicks: u32,
 }
 
 impl Card {
@@ -437,7 +449,7 @@ impl Card {
             label,
             pos,
             anchor: pos,
-            clicked: false,
+            clicks: 0,
         }
     }
 
@@ -451,9 +463,8 @@ impl Card {
         self.fold(&r);
     }
 
-    // Idempotent across the multi-pass `Ui::frame` rebuild — pass 2
-    // would otherwise overwrite the click with `false` and miss the
-    // one-shot drag_started.
+    // Runs on every pass, as an app's handler does: pass B sees the
+    // edges drained, so it re-anchors nothing and clicks nothing.
     fn fold(&mut self, r: &Response) {
         if r.left.drag.started() {
             self.anchor = self.pos;
@@ -461,7 +472,7 @@ impl Card {
         if let Some(delta) = r.left.drag.delta() {
             self.pos = self.anchor + delta;
         }
-        self.clicked |= r.left.clicked();
+        self.clicks += u32::from(r.left.clicked());
     }
 }
 
@@ -493,7 +504,7 @@ fn sub_threshold_keeps_position_and_emits_click() {
         Vec2::new(50.0, 50.0),
         "sub-threshold leaves position"
     );
-    assert!(a.clicked, "sub-threshold gesture still fires click");
+    assert_eq!(a.clicks, 1, "sub-threshold gesture still fires one click");
 }
 
 #[test]
@@ -513,12 +524,12 @@ fn supra_threshold_moves_widget_and_suppresses_click() {
         Vec2::new(90.0, 50.0),
         "position = anchor + delta on latch frame"
     );
-    assert!(!a.clicked, "click does not fire mid-drag");
+    assert_eq!(a.clicks, 0, "click does not fire mid-drag");
 
     h.release();
     frame_with(&mut h, |ui| a.record(ui));
     assert_eq!(a.pos, Vec2::new(90.0, 50.0), "release re-grounds position");
-    assert!(!a.clicked, "drag suppresses release-click");
+    assert_eq!(a.clicks, 0, "drag suppresses release-click");
 }
 
 #[test]
@@ -569,20 +580,26 @@ fn drag_started_fires_only_on_latch_frame() {
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     let mut started = vec![];
 
+    // How many of the frame's passes saw the latch.
     let mut step = |h: &mut UiHarness, a: &mut Card| {
-        let mut latched = false;
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Panel::canvas()
-                    .id(WidgetId::from_hash("canvas"))
-                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+        let latches = h
+            .frame_passes(|ui| {
+                Panel::hstack()
+                    .auto_id()
                     .show(ui, |ui| {
-                        a.record(ui);
-                        latched |= ui.response_for(card_id("a")).left.drag.started();
-                    });
-            });
-        });
-        started.push(latched);
+                        Panel::canvas()
+                            .id(WidgetId::from_hash("canvas"))
+                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+                            .show(ui, |ui| {
+                                a.record(ui);
+                                ui.response_for(card_id("a")).left.drag.started()
+                            })
+                            .inner
+                    })
+                    .inner
+            })
+            .count_where(|&started| started);
+        started.push(latches);
     };
 
     step(&mut h, &mut a);
@@ -598,8 +615,8 @@ fn drag_started_fires_only_on_latch_frame() {
 
     assert_eq!(
         started,
-        vec![false, false, false, true, false],
-        "drag_started fires exactly on the latch frame"
+        vec![0, 0, 0, 1, 0],
+        "drag_started fires on the latch frame, in one pass"
     );
 }
 
@@ -634,15 +651,11 @@ fn canvas_rearranges_with_dragged_child_position() {
     });
 
     let rect = h.ui.arranged_rect(Layer::Main, card_node.unwrap());
-    assert!(
-        (rect.min.x - 130.0).abs() < 0.5,
-        "drag lands within the frame: anchor(40) + delta(90) = 130, got {}",
-        rect.min.x,
+    assert_eq!(
+        rect.min.x, 130.0,
+        "drag lands within the frame: anchor(40) + delta(90) = 130",
     );
-    assert!(
-        (a.pos.x - 130.0).abs() < 0.5,
-        "pos = anchor(40) + delta(90)"
-    );
+    assert_eq!(a.pos.x, 130.0, "pos = anchor(40) + delta(90)");
 }
 
 /// A capture evicted because its widget left the tree still ends through

@@ -11,11 +11,11 @@
 //! complete record-to-GPU wall time; the keep-or-revert signal is the median
 //! curve timestamp and pipeline statistics printed before each case.
 
-use crate::app::internals::RecordApp;
 use crate::bench::Run;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
+use crate::internals::record_app::RecordApp;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
@@ -131,7 +131,7 @@ fn median(values: &mut [f32]) -> Option<f32> {
 }
 
 fn report_evidence(gpu: &BenchGpu, workload: Workload) {
-    let target = gpu.target(PHYSICAL, "palantir.curve_pipeline_bench.target");
+    let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
     let mut host = host(gpu);
     let mut phase = false;
     let mut curve_ms = Vec::with_capacity(EVIDENCE_FRAMES);
@@ -179,7 +179,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     group.sample_size(20);
     for workload in [Workload::CubicStrips, Workload::JoinChrome] {
         report_evidence(gpu, workload);
-        let target = gpu.target(PHYSICAL, "palantir.curve_pipeline_bench.target");
+        let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
         let mut host = host(gpu);
         let mut phase = false;
         for _ in 0..4 {

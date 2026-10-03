@@ -13,12 +13,9 @@
 
 use crate::gpu::dynamic_buffer::DynamicBuffer;
 use crate::gpu::gpu_ctx::GpuCtx;
+use crate::gpu::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::viewport::ViewportPush;
-use crate::primitives::{
-    color::{RgbaF16, RgbaF32},
-    corners::Corners,
-    rect::Rect,
-};
+use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
@@ -56,7 +53,7 @@ pub(super) struct DebugOverlay {
     /// on, so each Partial frame darkens prior pixels and the undamaged
     /// region fades to black across frames while the damage region —
     /// repainted at full brightness — stays bright.
-    dim_buffer: DynamicBuffer<Quad>,
+    dim: SingleQuadBuffer,
     /// Multi-instance buffer holding damage-rect outline quads
     /// (transparent fill, red stroke per damaged rect). Drawn onto
     /// the swapchain texture *after* the backbuffer→surface copy, so
@@ -68,25 +65,24 @@ pub(super) struct DebugOverlay {
 
 impl DebugOverlay {
     pub(super) fn new(device: &wgpu::Device) -> Self {
-        let dim_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.dim", 1);
         // `upload_damage_rects` grows it on demand when the damage region
         // carries more rects (8-quad start avoids tiny early regrows).
         let overlay_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.overlay", 8);
         Self {
-            dim_buffer,
+            dim: SingleQuadBuffer::new(device, "palantir.quad.dim"),
             overlay_buffer,
         }
     }
 
     /// Upload one full-viewport translucent-black quad ([`DIM_ALPHA`])
-    /// to `dim_buffer`.
+    /// to the dim buffer, if it does not hold it already.
     pub(super) fn upload_dim(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
             fill: RgbaF32::new(0.0, 0.0, 0.0, DIM_ALPHA).into(),
             ..Default::default()
         };
-        self.dim_buffer.upload_instances(ctx, &[q]);
+        self.dim.upload(ctx, q);
     }
 
     /// Draw the single dim quad. The dim pass runs without a stencil
@@ -99,14 +95,7 @@ impl DebugOverlay {
         gradient_bg: &'a wgpu::BindGroup,
         viewport: &ViewportPush,
     ) {
-        draw_quads(
-            pass,
-            quad_base,
-            gradient_bg,
-            viewport,
-            &self.dim_buffer.buffer,
-            1,
-        );
+        draw_quads(pass, quad_base, gradient_bg, viewport, self.dim.buffer(), 1);
     }
 
     /// Build + upload this frame's damage-rect outline quads: `Partial`

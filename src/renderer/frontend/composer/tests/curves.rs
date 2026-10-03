@@ -1,11 +1,13 @@
 //! Polylines, arcs and cubics: the instances they emit and the chrome at
 //! their joins.
 
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::RgbaF16, color::RgbaF32};
-use crate::renderer::frontend::capture::PaintCapture;
+use crate::primitives::rect::Rect;
+use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16};
+use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
+    clip, curve, image, mesh, params, polyline_cmd, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -17,7 +19,6 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
-use std::time::Duration;
 
 /// Pin: a higher-kind stroke (a polyline, riding the curve tier)
 /// recorded between two text runs splits the batch where it covers the
@@ -47,7 +48,7 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
     ] {
         let buf = run(
             |b, store| {
-                text(b, rect(0.0, 0.0, 100.0, 20.0));
+                text(b, Rect::new(0.0, 0.0, 100.0, 20.0));
                 polyline_cmd(
                     b,
                     store,
@@ -61,7 +62,7 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
                     LineCap::Butt,
                     LineJoin::Miter,
                 );
-                text(b, rect(0.0, 40.0, 100.0, 20.0));
+                text(b, Rect::new(0.0, 40.0, 100.0, 20.0));
             },
             &params(1.0, UVec2::new(200, 200)),
         );
@@ -85,7 +86,7 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
 #[test]
 fn compose_polyline_emits_segments_and_join_chrome() {
     use crate::renderer::render_buffer::curve::{
-        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, cap_lanes,
+        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance,
     };
     let pts = [
         Vec2::new(10.0, 10.0),
@@ -105,35 +106,30 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         LineCap::Round,
         LineJoin::Round,
     );
-    let mut composer = composer();
-    let mut buf = render_buffer();
-    composer
-        .begin(
-            params(1.0, UVec2::new(200, 200)),
-            Duration::ZERO,
-            &store,
-            &mut buf,
-        )
-        .replay_from(&commands);
-    let segs: Vec<_> = buf
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
+    rig.store = store;
+    rig.compose(&commands);
+    let segs: Vec<_> = rig
+        .out
         .curves
         .iter()
         .filter(|c| c.kind == CURVE_KIND_SEGMENT)
         .collect();
-    let joins: Vec<_> = buf
+    let joins: Vec<_> = rig
+        .out
         .curves
         .iter()
         .filter(|c| c.kind == CURVE_KIND_JOIN_ROUND)
         .collect();
     assert_eq!(segs.len(), 3);
     assert_eq!(joins.len(), 2);
-    assert_eq!(buf.curves.len(), 5, "nothing else in the stream");
+    assert_eq!(rig.out.curves.len(), 5, "nothing else in the stream");
 
     let round = LineCap::Round as u32;
     let d0 = (pts[1] - pts[0]).normalize();
     let d1 = (pts[2] - pts[1]).normalize();
     let d2 = (pts[3] - pts[2]).normalize();
-    assert_eq!(composer.polyline.directions, [d0, d1, d2]);
+    assert_eq!(rig.composer.polyline.directions, [d0, d1, d2]);
     // First segment: user cap at start, butt at joint end; the start
     // plane lane is zero (cap end, no clip) and the end lane carries
     // the pre-oriented bisector normal.
@@ -141,18 +137,18 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(segs[0].p3, pts[1]);
     assert_eq!(segs[0].p1, Vec2::ZERO, "no clip plane at a cap end");
     assert_eq!(segs[0].p2, d0 + d1, "end bisector plane rides p2");
-    assert_eq!(segs[0].cap, cap_lanes(round, 0));
+    assert_eq!(segs[0].cap, CurveInstance::cap_lanes(round, 0));
     // Interior segment: butt both ends, planes on both lanes. The
     // start plane must be the bit-exact negation of the previous
     // segment's end plane — the overlap-partition contract.
-    assert_eq!(segs[1].cap, cap_lanes(0, 0));
+    assert_eq!(segs[1].cap, CurveInstance::cap_lanes(0, 0));
     assert_eq!(
         segs[1].p1, -segs[0].p2,
         "shared joint planes negate exactly"
     );
     assert_eq!(segs[1].p2, d1 + d2);
     // Last segment: butt at joint, user cap at the true end.
-    assert_eq!(segs[2].cap, cap_lanes(0, round));
+    assert_eq!(segs[2].cap, CurveInstance::cap_lanes(0, round));
     assert_eq!(
         segs[2].p1, -segs[1].p2,
         "shared joint planes negate exactly"
@@ -166,6 +162,47 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(joins[1].p0, pts[2]);
     assert_eq!(joins[1].p1, -d1);
     assert_eq!(joins[1].p2, d2);
+}
+
+/// A joint between two differently coloured segments paints their
+/// average, taken premultiplied: opaque red beside transparent black
+/// averages to red at half alpha, `(1, 0, 0, 0.5)`. A straight average
+/// was `(0.5, 0, 0, 0.5)`, half as bright.
+#[test]
+fn a_join_between_colours_averages_them_premultiplied() {
+    use crate::primitives::color::rgba_f16::RgbaF16;
+    use crate::renderer::render_buffer::curve::CURVE_KIND_JOIN_ROUND;
+
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    let mut commands = PaintCapture::default();
+    let mut store = RecordStore::default();
+    polyline_cmd(
+        &mut commands,
+        &mut store,
+        &[
+            Vec2::new(10.0, 10.0),
+            Vec2::new(60.0, 40.0),
+            Vec2::new(110.0, 10.0),
+            Vec2::new(160.0, 40.0),
+        ],
+        &[red, RgbaF32::TRANSPARENT, red],
+        ColorMode::PerSegment,
+        4.0,
+        LineCap::Round,
+        LineJoin::Round,
+    );
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
+    rig.store = store;
+    rig.compose(&commands);
+    let joins: Vec<RgbaF16> = rig
+        .out
+        .curves
+        .iter()
+        .filter(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .map(|c| c.color0)
+        .collect();
+    let half_red = RgbaF16::from(RgbaF32::new(1.0, 0.0, 0.0, 0.5));
+    assert_eq!(joins, [half_red, half_red]);
 }
 
 /// Miter joins downgrade to bevel chrome past MITER_LIMIT (sharp
@@ -318,7 +355,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
 #[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             // Two curves under one (implicit) scissor group → must
@@ -328,7 +365,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
             for offset in [0.0_f32, 50.0] {
                 b.draw_curve(
                     DrawCurvePayload {
-                        bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                        bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                         origin: Vec2::ZERO,
                         basis: CurveBasis::Cubic {
                             p0: Vec2::new(offset, 0.0),
@@ -372,12 +409,12 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
 #[test]
 fn compose_splits_curve_batches_across_scissor_groups() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             b.draw_curve(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Cubic {
                         p0: Vec2::new(0.0, 0.0),
@@ -394,10 +431,10 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 },
                 1.0,
             );
-            clip(b, rect(0.0, 0.0, 50.0, 200.0));
+            clip(b, Rect::new(0.0, 0.0, 50.0, 200.0));
             b.draw_curve(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 50.0, 50.0)),
+                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 50.0, 50.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Cubic {
                         p0: Vec2::new(0.0, 0.0),
@@ -437,14 +474,14 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let tint = RgbaF16::from(RgbaF32::new(0.25, 0.5, 1.0, 0.75));
     let buf = run(
         |b, _arena| {
             // Every sub-instance must carry the same fill_kind and row.
             b.draw_curve(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Cubic {
                         p0: Vec2::new(0.0, 0.0),
@@ -490,7 +527,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve::CURVE_KIND_ARC;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use std::f32::consts::PI;
     // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
     let sweep = 1.5 * PI;
@@ -498,7 +535,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
         |b, _arena| {
             b.draw_curve(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Arc {
                         center: Vec2::new(50.0, 50.0),
@@ -530,7 +567,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
         assert_eq!(ci.width, 4.0, "stroke width at DPI 2");
         // t ranges tile [0, 1] contiguously, ending exactly at 1.
         let n = buf.curves.len() as f32;
-        assert!((ci.t0 - i as f32 / n).abs() < 1e-6);
+        assert_eq!(ci.t0, i as f32 / n);
         if i + 1 == buf.curves.len() {
             assert_eq!(ci.t1, 1.0);
         }
@@ -543,7 +580,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
 #[test]
 fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use std::f32::consts::{FRAC_PI_2, PI};
     // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
     // rotation = π/2 (clockwise on screen, y-down): (+20, 0) → (0, +20),
@@ -580,20 +617,21 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     );
     assert!(!buf.curves.is_empty());
     for ci in &buf.curves {
-        assert!(
-            (ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4,
-            "center rotated about the bbox pivot, got {:?}",
+        assert_eq!(
             ci.p0,
+            Vec2::new(50.0, 70.0),
+            "center rotated about the bbox pivot, got {:?}",
+            ci.p0
         );
-        assert!((ci.p2.x - FRAC_PI_2).abs() < 1e-6, "a0 offset by rotation");
-        assert!((ci.p2.y - (PI + FRAC_PI_2)).abs() < 1e-6, "a1 offset");
+        assert_eq!(ci.p2.x, FRAC_PI_2, "a0 offset by rotation");
+        assert_eq!(ci.p2.y, PI + FRAC_PI_2, "a1 offset");
     }
 }
 
 #[test]
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     // Same 800 px span: a straight cubic (CPs on the segment thirds —
     // exactly what Shape::line lowers to) must collapse to one
     // instance; a genuinely curved one must subdivide (800 px polygon
@@ -601,7 +639,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     let straight = |b: &mut PaintCapture| {
         b.draw_curve(
             DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 10.0)),
+                bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 10.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(0.0, 5.0),
@@ -622,7 +660,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     let curved = |b: &mut PaintCapture| {
         b.draw_curve(
             DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 400.0)),
+                bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 400.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(0.0, 5.0),
@@ -656,7 +694,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use std::f32::consts::FRAC_PI_2;
     // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
     // screen, y-down) maps an offset (dx, dy) from the pivot to
@@ -693,38 +731,22 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     );
     assert!(!buf.curves.is_empty());
     let ci = &buf.curves[0];
-    assert!(
-        (ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4,
-        "{:?}",
-        ci.p0
-    );
-    assert!(
-        (ci.p1 - Vec2::new(60.0, 70.0)).length() < 1e-4,
-        "{:?}",
-        ci.p1
-    );
-    assert!(
-        (ci.p2 - Vec2::new(70.0, 60.0)).length() < 1e-4,
-        "{:?}",
-        ci.p2
-    );
-    assert!(
-        (ci.p3 - Vec2::new(70.0, 50.0)).length() < 1e-4,
-        "{:?}",
-        ci.p3
-    );
+    assert_eq!(ci.p0, Vec2::new(50.0, 70.0), "{:?}", ci.p0);
+    assert_eq!(ci.p1, Vec2::new(60.0, 70.0), "{:?}", ci.p1);
+    assert_eq!(ci.p2, Vec2::new(70.0, 60.0), "{:?}", ci.p2);
+    assert_eq!(ci.p3, Vec2::new(70.0, 50.0), "{:?}", ci.p3);
 }
 
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             b.draw_curve(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 40.0, 40.0)),
+                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 40.0, 40.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Arc {
                         center: Vec2::new(20.0, 20.0),
@@ -743,7 +765,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
             );
             b.draw_curve(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(100.0, 0.0, 100.0, 100.0)),
+                    bounds: StrokeBounds::Still(Rect::new(100.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Cubic {
                         p0: Vec2::new(100.0, 0.0),
@@ -788,8 +810,8 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
 fn compose_curve_then_overlapping_mesh_splits_group() {
     let buf = run(
         |b, _| {
-            curve(b, rect(0.0, 0.0, 100.0, 100.0));
-            mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // overlaps the curve bbox
+            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // overlaps the curve bbox
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -838,7 +860,7 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
                     LineCap::Butt,
                     LineJoin::Miter,
                 );
-                image(b, rect(22.0, 0.0, 10.0, 10.0));
+                image(b, Rect::new(22.0, 0.0, 10.0, 10.0));
             },
             &params(1.0, UVec2::new(100, 100)),
         );
@@ -862,7 +884,7 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
                 arena.polyline_points.push(Vec2::ZERO);
                 arena.polyline_colors.push(RgbaF16::from(RgbaF32::WHITE));
                 b.polyline(DrawPolylinePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 4.0, 4.0)),
+                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 4.0, 4.0)),
                     origin: Vec2::ZERO,
                     width: 2.0,
                     points_len,

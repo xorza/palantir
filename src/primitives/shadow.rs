@@ -33,12 +33,15 @@ pub struct Shadow {
     /// Ink colour, alpha included.
     pub color: RgbaF32,
     /// Shift in logical pixels — CSS `box-shadow`'s x and y.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::finite2")]
     pub offset: Vec2,
     /// Gaussian σ in logical pixels, half CSS's `blur-radius`. Zero
     /// collapses to a sharp edge.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub blur: f32,
     /// Inflates a drop shadow's source rect, and deflates an inset
     /// one's.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::finite")]
     pub spread: f32,
     /// Paint inside the chrome boundary rather than outside it.
     #[animate(snap)]

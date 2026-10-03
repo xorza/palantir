@@ -76,7 +76,7 @@ impl<'a> Button<'a> {
     }
 
     /// Position of the label glyphs inside the button's arranged rect.
-    /// Distinct from [`Configure::align`](crate::Configure::align), which positions the *button*
+    /// Distinct from [`Configure::align`], which positions the *button*
     /// inside its parent's slot. Default: [`Align::CENTER`].
     pub fn text_align(mut self, a: Align) -> Self {
         self.label_align = a;
@@ -122,7 +122,7 @@ impl Configure for Button<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ui::harness::UiHarness;
+    use crate::internals::harness::UiHarness;
 
     use crate::primitives::background::Background;
     use crate::primitives::spacing::Spacing;
@@ -146,22 +146,21 @@ mod tests {
         theme.looks.normal.background = Background::NONE;
 
         let mut h = UiHarness::new(UVec2::new(200, 120));
-        let (mut explicit, mut inherited) = (None, None);
-        h.frame(|ui| {
-            explicit = Some(
+        let [explicit, inherited] = h.frame_value(|ui| {
+            [
                 Button::new()
                     .style(&theme)
                     .padding(Spacing::ZERO)
                     .margin(Spacing::ZERO)
                     .show(ui)
                     .node(),
-            );
-            inherited = Some(Button::new().style(&theme).show(ui).node());
+                Button::new().style(&theme).show(ui).node(),
+            ]
         });
 
         let layouts = h.ui.tree(Layer::Main).records.layout();
-        let explicit = layouts[explicit.unwrap().idx()];
-        let inherited = layouts[inherited.unwrap().idx()];
+        let explicit = layouts[explicit.idx()];
+        let inherited = layouts[inherited.idx()];
         assert_eq!(explicit.padding, Spacing::ZERO);
         assert_eq!(explicit.margin, Spacing::ZERO);
         assert_eq!(inherited.padding, Spacing::all(8.0));

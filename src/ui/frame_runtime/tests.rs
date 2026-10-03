@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use glam::UVec2;
 
-use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT};
+use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
@@ -25,116 +25,79 @@ struct Case {
     expected: FramePlan,
 }
 
+/// A warm frame with nothing but an animation wake pending: it paints
+/// without recording. Each row changes the facts it is about.
+const QUIET: Case = Case {
+    label: "quiet",
+    previous: true,
+    display_changed: false,
+    damage_baseline_valid: true,
+    wake: WakeReasons::ANIM,
+    repaint_requested: false,
+    input_policy: InputPolicy::OnDelta,
+    input_signal: InputSignal::None,
+    close_requested: false,
+    expected: FramePlan::PaintOnly,
+};
+
 #[test]
 fn frame_classification_covers_external_entry_facts() {
     let cases = [
         Case {
             label: "first frame",
             previous: false,
-            display_changed: false,
-            damage_baseline_valid: true,
             wake: WakeReasons::default(),
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: true },
+            ..QUIET
         },
         Case {
             label: "display change",
-            previous: true,
             display_changed: true,
-            damage_baseline_valid: true,
             wake: WakeReasons::default(),
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: true },
+            ..QUIET
         },
         Case {
             label: "invalid prior output",
-            previous: true,
-            display_changed: false,
             damage_baseline_valid: false,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: true },
+            ..QUIET
         },
         Case {
             label: "animation wake",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::PaintOnly,
+            ..QUIET
         },
         Case {
             label: "real wake",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
             wake: WakeReasons::REAL,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "coalesced real and animation wake",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
             wake: WakeReasons::REAL.merge(WakeReasons::ANIM),
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "always input policy",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
             input_policy: InputPolicy::Always,
             input_signal: InputSignal::Inert,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "delta input policy",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
             input_signal: InputSignal::Repaint,
-            close_requested: false,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
         Case {
             label: "close request",
-            previous: true,
-            display_changed: false,
-            damage_baseline_valid: true,
-            wake: WakeReasons::ANIM,
-            repaint_requested: false,
-            input_policy: InputPolicy::OnDelta,
-            input_signal: InputSignal::None,
             close_requested: true,
             expected: FramePlan::FullRecord { force_full: false },
+            ..QUIET
         },
     ];
 
@@ -188,10 +151,10 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
         rt.dt, 0.0,
         "a frame under the accumulator step spends nothing"
     );
-    assert!(
-        rt.dt_accum < ANIM_SUBSTEP_DT,
-        "and carries it: {}",
+    assert_eq!(
         rt.dt_accum,
+        Duration::from_millis(1).as_secs_f32(),
+        "and carries it whole"
     );
 
     rt.advance_clock(Duration::from_millis(101));
@@ -204,9 +167,27 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
     // An ordinary frame still spends its whole delta — the bound is a
     // ceiling, not a quantization.
     rt.advance_clock(Duration::from_millis(117));
-    assert!(
-        (rt.dt - 0.016).abs() < 1e-6,
-        "a 16 ms frame spends 16 ms; got {}",
+    assert_eq!(
         rt.dt,
+        Duration::from_millis(16).as_secs_f32(),
+        "a 16 ms frame spends 16 ms"
     );
+
+    // An unthrottled loop at 10 µs a frame spends nothing until its
+    // carry crosses the step: 416 frames carry 4.16 ms, under 1/240 s =
+    // 4.1667 ms, and the 417th spends the 4.17 ms at once.
+    let mut rt = FrameRuntime::default();
+    let mut now = Duration::ZERO;
+    for frame in 1..=416 {
+        now += Duration::from_micros(10);
+        rt.advance_clock(now);
+        assert_eq!(rt.dt, 0.0, "frame {frame} spends nothing");
+    }
+    now += Duration::from_micros(10);
+    rt.advance_clock(now);
+    // The carry is 417 additions of 10 µs in `f32`, summed in order.
+    let carried = (0..417).fold(0.0f32, |sum, _| {
+        sum + Duration::from_micros(10).as_secs_f32()
+    });
+    assert_eq!(rt.dt, carried, "frame 417 spends the whole carry");
 }

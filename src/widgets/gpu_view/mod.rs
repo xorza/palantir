@@ -84,7 +84,9 @@ impl GpuView {
     /// repaint every frame). Pass `false` when your scene is unchanged: the
     /// widget is then treated as **undamaged**, so a frame forced by other
     /// widgets leaves its already-presented surface pixels untouched and skips
-    /// `GpuPaint::paint`.
+    /// `GpuPaint::paint`. Where another widget's damage crosses the view, the
+    /// view is composited again from its off-screen texture, still without a
+    /// `GpuPaint::paint` — unless its size or scale changed.
     ///
     /// Purely a saving. The view keeps its off-screen texture — retention
     /// follows what the frame *recorded*, not what it painted — so sitting a
@@ -106,12 +108,10 @@ impl GpuView {
             paint,
             repaint,
         } = self;
-        let response = widget.response(ui);
         let id = widget.resolve(ui);
-        widget.record(ui, None, |ui| {
-            ui.gpu_view(id, paint, repaint);
-        });
-        Response::eager(id, ui, response)
+        widget
+            .show(ui, None, |ui| ui.gpu_view(id, paint, repaint))
+            .response
     }
 }
 

@@ -2,6 +2,8 @@
 //! honour a delay, and the app-global state that lets a second tooltip
 //! appear without re-serving the delay.
 
+pub(crate) mod tooltip_response;
+
 use crate::input::sense::Sense;
 use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
@@ -17,6 +19,7 @@ use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use crate::widgets::tooltip::tooltip_response::TooltipResponse;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
 use std::time::Duration;
@@ -46,19 +49,6 @@ fn global_state_id() -> WidgetId {
     WidgetId::from_hash("palantir.tooltip.global")
 }
 
-/// What one pass over a [`Tooltip`] produced.
-///
-/// No [`Response`](crate::Response) here, unlike the other widget results:
-/// the bubble senses nothing and does not record at all on the frames it is
-/// down, so there is no node an application would ask about. Whether it is
-/// up is the whole answer — for a trigger that wants to paint differently
-/// while its hint is showing.
-#[derive(Debug, Clone, Copy)]
-pub struct TooltipResponse {
-    /// The bubble recorded this frame.
-    pub visible: bool,
-}
-
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested
 /// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
@@ -80,7 +70,7 @@ pub struct TooltipResponse {
 /// triggers by default. Pass `.when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
 ///
-/// Implements [`Configure`](crate::Configure), so the bubble takes `.padding(...)`,
+/// Implements [`Configure`], so the bubble takes `.padding(...)`,
 /// `.max_size(...)`, `.size(...)`, `.margin(...)` and the rest like any
 /// other widget. Identity defaults to the trigger's id — a tooltip has
 /// no call site of its own worth keying on — but an explicit `.id(...)`
@@ -236,7 +226,7 @@ impl<'a> Tooltip<'a> {
             // interrupts, and it is recorded every frame it is up — a
             // scope would cut off every layer below it for as long.
             let scope = OverlayScope::claim(
-                bubble_id,
+                ui,
                 Layer::Tooltip,
                 Some(anchor),
                 Backdrop::None,

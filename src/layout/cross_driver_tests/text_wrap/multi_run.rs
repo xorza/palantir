@@ -2,11 +2,12 @@
 
 use crate::Ui;
 use crate::WidgetId;
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::layout::cross_driver_tests::support::chat_message;
-use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::layout::types::align::Align;
 use crate::primitives::color::RgbaF32;
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -14,7 +15,6 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::widget::Widget;
@@ -81,21 +81,15 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     drawn.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
     let [low, high] = [drawn[0], drawn[1]];
     // Slot 0 (`local_rect.min = (0, 0)`) → DrawText.min == owner.min.
-    assert!(
-        (low.y - owner_min.y).abs() < 0.5,
-        "slot 0 with local_rect=(0,0) should emit at owner_min.y; \
-       owner_min={owner_min:?} low={low:?}",
+    assert_eq!(
+        low.y, owner_min.y,
+        "slot 0 with local_rect=(0,0) should emit at owner_min.y",
     );
     // Slot 1 (`local_rect.min = (0, 22)`) → DrawText.min.y == owner.min.y + 22.
-    assert!(
-        (high.y - (owner_min.y + 22.0)).abs() < 0.5,
-        "slot 1 with local_rect.y=22 should emit shifted by 22 from owner_min.y; \
-       owner_min={owner_min:?} high={high:?}",
-    );
-    // Distinct y proves the two emissions are not aliased.
-    assert!(
-        (high.y - low.y).abs() >= 20.0,
-        "two DrawText must paint at distinct y; got {low:?} {high:?}",
+    assert_eq!(
+        high.y,
+        owner_min.y + 22.0,
+        "slot 1 with local_rect.y=22 should emit shifted by 22 from owner_min.y",
     );
 }
 
@@ -125,8 +119,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
         "cache hit must replay the exact same TextShapeKeys per slot",
     );
     assert!(
-        (f1_first.measured.w - f2_first.measured.w).abs() < 0.01
-            && (f1_second.measured.w - f2_second.measured.w).abs() < 0.01,
+        f1_first.measured == f2_first.measured && f1_second.measured == f2_second.measured,
         "cache hit must replay the exact same measured sizes per slot; \
      f1=({:?}, {:?}) f2=({:?}, {:?})",
         f1_first.measured,

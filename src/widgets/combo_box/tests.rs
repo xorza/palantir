@@ -1,12 +1,18 @@
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
+use crate::scene::layer::Layer;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
+use crate::ui::frame_report::FrameProcessing;
 use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::theme::Theme;
+use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use glam::{UVec2, Vec2};
 
@@ -125,18 +131,14 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     h.frame(|ui| build(ui, &mut selected));
     h.ui.state_or_default::<ComboState>(id).open = true;
 
-    let mut passes = 0;
-    h.frame(|ui| {
-        passes += 1;
-        build(ui, &mut selected);
-    });
-    assert_eq!(passes, 1, "dropdown placement must converge in one pass");
+    assert_eq!(
+        h.frame(|ui| build(ui, &mut selected)).processing,
+        FrameProcessing::SingleLayout,
+        "dropdown placement must converge in one pass"
+    );
 
-    let trigger = h.ui.response_for(id).rect.expect("combo trigger arranged");
-    let list =
-        h.ui.response_for(id.with("list"))
-            .rect
-            .expect("combo list arranged");
+    let trigger = h.rect(id).expect("combo trigger arranged");
+    let list = h.rect(id.with("list")).expect("combo list arranged");
     assert_eq!(list.min.x, trigger.min.x, "list starts at trigger left");
     assert_eq!(
         list.max().y,
@@ -179,14 +181,8 @@ fn trigger_geometry_follows_the_combo_box_theme() {
                         .show(ui);
                 });
         });
-        let label =
-            h.ui.response_for(id.with("label"))
-                .rect
-                .expect("label arranged");
-        let arrow_rect =
-            h.ui.response_for(id.with("arrow"))
-                .rect
-                .expect("arrow arranged");
+        let label = h.rect(id.with("label")).expect("label arranged");
+        let arrow_rect = h.rect(id.with("arrow")).expect("arrow arranged");
         (
             Vec2::new(arrow_rect.size.w, arrow_rect.size.h),
             arrow_rect.min.x - label.max().x,
@@ -195,12 +191,12 @@ fn trigger_geometry_follows_the_combo_box_theme() {
 
     let (size_a, gap_a) = measure(Vec2::new(10.0, 6.0), 12.0, None);
     assert_eq!(size_a, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
-    assert!((gap_a - 12.0).abs() < 1e-4, "gutter is gap, got {gap_a}",);
+    assert_eq!(gap_a, 12.0, "gutter is gap, got {gap_a}");
 
     // Both knobs move the layout — neither is baked in.
     let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0, None);
     assert_eq!(size_b, Vec2::new(20.0, 14.0));
-    assert!((gap_b - 30.0).abs() < 1e-4, "gutter is gap, got {gap_b}");
+    assert_eq!(gap_b, 30.0, "gutter is gap, got {gap_b}");
     assert_ne!(size_a, size_b);
     assert_ne!(gap_a, gap_b);
 
@@ -214,6 +210,52 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     let (size_c, gap_c) = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance));
     assert_eq!(size_c, size_b, "`style` overrides the slot's arrow_size");
     assert_eq!(gap_c, gap_b, "`style` overrides the slot's gap");
+}
+
+/// The trigger paints in the button theme `button_style` names, and in
+/// `Theme::button` without one — read off the trigger's chrome on the
+/// frame it first records, where the look snaps to its rest state.
+#[test]
+fn trigger_chrome_follows_button_style() {
+    let options = ["One"];
+    let id = WidgetId::from_hash("styled-combo");
+    let custom = RgbaF32::srgb(0.9, 0.2, 0.1);
+    let mut restyled = ButtonTheme::default();
+    restyled.looks.normal.background.fill = custom.into();
+    assert_ne!(
+        ButtonTheme::default().looks.normal.background.fill,
+        custom.into(),
+        "premise: the custom fill differs from the stock one",
+    );
+    for style in [None, Some(&restyled)] {
+        let mut h = UiHarness::new(SURFACE);
+        let themed = h.ui.theme().button.looks.normal.background.fill.clone();
+        let mut selected = 0;
+        h.frame(|ui| {
+            ComboBox::new(&mut selected, &options)
+                .id(id)
+                .button_style(style)
+                .show(ui);
+        });
+        let want = match style {
+            Some(_) => custom,
+            None => themed
+                .as_solid()
+                .expect("the stock button rests on a solid fill"),
+        };
+        let trigger = h.node_of(id).expect("trigger recorded").node;
+        let fill =
+            h.ui.tree(Layer::Main)
+                .chrome(trigger)
+                .expect("the trigger paints chrome")
+                .fill;
+        let want = RgbaF16::from(want);
+        assert!(
+            matches!(fill, ShapeBrush::Solid(got) if got == want),
+            "styled {}: {fill:?}, want {want:?}",
+            style.is_some(),
+        );
+    }
 }
 
 /// The list is the context menu's panel, not merely its colour: it takes
@@ -252,11 +294,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
         h.frame(|ui| build(ui, &mut selected));
         h.ui.state_or_default::<ComboState>(id).open = true;
         h.frame(|ui| build(ui, &mut selected));
-        h.ui.response_for(id.with("list"))
-            .rect
-            .expect("combo list arranged")
-            .size
-            .h
+        h.rect(id.with("list")).expect("combo list arranged").size.h
     };
 
     // Two edges of padding, and one gap between the two rows.
@@ -264,4 +302,40 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
         list_height(11.0, 7.0) - list_height(0.0, 0.0),
         2.0 * 11.0 + 7.0,
     );
+}
+
+/// Disabling an open ComboBox closes it: the next frame records no list,
+/// and a click where a row used to be picks nothing.
+#[test]
+fn disabling_an_open_trigger_closes_its_list() {
+    let combo = WidgetId::from_hash("combo");
+    let list = combo.with("list");
+    let options = ["One", "Two", "Three"];
+    let mut selected = 0;
+    let record = |h: &mut UiHarness, disabled: bool, selected: &mut usize| {
+        h.frame(|ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                ComboBox::new(selected, &options)
+                    .id(combo)
+                    .disabled(disabled)
+                    .show(ui);
+            });
+        });
+    };
+    let mut h = UiHarness::new(SURFACE);
+    record(&mut h, false, &mut selected);
+    record(&mut h, false, &mut selected);
+    h.click_on(combo);
+    record(&mut h, false, &mut selected);
+    let rows = h.rect(list).expect("premise: the click opened the list");
+    let last_row = Vec2::new(rows.min.x + rows.size.w * 0.5, rows.max().y - 4.0);
+
+    record(&mut h, true, &mut selected);
+    assert!(
+        h.rect(list).is_none(),
+        "the disabled trigger's list is gone"
+    );
+    h.click_at(last_row);
+    record(&mut h, true, &mut selected);
+    assert_eq!(selected, 0, "a click where a row was picks nothing");
 }

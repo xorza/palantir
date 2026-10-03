@@ -63,7 +63,7 @@ impl<'a> Response<'a> {
     /// `response_for`. Used by widgets that don't otherwise consume
     /// the response state during `.show()` (decorative widgets:
     /// Text, Block, Panel, Grid). External widget authors reach this
-    /// through [`Widget::response`](crate::widget::Widget::response).
+    /// through [`Widget::show`](crate::widget::Widget::show).
     #[inline]
     pub(super) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
@@ -160,7 +160,7 @@ pub struct InnerResponse<'a, R> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
     use crate::widgets::response::Response;
@@ -174,7 +174,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use crate::widgets::expander::ExpanderResponse;
+    use crate::widgets::expander::expander_response::ExpanderResponse;
     use crate::widgets::response::InnerResponse;
     use crate::widgets::select_response::SelectResponse;
     use crate::widgets::tabs::tab_strip::TabStripResponse;

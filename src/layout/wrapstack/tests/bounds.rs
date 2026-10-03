@@ -2,15 +2,14 @@
 //! it.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::wrapstack::tests::support::rect_of;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// Pin issue 2: showcase tab-toolbar pattern. A `Sizing::FILL`
 /// WrapHStack containing many `Button` children (each Hug-sized,
@@ -77,7 +76,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
         let wrap_rect = h.ui.arranged_rect(Layer::Main, wrap);
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for label in LABELS {
-            let r = rect_of(&h, label);
+            let r = h.arranged(WidgetId::from_hash(label));
             let right = r.min.x + r.size.w;
             assert!(
                 right <= wrap_right + 0.5,
@@ -88,102 +87,144 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 }
 
-/// A `wrap_vstack` nested inside a `vstack` (same main axis) is measured
-/// with `INF` main-axis available by the parent stack, so on its own it
-/// would never wrap. An explicit `max_size` height gives it a finite wrap
-/// budget — `resolve_sizing` clamps the `INF` down to the cap — so the
-/// children pack into columns. Drives the darkroom new-node popup, where
-/// each category's function list is a capped `wrap_vstack`.
+/// A `wrap_vstack` of five 50×40 cells, gap 10, line gap 12, capped at
+/// `cap` height when given. Against a 100 px bound a column fits two cells
+/// (40 + 10 + 40 = 90); the third (140 > 100) wraps to the next column,
+/// 50 + 12 over.
+fn func_wrap(ui: &mut Ui, cap: Option<f32>) {
+    let mut wrap = Panel::wrap_vstack()
+        .id(WidgetId::from_hash("wrap"))
+        .size((Sizing::HUG, Sizing::HUG))
+        .gap(10.0)
+        .line_gap(12.0);
+    if let Some(cap) = cap {
+        wrap = wrap.max_size((f32::INFINITY, cap));
+    }
+    wrap.show(ui, |ui| {
+        for i in 0..5u32 {
+            Block::new()
+                .id(WidgetId::from_hash(("f", i)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
+                .show(ui);
+        }
+    });
+}
+
+fn hug_vstack(name: &str) -> Panel {
+    Panel::vstack()
+        .id(WidgetId::from_hash(name))
+        .size((Sizing::HUG, Sizing::HUG))
+}
+
+/// A same-axis stack measures a `wrap_vstack` with `INF` main available,
+/// so the wrap needs a finite bound from somewhere. Each case puts the
+/// 100 px cap in a different place, and the darkroom new-node popup uses
+/// all of them:
+/// - on the wrap itself — `AxisSlot::resolve` clamps the `INF` to it;
+/// - on the parent vstack — a stack forwards its finite main extent to a
+///   same-axis wrap child;
+/// - on an hstack of category columns, each a vstack of
+///   `[60×15 header, wrap]` — the hstack's cross bound becomes each
+///   column's height. The column forwards its whole 100 px, not the 85
+///   left under the header, so the wrap ends at 15 + 90 = 105, past the
+///   cap: the stack's overflow rule for a child measured against the full
+///   bound;
+/// - on a vstack popup above that hstack — a bounded stack constrains its
+///   children on the main axis, so the cap reaches the wrap through the
+///   non-wrap hstack (CSS `max-height`).
 #[test]
-fn wrap_vstack_wraps_under_max_size_inside_vstack() {
-    let mut h = UiHarness::new(UVec2::new(400, 600));
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("col"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Panel::wrap_vstack()
-                    .id(WidgetId::from_hash("wrap"))
+fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
+    #[derive(Debug)]
+    struct Case {
+        name: &'static str,
+        build: fn(&mut Ui),
+        header: f32,
+    }
+    let cases = [
+        Case {
+            name: "cap on the wrap",
+            build: |ui| {
+                hug_vstack("col").show(ui, |ui| func_wrap(ui, Some(100.0)));
+            },
+            header: 0.0,
+        },
+        Case {
+            name: "cap on the parent vstack",
+            build: |ui| {
+                hug_vstack("col")
+                    .max_size((f32::INFINITY, 100.0))
+                    .show(ui, |ui| func_wrap(ui, None));
+            },
+            header: 0.0,
+        },
+        Case {
+            name: "cap on an hstack of columns",
+            build: |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("cols"))
                     .size((Sizing::HUG, Sizing::HUG))
                     .max_size((f32::INFINITY, 100.0))
-                    .gap(10.0)
-                    .line_gap(12.0)
                     .show(ui, |ui| {
-                        // 50×40 cells: a 100px column fits 2 (40 + 10 + 40 = 90);
-                        // the 3rd (140 > 100) wraps to the next column.
-                        for i in 0..5u32 {
+                        hug_vstack("cat").show(ui, |ui| {
                             Block::new()
-                                .id(WidgetId::from_hash(("c", i)))
-                                .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
+                                .id(WidgetId::from_hash("hdr"))
+                                .size((Sizing::fixed(60.0), Sizing::fixed(15.0)))
                                 .show(ui);
-                        }
+                            func_wrap(ui, None);
+                        });
                     });
-            });
-    });
-    let rect = |i: u32| rect_of(&h, ("c", i));
-    // Column 0 holds cells 0 and 1 (x = 0); cell 2 wraps to column 1.
-    assert_eq!(rect(0).min.x, 0.0);
-    assert_eq!(rect(1).min.x, 0.0);
-    assert_eq!(rect(1).min.y, 50.0, "second cell stacks below the first");
-    assert!(
-        rect(2).min.x > 0.0,
-        "third cell wraps to a new column (max_size bounded the INF main-axis)",
-    );
-    assert_eq!(rect(2).min.y, 0.0, "the new column starts at the top");
+            },
+            header: 15.0,
+        },
+        Case {
+            name: "cap on a vstack above the hstack",
+            build: |ui| {
+                hug_vstack("popup")
+                    .max_size((f32::INFINITY, 100.0))
+                    .show(ui, |ui| {
+                        Panel::hstack()
+                            .id(WidgetId::from_hash("cols"))
+                            .size((Sizing::HUG, Sizing::HUG))
+                            .show(ui, |ui| {
+                                hug_vstack("cat").show(ui, |ui| func_wrap(ui, None));
+                            });
+                    });
+            },
+            header: 0.0,
+        },
+    ];
+    for case in cases {
+        let mut h = UiHarness::new(UVec2::new(800, 600));
+        h.frame(case.build);
+        for i in 0..5u32 {
+            let column = (i / 2) as f32;
+            let row = (i % 2) as f32;
+            assert_eq!(
+                h.arranged(WidgetId::from_hash(("f", i))).min,
+                Vec2::new(column * 62.0, case.header + row * 50.0),
+                "{}: cell {i}",
+                case.name,
+            );
+        }
+        assert_eq!(
+            h.arranged(WidgetId::from_hash("wrap")).max().y,
+            case.header + 90.0,
+            "{}",
+            case.name,
+        );
+    }
 }
 
-/// A `wrap_vstack` with **no cap of its own** wraps against the bound of
-/// an enclosing same-axis stack: the parent `vstack`'s `max_size` height
-/// flows in as the wrap's measure budget, because a stack now forwards
-/// its finite main extent to same-axis wrap children (instead of `INF`).
-/// This is the "set the cap on the parent, the nested wrap respects it"
-/// ergonomic — no per-wrap `max_size` needed.
+/// The stack contract (REDESIGN decision D-1): a stack measures every
+/// non-`Fill` child against its whole main extent and shrinks none of
+/// them, so the Hug wrap under a header above overflows the cap by the
+/// header's 15 px. A wrap meant to take what the header leaves is `Fill`
+/// on the main axis: the column hands it the 100 − 15 = 85 px left, two
+/// cells no longer fit (40 + 10 + 40 = 90 > 85), so each cell takes a
+/// column of its own, 50 + 12 apart. The column hugs that one row, so the
+/// wrap ends at 15 + 40 = 55, inside the cap.
 #[test]
-fn wrap_vstack_inherits_parent_stack_main_bound() {
-    let mut h = UiHarness::new(UVec2::new(400, 600));
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("col"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .max_size((f32::INFINITY, 100.0))
-            .show(ui, |ui| {
-                Panel::wrap_vstack()
-                    .id(WidgetId::from_hash("wrap"))
-                    .size((Sizing::HUG, Sizing::HUG)) // no cap of its own
-                    .gap(10.0)
-                    .line_gap(12.0)
-                    .show(ui, |ui| {
-                        // 50×40 cells: a 100px column fits 2 (40 + 10 + 40 = 90);
-                        // the 3rd (140 > 100) wraps to the next column.
-                        for i in 0..5u32 {
-                            Block::new()
-                                .id(WidgetId::from_hash(("c", i)))
-                                .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
-                                .show(ui);
-                        }
-                    });
-            });
-    });
-    let rect = |i: u32| rect_of(&h, ("c", i));
-    assert_eq!(rect(0).min.x, 0.0);
-    assert_eq!(rect(1).min.x, 0.0);
-    assert!(
-        rect(2).min.x > 0.0,
-        "third cell wraps to a new column against the parent vstack's 100px bound",
-    );
-    assert_eq!(rect(2).min.y, 0.0, "the new column starts at the top");
-}
-
-/// Mirrors the darkroom new-node popup: a height-capped `hstack` of
-/// category columns, each a `vstack` of `[header, func wrap_vstack]`. The
-/// cap on the hstack bounds the columns' height; that flows as each
-/// column vstack's available height, which it forwards into its same-axis
-/// func wrap → the funcs wrap into sub-columns. (Capping the *popup*
-/// VStack instead works too — see
-/// `capped_vstack_bounds_wrap_through_hstack`
-/// — since a bounded stack now constrains its children on the main axis.)
-#[test]
-fn capped_hstack_of_columns_wraps_func_lists() {
+fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
     h.frame(|ui| {
         Panel::hstack()
@@ -191,83 +232,33 @@ fn capped_hstack_of_columns_wraps_func_lists() {
             .size((Sizing::HUG, Sizing::HUG))
             .max_size((f32::INFINITY, 100.0))
             .show(ui, |ui| {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("cat"))
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        // Category header above the wrapping function list.
-                        Block::new()
-                            .id(WidgetId::from_hash("hdr"))
-                            .size((Sizing::fixed(60.0), Sizing::fixed(15.0)))
-                            .show(ui);
-                        Panel::wrap_vstack()
-                            .id(WidgetId::from_hash("wrap"))
-                            .size((Sizing::HUG, Sizing::HUG))
-                            .gap(10.0)
-                            .line_gap(12.0)
-                            .show(ui, |ui| {
-                                // 50×40 funcs: a 100px column fits 2; the 3rd wraps.
-                                for i in 0..5u32 {
-                                    Block::new()
-                                        .id(WidgetId::from_hash(("f", i)))
-                                        .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
-                                        .show(ui);
-                                }
-                            });
-                    });
+                hug_vstack("cat").show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("hdr"))
+                        .size((Sizing::fixed(60.0), Sizing::fixed(15.0)))
+                        .show(ui);
+                    Panel::wrap_vstack()
+                        .id(WidgetId::from_hash("wrap"))
+                        .size((Sizing::HUG, Sizing::FILL))
+                        .gap(10.0)
+                        .line_gap(12.0)
+                        .show(ui, |ui| {
+                            for i in 0..5u32 {
+                                Block::new()
+                                    .id(WidgetId::from_hash(("f", i)))
+                                    .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
+                                    .show(ui);
+                            }
+                        });
+                });
             });
     });
-    let rect = |i: u32| rect_of(&h, ("f", i));
-    assert_eq!(rect(0).min.x, 0.0);
-    assert!(
-        rect(2).min.x > 0.0,
-        "func list wraps to a 2nd sub-column under the hstack's height cap",
-    );
-}
-
-/// A `max_size` on a `VStack` ancestor flows through a non-wrap `hstack`
-/// into a nested func wrap — CSS `max-height` behavior. This is the exact
-/// darkroom new-node popup shape (the popup body is a `VStack`): the
-/// vstack hands the hstack its *bounded* height (a bounded stack now
-/// constrains its children on the main axis), the hstack passes it as the
-/// columns' cross height, and each column vstack forwards it to its func
-/// wrap. So the cap can live on the popup, not the inner columns.
-#[test]
-fn capped_vstack_bounds_wrap_through_hstack() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("popup"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .max_size((f32::INFINITY, 100.0))
-            .show(ui, |ui| {
-                Panel::hstack()
-                    .id(WidgetId::from_hash("cols"))
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        Panel::vstack()
-                            .id(WidgetId::from_hash("cat"))
-                            .size((Sizing::HUG, Sizing::HUG))
-                            .show(ui, |ui| {
-                                Panel::wrap_vstack()
-                                    .id(WidgetId::from_hash("wrap"))
-                                    .size((Sizing::HUG, Sizing::HUG))
-                                    .gap(10.0)
-                                    .line_gap(12.0)
-                                    .show(ui, |ui| {
-                                        for i in 0..5u32 {
-                                            Block::new()
-                                                .id(WidgetId::from_hash(("f", i)))
-                                                .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
-                                                .show(ui);
-                                        }
-                                    });
-                            });
-                    });
-            });
-    });
-    assert!(
-        rect_of(&h, ("f", 2u32)).min.x > 0.0,
-        "func wrap respects the popup VStack's max-height, flowed through the hstack",
-    );
+    for i in 0..5u32 {
+        assert_eq!(
+            h.arranged(WidgetId::from_hash(("f", i))).min,
+            Vec2::new(i as f32 * 62.0, 15.0),
+            "cell {i}"
+        );
+    }
+    assert_eq!(h.arranged(WidgetId::from_hash("wrap")).max().y, 55.0);
 }

@@ -33,9 +33,10 @@ pub(super) struct ViewState {
     pub(super) last_caret_change: Duration,
     /// Caret byte the view last scrolled to. Compared against the
     /// current one rather than using the pass's own `caret_moved`,
-    /// because that only sees moves the widget itself made: a host that
-    /// assigns `EditState::caret` between frames moves the caret without
-    /// any edit or key, and the view still owes it a scroll.
+    /// because that only sees moves the widget itself made: a caller that
+    /// shortens the bound `String` between frames moves the caret (the
+    /// next pass clamps it) without any edit or key, and the view still
+    /// owes it a scroll.
     last_followed_caret: usize,
 }
 

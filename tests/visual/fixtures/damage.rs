@@ -7,32 +7,21 @@
 //! colour for the pair on purpose: a clear colour that moves between
 //! frames is itself a full repaint (`FrameBaseline`), and a full repaint
 //! is the one classification these fixtures cannot observe anything
-//! through. With `SAVE_DAMAGE_PNGS=1` the second frame is written under
-//! `tests/visual/output/damage/<name>.png` for inspection.
-
-use std::path::Path;
+//! through. A failing test writes its second frame under
+//! `tests/visual/output/damage_<name>/`.
 
 use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Block, Button, Configure, DebugOverlayConfig, Panel, RgbaF32, Sizing};
+use palantir::{
+    Background, Block, Button, Configure, DebugOverlayConfig, FramePaint, Panel, RgbaF32, Sizing,
+};
 
-use crate::fixtures::DARK_BG;
+use crate::goldens::{KeptOnFailure, assert_same};
 use crate::harness::Harness;
 
 /// Bright magenta — picked so non-painted pixels in the damage
 /// visualization image stand out against any plausible UI palette.
 const VIS_CLEAR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 1.0);
-
-fn save_debug(name: &str, img: &RgbaImage) {
-    if std::env::var_os("SAVE_DAMAGE_PNGS").is_none_or(|v| v.is_empty()) {
-        return;
-    }
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/visual/output/damage");
-    std::fs::create_dir_all(&dir).expect("mkdir output/damage");
-    let path = dir.join(format!("{name}.png"));
-    img.save(&path).expect("save damage png");
-    eprintln!("damage vis: wrote {}", path.display());
-}
 
 fn count_pixels(img: &RgbaImage, predicate: impl Fn(u8, u8, u8) -> bool) -> u32 {
     img.pixels()
@@ -49,6 +38,76 @@ fn is_magenta(r: u8, g: u8, b: u8) -> bool {
 }
 fn is_red(r: u8, g: u8, b: u8) -> bool {
     r > 240 && g < 16 && b < 16
+}
+
+/// Physical px of the damage overlay's stroke at scale 1, drawn inside
+/// its quad (`DAMAGE_OVERLAY_STROKE_WIDTH`).
+const STROKE: i32 = 2;
+/// How far the overlay quad sits outside the damage rect it brackets
+/// (`DAMAGE_OVERLAY_GAP`).
+const GAP: i32 = 1;
+
+/// A damage rect in physical px, `max` exclusive.
+#[derive(Clone, Copy, Debug)]
+struct PxRect {
+    min: (i32, i32),
+    max: (i32, i32),
+}
+
+impl PxRect {
+    const fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        Self {
+            min: (x, y),
+            max: (x + w, y + h),
+        }
+    }
+
+    /// Whether the overlay outline bracketing this damage rect covers
+    /// `(x, y)`: inside the quad grown by [`GAP`], and within [`STROKE`]
+    /// of its edge.
+    fn outline_covers(self, x: i32, y: i32) -> bool {
+        let (x0, y0) = (self.min.0 - GAP, self.min.1 - GAP);
+        let (x1, y1) = (self.max.0 + GAP, self.max.1 + GAP);
+        let inside = (x0..x1).contains(&x) && (y0..y1).contains(&y);
+        let interior =
+            (x0 + STROKE..x1 - STROKE).contains(&x) && (y0 + STROKE..y1 - STROKE).contains(&y);
+        inside && !interior
+    }
+}
+
+/// The red pixels of `img` are exactly the outlines of `damage`'s rects:
+/// every pixel one covers is red, and no other pixel is.
+fn assert_outlines_exactly(img: &RgbaImage, damage: &[PxRect]) {
+    for (x, y, p) in img.enumerate_pixels() {
+        let Rgba([r, g, b, _]) = *p;
+        let (x, y) = (x as i32, y as i32);
+        let expected = damage.iter().any(|rect| rect.outline_covers(x, y));
+        assert_eq!(
+            is_red(r, g, b),
+            expected,
+            "pixel ({x}, {y}) rgb ({r}, {g}, {b}): outline of {damage:?} expected {expected}",
+        );
+    }
+}
+
+/// The rect the red pixels of `img` bracket, read off their extent: the
+/// overlay quad's bounds less the gap. For a damage rect the fixture
+/// cannot derive, so [`assert_outlines_exactly`] can still check every
+/// pixel of its outline.
+fn outlined_rect(img: &RgbaImage) -> PxRect {
+    let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+    for (x, y, p) in img.enumerate_pixels() {
+        let Rgba([r, g, b, _]) = *p;
+        if is_red(r, g, b) {
+            let (x, y) = (x as i32, y as i32);
+            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+        }
+    }
+    assert!(x0 <= x1, "no red pixel at all: the overlay drew nothing");
+    PxRect {
+        min: (x0 + GAP, y0 + GAP),
+        max: (x1 + 1 - GAP, y1 + 1 - GAP),
+    }
 }
 
 fn button_scene(
@@ -122,18 +181,18 @@ fn static_scene_repeats_clean() {
     let size = UVec2::new(160, 96);
     let scene = button_scene("hi", "hello");
 
-    let f1 = h.render(size, 1.0, VIS_CLEAR, scene);
-    let f2 = h.render_with_overlay(
-        DebugOverlayConfig {
+    let f1 = h.size(size).clear(VIS_CLEAR).frame(scene).image;
+    let repeat = h
+        .size(size)
+        .clear(VIS_CLEAR)
+        .overlay(DebugOverlayConfig {
             dim_undamaged: true,
             ..Default::default()
-        },
-        size,
-        1.0,
-        VIS_CLEAR,
-        scene,
-    );
-    save_debug("static_scene_repeats_clean", &f2);
+        })
+        .frame(scene);
+    assert_eq!(repeat.paint, FramePaint::Skip);
+    let f2 = repeat.image;
+    let _kept = KeptOnFailure::new("damage_static_scene_repeats_clean", &f2);
 
     let painted = count_pixels(&f2, |r, g, b| !is_magenta(r, g, b));
     let total = size.x * size.y;
@@ -142,42 +201,43 @@ fn static_scene_repeats_clean() {
         "the scene covers the surface, so no pixel may read as the clear \
          colour. Got {painted}/{total} non-magenta pixels."
     );
-    assert!(
-        f2 == f1,
-        "a repeat frame must paint nothing: an undim-able pixel changed, so \
-         the frame took a paint path and the Skip didn't fire",
-    );
+    // A repeat frame paints nothing, so nothing dims: the target still
+    // holds frame 1.
+    assert_same("damage_static_repeat", &f2, &f1);
 }
 
 /// One small thing actually changes between frames: button label flips
-/// from "a" to "b". Pins that damage fires at all — `painted > 0` means
-/// the renderer entered a paint pass and not the Skip path. On this
-/// 160×96 fixture the damage rect crosses the 50%-coverage heuristic
-/// and escalates to Full, so the captured frame is mostly painted —
-/// don't pin an upper bound here.
+/// from "a" to "b". The damage stays the button's rect, under the
+/// coverage that would escalate it, so the frame repaints partially: the
+/// target is loaded rather than cleared, and no pixel reads as the clear
+/// colour — the button repainted, the rest dimmed from frame 1.
 #[test]
-fn single_button_change_repaints_something() {
+fn single_button_change_repaints_partially() {
     let mut h = Harness::new();
     let size = UVec2::new(160, 96);
 
-    let _f1 = h.render(size, 1.0, VIS_CLEAR, button_scene("b", "a"));
-    let f2 = h.render_with_overlay(
-        DebugOverlayConfig {
+    let _f1 = h
+        .size(size)
+        .clear(VIS_CLEAR)
+        .frame(button_scene("b", "a"))
+        .image;
+    let changed = h
+        .size(size)
+        .clear(VIS_CLEAR)
+        .overlay(DebugOverlayConfig {
             dim_undamaged: true,
             ..Default::default()
-        },
-        size,
-        1.0,
-        VIS_CLEAR,
-        button_scene("b", "b"),
-    );
-    save_debug("single_button_change_repaints_something", &f2);
+        })
+        .frame(button_scene("b", "b"));
+    assert_eq!(changed.paint, FramePaint::Partial);
+    let f2 = changed.image;
+    let _kept = KeptOnFailure::new("damage_single_button_change_repaints_partially", &f2);
 
     let painted = count_pixels(&f2, |r, g, b| !is_magenta(r, g, b));
-    let total = size.x * size.y;
-    assert!(
-        painted > 0,
-        "button changed — damage should have painted something; got 0/{total}",
+    assert_eq!(
+        painted,
+        size.x * size.y,
+        "a partial frame loads the target, so nothing reads as the clear"
     );
 }
 
@@ -190,33 +250,22 @@ fn damage_rect_overlay_strokes_dirty_region() {
     let mut h = Harness::new();
     let size = UVec2::new(160, 96);
 
-    let _f1 = h.render(size, 1.0, DARK_BG, button_scene("c", "a"));
-    let f2 = h.render_with_overlay(
-        DebugOverlayConfig {
+    let _f1 = h.size(size).frame(button_scene("c", "a")).image;
+    let f2 = h
+        .size(size)
+        .overlay(DebugOverlayConfig {
             damage_rect: true,
             ..Default::default()
-        },
-        size,
-        1.0,
-        DARK_BG,
-        button_scene("c", "b"),
-    );
-    save_debug("damage_rect_overlay_strokes_dirty_region", &f2);
+        })
+        .frame(button_scene("c", "b"))
+        .image;
+    let _kept = KeptOnFailure::new("damage_rect_overlay_strokes_dirty_region", &f2);
 
-    let red = count_pixels(&f2, is_red);
-    let total = size.x * size.y;
-    assert!(
-        red > 0,
-        "expected red overlay stroke pixels on the surface; \
-         got {red}/{total} — post-copy overlay pass didn't reach the swapchain.",
-    );
-    // Sanity upper bound: the overlay is a 2px stroke around the
-    // damage rect, never the whole surface.
-    assert!(
-        red < total / 4,
-        "red pixel count {red}/{total} suggests the overlay flooded \
-         the surface — should be a thin stroke around the dirty rect.",
-    );
+    // The button's label width decides the damage rect's size, so that is
+    // read back; its corner is the panel's 12 px padding.
+    let damage = outlined_rect(&f2);
+    assert_eq!(damage.min, (12, 12), "the button sits at the padding");
+    assert_outlines_exactly(&f2, &[damage]);
 }
 
 /// The motivating workload for multi-rect damage. Two tiny corner
@@ -250,18 +299,21 @@ fn corner_pair_change_keeps_center_unpainted() {
     let mut h = Harness::new();
     let size = UVec2::new(200, 200);
 
-    let f1 = h.render(size, 1.0, VIS_CLEAR, corner_pair_scene("a", "a"));
-    let f2 = h.render_with_overlay(
-        DebugOverlayConfig {
+    let f1 = h
+        .size(size)
+        .clear(VIS_CLEAR)
+        .frame(corner_pair_scene("a", "a"))
+        .image;
+    let f2 = h
+        .size(size)
+        .clear(VIS_CLEAR)
+        .overlay(DebugOverlayConfig {
             dim_undamaged: true,
             ..Default::default()
-        },
-        size,
-        1.0,
-        VIS_CLEAR,
-        corner_pair_scene("b", "b"),
-    );
-    save_debug("corner_pair_change_keeps_center_unpainted", &f2);
+        })
+        .frame(corner_pair_scene("b", "b"))
+        .image;
+    let _kept = KeptOnFailure::new("damage_corner_pair_change_keeps_center_unpainted", &f2);
 
     // (1) Centre 100×100 region (50..150) lies outside both corner
     // scissors. Multi-rect damage keeps it that way; a unioned Full
@@ -322,40 +374,23 @@ fn corner_pair_overlay_strokes_each_rect() {
     let mut h = Harness::new();
     let size = UVec2::new(200, 200);
 
-    let _f1 = h.render(size, 1.0, DARK_BG, corner_pair_scene("a", "a"));
-    let f2 = h.render_with_overlay(
-        DebugOverlayConfig {
+    let _f1 = h.size(size).frame(corner_pair_scene("a", "a")).image;
+    let f2 = h
+        .size(size)
+        .overlay(DebugOverlayConfig {
             damage_rect: true,
             ..Default::default()
-        },
-        size,
-        1.0,
-        DARK_BG,
-        corner_pair_scene("b", "b"),
-    );
-    save_debug("corner_pair_overlay_strokes_each_rect", &f2);
+        })
+        .frame(corner_pair_scene("b", "b"))
+        .image;
+    let _kept = KeptOnFailure::new("damage_corner_pair_overlay_strokes_each_rect", &f2);
 
-    let count_red_in = |x_range: std::ops::Range<u32>, y_range: std::ops::Range<u32>| {
-        let mut n = 0u32;
-        for y in y_range {
-            for x in x_range.clone() {
-                let Rgba([r, g, b, _]) = *f2.get_pixel(x, y);
-                if is_red(r, g, b) {
-                    n += 1;
-                }
-            }
-        }
-        n
-    };
-    let tl_red = count_red_in(0..40, 0..40);
-    let br_red = count_red_in(160..200, 160..200);
-    let centre_red = count_red_in(50..150, 50..150);
-    assert!(tl_red > 0, "top-left corner must be outlined");
-    assert!(br_red > 0, "bottom-right corner must be outlined");
-    assert_eq!(
-        centre_red, 0,
-        "centre 100×100 must be free of overlay strokes (got {centre_red}) — \
-         overlay should outline each damage rect, not their union",
+    // Each 20 px corner block is its own damage rect; their union would
+    // be the whole surface. The top-left outline hangs a pixel off the
+    // surface, which the exact check accounts for.
+    assert_outlines_exactly(
+        &f2,
+        &[PxRect::new(0, 0, 20, 20), PxRect::new(180, 180, 20, 20)],
     );
 }
 
@@ -396,28 +431,19 @@ fn damage_rect_overlay_outlines_thin_sliver() {
         }
     };
 
-    let _f1 = h.render(size, 1.0, DARK_BG, sliver(false));
-    let f2 = h.render_with_overlay(
-        DebugOverlayConfig {
+    let _f1 = h.size(size).frame(sliver(false)).image;
+    let f2 = h
+        .size(size)
+        .overlay(DebugOverlayConfig {
             damage_rect: true,
             ..Default::default()
-        },
-        size,
-        1.0,
-        DARK_BG,
-        sliver(true),
-    );
-    save_debug("damage_rect_overlay_outlines_thin_sliver", &f2);
+        })
+        .frame(sliver(true))
+        .image;
+    let _kept = KeptOnFailure::new("damage_rect_overlay_outlines_thin_sliver", &f2);
 
-    let red = count_pixels(&f2, is_red);
-    assert!(
-        red > 0,
-        "a 2px sliver of damage must still get an outset outline; got 0 red \
-         pixels — an inset wider than the rect would collapse it to zero area \
-         (the blinking-caret bug)",
-    );
-    assert!(
-        red < size.x * size.y / 4,
-        "outline should be a thin stroke around the sliver, not a flood ({red} px)",
-    );
+    // An outset outline of the 2 × 40 sliver: a 4 × 42 quad, solid red
+    // since its 2 px stroke meets itself across the width. An inset wider
+    // than the rect would collapse it to nothing (the blinking-caret bug).
+    assert_outlines_exactly(&f2, &[PxRect::new(60, 20, 2, 40)]);
 }

@@ -40,6 +40,7 @@ pub struct TooltipTheme {
     #[serde(with = "crate::widgets::theme::serde::duration_seconds")]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub gap: f32,
 }
 

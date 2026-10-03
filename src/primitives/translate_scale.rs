@@ -246,33 +246,38 @@ impl Default for TranslateScale {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::internals::panic_probe;
     use crate::primitives::approx::EPS;
 
+    /// A transform is the identity when its bits are, or when each part
+    /// is within `EPS` of it. `-0.0` has other bits than `0.0`, so it
+    /// takes the `EPS` fallback, as does the drift a lerp leaves behind.
+    /// One pixel, or a 1.5 scale, is past the fallback.
     #[test]
-    fn identity_is_noop_via_fast_path() {
-        assert!(TranslateScale::IDENTITY.is_identity());
-        assert!(TranslateScale::new(Vec2::ZERO, 1.0).is_identity());
-    }
-
-    #[test]
-    fn negative_zero_translation_is_noop_via_fallback() {
-        // `-0.0.to_bits() != 0.0.to_bits()`, so this misses the bitwise
-        // fast path and must fall through to `approx_zero`.
-        let t = TranslateScale::new(Vec2::new(-0.0, -0.0), 1.0);
-        assert_ne!(t.translation.x.to_bits(), 0.0f32.to_bits());
-        assert!(t.is_identity());
-    }
-
-    #[test]
-    fn sub_eps_drift_is_noop_via_fallback() {
-        let t = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
-        assert!(t.is_identity());
-    }
-
-    #[test]
-    fn visible_translation_or_scale_is_not_noop() {
-        assert!(!TranslateScale::from_translation(Vec2::new(1.0, 0.0)).is_identity());
-        assert!(!TranslateScale::from_scale(1.5).is_identity());
+    fn is_identity_within_eps() {
+        let cases = [
+            ("IDENTITY", TranslateScale::IDENTITY, true),
+            ("new zero, 1", TranslateScale::new(Vec2::ZERO, 1.0), true),
+            (
+                "negative zero",
+                TranslateScale::new(Vec2::new(-0.0, -0.0), 1.0),
+                true,
+            ),
+            (
+                "half-EPS drift",
+                TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5),
+                true,
+            ),
+            (
+                "one pixel",
+                TranslateScale::from_translation(Vec2::new(1.0, 0.0)),
+                false,
+            ),
+            ("scale 1.5", TranslateScale::from_scale(1.5), false),
+        ];
+        for (label, t, identity) in cases {
+            assert_eq!(t.is_identity(), identity, "{label}");
+        }
     }
 
     /// The door a caller builds a transform at, screened in every build.
@@ -287,16 +292,15 @@ mod tests {
             Vec2::new(0.0, f32::NEG_INFINITY),
         ];
         for translation in invalid_translations {
-            assert!(
-                std::panic::catch_unwind(|| TranslateScale::new(translation, 1.0)).is_err(),
-                "translation {translation:?} must be rejected"
-            );
+            panic_probe::assert_panics_with("TranslateScale translation must be finite", || {
+                TranslateScale::new(translation, 1.0)
+            });
         }
 
         for scale in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert!(
-                std::panic::catch_unwind(|| TranslateScale::new(Vec2::ZERO, scale)).is_err(),
-                "scale {scale:?} must be rejected"
+            panic_probe::assert_panics_with(
+                "TranslateScale scale must be positive and finite",
+                || TranslateScale::new(Vec2::ZERO, scale),
             );
         }
     }
@@ -310,36 +314,25 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn derived_transforms_reject_the_overflow_their_arithmetic_produces() {
-        assert!(
-            std::panic::catch_unwind(|| {
-                TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
-            })
-            .is_err(),
-            "pivot arithmetic that overflows translation must be rejected"
-        );
-        assert!(
-            std::panic::catch_unwind(|| {
-                TranslateScale::from_scale(f32::MAX).compose(TranslateScale::from_scale(2.0))
-            })
-            .is_err(),
-            "composition that overflows scale must be rejected"
-        );
-        assert!(
-            std::panic::catch_unwind(|| {
-                TranslateScale::from_scale(f32::from_bits(1))
-                    .compose(TranslateScale::from_scale(0.5))
-            })
-            .is_err(),
-            "composition that underflows scale to zero must be rejected"
-        );
-        assert!(
-            std::panic::catch_unwind(|| {
-                let transform = TranslateScale::from_translation(Vec2::splat(f32::MAX));
-                transform.compose(transform)
-            })
-            .is_err(),
-            "composition that overflows translation must be rejected"
-        );
+        const TRANSLATION: &str = "TranslateScale translation must be finite";
+        const SCALE: &str = "TranslateScale scale must be positive and finite";
+        // Pivot arithmetic that overflows translation.
+        panic_probe::assert_panics_with(TRANSLATION, || {
+            TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
+        });
+        // Composition that overflows scale.
+        panic_probe::assert_panics_with(SCALE, || {
+            TranslateScale::from_scale(f32::MAX).compose(TranslateScale::from_scale(2.0))
+        });
+        // Composition that underflows scale to zero.
+        panic_probe::assert_panics_with(SCALE, || {
+            TranslateScale::from_scale(f32::from_bits(1)).compose(TranslateScale::from_scale(0.5))
+        });
+        // Composition that overflows translation.
+        panic_probe::assert_panics_with(TRANSLATION, || {
+            let transform = TranslateScale::from_translation(Vec2::splat(f32::MAX));
+            transform.compose(transform)
+        });
     }
 
     #[test]

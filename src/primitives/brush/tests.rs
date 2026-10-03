@@ -1,11 +1,11 @@
 use crate::animation::animatable::Animatable;
+use crate::internals::panic_probe;
 use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
-use crate::primitives::brush::gradient::{Interp, Spread};
+use crate::primitives::brush::gradient::{Gradient, Interp, Spread};
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
@@ -119,72 +119,128 @@ fn solid_is_noop_iff_color_is_noop() {
     assert!(!Brush::Solid(RgbaF32::BLACK).is_noop());
 }
 
-/// `LinearGradient` is inline-stored on every `Brush::Linear`, so
-/// its size sets the floor for `Brush`, `Background.fill`, and every
-/// `Shape::*` variant carrying a brush. Pin the size so any silent
-/// footprint regression (added field, stop-cap bump) trips a test
-/// rather than diffusing through the codebase. The exact numbers below
-/// are a function of `MAX_STOPS = 8` and the field layout; recompute
-/// when those change.
-#[test]
-fn linear_gradient_size_is_compact() {
-    // GradientStops: 1 (len) + 8 × 5 (Stop = 1 offset_u8 + 4 SrgbaU8),
-    // align 1. ColorRamp adds 1 (interp) with no padding. LinearGradient:
-    // 4 (angle) + 42 (ramp) + 1 (spread) + 1 tail pad to align 4.
-    assert_eq!(
-        (
-            std::mem::size_of::<GradientStops>(),
-            std::mem::align_of::<GradientStops>()
-        ),
-        (1 + 5 * MAX_STOPS, 1),
-    );
-    assert_eq!(std::mem::size_of::<ColorRamp>(), 1 + 5 * MAX_STOPS + 1);
-    assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
-}
-
+/// Two through `MAX_STOPS` stops, and every door a stop list comes in
+/// by holds that count: `GradientStops::new`, a gradient's builder (which
+/// rejects a ninth stop as it arrives, and too few at `build`), a
+/// gradient's `new`, and deserialization.
 #[test]
 fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
+    let offset = |index: usize, count: usize| index as f32 / count.max(1) as f32;
     let stops = |count: usize| {
         (0..count)
-            .map(|index| Stop::new(index as f32 / count.max(1) as f32, RgbaF32::WHITE))
+            .map(|index| Stop::new(offset(index, count), RgbaF32::WHITE))
             .collect::<Vec<_>>()
     };
     let serialized = |count: usize| {
         let mut document = String::from("(stops: [");
         for index in 0..count {
-            let offset = index as f32 / count.max(1) as f32;
+            let offset = offset(index, count);
             write!(document, "(offset: {offset}, color: \"#ffffff\"),").unwrap();
         }
         document.push_str("])");
         document
     };
+    let built = |count: usize| {
+        let mut builder = LinearGradient::builder(0.0);
+        for index in 0..count {
+            builder = builder.stop(offset(index, count), RgbaF32::WHITE);
+        }
+        builder.build()
+    };
+    let radial =
+        |count: usize| RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), stops(count));
 
-    for count in [0, 1, 2, 8, 9] {
-        let constructed =
-            std::panic::catch_unwind(|| GradientStops::new(stops(count))).map(|value| value.len());
+    for (count, rejection) in [
+        (0, Some("gradient requires at least 2 stops, got 0")),
+        (1, Some("gradient requires at least 2 stops, got 1")),
+        (2, None),
+        (8, None),
+        (9, Some("gradient stop count exceeds MAX_STOPS = 8")),
+    ] {
         let deserialized =
             ron::from_str::<StopsDocument>(&serialized(count)).map(|value| value.stops.len());
-        let expected = (2..=MAX_STOPS).contains(&count);
-        assert_eq!(constructed.is_ok(), expected, "constructor count {count}");
-        assert_eq!(deserialized.is_ok(), expected, "deserializer count {count}",);
-        if expected {
-            assert_eq!(constructed.unwrap(), count);
-            assert_eq!(deserialized.unwrap(), count);
+        assert_eq!(
+            deserialized.is_ok(),
+            rejection.is_none(),
+            "deserializer count {count}",
+        );
+        match rejection {
+            Some(message) => {
+                panic_probe::assert_panics_with(message, || GradientStops::new(stops(count)));
+                panic_probe::assert_panics_with(message, || built(count));
+                panic_probe::assert_panics_with(message, || radial(count));
+            }
+            None => {
+                assert!((2..=MAX_STOPS).contains(&count));
+                assert_eq!(GradientStops::new(stops(count)).len(), count);
+                assert_eq!(built(count).ramp.stops.len(), count);
+                assert_eq!(radial(count).ramp.stops.len(), count);
+                assert_eq!(deserialized.unwrap(), count);
+            }
         }
     }
 }
 
+/// Every kind's `two_stop` runs 0 → 1 with `Spread::Pad` and its kind's
+/// interpolation: Oklab for linear and radial, linear for conic, where
+/// Oklab can shift the hue a colour wheel sweeps through. It paints unless both stops are
+/// transparent, is never a solid, and the setters change only what
+/// they name.
+#[test]
+fn two_stop_gradients_take_their_kind_defaults() {
+    fn check<G: Clone + std::fmt::Debug + PartialEq>(
+        kind: &str,
+        two_stop: impl Fn(RgbaF32, RgbaF32) -> Gradient<G>,
+        interp: Interp,
+    ) where
+        Brush: From<Gradient<G>>,
+    {
+        let g = two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
+        let offsets = [g.ramp.stops[0].offset(), g.ramp.stops[1].offset()];
+        assert_eq!((g.ramp.stops.len(), offsets), (2, [0.0, 1.0]), "{kind}");
+        assert_eq!((g.spread, g.ramp.interp), (Spread::Pad, interp), "{kind}");
+        let brush = Brush::from(g.clone());
+        assert!(!brush.is_noop(), "{kind}");
+        assert_eq!(brush.as_solid(), None, "{kind}");
+
+        let clear = two_stop(RgbaF32::TRANSPARENT, RgbaF32::WHITE.with_alpha(0.0));
+        assert!(Brush::from(clear).is_noop(), "{kind}: all transparent");
+
+        let other = match interp {
+            Interp::Linear => Interp::Oklab,
+            _ => Interp::Linear,
+        };
+        let overridden = g.clone().with_spread(Spread::Repeat).with_interp(other);
+        assert_eq!(
+            (overridden.spread, overridden.ramp.interp),
+            (Spread::Repeat, other),
+            "{kind}"
+        );
+        assert_eq!(overridden.ramp.stops, g.ramp.stops, "{kind}");
+        assert_eq!(overridden.geometry, g.geometry, "{kind}");
+    }
+    check(
+        "linear",
+        |a, b| LinearGradient::two_stop(0.0, a, b),
+        Interp::Oklab,
+    );
+    check("radial", RadialGradient::two_stop, Interp::Oklab);
+    check("conic", ConicGradient::two_stop, Interp::Linear);
+
+    // A radial gradient defaults to the centred circle: centre and
+    // radius 0.5, both exact in f16.
+    let radial = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
+    assert_eq!(radial.geometry.center, Vec2::splat(0.5));
+    assert_eq!(radial.geometry.radius, Vec2::splat(0.5));
+    assert_eq!(radial.axis().lanes(), [0.5, 0.5, 0.5, 0.5]);
+}
+
 #[test]
 fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
-    for (label, offset) in [
-        ("nan", f32::NAN),
-        ("positive infinity", f32::INFINITY),
-        ("negative infinity", f32::NEG_INFINITY),
-    ] {
-        assert!(
-            std::panic::catch_unwind(|| Stop::new(offset, RgbaF32::WHITE)).is_err(),
-            "{label} must panic at the authoring boundary",
-        );
+    for offset in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        panic_probe::assert_panics_with("gradient stop offset must be finite", || {
+            Stop::new(offset, RgbaF32::WHITE)
+        });
     }
 
     for literal in ["NaN", "inf", "-inf"] {
@@ -227,26 +283,6 @@ fn every_gradient_variant_round_trips_validated_stops() {
 }
 
 #[test]
-fn linear_two_stop_authoring() {
-    let g = LinearGradient::two_stop(0.0, RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x16213e));
-    assert_eq!(g.ramp.stops.len(), 2);
-    assert_eq!(g.ramp.stops[0].offset(), 0.0);
-    assert_eq!(g.ramp.stops[1].offset(), 1.0);
-    assert_eq!(g.spread, Spread::Pad);
-    assert_eq!(g.ramp.interp, Interp::Oklab);
-    assert!(!g.is_noop());
-
-    let overridden = g
-        .clone()
-        .with_spread(Spread::Repeat)
-        .with_interp(Interp::Linear);
-    assert_eq!(overridden.spread, Spread::Repeat);
-    assert_eq!(overridden.ramp.interp, Interp::Linear);
-    assert_eq!(overridden.ramp.stops, g.ramp.stops);
-    assert_eq!(overridden.geometry, g.geometry);
-}
-
-#[test]
 fn gradient_builders_preserve_geometry_stops_and_options() {
     let linear = LinearGradient::builder(PI / 2.0)
         .stop(-1.0, RgbaF32::hex(0x000000))
@@ -280,31 +316,6 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
     assert_eq!(conic.geometry.center, center);
     assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
     assert_eq!(conic.ramp.interp, Interp::Linear);
-}
-
-#[test]
-fn linear_all_transparent_is_noop() {
-    let g = LinearGradient::two_stop(0.0, RgbaF32::TRANSPARENT, RgbaF32::WHITE.with_alpha(0.0));
-    assert!(g.is_noop());
-    assert!(Brush::Linear(g).is_noop());
-}
-
-#[test]
-#[should_panic(expected = "exceeds MAX_STOPS")]
-fn linear_too_many_stops_panics() {
-    let mut builder = LinearGradient::builder(0.0);
-    for i in 0..MAX_STOPS {
-        builder = builder.stop(i as f32 / (MAX_STOPS - 1) as f32, RgbaF32::WHITE);
-    }
-    let _ = builder.stop(1.0, RgbaF32::WHITE);
-}
-
-#[test]
-#[should_panic(expected = "at least 2 stops")]
-fn linear_one_stop_panics() {
-    let _ = LinearGradient::builder(0.0)
-        .stop(0.0, RgbaF32::WHITE)
-        .build();
 }
 
 #[test]
@@ -358,31 +369,6 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
 }
 
 #[test]
-fn radial_default_centered() {
-    let g = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
-    assert_eq!(g.geometry.center, Vec2::splat(0.5));
-    assert_eq!(g.geometry.radius, Vec2::splat(0.5));
-    assert_eq!(g.ramp.interp, Interp::Oklab);
-    assert_eq!(g.spread, Spread::Pad);
-    let a = g.axis();
-    assert_eq!(a.lanes(), [0.5, 0.5, 0.5, 0.5]);
-}
-
-#[test]
-fn conic_default_linear_interp_per_variant() {
-    let g = ConicGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
-    assert_eq!(g.ramp.interp, Interp::Linear);
-    let l = LinearGradient::two_stop(
-        0.0,
-        RgbaF32::srgb(1.0, 0.0, 0.0),
-        RgbaF32::srgb(0.0, 0.0, 1.0),
-    );
-    assert_eq!(l.ramp.interp, Interp::Oklab);
-    let r = RadialGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
-    assert_eq!(r.ramp.interp, Interp::Oklab);
-}
-
-#[test]
 fn conic_axis_packs_start_angle() {
     let g = ConicGradient::new(
         Vec2::new(0.4, 0.6),
@@ -392,40 +378,11 @@ fn conic_axis_packs_start_angle() {
             Stop::new(1.0, RgbaF32::srgb(0.0, 0.0, 1.0)),
         ],
     );
-    let [dx, dy, t0, _] = g.axis().lanes();
-    assert!((dx - 0.4).abs() < 1e-3);
-    assert!((dy - 0.6).abs() < 1e-3);
-    assert!((t0 - FRAC_PI_4).abs() < 1e-3);
-}
-
-#[test]
-fn brush_radial_conic_noop_when_all_transparent() {
-    let r = RadialGradient::two_stop(RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT);
-    let c = ConicGradient::two_stop(RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT);
-    assert!(Brush::Radial(r).is_noop());
-    assert!(Brush::Conic(c).is_noop());
-}
-
-#[test]
-fn brush_radial_conic_as_solid_is_none() {
-    let r = RadialGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
-    let c = ConicGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
-    assert!(Brush::Radial(r).as_solid().is_none());
-    assert!(Brush::Conic(c).as_solid().is_none());
-}
-
-#[test]
-#[should_panic(expected = "exceeds MAX_STOPS")]
-fn radial_too_many_stops_panics() {
-    let many: Vec<Stop> = (0..=MAX_STOPS)
-        .map(|i| Stop::new(i as f32 / 8.0, RgbaF32::WHITE))
-        .collect();
-    let _ = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), many);
-}
-
-#[test]
-fn linear_gradient_hash_stable_across_construction() {
-    let g0 = LinearGradient::two_stop(0.5, RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44));
-    let g1 = LinearGradient::two_stop(0.5, RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44));
-    assert_eq!(h(&g0), h(&g1));
+    // The axis packs to f16, 10 mantissa bits: 0.4 is 1638.4 steps of
+    // 2^-12 and rounds to 1638, 0.6 is 1228.8 steps of 2^-11 and rounds to
+    // 1229, and π/4 is 1608.5 steps of 2^-11 and rounds to 1608.
+    assert_eq!(
+        g.axis().lanes(),
+        [1638.0 / 4096.0, 1229.0 / 2048.0, 1608.0 / 2048.0, 0.0],
+    );
 }

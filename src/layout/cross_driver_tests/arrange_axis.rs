@@ -1,11 +1,12 @@
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::{SizeSpec, Sizing};
 use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::grid::Grid;
@@ -47,24 +48,31 @@ struct ArrangeCase {
     max: f32,
     margin: f32,
     align: Align,
+    /// A fixed child of this extent on the axis, for a hugging case to
+    /// hug; zero records none.
+    content: f32,
 }
 
 fn axis_sizes(axis: Axis, sizing: Sizing) -> SizeSpec {
-    match axis {
-        Axis::X => SizeSpec::new(sizing, Sizing::fixed(10.0)),
-        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), sizing),
-    }
+    axis.compose_sizing(sizing, Sizing::fixed(10.0))
 }
 
 fn add_child(ui: &mut Ui, id: WidgetId, case: ArrangeCase) {
-    Block::new()
+    Panel::zstack()
         .id(id)
         .size(axis_sizes(case.axis, case.sizing))
         .min_size(case.axis.compose_size(case.min, 0.0))
         .max_size(case.axis.compose_size(case.max, f32::INFINITY))
         .margin(case.margin)
         .align(case.align)
-        .show(ui);
+        .show(ui, |ui| {
+            if case.content > 0.0 {
+                Block::new()
+                    .auto_id()
+                    .size(axis_sizes(case.axis, Sizing::fixed(case.content)))
+                    .show(ui);
+            }
+        });
 }
 
 fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
@@ -81,10 +89,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
         Driver::Stack => {
-            let panel = match case.axis {
-                Axis::X => Panel::vstack(),
-                Axis::Y => Panel::hstack(),
-            };
+            let panel = Panel::stack_on(case.axis.other());
             panel
                 .auto_id()
                 .size(parent_size)
@@ -92,10 +97,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
         Driver::WrapStack => {
-            let panel = match case.axis {
-                Axis::X => Panel::wrap_vstack(),
-                Axis::Y => Panel::wrap_hstack(),
-            };
+            let panel = Panel::wrap_stack_on(case.axis.other());
             panel
                 .auto_id()
                 .size(parent_size)
@@ -124,67 +126,95 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
     });
-    h.ui.response_for(child).rect.expect("child arranged")
+    h.arranged(child)
 }
 
+/// One sizing resolves to one extent under every driver, on either axis,
+/// with or without a margin — and the margin moves the child off the
+/// slot's start by itself, since the default alignment starts there.
+///
+/// Fill floors at its measured minimum when the slot is too small, and
+/// stops at its maximum when the slot is larger; a fixed size holds under
+/// stretch alignment, loses to a larger minimum, and a minimum equal to
+/// the maximum pins the extent outright. A hugging node stops at its
+/// maximum below its content, and floors at its minimum above both its
+/// content and its slot — the slot is below the minimum there because a
+/// stretching driver grows a hugging child to the slot.
 #[test]
-fn fill_preserves_measured_floor_when_slot_is_undersized() {
-    for axis in [Axis::X, Axis::Y] {
-        for driver in DRIVERS {
-            for margin in [0.0, 10.0] {
-                let case = ArrangeCase {
-                    axis,
-                    slot: 50.0,
-                    sizing: Sizing::FILL,
-                    min: 80.0,
-                    max: f32::INFINITY,
-                    margin,
-                    align: Align::default(),
-                };
-                let rect = arrange_with(driver, case);
-                assert_eq!(axis.main(rect.size), 80.0, "{axis:?} {driver:?}");
-            }
-        }
+fn sizing_resolves_alike_under_every_driver() {
+    #[derive(Debug)]
+    struct Row {
+        label: &'static str,
+        sizing: Sizing,
+        slot: f32,
+        min: f32,
+        max: f32,
+        content: f32,
+        extent: f32,
     }
-}
-
-#[test]
-fn stretch_growth_respects_max_size() {
-    for axis in [Axis::X, Axis::Y] {
-        for driver in DRIVERS {
-            for margin in [0.0, 10.0] {
-                let case = ArrangeCase {
-                    axis,
-                    slot: 200.0,
-                    sizing: Sizing::FILL,
-                    min: 0.0,
-                    max: 80.0,
-                    margin,
-                    align: Align::default(),
-                };
-                let rect = arrange_with(driver, case);
-                assert_eq!(axis.main(rect.size), 80.0, "{axis:?} {driver:?}");
-            }
-        }
-    }
-}
-
-#[test]
-fn fixed_remains_exact_under_stretch_alignment() {
-    for axis in [Axis::X, Axis::Y] {
-        for driver in DRIVERS {
-            for margin in [0.0, 10.0] {
-                let case = ArrangeCase {
-                    axis,
-                    slot: 100.0,
-                    sizing: Sizing::fixed(20.0),
-                    min: 0.0,
-                    max: f32::INFINITY,
-                    margin,
-                    align: Align::default(),
-                };
-                let rect = arrange_with(driver, case);
-                assert_eq!(axis.main(rect.size), 20.0, "{axis:?} {driver:?}");
+    let row = |label, sizing, slot, min, max, content, extent| Row {
+        label,
+        sizing,
+        slot,
+        min,
+        max,
+        content,
+        extent,
+    };
+    let inf = f32::INFINITY;
+    let rows = [
+        row("fill floors", Sizing::FILL, 50.0, 80.0, inf, 0.0, 80.0),
+        row("fill caps", Sizing::FILL, 200.0, 0.0, 80.0, 0.0, 80.0),
+        row(
+            "fixed holds",
+            Sizing::fixed(20.0),
+            100.0,
+            0.0,
+            inf,
+            0.0,
+            20.0,
+        ),
+        row(
+            "fixed under min",
+            Sizing::fixed(20.0),
+            100.0,
+            30.0,
+            inf,
+            0.0,
+            30.0,
+        ),
+        row("min equals max", Sizing::FILL, 200.0, 40.0, 40.0, 0.0, 40.0),
+        row("hug under max", Sizing::HUG, 100.0, 0.0, 40.0, 60.0, 40.0),
+        row("hug over min", Sizing::HUG, 40.0, 50.0, inf, 30.0, 50.0),
+    ];
+    for Row {
+        label,
+        sizing,
+        slot,
+        min,
+        max,
+        content,
+        extent,
+    } in rows
+    {
+        for axis in [Axis::X, Axis::Y] {
+            for driver in DRIVERS {
+                for margin in [0.0, 10.0] {
+                    let case = ArrangeCase {
+                        axis,
+                        slot,
+                        sizing,
+                        min,
+                        max,
+                        margin,
+                        align: Align::default(),
+                        content,
+                    };
+                    let rect = arrange_with(driver, case);
+                    let at = format!("{label}: {axis:?} {driver:?} margin {margin}");
+                    assert_eq!(axis.main(rect.size), extent, "{at}");
+                    assert_eq!(axis.main_v(rect.min), margin, "{at}: start");
+                }
             }
         }
     }
@@ -213,6 +243,7 @@ fn max_capped_fill_uses_resolved_alignment() {
                     max: 80.0,
                     margin: 0.0,
                     align,
+                    content: 0.0,
                 };
                 let rect = arrange_with(driver, case);
                 assert_eq!(axis.main(rect.size), 80.0, "{axis:?} {driver:?}");
@@ -223,5 +254,132 @@ fn max_capped_fill_uses_resolved_alignment() {
                 );
             }
         }
+    }
+}
+
+/// A container with no children hugs nothing: every driver arranges an
+/// empty hugging panel to its padding alone, 5 on each side.
+#[test]
+fn an_empty_driver_hugs_its_padding() {
+    let id = WidgetId::from_hash("empty-driver");
+    for driver in [
+        Driver::Canvas,
+        Driver::Stack,
+        Driver::WrapStack,
+        Driver::ZStack,
+        Driver::Grid,
+    ] {
+        let mut h = UiHarness::new(UVec2::new(200, 200));
+        h.frame(|ui| {
+            let hug = (Sizing::HUG, Sizing::HUG);
+            let panel = match driver {
+                Driver::Root => unreachable!("the root is not a container"),
+                Driver::Canvas => Panel::canvas(),
+                Driver::Stack => Panel::hstack(),
+                Driver::WrapStack => Panel::wrap_hstack(),
+                Driver::ZStack => Panel::zstack(),
+                Driver::Grid => {
+                    Grid::new()
+                        .id(id)
+                        .cols([Track::HUG])
+                        .rows([Track::HUG])
+                        .size(hug)
+                        .padding(5.0)
+                        .show(ui, |_| {});
+                    return;
+                }
+            };
+            panel.id(id).size(hug).padding(5.0).show(ui, |_| {});
+        });
+        assert_eq!(
+            h.arranged(id),
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            "{driver:?}"
+        );
+    }
+}
+
+/// A collapsed child takes no room under any driver: it does not grow a
+/// hugging parent, take a gap, or move a sibling, and it arranges to a
+/// zero size. The children are a 20×20 `a`, a collapsed 50×50 `gone`,
+/// and a 30×20 `b`, with a gap of 10. A stack and a wrap put `b` at
+/// 20 + 10 = 30 and hug 30 + 30 = 60 wide. A canvas places `b` there by
+/// hand and `gone` at (100, 100), past both. A grid puts `gone` in `a`'s
+/// cell and `b` in the next column. A zstack overlaps `a` and `b` at the
+/// origin and hugs the wider, 30.
+#[test]
+fn a_collapsed_child_takes_no_room() {
+    let panel_id = WidgetId::from_hash("collapsed-driver");
+    let [a_id, gone_id, b_id] = ["a", "gone", "b"].map(WidgetId::from_hash);
+    for driver in [
+        Driver::Canvas,
+        Driver::Stack,
+        Driver::WrapStack,
+        Driver::ZStack,
+        Driver::Grid,
+    ] {
+        let child = |ui: &mut Ui, id: WidgetId, size: (f32, f32), at: (f32, f32), col: u16| {
+            let mut block = Block::new().id(id).size(size);
+            match driver {
+                Driver::Canvas => block = block.position(at),
+                Driver::Grid => block = block.grid_cell((0, col)),
+                _ => {}
+            }
+            if id == gone_id {
+                block = block.collapsed();
+            }
+            block.show(ui);
+        };
+        let children = |ui: &mut Ui| {
+            child(ui, a_id, (20.0, 20.0), (0.0, 0.0), 0);
+            child(ui, gone_id, (50.0, 50.0), (100.0, 100.0), 0);
+            child(ui, b_id, (30.0, 20.0), (30.0, 0.0), 1);
+        };
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        h.frame(|ui| {
+            let hug = (Sizing::HUG, Sizing::HUG);
+            let panel = match driver {
+                Driver::Root => unreachable!("the root is not a container"),
+                Driver::Canvas => Panel::canvas(),
+                Driver::Stack => Panel::hstack(),
+                Driver::WrapStack => Panel::wrap_hstack(),
+                Driver::ZStack => Panel::zstack(),
+                Driver::Grid => {
+                    Grid::new()
+                        .id(panel_id)
+                        .cols([Track::HUG, Track::HUG])
+                        .rows([Track::HUG])
+                        .size(hug)
+                        .gap(10.0)
+                        .show(ui, children);
+                    return;
+                }
+            };
+            panel.id(panel_id).size(hug).gap(10.0).show(ui, children);
+        });
+        let (b_x, panel_w) = match driver {
+            Driver::ZStack => (0.0, 30.0),
+            _ => (30.0, 60.0),
+        };
+        assert_eq!(
+            h.arranged(panel_id),
+            Rect::new(0.0, 0.0, panel_w, 20.0),
+            "{driver:?}: the panel"
+        );
+        assert_eq!(
+            h.arranged(a_id),
+            Rect::new(0.0, 0.0, 20.0, 20.0),
+            "{driver:?}: a"
+        );
+        assert_eq!(
+            h.arranged(b_id),
+            Rect::new(b_x, 0.0, 30.0, 20.0),
+            "{driver:?}: b"
+        );
+        assert_eq!(
+            h.arranged(gone_id).size,
+            Size::ZERO,
+            "{driver:?}: the collapsed child"
+        );
     }
 }

@@ -1,6 +1,6 @@
 //! One textured-quad draw, and the pair a sink takes it as.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
@@ -46,7 +46,18 @@ pub(crate) struct DrawImagePayload {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ImageDraw<'a> {
     pub(crate) payload: DrawImagePayload,
-    pub(crate) paint: Option<&'a GpuPaintRef>,
+    pub(crate) view: Option<ViewPaint<'a>>,
+}
+
+/// A `GpuView` draw's off-screen half: the app callback that fills the
+/// target, and the version of the pixels it should hold.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ViewPaint<'a> {
+    pub(crate) paint: &'a GpuPaintRef,
+    /// The view's repaint version, moved only on a frame the widget asked
+    /// to repaint (`GpuViews::record`). A target already painted at this
+    /// version, at the same geometry, still holds the right pixels.
+    pub(crate) epoch: u64,
 }
 
 impl ImageDraw<'_> {
@@ -73,9 +84,9 @@ impl ImageDraw<'_> {
     /// texture is framework-painted this frame.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        let Self { payload, paint } = self;
+        let Self { payload, view } = self;
         payload.rect.is_paint_empty()
             || payload.tint.is_noop()
-            || (payload.handle.0 == 0 && paint.is_none())
+            || (payload.handle.0 == 0 && view.is_none())
     }
 }

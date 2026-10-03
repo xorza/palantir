@@ -16,7 +16,7 @@ use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster_pass::RasterPass;
 use crate::gpu::text::encode::{EncodedKey, EncodedRunKey};
 use crate::gpu::text::encoded_counters::EncodedCounters;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::span::Span;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::render::GlyphRasterKey;
@@ -53,6 +53,7 @@ impl BlockSlot for EncodedGlyph {
             instance: RasterQuad {
                 pos: [0, 0],
                 dim: 0,
+                size: 0,
                 uv_and_kind: 0,
                 color: RgbaF16::TRANSPARENT,
             },
@@ -142,9 +143,7 @@ impl EncodedCache {
             let g = glyph.instance;
             pass.instances.push(RasterQuad {
                 pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
-                dim: g.dim,
-                uv_and_kind: g.uv_and_kind,
-                color: g.color,
+                ..g
             });
             slot.last_use = current_frame;
         }
@@ -368,7 +367,7 @@ const _: () = assert!(
 // which the two integration suites enable without ever building a churn
 // fixture.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::common::block_arena::BlockArenaCounts;
@@ -376,7 +375,7 @@ pub(crate) mod test_support {
     use crate::common::counters::CounterSet;
     #[cfg(test)]
     use crate::gpu::text::encoded_counters::EncodedCounts;
-    #[cfg(all(test, feature = "internals"))]
+    #[cfg(test)]
     use crate::primitives::span::Span;
     use crate::text::key::TextShapeKey;
 
@@ -384,10 +383,7 @@ pub(crate) mod test_support {
     /// which is the resident population and the templates under it.
     /// A key is opaque here — [`EncodedKey`]'s fields stay private to
     /// `encode`, so it serves only to name a row across frames.
-    ///
-    /// Gated on `internals` too, because the GPU text tests that ask
-    /// these carry that gate and nothing else in the crate asks.
-    #[cfg(all(test, feature = "internals"))]
+    #[cfg(test)]
     impl EncodedCache {
         pub(crate) fn rows(&self) -> usize {
             self.map.len()
@@ -446,6 +442,7 @@ pub(crate) mod test_support {
                         instance: RasterQuad {
                             pos: [glyph as i32, run as i32],
                             dim: 0,
+                            size: 0,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },
@@ -524,6 +521,7 @@ pub(crate) mod test_support {
                         instance: RasterQuad {
                             pos: [glyph as i32, row as i32],
                             dim: 0,
+                            size: 0,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },

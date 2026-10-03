@@ -6,14 +6,13 @@ use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::TextStyle;
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::RgbaF32, corners::Corners, stroke::Stroke};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -37,7 +36,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         .show(ui, |ui| {
             Text::new("title")
                 .id(WidgetId::from_hash(("section-title", id)))
-                .style(&TextStyle::default().with_font_size(12.0))
+                .font_size(12.0)
                 .show(ui);
             body(ui);
         });
@@ -87,7 +86,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                             left = Some(
                                 Text::new(long_text)
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -96,7 +95,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                             right = Some(
                                 Text::new("right column")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node(),
@@ -105,14 +104,20 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                 });
         });
 
+        // Mono at 14 px is 7 px a char: "right column" is 12 × 7 = 84.
         let layout = h.ui.layout(Layer::Main);
         let lr = layout.rect[left.unwrap().idx()];
         let rr = layout.rect[right.unwrap().idx()];
-        assert!(lr.size.w > 0.0, "case: {label_id} left col width");
-        assert!(
-            rr.min.x >= lr.max().x - 0.5,
-            "case: {label_id} right must start past left.right; left={lr:?}, right={rr:?}",
+        assert_eq!(rr.size.w, 84.0, "case: {label_id}");
+        assert_eq!(
+            rr.min.x,
+            lr.max().x + gaps.1,
+            "case: {label_id}: the right cell starts one gap past the left",
         );
+        // The wrapping column takes what the right one leaves: all of it
+        // past the label and the gap. A Fill column's floor is its
+        // min-content, reserved before the Hug column grows.
+        assert_eq!(lr.size.w, 800.0 - gaps.1 - 84.0, "case: {label_id}");
     }
 }
 
@@ -142,7 +147,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                             hug_left = Some(
                                 Text::new(PARAGRAPH)
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -151,7 +156,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                             hug_right = Some(
                                 Text::new("right column")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node(),
@@ -171,7 +176,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                             prop_label = Some(
                                 Text::new("Title:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -181,7 +186,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     "Lorem Ipsum is simply dummy text of the printing industry.",
                                 )
                                 .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
+                                .font_size(14.0)
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .grid_cell((0, 1))
                                 .show(ui)
@@ -198,15 +203,22 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let l2 = layout.rect[prop_label.unwrap().idx()];
     let r2 = layout.rect[prop_value.unwrap().idx()];
 
-    assert!(l1.size.w > 0.0);
-    assert!(l2.size.w > 0.0);
-    assert!(
-        r1.min.x >= l1.max().x - 0.5,
-        "two-hug-columns: right cell must start past left cell. left={l1:?}, right={r1:?}",
+    // Mono at 14 px is 7 px a char, inside a section inset 8 + 1 px by
+    // its padding and border, so 1500 − 18 = 1482 wide. Two Hug columns:
+    // the 122-char paragraph fits on one line, 854 px, then the 16 px gap.
+    // The property grid: "Title:" is 42, and the Fill value column takes
+    // the rest, 1482 − 42 − 16 = 1424.
+    assert_eq!([l1.min.x, l1.size.w], [9.0, 854.0], "two-hug-columns: left");
+    assert_eq!(
+        [r1.min.x, r1.size.w],
+        [879.0, 84.0],
+        "two-hug-columns: right"
     );
-    assert!(
-        r2.min.x >= l2.max().x - 0.5,
-        "property-grid: value cell must start past label cell. label={l2:?}, value={r2:?}",
+    assert_eq!([l2.min.x, l2.size.w], [9.0, 42.0], "property-grid: label");
+    assert_eq!(
+        [r2.min.x, r2.size.w],
+        [67.0, 1424.0],
+        "property-grid: value"
     );
 }
 
@@ -231,18 +243,18 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
                     .show(ui, |ui| {
                         Text::new("Title:")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .grid_cell((0, 0))
                             .show(ui);
                         Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 1))
                             .show(ui);
                         Text::new("Description:")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .grid_cell((1, 0))
                             .show(ui);
                     });
@@ -295,12 +307,12 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     .line_gap(0.0).gap(16.0)
                                     .show(ui, |ui| {
                                         Text::new(PARAGRAPH).auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .text_wrap(TextWrap::WrapWithOverflow)
                                             .grid_cell((0, 0))
                                             .show(ui);
                                         Text::new("right column").auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .grid_cell((0, 1))
                                             .show(ui);
                                     });
@@ -313,31 +325,31 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     .line_gap(6.0).gap(16.0)
                                     .show(ui, |ui| {
                                         Text::new("Title:").auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .grid_cell((0, 0))
                                             .show(ui);
                                         Text::new(
                                             "Lorem Ipsum is simply dummy text of the printing industry.",
                                         ).auto_id()
-                                        .style(&TextStyle::default().with_font_size(14.0))
+                                        .font_size(14.0)
                                         .text_wrap(TextWrap::WrapWithOverflow)
                                         .grid_cell((0, 1))
                                         .show(ui);
                                         Text::new("Description:").auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .grid_cell((1, 0))
                                             .show(ui);
                                         Text::new(PARAGRAPH).auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .text_wrap(TextWrap::WrapWithOverflow)
                                             .grid_cell((1, 1))
                                             .show(ui);
                                         Text::new("Tags:").auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .grid_cell((2, 0))
                                             .show(ui);
                                         Text::new("layout, grid, intrinsic, wrapping, css").auto_id()
-                                            .style(&TextStyle::default().with_font_size(14.0))
+                                            .font_size(14.0)
                                             .text_wrap(TextWrap::WrapWithOverflow)
                                             .grid_cell((2, 1))
                                             .show(ui);

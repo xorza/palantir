@@ -4,11 +4,12 @@
 
 use glam::{UVec2, Vec2};
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
@@ -794,8 +795,9 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     // the first and short of the second.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(50.0, 15.0));
     assert_eq!(hit.drop, DockDrop::Into { group, index: 1 });
-    assert!(
-        (hit.highlight.min.x - (69.0 - 1.5 - 1.5)).abs() < 1e-4,
+    assert_eq!(
+        hit.highlight.min.x,
+        69.0 - 1.5 - 1.5,
         "the caret straddles the second chip's leading edge: {:?}",
         hit.highlight,
     );
@@ -886,32 +888,31 @@ fn a_split_dock_tiles_its_panes_and_strips() {
 
     let left_pane = h.rect(d.pane_id(primary)).expect("the left pane arranged");
     let right_pane = h.rect(d.pane_id(right)).expect("the right pane arranged");
-    assert!(
-        (left_pane.size.w - right_pane.size.w).abs() < 2.0,
-        "a 0.5 ratio halves the width: {left_pane:?} against {right_pane:?}",
-    );
-    assert!(
-        left_pane.max().x <= right_pane.min.x + 2.0,
-        "the panes do not overlap: {left_pane:?} against {right_pane:?}",
-    );
-    assert_eq!(
-        (left_pane.size.h, right_pane.size.h),
-        (SURFACE.y as f32, SURFACE.y as f32),
-        "both panes take the full height",
-    );
+    // A 0.5 ratio halves the 600 px less the splitter's 1 px rule, and
+    // both panes take the full height.
+    assert_eq!(left_pane, Rect::new(0.0, 0.0, 299.5, 400.0));
+    assert_eq!(right_pane, Rect::new(300.5, 0.0, 299.5, 400.0));
 
+    // Each strip rides its pane's top edge at the pane's width, one 27.2
+    // px chip row under 4 px of top padding; the content takes the rest.
     for (group, pane) in [(primary, left_pane), (right, right_pane)] {
         let strip = h.rect(d.strip_id(group)).expect("the strip arranged");
-        assert!(
-            strip.min.y - pane.min.y < 1.0 && strip.max().y < pane.max().y,
-            "the strip rides the pane's top edge: {strip:?} in {pane:?}",
+        assert_eq!(
+            strip,
+            Rect {
+                size: Size::new(pane.size.w, 31.203125),
+                ..pane
+            }
         );
-        let content = h
-            .layout_rect(d.content_id(group))
-            .expect("the content area arranged");
-        assert!(
-            content.min.y >= strip.max().y - 1.0,
-            "the content sits under the strip: {content:?} against {strip:?}",
+        let content = h.arranged(d.content_id(group));
+        assert_eq!(
+            content,
+            Rect::new(
+                pane.min.x,
+                strip.max().y,
+                pane.size.w,
+                pane.size.h - strip.size.h
+            ),
         );
     }
 
@@ -920,10 +921,9 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let chip = TabStrip::chip_id(d.strip_id(primary), DockState::<Tab>::tab_key(Tab::Prefs));
     let chip_rect = h.rect(chip).expect("the Prefs chip arranged");
     let strip = h.rect(d.strip_id(primary)).expect("the strip arranged");
-    assert!(
-        strip.contains(chip_rect.center()),
-        "the chip sits inside its own strip: {chip_rect:?} in {strip:?}",
-    );
+    // The Prefs chip sits in its own strip, below the 4 px padding and
+    // down to the strip's bottom.
+    assert_eq!(chip_rect, Rect::new(86.5, 4.0, 76.0, strip.size.h - 4.0));
 }
 
 /// A click on a chip travels through the navigation scan, so the pane it
@@ -941,8 +941,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
         d.strip_id(d.primary().id),
         DockState::<Tab>::tab_key(Tab::Prefs),
     );
-    let at = h.center_of(chip);
-    h.click_at(at);
+    h.click_on(chip);
     let content = h.frame_value(|ui| {
         DockView::run(ui, &mut d, &mut tabs);
         ui.response_for(d.content_id(d.primary().id)).rect
@@ -967,8 +966,7 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
 
     let strip = d.strip_id(d.primary().id);
     let close = TabStrip::close_id(strip, DockState::<Tab>::tab_key(Tab::Prefs));
-    let at = h.center_of(close);
-    h.click_at(at);
+    h.click_on(close);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
 
     assert_eq!(
@@ -1026,14 +1024,14 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     );
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
-    h.click_at(h.center_of(chevron));
+    h.click_on(chevron);
     frame(&mut h, &mut d, &mut tabs);
 
     let entry = strip
         .with("overflow_menu")
         .with(DockState::<Tab>::tab_key(viewer(1)));
     assert!(h.rect(entry).is_some(), "the menu lists every tab");
-    h.click_at(h.center_of(entry));
+    h.click_on(entry);
     frame(&mut h, &mut d, &mut tabs);
 
     assert_eq!(
@@ -1041,4 +1039,30 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
         viewer(1),
         "the chosen tab is the one the pane shows",
     );
+}
+
+/// An app that raised the cap can load the layouts it saved. Five nested
+/// splits exceed the default cap of four; the saved file still loads, and
+/// the loaded state's own cap (the default, until the app sets its own)
+/// refuses a further split there.
+#[test]
+fn a_layout_deeper_than_the_default_cap_loads() {
+    let mut d = DockState::new("deep.dock", Tab::Main).max_depth(6);
+    let mut group = d.primary().id;
+    for n in 1..=5 {
+        d.find_or_insert(viewer(n), group);
+        split_off(&mut d, viewer(n), group, SplitSide::Right);
+        group = d
+            .find_tab(viewer(n))
+            .expect("the split pane holds the tab")
+            .group;
+    }
+    let text = ron::ser::to_string(&d).expect("serialize");
+    let loaded: DockState<Tab> = ron::from_str(&text).expect("a depth-5 layout loads");
+    assert_eq!(loaded.groups().count(), 6);
+    assert!(
+        !loaded.can_split(group),
+        "the default cap applies to new splits on the loaded state",
+    );
+    assert!(loaded.clone().max_depth(6).can_split(group));
 }

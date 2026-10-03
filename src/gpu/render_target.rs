@@ -48,7 +48,10 @@ impl<'a> RenderTarget<'a> {
 /// Render into `texture`.
 ///
 /// It must carry `RENDER_ATTACHMENT`, and `COPY_DST` as well when the host
-/// presents through its backbuffer.
+/// presents through its backbuffer. Its format must be an sRGB one or a
+/// float one (`Rgba16Float`, `Rgba32Float`, `Rg11b10Ufloat`): the renderer
+/// writes linear light and relies on the target to encode it. Rendering
+/// into any other format panics on the first frame.
 impl<'a> From<&'a wgpu::Texture> for RenderTarget<'a> {
     fn from(texture: &'a wgpu::Texture) -> Self {
         Self { texture }
@@ -84,5 +87,35 @@ pub(crate) fn extent(size: UVec2) -> wgpu::Extent3d {
         width: size.x,
         height: size.y,
         depth_or_array_layers: 1,
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::gpu::render_target;
+    use glam::UVec2;
+
+    /// A single-sample 2D render target of `size` — the one descriptor the
+    /// test device and the bench device both mint targets from.
+    ///
+    /// `label` shows up in RenderDoc and in wgpu's validation errors, so
+    /// it should name the test or driver, not the shape.
+    pub(crate) fn texture(
+        device: &wgpu::Device,
+        label: &str,
+        size: UVec2,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
+    ) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: render_target::extent(size),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
     }
 }

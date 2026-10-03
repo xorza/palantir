@@ -4,7 +4,7 @@ use glam::Vec2;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
-use crate::common::platform::{PLATFORM, Platform};
+use crate::common::platform::Platform;
 use crate::display;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
@@ -23,18 +23,33 @@ pub(super) enum PointerTrace {
     Gone,
 }
 
-/// `scale_factor` is the **effective** one — `Window::effective_scale`,
-/// the platform's factor times the app's — because a pointer position
-/// has to land in the space the frame laid its widgets out in, and that
-/// is the space both factors together define.
-///
+/// What translating one event needs besides the event: the host state
+/// that changes how it reads.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Translation {
+    /// Physical pixels per logical pixel in the space the current frame
+    /// laid its widgets out in — what a pointer position is divided by.
+    pub(super) scale_factor: f32,
+    /// The modifiers winit last reported. A key event carries none of its
+    /// own, and text and wheel translation both read them.
+    pub(super) modifiers: ModifiersState,
+    /// The platform whose conventions apply — `PLATFORM` in a build, any
+    /// of the three in a test.
+    pub(super) platform: Platform,
+}
+
 /// Returns what the event said about the pointer's physical position, for
 /// `Window::resync_pointer` to re-divide when that space moves.
 pub(super) fn translate(
     event: &WindowEvent,
-    scale_factor: f32,
+    at: Translation,
     mut emit: impl FnMut(InputEvent),
 ) -> PointerTrace {
+    let Translation {
+        scale_factor,
+        modifiers,
+        platform,
+    } = at;
     debug_assert!(
         display::scale_factor_is_valid(scale_factor),
         "the host screens the platform's half through \
@@ -78,29 +93,42 @@ pub(super) fn translate(
         WindowEvent::PinchGesture { delta, .. } => {
             emit(InputEvent::Zoom(1.0 + *delta as f32));
         }
-        WindowEvent::MouseWheel { delta, .. } => emit(match *delta {
-            MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),
-            MouseScrollDelta::PixelDelta(position) => InputEvent::ScrollPixels(Vec2::new(
-                -position.x as f32 / scale_factor,
-                -position.y as f32 / scale_factor,
-            )),
-        }),
-        WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-            emit(InputEvent::KeyDown {
-                key: logical_key(&event.logical_key),
-                repeat: event.repeat,
-                physical: physical_key(&event.physical_key),
-                // The platform's own resolution of layout, dead keys and
-                // modifiers — the only thing that knows what this press
-                // writes. `logical_key` names the key for chords and
-                // cannot answer for it: it holds one character where a
-                // dead-key fallback produces two.
-                text: event.text.as_deref().map_or(KeyText::EMPTY, KeyText::new),
+        WindowEvent::MouseWheel { delta, .. } => {
+            let (event, delta) = match *delta {
+                MouseScrollDelta::LineDelta(x, y) => (WheelUnit::Lines, Vec2::new(-x, -y)),
+                MouseScrollDelta::PixelDelta(position) => (
+                    WheelUnit::Pixels,
+                    Vec2::new(-position.x as f32, -position.y as f32) / scale_factor,
+                ),
+            };
+            let delta = shift_wheel(delta, modifiers, platform);
+            emit(match event {
+                WheelUnit::Lines => InputEvent::ScrollLines(delta),
+                WheelUnit::Pixels => InputEvent::ScrollPixels(delta),
             });
+        }
+        WindowEvent::KeyboardInput {
+            event,
+            is_synthetic,
+            ..
+        } if event.state == ElementState::Pressed => {
+            if let Some(press) = key_down(
+                KeyDownFacts {
+                    logical: &event.logical_key,
+                    physical: &event.physical_key,
+                    text: event.text.as_deref(),
+                    repeat: event.repeat,
+                    is_synthetic: *is_synthetic,
+                },
+                modifiers,
+            ) {
+                emit(press);
+            }
         }
         WindowEvent::ModifiersChanged(modifiers) => {
             emit(InputEvent::ModifiersChanged(normalize_modifiers(
                 &modifiers.state(),
+                platform,
             )));
         }
         // Only the loss is forwarded: regaining focus tells the state
@@ -232,8 +260,70 @@ fn physical_key(physical: &PhysicalKey) -> Key {
         .unwrap_or(Key::Other)
 }
 
-fn normalize_modifiers(modifiers: &ModifiersState) -> Modifiers {
-    let mac = matches!(PLATFORM, Platform::Mac);
+/// The two units a wheel reports in.
+#[derive(Clone, Copy, Debug)]
+enum WheelUnit {
+    Lines,
+    Pixels,
+}
+
+/// A vertical wheel turned with Shift held scrolls horizontally on
+/// Windows and Linux, the convention their toolkits and browsers share.
+/// macOS needs no help: its trackpads and mice send the horizontal delta
+/// themselves when Shift is held.
+fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Vec2 {
+    let swaps = platform != Platform::Mac && modifiers.shift_key() && delta.x == 0.0;
+    if swaps {
+        Vec2::new(delta.y, 0.0)
+    } else {
+        delta
+    }
+}
+
+/// The fields of a winit key press that translation reads — a winit
+/// `KeyEvent` cannot be built outside winit, so the rule below takes
+/// what it needs from one rather than the event.
+#[derive(Clone, Copy, Debug)]
+struct KeyDownFacts<'a> {
+    logical: &'a WinitKey,
+    physical: &'a PhysicalKey,
+    text: Option<&'a str>,
+    repeat: bool,
+    is_synthetic: bool,
+}
+
+/// The `KeyDown` a press becomes, or `None` for one that is not input.
+///
+/// - A synthetic press is dropped. winit sends one on X11 and Windows for
+///   every key still held when the window gains focus — the Enter that
+///   confirmed another app's dialog — and delivering it would submit a
+///   form or close a modal nobody pressed a key at.
+/// - Text typed with Super held is cleared: Super is a command modifier
+///   on every platform (Cmd on macOS reaches `Modifiers::ctrl`, which the
+///   text rule already reads), and `Modifiers` has no bit for it on
+///   Windows and Linux, so this is the one place that can drop it.
+fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent> {
+    if facts.is_synthetic {
+        return None;
+    }
+    // The platform's own resolution of layout, dead keys and modifiers —
+    // the only thing that knows what this press writes. `logical_key`
+    // names the key for chords and cannot answer for it: it holds one
+    // character where a dead-key fallback produces two.
+    let text = match facts.text {
+        Some(text) if !modifiers.super_key() => KeyText::new(text),
+        _ => KeyText::EMPTY,
+    };
+    Some(InputEvent::KeyDown {
+        key: logical_key(facts.logical),
+        repeat: facts.repeat,
+        physical: physical_key(facts.physical),
+        text,
+    })
+}
+
+fn normalize_modifiers(modifiers: &ModifiersState, platform: Platform) -> Modifiers {
+    let mac = matches!(platform, Platform::Mac);
     Modifiers {
         shift: modifiers.shift_key(),
         ctrl: if mac {

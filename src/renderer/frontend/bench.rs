@@ -1,14 +1,12 @@
 //! Record-to-compose comparison for repeated solid and gradient chrome.
 
 use crate::bench::Run;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::frontend_harness::FrontendHarness;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::RgbaF32;
-use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -53,23 +51,22 @@ impl FillCase {
 
 #[derive(Debug)]
 struct GradientBench {
-    harness: UiHarness,
-    frontend: Frontend,
+    frontend: FrontendHarness,
     start: Instant,
 }
 
 impl GradientBench {
     fn new() -> Self {
         Self {
-            harness: UiHarness::new(PHYSICAL),
-            frontend: Frontend::for_test(),
+            frontend: FrontendHarness::new(UiHarness::new(PHYSICAL)),
             start: Instant::now(),
         }
     }
 
     fn frame(&mut self, fill_case: FillCase) -> usize {
         let background = fill_case.background();
-        let report = self.harness.at(self.start.elapsed()).frame(|ui| {
+        self.frontend.harness.at(self.start.elapsed());
+        let report = self.frontend.frame(|ui| {
             for row in 0..ROWS {
                 Block::new()
                     .id_salt(row)
@@ -78,12 +75,10 @@ impl GradientBench {
                     .show(ui);
             }
         });
-        let plan = report.plan.unwrap_or(RenderPlan {
-            clear: RgbaF32::BLACK,
-            damage: Damage::Full,
-        });
-        self.frontend.build(self.harness.ui.frame_scene(), plan);
-        self.frontend.buffer.quads.len()
+        if report.plan.is_none() {
+            self.frontend.paint_full();
+        }
+        self.frontend.frontend.buffer.quads.len()
     }
 }
 
@@ -105,6 +100,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         };
         assert_eq!(
             fixture
+                .frontend
                 .harness
                 .ui
                 .forest()

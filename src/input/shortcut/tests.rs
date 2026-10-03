@@ -2,16 +2,7 @@ use crate::input::keyboard::key_text::KeyText;
 use crate::input::shortcut::*;
 
 fn kp(mods: Modifiers, key: Key) -> KeyPress {
-    KeyPress {
-        key,
-        mods,
-        repeat: false,
-        physical: Key::Other,
-        text: match key {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    }
+    KeyPress::with(key, mods)
 }
 
 /// The primary command modifier held. `Modifiers::ctrl` is already

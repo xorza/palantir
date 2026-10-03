@@ -37,7 +37,7 @@ pub(super) struct FillItem<K> {
 }
 
 impl<K> FillItem<K> {
-    pub(super) fn new(key: K, weight: f32, floor: f32, cap: f32) -> Self {
+    pub(super) const fn new(key: K, weight: f32, floor: f32, cap: f32) -> Self {
         Self {
             key,
             size: 0.0,

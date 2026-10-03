@@ -22,6 +22,7 @@ pub struct SeparatorTheme {
     /// Rule color.
     pub color: RgbaF32,
     /// Rule breadth in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub thickness: f32,
     /// Breathing room around the rule, applied when the builder left
     /// margin unset. `ZERO` for an in-flow rule; the menu slot opens a

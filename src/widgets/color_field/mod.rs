@@ -3,7 +3,6 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
@@ -15,6 +14,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
+use crate::widgets::axis_keys::KeyPair;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::configure::Configure;
@@ -46,6 +46,30 @@ pub struct ColorField<'a> {
     downsample: u32,
     style: Option<&'a ColorPickerTheme>,
 }
+
+const ACROSS: AxisKeys = AxisKeys {
+    step: KeyPair {
+        back: Key::ArrowLeft,
+        forward: Key::ArrowRight,
+    },
+    page: None,
+    ends: Some(KeyPair {
+        back: Key::Home,
+        forward: Key::End,
+    }),
+};
+
+const UP: AxisKeys = AxisKeys {
+    step: KeyPair {
+        back: Key::ArrowDown,
+        forward: Key::ArrowUp,
+    },
+    page: Some(KeyPair {
+        back: Key::PageDown,
+        forward: Key::PageUp,
+    }),
+    ends: None,
+};
 
 impl<'a> ColorField<'a> {
     /// A field driving `coords`. The hue it paints and the axes it writes are
@@ -174,33 +198,9 @@ fn write_axes(coords: &mut ColorCoords, sat: f32, val: f32) -> bool {
 }
 
 fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
-    let across = AxisKeys {
-        back: Key::ArrowLeft,
-        forward: Key::ArrowRight,
-    };
-    let up = AxisKeys {
-        back: Key::ArrowDown,
-        forward: Key::ArrowUp,
-    };
-    let mut sat = coords.sat() + across.travel(ui);
-    let mut val = coords.val() + up.travel(ui);
-    let home = ui.key_pressed(Shortcut::key(Key::Home));
-    let end = ui.key_pressed(Shortcut::key(Key::End));
-    let page_up = ui.key_pressed(Shortcut::key(Key::PageUp));
-    let page_down = ui.key_pressed(Shortcut::key(Key::PageDown));
-    if home {
-        sat = 0.0;
-    }
-    if end {
-        sat = 1.0;
-    }
-    if page_down {
-        val = 0.0;
-    }
-    if page_up {
-        val = 1.0;
-    }
-    write_axes(coords, sat, val)
+    let sat = ACROSS.travel(ui, coords.sat());
+    let val = UP.travel(ui, coords.val());
+    write_axes(coords, sat.to, val.to)
 }
 
 // Every texel shares the hue, so its gamut solve belongs outside the loop.

@@ -1,6 +1,7 @@
 //! What moving, adding and removing nodes damages.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::stroke::Stroke;
@@ -8,10 +9,10 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
+use crate::scene::layer::Layer;
 use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::Vec2;
@@ -55,10 +56,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                         .id(WidgetId::from_hash(("child", i)))
                         .position((10.0 + i as f32 * 50.0, 10.0))
                         .size(20.0)
-                        .background(Background {
-                            fill: RED.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RED))
                         .show(ui);
                 }
             });
@@ -77,7 +75,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
         !region.any_intersects(LINE_PROBE),
         "the canvas's own line shape must not be re-damaged by a sibling \
          removal; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -103,10 +101,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
                 // node, so it collides across nodes and is disambiguated.
                 Block::new()
                     .size(10.0)
-                    .background(Background {
-                        fill: RED.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RED))
                     .show(ui);
             });
     }
@@ -131,82 +126,96 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     assert!(
         h.damage_region().is_empty(),
         "reordering nodes must not damage unchanged leaves; region = {:?}",
-        h.damage_region().iter_rects().collect::<Vec<_>>(),
+        h.damage_region(),
     );
 }
 
 /// Regression: raising an **overlapping** painting node (moving it to
 /// the front of the paint order) flips which node shows in the overlap
 /// even though the raised node's own rect / content / ancestor state
-/// are untouched. The reordered child markers flip the canvas's
-/// `node_hash`, routing it to the changed-paints arm, whose row
-/// matcher damages the overlap of each *inverted* pair's painted
-/// extents. A node the raised one doesn't overlap (`c`) stays clean —
-/// the reorder damages overlaps only, never untouched non-overlapping
-/// nodes.
+/// are untouched. A node the raised one doesn't overlap (`c`) stays
+/// clean, and so does the part of `a` outside the overlap — the reorder
+/// damages overlaps only.
+///
+/// Two arrangements, one answer. As canvas children, the reordered child
+/// markers flip the canvas's `node_hash`, and its row matcher damages
+/// each inverted pair's overlap. As roots of one layer, there is no
+/// parent node: `RootOrder` keeps the layer's root list and does the same
+/// for it.
 #[test]
 fn raising_an_overlapping_node_redamages_only_the_overlap() {
     // `a` and `b` overlap; `c` sits far from both.
     const A: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);
     const B: Rect = Rect::new(30.0, 30.0, 40.0, 40.0);
     const OVERLAP: Rect = Rect::new(32.0, 32.0, 4.0, 4.0);
+    const A_ONLY: Rect = Rect::new(12.0, 12.0, 4.0, 4.0);
     const C: Rect = Rect::new(150.0, 150.0, 20.0, 20.0);
 
-    fn node(ui: &mut Ui, key: &str, r: Rect) {
+    fn block(key: &str, size: f32) -> Block {
         Block::new()
             .id(WidgetId::from_hash(key))
-            .position((r.min.x, r.min.y))
-            .size(r.size.w)
-            .background(Background {
-                fill: BLUE.into(),
-                ..Default::default()
-            })
-            .show(ui);
+            .size(size)
+            .background(Background::fill(BLUE))
     }
-    let canvas = |ui: &mut Ui, order: [(&str, Rect); 3]| {
+    type Order<'a> = [(&'a str, Rect); 3];
+    let canvas = |ui: &mut Ui, order: Order| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (key, r) in order {
-                    node(ui, key, r);
+                    block(key, r.size.w).position((r.min.x, r.min.y)).show(ui);
                 }
             });
+    };
+    let roots = |ui: &mut Ui, order: Order| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |_| {});
+        for (key, r) in order {
+            ui.layer(Layer::Popup).fixed_at(r.min).show(|ui| {
+                block(key, r.size.w).show(ui);
+            });
+        }
     };
 
     let a = ("a", A);
     let b = ("b", B);
     let c = ("c", C);
-    let mut h = UiHarness::new(DISPLAY.physical);
-    frame(&mut h, |ui| canvas(ui, [a, b, c]));
-    // Raise `a` to the front (drawn last) — same positions + content.
-    frame(&mut h, |ui| canvas(ui, [b, c, a]));
+    type Record<'a> = &'a dyn Fn(&mut Ui, Order);
+    let arrangements: [(&str, Record); 2] = [("canvas children", &canvas), ("layer roots", &roots)];
+    for (label, record) in arrangements {
+        let mut h = UiHarness::new(DISPLAY.physical);
+        frame(&mut h, |ui| record(ui, [a, b, c]));
+        // Raise `a` to the front (drawn last) — same positions + content.
+        frame(&mut h, |ui| record(ui, [b, c, a]));
 
-    let region = h.damage_region();
-    assert!(
-        region.any_intersects(OVERLAP),
-        "raising `a` over `b` must repaint their overlap; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
-    );
-    assert!(
-        !region.any_intersects(C),
-        "the non-overlapping node `c` must stay clean; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
-    );
+        let region = h.damage_region();
+        let rects = region.iter_rects().collect::<Vec<_>>();
+        assert!(
+            region.any_intersects(OVERLAP),
+            "{label}: raising `a` over `b` must repaint their overlap; region = {rects:?}",
+        );
+        assert!(
+            !region.any_intersects(A_ONLY),
+            "{label}: `a` outside the overlap must stay clean; region = {rects:?}",
+        );
+        assert!(
+            !region.any_intersects(C),
+            "{label}: the non-overlapping node `c` must stay clean; region = {rects:?}",
+        );
 
-    // The reorder costs exactly the frame it happens on. Once the
-    // snapshot holds the new order the rows match positionally, so the
-    // changed-paints arm takes its fast path, reports no inversion, and
-    // the O(rows²) overlap scan is never entered again.
-    // Worth pinning: the scan's cost is bearable precisely because it is
-    // one frame per raise rather than one per frame the order stays
-    // flipped.
-    frame(&mut h, |ui| canvas(ui, [b, c, a]));
-    assert!(
-        h.engines.damage.counters.dirty().is_empty(),
-        "a settled reorder must re-damage nothing; dirty = {:?}",
-        h.engines.damage.counters.dirty(),
-    );
+        // The reorder costs exactly the frame it happens on: once the
+        // retained order is the new one, the inversion pass is never
+        // entered again.
+        frame(&mut h, |ui| record(ui, [b, c, a]));
+        assert!(
+            h.damage_region().is_empty(),
+            "{label}: a settled reorder must re-damage nothing; region = {:?}",
+            h.damage_region(),
+        );
+    }
 }
 
 /// Regression: two **text**-bearing nodes scrolled fully off the left
@@ -254,7 +263,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
         h.damage_region().is_empty(),
         "off-screen text must not fabricate edge-of-window damage on \
          reorder; region = {:?}",
-        h.damage_region().iter_rects().collect::<Vec<_>>(),
+        h.damage_region(),
     );
 }
 
@@ -269,10 +278,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-            .background(Background {
-                fill: fill.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(fill))
             .show(ui);
     }
     let stack = |ui: &mut Ui, order: [(&str, RgbaF32); 2]| {
@@ -298,7 +304,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
         region.any_intersects(Rect::new(0.0, 5.0, 40.0, 5.0))
             && region.any_intersects(Rect::new(0.0, 25.0, 40.0, 5.0)),
         "swapping stack children must damage both slots; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -340,10 +346,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
             .id(WidgetId::from_hash("child"))
             .position((CHILD.min.x, CHILD.min.y))
             .size(CHILD.size.w)
-            .background(Background {
-                fill: RED.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RED))
             .show(ui);
     };
     // `over`: line recorded after the child → paints on top. `under`:
@@ -378,13 +381,13 @@ fn shape_crossing_child_boundary_is_redamaged() {
         region.any_intersects(PROBE),
         "the shape's overlap with the child must be re-damaged when the \
          shape crosses the child z-boundary; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         !region.any_intersects(FAR_PROBE),
         "the stretch of the line outside the child paints identically in \
          either order and must stay clean; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -427,7 +430,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
         region.any_intersects(PROBE),
         "swapping two overlapping direct shapes must damage their \
          overlap; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -449,10 +452,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
             .id(WidgetId::from_hash(key))
             .position((r.min.x, r.min.y))
             .size(r.size.w)
-            .background(Background {
-                fill: BLUE.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(BLUE))
             .show(ui);
     }
     let canvas = |ui: &mut Ui, with_b: bool| {
@@ -482,13 +482,13 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     assert!(
         region.any_intersects(CHILD_B),
         "the inserted child must be damaged; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         !region.any_intersects(LINE_PROBE),
         "an unchanged shape whose relative order is preserved must not \
          be re-damaged by a child insert; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -515,10 +515,7 @@ fn rekeying_a_child_damages_only_the_child() {
                     .id(WidgetId::from_hash(key))
                     .position((CHILD.min.x, CHILD.min.y))
                     .size(CHILD.size.w)
-                    .background(Background {
-                        fill: BLUE.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(BLUE))
                     .show(ui);
                 ui.add_shape(
                     Shape::line(
@@ -538,13 +535,13 @@ fn rekeying_a_child_damages_only_the_child() {
     assert!(
         region.any_intersects(CHILD),
         "a re-keyed child must be damaged (evict + re-add); region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
     assert!(
         !region.any_intersects(LINE_PROBE),
         "the parent's unchanged sibling shape must not be re-damaged by \
          a child re-key; region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -590,9 +587,11 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     // Snapshot the prev rects for shapes 0/1/2 so we can verify the
     // post-delete damage region.
-    let prev = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
-    let prev_shapes = &h.engines.damage.paints.slots[prev.paint_span.range()];
+    let prev_shapes = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"));
     assert_eq!(prev_shapes.len(), 3);
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
@@ -658,8 +657,11 @@ fn shape_added_in_middle_damages_only_new() {
     frame(&mut h, |ui| build(false, ui)); // red + blue
     frame(&mut h, |ui| build(false, ui)); // settle
 
-    let prev = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
-    let prev_shapes: Vec<_> = h.engines.damage.paints.slots[prev.paint_span.range()].to_vec();
+    let prev_shapes: Vec<_> = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"))
+        .to_vec();
     assert_eq!(prev_shapes.len(), 2);
     let prev_red_screen = prev_shapes[0].screen;
     let prev_blue_screen = prev_shapes[1].screen;
@@ -669,7 +671,11 @@ fn shape_added_in_middle_damages_only_new() {
     let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
-    let curr_shapes: Vec<_> = h.engines.damage.paints.slots[post.paint_span.range()].to_vec();
+    let curr_shapes: Vec<_> = h
+        .engines
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("canvas"))
+        .to_vec();
     let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
@@ -711,10 +717,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
         Block::new()
             .id(WidgetId::from_hash("L"))
             .size(30.0)
-            .background(Background {
-                fill: BLUE.into(),
-                ..Default::default()
-            })
+            .background(Background::fill(BLUE))
             .show(ui);
     };
     let parent = |ui: &mut Ui, id: &'static str, holds_leaf: bool| {
@@ -854,19 +857,13 @@ fn a_hidden_container_takes_no_snapshot() {
                     Block::new()
                         .id(hidden_child)
                         .size(20.0)
-                        .background(Background {
-                            fill: BLUE.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(BLUE))
                         .show(ui);
                 });
                 Block::new()
                     .id(shown)
                     .size(20.0)
-                    .background(Background {
-                        fill: RED.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RED))
                     .show(ui);
             });
     });
@@ -907,18 +904,12 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
                         Panel::zstack()
                             .id(child)
                             .size(50.0)
-                            .background(Background {
-                                fill: BLUE.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(BLUE))
                             .show(ui, |ui| {
                                 Block::new()
                                     .id(grandchild)
                                     .size(20.0)
-                                    .background(Background {
-                                        fill: RED.into(),
-                                        ..Default::default()
-                                    })
+                                    .background(Background::fill(RED))
                                     .show(ui);
                             });
                     });
@@ -948,4 +939,36 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
             );
         }
     }
+}
+
+/// Reversing a deck costs one damage rect per card, not one per pair.
+/// 200 equal cards at one rect on a canvas, then the same cards in the
+/// reverse order: every card after the first now paints over cards that
+/// painted over it, so each of those 199 pushes its whole rect once —
+/// where a rect per inverted pair pushed `200 × 199 / 2 = 19 900`.
+#[test]
+fn reversing_a_deck_pushes_one_rect_per_card() {
+    const CARD: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);
+    let deck = |ui: &mut Ui, reversed: bool| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("deck"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for i in 0..200u32 {
+                    let card = if reversed { 199 - i } else { i };
+                    Block::new()
+                        .id(WidgetId::from_hash(("card", card)))
+                        .position((CARD.min.x, CARD.min.y))
+                        .size(CARD.size.w)
+                        .background(Background::fill(BLUE))
+                        .show(ui);
+                }
+            });
+    };
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| deck(ui, false));
+    frame(&mut h, |ui| deck(ui, true));
+    let raw = &h.engines.damage.raw_rects;
+    assert_eq!(raw.len(), 199, "{raw:?}");
+    assert!(raw.iter().all(|&r| r == CARD));
 }

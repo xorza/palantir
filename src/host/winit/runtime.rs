@@ -60,7 +60,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         handle: HostHandle<T>,
     ) -> Result<Self, WinitHostError> {
         let token = bootstrap.token;
-        let config = bootstrap.config.clone();
+        let config = &bootstrap.config;
         // Started before the window exists and joined below, so the font
         // scan overlaps window creation and GPU init rather than adding to
         // them. An early return leaves the thread to finish and drop.
@@ -69,7 +69,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let SurfaceStartup {
             surfaces,
             first_surface,
-        } = SurfaceManager::start(&window, native::physical_size(&window), gpu_config(&config))
+        } = SurfaceManager::start(&window, native::physical_size(&window), gpu_config(config))
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let core = HostCore::new(
             surfaces.gpu.clone(),
@@ -194,16 +194,10 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Future deadlines contribute their instant; the nearest wins so no
     /// window out-sleeps its own schedule.
     pub(super) fn schedule(&self, event_loop: &ActiveEventLoop, now: Instant) {
-        let mut earliest: Option<Instant> = None;
-        for win in self.windows.iter() {
-            match win.next.resolve(now) {
-                FramePresent::Immediate => win.window.request_redraw(),
-                FramePresent::At(at) => {
-                    earliest = Some(earliest.map_or(at, |best: Instant| best.min(at)));
-                }
-                FramePresent::Idle => {}
-            }
-        }
+        let earliest = earliest_wake(
+            self.windows.iter().map(|win| (win, win.next.resolve(now))),
+            |win| win.window.request_redraw(),
+        );
         event_loop.set_control_flow(match earliest {
             Some(at) => ControlFlow::WaitUntil(at),
             None => ControlFlow::Wait,
@@ -250,5 +244,70 @@ fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
         power_preference: config.power_preference,
         vsync: config.vsync,
         collect_gpu_stats: config.collect_gpu_stats,
+    }
+}
+
+/// The nearest future deadline among `presents`, handing each window that
+/// wants a frame now to `redraw`. `None` when every window is idle or
+/// redrawing, which leaves the loop to wait for an event.
+fn earliest_wake<W>(
+    presents: impl IntoIterator<Item = (W, FramePresent)>,
+    mut redraw: impl FnMut(W),
+) -> Option<Instant> {
+    let mut earliest: Option<Instant> = None;
+    for (window, present) in presents {
+        match present {
+            FramePresent::Immediate => redraw(window),
+            FramePresent::At(at) => earliest = Some(earliest.map_or(at, |best| best.min(at))),
+            FramePresent::Idle => {}
+        }
+    }
+    earliest
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::host::winit::runtime::earliest_wake;
+    use crate::host::winit::window::FramePresent;
+    use std::time::{Duration, Instant};
+
+    /// Immediate windows redraw, in order; the nearest future deadline
+    /// wins whatever order it arrives in; idle windows add nothing.
+    #[test]
+    fn the_nearest_deadline_wins_and_immediates_redraw() {
+        let t0 = Instant::now();
+        let at = |ms| FramePresent::At(t0 + Duration::from_millis(ms));
+        for (label, presents, redrawn, wake) in [
+            ("none", vec![], vec![], None),
+            ("idle", vec![FramePresent::Idle], vec![], None),
+            (
+                "nearest of three",
+                vec![at(30), at(10), at(20)],
+                vec![],
+                Some(t0 + Duration::from_millis(10)),
+            ),
+            (
+                "mixed",
+                vec![
+                    FramePresent::Immediate,
+                    at(40),
+                    FramePresent::Idle,
+                    FramePresent::Immediate,
+                ],
+                vec![0, 3],
+                Some(t0 + Duration::from_millis(40)),
+            ),
+            (
+                "all immediate",
+                vec![FramePresent::Immediate; 2],
+                vec![0, 1],
+                None,
+            ),
+        ] {
+            let mut got = Vec::new();
+            let earliest = earliest_wake(presents.into_iter().enumerate(), |i| got.push(i));
+            assert_eq!(got, redrawn, "{label}: redrawn");
+            assert_eq!(earliest, wake, "{label}: wake");
+        }
     }
 }

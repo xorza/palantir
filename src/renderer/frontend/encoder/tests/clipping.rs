@@ -1,16 +1,12 @@
 //! Push/pop balance, and when a rounded clip needs the stencil.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, stroke::Stroke};
-use crate::renderer::frontend::capture::PaintCall;
-use crate::renderer::frontend::capture::PaintCapture;
-use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects};
-use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
@@ -30,11 +26,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
                 .show(ui, |_| {});
         });
     });
-    let cmds = h.encode_paint();
-    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, 1);
-    assert_eq!(pops, 1);
-    assert_eq!(count_draw_rects(&cmds), 0);
+    assert_eq!(h.encode_paint().kinds(), ["PushClip", "PopClip"]);
 }
 
 #[test]
@@ -50,48 +42,15 @@ fn clip_emits_balanced_push_pop() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                 });
         });
     });
-    let cmds = h.encode_paint();
-
-    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, 1);
-    assert_eq!(pops, 1);
-
-    let push_idx = cmds
-        .calls
-        .iter()
-        .position(|command| matches!(command, PaintCall::PushClip(_)))
-        .unwrap();
-    let pop_idx = cmds
-        .calls
-        .iter()
-        .position(|command| matches!(command, PaintCall::PopClip))
-        .unwrap();
-    let draw_idxs: Vec<_> = cmds
-        .calls
-        .iter()
-        .enumerate()
-        .filter_map(|(i, command)| as_rect(command).map(|_| i))
-        .collect();
-    assert!(!draw_idxs.is_empty());
-    for &di in &draw_idxs {
-        assert!(
-            di > push_idx && di < pop_idx,
-            "draw at {di} not inside [{push_idx}, {pop_idx}]"
-        );
-    }
+    // The draw sits inside the pair.
+    assert_eq!(h.encode_paint().kinds(), ["PushClip", "Quad", "PopClip"]);
 }
 
-/// Rounded-clip emission, plus encoded mask geometry: with zero padding
-/// the mask is inset by the chrome's border width (folded into padding at
-/// `open_node`) so children can't overpaint the border.
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
@@ -117,21 +76,10 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         });
     });
     let cmds = h.encode_paint();
+    assert_eq!(cmds.kinds(), ["Quad", "PushClip", "PopClip"]);
+    let payload = cmds.calls[1].as_push_clip().unwrap();
 
-    let rounded_clips: Vec<_> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::PushClip(payload) if !payload.corners.approx_zero() => Some(payload),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(rounded_clips.len(), 1);
-    let payload = rounded_clips[0];
-
-    let panel_rect = h
-        .layout_rect(WidgetId::from_hash("rounded"))
-        .expect("arranged");
+    let panel_rect = h.arranged(WidgetId::from_hash("rounded"));
     // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
     // encoder's `rect.deflated_by(padding)` insets the mask by 2 on
     // every side. Radius reduces by 2 to stay concentric with the
@@ -158,17 +106,9 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
         });
     });
     let cmds = h.encode_paint();
-    let push_clips: Vec<PushClipPayload> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::PushClip(payload) => Some(*payload),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(push_clips.len(), 1);
+    assert_eq!(cmds.kinds(), ["PushClip", "PopClip"]);
     assert!(
-        push_clips[0].corners.approx_zero(),
+        cmds.calls[0].as_push_clip().unwrap().corners.approx_zero(),
         "no background → no radius → falls back to plain scissor",
     );
 }
@@ -191,28 +131,9 @@ fn nested_clips_each_emit_their_own_pair() {
                 });
         });
     });
-    let cmds = h.encode_paint();
-    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, 2);
-    assert_eq!(pops, 2);
-}
-
-#[derive(Debug)]
-struct ClipPairs {
-    pushes: usize,
-    pops: usize,
-}
-
-fn count_clip_pairs(cmds: &PaintCapture) -> ClipPairs {
-    let pushes = cmds
-        .calls
-        .iter()
-        .filter(|command| matches!(command, PaintCall::PushClip(_)))
-        .count();
-    let pops = cmds
-        .calls
-        .iter()
-        .filter(|command| matches!(command, PaintCall::PopClip))
-        .count();
-    ClipPairs { pushes, pops }
+    // Nested, not two siblings: the inner pair sits inside the outer one.
+    assert_eq!(
+        h.encode_paint().kinds(),
+        ["PushClip", "PushClip", "PopClip", "PopClip"],
+    );
 }

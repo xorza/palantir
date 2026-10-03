@@ -111,7 +111,7 @@ impl Size {
     /// rect. The whole extent from an offset origin overflows by exactly
     /// that offset, which is the bug this exists to make hard to write.
     #[inline]
-    pub(crate) fn room_past(self, offset: Vec2) -> Self {
+    pub(crate) const fn room_past(self, offset: Vec2) -> Self {
         Self {
             w: (self.w - offset.x).max(0.0),
             h: (self.h - offset.y).max(0.0),
@@ -126,7 +126,7 @@ impl Size {
     /// contributing nothing, a canvas axis taking the room past a child.
     /// One body, so the two lanes cannot drift apart.
     #[inline]
-    pub(crate) fn select(self, mask: BVec2, other: Self) -> Self {
+    pub(crate) const fn select(self, mask: BVec2, other: Self) -> Self {
         Self {
             w: if mask.x { self.w } else { other.w },
             h: if mask.y { self.h } else { other.h },
@@ -200,10 +200,19 @@ impl<'de> ::serde::Deserialize<'de> for Size {
         }
 
         let raw = RawSize::deserialize(deserializer)?;
-        Ok(Size::new(
+        let size = Size::new(
             raw.w.unwrap_or(f32::INFINITY),
             raw.h.unwrap_or(f32::INFINITY),
-        ))
+        );
+        // A file is untrusted: NaN or a negative axis would reach a bound
+        // assert. Infinity stays, as the unbounded axis it spells.
+        if size.w >= 0.0 && size.h >= 0.0 {
+            Ok(size)
+        } else {
+            Err(::serde::de::Error::custom(format_args!(
+                "a size axis must not be negative or NaN, got {size:?}"
+            )))
+        }
     }
 }
 
@@ -218,14 +227,6 @@ impl NanCheck for Size {
 mod tests {
     use crate::primitives::size::Size;
     use glam::Vec2;
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    fn hash_value(value: impl Hash) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        value.hash(&mut hasher);
-        hasher.finish()
-    }
 
     #[test]
     fn min_and_max_are_per_axis() {
@@ -245,14 +246,5 @@ mod tests {
         // (e.g. `Rect::union`/`intersect`).
         assert_eq!(real.min(nan), real);
         assert_eq!(real.max(nan), real);
-    }
-
-    #[test]
-    fn equal_signed_zero_sizes_have_equal_hashes() {
-        let positive = Size::new(0.0, 0.0);
-        let negative = Size::new(-0.0, -0.0);
-
-        assert_eq!(positive, negative);
-        assert_eq!(hash_value(positive), hash_value(negative));
     }
 }

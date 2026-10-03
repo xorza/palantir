@@ -1,13 +1,13 @@
-use crate::primitives::brush::gradient::FillAxis;
+use crate::internals::panic_probe;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::RgbaF32;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::RecordedGradients;
 use glam::Vec2;
-use std::panic::AssertUnwindSafe;
 
 #[test]
 fn stores_are_isolated() {
@@ -139,13 +139,14 @@ fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
     // A new pass retires it.
     store.clear();
     let fresh = store.intern_str("this frame");
-    let recorded = std::panic::catch_unwind(AssertUnwindSafe(|| store.record_text(stale)));
-    assert!(
-        recorded.is_err(),
-        "record_text must reject a retired handle"
+    panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || store.record_text(stale),
     );
-    let reused = std::panic::catch_unwind(AssertUnwindSafe(|| store.reuse(stale)));
-    assert!(reused.is_err(), "reuse must reject a retired handle");
+    panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || store.reuse(stale),
+    );
     // The pass's own handle still resolves, so the epoch — not the
     // clear — is what the rejection turns on.
     assert_eq!(store.record_text(fresh).span, fresh.span);

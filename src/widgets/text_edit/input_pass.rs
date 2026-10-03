@@ -151,7 +151,7 @@ impl InputPass<'_> {
                 .byte_at(local_x, if ctx.multiline { local_y } else { 0.0 });
             let clicks = resp_state.left.press_count();
             if clicks > 0 {
-                ed.press(hit, clicks);
+                ed.press(hit, clicks, ui.peek_modifiers().shift);
             } else {
                 ed.drag_to(hit);
             }
@@ -183,14 +183,19 @@ impl InputPass<'_> {
             // the caller learns the user accepted the value.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
                 submitted = true;
-                continue;
+                assert_only_repeats_after(ui.keyboard_events(), i);
+                break;
             }
             if let Some(action) = EditAction::from_keypress(kp) {
                 action.execute(&mut ed, &clipboard);
                 continue;
             }
             match apply_key(&mut ed, kp) {
-                KeyOutcome::Blur => cancelled = true,
+                KeyOutcome::Blur => {
+                    cancelled = true;
+                    assert_only_repeats_after(ui.keyboard_events(), i);
+                    break;
+                }
                 KeyOutcome::Vertical { up, extend } => {
                     resolve_vertical(&mut ed, ui, ctx, up, extend);
                 }
@@ -210,13 +215,46 @@ impl InputPass<'_> {
     }
 }
 
+/// Assert that only repeats of the key at `terminal` follow it. The field
+/// stops reading keys at a submit or a cancel: what follows belongs to
+/// whoever owns focus next. `InputQueue` already holds every key press
+/// after a command key for the next frame, so only repeats of that key can
+/// follow it here; the assert keeps a change to that rule from silently
+/// typing into a field that just let go.
+fn assert_only_repeats_after(events: &[KeyPress], terminal: usize) {
+    let key = events[terminal].key;
+    debug_assert!(
+        events[terminal + 1..]
+            .iter()
+            .all(|press| press.repeat && press.key == key),
+        "keys after a terminal {key:?} reached the field in its frame: {:?}",
+        &events[terminal + 1..],
+    );
+}
+
 pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
     let extend = keypress.mods.shift;
+    let line_nav = is_line_nav(keypress.mods);
     match keypress.key {
+        Key::Backspace if line_nav => editor.delete_to_line_start(),
         Key::Backspace => editor.delete_backward(),
         Key::Delete => editor.delete_forward(),
         Key::ArrowLeft if is_word_nav(keypress.mods) => editor.move_word_left(extend),
         Key::ArrowRight if is_word_nav(keypress.mods) => editor.move_word_right(extend),
+        Key::ArrowLeft if line_nav && editor.multiline() => {
+            return KeyOutcome::LineEdge { end: false, extend };
+        }
+        Key::ArrowRight if line_nav && editor.multiline() => {
+            return KeyOutcome::LineEdge { end: true, extend };
+        }
+        Key::ArrowLeft if line_nav => editor.move_caret(0, extend),
+        Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), extend),
+        // The document's ends: Ctrl+Home / Ctrl+End everywhere, and
+        // Cmd+Up / Cmd+Down on macOS.
+        Key::Home | Key::ArrowUp if is_document_nav(keypress) => editor.move_caret(0, extend),
+        Key::End | Key::ArrowDown if is_document_nav(keypress) => {
+            editor.move_caret(editor.text().len(), extend);
+        }
         Key::ArrowLeft => editor.move_grapheme_left(extend),
         Key::ArrowRight => editor.move_grapheme_right(extend),
         Key::ArrowUp if editor.multiline() => {
@@ -250,8 +288,10 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
         // its own newline above.
         //
         // Command chords type nothing, whatever the platform reports
-        // under them: macOS gives Cmd+A the text `"a"`.
-        _ if !keypress.mods.any_command() && !keypress.text.is_empty() => {
+        // under them: macOS gives Cmd+A the text `"a"`. Which modifiers
+        // compose and which command is `KeyPress::types_text`, the rule
+        // the key classifier reads too.
+        _ if keypress.types_text() => {
             editor.insert_str(keypress.text.as_str());
         }
         _ => {}
@@ -317,11 +357,43 @@ fn resolve_line_edge(
     });
 }
 
-fn is_word_nav(modifiers: Modifiers) -> bool {
-    match PLATFORM {
-        Platform::Mac => modifiers.alt && !modifiers.ctrl,
-        _ => modifiers.ctrl && !modifiers.alt,
+/// macOS's line chords: Cmd+Left / Right to the line's edges, and
+/// Cmd+Backspace to its start. `Modifiers::ctrl` is Cmd there. Elsewhere
+/// Home / End say this, and Ctrl+Arrow is the word chord.
+fn is_line_nav(modifiers: Modifiers) -> bool {
+    PLATFORM == Platform::Mac && modifiers.ctrl && !modifiers.alt
+}
+
+/// The chord that jumps to the document's start or end: Ctrl with Home or
+/// End on every platform, and Cmd with Up or Down on macOS.
+fn is_document_nav(keypress: KeyPress) -> bool {
+    let mods = keypress.mods;
+    if !mods.ctrl || mods.alt {
+        return false;
     }
+    match keypress.key {
+        Key::Home | Key::End => true,
+        Key::ArrowUp | Key::ArrowDown => PLATFORM == Platform::Mac,
+        _ => false,
+    }
+}
+
+/// The chord that moves by word with an arrow: Alt on macOS, where Cmd
+/// is the line chord, and Ctrl elsewhere.
+const WORD_NAV: Modifiers = match PLATFORM {
+    Platform::Mac => Modifiers {
+        alt: true,
+        ..Modifiers::NONE
+    },
+    _ => Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    },
+};
+
+/// [`WORD_NAV`] held without the other of Ctrl and Alt.
+const fn is_word_nav(modifiers: Modifiers) -> bool {
+    modifiers.ctrl == WORD_NAV.ctrl && modifiers.alt == WORD_NAV.alt
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -338,4 +410,12 @@ pub(super) enum KeyOutcome {
         end: bool,
         extend: bool,
     },
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    /// The platform's word-motion chord, for the cases that press it.
+    pub(crate) const WORD_NAV: Modifiers = super::WORD_NAV;
 }

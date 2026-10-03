@@ -65,11 +65,24 @@ impl F16x4 {
     /// Every lane `1.0` in f16.
     pub(crate) const ONE: Self = Self([half::f16::ONE.to_bits(); 4]);
 
+    /// The largest finite lane value, 65504. Past it a lane packs to
+    /// infinity.
+    pub(crate) const MAX_LANE: f32 = half::f16::MAX.to_f32_const();
+
     /// One lane's f16 bit pattern — for predicates that test a single
     /// lane (`RgbaF16`'s alpha) without unpacking all four to f32.
     #[inline(always)]
     pub(crate) const fn lane_bits(self, lane: usize) -> u16 {
         self.0[lane]
+    }
+
+    /// Wrap four raw lane words. The lanes are f16 everywhere but one
+    /// place: a triangle quad stores its corner points in the same
+    /// storage as unorm16, which the shader decodes by `fill_kind`.
+    /// Tests build bit patterns with it too.
+    #[inline(always)]
+    pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
+        Self(bits)
     }
 
     /// Pack four runtime f32 lanes — single SIMD instruction on
@@ -180,8 +193,17 @@ impl F16x4 {
     /// The 8 storage bytes as one `u64` — lets wrappers hash with a
     /// single hasher write instead of four `write_u16`s.
     #[inline]
-    pub(crate) fn as_u64(self) -> u64 {
-        u64::from_ne_bytes(bytemuck::cast(self.0))
+    pub(crate) const fn as_u64(self) -> u64 {
+        // The four lanes' native bytes in lane order: what a `bytemuck`
+        // cast of the `[u16; 4]` reads, spelled so it can be `const`.
+        let [a, b, c, d] = self.0;
+        let [a, b, c, d] = [
+            a.to_ne_bytes(),
+            b.to_ne_bytes(),
+            c.to_ne_bytes(),
+            d.to_ne_bytes(),
+        ];
+        u64::from_ne_bytes([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]])
     }
 }
 
@@ -345,31 +367,6 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
         let mut out = [0u16; 4];
         _mm_storel_epi64(out.as_mut_ptr() as *mut _, h);
         out
-    }
-}
-
-/// Raw-lane construction, for tests and benches only.
-///
-/// Production code has no business with the storage form — wrappers go in
-/// through [`F16x4::from_lanes`] and come out through [`F16x4::lanes`] or
-/// [`F16x4::lane_bits`] — so gating these is what makes the private field
-/// mean anything. A child module, because the field is private to this
-/// one and children can see it.
-///
-/// Gated on `bench` rather than the usual `internals`: no integration
-/// test reaches the storage form, so the wider gate would leave both
-/// items dead in an `internals`-only build.
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
-    use crate::primitives::half_simd::F16x4;
-
-    impl F16x4 {
-        /// Wrap four already-encoded f16 lanes — a raw test pattern, or a
-        /// value read back off the GPU wire.
-        #[inline(always)]
-        pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
-            Self(bits)
-        }
     }
 }
 

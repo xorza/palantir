@@ -3,33 +3,54 @@
 //! carrying one settles.
 
 use crate::animation::anim_map_typed::AnimMapTyped;
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::anim_spec::{AnimMotion, AnimSpec};
+use crate::animation::easing::Easing;
 use crate::animation::tests::support::{
-    AnimUi, SLOT, duration_motion, next_frame, setup_anim_ui, spring_velocity, wid,
+    SLOT, closed_form_settle_step, duration_motion, spring_velocity, wid,
 };
 use crate::animation::*;
+use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
-use std::time::Duration;
 
+/// Accepted springs stay finite and settle on their target under a mixed
+/// frame sequence, on the step the closed form names or within the f32
+/// limits that explain the gap.
+///
+/// Step 0 is the change's frame, which steps nothing, so step `n` spends
+/// `dts[n % 4]`. The stiff spring settles where the closed form does. The
+/// default one needs one step more: 500 px out, the closed form's step 36
+/// leaves 9.85e-5, and f32 rounding next to -100 holds the displacement
+/// at the 1e-4 floor. The minimum-decay spring settles 62 steps before the
+/// closed form's 480, on the no-progress rule: about 1e-3 from -100, its
+/// 4.2 ms step moves less than half an f32 step there.
 #[test]
 fn validated_springs_remain_finite_and_settle() {
+    // (label, spec, closed-form settle step, settle step)
     let cases = [
-        ("minimum-decay", AnimSpec::spring(1.0, 2.0)),
-        ("default", AnimSpec::SPRING),
-        ("stiff", AnimSpec::spring(1_000_000.0, 100.0)),
+        ("minimum-decay", AnimSpec::spring(1.0, 2.0), 480, 418),
+        ("default", AnimSpec::SPRING, 36, 37),
+        ("stiff", AnimSpec::spring(1_000_000.0, 100.0), 8, 8),
     ];
     let dts = [0.1, 1.0 / 60.0, 0.0042, 0.033];
 
-    for (label, spec) in cases {
+    for (label, spec, closed_form, expected) in cases {
+        let AnimMotion::Spring { stiffness, damping } = spec.motion else {
+            unreachable!("every case is a spring");
+        };
+        assert_eq!(
+            closed_form_settle_step(f64::from(stiffness), f64::from(damping), 500.0, |n| {
+                dts[n as usize % dts.len()]
+            }),
+            closed_form,
+            "{label}: closed form",
+        );
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid(label);
-        let _ = map.tick(id, SLOT, 400.0, spec, dts[0], next_frame());
+        let _ = map.step(id, SLOT, 400.0, spec, dts[0]);
         let mut settled_at = None;
         for i in 0..4_000 {
-            let result = map.tick(id, SLOT, -100.0, spec, dts[i % dts.len()], next_frame());
+            let result = map.step(id, SLOT, -100.0, spec, dts[i % dts.len()]);
             let row = &map.rows[&(id, SLOT)];
             let velocity = *spring_velocity(row);
             assert!(
@@ -43,10 +64,7 @@ fn validated_springs_remain_finite_and_settle() {
                 break;
             }
         }
-        assert!(
-            settled_at.is_some(),
-            "{label} did not settle under the deterministic frame sequence",
-        );
+        assert_eq!(settled_at, Some(expected), "{label}");
     }
 }
 
@@ -85,15 +103,18 @@ fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
         );
         let step = spring::step(stiffness, damping, 1.0_f32, 0.0, 0.0, 0.1);
         assert!(!step.settled, "{label}: a unit displacement is not settled");
-        assert!(
-            (step.current - expect_pos).abs() < 1e-6,
-            "{label}: position {} vs analytic {expect_pos}",
+        assert_close(
             step.current,
+            expect_pos,
+            1e-6,
+            "f32 transition coefficients against the analytic position",
         );
-        assert!(
-            (step.velocity - expect_vel).abs() < 1e-5,
-            "{label}: velocity {} vs analytic {expect_vel}",
+        assert_close(
             step.velocity,
+            expect_vel,
+            1e-5,
+            "f32 transition coefficients against the analytic velocity, \
+             which the stiffness scales",
         );
     }
 }
@@ -129,9 +150,12 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
     assert!((185.0..190.0).contains(&once), "fixture sanity: got {once}");
     for steps in [2, 10, 100] {
         let split = travel(steps);
-        assert!(
-            (split - once).abs() < 0.01,
-            "{steps} steps gave {split}, one step gave {once}",
+        assert_close(
+            split,
+            once,
+            0.01,
+            "each step rounds its f32 coefficients, so the products drift \
+             by a few ulps per step at 187 px",
         );
     }
 }
@@ -148,10 +172,14 @@ fn the_critically_damped_boundary_has_no_seam() {
     for offset in [1e-3, 1e-4, 1e-5] {
         let under = at(20.0 - offset);
         let over = at(20.0 + offset);
-        assert!(
-            (under - critical).abs() < 1e-4 && (over - critical).abs() < 1e-4,
-            "offset {offset}: {under} / {critical} / {over} straddle a seam",
-        );
+        // Near critical, x(0.1) moves about 0.0061 per unit of damping:
+        // `∂x/∂c = −t²·h·e^(−ht)/2 + e^(−ht)(t²/2 + h·t³/6)·h`, h = 10,
+        // t = 0.1. The gap shrinks with the offset, down to the ulp of
+        // 0.74; a seam would hold its width.
+        let bound = 0.007 * f64::from(offset) + 6e-8;
+        let why = "the damping offset times the slope, plus an ulp";
+        assert_close(under, critical, bound, why);
+        assert_close(over, critical, bound, why);
     }
 }
 
@@ -161,14 +189,15 @@ fn spring_parameters_change_trajectory() {
     let mut custom_map = AnimMapTyped::<f32>::default();
     let id = wid("spring-parameters");
     let custom = AnimSpec::spring(100.0, 15.0);
-    let _ = default_map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
-    let _ = custom_map.tick(id, SLOT, 0.0, custom, 0.016, next_frame());
+    let _ = default_map.step(id, SLOT, 0.0, AnimSpec::SPRING, 0.016);
+    let _ = custom_map.step(id, SLOT, 0.0, custom, 0.016);
+    // The change's frame starts from rest and moves neither.
+    let _ = default_map.step(id, SLOT, 1.0, AnimSpec::SPRING, 0.016);
+    let _ = custom_map.step(id, SLOT, 1.0, custom, 0.016);
     let default = default_map
-        .tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame())
+        .step(id, SLOT, 1.0, AnimSpec::SPRING, 0.016)
         .current;
-    let custom = custom_map
-        .tick(id, SLOT, 1.0, custom, 0.016, next_frame())
-        .current;
+    let custom = custom_map.step(id, SLOT, 1.0, custom, 0.016).current;
     assert_ne!(default, custom);
 }
 
@@ -183,13 +212,18 @@ fn spring_parameters_change_trajectory() {
 fn spring_step_at_max_dt_stays_bounded() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("a");
-    let _ = map.tick(id, SLOT, 400.0, AnimSpec::SPRING, 0.016, next_frame());
-    let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1, next_frame());
-    assert!(
-        r.current >= 80.0 && r.current <= 400.0,
-        "spring at dt=MAX_DT must stay between segment endpoints; got {}",
-        r.current,
-    );
+    let _ = map.step(id, SLOT, 400.0, AnimSpec::SPRING, 0.016);
+    // From rest, the change's frame steps nothing; the next one spends
+    // the whole clamp.
+    let r = map.step(id, SLOT, 80.0, AnimSpec::SPRING, 0.1);
+    assert_eq!(r.current, 400.0);
+    let r = map.step(id, SLOT, 80.0, AnimSpec::SPRING, 0.1);
+    // Closed form, released from rest 320 px out: `(170, 26)` has h = 13
+    // and ω = 1, so `80 + 320·e^(-1.3)(cos 0.1 + 13 sin 0.1)` ≈ 279.96,
+    // inside [80, 400].
+    let t = f64::from(0.1f32);
+    let expected = 80.0 + 320.0 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    assert_close(r.current, expected, 1e-4, "a few f32 ulps at 280");
 }
 
 /// A frame may run `build` twice on input frames (pass A
@@ -209,11 +243,18 @@ fn second_tick_in_same_frame_does_not_double_advance() {
 
     // Seed: row settled at 0.0. Different frame so we don't trip the
     // guard during setup.
-    let _ = map.tick(id, SLOT, 0.0, AnimSpec::FAST, 0.016, frame - 1);
+    let _ = map.tick(id, SLOT, 0.0, AnimSpec::FAST, 0.016, frame - 2);
 
-    // Pass A: target 1.0, advance one step.
+    // A retarget from rest steps nothing in either pass: pass A and pass
+    // B agree on the start.
+    let from_rest_a = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame - 1);
+    let from_rest_b = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame - 1);
+    assert_eq!((from_rest_a.current, from_rest_b.current), (0.0, 0.0));
+
+    // Pass A: in flight now, advance one step.
     let pass_a = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame);
-    assert!(pass_a.current > 0.0 && pass_a.current < 1.0);
+    let eased = Easing::OutCubic.apply(0.016 / 0.12);
+    assert_eq!(pass_a.current, eased, "FAST: 16 ms of 120 ms, out-cubic");
     let pass_a_current = pass_a.current;
     let pass_a_elapsed = duration_motion(&map.rows[&(id, SLOT)]).elapsed;
 
@@ -246,9 +287,10 @@ fn second_tick_in_same_frame_does_not_double_advance() {
 
     // Next frame: integrator advances from the retargeted segment.
     let next = map.tick(id, SLOT, 5.0, AnimSpec::FAST, 0.016, frame + 1);
-    assert!(
-        next.current > pass_a_current,
-        "next frame must advance toward 5.0 from pass A's current",
+    assert_eq!(
+        next.current,
+        pass_a_current + (5.0 - pass_a_current) * eased,
+        "next frame eases 16 ms toward 5.0 from pass A's current",
     );
 }
 
@@ -265,28 +307,28 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     // Aligned: moving toward 1.0, retarget further along the same
     // direction (2.0). Velocity should survive — that's the fling.
     let id_aligned = wid("aligned");
-    let _ = map.tick(id_aligned, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id_aligned, SLOT, 0.0, AnimSpec::SPRING, 0.016);
     for _ in 0..3 {
-        let _ = map.tick(id_aligned, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
+        let _ = map.step(id_aligned, SLOT, 1.0, AnimSpec::SPRING, 0.016);
     }
     let v_before = *spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert!(v_before > 0.0, "precondition: moving toward 1.0");
-    let _ = map.tick(id_aligned, SLOT, 2.0, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = map.step(id_aligned, SLOT, 2.0, AnimSpec::SPRING, 0.0);
     let v_after = *spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert_eq!(v_after, v_before, "aligned retarget must preserve velocity");
 
     // Opposed: moving toward 1.0, retarget backward to -1.0. Velocity
     // points away from the new target — zero it.
     let id_opposed = wid("opposed");
-    let _ = map.tick(id_opposed, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id_opposed, SLOT, 0.0, AnimSpec::SPRING, 0.016);
     for _ in 0..3 {
-        let _ = map.tick(id_opposed, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
+        let _ = map.step(id_opposed, SLOT, 1.0, AnimSpec::SPRING, 0.016);
     }
     assert!(
         *spring_velocity(&map.rows[&(id_opposed, SLOT)]) > 0.0,
         "precondition: moving toward 1.0"
     );
-    let _ = map.tick(id_opposed, SLOT, -1.0, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = map.step(id_opposed, SLOT, -1.0, AnimSpec::SPRING, 0.0);
     assert_eq!(
         *spring_velocity(&map.rows[&(id_opposed, SLOT)]),
         0.0,
@@ -294,46 +336,32 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     );
 }
 
-/// Pin the fixed-step accumulator on `Ui`: a `Ui::frame` loop driven
-/// at NoVsync-style sub-millisecond `dt` must still settle a spring
-/// retarget. Pre-fix, `cur += vel·dt` would fall below the f32 ULP at
-/// pixel-scale positions, the integrator would stall short of
-/// `POS_EPS`, and `repaint_requested` would stay armed forever.
+/// A spring stepped at the smallest delta the frame runtime spends,
+/// `ANIM_SUBSTEP_DT`, settles exactly on its target — the frame clock's
+/// own test pins that an unthrottled loop reaches the integrator in steps
+/// of that size. At pixel-scale values the last stretch is below what f32
+/// can represent next to the value: near 400 a step of f32 is 3e-5 and
+/// one substep decays the remaining travel by 5 %, so the value stops
+/// moving about 3e-4 short of the target, above the 1e-4 floor, and only
+/// the no-progress rule ends the motion. Released 320 px out, the default
+/// spring is at `320·e^(-13t)(cos t + 13 sin t)`, which first falls under
+/// 3e-4 at substep 304. Loop step 0 is the change's frame and steps
+/// nothing, so the stall the estimate puts at 304 lands on loop step 305.
 #[test]
-fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
-    let AnimUi { mut h, id } = setup_anim_ui("anim-novsync");
-
-    // First touch at target=80 → snap, no repaint.
-    let mut now = Duration::ZERO;
-    let _ = h.at(now).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
-        Block::new()
-            .id(WidgetId::from_hash("anim-novsync"))
-            .show(ui);
-    });
-
-    // Retarget to 400 over a tight loop with 10 µs per frame (NoVsync).
+fn a_spring_at_the_substep_settles_on_its_target() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("substep");
+    let _ = map.step(id, SLOT, 80.0, AnimSpec::SPRING, ANIM_SUBSTEP_DT);
     let mut settled_at = None;
-    for i in 0..200_000 {
-        now += Duration::from_micros(10);
-        let repaint = h
-            .at(now)
-            .frame(|ui| {
-                let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
-                Block::new()
-                    .id(WidgetId::from_hash("anim-novsync"))
-                    .show(ui);
-            })
-            .repaint_requested;
-        if !repaint {
-            settled_at = Some(i);
+    for step in 0..600 {
+        let r = map.step(id, SLOT, 400.0, AnimSpec::SPRING, ANIM_SUBSTEP_DT);
+        if r.settled {
+            assert_eq!(r.current, 400.0);
+            settled_at = Some(step);
             break;
         }
     }
-    assert!(
-        settled_at.is_some(),
-        "spring must settle under sub-millisecond dt",
-    );
+    assert_eq!(settled_at, Some(305));
 }
 
 #[test]
@@ -342,27 +370,24 @@ fn color_spring_converges_to_target() {
     let id = wid("a");
     let start = RgbaF32::srgb(0.0, 0.0, 0.0);
     let target = RgbaF32::srgb(1.0, 0.5, 0.25);
-    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id, SLOT, start, AnimSpec::SPRING, 0.016);
     let mut last = start;
     let mut settled_at = None;
     for i in 0..600 {
-        let r = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.016, next_frame());
+        let r = map.step(id, SLOT, target, AnimSpec::SPRING, 0.016);
         last = r.current;
         if r.settled {
             settled_at = Some(i);
             break;
         }
     }
-    assert!(
-        settled_at.is_some(),
-        "color spring must settle; last = {last:?}",
-    );
-    assert!(
-        (last.r - target.r).abs() < 0.01
-            && (last.g - target.g).abs() < 0.01
-            && (last.b - target.b).abs() < 0.01,
-        "settled color must match target; got {last:?} expected {target:?}",
-    );
+    // Loop frame 0 is the change's frame and steps nothing, so frame `i`
+    // is step `i`.
+    let distance = f64::from(target.sub(start).magnitude_squared()).sqrt();
+    let step = closed_form_settle_step(170.0, 26.0, distance, |_| 0.016);
+    assert_eq!(step, 56);
+    assert_eq!(settled_at, Some(step));
+    assert_eq!(last, target, "a settled spring snaps to its target");
 }
 
 #[test]
@@ -375,40 +400,30 @@ fn solid_brush_spring_matches_color_trajectory() {
     let brush_id = wid("solid-brush-trajectory");
     let start = RgbaF32::srgba(0.1, 0.2, 0.3, 0.4);
     let target = RgbaF32::srgba(0.9, 0.7, 0.5, 0.8);
-    let _ = color_map.tick(color_id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
-    let _ = brush_map.tick(
-        brush_id,
-        SLOT,
-        Brush::Solid(start),
-        AnimSpec::SPRING,
-        0.0,
-        next_frame(),
-    );
+    let _ = color_map.step(color_id, SLOT, start, AnimSpec::SPRING, 0.0);
+    let _ = brush_map.step(brush_id, SLOT, Brush::Solid(start), AnimSpec::SPRING, 0.0);
 
-    let mut settled = false;
-    for _ in 0..600 {
-        let color = color_map.tick(
-            color_id,
-            SLOT,
-            target,
-            AnimSpec::SPRING,
-            0.016,
-            next_frame(),
-        );
-        let brush = brush_map.tick(
+    let mut settled_at = None;
+    for i in 0..600 {
+        let color = color_map.step(color_id, SLOT, target, AnimSpec::SPRING, 0.016);
+        let brush = brush_map.step(
             brush_id,
             SLOT,
             Brush::Solid(target),
             AnimSpec::SPRING,
             0.016,
-            next_frame(),
         );
         assert_eq!(brush.current.as_solid(), Some(color.current));
         assert_eq!(brush.settled, color.settled);
-        settled = brush.settled;
-        if settled {
+        if brush.settled {
+            settled_at = Some(i);
             break;
         }
     }
-    assert!(settled, "solid brush and color springs must both settle");
+    // Loop frame 0 is the change's frame and steps nothing, so frame `i`
+    // is step `i`.
+    let distance = f64::from(target.sub(start).magnitude_squared()).sqrt();
+    let step = closed_form_settle_step(170.0, 26.0, distance, |_| 0.016);
+    assert_eq!(step, 56);
+    assert_eq!(settled_at, Some(step), "both settle on the same frame");
 }

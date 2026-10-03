@@ -4,9 +4,9 @@
 //! These tests pin the contract we want, independent of the current
 //! implementation. Where an existing test in this crate contradicts
 //! one of these, this file wins and the older test is updated.
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -32,8 +32,8 @@ fn hug_parent_with_fill_children_hugs_to_content() {
                     .show(ui);
             });
     });
-    let parent = h.ui.response_for(node_id).rect.expect("parent arranged");
-    let button = h.ui.response_for(button_id).rect.expect("button arranged");
+    let parent = h.arranged(node_id);
+    let button = h.arranged(button_id);
     // Parent hugs to button's content width — somewhere near the
     // "Hi" label width plus button padding, definitely less than 100.
     assert!(
@@ -68,7 +68,7 @@ fn fill_child_stretches_to_fixed_parent() {
                     .show(ui);
             });
     });
-    let r = h.ui.response_for(child_id).rect.expect("child arranged");
+    let r = h.arranged(child_id);
     assert_eq!(r.size.w, 400.0);
 }
 
@@ -94,18 +94,16 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
                     .show(ui);
             });
     });
-    let ra = h.ui.response_for(a).rect.expect("a arranged");
-    let rb = h.ui.response_for(b).rect.expect("b arranged");
+    let ra = h.arranged(a);
+    let rb = h.arranged(b);
     assert_eq!(ra.size.w, 200.0);
     assert_eq!(rb.size.w, 200.0);
 }
 
 /// **Pin (the darkroom canvas node case):** a Hug-sized VStack
-/// positioned inside a Fill canvas hugs to its content, even when its
-/// internal layout uses Fill rows and Fill columns. Companion to
-/// `fill_propagation::hug_node_in_canvas_with_fill_row_does_not_balloon`
-/// — that test asserts the Hug node doesn't balloon; this one extends
-/// to checking the children arrange correctly inside the hugged width.
+/// positioned inside a Fill canvas hugs to its content rather than
+/// ballooning to the surface, even when its internal layout uses a Fill
+/// row — and that row arranges to the hugged width.
 #[test]
 fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let surface = UVec2::new(1600, 800);
@@ -134,15 +132,11 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
                     });
             });
     });
-    let node = h.ui.response_for(node_id).rect.expect("node arranged");
-    let row = h.ui.response_for(row_id).rect.expect("row arranged");
+    let node = h.arranged(node_id);
+    let row = h.arranged(row_id);
     // The node hugs to its content (the 50-wide frame), not the
     // surface (1600).
-    assert!(
-        node.size.w < 200.0,
-        "Hug node must hug to content; got w={}",
-        node.size.w,
-    );
+    assert_eq!(node.size.w, 50.0, "Hug node must hug to content");
     // The Fill row stretches to the node's inner width.
     assert_eq!(row.size.w, node.size.w);
 }
@@ -168,9 +162,9 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
                 .show(ui);
         });
     });
-    let r_root = h.ui.response_for(root).rect.expect("root");
-    let r_button = h.ui.response_for(button).rect.expect("button");
-    let r_spacer = h.ui.response_for(spacer).rect.expect("spacer");
+    let r_root = h.arranged(root);
+    let r_button = h.arranged(button);
+    let r_spacer = h.arranged(spacer);
     // Root hugs to the button — no expansion via the Fill spacer.
     assert_eq!(r_root.size.w, r_button.size.w);
     // The spacer in a Hug parent has zero leftover.

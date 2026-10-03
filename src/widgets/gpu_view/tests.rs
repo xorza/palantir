@@ -1,28 +1,22 @@
 use super::*;
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 
-use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
+use crate::renderer::gpu_paint::gpu_paint_ref::internals::NoopPaint;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::ImageSource;
+use crate::scene::shapes::paint::image_source::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
-
-#[derive(Debug)]
-struct NoopPaint;
-impl GpuPaint for NoopPaint {
-    fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-}
 
 /// The renderer an application keeps and lends back every frame — one
 /// handle, because a fresh one is a fresh view and takes a target of its
@@ -62,6 +56,34 @@ fn records_one_gpu_view_shape_at_committed_size() {
     assert!(shapes.next().is_none());
     let r = h.ui.arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
+}
+
+/// `repaint(false)` keeps the epoch the view last painted at, so the
+/// backend skips it, where the default re-stamps it with every frame's
+/// render id. The first frame paints either way: the target is new.
+#[test]
+fn repaint_false_holds_the_epoch_of_the_last_paint() {
+    let paint = scene();
+    for (repaint, want_second) in [(true, 2), (false, 1)] {
+        let mut h = UiHarness::new(UVec2::new(200, 120));
+        let mut epochs = Vec::new();
+        for _ in 0..2 {
+            let node = h.frame_value(|ui| GpuView::new(&paint).repaint(repaint).show(ui).node());
+            let epoch =
+                h.ui.tree(Layer::Main)
+                    .shapes_of(node)
+                    .find_map(|shape| match shape {
+                        ShapeRecord::Image {
+                            source: ImageSource::GpuView { epoch },
+                            ..
+                        } => Some(*epoch),
+                        _ => None,
+                    })
+                    .expect("the view records its shape");
+            epochs.push(epoch);
+        }
+        assert_eq!(epochs, [1, want_second], "repaint {repaint}");
+    }
 }
 
 /// Default sizing fills the parent — a viewport has no intrinsic size.
@@ -143,17 +165,19 @@ fn senses_click_when_opted_in() {
         });
     });
     h.click_at(Vec2::new(50.0, 25.0));
-    let mut clicked = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            clicked |= GpuView::new(&scene)
-                .id(id)
-                .sense(Sense::CLICK)
-                .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
-                .show(ui)
-                .left
-                .clicked();
-        });
+    let clicked = h.frame_value(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                GpuView::new(&scene)
+                    .id(id)
+                    .sense(Sense::CLICK)
+                    .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
+                    .show(ui)
+                    .left
+                    .clicked()
+            })
+            .inner
     });
     assert!(clicked, "GpuView senses clicks when sense is set");
 }

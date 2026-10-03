@@ -1,15 +1,14 @@
 //! Which draws survive a partial frame's damage filter.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -31,18 +30,12 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .show(ui);
             });
         });
@@ -61,22 +54,17 @@ fn damage_filter_culls_subtree_outside_damage() {
         Clipped,
         Transformed,
     }
-    type Matches = fn(&PaintCall) -> bool;
-    let cases: &[(&str, Wrap, Matches, Matches)] = &[
-        (
-            "clipped",
-            Wrap::Clipped,
-            |call| matches!(call, PaintCall::PushClip(_)),
-            |call| matches!(call, PaintCall::PopClip),
-        ),
+    // The whole stream a region over the subtree keeps: the wrap's
+    // push, the leaf's quad, the wrap's pop.
+    let cases = [
+        ("clipped", Wrap::Clipped, ["PushClip", "Quad", "PopClip"]),
         (
             "transformed",
             Wrap::Transformed,
-            |call| matches!(call, PaintCall::PushTransform(_)),
-            |call| matches!(call, PaintCall::PopTransform),
+            ["PushTransform", "Quad", "PopTransform"],
         ),
     ];
-    for (label, wrap, push_matches, pop_matches) in cases {
+    for (label, wrap, kept) in cases {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -84,10 +72,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(20.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 };
                 match wrap {
@@ -104,12 +89,17 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
             });
         });
-        let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
-        let pushes = cmds.count(push_matches);
-        let pops = cmds.count(pop_matches);
-        assert_eq!(pushes, 0, "case {label}: no push (cull)");
-        assert_eq!(pops, 0, "case {label}: no pop");
-        assert_eq!(count_draw_rects(&cmds), 0, "case {label}: no draws");
+        // A region past the subtree culls the push, the pop and the draw;
+        // one over it keeps all three, so an encoder that drew nothing at
+        // all fails the second row.
+        let past = h.encode_paint_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
+        assert!(
+            past.calls.is_empty(),
+            "case {label}: region past the subtree painted {:?}",
+            past.kinds()
+        );
+        let over = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 50.0, 50.0)));
+        assert_eq!(over.kinds(), kept, "case {label}: region over the subtree");
     }
 }
 
@@ -126,10 +116,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                         .id(WidgetId::from_hash(*key))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .position(Vec2::new(*x, *y))
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
             });
@@ -222,6 +209,15 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
             0,
             "{cull:?}: the first visible animation must be culled and the later hidden animation must still be sampled",
         );
+        // The same scene uncut by damage draws the visible one, so the
+        // zero above is the cull's and not an encoder that draws nothing.
+        if let Cull::Damage = cull {
+            assert_eq!(
+                count_draw_rects(&h.encode_paint()),
+                1,
+                "uncut, the visible one draws"
+            );
+        }
     }
 }
 
@@ -254,10 +250,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
                         .id(WidgetId::from_hash("overflowing-child"))
                         .position((60.0, 0.0))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });
@@ -292,6 +285,14 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
     // well past the margin → must stay culled.
     let cases: &[(&str, Rect, usize)] = &[
         ("within_aa_pad_gap_2", Rect::new(60.0, 100.0, 38.0, 20.0), 1),
+        // The margin repaints any gap under 3 px. At 3 the pad's 2 px of
+        // clear stops a pixel short of the neighbour, so it stays culled.
+        ("at_the_margin_gap_3", Rect::new(60.0, 100.0, 37.0, 20.0), 0),
+        (
+            "past_the_margin_gap_4",
+            Rect::new(60.0, 100.0, 36.0, 20.0),
+            0,
+        ),
         ("beyond_pad_gap_10", Rect::new(60.0, 100.0, 30.0, 20.0), 0),
     ];
     for (label, damage, expected) in cases {
@@ -307,10 +308,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .id(WidgetId::from_hash("neighbour"))
                         .position(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });

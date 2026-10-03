@@ -109,13 +109,14 @@ pub(crate) struct ExpiryWheel<K> {
     /// arena instead would save the bucket headers and cost a pointer
     /// chase per ticket on the one path that has to be fast.
     ///
-    /// The headers are worth about 10 KB across the four wheels in the
-    /// crate — 128 buckets each for the shaped-buffer cache and the two
-    /// raster atlases, 32 for the encoded-run cache, at 24 bytes a
-    /// `Vec`. That is a number set by the owners' retention windows, not
-    /// by this type: an owner that files deadlines a thousand frames out
-    /// buys a thousand-bucket ring, so a window is a memory decision as
-    /// well as a retention one.
+    /// The headers are worth 13 824 bytes across the four wheels in the crate,
+    /// at 24 bytes a `Vec`: 256 buckets for the shaped-buffer cache (a keep of
+    /// 120 + 15 frames), 128 for each raster atlas (120), and 64 for the
+    /// encoded-run cache (30) — each keep plus the three slack slots, rounded
+    /// up to a power of two. That is a number set by the owners' retention
+    /// windows, not by this type: an owner that files deadlines a thousand
+    /// frames out buys a thousand-bucket ring, so a window is a memory decision
+    /// as well as a retention one.
     buckets: Box<[Vec<Ticket<K>>]>,
     mask: u64,
     /// Highest frame whose bucket has been drained. Tickets must be
@@ -153,6 +154,12 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         Self::with_horizon(keep_frames + 2)
     }
 
+    /// One spare slot beyond the horizon, rounded up to a power of two —
+    /// see [`Self::with_horizon`].
+    const fn slots_for_horizon(horizon: u64) -> u64 {
+        (horizon + 1).next_power_of_two()
+    }
+
     /// A wheel that can hold a ticket up to `horizon` frames past the
     /// most recently **drained** frame.
     ///
@@ -161,7 +168,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     /// beyond the horizon keeps the furthest ticket from aliasing the
     /// bucket being drained.
     fn with_horizon(horizon: u64) -> Self {
-        let slots = (horizon + 1).next_power_of_two() as usize;
+        let slots = Self::slots_for_horizon(horizon) as usize;
         Self {
             buckets: (0..slots).map(|_| Vec::new()).collect(),
             mask: slots as u64 - 1,
@@ -209,7 +216,29 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     /// it fired under rather than minting one — see the module doc.
     fn file(&mut self, ticket: Ticket<K>, due: u64) {
         let due = due.clamp(self.drained_through + 1, self.drained_through + self.mask);
-        self.buckets[(due & self.mask) as usize].push(ticket);
+        let index = (due & self.mask) as usize;
+        let len = self.buckets[index].len();
+        if len == self.buckets[index].capacity() {
+            self.grow_buckets(len + 1);
+        }
+        self.buckets[index].push(ticket);
+    }
+
+    /// Give every bucket room for `len` tickets, doubling past it.
+    ///
+    /// All at once rather than per bucket, because the buckets take turns:
+    /// an owner's tickets drift across the ring from one revolution to the
+    /// next, so a bucket can meet the busiest occupancy any other bucket
+    /// has already seen a revolution or two later. Grown alone, it would
+    /// allocate then, long after warmup. Grown together, the ring pays once
+    /// per doubling of the busiest bucket and never again for a load it
+    /// has carried before.
+    #[cold]
+    fn grow_buckets(&mut self, len: usize) {
+        let capacity = len.next_power_of_two().max(4);
+        for bucket in &mut self.buckets {
+            bucket.reserve_exact(capacity - bucket.len());
+        }
     }
 
     /// Hand every ticket due through `frame` to `settle`, re-filing each
@@ -280,13 +309,19 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod test_support {
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
     use super::*;
 
     impl<K: Copy + Debug> ExpiryWheel<K> {
+        /// The bucket count [`Self::with_keep`] builds for `keep_frames`:
+        /// the frames one revolution of its ring takes, which a test that
+        /// wants every bucket to come due once has to cover.
+        pub(crate) const fn slots_for_keep(keep_frames: u64) -> u64 {
+            Self::slots_for_horizon(keep_frames + 2)
+        }
+
         /// Outstanding tickets across the whole ring.
-        ///
         ///
         /// The number that says whether an owner is holding up its end
         /// of the protocol: file on insert, file again only when a
@@ -296,6 +331,7 @@ pub(crate) mod test_support {
         /// expire correctly — just with the ticket count, and the
         /// per-frame drain, growing without bound. `EncodedCache`'s and
         /// `CosmicMeasure`'s tests assert against exactly that.
+        #[cfg(test)]
         pub(crate) fn pending(&self) -> usize {
             self.buckets.iter().map(Vec::len).sum()
         }

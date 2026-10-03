@@ -1,24 +1,20 @@
 //! When a bar exists at all, and what retires it.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::QuadShape;
-use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::node_id::NodeId;
-use crate::shape::rect::RectKind;
 use crate::ui::frame_report::FrameProcessing;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::bars::support::{record_two_frames, theme, thumb_rects};
-use crate::widgets::scroll::tests::support::scroll_viewport;
+use crate::widgets::scroll::tests::support::{fixed_block, scroll_viewport};
 use glam::UVec2;
 use glam::Vec2;
 
@@ -34,22 +30,14 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
             .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("hidden-content"))
-                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                    .show(ui);
+                fixed_block(ui, WidgetId::from_hash("hidden-content"), 400.0, 400.0)
             });
     };
 
     let mut h = UiHarness::new(surface);
-    let mut records = 0;
-    let report = h.frame(|ui| {
-        records += 1;
-        build(ui);
-    });
-    assert_eq!(report.processing, FrameProcessing::SingleLayout);
     assert_eq!(
-        records, 1,
+        h.frame(build).processing,
+        FrameProcessing::SingleLayout,
         "hidden cold mount must not settle bar visibility"
     );
 
@@ -68,7 +56,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(40.0, 60.0));
     h.pinch(1.5);
     h.frame(build);
-    let state = *h.ui.state_or_default::<ScrollState>(outer_id);
+    let state = *h.state::<ScrollState>(outer_id);
     assert_eq!(scroll_viewport(&h.ui, outer_id), Size::new(200.0, 200.0));
     assert_eq!(state.zoom, 1.5);
     assert_eq!(
@@ -80,7 +68,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
 
 #[test]
 fn vertical_overflow_emits_thumb_shape_after_settle() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 600), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -88,16 +76,20 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     });
-    assert!(
-        !thumb_rects(&ui.ui, "scroll").is_empty(),
-        "vertical overflow should emit at least one bar thumb"
+    // One vertical thumb at the far edge, 8 px thick, its length the
+    // viewport's share of the content times the track: 200 / 800 × 200.
+    assert_eq!(
+        thumb_rects(&ui.ui, "scroll"),
+        [Rect::new(
+            200.0 - theme().thickness,
+            0.0,
+            theme().thickness,
+            50.0
+        )],
     );
 }
 
@@ -136,8 +128,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
     };
     let surface = UVec2::new(400, 300);
     let mut h = UiHarness::new(surface);
-    h.frame(build(true));
-    h.frame(build(true));
+    h.prime(2, build(true));
     assert_eq!(
         thumb_rects(&h.ui, "scroll").len(),
         1,
@@ -164,7 +155,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
 
 #[test]
 fn no_bar_when_content_fits_viewport() {
-    let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -172,23 +163,19 @@ fn no_bar_when_content_fits_viewport() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("short"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("short"), 180.0, 50.0)
                     });
             });
     });
-    assert_eq!(
-        count_positioned(&ui.ui, node),
-        0,
-        "non-overflowing content should produce no bar shapes"
+    assert!(
+        thumb_rects(&ui.ui, "scroll").is_empty(),
+        "non-overflowing content should show no thumb"
     );
 }
 
 #[test]
 fn both_axes_overflow_emits_two_thumbs() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -196,10 +183,7 @@ fn both_axes_overflow_emits_two_thumbs() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 800.0, 800.0)
                     });
             });
     });
@@ -214,7 +198,7 @@ fn both_axes_overflow_emits_two_thumbs() {
 /// bars overlap at the bottom-right corner.
 #[test]
 fn both_axes_bars_dont_overlap_at_corner() {
-    let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -222,10 +206,7 @@ fn both_axes_bars_dont_overlap_at_corner() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 800.0, 800.0)
                     });
             });
     });
@@ -242,47 +223,21 @@ fn both_axes_bars_dont_overlap_at_corner() {
         .iter()
         .find(|r| r.min.y == outer_far)
         .expect("H bar at bottom edge");
-    assert!(
-        v.max().y <= inner,
-        "V bar must not extend into the H bar's reserved strip; \
-         v.max.y={}, inner={inner}",
-        v.max().y,
-    );
-    assert!(
-        h.max().x <= inner,
-        "H bar must not extend into the V bar's reserved strip; \
-         h.max.x={}, inner={inner}",
-        h.max().x,
-    );
-}
-
-fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-    ui.tree(Layer::Main)
-        .shapes_of(node)
-        .filter(|s| {
-            matches!(
-                s,
-                ShapeRecord::Quad(QuadShape::Rect {
-                    kind: RectKind::Rounded,
-                    local_rect: Some(_),
-                    ..
-                })
-            )
-        })
-        .count()
+    // Each track is the 188 px inner span, kept out of the other bar's
+    // reserved strip; each thumb is 188 / 800 of it, 44.18, snapped to 44.
+    assert_eq!(inner, 188.0);
+    assert_eq!(*v, Rect::new(outer_far, 0.0, theme.thickness, 44.0));
+    assert_eq!(*h, Rect::new(0.0, outer_far, 44.0, theme.thickness));
 }
 
 /// Every bar node's arranged rect, collapsed ones included.
 fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
-    let tree = ui.tree(Layer::Main);
     let layout = ui.layout(Layer::Main);
     let scroll_id = WidgetId::from_hash(scroll_key).with("viewport");
-    let widget_ids = tree.records.widget_id();
     let mut out = Vec::new();
     for tag in ["vtrack", "vthumb", "htrack", "hthumb"] {
-        let id = scroll_id.with(tag);
-        if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
-            out.push((tag, layout.rect[idx]));
+        if let Some(bar) = ui.cascade().endpoint(scroll_id.with(tag)) {
+            out.push((tag, layout.rect[bar.node.idx()]));
         }
     }
     out

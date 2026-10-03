@@ -21,56 +21,62 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::ShapeBrush;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 
 /// Retained encoder state.
 #[derive(Debug)]
 pub(crate) struct Encoder {
     gradients: GradientResolver,
-    gradient_atlas: SharedGradientAtlas,
 }
 
-/// Entries reset each encode because another window may have evicted their atlas rows.
-#[derive(Debug, Default)]
+/// The gradient atlas, and the scratch a frame resolves gradients into.
+#[derive(Debug)]
 struct GradientResolver {
+    atlas: SharedGradientAtlas,
     resolved: Vec<Option<ResolvedGradient>>,
 }
 
 impl GradientResolver {
-    fn reset_for(&mut self, gradient_count: usize) {
+    /// Open the frame's pass over `gradients`. Last frame's rows are
+    /// forgotten, because another window may have evicted them.
+    fn begin<'a>(&'a mut self, gradients: &'a [RecordedGradient]) -> GradientPass<'a> {
         self.resolved.clear();
-        self.resolved.resize(gradient_count, None);
+        self.resolved.resize(gradients.len(), None);
+        GradientPass {
+            gradients,
+            atlas: &self.atlas,
+            resolved: &mut self.resolved,
+        }
     }
+}
 
-    fn source(
-        &mut self,
-        gradients: &[RecordedGradient],
-        atlas: &SharedGradientAtlas,
-        brush: ShapeBrush,
-    ) -> BrushSource {
+/// One frame's gradients, each resolved to its atlas row the first time a
+/// shape names it.
+#[derive(Debug)]
+pub(super) struct GradientPass<'a> {
+    gradients: &'a [RecordedGradient],
+    atlas: &'a SharedGradientAtlas,
+    resolved: &'a mut Vec<Option<ResolvedGradient>>,
+}
+
+impl GradientPass<'_> {
+    fn source(&mut self, brush: ShapeBrush) -> BrushSource {
         match brush {
             ShapeBrush::Solid(color) => BrushSource::Solid(color),
-            ShapeBrush::Gradient { id, .. } => {
-                BrushSource::Gradient(self.resolve(gradients, atlas, id))
-            }
+            ShapeBrush::Gradient { id, .. } => BrushSource::Gradient(self.resolve(id)),
         }
     }
 
     /// `id`'s gradient with its atlas row, registered once per pass.
-    fn resolve(
-        &mut self,
-        gradients: &[RecordedGradient],
-        atlas: &SharedGradientAtlas,
-        id: GradientId,
-    ) -> ResolvedGradient {
+    fn resolve(&mut self, id: GradientId) -> ResolvedGradient {
         let idx = id.0 as usize;
         if let Some(resolved) = self.resolved[idx] {
             return resolved;
         }
-        let gradient = &gradients[idx];
+        let gradient = &self.gradients[idx];
         let resolved = ResolvedGradient {
             axis: gradient.axis,
-            lut_row: atlas.register(&gradient.ramp),
+            lut_row: self.atlas.register(&gradient.ramp),
             kind: gradient.kind,
         };
         self.resolved[idx] = Some(resolved);
@@ -81,8 +87,10 @@ impl GradientResolver {
 impl Encoder {
     pub(crate) fn new(gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
-            gradients: GradientResolver::default(),
-            gradient_atlas,
+            gradients: GradientResolver {
+                atlas: gradient_atlas,
+                resolved: Vec::new(),
+            },
         }
     }
 
@@ -104,9 +112,8 @@ impl Encoder {
     /// `Composer::begin`, or an empty capturing sink.
     ///
     /// Deliberately carries no profiling span: the sink composes
-    /// inline, so this covers the same work as [`Frontend::build`] and a
-    /// second span would only read as an encoder regression against a
-    /// pre-fusion capture.
+    /// inline, so this covers the same work as [`Frontend::build`], and a
+    /// second span would count the compose twice.
     ///
     /// [`Frontend::build`]: crate::renderer::frontend::Frontend::build
     pub(crate) fn encode(
@@ -115,11 +122,6 @@ impl Encoder {
         plan: RenderPlan,
         out: &mut impl PaintSink,
     ) {
-        let Self {
-            gradients: gradient_resolver,
-            gradient_atlas,
-        } = self;
-
         let damage_filter = match &plan.damage {
             Damage::Partial(damage) => Some(&damage.region),
             Damage::Full => None,
@@ -127,8 +129,9 @@ impl Encoder {
 
         let viewport = scene.display.logical_rect();
         let now = scene.time;
-        let gradients = scene.forest.record_store.gradients.records.as_slice();
-        gradient_resolver.reset_for(gradients.len());
+        let mut gradients = self
+            .gradients
+            .begin(scene.forest.record_store.gradients.records.as_slice());
         // Matches the backend's padded physical scissor; both derive from
         // `renderer::render_plan::RenderPlan::AA_PADDING`.
         let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor());
@@ -139,9 +142,7 @@ impl Encoder {
                 layout: &scene.layout[layer],
                 cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
                 subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
-                gradients,
-                gradient_atlas,
-                gradient_resolver,
+                gradients: &mut gradients,
                 paint_anim_cursor: tree.paint_anims.cursor(),
                 gpu_views: scene.gpu_views,
                 damage_filter,
@@ -155,14 +156,14 @@ impl Encoder {
         }
 
         #[cfg(debug_assertions)]
-        collision_overlay::emit(scene.forest, scene.layout, out);
+        collision_overlay::emit(scene.forest, scene.layout, scene.cascade, out);
     }
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
+    use crate::internals::paint_capture::PaintCapture;
     use crate::renderer::frontend::FrameScene;
-    use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::encoder::Encoder;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;

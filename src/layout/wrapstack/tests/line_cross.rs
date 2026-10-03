@@ -2,16 +2,15 @@
 //! caps on both.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
-use crate::layout::types::sizing::SizeSpec;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::wrapstack::tests::support::{cell, rect_of};
+use crate::layout::wrapstack::tests::support::cell;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -72,10 +71,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
             Axis::Y => Size::new(10.0, 20.0),
         };
         h.under_outer(|ui| {
-            let panel = match case.axis {
-                Axis::X => Panel::wrap_hstack(),
-                Axis::Y => Panel::wrap_vstack(),
-            };
+            let panel = Panel::wrap_stack_on(case.axis);
             panel
                 .id(WidgetId::from_hash("wrap"))
                 .size((Sizing::HUG, Sizing::HUG))
@@ -85,18 +81,16 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
                     if case.with_normal {
                         cell(ui, "normal", normal_size.w, normal_size.h);
                     }
-                })
-                .response
-                .node()
+                });
         });
 
-        let wrap = rect_of(&h, "wrap");
+        let wrap = h.arranged(WidgetId::from_hash("wrap"));
         assert_eq!(wrap.size, case.expected_wrap, "case: {}", case.label);
-        let zero = rect_of(&h, "zero");
+        let zero = h.arranged(WidgetId::from_hash("zero"));
         assert_eq!(zero.min, Vec2::ZERO, "case: {} zero origin", case.label);
         assert_eq!(zero.size, zero_size, "case: {} zero size", case.label);
         if let Some(expected) = case.expected_normal_min {
-            let normal = rect_of(&h, "normal");
+            let normal = h.arranged(WidgetId::from_hash("normal"));
             assert_eq!(normal.min, expected, "case: {} normal origin", case.label);
         }
     }
@@ -107,7 +101,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
 #[test]
 fn wrap_hstack_line_height_is_max_child_cross() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _wrap = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -118,13 +112,11 @@ fn wrap_hstack_line_height_is_max_child_cross() {
                 cell(ui, "short", 100.0, 20.0);
                 // overflow → new line
                 cell(ui, "next-line", 100.0, 30.0);
-            })
-            .response
-            .node()
+            });
     });
-    let tall = rect_of(&h, "tall");
-    let short = rect_of(&h, "short");
-    let next = rect_of(&h, "next-line");
+    let tall = h.arranged(WidgetId::from_hash("tall"));
+    let short = h.arranged(WidgetId::from_hash("short"));
+    let next = h.arranged(WidgetId::from_hash("next-line"));
     assert_eq!(tall.min.y, 0.0);
     assert_eq!(short.min.y, 0.0);
     // Line 0 height = 60; line_gap = 0 → next at y=60.
@@ -136,7 +128,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let _ = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(300.0), Sizing::HUG))
@@ -149,17 +141,12 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
-            })
-            .response
-            .node()
+            });
     });
-    let tall = rect_of(&h, "tall");
-    let filler = rect_of(&h, "filler");
+    let tall = h.arranged(WidgetId::from_hash("tall"));
+    let filler = h.arranged(WidgetId::from_hash("filler"));
     assert_eq!(tall.size.h, 60.0);
     assert_eq!(
         filler.size.h, 60.0,
@@ -199,13 +186,10 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
         for case in &cases {
             let mut h = UiHarness::new(UVec2::new(400, 400));
             h.under_outer(|ui| {
-                let panel = match axis {
-                    Axis::X => Panel::wrap_hstack(),
-                    Axis::Y => Panel::wrap_vstack(),
-                };
+                let panel = Panel::wrap_stack_on(axis);
                 panel
                     .id(WidgetId::from_hash("all-fill-wrap"))
-                    .size(axis_sizes(axis, Sizing::fixed(125.0), Sizing::HUG))
+                    .size(axis.compose_sizing(Sizing::fixed(125.0), Sizing::HUG))
                     .gap(5.0)
                     .line_gap(7.0)
                     .show(ui, |ui| {
@@ -218,12 +202,10 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                                 *floor,
                             );
                         }
-                    })
-                    .response
-                    .node()
+                    });
             });
 
-            let wrap_rect = rect_of(&h, "all-fill-wrap");
+            let wrap_rect = h.arranged(WidgetId::from_hash("all-fill-wrap"));
             assert_eq!(
                 axis.main(wrap_rect.size),
                 125.0,
@@ -241,7 +223,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                 .enumerate()
                 .take(case.floors.len())
             {
-                let rect = rect_of(&h, name);
+                let rect = h.arranged(WidgetId::from_hash(name));
                 assert_eq!(
                     axis.main_v(rect.min),
                     [0.0, 65.0, 0.0][index],
@@ -276,13 +258,10 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
     for axis in [Axis::X, Axis::Y] {
         let mut h = UiHarness::new(UVec2::new(400, 400));
         h.under_outer(|ui| {
-            let panel = match axis {
-                Axis::X => Panel::wrap_hstack(),
-                Axis::Y => Panel::wrap_vstack(),
-            };
+            let panel = Panel::wrap_stack_on(axis);
             panel
                 .id(WidgetId::from_hash("mixed-fill-wrap"))
-                .size(axis_sizes(axis, Sizing::fixed(105.0), Sizing::HUG))
+                .size(axis.compose_sizing(Sizing::fixed(105.0), Sizing::HUG))
                 .gap(5.0)
                 .line_gap(7.0)
                 .show(ui, |ui| {
@@ -291,16 +270,14 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
                     cell(ui, "mixed-fixed", fixed_size.w, fixed_size.h);
                     let next_size = axis.compose_size(50.0, 10.0);
                     cell(ui, "mixed-next", next_size.w, next_size.h);
-                })
-                .response
-                .node()
+                });
         });
 
-        let wrap_rect = rect_of(&h, "mixed-fill-wrap");
+        let wrap_rect = h.arranged(WidgetId::from_hash("mixed-fill-wrap"));
         assert_eq!(axis.cross(wrap_rect.size), 57.0, "{axis:?} wrap cross");
-        let fill = rect_of(&h, "mixed-fill");
-        let fixed = rect_of(&h, "mixed-fixed");
-        let next = rect_of(&h, "mixed-next");
+        let fill = h.arranged(WidgetId::from_hash("mixed-fill"));
+        let fixed = h.arranged(WidgetId::from_hash("mixed-fixed"));
+        let next = h.arranged(WidgetId::from_hash("mixed-next"));
         assert_eq!(axis.cross(fill.size), 40.0, "{axis:?} fill cross");
         assert_eq!(axis.cross(fixed.size), 20.0, "{axis:?} fixed cross");
         assert_eq!(axis.cross_v(next.min), 47.0, "{axis:?} second line origin");
@@ -312,29 +289,24 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     for axis in [Axis::X, Axis::Y] {
         let mut h = UiHarness::new(UVec2::new(400, 400));
         h.under_outer(|ui| {
-            let panel = match axis {
-                Axis::X => Panel::wrap_hstack(),
-                Axis::Y => Panel::wrap_vstack(),
-            };
+            let panel = Panel::wrap_stack_on(axis);
             panel
                 .id(WidgetId::from_hash("bounded-fill-wrap"))
-                .size(axis_sizes(axis, Sizing::fixed(105.0), Sizing::HUG))
+                .size(axis.compose_sizing(Sizing::fixed(105.0), Sizing::HUG))
                 .gap(5.0)
                 .line_gap(5.0)
                 .show(ui, |ui| {
                     fill_cross_cell(ui, "min-fill", axis, 50.0, 25.0);
                     max_capped_fill_cross_cell(ui, "max-fill", axis, 50.0, 50.0, 35.0);
                     fill_cross_cell(ui, "next-fill", axis, 50.0, 15.0);
-                })
-                .response
-                .node()
+                });
         });
 
-        let wrap_rect = rect_of(&h, "bounded-fill-wrap");
+        let wrap_rect = h.arranged(WidgetId::from_hash("bounded-fill-wrap"));
         assert_eq!(axis.cross(wrap_rect.size), 55.0, "{axis:?} wrap cross");
-        let min_fill = rect_of(&h, "min-fill");
-        let max_fill = rect_of(&h, "max-fill");
-        let next_fill = rect_of(&h, "next-fill");
+        let min_fill = h.arranged(WidgetId::from_hash("min-fill"));
+        let max_fill = h.arranged(WidgetId::from_hash("max-fill"));
+        let next_fill = h.arranged(WidgetId::from_hash("next-fill"));
         assert_eq!(axis.cross(min_fill.size), 35.0, "{axis:?} min fill");
         assert_eq!(axis.cross(max_fill.size), 35.0, "{axis:?} max fill");
         assert_eq!(
@@ -346,17 +318,10 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     }
 }
 
-fn axis_sizes(axis: Axis, main: Sizing, cross: Sizing) -> SizeSpec {
-    match axis {
-        Axis::X => SizeSpec::new(main, cross),
-        Axis::Y => SizeSpec::new(cross, main),
-    }
-}
-
 fn fill_cross_cell(ui: &mut Ui, id: &'static str, axis: Axis, main: f32, min_cross: f32) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(id))
-        .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
+        .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
         .min_size(axis.compose_size(0.0, min_cross))
         .show(ui)
         .node()
@@ -372,16 +337,12 @@ fn max_capped_fill_cross_cell(
 ) -> NodeId {
     Panel::zstack()
         .id(WidgetId::from_hash(id))
-        .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
+        .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
         .max_size(axis.compose_size(f32::INFINITY, max_cross))
         .show(ui, |ui| {
             Block::new()
                 .id(WidgetId::from_hash("max-capped-content"))
-                .size(axis_sizes(
-                    axis,
-                    Sizing::fixed(0.0),
-                    Sizing::fixed(content_cross),
-                ))
+                .size(axis.compose_sizing(Sizing::fixed(0.0), Sizing::fixed(content_cross)))
                 .show(ui);
         })
         .response

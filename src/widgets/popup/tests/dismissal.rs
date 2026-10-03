@@ -4,36 +4,32 @@ use crate::layout::types::anchor::Anchor;
 
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::tests::support::{
-    ANCHOR, BODY_H, BODY_W, SURFACE, main_panel_clicked, record_body,
-};
-use crate::widgets::popup::{ClickOutside, Popup};
+use crate::widgets::popup::Popup;
+use crate::widgets::popup::click_outside::ClickOutside;
+use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
 use crate::{Sense, Ui};
 use glam::Vec2;
 
 #[test]
 fn click_inside_popup_does_not_dismiss() {
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Dismiss);
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
     h.click_at(inside);
 
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
-    assert!(!dismissed, "click inside body must not signal dismissal");
+    let pass = frame_body(&mut h, ClickOutside::Dismiss);
     assert!(
-        !main_panel_clicked(&h.ui),
+        !pass.dismissed,
+        "click inside body must not signal dismissal"
+    );
+    assert!(
+        !pass.main_clicked,
         "click inside body must not leak to Main"
     );
 }
@@ -47,22 +43,16 @@ fn click_inside_popup_does_not_dismiss() {
 fn outside_click_dismisses_on_any_button_and_blocks_main() {
     for button in PointerButton::all() {
         let mut h = UiHarness::new(SURFACE);
-        let mut dismissed = false;
-        h.frame(|ui| {
-            record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-        });
+        frame_body(&mut h, ClickOutside::Dismiss);
         h.click_button_at(button, Vec2::new(300.0, 300.0));
 
-        let mut dismissed = false;
-        h.frame(|ui| {
-            record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-        });
+        let pass = frame_body(&mut h, ClickOutside::Dismiss);
         assert!(
-            dismissed,
+            pass.dismissed,
             "{button:?} outside click with `Dismiss` must signal dismissal",
         );
         assert!(
-            !main_panel_clicked(&h.ui),
+            !pass.main_clicked,
             "{button:?} outside click must be eaten by the popup eater, not leak to Main",
         );
     }
@@ -72,30 +62,22 @@ fn outside_click_dismisses_on_any_button_and_blocks_main() {
 fn escape_dismisses_dismiss_popup_but_not_block() {
     // `Dismiss`: Esc folds into `dismissed`.
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Dismiss);
     h.key(Key::Escape);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
-    assert!(dismissed, "Esc dismisses a `Dismiss` popup");
+    assert!(
+        frame_body(&mut h, ClickOutside::Dismiss).dismissed,
+        "Esc dismisses a `Dismiss` popup",
+    );
 
     // `Block`: Esc is ignored (stop-the-world prompts close only on the
     // host's terms).
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Block, &mut dismissed);
-    });
+    frame_body(&mut h, ClickOutside::Block);
     h.key(Key::Escape);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Block, &mut dismissed);
-    });
-    assert!(!dismissed, "Esc does not dismiss a `Block` popup");
+    assert!(
+        !frame_body(&mut h, ClickOutside::Block).dismissed,
+        "Esc does not dismiss a `Block` popup",
+    );
 }
 
 /// `Ui::frame` settles popup dismissal in a single host call.
@@ -154,17 +136,13 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
 
     let content = WidgetId::from_hash("popup-content");
     let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    let build = |ui: &mut Ui, open: bool, dismissed: &mut bool| {
+    let build = |ui: &mut Ui, open: bool| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .sense(Sense::CLICK)
             .show(ui, |ui| {
-                if !open {
-                    return;
-                }
-                let r = Popup::new(Anchor::at_point(ANCHOR))
+                open && Popup::new(Anchor::at_point(ANCHOR))
                     .id(WidgetId::from_hash("test-popup"))
                     .click_outside(ClickOutside::Dismiss)
                     .show(ui, |ui, _popup| {
@@ -172,33 +150,34 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
                             .id(content)
                             .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
                             .show(ui, |_| {});
-                    });
-                *dismissed |= r.dismissed;
-            });
+                    })
+                    .dismissed
+            })
+            .inner
     };
 
-    h.frame(|ui| build(ui, true, &mut dismissed));
-    h.frame(|ui| build(ui, true, &mut dismissed));
+    h.prime(2, |ui| {
+        build(ui, true);
+    });
 
     // Escape dismisses it. Focus makes the wake-gate deliver the chord.
-    h.ui.input_mut().focused = Some(content);
+    h.ui.input_mut().set_focus(Some(content));
     h.key(Key::Escape);
-    h.frame(|ui| build(ui, true, &mut dismissed));
     assert!(
-        dismissed,
+        h.frame_value(|ui| build(ui, true)),
         "escape must dismiss a ClickOutside::Dismiss popup"
     );
 
     // Host stops showing it. `Main` must read again immediately — the
     // popup is still in last frame's cascade, so only the close makes
     // this true. Counted inside the record, the only place the queue is
-    // live, and maxed across the double-layout passes.
-    h.ui.input_mut().focused = Some(WidgetId::from_hash("main-bg"));
+    // live.
+    h.ui.input_mut()
+        .set_focus(Some(WidgetId::from_hash("main-bg")));
     h.key(Key::Escape);
-    let mut seen = 0usize;
-    h.frame(|ui| {
-        build(ui, false, &mut dismissed);
-        seen = seen.max(ui.input().keyboard_events(Layer::Main).len());
+    let seen = h.frame_value(|ui| {
+        build(ui, false);
+        ui.input().keyboard_events(Layer::Main).len()
     });
     assert_eq!(seen, 1, "the frame after dismissal must reach Main");
 }

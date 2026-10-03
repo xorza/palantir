@@ -239,11 +239,13 @@ impl<'a> TabStrip<'a> {
                 .size((Sizing::FILL, Sizing::HUG))
                 .gap(t.gap)
                 .child_align(Align::v(VAlign::Bottom));
+            let reveal = reveal_delta(ui, id, t);
             row.record(ui, None, |ui| {
                 Scroll::horizontal()
                     .id(Self::band_id(id))
                     .size((Sizing::FILL, Sizing::HUG))
                     .hide_bars()
+                    .pan_by(reveal)
                     .padding(t.strip_padding)
                     .gap(t.gap)
                     .child_align(Align::v(VAlign::Bottom))
@@ -270,6 +272,12 @@ impl<'a> TabStrip<'a> {
             }
             keyboard_travel(ui, id, items.len(), selected, &mut hits);
         });
+        // A pick that did not come from a click may be out of sight: the
+        // next frame pans the band to it. A click needs no pan — the chip
+        // was where the pointer was.
+        if let Some(slot) = hits.keyed.or(hits.menu_picked) {
+            ui.state_or_default::<StripState>(id).reveal = Some(items[slot].key);
+        }
 
         let StripHits {
             clicked,
@@ -295,6 +303,47 @@ impl Configure for TabStrip<'_> {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()
+    }
+}
+
+/// What a strip keeps between frames: a chip a keyboard move or a menu
+/// pick selected, which the next frame pans into sight.
+#[derive(Debug, Default)]
+struct StripState {
+    reveal: Option<u64>,
+}
+
+/// The part of the band a chip can be seen in: its rect, clipped by its
+/// ancestors, deflated by the padding the band clips its content to.
+fn band_clip(ui: &Ui, strip: WidgetId, t: &TabsTheme) -> Option<Rect> {
+    let band = ui.response_for(TabStrip::band_id(strip)).rect?;
+    Some(band.deflated_by(t.strip_padding))
+}
+
+/// Where a chip would be with nothing cutting it: its arranged rect under
+/// its own transform. Its visible rect is clipped to the band, so a chip
+/// half out of sight reads as wholly inside.
+fn chip_extent(ui: &Ui, strip: WidgetId, key: u64) -> Option<Rect> {
+    let chip = ui.response_for(TabStrip::chip_id(strip, key));
+    chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
+}
+
+/// The pan that brings the chip a keyboard move or menu pick selected
+/// into the band's clip, from last frame's rects, and forget the request.
+fn reveal_delta(ui: &mut Ui, strip: WidgetId, t: &TabsTheme) -> Vec2 {
+    let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
+        return Vec2::ZERO;
+    };
+    ui.state_or_default::<StripState>(strip).reveal = None;
+    let (Some(clip), Some(chip)) = (band_clip(ui, strip, t), chip_extent(ui, strip, key)) else {
+        return Vec2::ZERO;
+    };
+    if chip.min.x < clip.min.x {
+        Vec2::new(chip.min.x - clip.min.x, 0.0)
+    } else if chip.max().x > clip.max().x {
+        Vec2::new(chip.max().x - clip.max().x, 0.0)
+    } else {
+        Vec2::ZERO
     }
 }
 
@@ -519,27 +568,18 @@ fn overflow_menu(
     ambient: TextStyle,
     hits: &mut StripHits,
 ) {
-    // The band's rect is the window, clipped — what an ancestor cut away
-    // is not visible either.
-    let Some(band) = ui.response_for(TabStrip::band_id(strip)).rect else {
+    // The window a chip shows through: the band clipped by its ancestors
+    // and deflated by the padding its content is clipped to — a chip cut
+    // under that padding is out of sight too. Against the chip's uncut
+    // extent, at the crate's tolerance, so a chip that fills the clip
+    // exactly cannot flicker the chevron on a rounding difference between
+    // two paths.
+    let Some(clip) = band_clip(ui, strip, t) else {
         return;
     };
-    // The chip's rect is not, and cannot be: it is clipped to this very
-    // band, so a chip half out of sight reports as wholly inside and the
-    // chevron that would reach it never appears. The arranged rect under
-    // the chip's own transform is where the chip *would* be with nothing
-    // cutting it, which is the question. Answered at the crate's
-    // tolerance, so a chip that fills the band exactly cannot flicker
-    // the chevron on a rounding difference between two paths.
     let hidden = |item: &TabItem| {
-        let chip = ui.response_for(TabStrip::chip_id(strip, item.key));
-        match chip.layout_rect {
-            Some(rect) => {
-                let full = chip.transform.apply_rect(rect);
-                full.min.x < band.min.x - EPS || full.max().x > band.max().x + EPS
-            }
-            None => false,
-        }
+        chip_extent(ui, strip, item.key)
+            .is_some_and(|full| full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS)
     };
     let menu_id = strip.with("overflow_menu");
     if !items.iter().any(hidden) && !ContextMenu::is_open(ui, menu_id) {
@@ -604,13 +644,13 @@ fn keyboard_travel(
     if len == 0 || !ui.focus_within(strip) {
         return;
     }
-    let here = selected.unwrap_or(0).min(len - 1);
-    let step = |forward: bool| {
-        if forward {
-            (here + 1) % len
-        } else {
-            (here + len - 1) % len
-        }
+    // With nothing selected, a step lands on the end it moves from: Right
+    // selects the first chip, not the second.
+    let step = |forward: bool| match selected.map(|here| here.min(len - 1)) {
+        Some(here) if forward => (here + 1) % len,
+        Some(here) => (here + len - 1) % len,
+        None if forward => 0,
+        None => len - 1,
     };
     // Every chord is sampled, not short-circuited: `key_pressed` both
     // reads the press and keeps the chord subscribed for the wake gate,

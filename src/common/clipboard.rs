@@ -39,9 +39,22 @@ impl fmt::Debug for SystemBackend {
 }
 
 #[cfg(feature = "system-clipboard")]
+impl SystemBackend {
+    /// arboard reports an empty clipboard, and one holding no text, as
+    /// `ContentNotAvailable`. Both are a clipboard with nothing to paste.
+    fn answer(read: Result<String, arboard::Error>) -> Result<String, ClipboardUnavailable> {
+        match read {
+            Ok(text) => Ok(text),
+            Err(arboard::Error::ContentNotAvailable) => Ok(String::new()),
+            Err(_) => Err(ClipboardUnavailable),
+        }
+    }
+}
+
+#[cfg(feature = "system-clipboard")]
 impl Backend for SystemBackend {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
-        self.0.get_text().map_err(|_| ClipboardUnavailable)
+        Self::answer(self.0.get_text())
     }
 
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
@@ -68,10 +81,16 @@ impl Backend for MemoryBackend {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 enum Authority {
     Primary,
-    Fallback,
+    /// The last write reached only the fallback. `primary_then` is what the
+    /// primary held at that moment: a read that finds anything else there
+    /// means another application copied since, which makes the primary the
+    /// newer clipboard again.
+    Fallback {
+        primary_then: Option<String>,
+    },
 }
 
 #[derive(Debug)]
@@ -83,30 +102,35 @@ struct ClipboardState {
 }
 
 impl ClipboardState {
-    fn new(primary: Option<Box<dyn Backend>>, fallback: Box<dyn Backend>) -> Self {
-        let authority = if primary.is_some() {
-            Authority::Primary
-        } else {
-            Authority::Fallback
-        };
+    const fn new(primary: Option<Box<dyn Backend>>, fallback: Box<dyn Backend>) -> Self {
         Self {
             primary,
             fallback,
-            authority,
+            authority: Authority::Primary,
             fallback_current: false,
         }
     }
 
     fn text(&mut self) -> Result<String, ClipboardUnavailable> {
-        if self.authority == Authority::Fallback {
+        let Some(primary) = self.primary.as_mut() else {
             return self.fallback.get_text();
+        };
+        let read = primary.get_text();
+
+        if let Authority::Fallback { primary_then } = &mut self.authority {
+            match &read {
+                Ok(text) if primary_then.as_ref().is_some_and(|then| then != text) => {
+                    self.authority = Authority::Primary;
+                }
+                Ok(text) => {
+                    primary_then.get_or_insert_with(|| text.clone());
+                    return self.fallback.get_text();
+                }
+                Err(_) => return self.fallback.get_text(),
+            }
         }
 
-        let primary = self
-            .primary
-            .as_mut()
-            .expect("primary clipboard authority without a backend");
-        match primary.get_text() {
+        match read {
             Ok(text) => {
                 self.fallback_current = self.fallback.set_text(&text).is_ok();
                 Ok(text)
@@ -118,17 +142,22 @@ impl ClipboardState {
 
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
         let fallback_written = self.fallback.set_text(text).is_ok();
-        let primary_written = self
-            .primary
-            .as_mut()
-            .is_some_and(|primary| primary.set_text(text).is_ok());
+        let Some(primary) = self.primary.as_mut() else {
+            return if fallback_written {
+                Ok(())
+            } else {
+                Err(ClipboardUnavailable)
+            };
+        };
 
-        if primary_written {
+        if primary.set_text(text).is_ok() {
             self.authority = Authority::Primary;
             self.fallback_current = fallback_written;
             Ok(())
         } else if fallback_written {
-            self.authority = Authority::Fallback;
+            self.authority = Authority::Fallback {
+                primary_then: primary.get_text().ok(),
+            };
             self.fallback_current = true;
             Ok(())
         } else {
@@ -189,7 +218,7 @@ impl Clipboard {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable};
 
     #[derive(Debug)]
@@ -221,6 +250,7 @@ mod tests {
     struct PrimaryState {
         text: String,
         reject_writes: bool,
+        reject_reads: bool,
         reads: usize,
     }
 
@@ -233,6 +263,9 @@ mod tests {
         fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
             let mut state = self.state.borrow_mut();
             state.reads += 1;
+            if state.reject_reads {
+                return Err(ClipboardUnavailable);
+            }
             Ok(state.text.clone())
         }
 
@@ -276,31 +309,110 @@ mod tests {
         assert_eq!(boxed.to_string(), "no clipboard backend could answer");
     }
 
-    #[test]
-    fn failed_primary_write_makes_fallback_authoritative() {
-        let primary_state = Rc::new(RefCell::new(PrimaryState {
-            text: String::from("stale"),
-            reject_writes: true,
+    fn primary(text: &str) -> Rc<RefCell<PrimaryState>> {
+        Rc::new(RefCell::new(PrimaryState {
+            text: String::from(text),
+            reject_writes: false,
+            reject_reads: false,
             reads: 0,
-        }));
-        let clipboard = Clipboard::new(
+        }))
+    }
+
+    fn over(primary: &Rc<RefCell<PrimaryState>>) -> Clipboard {
+        Clipboard::new(
             Some(Box::new(StaleBackend {
-                state: Rc::clone(&primary_state),
+                state: Rc::clone(primary),
             })),
             Box::<MemoryBackend>::default(),
-        );
+        )
+    }
+
+    #[cfg(feature = "system-clipboard")]
+    #[test]
+    fn system_reads_without_text_answer_empty() {
+        use crate::common::clipboard::SystemBackend;
+
+        let cases = [
+            (Ok(String::from("text")), Ok(String::from("text"))),
+            (Err(arboard::Error::ContentNotAvailable), Ok(String::new())),
+            (
+                Err(arboard::Error::ClipboardOccupied),
+                Err(ClipboardUnavailable),
+            ),
+            (
+                Err(arboard::Error::ClipboardNotSupported),
+                Err(ClipboardUnavailable),
+            ),
+        ];
+        for (read, expected) in cases {
+            assert_eq!(SystemBackend::answer(read), expected);
+        }
+    }
+
+    /// The last write reached only the fallback, so the fallback answers
+    /// until the primary shows a copy made after that write.
+    #[test]
+    fn failed_primary_write_holds_until_another_copy() {
+        let primary = primary("stale");
+        let clipboard = over(&primary);
+        primary.borrow_mut().reject_writes = true;
 
         clipboard.set_text("fresh").unwrap();
-
+        assert_eq!(primary.borrow().reads, 1);
         assert_eq!(clipboard.text().unwrap(), "fresh");
-        assert_eq!(primary_state.borrow().reads, 0);
+        assert_eq!(clipboard.text().unwrap(), "fresh");
+        assert_eq!(primary.borrow().reads, 3);
 
-        primary_state.borrow_mut().reject_writes = false;
-        clipboard.set_text("replacement").unwrap();
-        assert_eq!(primary_state.borrow().text, "replacement");
-
-        primary_state.borrow_mut().text = String::from("external");
+        primary.borrow_mut().text = String::from("external");
         assert_eq!(clipboard.text().unwrap(), "external");
-        assert_eq!(primary_state.borrow().reads, 1);
+
+        primary.borrow_mut().text = String::from("later");
+        assert_eq!(clipboard.text().unwrap(), "later");
+
+        primary.borrow_mut().reject_writes = false;
+        clipboard.set_text("replacement").unwrap();
+        assert_eq!(primary.borrow().text, "replacement");
+        assert_eq!(clipboard.text().unwrap(), "replacement");
+    }
+
+    /// A primary that could not be read when the write failed takes its
+    /// first later answer as the reference instead.
+    #[test]
+    fn unread_primary_takes_its_next_answer_as_the_reference() {
+        let primary = primary("stale");
+        let clipboard = over(&primary);
+        primary.borrow_mut().reject_writes = true;
+        primary.borrow_mut().reject_reads = true;
+
+        clipboard.set_text("fresh").unwrap();
+        assert_eq!(clipboard.text().unwrap(), "fresh");
+
+        primary.borrow_mut().reject_reads = false;
+        assert_eq!(clipboard.text().unwrap(), "fresh");
+
+        primary.borrow_mut().text = String::from("external");
+        assert_eq!(clipboard.text().unwrap(), "external");
+    }
+
+    /// Only a backend error falls back, and only to text the fallback
+    /// mirrored from the primary or wrote beside it.
+    #[test]
+    fn unreadable_primary_answers_from_a_current_fallback() {
+        let primary = primary("seen");
+        let clipboard = over(&primary);
+        primary.borrow_mut().reject_reads = true;
+        assert_eq!(clipboard.text(), Err(ClipboardUnavailable));
+
+        primary.borrow_mut().reject_reads = false;
+        assert_eq!(clipboard.text().unwrap(), "seen");
+
+        primary.borrow_mut().text = String::new();
+        assert_eq!(clipboard.text().unwrap(), "");
+
+        primary.borrow_mut().reject_reads = true;
+        assert_eq!(clipboard.text().unwrap(), "");
+
+        clipboard.set_text("copied").unwrap();
+        assert_eq!(clipboard.text().unwrap(), "copied");
     }
 }

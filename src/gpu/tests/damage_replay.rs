@@ -3,8 +3,8 @@
 
 use crate::gpu::schedule::{MaskPlan, RenderStep};
 use crate::gpu::tests::support::{
-    DrawOp, buf_with, buf_with_batches, buf_with_image_anchors, collect, scissor_count, simplify,
-    text_batch,
+    DrawOp, buf_with, buf_with_batches, buf_with_tier_anchors, collect, group, plain_steps,
+    scissor_count, simplify, text_batch,
 };
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
@@ -21,8 +21,7 @@ fn preclear_emits_under_partial_damage() {
     let buf = buf_with_batches(
         vec![DrawGroup {
             scissor: None,
-            rounded_clips: Span::default(),
-            quads: Span::new(0, 1),
+            ..group(Span::new(0, 1))
         }],
         vec![text_batch(Span::new(0, 1), 0)],
     );
@@ -32,7 +31,7 @@ fn preclear_emits_under_partial_damage() {
         vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0),],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
+        simplify(&buf, &plain_steps(&buf)),
         vec![DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }
@@ -48,13 +47,11 @@ fn schedule_replays_per_damage_rect() {
     let buf = buf_with(vec![
         DrawGroup {
             scissor: Some(URect::new(0, 0, 50, 100)),
-            rounded_clips: Span::default(),
-            quads: Span::new(0, 1),
+            ..group(Span::new(0, 1))
         },
         DrawGroup {
             scissor: Some(URect::new(50, 0, 50, 100)),
-            rounded_clips: Span::default(),
-            quads: Span::new(1, 1),
+            ..group(Span::new(1, 1))
         },
     ]);
     // DamageEngine rect A covers only group 0; rect B covers only group 1.
@@ -103,12 +100,11 @@ fn schedule_replays_per_damage_rect() {
 #[test]
 fn scissor_steps_emit_once_per_transition() {
     let narrow = URect::new(10, 10, 50, 50);
-    let group = |scissor, q| DrawGroup {
+    let scissored = |scissor, q| DrawGroup {
         scissor: Some(scissor),
-        rounded_clips: Span::default(),
-        quads: Span::new(q, 1),
+        ..group(Span::new(q, 1))
     };
-    let buf = buf_with(vec![group(narrow, 0)]);
+    let buf = buf_with(vec![scissored(narrow, 0)]);
     let damage = URect::new(0, 0, 80, 80);
     assert_eq!(
         collect(&buf, Some(damage), &MaskPlan::default(), false),
@@ -134,9 +130,9 @@ fn scissor_steps_emit_once_per_transition() {
         ],
     );
 
-    let buf = buf_with_image_anchors(vec![group(narrow, 0)], &[0]);
+    let buf = buf_with_tier_anchors(vec![scissored(narrow, 0)], PaintTier::Image, &[0]);
     assert_eq!(
-        collect(&buf, None, &MaskPlan::default(), false),
+        plain_steps(&buf),
         vec![
             RenderStep::SetScissor(narrow),
             RenderStep::Quads {
@@ -149,10 +145,10 @@ fn scissor_steps_emit_once_per_transition() {
         ],
     );
 
-    let mut buf = buf_with_image_anchors(vec![group(narrow, 0)], &[0]);
+    let mut buf = buf_with_tier_anchors(vec![scissored(narrow, 0)], PaintTier::Image, &[0]);
     buf.text_batches.push(text_batch(Span::new(0, 1), 0));
     assert_eq!(
-        collect(&buf, None, &MaskPlan::default(), false),
+        plain_steps(&buf),
         vec![
             RenderStep::SetScissor(narrow),
             RenderStep::Quads {
@@ -171,8 +167,8 @@ fn scissor_steps_emit_once_per_transition() {
     );
 
     for (second, expected) in [(narrow, 1), (URect::new(60, 10, 20, 20), 2)] {
-        let buf = buf_with(vec![group(narrow, 0), group(second, 1)]);
-        let steps = collect(&buf, None, &MaskPlan::default(), false);
+        let buf = buf_with(vec![scissored(narrow, 0), scissored(second, 1)]);
+        let steps = plain_steps(&buf);
         assert_eq!(
             scissor_count(&steps),
             expected,
@@ -190,14 +186,12 @@ fn group_outside_damage_emits_no_steps() {
         // Group 0: in damage
         DrawGroup {
             scissor: Some(URect::new(0, 0, 30, 30)),
-            rounded_clips: Span::default(),
-            quads: Span::new(0, 1),
+            ..group(Span::new(0, 1))
         },
         // Group 1: outside damage
         DrawGroup {
             scissor: Some(URect::new(60, 60, 30, 30)),
-            rounded_clips: Span::default(),
-            quads: Span::new(1, 1),
+            ..group(Span::new(1, 1))
         },
     ]);
     let damage = URect::new(0, 0, 40, 40);

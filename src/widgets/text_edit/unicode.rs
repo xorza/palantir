@@ -10,15 +10,15 @@ use unicode_segmentation::UnicodeSegmentation;
 
 /// Strip line-break chars from an inbound string so the single-line
 /// TextEdit's buffer never contains `\n` / `\r`. Hit by both the
-/// paste path and the IME-text-commit path — host events and OS
-/// clipboards routinely carry `\r\n` / `\n` from multi-line sources
+/// paste path and typed text — host events and OS clipboards
+/// routinely carry `\r\n` / `\n` from multi-line sources
 /// that this widget can't render or hit-test correctly. Spaces are a
 /// safer substitute than outright deletion (preserves intent for
 /// "First Name\nLast Name" → "First Name Last Name"). Borrowed
 /// pass-through on the common break-free case — no per-keystroke
 /// allocation.
 pub(super) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
-    if memchr::memchr2(b'\n', b'\r', s.as_bytes()).is_none() {
+    if !s.contains(['\n', '\r']) {
         return Cow::Borrowed(s);
     }
     let mut out = String::with_capacity(s.len());

@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::hash;
+use crate::text::probe::Caret;
 
 /// `cursor_xy(...).x`. Mono fallback: each ASCII byte is
 /// `font_size * 0.5` wide. Caret x is independent of `line_height`
@@ -15,6 +16,8 @@ fn cursor_xy_x_cases() {
         ("mono_three_chars", "abc", 3, 16.0, 16.0, 24.0),
         ("lh_independent_short", "abc", 2, 16.0, 16.0, 16.0),
         ("lh_independent_tall", "abc", 2, 16.0, 24.0, 16.0),
+        // Byte 3 of "éa" ends after `a`: two chars in, not three bytes.
+        ("multibyte_counts_chars", "éa", 3, 16.0, 16.0, 16.0),
     ];
     let m = TextShaper::test_mono();
     for (label, text, offset, fs, lh_v, expected) in cases {
@@ -26,12 +29,20 @@ fn cursor_xy_x_cases() {
     }
 }
 
+/// Caret-x at each byte boundary advances *with* the run's reading
+/// direction, from the edge the direction starts on.
+///
+/// LTR, bundled Inter at 16 px: the advances are h 9.4609375, e 9.328125,
+/// l 3.875 and o 9.59375, so the carets are their running sums.
+///
+/// RTL: no bundled face covers Hebrew, so each letter shapes as the
+/// 10.5 px missing-glyph box — the direction comes from the text, not the
+/// face. Byte 0 sits at the right edge, 4 × 10.5 = 42, and the caret walks
+/// left. Each letter is two bytes, so the odd offsets fall inside a letter
+/// and resolve to the caret after it. A glyph-start scan would report
+/// each glyph's left edge instead, a full letter off.
 #[test]
 fn cursor_xy_walks_with_the_paragraph_direction() {
-    // Caret-x at each byte boundary advances *with* the run's reading
-    // direction and stays inside the line. Exact pixel values depend on
-    // font metrics, so pin the invariants consumers rely on: monotonicity
-    // along the reading direction, and both endpoints on the correct edge.
     let shaper = TextShaper::new();
     let shape = ui_shape(16.0);
     let carets = |text: &str| -> Vec<f32> {
@@ -40,55 +51,31 @@ fn cursor_xy_walks_with_the_paragraph_direction() {
             .collect()
     };
 
-    let ltr = carets("hello");
-    assert_eq!(ltr[0], 0.0, "an LTR line starts its caret at the left edge");
-    for w in ltr.windows(2) {
-        assert!(
-            w[1] >= w[0] - 0.01,
-            "LTR caret-x must be non-decreasing, got {ltr:?}",
-        );
-    }
-    assert!(
-        *ltr.last().unwrap() > ltr[0],
-        "a non-empty LTR run ends right of where it began",
+    // Each advance is a multiple of 1/128, so every sum is exact in f32.
+    let (h, e, l, o) = (9.4609375, 9.328125, 3.875, 9.59375);
+    assert_eq!(
+        carets("hello"),
+        [
+            0.0,
+            h,
+            h + e,
+            h + e + l,
+            h + e + 2.0 * l,
+            h + e + 2.0 * l + o
+        ],
     );
 
-    // Hebrew shapes right-to-left, so byte 0 sits at the *right* edge and
-    // the caret walks leftwards. A glyph-start scan would report each
-    // glyph's left edge instead, putting the caret a full character off
-    // and making the sequence oscillate rather than descend.
     let rtl_text = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
-    let rtl = carets(rtl_text);
-    let line_right = shaper.measure(rtl_text, shape).measured.w;
-    // The measured extent has to span every glyph rather than stop at the
+    assert_eq!(
+        carets(rtl_text),
+        [42.0, 31.5, 31.5, 21.0, 21.0, 10.5, 10.5, 0.0, 0.0],
+    );
+    // The measured extent spans every glyph rather than stopping at the
     // last one in the array, which in an RTL run is the leftmost — that
-    // would report a four-character run as one character wide and let the
-    // backend clip it.
-    let one_char = shaper.measure("\u{5e9}", shape).measured.w;
-    assert!(
-        line_right > one_char * 2.0,
-        "an RTL run must measure its full extent: {line_right} vs one glyph {one_char}",
-    );
-    for w in rtl.windows(2) {
-        assert!(
-            w[1] <= w[0] + 0.01,
-            "RTL caret-x must be non-increasing, got {rtl:?}",
-        );
-    }
-    assert!(
-        (rtl[0] - line_right).abs() < 1.0,
-        "an RTL line starts its caret at the right edge: {} vs width {line_right}",
-        rtl[0],
-    );
-    // The leftmost glyph's x is a sum of f32 advances from real font metrics,
-    // so the end caret lands within rounding of 0, not exactly on it.
-    assert!(
-        rtl.last().unwrap().abs() < 0.01,
-        "an RTL line ends its caret at the left edge, got {}",
-        rtl.last().unwrap(),
-    );
-    // Direction is what separates the two, not merely text content.
-    assert_ne!(ltr[0], rtl[0]);
+    // would report the run as one letter wide and let the backend clip
+    // it. One letter alone rounds its 10.5 up to 11.
+    assert_eq!(shaper.measure(rtl_text, shape).measured.w, 42.0);
+    assert_eq!(shaper.measure("\u{5e9}", shape).measured.w, 11.0);
 }
 
 #[test]
@@ -108,32 +95,29 @@ fn byte_at_xy_mono_fallback() {
         let got = m.byte_at_xy("hello", *x, 0.0, shape(16.0));
         assert_eq!(got, *expected, "case: {label}");
     }
+    // Two-byte chars: x = 16 is after the second `é`, byte 4, not byte 2.
+    assert_eq!(m.byte_at_xy("ééé", 16.0, 0.0, shape(16.0)), 4);
 }
 
+/// Real shaping: each caret x of "hello" hits back to its own offset, and
+/// either side of a glyph's midpoint picks the nearer edge. The `h` spans
+/// 0 to 9.4609375, so its midpoint is 4.73046875. An x past the end clamps.
 #[test]
-fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
-    // Real shaping: sweeping x across a run must never walk the answer
-    // backwards, and an x past the end must clamp. The exact
-    // caret → hit → caret identity is a stronger claim and is pinned
-    // separately by `caret_and_hit_test_round_trip_in_block_local_space`;
-    // this one holds even where a boundary x is ambiguous between two
-    // adjacent offsets.
+fn byte_at_xy_cosmic_path_hits_each_caret_and_clamps() {
     let m = TextShaper::new();
     let s = "hello";
-    let fs = 16.0;
+    let shape = ui_shape(16.0);
     let probes: Vec<usize> = (0..=s.len())
-        .map(|i| {
-            let x = m.cursor_xy(s, i, ui_shape(fs)).x;
-            m.byte_at_xy(s, x, 0.0, ui_shape(fs))
-        })
+        .map(|i| m.byte_at_xy(s, m.cursor_xy(s, i, shape).x, 0.0, shape))
         .collect();
-    // Monotone non-decreasing — hit-test never goes backwards as x grows.
-    for w in probes.windows(2) {
-        assert!(w[1] >= w[0], "byte_at_xy not monotone: {probes:?}");
-    }
-    // Past-end x clamps to text.len().
-    let past = m.byte_at_xy(s, 10_000.0, 0.0, ui_shape(fs));
-    assert_eq!(past, s.len(), "x past end must clamp to text.len()");
+    assert_eq!(probes, [0, 1, 2, 3, 4, 5]);
+    assert_eq!(m.byte_at_xy(s, 4.7, 0.0, shape), 0);
+    assert_eq!(m.byte_at_xy(s, 4.8, 0.0, shape), 1);
+    assert_eq!(
+        m.byte_at_xy(s, 10_000.0, 0.0, shape),
+        s.len(),
+        "x past end must clamp to text.len()",
+    );
 }
 
 /// An empty range emits nothing — and, being a sink rather than a
@@ -221,8 +205,8 @@ fn selection_rects_match_cosmic_highlight_spans() {
         let mut expected = Vec::new();
         m.probe_layout(case.text, params, |layout| {
             let buffer = layout.buffer_for_test().unwrap();
-            let start = probe::cursor_from_byte(case.text, case.range.start);
-            let end = probe::cursor_from_byte(case.text, case.range.end);
+            let start = probe::cursor_from_byte(buffer, case.text, case.range.start);
+            let end = probe::cursor_from_byte(buffer, case.text, case.range.end);
             for run in buffer.layout_runs() {
                 // Raw `highlight` marks any run whose line differs from both
                 // cursors as fully selected; cosmic's editor guards it with
@@ -248,76 +232,146 @@ fn selection_rects_match_cosmic_highlight_spans() {
             case.label
         );
         // Independent of the oracle (which shares the line-range guard):
-        // hand-computed placement for the partial-range cases — the three
-        // unwrapped source lines sit at y = 0, lh, 2·lh.
-        let lh = 16.0 * LINE_HEIGHT_MULT;
+        // hand-computed placement for the partial-range cases. A line is
+        // 16 × 1.2 = 19.2 px, snapped to round(19.2 × 64) / 64 = 19.203125,
+        // so the three unwrapped source lines sit at y = 0, lh and 2 · lh.
+        let lh = 19.203125;
+        assert_eq!(16.0 * LINE_HEIGHT_MULT, 19.2, "premise: production leading");
         let ys: Vec<f32> = actual.iter().map(|r| r.min.y).collect();
-        match case.label {
-            "single_line" => {
-                assert_eq!(ys.len(), 1, "single-line range → one rect, got {ys:?}");
-                assert!(
-                    (actual[0].size.h - lh).abs() < 0.5,
-                    "one line tall (16 px × {LINE_HEIGHT_MULT}), got {}",
-                    actual[0].size.h,
-                );
-                assert!(ys[0].abs() < 0.5, "the only line sits at y≈0, got {ys:?}");
-            }
-            "middle_line_only" => {
-                assert_eq!(ys.len(), 1, "one rect for the middle line, got {ys:?}");
-                assert!((ys[0] - lh).abs() < 0.5, "rect sits on line 1, got {ys:?}");
-            }
-            "tail_span" => {
-                assert_eq!(ys.len(), 2, "one rect per selected line, got {ys:?}");
-                assert!((ys[0] - lh).abs() < 0.5, "first rect on line 1, got {ys:?}");
-                assert!(
-                    (ys[1] - 2.0 * lh).abs() < 0.5,
-                    "second rect on line 2, got {ys:?}"
-                );
-            }
-            _ => {}
+        let want: &[f32] = match case.label {
+            "single_line" => &[0.0],
+            "middle_line_only" => &[lh],
+            "tail_span" => &[lh, 2.0 * lh],
+            _ => continue,
+        };
+        assert_eq!(ys, want, "case: {}", case.label);
+        for rect in &actual {
+            assert_eq!(rect.size.h, lh, "case: {}: one line tall", case.label);
         }
     }
 }
 
+/// Byte offsets map to cosmic cursors through the shaped buffer's own
+/// lines, so every line ending cosmic splits at — `\n`, `\r`, `\r\n`,
+/// `\n\r` — starts a line where cosmic starts one. Each row is
+/// `(offset, line, index, back)`: the cursor an offset maps to, and the
+/// offset that cursor maps back to. An offset on line text round-trips;
+/// one inside a two-byte ending sits at its line's end; one past the text
+/// clamps to the text's end.
 #[test]
-fn cursor_byte_round_trip_multiline() {
-    // `cursor_from_byte` and `cursor_to_byte` must invert each other
-    // across line breaks. Offsets sampled at every byte position of a
-    // 3-line string with varying line lengths.
-    let text = "ab\ncde\nfg";
-    for off in 0..=text.len() {
-        let cur = probe::cursor_from_byte(text, off);
-        let back = probe::cursor_to_byte(text, cur);
-        assert_eq!(
-            back, off,
-            "round-trip failed at offset {off}, cursor={cur:?}"
-        );
+fn byte_offsets_map_through_cosmic_lines() {
+    let m = TextShaper::new();
+    // (offset, line, index, back)
+    type Row = (usize, usize, usize, usize);
+    let rows: &[(&str, &[Row])] = &[
+        (
+            "ab\ncde\nfg",
+            &[
+                (0, 0, 0, 0),
+                (2, 0, 2, 2),
+                (3, 1, 0, 3),
+                (6, 1, 3, 6),
+                (7, 2, 0, 7),
+                (9, 2, 2, 9),
+            ],
+        ),
+        ("ab\rcd", &[(2, 0, 2, 2), (3, 1, 0, 3), (5, 1, 2, 5)]),
+        (
+            "ab\r\ncd",
+            &[(2, 0, 2, 2), (3, 0, 2, 2), (4, 1, 0, 4), (6, 1, 2, 6)],
+        ),
+        (
+            "ab\n\rcd",
+            &[(2, 0, 2, 2), (3, 0, 2, 2), (4, 1, 0, 4), (6, 1, 2, 6)],
+        ),
+        (
+            "ab\ncd",
+            &[(6, 1, 2, 5), (99, 1, 2, 5), (usize::MAX, 1, 2, 5)],
+        ),
+    ];
+    for &(text, offsets) in rows {
+        m.probe_layout(text, ui_shape(16.0), |layout| {
+            let buffer = layout.buffer_for_test().unwrap();
+            for &(offset, line, index, back) in offsets {
+                let cursor = probe::cursor_from_byte(buffer, text, offset);
+                assert_eq!(
+                    (cursor.line, cursor.index),
+                    (line, index),
+                    "{text:?} at {offset}"
+                );
+                assert_eq!(
+                    probe::cursor_to_byte(buffer, text, cursor),
+                    back,
+                    "{text:?} at {offset}"
+                );
+            }
+        });
     }
-    // Line counts: offsets 0..=2 → line 0; 3..=6 → line 1; 7..=9 → line 2.
-    assert_eq!(probe::cursor_from_byte(text, 0).line, 0);
-    assert_eq!(probe::cursor_from_byte(text, 2).line, 0);
-    assert_eq!(probe::cursor_from_byte(text, 3).line, 1);
-    assert_eq!(probe::cursor_from_byte(text, 6).line, 1);
-    assert_eq!(probe::cursor_from_byte(text, 7).line, 2);
-    assert_eq!(probe::cursor_from_byte(text, 9).line, 2);
 }
 
+/// A truncated run shapes its kept prefix and the ellipsis, so a hit
+/// anywhere on it answers a byte of the source no later than the cut,
+/// on a char boundary: `"ééééé"` cut to `"é…"` answers 0 or 2, never the
+/// 3 that indexing the source with the shown text's offsets gave — inside
+/// the second `é`.
+#[test]
+fn a_truncated_run_hits_inside_its_kept_prefix() {
+    let m = TextShaper::new();
+    let text = "ééééé";
+    let font = ui_shape(16.0).font;
+    let width = m
+        .layout(&TextRun {
+            text: "é…",
+            font,
+            wrap: TextWrap::SingleLine,
+            align: Align::LEFT,
+            max_width_px: None,
+        })
+        .size()
+        .w;
+    let probe = m.layout(&TextRun {
+        text,
+        font,
+        wrap: TextWrap::Ellipsis,
+        align: Align::LEFT,
+        max_width_px: Some(width + 0.5),
+    });
+    assert_eq!(probe.size().w, width, "premise: the run is cut to \"é…\"");
+    // The kept `é` advances 9.328125, so x left of its midpoint
+    // 4.6640625 answers byte 0, and the rest of the run — the ellipsis
+    // included — answers the cut at byte 2.
+    assert_eq!(probe.caret_at(2).x, 9.328125);
+    let mut x = -2.0;
+    while x < width + 4.0 {
+        let want = if x < 4.6640625 { 0 } else { 2 };
+        assert_eq!(probe.byte_at(x, 5.0), want, "x {x}");
+        x += 0.5;
+    }
+    assert_eq!(
+        probe.caret_at(8).x,
+        probe.caret_at(2).x,
+        "past the cut sits at the cut"
+    );
+}
+
+/// Two-line buffer: the caret on line 1 sits one line below line 0,
+/// which pins multi-line caret routing through cosmic's layout_runs. A
+/// line is 16 × 1.2 = 19.2 px, snapped to round(19.2 × 64) / 64.
 #[test]
 fn cursor_xy_multiline_y_top_advances_per_line() {
-    // Two-line buffer: caret on line 1 must have y_top > caret on line 0,
-    // and the delta must be ≈ line_height. Pins multi-line caret routing
-    // through cosmic's layout_runs.
     let m = TextShaper::new();
-    let fs = 16.0;
-    let lh_v = fs * LINE_HEIGHT_MULT;
-    let p0 = m.cursor_xy("abc\ndef", 0, ui_shape(fs));
-    let p1 = m.cursor_xy("abc\ndef", 4, ui_shape(fs));
-    assert!(p0.y_top.abs() < 0.5, "line 0 y_top ≈ 0, got {}", p0.y_top);
-    assert!(
-        (p1.y_top - lh_v).abs() < 2.0,
-        "line 1 y_top ≈ line_height ({lh_v}), got {}",
-        p1.y_top,
-    );
+    let lh = 19.203125;
+    for (byte, y_top) in [(0, 0.0), (4, lh)] {
+        assert_eq!(
+            m.cursor_xy("abc\ndef", byte, ui_shape(16.0)),
+            Caret {
+                x: 0.0,
+                y_top,
+                line_height: lh,
+            },
+            "byte {byte}",
+        );
+    }
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands
@@ -335,35 +389,27 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
 fn cursor_xy_on_empty_line_respects_right_align() {
     let m = TextShaper::new();
     let text = "abc\n";
-    let wrap = 200.0;
-    let font = 16.0;
-    // `cursor_xy` calls `with_buffer` which in turn drives
-    // `measure` end-to-end (unbounded + wrap-shape), so no
-    // pre-prime is needed — the shaper builds whatever cache
-    // entry it needs on first hit.
-    let shape = ui_shape(font).width(wrap).halign(HAlign::Right);
+    let shape = ui_shape(16.0).width(200.0).halign(HAlign::Right);
     let block = m.measure(text, shape).measured.w;
-    let pos = m.cursor_xy(text, text.len(), shape);
-    assert!(
-        (pos.x - block).abs() < 0.5,
-        "right-aligned caret on empty trailing line must sit at the \
-         block's right edge ({block}); got x = {}",
-        pos.x,
+    // "abc" is 28 px, far narrower than the 200 px wrap target, so the
+    // block edge and the wrap target cannot be mistaken for each other.
+    assert_eq!(block, 28.0);
+    let lh = 19.203125;
+    assert_eq!(
+        m.cursor_xy(text, text.len(), shape),
+        Caret {
+            x: block,
+            y_top: lh,
+            line_height: lh,
+        },
+        "right-aligned caret on the empty trailing line sits at the block's \
+         right edge",
     );
-    assert!(
-        block < wrap - 100.0,
-        "\"abc\" must be far narrower than the {wrap} px wrap target, \
-         or this cannot tell the block edge from the wrap target; got {block}",
-    );
-    // And the left-aligned counterpart still anchors at zero —
-    // sanity-pins the helper isn't accidentally always returning
-    // the right edge.
-    let pos_left = m.cursor_xy(text, text.len(), shape.halign(HAlign::Left));
-    assert!(
-        pos_left.x.abs() < 0.5,
-        "left-aligned caret on empty trailing line stays at 0; \
-         got x = {}",
-        pos_left.x,
+    // The left-aligned counterpart still anchors at zero, so the helper
+    // does not always answer the right edge.
+    assert_eq!(
+        m.cursor_xy(text, text.len(), shape.halign(HAlign::Left)).x,
+        0.0,
     );
 }
 
@@ -383,9 +429,10 @@ fn cursor_xy_on_empty_line_respects_right_align() {
 #[test]
 fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
     // The RTL row is Arabic, which no bundled face covers, so this case
-    // needs the machine's fonts to shape anything but tofu — the one
-    // reason a text case asks for [`FontScope::System`].
-    let mut m = CosmicMeasure::new(FontScope::System);
+    // loads the Arabic test face to shape anything but tofu.
+    let mut m = CosmicMeasure::new(FontScope::Bundled);
+    m.load_font(ARABIC.into())
+        .expect("the Arabic test face loads");
     let wrap = 200.0;
     let bounded = |halign| ui_shape(16.0).width(wrap).halign(halign);
     for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {

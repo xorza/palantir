@@ -1,7 +1,8 @@
 //! Pairing a node's text records with the shapes the measure pass
 //! produced for them.
 
-use crate::layout::{LayerLayout, ShapedText};
+use crate::layout::layer_layout::LayerLayout;
+use crate::layout::shaped_text::ShapedText;
 use crate::primitives::span::Span;
 use crate::scene::shapes::record::ShapeRecord;
 

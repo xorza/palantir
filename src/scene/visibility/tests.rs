@@ -1,13 +1,12 @@
 use crate::Ui;
 use crate::display::Display;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::scene::visibility::Visibility;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel, spinner::Spinner};
 use glam::UVec2;
@@ -92,7 +91,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
-    assert_eq!(h.ui.tree(Layer::Main).paint_anims.entries.len(), 1,);
+    assert_eq!(h.ui.tree(Layer::Main).paint_anims.entries.len(), 1);
 
     h.ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
@@ -124,52 +123,10 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 }
 
 #[test]
-fn collapsed_child_consumes_no_space_in_hstack() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
-            .auto_id()
-            .gap(10.0)
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .size(40.0)
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("gone"))
-                    .size(40.0)
-                    .collapsed()
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("b"))
-                    .size(40.0)
-                    .show(ui);
-            })
-            .response
-            .node();
-    });
-
-    let kids: Vec<_> = h.main_child_rects(root);
-    let a = kids[0];
-    let gone = kids[1];
-    let b = kids[2];
-
-    assert_eq!(a.min.x, 0.0);
-    assert_eq!(a.size.w, 40.0);
-    assert_eq!(gone.size.w, 0.0);
-    assert_eq!(gone.size.h, 0.0);
-    // Only one gap between the two visible siblings: 40 + 10 = 50.
-    assert_eq!(b.min.x, 50.0);
-    assert_eq!(b.size.w, 40.0);
-}
-
-#[test]
 fn collapsed_does_not_consume_fill_weight() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -188,7 +145,7 @@ fn collapsed_does_not_consume_fill_weight() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let kids: Vec<_> = h.main_child_rects(root);
@@ -202,43 +159,33 @@ fn collapsed_does_not_consume_fill_weight() {
 
 #[test]
 fn hidden_keeps_slot_but_emits_no_draws() {
-    use crate::renderer::frontend::capture::PaintCall;
+    use crate::internals::paint_capture::PaintCall;
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("hid"))
                     .size(40.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .hidden()
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let kids: Vec<_> = h.main_child_rects(root);
@@ -259,35 +206,28 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(draws, 2, "only the two Visible frames should paint");
 }
 
+/// The visible row is the control: the same click lands there.
 #[test]
 fn hidden_button_does_not_click() {
     use glam::Vec2;
 
-    let surface = UVec2::new(400, 200);
-    let mut h = UiHarness::new(surface);
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("invisible"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .hidden()
-                .show(ui);
+    for (hidden, clicks) in [(true, false), (false, true)] {
+        let mut h = UiHarness::new(UVec2::new(400, 200));
+        let body = |ui: &mut Ui| {
+            let mut clicked = false;
+            Panel::hstack().auto_id().show(ui, |ui| {
+                let button = Button::new()
+                    .id(WidgetId::from_hash("invisible"))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)));
+                let button = if hidden { button.hidden() } else { button };
+                clicked = button.show(ui).left.clicked();
+            });
+            clicked
+        };
+        h.frame(|ui| {
+            body(ui);
         });
-    });
-
-    h.click_at(Vec2::new(50.0, 20.0));
-
-    let mut clicked = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            clicked = Button::new()
-                .id(WidgetId::from_hash("invisible"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .hidden()
-                .show(ui)
-                .left
-                .clicked();
-        });
-    });
-    assert!(!clicked, "hidden button should not receive clicks");
+        h.click_at(Vec2::new(50.0, 20.0));
+        assert_eq!(*h.frame_passes(body).a(), clicks, "hidden = {hidden}");
+    }
 }

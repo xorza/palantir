@@ -2,6 +2,7 @@
 
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
@@ -9,8 +10,7 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
-use crate::ui::tests::support::{COLD, SURFACE, cold_frame, cold_ui};
+use crate::ui::tests::support::{SURFACE, cold_ui};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -43,7 +43,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(h.engines.damage.prev.is_empty());
     assert!(h.engines.damage.counters.dirty().is_empty());
     assert!(h.damage_region().is_empty());
-    assert_eq!(Damage::new(h.collapsed_damage()), None,);
+    assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
@@ -93,11 +93,11 @@ fn display_logical_rect_scales() {
 fn cold_start_runs_record_closure_twice_on_first_frame() {
     let mut h = cold_ui();
     let mut calls = 0_u32;
-    cold_frame(&mut h, |_| calls += 1);
+    h.frame(|_| calls += 1);
     assert_eq!(calls, 2, "first frame: warmup pass + real pass");
 
     let snapshot = calls;
-    cold_frame(&mut h, |_| calls += 1);
+    h.frame(|_| calls += 1);
     assert_eq!(
         calls - snapshot,
         1,
@@ -114,8 +114,8 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
     h.move_to(Vec2::new(40.0, 40.0));
 
     let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
-    cold_frame(&mut h, |ui| {
-        observed.borrow_mut().push(ui.input.pointer_pos);
+    h.frame(|ui| {
+        observed.borrow_mut().push(ui.input.pointer_pos());
     });
     let observed = observed.into_inner();
     assert_eq!(observed.len(), 2, "warmup + real");
@@ -142,10 +142,10 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     // (0,0) with 60×30 size below). Delivered before any frame ran;
     // cascade is empty so on_input can't resolve a target.
     h.move_to(Vec2::new(20.0, 10.0));
-    assert_eq!(h.ui.input.hovered, None, "pre-frame: no cascade, no hit");
+    assert_eq!(h.ui.input.hovered(), None, "pre-frame: no cascade, no hit");
 
     let button_id = WidgetId::from_hash("btn");
-    cold_frame(&mut h, |ui| {
+    h.frame(|ui| {
         Button::new()
             .id(button_id)
             .label("hi")
@@ -154,7 +154,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     });
 
     assert_eq!(
-        h.ui.input.hovered,
+        h.ui.input.hovered(),
         Some(button_id),
         "warmup builds cascade; refresh_pointer_targets routes held \
          pointer onto the button before the real record pass",
@@ -170,10 +170,7 @@ fn cold_start_first_frame_damage_is_full() {
         Block::new()
             .auto_id()
             .size(50.0)
-            .background(Background {
-                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui);
     });
     assert!(
@@ -196,7 +193,7 @@ fn cold_start_first_frame_damage_is_full() {
 fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     let mut h = cold_ui();
     let mut calls = 0_u32;
-    cold_frame(&mut h, |ui| {
+    h.frame(|ui| {
         calls += 1;
         if calls == 1 {
             // Simulate a widget whose first-frame measure depends on
@@ -219,11 +216,88 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
 /// about the double-call contract for every assertion.
 #[test]
 fn warm_constructors_skip_the_warmup_pass() {
-    let mut h = UiHarness::new(COLD);
+    let mut h = UiHarness::new(SURFACE);
     let mut calls = 0_u32;
     h.frame(|_| calls += 1);
     assert_eq!(
         calls, 1,
         "the warm constructors seed prev_stamp; frame 1 is single-pass",
     );
+}
+
+/// What the warmup pass asks of the input outlives the pass: an app that
+/// moves focus once, on its first record, does so during warmup. Each row
+/// starts from a focus and makes one request on the first record only.
+/// Both passes then record with the requested focus, and the frame ends
+/// on it.
+#[test]
+fn warmup_keeps_focus_requests() {
+    let target = WidgetId::from_hash("warmup-focus");
+    let cases = [(None, Some(target)), (Some(target), None)];
+    for (before, request) in cases {
+        let mut h = cold_ui();
+        if let Some(id) = before {
+            h.set_focus(id);
+        }
+        let mut records = 0_u32;
+        let mut seen = Vec::new();
+        h.frame(|ui| {
+            if records == 0 {
+                match request {
+                    Some(id) => ui.set_focus(id),
+                    None => ui.clear_focus(),
+                }
+            }
+            records += 1;
+            seen.push(ui.focused_id());
+            Block::new().id(target).size(10.0).show(ui);
+        });
+        assert_eq!(records, 2, "warmup + real");
+        assert_eq!(seen, [request, request], "{before:?} → {request:?}");
+        assert_eq!(h.ui.focused_id(), request, "{before:?} → {request:?}");
+    }
+}
+
+/// A scope withdrawn during warmup is gone for the visible pass. Focus
+/// sits inside `inner`, so with `inner` live the Escape that arrived
+/// before frame 1 is granted to it; withdrawn, the grant falls to `root`.
+#[test]
+fn warmup_keeps_scope_releases() {
+    use crate::input::key_class::KeyFilter;
+    use crate::input::keyboard::key::Key;
+    use crate::layout::types::sizing::Sizing;
+
+    let root = WidgetId::from_hash("warmup-root");
+    let inner = WidgetId::from_hash("warmup-inner");
+    let editor = WidgetId::from_hash("warmup-editor");
+    let mut h = cold_ui();
+    h.set_focus(editor);
+    h.key(Key::Escape);
+
+    let mut records = 0_u32;
+    // Whether the root reads the Escape, per pass after warmup.
+    let passes = h.frame_passes(|ui| {
+        let at_root = Panel::vstack()
+            .id(root)
+            .input_scope(KeyFilter::ALL)
+            .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
+            .show(ui, |ui| {
+                let at_root = ui.escape_pressed();
+                Panel::vstack()
+                    .id(inner)
+                    .input_scope(KeyFilter::ALL)
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui, |ui| {
+                        Block::new().id(editor).size(10.0).show(ui);
+                        if records == 0 {
+                            ui.release_input_scope(inner);
+                        }
+                    });
+                at_root
+            })
+            .inner;
+        records += 1;
+        at_root
+    });
+    assert!(*passes.a(), "the withdrawn scope cannot hold the grant");
 }

@@ -7,11 +7,12 @@
 //! module under `pages/`; nothing else in the shell knows page names.
 
 use palantir::SlotDefaults;
+use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
     Align, AnimSpec, App, Background, Block, Button, ButtonTheme, Checkbox, Configure, Corners,
-    FontFamily, FontWeight, FrameFixture, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut,
-    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
-    UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
+    FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut, Sizing,
+    Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui, UserScale,
+    VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
 use std::rc::Rc;

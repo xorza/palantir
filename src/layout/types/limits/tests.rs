@@ -1,3 +1,4 @@
+use crate::internals::panic_probe;
 use crate::layout::types::limits::{
     MAX_PACKED_GAP, assert_valid_bounds, valid_lower_bound, valid_packed_gap, valid_upper_bound,
 };
@@ -53,10 +54,9 @@ fn bounds_pairs_are_rejected_in_every_build() {
         (Size::ZERO, Size::new(-1.0, 10.0), "negative maximum"),
         (Size::INF, Size::INF, "infinite minimum"),
     ];
-    for &(min_size, max_size, label) in cases {
-        assert!(
-            std::panic::catch_unwind(|| assert_valid_bounds(min_size, max_size)).is_err(),
-            "case `{label}` must panic",
-        );
+    for &(min_size, max_size, _label) in cases {
+        panic_probe::assert_panics_with("node minimums must be finite", || {
+            assert_valid_bounds(min_size, max_size);
+        });
     }
 }

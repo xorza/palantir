@@ -39,7 +39,7 @@ struct PrewarmMark {
 
 #[derive(Debug)]
 pub(crate) struct IconBackend {
-    pub(super) pass: RasterPass<IconRasterKey>,
+    pass: RasterPass<IconRasterKey>,
     rasterizer: IconRasterizer,
     /// The sets the `Ui` side has loaded. Shared, so an icon loaded on frame
     /// N is rasterizable on frame N.
@@ -143,9 +143,8 @@ impl IconBackend {
             let slot = self.pass.atlas.slots[idx as usize]
                 .placement
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
-            // An icon's raster *is* its box, so its bearing is zero and
-            // the pen is the quad's top-left.
-            let mut quad = slot.quad(row.origin, row.color);
+            // An icon's bearing is zero, so the pen is the quad's top-left.
+            let mut quad = slot.quad_sized(row.origin, row.size, row.color);
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
             }
@@ -201,6 +200,16 @@ impl IconBackend {
             });
         }
         self.pass.end_frame(frame);
+    }
+
+    /// Upload this frame's quads and any rasters queued for the atlas.
+    pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
+        self.pass.flush(ctx);
+    }
+
+    /// Draw the quads `batch_idx` prepared.
+    pub(super) fn render_batch<'a>(&'a self, batch_idx: usize, pass: &mut wgpu::RenderPass<'a>) {
+        self.pass.render_batch(batch_idx, pass);
     }
 }
 

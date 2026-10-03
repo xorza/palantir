@@ -1,6 +1,7 @@
 //! The per-node sizing column every measure and arrange pass reads.
 
-use crate::layout::types::layout_mode::{LayoutMode, PackedLayoutMeta};
+use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::packed_layout_meta::PackedLayoutMeta;
 use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;

@@ -1,5 +1,5 @@
 //! Tests for `TextEdit::text_align` and the default alignment per
-//! mode. Mono fallback (`ui_at_no_cosmic`): 8 px / char @ 16 px font,
+//! mode. Mono fallback (`UiHarness::new`): 8 px / char @ 16 px font,
 //! `LINE_HEIGHT_MULT = 1.2` → canonical line height
 //! `round(19.2 × 64) / 64 = 19.203125` px. Editor is 280×40
 //! with theme padding (5, 3) plus the 1.5 px chrome stroke that
@@ -10,15 +10,14 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
-use crate::input::keyboard::key_text::KeyText;
+use crate::internals::harness::UiHarness;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::rect::RectKind;
-use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::tests::*;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
@@ -117,12 +116,19 @@ fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
     of(block_of(ui, field)).min - of(field).min
 }
 
-/// `(text_origin, caret_origin)` in the field's own coordinates. The paint
+/// Where the text and the caret start, in the field's own coordinates.
+#[derive(Debug)]
+struct Origins {
+    text: Option<glam::Vec2>,
+    caret: Option<glam::Vec2>,
+}
+
+/// [`Origins`] of the field at `node`. The paint
 /// order is selection-wash → text → caret, so the text shape is the only
 /// `Shape::Text` and the caret is the *last* rounded rect with a `local_rect`
 /// (selection rects come before the text; the caret comes after — for empty
 /// focused editors it's the only rounded rect in the stream).
-fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
+fn shape_origins(ui: &Ui, node: NodeId) -> Origins {
     let at = block_at(ui, node);
     let block = block_of(ui, node);
     let tree = ui.tree(Layer::Main);
@@ -142,21 +148,10 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
             _ => {}
         }
     }
-    (text_origin, caret_origin)
-}
-
-/// Emit Shift+ArrowRight as the focused widget would see it.
-fn shift_arrow_right(ui: &mut Ui) {
-    ui.inject_input(InputEvent::ModifiersChanged(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    }));
-    ui.inject_input(InputEvent::KeyDown {
-        key: Key::ArrowRight,
-        repeat: false,
-        physical: Key::Other,
-        text: KeyText::EMPTY,
-    });
+    Origins {
+        text: text_origin,
+        caret: caret_origin,
+    }
 }
 
 /// **The first frame an editor exists on aligns like the ones after it.**
@@ -178,30 +173,28 @@ fn shift_arrow_right(ui: &mut Ui) {
 #[test]
 fn the_first_frame_aligns_like_the_ones_after_it() {
     let settled = {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
-        shape_origins(&h.ui, node).0.expect("text shape emitted")
+        shape_origins(&h.ui, node).text.expect("text shape emitted")
     };
     // Centred rather than left, so a zero-sized box is a wrong answer rather
     // than accidentally the right one.
     assert!(settled.x > PAD_L + 1.0, "x = {} is not centred", settled.x);
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let node = frame(&mut h, &mut buf, Some(Align::CENTER), None);
-    let first = shape_origins(&h.ui, node).0.expect("text shape emitted");
-    assert!(
-        (first.x - settled.x).abs() < 1e-3,
+    let first = shape_origins(&h.ui, node).text.expect("text shape emitted");
+    assert_eq!(
+        first.x, settled.x,
         "first frame painted x = {} where the settled frame paints {}",
-        first.x,
-        settled.x
+        first.x, settled.x
     );
-    assert!(
-        (first.y - settled.y).abs() < 1e-3,
+    assert_eq!(
+        first.y, settled.y,
         "first frame painted y = {} where the settled frame paints {}",
-        first.y,
-        settled.y
+        first.y, settled.y
     );
 }
 
@@ -210,14 +203,14 @@ fn single_line_default_is_left_vcenter() {
     // No `.text_align(...)` → mode default `Align::LEFT` (left +
     // vcenter). With "abcd" (32×19.203125) inside the inner rect,
     // dx = 0 and dy = (inner height − line height) / 2.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let node = warmup_then(&mut h, &mut buf, None, None);
-    let (origin, _) = shape_origins(&h.ui, node);
+    let origin = shape_origins(&h.ui, node).text;
     let o = origin.expect("text shape emitted for non-empty buffer");
-    assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
+    assert_eq!(o.x, PAD_L, "x = {}", o.x);
     let dy = (INNER_H - LINE_H) * 0.5;
-    assert!((o.y - (PAD_T + dy)).abs() < 1e-3, "y = {}", o.y);
+    assert_eq!(o.y, PAD_T + dy, "y = {}", o.y);
 }
 
 #[test]
@@ -242,22 +235,24 @@ fn single_line_text_align_table() {
         (Align::BOTTOM_RIGHT, rx, by, "BOTTOM_RIGHT"),
     ];
     for &(align, dx, dy, label) in cases {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
-        let (origin, _) = shape_origins(&h.ui, node);
+        let origin = shape_origins(&h.ui, node).text;
         let o = origin.expect("text shape emitted");
-        assert!(
-            (o.x - (PAD_L + dx)).abs() < 1e-3,
-            "{label}: text.x = {} (expected {})",
+        assert_eq!(
             o.x,
             PAD_L + dx,
+            "{label}: text.x = {} (expected {})",
+            o.x,
+            PAD_L + dx
         );
-        assert!(
-            (o.y - (PAD_T + dy)).abs() < 1e-3,
-            "{label}: text.y = {} (expected {})",
+        assert_eq!(
             o.y,
             PAD_T + dy,
+            "{label}: text.y = {} (expected {})",
+            o.y,
+            PAD_T + dy
         );
     }
 }
@@ -268,7 +263,7 @@ fn caret_tracks_aligned_text() {
     // origin shifts right by `ALIGN_W − TEXT_W_4CH`; the caret must
     // shift by the same dx so it sits at the rightmost glyph trailing
     // edge, leaving `CARET_W` of reserved room before the clip edge.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     // Warmup so response.rect lands; click; then a final frame so
     // the post-click focus state drives a caret render with the
@@ -278,25 +273,30 @@ fn caret_tracks_aligned_text() {
     h.key(Key::End);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    let (text_origin, caret_origin) = shape_origins(&h.ui, node);
+    let Origins {
+        text: text_origin,
+        caret: caret_origin,
+    } = shape_origins(&h.ui, node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 233.5
     let dy = (INNER_H - LINE_H) * 0.5;
-    assert!((t.x - (PAD_L + dx)).abs() < 1e-3, "text.x = {}", t.x);
-    assert!(
-        (c.x - (PAD_L + dx + TEXT_W_4CH)).abs() < 1e-3,
-        "caret.x = {} (expected {})",
+    assert_eq!(t.x, PAD_L + dx, "text.x = {}", t.x);
+    assert_eq!(
         c.x,
         PAD_L + dx + TEXT_W_4CH,
+        "caret.x = {} (expected {})",
+        c.x,
+        PAD_L + dx + TEXT_W_4CH
     );
     // Caret right edge sits exactly at the clip's right edge.
-    assert!(
-        (c.x + CARET_W - (PAD_L + INNER_W)).abs() < 1e-3,
-        "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
+    assert_eq!(
         c.x + CARET_W,
+        PAD_L + INNER_W,
+        "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
+        c.x + CARET_W
     );
-    assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
+    assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }
 
 #[test]
@@ -305,18 +305,20 @@ fn empty_focused_caret_vcenters_against_one_line() {
     // used it directly the caret would sit below center. The widget
     // floors measured.h at `line_height_px`, so VAlign::Center
     // centers the caret against a full virtual line.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
     frame(&mut h, &mut buf, None, None);
     h.click_at(glam::Vec2::new(50.0, 20.0));
     frame(&mut h, &mut buf, None, None);
     let node = frame(&mut h, &mut buf, None, None);
-    let (_, caret_origin) = shape_origins(&h.ui, node);
+    let caret_origin = shape_origins(&h.ui, node).caret;
     let c = caret_origin.expect("focused empty editor still paints caret");
-    let authored_line_height = 16.0 * LINE_HEIGHT_MULT;
-    let dy = (INNER_H - authored_line_height) * 0.5;
-    assert!((c.x - PAD_L).abs() < 1e-3, "caret.x = {}", c.x);
-    assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
+    // The shaper's 1/64-px leading: 16 × 1.2 = 19.2 rounds to 1229/64.
+    let line_height = 1229.0 / 64.0;
+    assert_eq!(line_height, (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0);
+    let dy = (INNER_H - line_height) * 0.5;
+    assert_eq!(c.x, PAD_L, "caret.x = {}", c.x);
+    assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }
 
 #[test]
@@ -324,30 +326,28 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     // Bug fix pin: empty + unfocused → render placeholder. Offset is
     // computed from the placeholder string ("wxyz", mono 32 px), not
     // the empty buffer (which would collapse any halign to zero).
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
     let node = warmup_then(&mut h, &mut buf, Some(Align::RIGHT), Some("wxyz"));
-    let (origin, _) = shape_origins(&h.ui, node);
+    let origin = shape_origins(&h.ui, node).text;
     let o = origin.expect("placeholder paints when unfocused + empty");
     let dx = ALIGN_W - TEXT_W_4CH;
-    assert!(
-        (o.x - (PAD_L + dx)).abs() < 1e-3,
-        "placeholder must align right: x = {} (expected {})",
+    assert_eq!(
         o.x,
         PAD_L + dx,
+        "placeholder must align right: x = {} (expected {})",
+        o.x,
+        PAD_L + dx
     );
     // The offset stored for next frame's hit-test is the same placement:
     // the block the engine arranged, not a second alignment of the empty
     // buffer's own measure, which would have parked it a whole
     // placeholder further right.
-    let stored =
-        h.ui.state_or_default::<TextEditState>(ed_id())
-            .view
-            .block_offset;
+    let stored = h.state::<TextEditState>(ed_id()).view.block_offset;
     let placed = block_at(&h.ui, node) - glam::Vec2::new(PAD_L, PAD_T);
-    assert!(
-        (stored - placed).length() < 1e-3,
-        "stored {stored:?} is not where the block was placed, {placed:?}",
+    assert_eq!(
+        stored, placed,
+        "stored {stored:?} is not where the block was placed, {placed:?}"
     );
 }
 
@@ -357,7 +357,7 @@ fn click_compensates_for_right_align() {
     // 5+238+8..5+238+16 = 251..259. Clicking at 254 (mid-glyph) must
     // land on byte 1, proving the input pass subtracts the same
     // `align_offset.x` from the local pointer coords.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     // Two warmup frames so the second one carries response.rect and
     // the click hit-test runs against the right-aligned layout.
@@ -367,7 +367,7 @@ fn click_compensates_for_right_align() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.release();
     let id = WidgetId::from_hash("align-ed");
-    let caret = h.ui.state_or_default::<TextEditState>(id).edit.caret;
+    let caret = h.state::<TextEditState>(id).edit.caret;
     assert!(
         (1..=2).contains(&caret),
         "click on right-aligned glyph 'b' must land near byte 1 (got {caret})",
@@ -382,15 +382,15 @@ fn align_overflow_clamps_to_zero() {
     // 800 px > 270 inner_w. LEFT, RIGHT, CENTER must all render text
     // at x = padding.left.
     for align in [Align::LEFT, Align::RIGHT, Align::CENTER] {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = "a".repeat(100);
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
-        let (origin, _) = shape_origins(&h.ui, node);
+        let origin = shape_origins(&h.ui, node).text;
         let o = origin.expect("text shape");
-        assert!(
-            (o.x - PAD_L).abs() < 1e-3,
+        assert_eq!(
+            o.x, PAD_L,
             "overflow under {align:?}: text.x = {} (expected {PAD_L})",
-            o.x,
+            o.x
         );
     }
 }
@@ -401,14 +401,19 @@ fn selection_rects_offset_matches_text() {
     // Mono fallback emits one rect for [0..2] on "abcd" → x = 0,
     // w = 16 in text-local coords. Under HAlign::Right that becomes
     // editor-local x = PAD_L + (ALIGN_W − TEXT_W_4CH).
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click_at(glam::Vec2::new(260.0, 20.0));
     h.key(Key::Home);
-    shift_arrow_right(&mut h.ui);
-    shift_arrow_right(&mut h.ui);
+    h.set_modifiers(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    });
+    h.key(Key::ArrowRight);
+    h.key(Key::ArrowRight);
+    h.set_modifiers(Modifiers::NONE);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
 
     // Selection wash is emitted *before* the text shape; pick the
@@ -428,10 +433,11 @@ fn selection_rects_offset_matches_text() {
             });
     let r = first_rounded.expect("selection wash rect present");
     let dx = ALIGN_W - TEXT_W_4CH;
-    assert!(
-        (r.min.x + at.x - (PAD_L + dx)).abs() < 1e-3,
-        "selection wash must align with right-aligned text: x = {}",
+    assert_eq!(
         r.min.x + at.x,
+        PAD_L + dx,
+        "selection wash must align with right-aligned text: x = {}",
+        r.min.x + at.x
     );
 }
 
@@ -439,7 +445,7 @@ fn selection_rects_offset_matches_text() {
 fn multiline_default_is_top_left() {
     // Default for `multiline(true)` is `Align::TOP_LEFT`. With "abcd"
     // the text origin sits flush at the inner top-left = padding.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
@@ -456,12 +462,11 @@ fn multiline_default_is_top_left() {
         });
     };
     // Two frames: first to warm up the cascade.
-    h.frame(&mut record);
-    h.frame(&mut record);
-    let (origin, _) = shape_origins(&h.ui, node.unwrap());
+    h.prime(2, &mut record);
+    let origin = shape_origins(&h.ui, node.unwrap()).text;
     let o = origin.expect("text shape");
-    assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
-    assert!((o.y - PAD_T).abs() < 1e-3, "y = {}", o.y);
+    assert_eq!(o.x, PAD_L, "x = {}", o.x);
+    assert_eq!(o.y, PAD_T, "y = {}", o.y);
 }
 
 /// Regression: an ancestor `Panel::transform` zoom must not drift the
@@ -477,7 +482,7 @@ fn multiline_default_is_top_left() {
 #[test]
 fn text_origin_invariant_under_ancestor_transform_zoom() {
     fn run(scale: f32) -> glam::Vec2 {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let mut node: Option<NodeId> = None;
         let mut record = |ui: &mut Ui| {
@@ -497,27 +502,28 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
         };
         // Two frames: cascade lags one frame, so the second frame is
         // the one whose `response.layout_rect` drives the offset math.
-        h.frame(&mut record);
-        h.frame(&mut record);
-        let (origin, _) = shape_origins(&h.ui, node.unwrap());
+        h.prime(2, &mut record);
+        let origin = shape_origins(&h.ui, node.unwrap()).text;
         origin.expect("text shape emitted for non-empty buffer")
     }
     let unscaled = run(1.0);
     for &scale in &[2.0_f32, 0.5, 1.7] {
         let zoomed = run(scale);
-        assert!(
-            (zoomed.x - unscaled.x).abs() < 1e-3,
+        assert_eq!(
+            zoomed.x,
+            unscaled.x,
             "scale {scale}: text.x = {} drifted from {} (Δ = {})",
             zoomed.x,
             unscaled.x,
-            zoomed.x - unscaled.x,
+            zoomed.x - unscaled.x
         );
-        assert!(
-            (zoomed.y - unscaled.y).abs() < 1e-3,
+        assert_eq!(
+            zoomed.y,
+            unscaled.y,
             "scale {scale}: text.y = {} drifted from {} (Δ = {})",
             zoomed.y,
             unscaled.y,
-            zoomed.y - unscaled.y,
+            zoomed.y - unscaled.y
         );
     }
 }
@@ -541,7 +547,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 /// and stroke, so restyling a field moves both together.
 #[test]
 fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
-    let mut h = ui_at_no_cosmic(WIDE);
+    let mut h = UiHarness::new(WIDE);
     // What the mono fallback measures "abcd" as. Its height rather than the
     // glyphs' own, because that is the box a line is laid in — see
     // `resolve_geometry`, which floors the run at the leading.
@@ -571,24 +577,20 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     };
     // Two frames: the block is placed against the rect arrange has just
     // resolved, and `response.layout_rect` is a frame behind on the first.
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
 
-    let field =
-        h.ui.response_for(ed_id())
-            .layout_rect
-            .expect("the field was arranged");
-    assert!(
-        (field.min - corner).abs().max_element() < 1e-3,
+    let field = h.arranged(ed_id());
+    assert_eq!(
+        field.min, corner,
         "the field was put at {:?} having been placed at {corner:?}",
-        field.min,
+        field.min
     );
     let origin = shape_origins(&h.ui, node.unwrap())
-        .0
+        .text
         .expect("text shape emitted");
     let centre = field.min + origin + glam::Vec2::new(text.w, text.h) * 0.5;
-    assert!(
-        (centre - at).abs().max_element() < 1e-3,
-        "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}",
+    assert_eq!(
+        centre, at,
+        "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}"
     );
 }

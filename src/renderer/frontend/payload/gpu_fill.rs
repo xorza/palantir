@@ -1,6 +1,6 @@
 //! The colour lanes every GPU fill writes.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 

@@ -28,8 +28,8 @@ use crate::display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade;
-use crate::scene::damage::DamageInput;
+use crate::scene::cascade::cascade_key::CascadeKey;
+use crate::scene::damage::engine::DamageInput;
 use crate::scene::damage::frame_baseline::FrameBaseline;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
@@ -100,7 +100,7 @@ impl<'a> FrameCycle<'a> {
             display: stamp.display,
             damage_baseline_valid,
             input_policy: self.ui.input_policy(),
-            input_signal: self.ui.input.signal_since_last_frame,
+            input_signal: self.ui.input.signal_since_last_frame(),
             close_requested: self.ui.close_requested(),
         });
 
@@ -130,6 +130,10 @@ impl<'a> FrameCycle<'a> {
             FramePlan::FullRecord { .. } => {
                 {
                     tracy::zone!("Ui::update_user");
+                    // `update` reads responses too, and the input that
+                    // arrived since the last pass may have ended its
+                    // quiescence.
+                    self.ui.input.snapshot_frame_quiescent();
                     app.update(win, self.ui);
                 }
                 if first_frame {
@@ -212,6 +216,16 @@ impl<'a> FrameCycle<'a> {
 
         self.ui.frame_runtime.prev_stamp = Some(stamp);
 
+        // The frame boundary for input: events held because this frame
+        // already saw their kind change apply now, against the cascade
+        // this frame left, and become the next frame's input. Whatever
+        // input owes that frame — a replayed event, an eviction's release
+        // edge, events still waiting — asks for it here, since no host
+        // event will.
+        if self.ui.input.next_frame(&self.ui.cascade) {
+            self.ui.frame_runtime.repaint_requested = true;
+        }
+
         let report = FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested,
             repaint_after: self
@@ -268,6 +282,11 @@ impl<'a> FrameCycle<'a> {
     ///   [`FocusPolicy`](crate::input::policy::FocusPolicy) would read
     ///   as a press on nothing.
     ///
+    /// The scratch starts with the real focus, and the real input keeps
+    /// what the pass asked of it — `set_focus`, `clear_focus`,
+    /// `release_input_scope` — since an app that asks once, on its first
+    /// record, asks during this pass.
+    ///
     /// Afterwards the real input is restored and its held `pointer_pos`
     /// re-routed against the freshly built cascade, so the visible pass
     /// records against correct hover targets. The pass's
@@ -279,9 +298,11 @@ impl<'a> FrameCycle<'a> {
     /// [`InputState`]: crate::input::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
         tracy::zone!("Ui::record_pass.warmup");
-        let saved_input = std::mem::take(&mut self.ui.input);
+        let scratch = self.ui.input.warmup_scratch();
+        let saved_input = std::mem::replace(&mut self.ui.input, scratch);
         let _ = self.record_pass(win, app);
-        self.ui.input = saved_input;
+        let warmup_input = std::mem::replace(&mut self.ui.input, saved_input);
+        self.ui.input.adopt_warmup(&warmup_input);
         self.ui.input.refresh_pointer_targets(&self.ui.cascade);
         self.ui.frame_runtime.relayout_requested = false;
         self.ui.frame_runtime.repaint_requested = false;
@@ -361,26 +382,17 @@ impl<'a> FrameCycle<'a> {
             self.ui.display.logical_rect(),
             &mut self.ui.layout,
         );
-        // O5 stage 0: skip the cascade when nothing feeding it changed.
-        // The cascade is a pure function of subtree authoring + arranged
-        // rects, and the arranged rects are determined by (subtree_hash,
-        // exact surface, scroll offset/zoom) — so a matching fingerprint
-        // means identical cascade output, and last frame's
-        // `Ui::cascade` can be reused verbatim (the tree is rebuilt
-        // with identical structure when `subtree_hash` matches, so its
-        // NodeId-indexed rows still line up).
-        let fp = cascade::engine::cascade_fingerprint(
+        let key = CascadeKey::new(
             &self.ui.forest,
+            &self.ui.layout,
             self.ui.display,
             self.ui.resources.text().font_epoch(),
         );
-        if !self.ui.frame_runtime.cascade_needs_run(fp) {
-            return;
-        }
         self.engines.cascade.run(
             &self.ui.forest,
             &self.ui.layout,
             self.ui.display,
+            &key,
             &mut self.ui.cascade,
         );
     }

@@ -4,13 +4,15 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::WidgetId;
+use crate::internals::harness::UiHarness;
+use crate::layout::axis::Axis;
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
-use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -27,54 +29,63 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut grid_node = None;
         let mut section_node = None;
-        Panel::vstack().auto_id()
+        Panel::vstack()
+            .auto_id()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Panel::zstack().auto_id()
+                Panel::zstack()
+                    .auto_id()
                     .padding(16.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Panel::vstack().auto_id()
+                        Panel::vstack()
+                            .auto_id()
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                section_node = Some(Panel::vstack().auto_id()
-                                    .size((Sizing::FILL, Sizing::HUG))
-                                    .gap(6.0)
-                                    .show(ui, |ui| {
-                                        Text::new(
-                                            "two Hug columns: paragraph wraps to fit, \
+                                section_node = Some(
+                                    Panel::vstack()
+                                        .auto_id()
+                                        .size((Sizing::FILL, Sizing::HUG))
+                                        .gap(6.0)
+                                        .show(ui, |ui| {
+                                            Text::new(
+                                                "two Hug columns: paragraph wraps to fit, \
                                              label stays natural",
-                                        )
-                                        .id(WidgetId::from_hash("section-title"))
-                                        .style(&TextStyle::default().with_font_size(12.0))
-                                        .text_wrap(TextWrap::SingleLine)
-                                        .show(ui);
-                                        grid_node = Some(
-                                            Grid::new()
-                                                .id(WidgetId::from_hash("grid"))
-                                                .cols([Track::HUG, Track::HUG])
-                                                .rows([Track::HUG])
-                                                .show(ui, |ui| {
-                                                    Text::new(
-                                                        "the quick brown fox jumps over the lazy dog",
-                                                    ).auto_id()
-                                                    .style(&TextStyle::default().with_font_size(14.0))
-                                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                                    .grid_cell((0, 0))
-                                                    .show(ui);
-                                                    Text::new("right column").auto_id()
-                                                        .style(
-                                                            &TextStyle::default()
-                                                                .with_font_size(14.0),
-                                                        )
-                                                        .text_wrap(TextWrap::SingleLine)
-                                                        .grid_cell((0, 1))
-                                                        .show(ui);
-                                                })
-                                                .response.node(),
-                                        );
-                                    }).response.node());
+                                            )
+                                            .id(WidgetId::from_hash("section-title"))
+                                            .font_size(12.0)
+                                            .text_wrap(TextWrap::SingleLine)
+                                            .show(ui);
+                                            grid_node = Some(
+                                                Grid::new()
+                                                    .id(WidgetId::from_hash("grid"))
+                                                    .cols([Track::HUG, Track::HUG])
+                                                    .rows([Track::HUG])
+                                                    .show(ui, |ui| {
+                                                        Text::new(PARAGRAPH)
+                                                            .auto_id()
+                                                            .font_size(14.0)
+                                                            .text_wrap(TextWrap::WrapWithOverflow)
+                                                            .grid_cell((0, 0))
+                                                            .show(ui);
+                                                        Text::new("right column")
+                                                            .auto_id()
+                                                            .style(
+                                                                &TextStyle::default()
+                                                                    .with_font_size(14.0),
+                                                            )
+                                                            .text_wrap(TextWrap::SingleLine)
+                                                            .grid_cell((0, 1))
+                                                            .show(ui);
+                                                    })
+                                                    .response
+                                                    .node(),
+                                            );
+                                        })
+                                        .response
+                                        .node(),
+                                );
                             });
                     });
             });
@@ -97,37 +108,18 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     // surface-derived `available` the measure pass received before
     // flooring.
     let widths: [u32; 5] = [400, 300, 250, 200, 150];
-    let mut section_widths = Vec::new();
-    let mut grid_widths = Vec::new();
+    let (mut section_widths, mut grid_widths) = (Vec::new(), Vec::new());
     for w in widths {
         let (g, s) = measure_at(w);
         section_widths.push(s);
         grid_widths.push(g);
     }
-    // Find a pair of surface widths where the section width didn't
-    // change (panel stopped shrinking). Grid width must also be stable
-    // there.
-    for i in 1..section_widths.len() {
-        if (section_widths[i] - section_widths[i - 1]).abs() < 0.5 {
-            let g_prev = grid_widths[i - 1];
-            let g_curr = grid_widths[i];
-            assert!(
-                (g_curr - g_prev).abs() <= 0.5,
-                "section panel stopped shrinking at {} but grid kept shrinking: \
-                 surfaces {} → {}, grid {} → {}",
-                section_widths[i],
-                widths[i - 1],
-                widths[i],
-                g_prev,
-                g_curr,
-            );
-            return;
-        }
-    }
-    panic!(
-        "test setup did not produce a regime where section panel stops shrinking; \
-         widths={widths:?} section_widths={section_widths:?}"
-    );
+    // At 400 the section fills 400 − 2·12 − 2·16 = 344. Below that it
+    // floors at its single-line title, 341 px at 12 px Inter, and the Hug
+    // grid inside fills the section's committed width rather than the
+    // narrower surface-derived `available`.
+    assert_eq!(section_widths, [344.0, 341.0, 341.0, 341.0, 341.0]);
+    assert_eq!(grid_widths, section_widths);
 }
 
 /// Pin: a non-wrapping `Text` reports MinContent on the X axis equal to
@@ -144,31 +136,16 @@ fn nonwrapping_text_minconent_equals_full_width() {
     let label_node = h.frame_value(|ui| {
         Text::new("right column")
             .auto_id()
-            .style(&TextStyle::default().with_font_size(14.0))
+            .font_size(14.0)
             .text_wrap(TextWrap::SingleLine)
             .show(ui)
             .node()
     });
-    let store = h.ui.record_store();
-    let interned_text = store.interned_text();
-    let max_w = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        label_node,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
-    let min_w = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        label_node,
-        Axis::X,
-        LenReq::MinContent,
-        &interned_text,
-    );
-    assert!(
-        (min_w - max_w).abs() <= 0.5,
-        "non-wrapping Text MinContent must equal MaxContent (full width); \
-       max_w={max_w} min_w={min_w}",
+    let max_w = h.intrinsic(label_node, Axis::X, LenReq::MaxContent);
+    let min_w = h.intrinsic(label_node, Axis::X, LenReq::MinContent);
+    assert_eq!(
+        min_w, max_w,
+        "non-wrapping Text MinContent must equal MaxContent (full width)",
     );
 }
 
@@ -190,9 +167,9 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 paragraph_node = Some(
-                    Text::new("the quick brown fox jumps over the lazy dog")
+                    Text::new(PARAGRAPH)
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui)
@@ -201,7 +178,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                 label_node = Some(
                     Text::new("right column")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .text_wrap(TextWrap::SingleLine)
                         .grid_cell((0, 1))
                         .show(ui)
@@ -214,15 +191,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // Probe label's natural unbroken width at an unconstrained surface.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(|ui| build(ui).1);
-    let store = probe.ui.record_store();
-    let interned_text = store.interned_text();
-    let label_full = probe.engines.layout.intrinsic(
-        probe.ui.tree(Layer::Main),
-        probe_label,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // At a surface narrower than the paragraph max-content but wider
@@ -260,14 +229,14 @@ fn two_hug_cols_default_label_hugs_full_width() {
           .show(ui, |ui| {
               Text::new("the quick brown fox jumps over the lazy dog. pack my box with five dozen liquor jugs")
                   .auto_id()
-                  .style(&TextStyle::default().with_font_size(14.0))
+                  .font_size(14.0)
                   .text_wrap(TextWrap::WrapWithOverflow)
                   .grid_cell((0, 0))
                   .show(ui);
               // No `.text_wrap(...)` — exercises the default.
               Text::new("right column")
                   .auto_id()
-                  .style(&TextStyle::default().with_font_size(14.0))
+                  .font_size(14.0)
                   .grid_cell((0, 1))
                   .show(ui)
                   .node()
@@ -278,15 +247,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
     // Label's natural unbroken width, probed unconstrained.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(build);
-    let store = probe.ui.record_store();
-    let interned_text = store.interned_text();
-    let label_full = probe.engines.layout.intrinsic(
-        probe.ui.tree(Layer::Main),
-        probe_label,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // The long paragraph's max-content dwarfs these surfaces, so the grid

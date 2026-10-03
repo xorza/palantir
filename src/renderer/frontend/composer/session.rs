@@ -2,12 +2,15 @@
 
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::approx::{EPS, paints_nothing};
-use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
+use crate::primitives::half_simd::{self, F16x4};
 use crate::primitives::num::{F32Px, Vec2Ext};
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
@@ -24,7 +27,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance, cap_lanes,
+    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance,
 };
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
@@ -36,11 +39,12 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::CurveBasis;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
-use glam::{UVec2, Vec2};
+use crate::text::TEXT_SCALE_STEP;
+use glam::{U16Vec2, UVec2, Vec2};
 
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry;
@@ -223,7 +227,7 @@ impl PaintSink for ComposeSession<'_> {
             // leaves the viewport.
             let rc = RoundedClip {
                 mask_rect: phys,
-                corners: logical_radius.scaled_by(scale_phys),
+                corners: logical_radius.fit_to(phys.size, scale_phys, 0.0),
             };
             // A rounded push nested in rounded ancestors
             // STACKS: child chain = ancestor chain + own
@@ -378,24 +382,37 @@ impl PaintSink for ComposeSession<'_> {
         // The raster size is decided here, not upstream: this is the first
         // point that knows the display scale and every ancestor transform, and
         // so the first point that knows how many device pixels the icon covers.
-        let key = IconRasterKey::for_box(p.icon, Vec2::new(phys_rect.size.w, phys_rect.size.h));
-        // Whole-pixel origin, with the raster centred in the box it was sized
-        // from. The ladder can round the raster a pixel or two off that box
-        // (§ `IconRasterKey`), and centring spreads the difference instead of
-        // piling it on one edge; the `Nearest` atlas sampler is why the origin
-        // itself must land on integers.
-        let size = key.size().as_vec2();
-        let centred = phys_rect.min + (Vec2::new(phys_rect.size.w, phys_rect.size.h) - size) * 0.5;
+        let box_px = Vec2::new(phys_rect.size.w, phys_rect.size.h);
+        let key = IconRasterKey::for_box(p.icon, box_px);
+        let (origin, size) = if key.is_exact() {
+            // Whole-pixel origin, with the raster centred in the box it was
+            // sized from: it is that box rounded, so centring spreads the
+            // rounding over both edges, and the `Nearest` atlas sampler is
+            // why the origin itself must land on integers.
+            let centred = phys_rect.min + (box_px - key.size().as_vec2()) * 0.5;
+            (centred.fast_round().as_ivec2(), key.size())
+        } else {
+            // Above the exact band the raster is a rung near the box, or the
+            // capped one far below it; drawn at its own size it would stick
+            // out of the box the cull and damage rects come from, or leave a
+            // gap inside it. So the quad is the box, in whole pixels, and the
+            // raster is resampled to fill it.
+            let min = phys_rect.min.fast_round();
+            let max = phys_rect.max().fast_round();
+            let size = (max - min).max(Vec2::ONE);
+            (min.as_ivec2(), U16Vec2::new(size.x as u16, size.y as u16))
+        };
         self.out.icons.push(IconDrawRow {
             key,
-            origin: centred.fast_round().as_ivec2(),
+            origin,
+            size,
             color: p.tint,
             desaturate: p.desaturate,
         });
     }
 
     fn image(&mut self, draw: ImageDraw<'_>) {
-        let ImageDraw { payload: p, paint } = draw;
+        let ImageDraw { payload: p, view } = draw;
         let ScaledRect {
             phys: phys_rect,
             urect: image_urect,
@@ -411,7 +428,7 @@ impl PaintSink for ComposeSession<'_> {
         // the scheduling below. Its UV stays whole, since the target *is* the
         // visible part; every other image keeps the rect and UV the encoder
         // resolved.
-        let seen = paint.and_then(|_| self.seen(phys_rect));
+        let seen = view.and_then(|_| self.seen(phys_rect));
         let composite = seen.unwrap_or(phys_rect);
         self.out.images.push(ImageDrawRow {
             // Just the registration id — the backend looks it
@@ -442,8 +459,8 @@ impl PaintSink for ComposeSession<'_> {
         // — and a scroll can put most of a view outside its viewport. Following
         // the rect would allocate, and ask the app to draw, pixels that are
         // then thrown away: a status line long enough to widen the window's
-        // root is enough to do it, which is how this was found.
-        if let Some(paint) = paint {
+        // root is enough to do it.
+        if let Some(view) = view {
             let scale = self.out.display.scale_factor();
             let cap = i64::from(self.composer.max_texture_dim.get());
             let whole = phys_rect.size;
@@ -474,10 +491,10 @@ impl PaintSink for ComposeSession<'_> {
                 used: UVec2::new(px(used.w), px(used.h)),
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
-                display_scale: scale,
                 raster_scale: geometry::phys_scale(self.composer.transform.current(), scale)
                     * downsample,
-                paint: paint.clone(),
+                paint: view.paint.clone(),
+                epoch: view.epoch,
             });
         }
     }
@@ -518,7 +535,7 @@ impl PaintSink for ComposeSession<'_> {
             width: width_phys,
             color0: p.fill.color,
             color1: p.fill.color,
-            cap: cap_lanes(cap as u32, cap as u32),
+            cap: CurveInstance::cap_lanes(cap as u32, cap as u32),
             fill_kind: p.fill.kind,
             fill_lut_row: p.fill.lut_row,
             ..bytemuck::Zeroable::zeroed()
@@ -755,7 +772,7 @@ impl PaintSink for ComposeSession<'_> {
                 width: width_phys,
                 color0: color,
                 color1,
-                cap: cap_lanes(start_cap, end_cap),
+                cap: CurveInstance::cap_lanes(start_cap, end_cap),
                 kind: CURVE_KIND_SEGMENT,
                 ..bytemuck::Zeroable::zeroed()
             });
@@ -765,7 +782,8 @@ impl PaintSink for ComposeSession<'_> {
         // The face-plane normals ride the neighbor lanes
         // pre-oriented for the shader's keep test
         // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
-        // average of the adjacent colors, taken in linear light.
+        // average of the adjacent colors, taken in linear light and
+        // premultiplied, like every other colour interpolation.
         // Equal sides — a single colour, or the shared point of a
         // per-point run — are the common case, and a colour averaged
         // with itself is itself, so only differing sides pay the unpack.
@@ -777,7 +795,7 @@ impl PaintSink for ComposeSession<'_> {
             let color = if ca == cb {
                 ca
             } else {
-                RgbaF16::from(RgbaF32::from(ca).lerp(cb.into(), 0.5))
+                RgbaF16::from(premultiplied_midpoint(ca.into(), cb.into()))
             };
             self.out.curves.push(CurveInstance {
                 p0: pt(k),
@@ -795,10 +813,24 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn text(&mut self, t: DrawTextPayload) {
-        let ScaledRect {
-            phys: phys_rect,
-            urect: unclipped,
-        } = self.scaled_rect(t.rect);
+        let world = self.composer.transform.apply_rect(t.rect);
+        let scale = self.out.display.scale_factor();
+        let phys_rect = world.scaled_by(scale, self.out.display.pixel_snap);
+        // What the glyphs can reach: the block from the origin they are
+        // placed at, at its true size — pixel snapping moves the origin,
+        // never the glyphs' extent — padded by the scale-step fraction a
+        // snapped text scale can add, the same pad the run's damage rect
+        // carries (`text_paint_bbox_local`). Covered, never rounded in, so
+        // the last column of antialiasing is not cut.
+        let unclipped = {
+            let size = Vec2::new(world.size.w, world.size.h) * scale;
+            let pad = size * (TEXT_SCALE_STEP * 0.5);
+            geometry::urect_from_phys(
+                phys_rect.min - pad,
+                phys_rect.min + size + pad,
+                self.out.display.physical,
+            )
+        };
         // `bounds` feeds the batch GPU scissor (union of the
         // batch's runs — see the strict-bounds rule below) and
         // the backend's per-line y-cull; there is no per-glyph
@@ -870,18 +902,35 @@ impl ComposeSession<'_> {
         let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor());
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
+                let rect = self.scaled_rect(rect);
+                // Live shadow parameters are logical-px scalars; scale
+                // them so the shader's `local` coords line up. A gradient
+                // axis is already unit-space and passes through untouched.
+                let fill_axis = if p.fill.kind.is_shadow() {
+                    p.fill_axis.scaled(scale_phys)
+                } else {
+                    p.fill_axis
+                };
+                // The radii fit the box the shader rounds. For a drop
+                // shadow that is the shadow box inside the blur halo, the
+                // same arithmetic as `quad.wgsl`'s drop arm, and the radii
+                // grow by the spread first; every other quad rounds its
+                // own rect.
+                let corners = if p.fill.kind == FillKind::SHADOW_DROP {
+                    let [_, _, sigma, spread] = fill_axis.lanes();
+                    let halo = 3.0 * sigma + spread.max(0.0);
+                    let shadow = Size::new(
+                        (rect.phys.size.w - 2.0 * halo + 2.0 * spread).max(0.0),
+                        (rect.phys.size.h - 2.0 * halo + 2.0 * spread).max(0.0),
+                    );
+                    corners.fit_to(shadow, scale_phys, spread)
+                } else {
+                    corners.fit_to(rect.phys.size, scale_phys, 0.0)
+                };
                 PackedQuad {
-                    rect: self.scaled_rect(rect),
-                    corners: corners.scaled_by(scale_phys),
-                    // Live shadow parameters are logical-px scalars;
-                    // scale them so the shader's `local` coords line
-                    // up. A gradient axis is already unit-space and
-                    // passes through untouched.
-                    fill_axis: if p.fill.kind.is_shadow() {
-                        p.fill_axis.scaled(scale_phys)
-                    } else {
-                        p.fill_axis
-                    },
+                    rect,
+                    corners,
+                    fill_axis,
                     stroke_width: p.stroke.width * scale_phys,
                 }
             }
@@ -906,19 +955,23 @@ impl ComposeSession<'_> {
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
                 let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + HALF_FRINGE);
-                // Pack the three points in rect-local coords (0..size,
-                // matching the shader's `in.local`) + the corner radius
-                // into the reused `corners` / `fill_axis` lanes;
-                // `FillKind::TRIANGLE` tells the shader to read them as a
-                // triangle SDF rather than rounded-rect radii / gradient
-                // axis.
-                let al = a - phys_rect.min;
-                let bl = b - phys_rect.min;
-                let cl = c - phys_rect.min;
+                // Pack the three points as unorm16 shares of the covering
+                // rect, which holds them, so every share is in 0..=1, and
+                // the corner radius as f16, into the reused `corners` /
+                // `fill_axis` lanes; `FillKind::TRIANGLE` tells the shader
+                // to decode them as a triangle rather than rounded-rect
+                // radii / gradient axis.
+                let share = |p: Vec2| {
+                    let at = (p - phys_rect.min) / Vec2::new(phys_rect.size.w, phys_rect.size.h);
+                    [unorm16(at.x), unorm16(at.y)]
+                };
+                let ([ax, ay], [bx, by], [cx, cy]) = (share(a), share(b), share(c));
+                let [_, _, radius_f16, _] =
+                    half_simd::f16x4_from_f32x4([0.0, 0.0, radius_phys, 0.0]);
                 PackedQuad {
                     rect: ScaledRect::from_phys(phys_rect, self.out.display.physical),
-                    corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
-                    fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
+                    corners: Corners::from_bits([ax, ay, bx, by]),
+                    fill_axis: FillAxis::from(F16x4::from_bits([cx, cy, radius_f16, 0])),
                     stroke_width: (p.stroke.width * scale_phys).max(0.0),
                 }
             }
@@ -1269,4 +1322,29 @@ impl ComposeSession<'_> {
         self.out.discard_scene();
         self.composer.reset_group_scratch(self.out.display.physical);
     }
+}
+
+/// The straight colour halfway between `a` and `b`, interpolated
+/// premultiplied: opaque red and transparent black meet at half-red with
+/// half alpha, where a straight average would be a darker red. A midpoint
+/// with no alpha has no hue and comes back transparent black.
+fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
+    let (a, b) = (a.premultiplied(), b.premultiplied());
+    let alpha = (a.a + b.a) * 0.5;
+    if alpha <= 0.0 {
+        return RgbaF32::TRANSPARENT;
+    }
+    let channel = |x: f32, y: f32| (x + y) * 0.5 / alpha;
+    RgbaF32 {
+        r: channel(a.r, b.r),
+        g: channel(a.g, b.g),
+        b: channel(a.b, b.b),
+        a: alpha,
+    }
+}
+
+/// `v` in `0..=1` as unorm16, the encoding `unpack2x16unorm` decodes:
+/// `bits / 65535`.
+const fn unorm16(v: f32) -> u16 {
+    (v.clamp(0.0, 1.0) * 65535.0).round() as u16
 }

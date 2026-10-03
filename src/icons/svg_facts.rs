@@ -107,11 +107,10 @@ impl Survey {
 
 #[cfg(test)]
 mod tests {
+    use crate::icons::internals::{BROKEN, ONE_COLOUR, TWO_COLOURS};
     use crate::icons::svg_facts::SvgFacts;
     use glam::Vec2;
 
-    const ONE_COLOUR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><rect width="24" height="12" fill="#4080c0"/><circle cx="6" cy="6" r="3" fill="#4080c0"/></svg>"##;
-    const TWO_COLOURS: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="8" height="16" fill="#f00"/><rect x="8" width="8" height="16" fill="#00f"/></svg>"##;
     const GRADIENT: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><linearGradient id="g"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="16" height="16" fill="url(#g)"/></svg>"##;
     const FILTERED: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><filter id="f"><feGaussianBlur stdDeviation="1"/></filter></defs><g filter="url(#f)"><rect width="16" height="16" fill="#333"/></g></svg>"##;
     /// A stroke in a *second* colour: strokes have to be surveyed too, or an
@@ -168,6 +167,6 @@ mod tests {
 
     #[test]
     fn unparseable_source_has_no_facts() {
-        assert_eq!(SvgFacts::of(b"<svg"), None);
+        assert_eq!(SvgFacts::of(BROKEN.as_bytes()), None);
     }
 }

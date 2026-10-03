@@ -7,7 +7,7 @@
 //!   through [`render`]. Each render run carries its record-local
 //!   source span so an encoded-cache miss can restore an evicted shaped
 //!   buffer. The only production backend.
-//! - [`mono`] — deterministic placeholder metric behind
+//! - `mono` — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
 //!   `font_size_px * 0.5` wide; it mints no shaped buffer, so `TextSystem`
 //!   reports no [`key::TextShapeKey`] for those runs and the renderer
@@ -89,7 +89,7 @@ pub(crate) mod wrap;
 
 /// Additive step on the text-scale ladder. The composer snaps a
 /// continuous zoom scale to a rung of this ladder before it picks a
-/// glyph-cache key (`composer::snap_text_scale`).
+/// glyph-cache key (`composer::geometry::snap_text_scale`).
 ///
 /// **Additive, not proportional.** The same step in *scale units* across
 /// the range makes the step in *percent of current size* shrink as zoom
@@ -113,7 +113,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// of the protected tier of the shaped-buffer cache, which each entry
 /// extends by its own share of [`RENDERED_RUN_KEEP_SPREAD_MASK`], and
 /// the ceiling the backend's glyph-template window
-/// (`gpu::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
+/// (`gpu::text::encode::cache::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
 ///
 /// **The relation between the two windows is an ordering, not an
@@ -177,24 +177,17 @@ pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 /// name the window it waits out, and `cosmic` is private to this module.
 pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
-/// Gated on the feature alone rather than on `any(test, ..)` like its
-/// siblings: the one consumer is the allocation suite's scale ramp, which
-/// needs a device and so exists only under the feature. Wider is dead
-/// code in a plain `cargo test` build, and `-D dead_code` says so.
-#[cfg(feature = "internals")]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    /// The raster-scale quantum, so the allocation suite's scale ramp can
-    /// step exactly one rung a frame. A ramp that spelled the number
-    /// itself would stop minting fresh raster keys the moment this moved,
-    /// and a gate that stops missing stops measuring.
-    pub const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
+    use crate::text::cosmic::shaped_buffer_cache;
 
-    /// The shaped-buffer cache's short window, so a text audit can warm
-    /// through the first expiry drain it schedules — a one-off that comes
-    /// due this many frames after the first shape, whatever the frames
-    /// between look like.
-    pub const PROBATION_KEEP_FRAMES: u64 =
-        crate::text::cosmic::shaped_buffer_cache::PROBATION_KEEP_FRAMES;
+    /// The shaped-buffer cache's short window — see
+    /// `crate::internals::PROBATION_KEEP_FRAMES`.
+    pub(crate) const PROBATION_KEEP_FRAMES: u64 = shaped_buffer_cache::PROBATION_KEEP_FRAMES;
+
+    /// Frames one revolution of the shaped-buffer expiry ring takes — see
+    /// `crate::internals::SHAPED_BUFFER_RING_FRAMES`.
+    pub(crate) const SHAPED_BUFFER_RING_FRAMES: u64 = shaped_buffer_cache::internals::RING_FRAMES;
 }
 
 #[cfg(test)]

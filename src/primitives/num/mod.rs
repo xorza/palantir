@@ -65,16 +65,12 @@ pub trait F32Ext {
 
     /// A length read out of a theme, floored at `min`.
     ///
-    /// One definition because every widget that sizes a node or a corner
-    /// radius from its bundle owes the same guard: the scalar arrived
-    /// from a hand-edited theme file or an app's own bundle, so a
-    /// negative or NaN one is bad data rather than a logic error and
-    /// cannot assert. Both cases land on `min`, since `f32::max` answers
-    /// the other operand for NaN.
-    ///
-    /// `min` is the widget's, not the type's. A rule the theme sets to
-    /// zero is a rule the app wanted invisible, while a grab bar or a
-    /// spinner that thin cannot be grabbed or seen at all.
+    /// The floor is a widget design rule, not validation: a theme file's
+    /// scalars are checked where they are deserialized
+    /// (`primitives::serde::checked`), so what arrives here is a finite,
+    /// non-negative length. `min` is the widget's, not the type's. A rule
+    /// the theme sets to zero is a rule the app wanted invisible, while a
+    /// grab bar or a spinner that thin cannot be grabbed or seen at all.
     fn themed_length(self, min: Self) -> Self;
 }
 
@@ -165,10 +161,10 @@ pub(crate) trait F32Px {
     /// reason [`Self::fast_round`] exists, on the same per-quad scissor
     /// path.
     ///
-    /// Truncate, then bump when the truncation lost something. For a
-    /// non-negative coordinate below `2^24`, where a `u32` still
-    /// round-trips through `f32` exactly — every caller is a pixel
-    /// coordinate, and the debug assert is the guard.
+    /// Truncate, then bump when the truncation lost something. Exact for
+    /// every non-negative value: below `2^24` a `u32` round-trips through
+    /// `f32`, and from `2^24` up every `f32` is already whole, so the
+    /// truncation is the answer, saturating at `u32::MAX`.
     fn ceil_px(self) -> u32;
 
     /// `self` has no fractional part — equivalent to `x == x.round()`
@@ -241,8 +237,11 @@ impl F32Px for f32 {
 
     #[inline]
     fn ceil_px(self) -> u32 {
+        // Any magnitude: from 2^24 up every f32 is a whole number, so the
+        // truncation below is already the ceiling, saturating at
+        // `u32::MAX` past the range.
         debug_assert!(
-            (0.0..(1u32 << 24) as f32).contains(&self),
+            self >= 0.0,
             "ceil_px is for a non-negative pixel coordinate, got {self}",
         );
         let truncated = self as u32;

@@ -56,11 +56,9 @@ impl<'a> TextShapeRequest<'a> {
     /// hand would carry its own version of this assertion — one that can
     /// drift, or be forgotten by the next caller to write the literal.
     ///
-    /// Also **the crate's one pairing check that stays debug-only**,
-    /// because it is the one that *reads*: re-hashing the run costs
-    /// `O(n)` in its bytes, per run per frame, where
-    /// `ShapedTextRef::new` compares two recorded hashes and holds in
-    /// release.
+    /// Debug-only, like `ShapedTextRef::new`'s comparison of two recorded
+    /// hashes — and more so, because this one *reads*: re-hashing the run
+    /// costs `O(n)` in its bytes, per run per frame.
     ///
     /// `None` for empty text — see the type docs. The face is already
     /// screened: it is what minted the key.
@@ -93,7 +91,7 @@ impl<'a> TextShapeRequest<'a> {
 // `unbounded_request`. Everything else here is assertion-side and says so
 // item by item.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::layout::types::align::HAlign;
@@ -148,6 +146,19 @@ pub(crate) mod test_support {
     }
 
     impl TestShape {
+        /// `font`, unbounded and with its alignment left to the
+        /// paragraph — the face a bench states as a const, and the base
+        /// every test builder overrides.
+        pub(crate) const fn new(font: GlyphFont) -> Self {
+            Self {
+                font,
+                #[cfg(test)]
+                max_width_px: None,
+                #[cfg(test)]
+                halign: HAlign::Auto,
+            }
+        }
+
         /// Fixtures always name text and a usable face, so the
         /// nothing-to-shape boundary is a wiring bug here rather than a
         /// case a test drives — the two crate edges that answer one do

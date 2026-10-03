@@ -77,14 +77,17 @@ impl KeyClass {
     /// compile until it declares which class it belongs to, rather than
     /// falling into a catch-all and quietly becoming an accelerator.
     pub fn of(press: KeyPress) -> Self {
-        // A press that produced text *is* text, whatever its key is
-        // called: a layout can put a character on a key this vocabulary
-        // has no name for, and a dead-key sequence resolves to text the
-        // key that carried it never held. No named key reaches here with
+        // A press that typed text *is* text, whatever its key is called:
+        // a layout can put a character on a key this vocabulary has no
+        // name for, and a dead-key sequence resolves to text the key that
+        // carried it never held. Whether the modifiers held composed that
+        // text or made a command is the platform's rule —
+        // `KeyPress::types_text` — so Option+L is `@` on macOS and Alt+L
+        // is a mnemonic on Windows. No named key reaches here with
         // text — what Enter, Tab and Escape produce is a control
         // character, which never enters a `KeyText` — so the match below
         // keeps answering for every key that typed nothing.
-        if !press.mods.any_command() && !press.text.is_empty() {
+        if press.types_text() {
             return Self::Text;
         }
         match press.key {
@@ -203,21 +206,7 @@ mod tests {
     use crate::input::key_class::{KeyClass, KeyFilter};
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_press::KeyPress;
-    use crate::input::keyboard::key_text::KeyText;
     use crate::input::keyboard::modifiers::Modifiers;
-
-    fn press(key: Key, mods: Modifiers) -> KeyPress {
-        KeyPress {
-            key,
-            mods,
-            repeat: false,
-            physical: key,
-            text: match key {
-                Key::Char(c) => KeyText::from_char(c),
-                _ => KeyText::EMPTY,
-            },
-        }
-    }
 
     /// `accepts` is `takes` over a press: it classifies the press the way
     /// [`KeyClass::of`] does, so one gate serves every reader of the
@@ -225,8 +214,8 @@ mod tests {
     #[test]
     fn accepts_gates_the_stream_on_the_declared_classes() {
         let field = KeyFilter::TEXT_FIELD;
-        let typed = press(Key::Char('a'), Modifiers::default());
-        let escape = press(Key::Escape, Modifiers::default());
+        let typed = KeyPress::with(Key::Char('a'), Modifiers::default());
+        let escape = KeyPress::with(Key::Escape, Modifiers::default());
 
         assert_eq!(field.accepts(typed), Some(typed), "a field takes text");
         assert_eq!(field.accepts(escape), Some(escape), "and Escape, to cancel");
@@ -240,7 +229,7 @@ mod tests {
 
         // `ACCEL` is out of `TEXT_FIELD`, so an application chord walks
         // past a focused field while the bare key it shares still types.
-        let save = press(
+        let save = KeyPress::with(
             Key::Char('S'),
             Modifiers {
                 ctrl: true,
@@ -249,7 +238,7 @@ mod tests {
         );
         assert_eq!(KeyClass::of(save), KeyClass::Accel);
         assert_eq!(field.accepts(save), None);
-        let shifted = press(Key::Char('S'), Modifiers::default());
+        let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
         assert_eq!(field.accepts(shifted), Some(shifted));
     }
 }

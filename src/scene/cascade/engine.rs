@@ -3,25 +3,28 @@
 //! Mirrors `layout::engine` — the module root holds the retained
 //! product, this file holds the machinery that fills it.
 
-use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::tracy;
 use crate::display::Display;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::{LayerLayout, Layout};
+use crate::layout::Layout;
+use crate::layout::layer_layout::LayerLayout;
 use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
+use crate::scene::cascade::Cascade;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
+use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::counters::CascadeCounters;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
+use crate::scene::cascade::layer_cascade::LayerCascade;
 use crate::scene::cascade::paint::PaintArena;
 use crate::scene::cascade::paint_rect::{self, PaintRectCtx};
-use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
-use crate::scene::layer::{Layer, PerLayer};
+use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use std::hash::Hasher as _;
@@ -96,30 +99,30 @@ struct Frame {
 pub(crate) struct CascadeEngine {
     stack: Vec<Frame>,
     paint_scratch: PaintArena,
-    display_scale: Option<f32>,
     /// Test/bench observability for this pass — see [`CascadeCounters`].
     pub(crate) counters: CascadeCounters,
 }
 
 impl CascadeEngine {
-    /// Update the frozen cascade result. Stable subtrees are retained
-    /// in place; a paint-row cardinality or tree-size change falls
-    /// back to a complete rebuild.
+    /// Bring the frozen cascade result up to `key`. An unchanged key
+    /// skips the run, a paint-only change repairs paint rows in place,
+    /// and anything else rebuilds.
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
         layout: &Layout,
         display: Display,
+        key: &CascadeKey,
         cascade: &mut Cascade,
     ) {
         tracy::zone!();
-        // One bulk hash of each layer's `rect` column per run. The gate
-        // compares it and a rebuild stamps it, and a run does both
-        // exactly when the compare fails — which is every frame geometry
-        // moved, the frames that already pay for a full walk.
-        let layout_hashes = layout_hashes(forest, layout);
-        if !self.can_update(forest, display, cascade, &layout_hashes) {
-            self.run_full(forest, layout, display, cascade, &layout_hashes);
+        let ran = cascade.key.as_ref() != Some(key);
+        self.counters.note_ran(ran);
+        if !ran {
+            return;
+        }
+        if !self.can_update(forest, key, cascade) {
+            self.run_full(forest, layout, display, key, cascade);
             return;
         }
 
@@ -144,55 +147,36 @@ impl CascadeEngine {
                 // there is no entry point part-way through. The repeat
                 // costs one extra paint repair, on a frame already
                 // committed to a full rebuild.
-                self.run_full(forest, layout, display, cascade, &layout_hashes);
+                self.run_full(forest, layout, display, key, cascade);
                 return;
             }
         }
+        cascade.key = Some(*key);
     }
 
-    /// A match proves every retained non-paint cascade and hit-test
-    /// column remains valid; the incremental walk only repairs paint.
-    fn can_update(
-        &self,
-        forest: &Forest,
-        display: Display,
-        cascade: &Cascade,
-        layout_hashes: &PerLayer<ContentHash>,
-    ) -> bool {
-        if self.display_scale != Some(display.scale_factor()) {
+    /// Whether every retained non-paint cascade and hit-test column
+    /// remains valid; the incremental walk only repairs paint.
+    fn can_update(&self, forest: &Forest, key: &CascadeKey, cascade: &Cascade) -> bool {
+        let Some(built) = &cascade.key else {
+            return false;
+        };
+        if !built.differs_only_in_paint(key) {
             return false;
         }
-        let total = forest.total_nodes();
-        if cascade.entries.len() != total {
-            return false;
-        }
+        // The bases are a prefix sum over the per-layer counts, and the
+        // equal structure hashes fold each layer's nesting, so these
+        // only restate what the key already proved.
+        debug_assert_eq!(cascade.entries.len(), forest.total_nodes());
         let mut entries_base = 0u32;
         for (layer, tree) in forest.trees.iter_paint_order() {
             let n = tree.records.len();
             let lc = &cascade.layers[layer];
-            if lc.entries_base != entries_base
-                || lc.static_hash != tree.fingerprint.cascade_static
-                || lc.paint_counts != tree.fingerprint.paint_counts
-            {
-                return false;
-            }
-            // Not asked again: the bases are a prefix sum over the
-            // current per-layer counts, so every base matching against a
-            // matching total pins each layer's count to the one
-            // `reset_for` sized this column to.
+            debug_assert_eq!(lc.entries_base, entries_base);
             debug_assert_eq!(
                 lc.arena_hashes.len(),
                 n,
                 "retained arena column outlived its layer",
             );
-            if lc.layout_hash != layout_hashes[layer] {
-                return false;
-            }
-            // No structural walk here: `cascade_static` folds each
-            // node's `subtree_end`, so the scalar compare above already
-            // covers nesting. Zipping the whole column every run would be
-            // the one walk standing between `LayerCascade::subtree_ends` and
-            // the sparse ancestry column it is documented to be.
             entries_base += n as u32;
         }
         true
@@ -203,8 +187,8 @@ impl CascadeEngine {
         forest: &Forest,
         layout: &Layout,
         display: Display,
+        key: &CascadeKey,
         cascade: &mut Cascade,
-        layout_hashes: &PerLayer<ContentHash>,
     ) {
         self.counters.full_rebuild();
         let total = forest.total_nodes();
@@ -239,76 +223,21 @@ impl CascadeEngine {
                 n as u32,
                 "run_tree must emit one entry per recorded node",
             );
-            cascade.layers[layer].static_hash = tree.fingerprint.cascade_static;
-            cascade.layers[layer].paint_counts = tree.fingerprint.paint_counts;
-            cascade.layers[layer].layout_hash = layout_hashes[layer];
         }
 
         // `SeenIds::pre_record` clears `curr` before a relayout pass can
         // query the preceding pass's responses.
-        cascade.by_id.clone_from(&forest.ids.curr);
-        self.display_scale = Some(display.scale_factor());
+        //
+        // Refilled rather than `clone_from`: `curr` and `prev` swap every
+        // frame, so the source alternates between two tables, and
+        // hashbrown's `clone_from` reallocates whenever their bucket
+        // counts differ — one widget-count spike would grow one of them
+        // for good and make every later full rebuild free and allocate.
+        // `clear` keeps this table's own capacity.
+        cascade.by_id.clear();
+        cascade.by_id.extend(&forest.ids.curr);
+        cascade.key = Some(*key);
     }
-}
-
-/// Each recorded layer's `rect` column hash — the cascade's
-/// geometry-validity gate, and the value a rebuild stamps.
-///
-/// Computed once per run and handed to both readers. Layers with no tree
-/// this frame keep the default: neither reader visits them, which is what
-/// `iter_paint_order` already decides.
-pub(super) fn layout_hashes(forest: &Forest, layout: &Layout) -> PerLayer<ContentHash> {
-    let mut hashes = PerLayer::default();
-    for (layer, _) in forest.trees.iter_paint_order() {
-        hashes[layer] = layout[layer].rect_hash();
-    }
-    hashes
-}
-
-/// Fingerprint of everything [`CascadeEngine::run`] reads, cheaply.
-/// Equal fingerprints across two frames ⇒ identical cascade output, so
-/// `FrameCycle::post_record` skips the run and reuses last frame's `Cascade`
-/// (O5 stage 0 — full-frame skip, gated on the frame runtime's cascade fingerprint).
-/// Folds:
-/// - the exact surface (a sub-quantum resize can hit the measure
-///   cache yet still re-arrange, so the *exact* rect must be here);
-/// - every root's `subtree_hash`, which already captures all cascade
-///   authoring — transforms (`PanelExtras`), clip/disabled/focusable
-///   (`attrs`), visibility, shapes, chrome;
-/// - the font epoch, the one arrange input that moves a rect while
-///   every key addressing that rect stands still: a run measures to a
-///   new width in a face loaded after it was authored, and nothing in
-///   the authoring says so (`TextShaper::font_epoch`).
-///
-/// Lives here, beside the walk it mirrors, on purpose: the skip is
-/// only sound while this enumeration covers every input `run_tree`
-/// (and the arrange pass feeding it) consumes. Adding a cascade input
-/// without folding it here silently reuses stale cascade — keep the
-/// two in one review's field of view.
-pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display, font_epoch: u32) -> u64 {
-    let mut h = Hasher::new();
-    h.write_u32(display.physical.x);
-    h.write_u32(display.physical.y);
-    display.scale_factor().hash_eq(&mut h);
-    h.write_u32(font_epoch);
-    for (layer, tree) in forest.trees.iter_paint_order() {
-        // Layer discriminant: an identical root subtree migrating
-        // between side layers (Popup → Tooltip) must not alias, or
-        // the skip reuses per-layer columns sized for the old
-        // assignment and the damage pass indexes them out of
-        // bounds.
-        h.write_u8(layer as u8);
-        for slot in &tree.roots {
-            // A root's own id does not reach the subtree hash used by
-            // this fingerprint — `compute_rollups` folds only child ids
-            // into parents — so include it directly.
-            h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
-            h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
-            // Placement lives outside node hashes but changes arranged rects.
-            slot.placement.hash_visual(&mut h);
-        }
-    }
-    h.finish()
 }
 
 /// Finalize one stack frame: write the rolled-up

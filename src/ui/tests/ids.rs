@@ -1,12 +1,12 @@
 //! How a widget is named, and what happens when two ask for one name.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -123,6 +123,44 @@ fn duplicate_explicit_widget_ids_are_outlined() {
     );
 }
 
+/// Under a panned and zoomed panel the outline follows the node to where
+/// it paints, not where it was laid out. The canvas translates by (30, 20)
+/// and scales by 0.5; each duplicate is a 40 px block, at canvas-local
+/// (10, 10) and (60, 10). On screen: (10·0.5 + 30, 10·0.5 + 20) =
+/// (35, 25) and (60·0.5 + 30, 25) = (60, 25), each 20 px square.
+#[cfg(debug_assertions)]
+#[test]
+fn a_collision_under_a_transform_is_outlined_where_it_paints() {
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::translate_scale::TranslateScale;
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(|ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .transform(TranslateScale::new(Vec2::new(30.0, 20.0), 0.5))
+            .show(ui, |ui| {
+                for x in [10.0, 60.0] {
+                    Block::new()
+                        .id(WidgetId::from_hash("dup"))
+                        .position((x, 10.0))
+                        .size(40.0)
+                        .show(ui);
+                }
+            });
+    });
+    let mut outlines = collision_outlines(&h.ui);
+    outlines.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    assert_eq!(
+        outlines,
+        [
+            Rect::new(35.0, 25.0, 20.0, 20.0),
+            Rect::new(60.0, 25.0, 20.0, 20.0)
+        ],
+    );
+}
+
 /// An explicit id is per-layer, so `Main` and `Popup` each keep their own
 /// resolved id — and the pair records which layer each endpoint sat in.
 #[test]
@@ -161,18 +199,10 @@ fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let main_rect = h.ui.layout[Layer::Main].rect[pair.first.node.idx()];
     let popup_rect = h.ui.layout[Layer::Popup].rect[pair.second.node.idx()];
     let outlines = collision_outlines(&h.ui);
-    assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
-    assert!(
-        outlines
-            .iter()
-            .any(|rect| (rect.min - main_rect.min).length() < 1.0),
-        "no outline at Main rect {main_rect:?}",
-    );
-    assert!(
-        outlines
-            .iter()
-            .any(|rect| (rect.min - popup_rect.min).length() < 1.0),
-        "no outline at Popup rect {popup_rect:?}",
+    assert_eq!(
+        outlines,
+        [main_rect, popup_rect],
+        "one outline per layer, each on its own copy's rect",
     );
 }
 
@@ -202,19 +232,15 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
                     .show(ui);
             });
     };
-    let node_for = |ui: &Ui, layer: Layer, id: WidgetId| {
-        let index = ui.forest.trees[layer]
-            .records
-            .widget_id()
-            .iter()
-            .position(|widget_id| *widget_id == id)
-            .unwrap();
-        NodeId(index as u32)
+    let node_for = |h: &UiHarness, layer: Layer, id: WidgetId| {
+        let at = h.node_of(id).expect("recorded");
+        assert_eq!(at.layer, layer);
+        at.node
     };
 
     h.frame(&mut record);
-    let main_node = node_for(&h.ui, Layer::Main, main_id);
-    let popup_node = node_for(&h.ui, Layer::Popup, popup_id);
+    let main_node = node_for(&h, Layer::Main, main_id);
+    let popup_node = node_for(&h, Layer::Popup, popup_id);
     let cold_main = h.ui.layout[Layer::Main].rect[main_node.idx()];
     let cold_popup = h.ui.layout[Layer::Popup].rect[popup_node.idx()];
     assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
@@ -235,8 +261,8 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
         !h.engines.layout.scratch.counters.cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
-    let main_node = node_for(&h.ui, Layer::Main, main_id);
-    let popup_node = node_for(&h.ui, Layer::Popup, popup_id);
+    let main_node = node_for(&h, Layer::Main, main_id);
+    let popup_node = node_for(&h, Layer::Popup, popup_id);
     assert_eq!(h.ui.layout[Layer::Main].rect[main_node.idx()], cold_main);
     assert_eq!(h.ui.layout[Layer::Popup].rect[popup_node.idx()], cold_popup);
     assert_eq!(
@@ -307,18 +333,48 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
         *ui.state_or_default::<u32>(id_a) = 11;
         *ui.state_or_default::<u32>(id_b) = 22;
     });
-    h.frame(|ui| {
+    let a = h.frame_value(|ui| {
         Block::new().id(WidgetId::from_hash("a")).show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
-        assert_eq!(*ui.state_or_default::<u32>(id_a), 11);
+        *ui.state_or_default::<u32>(id_a)
     });
-    h.frame(|ui| {
+    assert_eq!(a, 11);
+    let b = h.frame_value(|ui| {
         Block::new().id(WidgetId::from_hash("b")).show(ui);
-        assert_eq!(
-            *ui.state_or_default::<u32>(id_b),
-            0,
-            "B was unrecorded last frame; its row should have been swept",
-        );
+        *ui.state_or_default::<u32>(id_b)
     });
+    assert_eq!(
+        b, 0,
+        "B was unrecorded last frame; its row should have been swept",
+    );
+}
+
+/// Two widgets from one call site that both resolve before either
+/// records — the shape of reading `.state(ui)` on each, then showing
+/// both. The second resolution sees the first's reservation, so they
+/// get distinct ids and both open instead of the second hitting the
+/// duplicate-record panic.
+#[test]
+fn two_widgets_resolved_before_recording_get_distinct_ids() {
+    use crate::widgets::widget::Widget;
+
+    let mut h = UiHarness::new(SURFACE);
+    let ids = h.frame_value(|ui| {
+        let make = || Widget::leaf().auto_id();
+        let (mut a, mut b) = (make(), make());
+        let ids = [a.resolve(ui), b.resolve(ui)];
+        a.record(ui, None, |_| {});
+        b.record(ui, None, |_| {});
+        ids
+    });
+    assert_ne!(ids[0], ids[1]);
+    assert_eq!(
+        ids[1],
+        ids[0].with(1),
+        "positional, like any auto-id collision"
+    );
+    for id in ids {
+        assert!(h.layout_rect(id).is_some(), "{id:?} recorded");
+    }
 }

@@ -1,10 +1,10 @@
 use crate::bench::Run;
 use crate::display::Display;
+use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
-use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
@@ -15,12 +15,13 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::CurveBasis;
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
+use std::num::NonZeroU32;
 use std::time::Duration;
 use strum::{IntoStaticStr, VariantArray};
 
@@ -38,7 +39,7 @@ impl ComposeBench {
         Self {
             cmds,
             store: RecordStore::default(),
-            composer: Composer::new(8192),
+            composer: Composer::new(NonZeroU32::new(8192).unwrap()),
             out: RenderBuffer::new(),
             display: Display::from_physical(physical, 1.0),
         }
@@ -257,7 +258,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 handle: TextureId(1),
                 flags: 0,
             },
-            paint: None,
+            view: None,
         },
         1.0,
     );

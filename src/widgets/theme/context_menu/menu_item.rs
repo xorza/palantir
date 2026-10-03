@@ -28,6 +28,7 @@ pub struct MenuItemTheme {
     /// hint. The row is `SpaceBetween`, so this is the floor the two
     /// texts are held apart by while the menu hugs its widest row —
     /// it is what stops "Copy ⌘C" from reading as one word.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
     pub gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`]. `margin` is
     /// `ZERO` by default: rows stack flush inside the menu's own padding

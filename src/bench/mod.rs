@@ -13,7 +13,7 @@
 //!
 //! The allocation gates are not here at all: they report counts rather
 //! than times, so they need no criterion and no optimized link, and they
-//! live with the rest of the allocation suite in `tests/alloc/gates.rs`.
+//! live with the rest of the allocation suite in `tests/alloc/gates/`.
 //!
 //! ## Why this owns `main`
 //!
@@ -52,11 +52,11 @@
 mod cli;
 mod driver;
 
+use crate::bench::cli::Cli;
+use crate::bench::driver::DRIVERS;
 use clap::Parser as _;
-use cli::Cli;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
-use driver::DRIVERS;
 
 /// Which half of the pipeline is in play — on a driver row, what it
 /// measures; on the command line, what the run wants. One vocabulary for

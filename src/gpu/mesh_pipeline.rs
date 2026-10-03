@@ -14,7 +14,7 @@
 use crate::gpu::dynamic_buffer::DynamicBuffer;
 use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline_recipe::PipelineRecipe;
-use crate::gpu::shader_template;
+use crate::gpu::shader_body::ShaderBody;
 use crate::gpu::stencil_variant::ColorVariantSpec;
 use crate::gpu::stencil_variant::StencilVariant;
 use crate::primitives::mesh::MeshVertex;
@@ -53,6 +53,8 @@ pub(super) struct MeshPipeline {
     /// Mesh shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl MeshPipeline {
@@ -62,9 +64,7 @@ impl MeshPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                shader_template::specialize(shader_template::MESH_WGSL, &[]).into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(ShaderBody::Mesh.specialize(&[]).into()),
         });
 
         let vertex_buffer =
@@ -78,6 +78,9 @@ impl MeshPipeline {
             index_buffer,
             instance_buffer,
             shader,
+            // No bind groups — only the shared immediate region for the
+            // viewport.
+            pipeline_layout: PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]),
         }
     }
 
@@ -98,16 +101,13 @@ impl MeshPipeline {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Mesh shader uses no bind groups — only the shared immediate
-        // region for viewport. Empty bind-group-layout list.
-        let layout = PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.mesh.pipeline",
                 stencil_label: "palantir.mesh.pipeline.stencil_test",
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
@@ -243,6 +243,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::mesh_upload_required;
+    use crate::internals::panic_probe;
 
     #[test]
     fn mesh_upload_requires_geometry_only_when_instances_exist() {
@@ -257,7 +258,11 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn instances_without_geometry_are_screened() {
-        assert!(std::panic::catch_unwind(|| mesh_upload_required(0, 3, 1)).is_err());
-        assert!(std::panic::catch_unwind(|| mesh_upload_required(3, 0, 1)).is_err());
+        panic_probe::assert_panics_with("mesh instances require vertices", || {
+            mesh_upload_required(0, 3, 1)
+        });
+        panic_probe::assert_panics_with("mesh instances require indices", || {
+            mesh_upload_required(3, 0, 1)
+        });
     }
 }

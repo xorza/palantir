@@ -1,3 +1,6 @@
+//! The encoded-glyph cache: rows aging out past the keep window, and a
+//! re-encoded row reclaiming its own block.
+
 use super::*;
 use crate::common::counters::CounterSet;
 use crate::gpu::text::encode::EncodedKey;
@@ -23,6 +26,7 @@ fn glyph(tag: u32) -> EncodedGlyph {
         instance: RasterQuad {
             pos: [tag as i32, -(tag as i32)],
             dim: tag,
+            size: tag ^ 0x5a5a,
             uv_and_kind: tag << 8,
             color: bytemuck::cast(u64::from(!tag)),
         },
@@ -80,7 +84,7 @@ fn unused_rows_die_one_frame_past_the_keep_window() {
 /// so the arena stops growing once every size class has been seen.
 ///
 /// Hand-traced with a 10-glyph untouched row plus a 4-glyph run
-/// re-encoded every frame. `BLOCK_GRANULE` is 4, so the 10-glyph row
+/// re-encoded every frame. `EncodedGlyph::GRANULE` is 4, so the 10-glyph row
 /// takes a 12-slot block and the 4-glyph run a 4-slot one: the arena
 /// reaches 16 slots on frame 1 and **never grows again**, because
 /// every later re-encode of the 4-glyph run frees a 4-slot block and
@@ -340,7 +344,7 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
 fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
     const RUNS: u32 = 8;
     const GLYPHS: u32 = 12;
-    let mut churn = test_support::ChurnBench::new(RUNS, GLYPHS);
+    let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
 
     // Run past the window so the population reaches steady state.
     const FRAMES: u64 = ENCODED_CACHE_KEEP_FRAMES * 2;
@@ -393,7 +397,7 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
 fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
     const RUNS: u32 = 8;
     const GLYPHS: u32 = 12;
-    let mut churn = test_support::ChurnBench::new(RUNS, GLYPHS);
+    let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
 
     // Warm past the keep window so every frame both mints and
     // expires a full complement of rows.
@@ -451,7 +455,7 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
 ///
 /// Traced with one fresh key per frame carrying `16 × frame` glyphs — a
 /// run that grows, which is what a long unwrapped line being typed into
-/// produces. `16 × frame` is a multiple of [`BLOCK_GRANULE`], so each
+/// produces. `16 × frame` is a multiple of `EncodedGlyph::GRANULE`, so each
 /// frame's block is exactly that many slots and each frame lands in a
 /// class of its own, never revisited:
 ///

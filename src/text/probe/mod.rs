@@ -54,12 +54,13 @@ pub struct TextProbe<'a> {
     key: Option<TextShapeKey>,
     /// The run's authored horizontal alignment.
     ///
-    /// Not read off `key`, although the key carries one: `halign_q` is a
-    /// *cache discriminator*, projected onto what shaping actually varies
-    /// on — an unbounded key stores `Auto` for every alignment, because
-    /// an unbounded shape has no per-line offsets to vary. Asked where a
-    /// glyphless line's caret sits, it would answer `Auto` for a
-    /// right-aligned run and put the caret at the block's left edge.
+    /// Not read off `key`, although the key carries one: the align bits of
+    /// its `face_q` are a *cache discriminator*, projected onto what
+    /// shaping actually varies on — an unbounded key stores `Auto` for
+    /// every alignment, because an unbounded shape has no per-line offsets
+    /// to vary. Asked where a glyphless line's caret sits, it would answer
+    /// `Auto` for a right-aligned run and put the caret at the block's left
+    /// edge.
     halign: HAlign,
     inner: RefMut<'a, ShaperInner>,
 }
@@ -234,7 +235,6 @@ impl<'a> TextProbe<'a> {
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
         let line_height_px = self.line_height_px();
         let halign = self.halign;
-        let target = cursor_from_byte(self.text, byte_offset);
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
             // No shaped buffer means empty text (block-local x is 0, and
             // the owner aligns the empty block itself) or the mono metric.
@@ -244,6 +244,7 @@ impl<'a> TextProbe<'a> {
                 line_height: line_height_px,
             };
         };
+        let target = LineMap::new(buffer, self.text).cursor(byte_offset);
 
         let mut last_in_line: Option<Caret> = None;
         for run in buffer.layout_runs() {
@@ -298,7 +299,7 @@ impl<'a> TextProbe<'a> {
             // hit-test → caret round trip landing where it started.
             Some(ShapedRun { buffer, left }) => buffer
                 .hit(x + left, y)
-                .map(|cursor| cursor_to_byte(self.text, cursor))
+                .map(|cursor| LineMap::new(buffer, self.text).byte(cursor))
                 .unwrap_or(self.text.len()),
             None => self.unshaped_byte_at(x),
         }
@@ -327,8 +328,8 @@ impl<'a> TextProbe<'a> {
             out(Rect::new(x0, 0.0, x1 - x0, self.line_height_px()));
             return;
         };
-        let start = cursor_from_byte(self.text, range.start);
-        let end = cursor_from_byte(self.text, range.end);
+        let lines = LineMap::new(buffer, self.text);
+        let (start, end) = (lines.cursor(range.start), lines.cursor(range.end));
         for run in buffer.layout_runs() {
             push_run_selection_rects(&run, start, end, left, &mut out);
         }
@@ -423,44 +424,87 @@ fn push_run_selection_rects(
     flush(&mut selected);
 }
 
-/// Map a UTF-8 byte offset into `text` to a cosmic-text `Cursor`:
-/// `line` = count of `\n` before the offset, `index` = bytes since
-/// the most recent `\n` (or start of text).
+/// Byte offsets into a run's source text, and cosmic `Cursor`s into the
+/// buffer shaped from it, mapped through the buffer's own lines.
 ///
-/// **Clamped to the text, once.** `byte_offset` arrives from a caller's
-/// own arithmetic — a caret index, the end of a selection range — so an
-/// offset past the end is an input case rather than a logic error. The
-/// clamp binds before `line` and `index` are derived, because clamping
-/// only the prefix would count the lines of a shorter string and then
-/// measure `index` from the raw offset, putting the cursor past the end
-/// of the line it landed on.
-fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
-    let byte_offset = byte_offset.min(text.len());
-    let prefix = &text.as_bytes()[..byte_offset];
-    let line = prefix.iter().filter(|&&b| b == b'\n').count();
-    let line_start = prefix
-        .iter()
-        .rposition(|&b| b == b'\n')
-        .map_or(0, |i| i + 1);
-    cosmic_text::Cursor::new(line, byte_offset - line_start)
+/// The lines are what cosmic split the text at — `\n`, `\r`, `\r\n` and
+/// `\n\r` alike — so a map built from them cannot disagree with the
+/// cursors cosmic hands back. Counting `\n` alone put every line after a
+/// `\r` one line early.
+///
+/// A truncated run shapes `prefix + "…"`, not its source: the shown text
+/// matches the source only up to [`Self::shown`]. Offsets inside that
+/// prefix map one to one; an offset past it maps to its end, so a hit on
+/// the ellipsis answers the cut and never a byte inside a character the
+/// buffer does not hold.
+#[derive(Debug)]
+struct LineMap<'a> {
+    buffer: &'a cosmic_text::Buffer,
+    /// Source bytes the buffer shows, from the start: the whole text, or
+    /// a truncated run's kept prefix. Always a char boundary.
+    shown: usize,
 }
 
-/// Inverse of [`cursor_from_byte`]. Walks `text` to find the
-/// `line`-th `\n` and adds `cursor.index`.
-fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
-    let line_start = if cursor.line == 0 {
-        0
-    } else {
-        match text.match_indices('\n').nth(cursor.line - 1) {
-            Some((i, _)) => i + 1,
-            None => return text.len(),
+impl<'a> LineMap<'a> {
+    fn new(buffer: &'a cosmic_text::Buffer, text: &str) -> Self {
+        let source = text.as_bytes();
+        let mut shown = 0;
+        'lines: for line in &buffer.lines {
+            for part in [line.text(), line.ending().as_str()] {
+                let common = part
+                    .bytes()
+                    .zip(&source[shown..])
+                    .take_while(|(a, b)| a == *b)
+                    .count();
+                shown += common;
+                if common < part.len() {
+                    break 'lines;
+                }
+            }
         }
-    };
-    (line_start + cursor.index).min(text.len())
+        while !text.is_char_boundary(shown) {
+            shown -= 1;
+        }
+        Self { buffer, shown }
+    }
+
+    /// The cursor at `byte_offset`, clamped to what the buffer shows.
+    /// `byte_offset` arrives from a caller's own arithmetic — a caret
+    /// index, the end of a selection range — so an offset past the end is
+    /// an input case rather than a logic error.
+    fn cursor(&self, byte_offset: usize) -> cosmic_text::Cursor {
+        let byte_offset = byte_offset.min(self.shown);
+        let last = self.buffer.lines.len().saturating_sub(1);
+        let mut start = 0;
+        for (index, line) in self.buffer.lines.iter().enumerate() {
+            let len = line.text().len();
+            let next = start + len + line.ending().as_str().len();
+            if byte_offset < next || index == last {
+                // An offset inside the line ending sits at the line's end.
+                return cosmic_text::Cursor::new(index, (byte_offset - start).min(len));
+            }
+            start = next;
+        }
+        cosmic_text::Cursor::new(0, 0)
+    }
+
+    /// The source byte `cursor` stands for — [`Self::cursor`]'s inverse.
+    fn byte(&self, cursor: cosmic_text::Cursor) -> usize {
+        let mut start = 0;
+        for line in self.buffer.lines.iter().take(cursor.line) {
+            start += line.text().len() + line.ending().as_str().len();
+        }
+        let len = self
+            .buffer
+            .lines
+            .get(cursor.line)
+            .map_or(0, |line| line.text().len());
+        (start + cursor.index.min(len)).min(self.shown)
+    }
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
 
     impl TextProbe<'_> {
@@ -482,22 +526,24 @@ pub(crate) mod test_support {
         }
     }
 
-    /// The byte↔`Cursor` mapping, which `text::tests::geometry` drives
-    /// both as a round-trip and as the oracle its selection cross-check
-    /// builds cosmic cursors with.
-    ///
-    /// Forwarded rather than re-exported: a `pub(crate) use` of a private
-    /// item is E0364, and the alternative — widening the production
-    /// functions themselves — is the reach-in this gated module exists to
-    /// keep out of production. Nothing outside this file names a cosmic
-    /// `Cursor`.
-    pub(crate) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
-        super::cursor_from_byte(text, byte_offset)
+    /// The byte↔`Cursor` mapping over a shaped `buffer`, which
+    /// `text::tests::geometry` drives both as a round trip and as the
+    /// oracle its selection cross-check builds cosmic cursors with.
+    pub(crate) fn cursor_from_byte(
+        buffer: &cosmic_text::Buffer,
+        text: &str,
+        byte_offset: usize,
+    ) -> cosmic_text::Cursor {
+        LineMap::new(buffer, text).cursor(byte_offset)
     }
 
     /// [`cursor_from_byte`]'s inverse — see there.
-    pub(crate) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
-        super::cursor_to_byte(text, cursor)
+    pub(crate) fn cursor_to_byte(
+        buffer: &cosmic_text::Buffer,
+        text: &str,
+        cursor: cosmic_text::Cursor,
+    ) -> usize {
+        LineMap::new(buffer, text).byte(cursor)
     }
 }
 

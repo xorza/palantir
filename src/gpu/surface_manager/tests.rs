@@ -1,3 +1,6 @@
+//! Present-mode classification and the surface configuration the
+//! renderer's contract demands of the adapter's capabilities.
+
 use std::num::NonZeroU32;
 
 use glam::UVec2;

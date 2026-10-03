@@ -3,16 +3,18 @@
 //! still describe this frame's forest.
 
 use crate::common::tracy;
+use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
 use crate::layout::counters::PhaseSpan;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
 use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::{Layout, intrinsic};
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
 use crate::scene::forest::Forest;
@@ -25,14 +27,14 @@ use crate::text::system::TextSystem;
 /// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
-///   Cleared at the top of every `run`.
+///   Reset per layer by `LayoutScratch::resize_for`.
 /// - `text` — per-window text shaping and reuse slots.
 /// - `cache` — cross-frame measure cache. See [`crate::layout::cache`].
 ///
 /// Per-frame *output* is **not** held here: `run` threads it through an
 /// `out: &mut Layout`, so the finalized layout is owned by the caller
 /// and read by the encoder, cascade, hit-index, scroll-state refresh,
-/// and tests. Recursive work receives only the current [`LayerLayout`](crate::layout::LayerLayout)
+/// and tests. Recursive work receives only the current [`LayerLayout`](crate::layout::layer_layout::LayerLayout)
 /// slot.
 #[derive(Debug)]
 pub(crate) struct LayoutEngine {
@@ -74,7 +76,7 @@ impl LayoutEngine {
         }
         self.cache.lookup_root_intrinsic(
             tree.records.widget_id()[idx],
-            tree.rollups.subtree[idx],
+            tree.rollups.layout_subtree[idx],
             slot,
         )
     }
@@ -90,7 +92,7 @@ impl LayoutEngine {
     /// whose min is already cached costs a max-only recursion.
     ///
     /// A walk that also covered the other axis (see
-    /// [`IntrinsicWalk`](crate::layout::intrinsic::IntrinsicWalk))
+    /// [`IntrinsicWalk`](crate::layout::intrinsic::intrinsic_walk::IntrinsicWalk))
     /// gets recorded there too, which is what keeps `measure`'s pair of
     /// min-content queries down to one pass over a leaf's text runs.
     ///
@@ -139,7 +141,7 @@ impl LayoutEngine {
             return range;
         };
         self.scratch.counters.intrinsic_computed();
-        let computed = intrinsic::compute(self, tree, node, axis, walk, interned_text);
+        let computed = walk.walk(self, tree, node, axis, interned_text);
         if let Some(sibling) = computed.sibling {
             self.record_intrinsic(idx, axis.other(), walk, sibling);
         }
@@ -274,11 +276,11 @@ impl LayoutEngine {
                 self.cache.capture_tree(
                     tree,
                     CaptureTreeInput {
-                        desired: &mut self.scratch.desired,
+                        desired: &self.scratch.desired,
                         rect: &layer_out.rect,
                         scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
-                        available_q: &mut self.scratch.available_q,
+                        available_q: &self.scratch.available_q,
                         grid_track_state: &self.scratch.grid.track_state,
                         text_spans: &layer_out.text_spans,
                         text_shapes: &layer_out.text_shapes,
@@ -311,5 +313,38 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::layout::axis::Axis;
+    use crate::layout::engine::LayoutEngine;
+    use crate::layout::intrinsic::len_req::{LenReq, SLOT_COUNT};
+    use crate::scene::forest::Forest;
+    use crate::scene::layer::Layer;
+    use crate::scene::tree::node_id::NodeId;
+
+    impl LayoutEngine {
+        /// [`Self::intrinsic`] on `forest`'s main tree, interning its
+        /// text along the way — the whole query a test makes of a frame
+        /// it just ran.
+        pub(crate) fn main_intrinsic(
+            &mut self,
+            forest: &Forest,
+            node: NodeId,
+            axis: Axis,
+            req: LenReq,
+        ) -> f32 {
+            let interned_text = forest.record_store.interned_text();
+            self.intrinsic(&forest.trees[Layer::Main], node, axis, req, &interned_text)
+        }
+
+        /// Drop every cached intrinsic and zero the compute counter, so
+        /// the next query computes from scratch and counts only itself.
+        pub(crate) fn forget_intrinsics(&mut self) {
+            self.scratch.intrinsics.fill([f32::NAN; SLOT_COUNT]);
+            self.scratch.counters.reset_intrinsic_computes();
+        }
     }
 }

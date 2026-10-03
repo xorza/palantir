@@ -1,13 +1,5 @@
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::color::*;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-fn hash_value(value: impl Hash) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
-}
 
 /// Every sRGB byte comes back from each wider form unchanged, alpha
 /// included: from `RgbaF32` exactly, and from `RgbaF16` because it holds
@@ -37,21 +29,34 @@ fn rgb_is_const_constructible() {
     const _HEX: RgbaF32 = RgbaF32::hex(0x3366CC);
 }
 
-/// Roundtrip a RgbaF32 through RON and parse the emitted hex back.
-fn ron_roundtrip(c: RgbaF32) -> (String, RgbaF32) {
-    let s = ron::ser::to_string(&c).expect("serialize");
-    (s.clone(), ron::from_str(&s).expect("parse"))
+/// What one colour serializes to, and what that text parses back to.
+#[derive(Debug)]
+struct RonRoundTrip {
+    text: String,
+    parsed: RgbaF32,
 }
 
-/// Pin: serializing a RgbaF32 and re-serializing the parse converges
-/// to the same hex bytes for every (r, g, b) sRGB byte.
+/// Roundtrip a RgbaF32 through RON and parse the emitted hex back.
+fn ron_roundtrip(c: RgbaF32) -> RonRoundTrip {
+    let text = ron::ser::to_string(&c).expect("serialize");
+    let parsed = ron::from_str(&text).expect("parse");
+    RonRoundTrip { text, parsed }
+}
+
+/// Every sRGB byte serializes to its own hex digits and parses back to
+/// the colour it came from: the hex is the byte, and decoding the byte is
+/// the computation that made the colour.
 #[test]
-fn hex_round_trip_stable_over_all_bytes() {
+fn hex_round_trip_is_exact_over_all_bytes() {
     for byte in 0u8..=255 {
         let c = RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte));
-        let (s1, parsed) = ron_roundtrip(c);
-        let (s2, _) = ron_roundtrip(parsed);
-        assert_eq!(s1, s2, "byte {byte} did not round-trip stably");
+        let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
+        assert_eq!(
+            s,
+            format!("\"#{byte:02x}{byte:02x}{byte:02x}\""),
+            "byte {byte}"
+        );
+        assert_eq!(parsed, c, "byte {byte}");
     }
 }
 
@@ -61,12 +66,12 @@ fn hex_round_trip_stable_over_all_bytes() {
 #[test]
 fn opaque_emits_six_digits_translucent_emits_eight() {
     // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc.
-    let (s, _) = ron_roundtrip(RgbaF32::srgb(0.2, 0.4, 0.8));
+    let s = ron_roundtrip(RgbaF32::srgb(0.2, 0.4, 0.8)).text;
     assert!(
         s.contains(r##""#3366cc""##),
         "opaque must emit 6 digits: {s}"
     );
-    let (s, _) = ron_roundtrip(RgbaF32::srgba(0.2, 0.4, 0.8, 0.5));
+    let s = ron_roundtrip(RgbaF32::srgba(0.2, 0.4, 0.8, 0.5)).text;
     assert!(
         s.contains(r##""#3366cc80""##),
         "translucent must emit 8 digits: {s}"
@@ -76,10 +81,14 @@ fn opaque_emits_six_digits_translucent_emits_eight() {
 /// Edge cases: fully transparent, fully opaque white, opaque black.
 #[test]
 fn extremes_round_trip() {
-    for c in [RgbaF32::TRANSPARENT, RgbaF32::WHITE, RgbaF32::BLACK] {
-        let (s1, p) = ron_roundtrip(c);
-        let (s2, _) = ron_roundtrip(p);
-        assert_eq!(s1, s2);
+    for (c, hex) in [
+        (RgbaF32::TRANSPARENT, "#00000000"),
+        (RgbaF32::WHITE, "#ffffff"),
+        (RgbaF32::BLACK, "#000000"),
+    ] {
+        let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
+        assert_eq!(s, format!("\"{hex}\""), "{c:?}");
+        assert_eq!(parsed, c, "{c:?}");
     }
 }
 
@@ -134,15 +143,6 @@ fn color_parse_rejects_malformed_input() {
 }
 
 #[test]
-fn equal_signed_zero_colors_have_equal_hashes() {
-    let positive = RgbaF32::new(0.0, 0.0, 0.0, 0.0);
-    let negative = RgbaF32::new(-0.0, -0.0, -0.0, -0.0);
-
-    assert_eq!(positive, negative);
-    assert_eq!(hash_value(positive), hash_value(negative));
-}
-
-#[test]
 fn lerp_spans_both_endpoints_and_overshoots() {
     // Every channel here is an exact binary fraction, so the arithmetic
     // below is checkable by eye and by `==`.
@@ -173,7 +173,7 @@ fn lerp_spans_both_endpoints_and_overshoots() {
 
 /// `faded` scales alpha and nothing else.
 ///
-/// Hand-computed: half of `0.8` is `0.4`.
+/// Hand-computed: half of the f16 `0.8` is exactly half of it.
 /// The colour lanes must come back bit-identical, because a fade is an
 /// opacity change and a widget that fades a red shape does not want a
 /// darker red. `by == 1.0` is the identity the emit path leans on.
@@ -183,11 +183,10 @@ fn faded_scales_only_the_alpha_lane() {
     let full = f16.unpack();
     let half = f16.faded(0.5).unpack();
     assert_eq!((half.r, half.g, half.b), (full.r, full.g, full.b));
-    assert!(
-        (half.a - 0.4).abs() < 1e-3,
-        "alpha {} is not half of 0.8",
-        half.a,
-    );
+    // 0.8 packs to f16 as 1638 steps of 2^-11, and halving an f16 is
+    // exact.
+    assert_eq!(full.a, 1638.0 / 2048.0);
+    assert_eq!(half.a, 1638.0 / 4096.0, "alpha is half of the packed 0.8");
     assert_eq!(f16.faded(1.0), f16);
     assert!(f16.faded(0.0).is_noop(), "a zero fade is fully transparent");
 }

@@ -39,7 +39,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         )
     }
 
-    /// Construct an index buffer for items of type `T` (typically `u16`).
+    /// Construct an index buffer for items of type `T`.
     /// `INDEX | COPY_DST` usage.
     pub(super) fn index(
         device: &wgpu::Device,

@@ -7,12 +7,19 @@ use crate::common::content_hash::ContentHash;
 use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::input::response::response_state::ResponseState;
 use crate::input::target_scroll_delta::TargetScrollDelta;
-use crate::layout::ShapedText;
 use crate::layout::cache::MeasureSnapshot;
+use crate::layout::shaped_text::ShapedText;
+use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
+use crate::primitives::corners::Corners;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::recorded_text::RecordedText;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -31,7 +38,7 @@ use crate::renderer::render_buffer::image::ImageInstance;
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::mesh::MeshInstance;
 use crate::renderer::render_buffer::text::TextDrawRow;
-use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
 use crate::scene::cascade::entry::{EntryRow, HitRow};
 use crate::scene::cascade::paint::Paint;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
@@ -42,7 +49,9 @@ use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
+use crate::scene::shapes::paint::chrome_row::ChromeRow;
+use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
+use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::node_record::NodeRecord;
@@ -100,7 +109,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 6032;
+const UI_SIZE: usize = 6296;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -112,7 +121,7 @@ const UI_SIZE: usize = 6032;
 /// cell are zero-sized in a release build, which leaves a shipped
 /// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
 /// the production footprint.
-const FRAME_ENGINES_SIZE: usize = 1504;
+const FRAME_ENGINES_SIZE: usize = 1760;
 
 /// Single source of truth for the per-frame hot-struct inventory.
 /// Each entry is `pin::<Type>("name", expected_size, expected_align)`.
@@ -154,7 +163,11 @@ const PINS: &[Pin] = &[
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 64, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
+    // Sense (5 bits), disabled (1), clip (2), focusable (1) and the key
+    // scope (5): 14 bits, past a `u8`, with 2 spare in the `u16`.
     pin::<NodeFlags>("scene::NodeFlags", 2, 2),
+    pin::<LayoutMode>("layout::LayoutMode", 4, 2),
+    pin::<PackedLayoutMeta>("layout::PackedLayoutMeta", 4, 4),
     pin::<ExtrasIdx>("scene::ExtrasIdx", 6, 2),
     pin::<BoundsExtras>("scene::BoundsExtras", 32, 4),
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
@@ -167,6 +180,20 @@ const PINS: &[Pin] = &[
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
     pin::<Background>("primitives::Background", 124, 4),
+    // Align 2, not 8, so embedding either inside `Quad` does not raise
+    // `Quad`'s alignment above 4 and add the trailing pad bytes that
+    // break its `Pod` no-padding contract.
+    pin::<Spacing>("primitives::Spacing", 8, 2),
+    pin::<Corners>("primitives::Corners", 8, 2),
+    // `LinearGradient` is stored inline on every `Brush::Linear`, so it
+    // sets the floor for `Brush`, `Background.fill`, and every shape
+    // carrying a brush. The stops are 1 (len) + `MAX_STOPS` × 5 (a `u8`
+    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interp) with
+    // no padding; the gradient adds 4 (angle), 1 (spread) and 1 tail pad
+    // to align 4.
+    pin::<GradientStops>("brush::GradientStops", 1 + 5 * MAX_STOPS, 1),
+    pin::<ColorRamp>("brush::ColorRamp", 1 + 5 * MAX_STOPS + 1, 1),
+    pin::<LinearGradient>("brush::LinearGradient", 48, 4),
     pin::<Brush>("primitives::Brush", 60, 4),
     pin::<Span>("layout::Span", 8, 4),
     pin::<Button<'static>>("widgets::Button", 160, 8),
@@ -199,7 +226,7 @@ const PINS: &[Pin] = &[
     pin::<ShapedText>("layout::ShapedText", 32, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 312, 8),
-    pin::<AnimRow<AnimatedLook>>("animation::AnimRow<AnimatedLook>", 488, 8),
+    pin::<AnimRow<AnimatedLook>>("animation::AnimRow<AnimatedLook>", 496, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),
@@ -224,11 +251,11 @@ const PINS: &[Pin] = &[
     pin::<MeshInstance>("renderer::MeshInstance", 20, 4),
     pin::<ImageInstance>("renderer::ImageInstance", 44, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
-    pin::<RasterQuad>("atlas::RasterQuad", 24, 4),
+    pin::<RasterQuad>("atlas::RasterQuad", 28, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
     pin::<TextDrawRow>("renderer::TextDrawRow", 72, 8),
-    pin::<IconDrawRow>("renderer::IconDrawRow", 28, 4),
+    pin::<IconDrawRow>("renderer::IconDrawRow", 32, 4),
     pin::<ImageDrawRow>("renderer::ImageDrawRow", 56, 8),
     pin::<MeshDrawRow>("renderer::MeshDrawRow", 36, 4),
 ];

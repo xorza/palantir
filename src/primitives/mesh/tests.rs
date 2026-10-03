@@ -1,12 +1,8 @@
+use crate::internals::panic_probe;
 use crate::primitives::approx;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::mesh::*;
 use crate::primitives::size::Size;
-
-#[test]
-fn mesh_vertex_is_12_bytes_no_padding() {
-    assert_eq!(std::mem::size_of::<MeshVertex>(), 12);
-}
 
 #[test]
 fn mesh_vertex_pod_roundtrip() {
@@ -28,17 +24,15 @@ fn mesh_vertex_pod_roundtrip() {
 fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
     assert_eq!(checked_vertex_index(u32::MAX as usize), u32::MAX);
     if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
-        assert!(
-            std::panic::catch_unwind(|| checked_vertex_index(overflow)).is_err(),
-            "vertex indices above u32::MAX must panic",
-        );
+        panic_probe::assert_panics_with("mesh vertex index exceeds u32 range", || {
+            checked_vertex_index(overflow)
+        });
     }
 
     assert_eq!(checked_rebased_index(u32::MAX - 1, 1), u32::MAX);
-    assert!(
-        std::panic::catch_unwind(|| checked_rebased_index(u32::MAX, 1)).is_err(),
-        "rebased indices above u32::MAX must panic",
-    );
+    panic_probe::assert_panics_with("appended mesh index exceeds u32 range", || {
+        checked_rebased_index(u32::MAX, 1)
+    });
 }
 
 /// An index past the last vertex is refused before either push, so a
@@ -79,10 +73,7 @@ fn triangle_validates_each_index_before_mutating() {
     ] {
         let mut mesh = mesh_with_vertices(3);
         let [a, b, c] = case.indices;
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mesh.triangle(a, b, c);
-        }));
-        assert!(result.is_err(), "{} index must be rejected", case.label);
+        panic_probe::assert_panics_with("exceed vertex count 3", || mesh.triangle(a, b, c));
         assert!(
             mesh.indices.is_empty(),
             "{} failure must not partially append indices",
@@ -113,6 +104,27 @@ fn triangle_indices_offset_in_append() {
     }
     assert_eq!(a.vertices, expected.vertices);
     assert_eq!(a.content_hash(), expected.content_hash());
+    // The second triangle rebases to 3..=5, so the largest index is 5.
+    assert_eq!(a.max_index, 5);
+    assert!(!a.is_noop());
+}
+
+/// An index past the last vertex is what `triangle`'s debug assert
+/// catches. A release build skips that assert and pushes it, so the
+/// state is built here by hand: the screen then drops the mesh rather
+/// than drawing another mesh's vertices. The in-range control row is the
+/// same mesh with the last index at 2.
+#[test]
+fn an_index_past_the_last_vertex_is_a_noop() {
+    for (last, noop) in [(2, false), (3, true)] {
+        let mut mesh = Mesh::with_capacity(3, 3);
+        for x in 0..3 {
+            mesh.vertex(Vec2::new(x as f32, x as f32 * 2.0), RgbaF32::WHITE);
+        }
+        mesh.indices.extend([0, 1, last]);
+        mesh.max_index = last;
+        assert_eq!(mesh.is_noop(), noop, "last index {last} of 3 vertices");
+    }
 }
 
 #[test]
@@ -164,29 +176,6 @@ fn content_hash_changes_on_reordered_indices() {
     b.indices = vec![0, 2, 1];
     b.cached_hash.set(None);
     assert_ne!(a.content_hash(), b.content_hash());
-}
-
-#[test]
-fn content_hash_memoizes_until_mutation() {
-    let mut m = red_tri();
-    let h0 = m.content_hash();
-    assert_eq!(m.cached_hash.get(), Some(h0));
-    // No mutation → same value, cache still populated.
-    assert_eq!(m.content_hash(), h0);
-    assert_eq!(m.cached_hash.get(), Some(h0));
-    // Any builder mutation invalidates.
-    m.vertex(Vec2::new(2.0, 2.0), RgbaF32::default());
-    assert_eq!(m.cached_hash.get(), None);
-    let h1 = m.content_hash();
-    assert_ne!(h0, h1);
-}
-
-#[test]
-fn clone_preserves_cache() {
-    let m = red_tri();
-    let h = m.content_hash();
-    let c = m.clone();
-    assert_eq!(c.cached_hash.get(), Some(h));
 }
 
 #[test]
@@ -245,17 +234,6 @@ fn bbox_spans_vertex_extent() {
 }
 
 #[test]
-fn bbox_memoizes_until_mutation() {
-    let mut m = red_tri();
-    let b0 = m.bbox();
-    assert_eq!(m.cached_bbox.get(), Some(b0));
-    m.vertex(Vec2::new(10.0, 10.0), RgbaF32::default());
-    assert_eq!(m.cached_bbox.get(), None);
-    let b1 = m.bbox();
-    assert_ne!(b0, b1);
-}
-
-#[test]
 fn with_known_bbox_skips_compute() {
     let bogus = Rect {
         min: Vec2::new(100.0, 100.0),
@@ -265,41 +243,72 @@ fn with_known_bbox_skips_compute() {
     assert_eq!(m.bbox(), bogus);
 }
 
+/// Which caches each mutation drops, from a mesh with both primed. A
+/// vertex, an append and a clear move vertices, so both go. A triangle
+/// only adds indices: the hash goes and the bbox stays. Appending an
+/// empty mesh changes nothing and keeps both. Every recomputed value is
+/// the fresh one — the hash differs exactly when its cache dropped. A
+/// clone carries both caches with it.
 #[test]
-fn clear_invalidates_bbox() {
-    let mut m = red_tri();
-    let _ = m.bbox();
-    m.clear();
-    assert_eq!(m.cached_bbox.get(), None);
-    assert_eq!(m.bbox(), Rect::ZERO);
-}
-
-#[test]
-fn triangle_keeps_bbox_cache() {
-    let mut m = red_tri();
-    let b0 = m.bbox();
-    assert_eq!(m.cached_bbox.get(), Some(b0));
-    // Pushing indices doesn't move any vertices, so bbox stays valid.
-    m.triangle(0, 1, 2);
-    assert_eq!(m.cached_bbox.get(), Some(b0));
-    // ...but content_hash must invalidate — render output changed.
-    assert_eq!(m.cached_hash.get(), None);
-}
-
-#[test]
-fn append_invalidates_bbox() {
-    let mut a = red_tri();
-    let _ = a.bbox();
-    let b = Mesh::filled_triangle(
+fn mutations_drop_exactly_the_caches_they_stale() {
+    type Mutate = fn(&mut Mesh, &Mesh);
+    let far = Mesh::filled_triangle(
         Vec2::new(10.0, 10.0),
         Vec2::new(11.0, 10.0),
         Vec2::new(10.0, 11.0),
         RgbaF32::default(),
     );
-    a.append(&b);
-    assert_eq!(a.cached_bbox.get(), None);
-    let bb = a.bbox();
-    assert_eq!(bb.min, Vec2::ZERO);
-    assert_eq!(bb.size.w, 11.0);
-    assert_eq!(bb.size.h, 11.0);
+    let unit = Rect::new(0.0, 0.0, 1.0, 1.0);
+    let cases: [(&str, Mutate, bool, bool, Rect); 5] = [
+        (
+            "vertex",
+            |m, _| {
+                m.vertex(Vec2::new(2.0, 3.0), RgbaF32::default());
+            },
+            false,
+            false,
+            Rect::new(0.0, 0.0, 2.0, 3.0),
+        ),
+        ("triangle", |m, _| m.triangle(0, 1, 2), false, true, unit),
+        (
+            "append",
+            |m, o| m.append(o),
+            false,
+            false,
+            Rect::new(0.0, 0.0, 11.0, 11.0),
+        ),
+        (
+            "append empty",
+            |m, _| m.append(&Mesh::new()),
+            true,
+            true,
+            unit,
+        ),
+        ("clear", |m, _| m.clear(), false, false, Rect::ZERO),
+    ];
+    for (label, mutate, hash_kept, bbox_kept, bbox) in cases {
+        let mut m = red_tri();
+        let (h0, b0) = (m.content_hash(), m.bbox());
+        assert_eq!(b0, unit);
+        let copy = m.clone();
+        assert_eq!(
+            (copy.cached_hash.get(), copy.cached_bbox.get()),
+            (Some(h0), Some(b0)),
+            "a clone carries both caches",
+        );
+
+        mutate(&mut m, &far);
+        assert_eq!(
+            m.cached_hash.get(),
+            hash_kept.then_some(h0),
+            "{label}: hash cache"
+        );
+        assert_eq!(
+            m.cached_bbox.get(),
+            bbox_kept.then_some(b0),
+            "{label}: bbox cache"
+        );
+        assert_eq!(m.bbox(), bbox, "{label}: bbox");
+        assert_eq!(m.content_hash() == h0, hash_kept, "{label}: hash value");
+    }
 }

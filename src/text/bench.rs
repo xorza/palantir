@@ -1,5 +1,5 @@
 use crate::bench::Run;
-use crate::layout::ShapedText;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::text::cosmic::shaped_buffer_cache;
@@ -9,7 +9,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
-use crate::text::request::test_support::TestShape;
+use crate::text::request::internals::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
@@ -55,19 +55,13 @@ const LEADING_RATIO: f32 = 1.2;
 /// fixture the in-tree tests describe a face with — `bench` implies
 /// `internals`, so this side gets it too rather than re-deriving the
 /// constants per helper.
-const UI_FACE: TestShape = TestShape {
-    font: GlyphFont {
-        size_px: 14.0,
-        line_height_px: 14.0 * LEADING_RATIO,
-        family: FontFamily::SANS,
-        weight: FontWeight::REGULAR,
-        slant: FontSlant::Normal,
-    },
-    #[cfg(test)]
-    max_width_px: None,
-    #[cfg(test)]
-    halign: HAlign::Auto,
-};
+const UI_FACE: TestShape = TestShape::new(GlyphFont {
+    size_px: 14.0,
+    line_height_px: 14.0 * LEADING_RATIO,
+    family: FontFamily::SANS,
+    weight: FontWeight::REGULAR,
+    slant: FontSlant::Normal,
+});
 
 fn measure_truncated_width(
     text_system: &mut TextSystem,

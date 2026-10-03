@@ -173,6 +173,7 @@ fn ns_to_ms(ns: u64) -> f32 {
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::gpu_pass_stats::*;
+    use strum::IntoEnumIterator as _;
 
     #[test]
     fn starts_uninit() {
@@ -183,14 +184,16 @@ mod tests {
         assert_eq!(s.last_main_pass_cpu_ms(), None);
     }
 
+    /// `ns as f32 / 1e6` is one correctly rounded division, so each
+    /// reading is the f32 nearest the exact quotient — the literal itself.
     #[test]
     fn handle_clones_share_state() {
         let a = GpuPassStats::default();
         let b = a.clone();
         a.record_pass_ns(3_500_000);
         a.record_main_pass_cpu_ns(250_000);
-        assert!((b.last_pass_ms().unwrap() - 3.5).abs() < 1e-4);
-        assert!((b.last_main_pass_cpu_ms().unwrap() - 0.25).abs() < 1e-4);
+        assert_eq!(b.last_pass_ms().unwrap(), 3.5);
+        assert_eq!(b.last_main_pass_cpu_ms().unwrap(), 0.25);
     }
 
     #[test]
@@ -201,10 +204,10 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_pass_ns(1_000_000);
         s.record_pass_ns(5_000_000);
-        assert!((s.last_pass_ms().unwrap() - 5.0).abs() < 1e-4);
+        assert_eq!(s.last_pass_ms().unwrap(), 5.0);
         s.record_main_pass_cpu_ns(80_000);
         s.record_main_pass_cpu_ns(20_000);
-        assert!((s.last_main_pass_cpu_ms().unwrap() - 0.02).abs() < 1e-4);
+        assert_eq!(s.last_main_pass_cpu_ms().unwrap(), 0.02);
     }
 
     #[test]
@@ -212,8 +215,8 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_kind_ns(BatchKind::Quads, 1_500_000);
         s.record_kind_ns(BatchKind::Text, 500_000);
-        assert!((s.last_kind_ms(BatchKind::Quads).unwrap() - 1.5).abs() < 1e-4);
-        assert!((s.last_kind_ms(BatchKind::Text).unwrap() - 0.5).abs() < 1e-4);
+        assert_eq!(s.last_kind_ms(BatchKind::Quads).unwrap(), 1.5);
+        assert_eq!(s.last_kind_ms(BatchKind::Text).unwrap(), 0.5);
         assert_eq!(s.last_kind_ms(BatchKind::Mesh), None);
         // Total isn't auto-populated from per-kind.
         assert_eq!(s.last_pass_ms(), None);
@@ -226,10 +229,28 @@ mod tests {
     fn clear_kinds_resets_to_none() {
         // Pin: a category that ran last frame but not this one shows
         // `None`, not the stale previous-frame value.
+        // The pass total, the CPU time and the pipeline stats are other
+        // producers' values, so clearing the kinds leaves them alone.
         let s = GpuPassStats::default();
+        let stats = PipelineStats {
+            vertex_shader_invocations: 1,
+            clipper_invocations: 2,
+            clipper_primitives_out: 3,
+            fragment_shader_invocations: 4,
+            compute_shader_invocations: 0,
+        };
         s.record_kind_ns(BatchKind::Quads, 2_000_000);
+        s.record_kind_ns(BatchKind::Text, 1_000_000);
+        s.record_pass_ns(3_000_000);
+        s.record_main_pass_cpu_ns(500_000);
+        s.record_pipeline_stats(stats);
         s.clear_kinds();
-        assert_eq!(s.last_kind_ms(BatchKind::Quads), None);
+        for kind in BatchKind::iter() {
+            assert_eq!(s.last_kind_ms(kind), None, "{kind:?}");
+        }
+        assert_eq!(s.last_pass_ms(), Some(3.0));
+        assert_eq!(s.last_main_pass_cpu_ms(), Some(0.5));
+        assert_eq!(s.last_pipeline_stats(), Some(stats));
     }
 
     #[test]
@@ -238,14 +259,12 @@ mod tests {
         // the camel-case, no underscore. Adding a new variant breaks
         // this only if its name uses a multi-word form the lowercase
         // rule would mangle — choose names that round-trip cleanly.
-        assert_eq!(BatchKind::Setup.label(), "setup");
-        assert_eq!(BatchKind::PreClear.label(), "preclear");
-        assert_eq!(BatchKind::Mask.label(), "mask");
-        assert_eq!(BatchKind::Quads.label(), "quads");
-        assert_eq!(BatchKind::Text.label(), "text");
-        assert_eq!(BatchKind::Mesh.label(), "mesh");
-        assert_eq!(BatchKind::Image.label(), "image");
-        assert_eq!(BatchKind::Curve.label(), "curve");
+        let mut labelled = 0;
+        for kind in BatchKind::iter() {
+            assert_eq!(kind.label(), format!("{kind:?}").to_lowercase(), "{kind:?}");
+            labelled += 1;
+        }
+        assert_eq!(labelled, BatchKind::COUNT, "every variant iterated");
     }
 
     #[test]

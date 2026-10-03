@@ -1,15 +1,15 @@
 use crate::bench::Run;
 use crate::display::Display;
-use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::input::sense::Sense;
+use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
-use crate::scene::cascade::engine;
+use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::engine::CascadeEngine;
 use crate::scene::cascade::entry::{EntryRow, HitRow};
-use crate::ui::harness::UiHarness;
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
@@ -136,6 +136,7 @@ impl CascadeRunFixture {
             first.ui.forest(),
             first.ui.layout_tables(),
             display,
+            &key_of(&first, display),
             &mut cascade,
         );
         Self {
@@ -158,6 +159,7 @@ impl CascadeRunFixture {
             source.ui.forest(),
             source.ui.layout_tables(),
             self.display,
+            &key_of(source, self.display),
             &mut self.cascade,
         );
         self.use_second = !self.use_second;
@@ -169,16 +171,26 @@ impl CascadeRunFixture {
         } else {
             &self.first
         };
-        let layout_hashes = engine::layout_hashes(source.ui.forest(), source.ui.layout_tables());
         self.engine.run_full(
             source.ui.forest(),
             source.ui.layout_tables(),
             self.display,
+            &key_of(source, self.display),
             &mut self.cascade,
-            &layout_hashes,
         );
         self.use_second = !self.use_second;
     }
+}
+
+/// The key the frame builds before each run, built here per run too so
+/// the measured cost is what a frame pays.
+fn key_of(h: &UiHarness, display: Display) -> CascadeKey {
+    CascadeKey::new(
+        h.ui.forest(),
+        h.ui.layout_tables(),
+        display,
+        h.ui.font_epoch(),
+    )
 }
 
 fn record_fixture(mut state: FrameFixture) -> UiHarness {

@@ -2,8 +2,9 @@
 //! written in.
 
 use crate::animation::animatable::Animatable;
-use crate::scene::tree::paint_anims::PaintMod;
+use crate::primitives::approx::FloatHash;
 use crate::scene::tree::paint_anims::curves;
+use crate::scene::tree::paint_anims::paint_mod::PaintMod;
 use std::f32::consts::TAU;
 use std::num::NonZeroU32;
 use std::time::Duration;
@@ -16,7 +17,7 @@ use std::time::Duration;
 /// with no accumulator, so a dropped frame or an irregular `dt` must not
 /// make the animation drift.
 ///
-/// The crate ships [`curves`](crate::widget::curves); anything else is a function
+/// The crate ships [`curves`]; anything else is a function
 /// the caller writes.
 pub type PaintCurve = fn(f32) -> f32;
 
@@ -140,7 +141,50 @@ pub struct PaintAnim {
 }
 
 impl PaintAnim {
-    /// One pass of [`curves::linear`](crate::widget::curves::linear) over a
+    /// Feed what this animation paints into `h`: the channel, the timing
+    /// and the curve — everything the sampled modifier at a given time
+    /// depends on.
+    ///
+    /// The curve goes in by address. That is no identity for equality,
+    /// but it is a sound change signal: two curves the linker folds to one
+    /// address have the same code and paint alike, and one curve seen at
+    /// two addresses only repaints a frame it need not have.
+    pub(crate) fn hash_static(&self, h: &mut impl std::hash::Hasher) {
+        let PaintChannel { alpha, turn } = self.channel;
+        for range in [alpha, turn] {
+            match range {
+                Some((from, to)) => {
+                    h.write_u8(1);
+                    from.hash_eq(h);
+                    to.hash_eq(h);
+                }
+                None => h.write_u8(0),
+            }
+        }
+        let PaintTiming {
+            started_at,
+            period,
+            repeat,
+            steps,
+        } = self.timing;
+        h.write_u128(started_at.as_nanos());
+        h.write_u128(period.as_nanos());
+        match repeat {
+            PaintRepeat::Once => h.write_u8(0),
+            PaintRepeat::Forever => h.write_u8(1),
+            PaintRepeat::Settle(after) => {
+                h.write_u8(2);
+                h.write_u128(after.as_nanos());
+            }
+        }
+        match steps {
+            PaintSteps::Continuous => h.write_u32(0),
+            PaintSteps::Steps(n) => h.write_u32(n.get()),
+        }
+        h.write_usize(self.curve as usize);
+    }
+
+    /// One pass of [`curves::linear`] over a
     /// one-second period, driving nothing. The builders below name a
     /// channel and adjust the timing.
     fn new(channel: PaintChannel) -> Self {
@@ -227,7 +271,7 @@ impl PaintAnim {
     }
 
     /// The shape of one pass. Any `fn(f32) -> f32` over `0.0..=1.0`,
-    /// including the ones in [`curves`](crate::widget::curves).
+    /// including the ones in [`curves`].
     pub fn curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self

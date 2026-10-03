@@ -1,3 +1,4 @@
+use crate::widgets::text_edit::input_pass::internals::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -123,12 +124,7 @@ struct ExternalReplacementCase {
 #[test]
 fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
     fn word_nav(key: Key) -> KeyPress {
-        let mut keypress = press(key);
-        match PLATFORM {
-            Platform::Mac => keypress.mods.alt = true,
-            _ => keypress.mods.ctrl = true,
-        }
-        keypress
+        KeyPress::with(key, WORD_NAV)
     }
 
     let cases = [
@@ -285,6 +281,47 @@ fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>)
     apply_editor_key(&mut Editor::new(s, state, false, max), press(Key::Char(c)));
 }
 
+/// The cap reaches the widget, not only the editor: through `show`,
+/// typed keys stop at `max_chars`, and a paste is truncated to what
+/// fits — "ab" capped at 5 takes "cd" typed, then one char of "xyz".
+#[test]
+fn max_chars_caps_typing_and_paste_through_show() {
+    let id = WidgetId::from_hash("capped");
+    let record = |ui: &mut Ui, buf: &mut String| {
+        TextEdit::new(buf)
+            .id(id)
+            .max_chars(5)
+            .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+            .show(ui);
+    };
+    let mut h = UiHarness::new(SMALL);
+    let mut buf = String::from("ab");
+    h.frame(|ui| record(ui, &mut buf));
+    h.click_on(id);
+    h.frame(|ui| record(ui, &mut buf));
+    h.ui.state_or_default::<TextEditState>(id).edit.caret = 2;
+
+    for c in ['c', 'd'] {
+        h.key(Key::Char(c));
+        h.frame(|ui| record(ui, &mut buf));
+    }
+    assert_eq!(buf, "abcd", "typing below the cap lands");
+
+    h.set_clipboard_text("xyz");
+    h.set_modifiers(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    });
+    h.key(Key::Char('v'));
+    h.frame(|ui| record(ui, &mut buf));
+    assert_eq!(buf, "abcdx", "the paste is cut to the one char that fits");
+
+    h.set_modifiers(Modifiers::NONE);
+    h.key(Key::Char('q'));
+    h.frame(|ui| record(ui, &mut buf));
+    assert_eq!(buf, "abcdx", "at the cap a typed key is dropped");
+}
+
 #[test]
 fn max_chars_caps_typed_input() {
     // Cap at 3: the first three land, the fourth is dropped.
@@ -311,6 +348,81 @@ fn max_chars_caps_typed_input() {
     assert_eq!(state.caret, 2);
     assert_eq!(state.selection, None);
     assert_eq!(state.char_count, Some(3));
+
+    // No room at all — a cap of 0 — drops the insertion whole: the
+    // selection it would have replaced stays, text and range alike.
+    let mut s = String::from("abc");
+    let mut state = EditState {
+        caret: 2,
+        selection: Some(0),
+        ..EditState::default()
+    };
+    type_char(&mut s, &mut state, 'X', Some(0));
+    assert_eq!(s, "abc", "the rejected insertion deleted nothing");
+    assert_eq!((state.caret, state.selection), (2, Some(0)));
+}
+
+/// Ctrl+Home and Ctrl+End jump to the document's ends in a multi-line
+/// editor, where plain Home and End mean the visual line's.
+#[test]
+fn ctrl_home_and_end_reach_the_document_ends() {
+    let mut s = String::from("one\ntwo\nthree");
+    let mut state = EditState {
+        caret: 5,
+        ..EditState::default()
+    };
+    let key = |s: &mut String, state: &mut EditState, kp: KeyPress| {
+        apply_editor_key(&mut Editor::new(s, state, true, None), kp)
+    };
+    assert_eq!(
+        key(&mut s, &mut state, ctrl_press(Key::End)),
+        KeyOutcome::None
+    );
+    assert_eq!(state.caret, s.len());
+    assert_eq!(
+        key(&mut s, &mut state, ctrl_press(Key::Home)),
+        KeyOutcome::None
+    );
+    assert_eq!(state.caret, 0);
+    assert_eq!(
+        key(&mut s, &mut state, press(Key::End)),
+        KeyOutcome::LineEdge {
+            end: true,
+            extend: false
+        },
+        "plain End is still the visual line's",
+    );
+}
+
+/// macOS's line chords — Cmd is `Modifiers::ctrl` there: Cmd+Right goes
+/// to the end of a single line, Cmd+Left to its start, and Cmd+Backspace
+/// deletes back to the line's start. Elsewhere Ctrl+Arrow is the word
+/// chord and Ctrl+Backspace deletes one grapheme.
+#[test]
+fn line_chords_follow_the_platform() {
+    let mut s = String::from("one two");
+    let mut state = EditState::default();
+    apply_key(&mut s, &mut state, ctrl_press(Key::ArrowRight));
+    let want = if PLATFORM == Platform::Mac { 7 } else { 3 };
+    assert_eq!(state.caret, want, "to the line end, or past the first word");
+    state.caret = 5;
+    apply_key(&mut s, &mut state, ctrl_press(Key::ArrowLeft));
+    let want = if PLATFORM == Platform::Mac { 0 } else { 4 };
+    assert_eq!(state.caret, want, "to the line start, or the word start");
+
+    // The caret after `two `, on the second line.
+    let mut s = String::from("one\ntwo three");
+    let mut state = EditState {
+        caret: 8,
+        ..EditState::default()
+    };
+    apply_key(&mut s, &mut state, ctrl_press(Key::Backspace));
+    let want = if PLATFORM == Platform::Mac {
+        "one\nthree"
+    } else {
+        "one\ntwothree"
+    };
+    assert_eq!(s, want);
 }
 
 #[test]

@@ -140,7 +140,7 @@ impl ScrollAxes {
     ///
     /// This is the **max**-content rule, and only that. A panned axis'
     /// *min*-content stays zero whatever the fit flag says:
-    /// `resolve_sizing` floors a node's own size with its min-content
+    /// `AxisSlot::resolve` floors a node's own size with its min-content
     /// intrinsic, and shrinking below the content is precisely what
     /// scrolling is for — floor a `Hug` scroll at its content and it pins
     /// itself open, ignoring both `max_size` and the space its parent

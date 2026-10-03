@@ -1,6 +1,6 @@
 //! Shaped text records consumed by the native text backend.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::urect::URect;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
@@ -34,8 +34,8 @@ pub(crate) struct TextDrawRow {
     pub(crate) color: RgbaF16,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time
-    /// and snapped to a log-multiplicative ladder
-    /// (`composer::snap_text_scale`). `1.0` outside any transformed
+    /// and snapped to an additive ladder of `TEXT_SCALE_STEP` rungs
+    /// (`composer::geometry::snap_text_scale`). `1.0` outside any transformed
     /// subtree. Multiplied into the text backend's per-`TextArea.scale`, which
     /// cosmic-text mixes into its glyph `CacheKey` (`font_size * scale`),
     /// so every distinct value here mints a fresh swash rasterization +

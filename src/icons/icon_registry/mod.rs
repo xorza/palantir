@@ -279,8 +279,10 @@ impl IconRegistry {
         self.inner.borrow().epoch
     }
 
-    /// The set in table slot `slot` — `None` where the slot is free or
-    /// past the table's end.
+    /// The set in table slot `slot` — `None` where the slot holds no
+    /// table, holds one whose last owner has dropped it (released, and
+    /// freed at the next drain), or lies past the table's end. A released
+    /// set is about to go, so nothing should be rasterized from it.
     ///
     /// Indexed rather than iterated, because its one caller rasterizes
     /// from each set through `&mut self` and so cannot hold a borrow of
@@ -293,6 +295,9 @@ impl IconRegistry {
     pub(crate) fn resident(&self, slot: usize) -> Option<ResidentIconSet> {
         let inner = self.inner.borrow();
         let row = inner.slots.get(slot)?;
+        if row.token.strong_count() == 0 {
+            return None;
+        }
         Some(ResidentIconSet {
             id: IconSetId::new(slot as u16, row.generation),
             table: Rc::clone(row.table.as_ref()?),

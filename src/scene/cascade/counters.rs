@@ -2,10 +2,9 @@
 //! doc explains the gated-cell pattern and why the two gates exist.
 //!
 //! This pass is the sharpest case for the accumulate default:
-//! `FrameCycle::post_record`'s fingerprint gate skips
-//! [`CascadeEngine::run`] outright on an unchanged frame, so a per-pass
-//! reset would not fire at all on those frames and each of them would
-//! report the previous run's numbers as its own.
+//! [`CascadeEngine::run`] skips outright on an unchanged key, so a
+//! per-pass reset would not fire at all on those frames and each of them
+//! would report the previous run's numbers as its own.
 //!
 //! [`CascadeEngine::run`]: crate::scene::cascade::engine::CascadeEngine
 
@@ -24,6 +23,9 @@ pub(crate) struct CascadeCounters {
     /// Incremental walks that got partway and gave up, forcing the full
     /// rebuild they had already started duplicating.
     abandoned_incrementals: TestOnly<u32>,
+    /// Whether the last run did any work, rather than skip on an
+    /// unchanged key.
+    ran: TestOnly<bool>,
 }
 
 impl CascadeCounters {
@@ -35,6 +37,11 @@ impl CascadeCounters {
     #[inline]
     pub(crate) fn abandoned_incremental(&mut self) {
         self.abandoned_incrementals.bump();
+    }
+
+    #[inline]
+    pub(crate) fn note_ran(&mut self, ran: bool) {
+        self.ran.edit(|noted| *noted = ran);
     }
 }
 
@@ -48,5 +55,9 @@ impl CascadeCounters {
 
     pub(crate) fn abandoned_incrementals(&self) -> u32 {
         self.abandoned_incrementals.count()
+    }
+
+    pub(crate) fn ran(&self) -> bool {
+        *self.ran.get()
     }
 }

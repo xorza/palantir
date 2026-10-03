@@ -21,53 +21,58 @@ fn double_and_triple_click_select_word_and_all() {
         });
     }
 
-    fn record_at_secs(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
-        h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui));
-    }
-
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
     // Setup: record once so the editor's rect is known to the next frame.
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf));
+    h.at(Duration::from_secs_f32(0.0))
+        .frame(|ui| body(ui, &mut buf));
 
     // Click 1 at x=32 (mono byte 3, inside "hello").
     h.press_at(Vec2::new(32.0, 20.0));
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf));
+    h.at(Duration::from_secs_f32(0.0))
+        .frame(|ui| body(ui, &mut buf));
     h.release();
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf));
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    h.at(Duration::from_secs_f32(0.0))
+        .frame(|ui| body(ui, &mut buf));
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 3, "single click places the caret");
     assert_eq!(st.edit.selection, None);
 
     // Click 2 at same pos, well inside the window → double press,
     // selects word at byte 3 → "hello".
     h.press();
-    record_at_secs(&mut h, 0.1, |ui| body(ui, &mut buf));
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    h.at(Duration::from_secs_f32(0.1))
+        .frame(|ui| body(ui, &mut buf));
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.sel_range(), Some(0..5), "double click selects word");
     h.release();
-    record_at_secs(&mut h, 0.1, |ui| body(ui, &mut buf));
+    h.at(Duration::from_secs_f32(0.1))
+        .frame(|ui| body(ui, &mut buf));
 
     // Click 3 still inside the window → triple press → select all.
     h.press();
-    record_at_secs(&mut h, 0.2, |ui| body(ui, &mut buf));
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    h.at(Duration::from_secs_f32(0.2))
+        .frame(|ui| body(ui, &mut buf));
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(
         st.edit.sel_range(),
         Some(0..buf.len()),
         "triple click selects all"
     );
     h.release();
-    record_at_secs(&mut h, 0.2, |ui| body(ui, &mut buf));
+    h.at(Duration::from_secs_f32(0.2))
+        .frame(|ui| body(ui, &mut buf));
 
     // Long pause (an idle frame advances the event clock, as a real
     // host's frames would), then another click restarts the run:
     // plain caret placement, no selection.
-    record_at_secs(&mut h, 5.0, |ui| body(ui, &mut buf));
+    h.at(Duration::from_secs_f32(5.0))
+        .frame(|ui| body(ui, &mut buf));
     h.press();
-    record_at_secs(&mut h, 5.0, |ui| body(ui, &mut buf));
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    h.at(Duration::from_secs_f32(5.0))
+        .frame(|ui| body(ui, &mut buf));
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 3, "pause resets the run to a single click");
     assert_eq!(
         st.edit.selection, None,

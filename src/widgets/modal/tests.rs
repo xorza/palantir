@@ -1,14 +1,16 @@
 use crate::Ui;
 use crate::input::keyboard::key::Key;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;
@@ -28,37 +30,57 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     });
 
     let panel_id = root_id.with("panel");
+    let panel = h.node_of(panel_id).expect("modal panel node");
+    assert_eq!(panel.layer, Layer::Modal);
     let tree = h.ui.tree(Layer::Modal);
-    let index = tree
-        .records
-        .widget_id()
-        .iter()
-        .position(|id| *id == panel_id)
-        .expect("modal panel node");
-    let node = NodeId(index as u32);
-    assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
-    assert_eq!(tree.bounds(node).min_size, Size::ZERO);
+    assert_eq!(
+        tree.records.layout()[panel.node.idx()].padding,
+        Spacing::ZERO
+    );
+    assert_eq!(tree.bounds(panel.node).min_size, Size::ZERO);
 }
 
 /// A modal takes no placement of its own — it wants the layer's default,
 /// which is the surface origin with the whole surface available. Pinned
 /// here because that default is what makes the backdrop cover the screen,
 /// and nothing else in this file would notice it drifting.
+///
+/// The root paints the scrim: the modal theme's colour, or the one
+/// `Modal::backdrop` names.
 #[test]
-fn the_backdrop_root_covers_the_whole_surface() {
+fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
-    let mut h = UiHarness::new(SURFACE);
-    h.frame(|ui| {
-        Modal::new()
-            .id(WidgetId::from_hash("modal-full-surface"))
+    let id = WidgetId::from_hash("modal-full-surface");
+    let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
+    for explicit in [None, Some(custom)] {
+        let mut h = UiHarness::new(SURFACE);
+        let themed = h.ui.theme().modal.backdrop;
+        h.frame(|ui| {
+            let modal = Modal::new().id(id);
+            match explicit {
+                Some(c) => modal.backdrop(c),
+                None => modal,
+            }
             .show(ui, |_, _| {});
-    });
+        });
 
-    let root = h.ui.tree(Layer::Modal).roots[0].first_node.idx();
-    assert_eq!(
-        h.ui.layout(Layer::Modal).rect[root],
-        Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
-    );
+        let backdrop = h.node_of(id).expect("modal backdrop recorded");
+        assert_eq!(backdrop.layer, Layer::Modal);
+        assert_eq!(
+            h.ui.layout(Layer::Modal).rect[backdrop.node.idx()],
+            Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
+        );
+        let scrim =
+            h.ui.tree(Layer::Modal)
+                .chrome(backdrop.node)
+                .expect("the backdrop paints a scrim")
+                .fill;
+        let want = RgbaF16::from(explicit.unwrap_or(themed));
+        assert!(
+            matches!(scrim, ShapeBrush::Solid(fill) if fill == want),
+            "explicit {explicit:?}: scrim {scrim:?}, want {want:?}",
+        );
+    }
 }
 
 /// A modal paints above every popup and eats pointer input through
@@ -75,35 +97,28 @@ fn the_backdrop_root_covers_the_whole_surface() {
 fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
     fn escape_dismisses(with_popup: bool) -> bool {
         const SURFACE: UVec2 = UVec2::new(400, 300);
-        let scene = |ui: &mut Ui, dismissed: &mut bool| {
+        let scene = |ui: &mut Ui| {
             if with_popup {
                 Popup::new(Anchor::at_point(Vec2::ZERO))
                     .id(WidgetId::from_hash("under-modal"))
                     .show(ui, |_ui, _handle| {});
             }
-            *dismissed |= Modal::new()
+            Modal::new()
                 .id(WidgetId::from_hash("modal-escape"))
                 .show(ui, |_, _| {})
-                .dismissed;
+                .dismissed
         };
 
         // Two frames: the keyboard wake-gate parks a press whose
         // shortcut nobody watched yet, so the first frame is what
         // registers the modal's interest in Escape and the press lands
         // after it.
-        //
-        // `|=` rather than `=` because a frame may record twice, and
-        // `post_record` drains the key queue between passes — so pass B
-        // sees no Escape and would overwrite pass A's result. Real
-        // callers have the same shape: they flip an `open` flag on
-        // dismissal rather than reading the last pass's return.
         let mut h = UiHarness::new(SURFACE);
-        let mut dismissed = false;
-        h.frame(|ui| scene(ui, &mut dismissed));
+        h.frame(|ui| {
+            scene(ui);
+        });
         h.key(Key::Escape);
-        let mut dismissed = false;
-        h.frame(|ui| scene(ui, &mut dismissed));
-        dismissed
+        h.frame_value(scene)
     }
 
     assert!(
@@ -168,16 +183,9 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
     // must reach it during the record, which is when widgets read.
     h.press_at(Vec2::new(20.0, 20.0));
     h.key(Key::Char('a'));
-    // `max`, not `=`: a frame may record twice and `post_record`
-    // drains the queues between passes, so pass B legitimately sees
-    // nothing and would overwrite pass A's reading. Same hazard the
-    // `|=` in `modal_hears_escape_…` guards against.
-    let mut pointer = 0;
-    let mut keyboard = 0;
-    h.frame(|ui| {
+    let [pointer, keyboard] = h.frame_value(|ui| {
         scene(ui, &mut open);
-        pointer = pointer.max(ui.pointer_events().len());
-        keyboard = keyboard.max(ui.keyboard_events().len());
+        [ui.pointer_events().len(), ui.keyboard_events().len()]
     });
     assert_eq!(pointer, 1, "the dismissed modal still held the pointer");
     assert_eq!(keyboard, 1, "the dismissed modal still held the keyboard");
@@ -192,27 +200,53 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
 #[test]
 fn escape_closes_only_the_topmost_overlay() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
-    let scene = |ui: &mut Ui, modal: &mut bool, popup: &mut bool| {
-        *popup |= Popup::new(Anchor::at_point(Vec2::ZERO))
+    #[derive(Debug)]
+    struct Closed {
+        popup: bool,
+        modal: bool,
+    }
+    let scene = |ui: &mut Ui| Closed {
+        popup: Popup::new(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
             .show(ui, |_ui, _handle| {})
-            .dismissed;
-        *modal |= Modal::new()
+            .dismissed,
+        modal: Modal::new()
             .id(WidgetId::from_hash("over-popup"))
             .show(ui, |_, _| {})
-            .dismissed;
+            .dismissed,
     };
 
     let mut h = UiHarness::new(SURFACE);
-    let (mut m, mut p) = (false, false);
-    h.frame(|ui| scene(ui, &mut m, &mut p));
+    h.frame(|ui| {
+        scene(ui);
+    });
     h.key(Key::Escape);
-    let (mut modal_closed, mut popup_closed) = (false, false);
-    h.frame(|ui| scene(ui, &mut modal_closed, &mut popup_closed));
+    let closed = h.frame_value(scene);
 
-    assert!(modal_closed, "the topmost overlay must take the Escape");
+    assert!(closed.modal, "the topmost overlay must take the Escape");
     assert!(
-        !popup_closed,
+        !closed.popup,
         "the popup beneath the modal must not also consume it",
     );
+}
+
+/// The stock `modal.min_width` (280) is a default, so an authored
+/// `max_size` below it wins instead of panicking: the panel arranges at
+/// the authored 240.
+#[test]
+fn an_authored_max_below_the_themed_min_width_wins() {
+    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let root_id = WidgetId::from_hash("narrow-modal");
+    assert!(
+        h.ui.theme().modal.min_width > 240.0,
+        "fixture: the stock floor is above 240"
+    );
+    h.prime(2, |ui| {
+        Modal::new()
+            .id(root_id)
+            .max_size((240.0, 400.0))
+            .show(ui, |_, _| {});
+    });
+    let panel = h.arranged(root_id.with("panel"));
+    assert_eq!(panel.size.w, 240.0);
 }

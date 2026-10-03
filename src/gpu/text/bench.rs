@@ -50,10 +50,10 @@ use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::raster_program::RasterProgram;
 use crate::gpu::stencil_variant::StencilVariant;
 use crate::gpu::text::TextBackend;
-use crate::gpu::text::encode::cache::test_support::{ChurnBench, SweepBench};
+use crate::gpu::text::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::viewport::ViewportPush;
 use crate::layout::types::align::Align;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextDrawRow;
@@ -162,7 +162,7 @@ impl BenchText {
     }
 
     fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.backend.pass.flush(ctx);
+        self.backend.flush(ctx);
     }
 
     /// `render_batch` binds neither the pipeline nor the viewport — the
@@ -174,7 +174,7 @@ impl BenchText {
             size: glam::Vec2::ZERO,
         }
         .push_into(pass);
-        self.backend.pass.render_batch(batch_index, pass);
+        self.backend.render_batch(batch_index, pass);
     }
 
     /// Frame teardown for the harness, matching `TextSystem`'s
@@ -449,7 +449,7 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let g = gpu();
-    let target = BenchGpu::shared(Timing::Bare).target(PHYSICAL, "palantir.text_atlas.target");
+    let target = BenchGpu::shared(Timing::Bare).target("palantir.text_atlas.target", PHYSICAL);
     let view = target.view();
 
     let mut group = run.group(c);

@@ -1,20 +1,15 @@
 use crate::Ui;
 use crate::app::App;
-use crate::display::Display;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::power_preference::PowerPreference;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
-use crate::input::input_event::InputEvent;
+use crate::internals::harness::UiHarness;
 use crate::text::font_scope::FontScope;
-use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::Wake;
 use crate::ui::frame_runtime::wake::WakeReasons;
-use crate::ui::frame_stamp::FrameInput;
-use crate::ui::frame_stamp::FrameStamp;
-use crate::ui::resources::UiResources;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
@@ -33,14 +28,14 @@ struct CountingApp {
 
 impl App for CountingApp {
     fn update(&mut self, win: WindowToken, ui: &Ui) {
-        assert_eq!(win, WindowToken(7));
+        assert_eq!(win, WindowToken(0));
         assert_eq!(ui.display().physical, SURFACE);
-        assert_eq!(ui.input().pointer_pos, self.expected_pointer);
+        assert_eq!(ui.input().pointer_pos(), self.expected_pointer);
         self.updates += 1;
     }
 
     fn record(&mut self, win: WindowToken, ui: &mut Ui) {
-        assert_eq!(win, WindowToken(7));
+        assert_eq!(win, WindowToken(0));
         self.records += 1;
         if self.relayout_on_next_record {
             self.relayout_on_next_record = false;
@@ -57,6 +52,7 @@ fn builder_retains_defaults_and_granular_overrides() {
     assert_eq!(defaults.config.power_preference, PowerPreference::LowPower);
     assert!(!defaults.config.collect_gpu_stats);
     assert!(defaults.config.pixel_snap);
+    assert_eq!(defaults.config.fonts, FontScope::System);
 
     let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
         .config(WinitHostConfig {
@@ -71,11 +67,14 @@ fn builder_retains_defaults_and_granular_overrides() {
         .title("title")
         .power_preference(PowerPreference::HighPerformance)
         .collect_gpu_stats(true)
-        .pixel_snap(false);
+        .pixel_snap(false)
+        .vsync(Vsync::On)
+        .fonts(FontScope::System);
 
     assert_eq!(builder.first_token, WindowToken(9));
     assert_eq!(builder.config.window.title, "title");
-    assert_eq!(builder.config.vsync, Vsync::Off);
+    assert_eq!(builder.config.vsync, Vsync::On);
+    assert_eq!(builder.config.fonts, FontScope::System);
     assert_eq!(
         builder.config.power_preference,
         PowerPreference::HighPerformance
@@ -113,51 +112,37 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
     ));
 }
 
-fn run_frame(
-    ui: &mut Ui,
-    engines: &mut FrameEngines,
-    app: &mut CountingApp,
-    now: Duration,
-) -> FrameProcessing {
-    let report = ui.frame(
-        engines,
-        FrameInput::new(
-            FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
-            true,
-        ),
-        WindowToken(7),
-        app,
-    );
-    report.processing
-}
-
 #[test]
 fn app_lifecycle_follows_frame_plan_and_record_replays() {
-    let resources = UiResources::isolated_mono();
-    let mut engines = FrameEngines::new(&resources);
-    let mut ui = Ui::new(resources);
+    let mut h = UiHarness::cold(SURFACE);
     let mut app = CountingApp::default();
     let pointer = Vec2::new(24.0, 12.0);
-    ui.inject_input(InputEvent::PointerMoved(pointer));
+    h.move_to(pointer);
     app.expected_pointer = Some(pointer);
 
-    let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::ZERO);
+    let processing = h.frame_app(&mut app).processing;
     assert_eq!(processing, FrameProcessing::SingleLayout);
     assert_eq!(app.updates, 1, "cold-start frame updates once");
     assert_eq!(app.records, 2, "cold-start warmup and pass A both record");
 
     app.relayout_on_next_record = true;
-    ui.request_repaint();
-    let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::from_millis(16));
+    h.ui().request_repaint();
+    let processing = h
+        .at(Duration::from_millis(16))
+        .frame_app(&mut app)
+        .processing;
     assert_eq!(processing, FrameProcessing::DoubleLayout);
     assert_eq!(app.updates, 2, "relayout frame adds one update");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
-    ui.frame_runtime_mut().repaint_wakes.push(Wake {
+    h.ui().frame_runtime_mut().repaint_wakes.push(Wake {
         deadline: Duration::from_millis(32),
         reasons: WakeReasons::ANIM,
     });
-    let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::from_millis(32));
+    let processing = h
+        .at(Duration::from_millis(32))
+        .frame_app(&mut app)
+        .processing;
     assert_eq!(processing, FrameProcessing::PaintOnly);
     assert_eq!(app.updates, 2, "paint-only frame skips update");
     assert_eq!(app.records, 4, "paint-only frame skips record");

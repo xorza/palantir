@@ -34,7 +34,9 @@ pub enum TabsAction {
     },
     /// A chip was dragged onto another slot. Move `from` to `to` in the
     /// option collection; `to` addresses the collection **as it is now**,
-    /// before the move.
+    /// before the move — the gap the chip was dropped in, `len` appending
+    /// — so the page lands at `to - 1` when `to > from`, and at `to`
+    /// otherwise. The bound index already follows the page it named.
     Reordered {
         /// Where the chip came from.
         from: usize,
@@ -216,11 +218,15 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
                 *selected = index;
                 action = Some(TabsAction::Activated { index });
             }
+            // The gaps either side of the chip leave the order as it was,
+            // so neither is a reorder.
             if let Some(from) = hit.drag_stopped
                 && reorderable
                 && let Some(to) = dropped_slot(ui, strip_id, options.len())
                 && to != from
+                && to != from + 1
             {
+                *selected = moved_index(*selected, from, to);
                 action = Some(TabsAction::Reordered { from, to });
             }
             Panel::vstack()
@@ -254,9 +260,40 @@ struct StripHit {
 /// The slot the pointer released over, read straight out of last
 /// frame's chip rects — no buffer, because a release happens once per
 /// gesture rather than once per frame.
+///
+/// `None` unless the release is over the strip: a chip let go deep in the
+/// page, or over another widget, was not dropped among the chips.
 fn dropped_slot(ui: &mut Ui, strip: WidgetId, len: usize) -> Option<usize> {
-    let x = ui.pointer_pos()?.x;
+    let pointer = ui.pointer_pos()?;
+    if !ui.response_for(strip).rect?.contains(pointer) {
+        return None;
+    }
+    let x = pointer.x;
     let chips =
         (0..len).filter_map(|slot| ui.response_for(TabStrip::chip_id(strip, slot as u64)).rect);
     Some(TabStrip::insertion_slot(chips, x))
+}
+
+/// Where the page at `index` sits after [`TabsAction::Reordered`] moves
+/// `from` into the gap `to`.
+const fn moved_index(index: usize, from: usize, to: usize) -> usize {
+    let landing = if to > from { to - 1 } else { to };
+    if index == from {
+        return landing;
+    }
+    let without = if index > from { index - 1 } else { index };
+    if without >= landing {
+        without + 1
+    } else {
+        without
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    /// Where the page at `index` sits after a reorder of `from` into the
+    /// gap `to` — the rule the view applies to its selection.
+    pub(crate) const fn moved_index(index: usize, from: usize, to: usize) -> usize {
+        super::moved_index(index, from, to)
+    }
 }

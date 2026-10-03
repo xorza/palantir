@@ -106,7 +106,7 @@
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard, which is what [`TextEdit`]'s cut/copy/paste reaches. [`WinitHost`] always uses it; [`OffscreenHost`] asks through [`OffscreenHostBuilder::system_clipboard`]. Without it every host runs on an in-process buffer. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
-//! | `internals` | no | Test reach-ins — adds the `internals` module. **Not a supported API**: it exists so the integration tests under `tests/` can reach crate privates, and it breaks without notice. |
+//! | `internals` | no | Test reach-ins and the test subsystems — adds the `internals` module: the frame harness, the shared fixtures, the headless test GPU. **Not a supported API**: it exists so the integration tests under `tests/` and the showcase can drive the crate, and it breaks without notice. |
 //! | `bench` | no | The source-level benchmark drivers, and the function-only facade the thin targets under `benches/` call. Implies `internals`, and adds the harness crates on top. Not a supported API either. |
 //! | `golden` | no | Adds the `golden` module — golden-image regression testing for suites that draw through Palantir. Its own flag because it is the only part of the surface that costs an image codec. |
 //!
@@ -122,7 +122,7 @@
 //! come out wrong.
 
 // Re-import `palantir` as a self-alias so proc-macros that emit
-// `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
+// `::palantir::widget::Animatable` paths (from `palantir-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,
 // `Background`). Outside the crate this path resolves naturally.
 
@@ -149,34 +149,20 @@ pub(crate) mod animation;
 pub(crate) mod app;
 #[cfg(feature = "bench")]
 pub mod bench;
-/// Accent swatches shared by the two bundled demo surfaces. Public only
-/// because the `showcase` example is a separate crate from this library
-/// and cannot reach a `pub(crate)` one; not part of the supported API.
-#[cfg(feature = "internals")]
-pub mod demo_swatches;
 pub(crate) mod diagnostics;
 /// Per-output display state (physical size, the system and user scale
 /// factors, pixel-snap, refresh) — cross-cutting host/render vocabulary,
 /// read by `ui`, the renderer, and the host layer; not owned by any one
 /// subsystem.
 pub(crate) mod display;
-/// The shared benchmark workload — one designed app screen recorded by the
-/// frame, allocation, and cascade benches alike. Owned by none of them, so
-/// it lives here rather than under whichever driver happened to need it
-/// first.
-///
-/// Gated on `internals`: the allocation gates in `tests/alloc` clear
-/// against this tree, and the showcase carries it as a page — the only way
-/// to look at the workload the numbers come from. It is pure scene code
-/// with no harness dependency, so reaching it costs nothing.
-#[cfg(feature = "internals")]
-pub(crate) mod frame_fixture;
-/// Every wgpu call in the crate. Pipelines, atlases, the device request and
-/// the surface all live here, so no other module names a `wgpu` type.
 pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;
 pub(crate) mod input;
+/// Everything that does not ship — see the module doc. **Not a supported
+/// API.**
+#[cfg(any(test, feature = "internals"))]
+pub mod internals;
 pub(crate) mod layout;
 pub(crate) mod primitives;
 pub(crate) mod renderer;
@@ -192,28 +178,6 @@ pub(crate) mod window;
 /// only thing here that costs an image codec.
 #[cfg(feature = "golden")]
 pub mod golden;
-
-/// Test reach-ins the supported surface deliberately excludes, gathered here
-/// rather than scattered through it so the published API stays exactly the
-/// list below. Each item is re-exported from the gated module that owns it —
-/// which lives beside the code whose privates it exposes. Benchmark entry
-/// points have their own gated facade in the `bench` module, behind that
-/// feature.
-///
-/// The two bundled demo surfaces — [`FrameFixture`] and [`demo_swatches`] —
-/// are gated at the crate root instead of here. They reach past nothing:
-/// they are scene code the showcase and the allocation gates both record.
-#[cfg(any(test, feature = "internals"))]
-pub mod internals {
-    pub use crate::app::internals::RecordApp;
-    /// Needs a real GPU device, so unlike its neighbours this one exists
-    /// only under the feature — never in a plain `cargo test` build.
-    #[cfg(feature = "internals")]
-    pub use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
-    #[cfg(feature = "internals")]
-    pub use crate::text::internals::{PROBATION_KEEP_FRAMES, TEXT_SCALE_STEP};
-    pub use crate::ui::harness::UiHarness;
-}
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
@@ -368,17 +332,6 @@ pub use display::Display;
 /// platform reports. Written through
 /// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
 pub use display::user_scale::UserScale;
-/// The benchmark workload as a recordable scene. Not part of the supported
-/// surface — it exists so the bench target, the allocation gates and the
-/// showcase page record the same tree, rather than each keeping a smaller
-/// stand-in of its own.
-#[cfg(feature = "internals")]
-pub use frame_fixture::FrameFixture;
-/// The surface, scale and dpr the benchmark workload is timed at. The
-/// bench target and the allocation gates share them so their numbers stay
-/// comparable.
-#[cfg(feature = "internals")]
-pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
 pub use gpu::device_requirements::DeviceRequirements;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
@@ -525,13 +478,15 @@ pub use widgets::dock::split_side::{SplitDir, SplitSide};
 pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
 pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;
-pub use widgets::expander::{Expander, ExpanderResponse};
+pub use widgets::expander::Expander;
+pub use widgets::expander::expander_response::ExpanderResponse;
 pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;
 pub use widgets::modal::Modal;
 pub use widgets::overlay_response::OverlayResponse;
 pub use widgets::panel::Panel;
-pub use widgets::popup::{ClickOutside, Popup};
+pub use widgets::popup::Popup;
+pub use widgets::popup::click_outside::ClickOutside;
 pub use widgets::progress_bar::ProgressBar;
 pub use widgets::radio::RadioButton;
 pub use widgets::response::{InnerResponse, Response, ResponseSnapshot};
@@ -542,7 +497,8 @@ pub use widgets::select_response::SelectResponse;
 pub use widgets::separator::Separator;
 pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
-pub use widgets::splitter::{SplitHalf, Splitter};
+pub use widgets::splitter::Splitter;
+pub use widgets::splitter::split_half::SplitHalf;
 pub use widgets::switch::Switch;
 pub use widgets::tabs::tab_item::{TabBadge, TabItem};
 pub use widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
@@ -575,7 +531,8 @@ pub use widgets::theme::widget_look::WidgetLook;
 pub use widgets::theme::widget_look::animated_look::AnimatedLook;
 pub use widgets::theme::widget_look::stateful_look::StatefulLook;
 pub use widgets::theme::widget_look::theme_slot::SlotDefaults;
-pub use widgets::tooltip::{Tooltip, TooltipResponse};
+pub use widgets::tooltip::Tooltip;
+pub use widgets::tooltip::tooltip_response::TooltipResponse;
 pub use widgets::value_response::ValueResponse;
 pub use window::cursor_icon::CursorIcon;
 pub use window::vsync::Vsync;

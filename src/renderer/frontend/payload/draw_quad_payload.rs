@@ -1,15 +1,16 @@
 //! The quad-tier draw: rounded rects, windowed rects, box-shadows and
 //! rounded triangles, which all lower to one `Quad` instance.
 
-use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::scene::shapes::paint::ShapeStroke;
+use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
+use crate::shape::rect::RectKind;
 use glam::Vec2;
 
 /// The geometry half of a [`DrawQuadPayload`] — everything the composer
@@ -117,34 +118,25 @@ impl DrawQuadPayload {
         fill: BrushSource,
         stroke: ShapeStroke,
     ) -> Self {
-        Self::rect_impl(rect, corners, fill, stroke, false)
+        Self::rect_of_kind(RectKind::Rounded, rect, corners, fill, stroke)
     }
 
-    /// Windowed sibling of [`Self::rect`]: same payload, but the
+    /// [`Self::rect`] of either kind. A [`RectKind::Windowed`] rect's
     /// `FillKind` carries the window bit, so the shader inverts the fill
     /// coverage (fill outside the rounded boundary, transparent window
     /// inside the stroke). The bit also keeps the composer's opaque-cover
     /// checks (`fill_kind == FillKind::SOLID`) from treating the quad as
     /// an occluder — its interior is a hole.
-    pub(crate) fn rect_window(
+    pub(crate) fn rect_of_kind(
+        kind: RectKind,
         rect: Rect,
         corners: Corners,
         fill: BrushSource,
         stroke: ShapeStroke,
-    ) -> Self {
-        Self::rect_impl(rect, corners, fill, stroke, true)
-    }
-
-    fn rect_impl(
-        rect: Rect,
-        corners: Corners,
-        fill: BrushSource,
-        stroke: ShapeStroke,
-        window: bool,
     ) -> Self {
         // Stroke stays solid-only — gradient strokes are a non-goal.
         let mut lanes = fill.gpu_fill();
-        if window {
+        if kind == RectKind::Windowed {
             lanes.kind = lanes.kind.with_window();
         }
         Self {
@@ -223,9 +215,9 @@ impl DrawQuadPayload {
     /// the "no visible effect" cases.
     ///
     /// A gradient fill is never a no-op here. [`BrushSource::gpu_fill`]
-    /// zeroes its colour lane — the atlas row supplies the colour — so
-    /// judging it by that lane would read every gradient as transparent
-    /// and drop the draw. Nor does it need to be: `Brush::is_noop`
+    /// sets its colour lane to white — the atlas row supplies the colour,
+    /// and the lane only multiplies it — so that lane says nothing about
+    /// whether the ramp paints. Nor does it need to be: `Brush::is_noop`
     /// filters the all-transparent-stops case *before* lowering, and one
     /// slipping past that gate would paint a useless transparent quad
     /// whose alpha blend produces nothing visible.
@@ -237,10 +229,11 @@ impl DrawQuadPayload {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::primitives::corners::Corners;
+    use crate::primitives::fill_axis::FillAxis;
     use crate::primitives::fill_kind::FillKind;
     use crate::primitives::lut_row::LutRow;
     use crate::primitives::rect::Rect;
@@ -249,7 +242,7 @@ mod tests {
     use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
     use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
     use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-    use crate::scene::shapes::paint::ShapeStroke;
+    use crate::scene::shapes::paint::shape_stroke::ShapeStroke;
     use glam::Vec2;
 
     /// Every quad-tier constructor runs one stroke normalization
@@ -349,8 +342,9 @@ mod tests {
         let solid = quad(BrushSource::Solid(RgbaF16::new(0.25, 0.5, 0.75, 0.8)));
         assert_eq!(solid.faded(1.0), solid);
         let faded = solid.faded(0.5);
-        assert!((faded.fill.color.unpack().a - 0.4).abs() < 1e-3);
-        assert!((faded.stroke.color.unpack().a - 0.5).abs() < 1e-3);
+        // 0.8 packs to f16 as 1638 steps of 2^-11, and halving it is exact.
+        assert_eq!(faded.fill.color.unpack().a, 1638.0 / 4096.0);
+        assert_eq!(faded.stroke.color.unpack().a, 0.5);
 
         let gradient = quad(BrushSource::Gradient(ResolvedGradient {
             axis: FillAxis::ZERO,
@@ -365,7 +359,7 @@ mod tests {
         let faded = gradient.faded(0.5);
         let multiplier = faded.fill.color.unpack();
         assert_eq!((multiplier.r, multiplier.g, multiplier.b), (1.0, 1.0, 1.0));
-        assert!((multiplier.a - 0.5).abs() < 1e-3);
+        assert_eq!(multiplier.a, 0.5);
         assert_eq!(faded.fill.lut_row, gradient.fill.lut_row);
 
         assert!(!solid.fill.is_noop() && !gradient.fill.is_noop());

@@ -51,12 +51,12 @@ impl Arrow {
     /// then fills the box exactly, instead of overrunning it on every
     /// side. The turn is about the box's centre either way — the inset
     /// is the same on every side, so the two boxes share it.
+    ///
+    /// A radius larger than half the box's shorter side is fitted to it,
+    /// the way overlapping CSS corner radii are scaled down: the arrow
+    /// then rounds as far as its box allows instead of turning inside out.
     pub(crate) fn rounded(self, radius: f32, radians: f32) -> [Vec2; 3] {
-        debug_assert!(
-            2.0 * radius <= self.size.min_element(),
-            "a corner radius of {radius} does not fit an arrow of {:?}",
-            self.size
-        );
+        let radius = radius.min(0.5 * self.size.min_element());
         let inset = Vec2::splat(radius);
         Self {
             size: self.size - 2.0 * inset,

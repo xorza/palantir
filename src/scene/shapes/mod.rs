@@ -8,13 +8,17 @@ pub(crate) mod paint;
 pub(crate) mod record;
 
 use crate::common::content_hash::ContentHash;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::common::hash::Hasher;
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::ImageSource;
+use crate::scene::shapes::paint::image_source::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::shape::Lower;
+use std::hash::Hasher as _;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
 ///
@@ -95,6 +99,18 @@ impl Shapes {
             "a screened shape lowered to a NaN record: {record:?}",
         );
         Some(self.push(record))
+    }
+
+    /// Fold `anim` into shape `idx`'s stored hash, so a shape that turns
+    /// animated, stops being animated, or changes what its animation
+    /// does reads as changed to every gate that keys on shape hashes —
+    /// the node and subtree rollups, the cascade's repair, damage.
+    pub(crate) fn fold_paint_anim(&mut self, idx: u32, anim: &PaintAnim) {
+        let slot = &mut self.hashes[idx as usize];
+        let mut h = Hasher::new();
+        h.write_u64(slot.0);
+        anim.hash_static(&mut h);
+        *slot = ContentHash(h.finish());
     }
 
     /// Append an already-lowered record, returning its index.

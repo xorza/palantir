@@ -1,9 +1,9 @@
 //! Theme sharing, and a subtree disabled between frames.
 
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
@@ -20,17 +20,17 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     let target = WidgetId::from_hash("target");
     let mut h = UiHarness::new(SURFACE);
     let run = |h: &mut UiHarness, disabled: bool| {
-        let mut resp = None;
-        h.frame(|ui| {
+        h.frame_value(|ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("wrap"))
                 .disabled(disabled)
                 .show(ui, |ui| {
-                    resp = Some(ui.response_for(target));
+                    let resp = ui.response_for(target);
                     Button::new().label("hi").id(target).show(ui);
-                });
-        });
-        resp.unwrap()
+                    resp
+                })
+                .inner
+        })
     };
     run(&mut h, false);
     h.move_to(Vec2::new(10.0, 10.0));
@@ -46,8 +46,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "interactions must mask on the disable frame"
     );
 
-    use crate::primitives::color::RgbaF16;
-    use crate::scene::shapes::paint::ShapeBrush;
+    use crate::primitives::color::rgba_f16::RgbaF16;
+    use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);

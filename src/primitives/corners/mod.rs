@@ -13,8 +13,9 @@ use glam::Vec2;
 /// the first u32 carries `tl,tr` and the second `br,bl`; the shader
 /// reconstructs `vec4<f32>` via two `unpack2x16float` calls.
 ///
-/// Precision: lossless for integer radii up to 2048, ~0.25 px error at
-/// 4096, +Inf above ~65504. Plenty of headroom for UI workloads.
+/// Precision: lossless for integer radii up to 2048. Above that an f16
+/// step is 2 px below 4096 and 4 px below 8192, so a radius rounds by up
+/// to ±1 px and ±2 px there; +Inf above 65504.
 ///
 /// Hash delegates to the packed `F16x4` representation — one `u64` write,
 /// fed every frame into
@@ -87,6 +88,38 @@ impl Corners {
         Self(self.0.scaled(scale))
     }
 
+    /// The radii a box of `size` physical px is drawn with: every radius
+    /// times `scale`, grown by a shadow's `spread` (zero for anything
+    /// else), then reduced so no two adjacent corners overlap. Computed in
+    /// f32 and packed once, so a radius too large for f16 at this scale —
+    /// `corners(9999)` at 8× — fits the box instead of reaching the shader
+    /// as `inf`. After it no radius exceeds half the shorter side, which
+    /// the rounded-box SDF assumes; the f16 lanes overflow only for a box
+    /// itself wider than 65504 px.
+    ///
+    /// The spread rule is CSS Backgrounds 3 §7.1 (`box-shadow`): with
+    /// `s > 0` a radius `r` becomes `r + s` when `r ≥ s`, and
+    /// `r + s·(1 + (r/s − 1)³)` below, so a sharp corner stays sharp;
+    /// with `s < 0` it becomes `max(r + s, 0)`. The fit is §5.5
+    /// "Overlapping curves": `f` is the least of each side's length over
+    /// the sum of its two radii, and every radius scales by `f` when
+    /// `f < 1`. `quad.wgsl`'s `fit_radii` and `spread_radius` are the
+    /// shader's copies, for the inset-shadow hole only the shader sizes.
+    pub(crate) fn fit_to(self, size: Size, scale: f32, spread: f32) -> Self {
+        let radii = self.as_array().map(|r| spread_radius(r * scale, spread));
+        let [tl, tr, br, bl] = radii;
+        let f = [
+            (size.w, tl + tr),
+            (size.w, bl + br),
+            (size.h, tl + bl),
+            (size.h, tr + br),
+        ]
+        .into_iter()
+        .filter(|&(_, sum)| sum > 0.0)
+        .fold(1.0_f32, |f, (side, sum)| f.min(side.max(0.0) / sum));
+        Self::from_array(radii.map(|r| r * f))
+    }
+
     /// True when every corner is within UI epsilon of zero. Routes
     /// through `F16x4::all_lanes_noop` (crate-private, in
     /// `primitives::half_simd`) so the lane compare lives in one place —
@@ -102,11 +135,30 @@ impl Corners {
         self.0.all_lanes_noop()
     }
 
+    /// Four raw lane words — see [`F16x4::from_bits`] for the one
+    /// non-f16 use.
+    #[inline]
+    pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
+        Self(F16x4::from_bits(bits))
+    }
+
     /// Packed 8-byte form, the peer of `Spacing::as_u64`. The chrome
     /// hash folds the four radii into one hasher write with it.
     #[inline]
     pub(crate) fn as_u64(self) -> u64 {
         self.0.as_u64()
+    }
+}
+
+/// One radius grown by a shadow's `spread` — see [`Corners::fit_to`].
+const fn spread_radius(r: f32, spread: f32) -> f32 {
+    if spread < 0.0 {
+        (r + spread).max(0.0)
+    } else if r >= spread {
+        r + spread
+    } else {
+        let t = r / spread - 1.0;
+        r + spread * (1.0 + t * t * t)
     }
 }
 
@@ -159,6 +211,13 @@ impl LaneCodec for Corners {
 
     fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
         [top, top, bottom, bottom]
+    }
+
+    const LANE_RULE: &'static str =
+        "a corner radius must be finite, not negative, and at most 65504";
+
+    fn lane_is_valid(lane: f32) -> bool {
+        (0.0..=F16x4::MAX_LANE).contains(&lane)
     }
 }
 

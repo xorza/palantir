@@ -113,6 +113,28 @@ impl InputEvent {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::input::input_event::InputEvent;
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_text::KeyText;
+
+    impl InputEvent {
+        /// A first press of `key`, typing what the key types on a plain
+        /// layout. `physical` is [`Key::Other`]: only a non-ASCII `Char`
+        /// under a command modifier consults it (`Shortcut::matches`), so
+        /// it is inert for every other key.
+        pub(crate) fn key_down(key: Key) -> Self {
+            Self::KeyDown {
+                key,
+                repeat: false,
+                physical: Key::Other,
+                text: KeyText::of_key(key),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::input::input_event::InputEvent;
@@ -163,9 +185,31 @@ mod tests {
                 text: KeyText::from_char('a'),
             },
             InputEvent::ModifiersChanged(Modifiers::default()),
+            InputEvent::SurfaceFocusLost,
         ];
+        // An exhaustive match with no `_` arm: a new variant does not
+        // compile until it has an index here, and the count below fails
+        // until it has a case above.
+        let mut covered = [false; 10];
         for event in ok {
             assert!(event.is_valid(), "{event:?}");
+            let index = match event {
+                InputEvent::PointerMoved(_) => 0,
+                InputEvent::PointerLeft => 1,
+                InputEvent::PointerPressed(_) => 2,
+                InputEvent::PointerReleased(_) => 3,
+                InputEvent::ScrollPixels(_) => 4,
+                InputEvent::ScrollLines(_) => 5,
+                InputEvent::Zoom(_) => 6,
+                InputEvent::KeyDown { .. } => 7,
+                InputEvent::ModifiersChanged(_) => 8,
+                InputEvent::SurfaceFocusLost => 9,
+            };
+            covered[index] = true;
         }
+        assert!(
+            covered.iter().all(|&c| c),
+            "a variant has no valid case: {covered:?}"
+        );
     }
 }

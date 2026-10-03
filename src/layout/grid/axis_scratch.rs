@@ -165,7 +165,10 @@ impl AxisScratch {
     ///    consume from available.
     /// 2. **Hug:** constraint-solve each track's content range, with both
     ///    its min-content floor and preferred size capped by `Track.max`,
-    ///    against the remaining-after-Fixed:
+    ///    against what Fixed and the Fill tracks' min-content floors leave
+    ///    — CSS Grid sizes a `1fr` track's base at its min-content before
+    ///    auto tracks grow toward max-content, so a Fill column is never
+    ///    squeezed below its content by a Hug sibling:
     ///    - If `sum_hug_max <= remaining`: each Hug at max.
     ///    - If `sum_hug_min >= remaining`: each Hug at min, grid overflows.
     ///    - Else: each Hug starts at min, slack distributed proportional to
@@ -223,7 +226,13 @@ impl AxisScratch {
         }
 
         if !self.hug_bounds.is_empty() {
-            let remaining_after_fixed = (total - consumed).max(0.0);
+            let fill_floors: f32 = tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.size.fill_weight().is_some())
+                .map(|(i, t)| t.content_floor(hugs.min[i]))
+                .sum();
+            let remaining_after_fixed = (total - consumed - fill_floors).max(0.0);
             // Pick distribution mode once. `unconstrained` covers infinite
             // total (Hug parent) and the "every Hug fits at max" case;
             // `cramped` covers "even at min the Hugs overflow"; otherwise

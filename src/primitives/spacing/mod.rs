@@ -8,8 +8,9 @@ use crate::primitives::serde::LaneCodec;
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
 ///
-/// Precision: lossless for integer values up to 2048, ~0.25 px error
-/// at 4096. UI spacing never approaches the f16 ceiling.
+/// Precision: lossless for integer values up to 2048. Above that an f16
+/// step is 2 px below 4096 and 4 px below 8192, so a value rounds by up to
+/// ±1 px and ±2 px there. UI spacing never approaches the f16 ceiling.
 ///
 /// Hash delegates to the packed `F16x4` representation (one `u64` write) —
 /// `LayoutCore::hash_with_flags` folds this twice per node every frame (padding + margin),
@@ -127,6 +128,12 @@ impl LaneCodec for Spacing {
 
     fn expand_two([horizontal, vertical]: [f32; 2]) -> [f32; 4] {
         [horizontal, vertical, horizontal, vertical]
+    }
+
+    const LANE_RULE: &'static str = "a spacing lane must be finite and within ±65504";
+
+    fn lane_is_valid(lane: f32) -> bool {
+        lane.abs() <= F16x4::MAX_LANE
     }
 }
 

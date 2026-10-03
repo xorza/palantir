@@ -19,7 +19,9 @@ use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
@@ -73,9 +75,15 @@ fn line_budget(axis: Axis, size: Size) -> f32 {
 
 /// True iff appending a child to the current line would push it past
 /// [`line_budget`]. The first child on an empty line never wraps.
+///
+/// The extent is quantized like the budget. A Hug stack is arranged at its
+/// widest line, and that width rounds to its budget: compared raw, a line
+/// of 200.4 against the 200 it rounds to would break in arrange where
+/// measure kept it whole, and the second line would fall below the height
+/// measure reported.
 #[inline]
 fn would_wrap(line: LinePack, gap: f32, child_main: f32, budget: f32) -> bool {
-    line.occupied && line.main + gap + child_main > budget
+    line.occupied && (line.main + gap + child_main).canonical_px() > budget
 }
 
 /// Advance the line-packing state by one child. When the child won't fit

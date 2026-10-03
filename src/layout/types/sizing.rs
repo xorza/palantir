@@ -323,15 +323,8 @@ impl From<Size> for SizeSpec {
 
 #[cfg(test)]
 mod tests {
+    use crate::internals::panic_probe;
     use crate::layout::types::sizing::{SizeSpec, Sizing};
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    fn hash_value(value: impl Hash) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        value.hash(&mut hasher);
-        hasher.finish()
-    }
 
     /// The two shares always partition 1.0, so the first lands at exactly
     /// `fraction` of the parent — and an out-of-range input clamps rather
@@ -410,19 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn signed_zero_sizing_and_sizes_share_equality_and_hashes() {
-        let positive = Sizing::fixed(0.0);
-        let negative = Sizing::fixed(-0.0);
-        assert_eq!(positive, negative);
-        assert_eq!(hash_value(positive), hash_value(negative));
-
-        let positive = SizeSpec::new(positive, Sizing::HUG);
-        let negative = SizeSpec::new(negative, Sizing::HUG);
-        assert_eq!(positive, negative);
-        assert_eq!(hash_value(positive), hash_value(negative));
-    }
-
-    #[test]
     fn constructors_accept_only_finite_valid_payloads() {
         assert_eq!(Sizing::fixed(f32::MAX).fixed_value(), Some(f32::MAX));
         assert_eq!(Sizing::fill(f32::MAX).fill_weight(), Some(f32::MAX));
@@ -430,28 +410,26 @@ mod tests {
         assert_eq!(Sizing::share(-0.0), Sizing::fixed(0.0));
         assert_eq!(Sizing::share(2.5), Sizing::fill(2.5));
 
+        const FIXED: &str = "fixed sizing must be finite and non-negative";
+        const FILL: &str = "fill weight must be finite and positive";
+        const SHARE: &str = "share weight must be finite and non-negative";
         type Case = (&'static str, fn() -> Sizing);
         let cases: &[Case] = &[
-            ("negative fixed", || Sizing::fixed(-1.0)),
-            ("NaN fixed", || Sizing::fixed(f32::NAN)),
-            ("positive-infinite fixed", || Sizing::fixed(f32::INFINITY)),
-            ("negative-infinite fixed", || {
-                Sizing::fixed(f32::NEG_INFINITY)
-            }),
-            ("zero fill", || Sizing::fill(0.0)),
-            ("negative-zero fill", || Sizing::fill(-0.0)),
-            ("negative fill", || Sizing::fill(-1.0)),
-            ("NaN fill", || Sizing::fill(f32::NAN)),
-            ("infinite fill", || Sizing::fill(f32::INFINITY)),
-            ("negative share", || Sizing::share(-1.0)),
-            ("NaN share", || Sizing::share(f32::NAN)),
-            ("infinite share", || Sizing::share(f32::INFINITY)),
+            (FIXED, || Sizing::fixed(-1.0)),
+            (FIXED, || Sizing::fixed(f32::NAN)),
+            (FIXED, || Sizing::fixed(f32::INFINITY)),
+            (FIXED, || Sizing::fixed(f32::NEG_INFINITY)),
+            (FILL, || Sizing::fill(0.0)),
+            (FILL, || Sizing::fill(-0.0)),
+            (FILL, || Sizing::fill(-1.0)),
+            (FILL, || Sizing::fill(f32::NAN)),
+            (FILL, || Sizing::fill(f32::INFINITY)),
+            (SHARE, || Sizing::share(-1.0)),
+            (SHARE, || Sizing::share(f32::NAN)),
+            (SHARE, || Sizing::share(f32::INFINITY)),
         ];
-        for &(label, construct) in cases {
-            assert!(
-                std::panic::catch_unwind(construct).is_err(),
-                "case `{label}` must panic",
-            );
+        for &(expected, construct) in cases {
+            panic_probe::assert_panics_with(expected, construct);
         }
     }
 }

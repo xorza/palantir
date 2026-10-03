@@ -251,7 +251,7 @@ impl ResponseState {
     /// are named once. `band` is the width of a centred thing the pointer
     /// drags, a knob, and comes off each end before the division; pass
     /// zero when the pointer itself is the position — see
-    /// [`F32Ext::band_fraction`](crate::widget::F32Ext::band_fraction). Clamped,
+    /// [`F32Ext::band_fraction`]. Clamped,
     /// so a pointer past an edge reports that edge, which is the only way
     /// a drag reaches an axis end.
     #[inline]

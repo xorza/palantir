@@ -12,20 +12,21 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::CosmicMeasure;
-use crate::text::cosmic::cluster_glyph::{self, ClusterGlyph};
+use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
+use crate::text::font_scope::internals::{ARABIC, HEBREW};
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{LineAlign, TextShapeKey, WrapBound};
 use crate::text::mono;
-use crate::text::probe::test_support as probe;
+use crate::text::probe::internals as probe;
 use crate::text::request::TextShapeRequest;
-use crate::text::request::test_support::TestShape;
+use crate::text::request::internals::TestShape;
 use crate::text::root::TextRoot;
-use crate::text::root::test_support::TestMeasure;
+use crate::text::root::internals::TestMeasure;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
@@ -50,17 +51,13 @@ mod wrap;
 /// Override with the `TestShape` builders, so the one thing a case is
 /// about reads on one line: `shape(16.0).width(32.0).halign(HAlign::Right)`.
 fn shape(font_size_px: f32) -> TestShape {
-    TestShape {
-        font: GlyphFont {
-            size_px: font_size_px,
-            line_height_px: font_size_px,
-            family: FontFamily::SANS,
-            weight: FontWeight::REGULAR,
-            slant: FontSlant::Normal,
-        },
-        max_width_px: None,
-        halign: HAlign::Auto,
-    }
+    TestShape::new(GlyphFont {
+        size_px: font_size_px,
+        line_height_px: font_size_px,
+        family: FontFamily::SANS,
+        weight: FontWeight::REGULAR,
+        slant: FontSlant::Normal,
+    })
 }
 
 /// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]) — what the real

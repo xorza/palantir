@@ -4,7 +4,9 @@
 use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
 use crate::input::event_outcome::EventOutcome;
 use crate::input::input_event::InputEvent;
+use crate::input::input_queue::InputQueue;
 use crate::input::key_class::KeyClass;
+use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
@@ -42,8 +44,8 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 #[derive(Debug, Default)]
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
-    pub(crate) pointer_pos: Option<Vec2>,
-    pub(crate) hovered: Option<WidgetId>,
+    pointer_pos: Option<Vec2>,
+    hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
     /// whenever the pointer moves and at `end_frame`. New scroll events
     /// are attributed to this id when they arrive.
@@ -65,8 +67,8 @@ pub(crate) struct InputState {
     /// Frame-snapshot of "no widget can hold any non-default interaction
     /// state this frame" — no pointer on the surface, no routed
     /// scroll/pinch target or pending target delta, no live button
-    /// capture or click/double-click edge. Filled once per record pass via
-    /// [`Self::snapshot_frame_quiescent`];
+    /// capture or click/double-click edge. Filled before `App::update` and
+    /// once per record pass via [`Self::snapshot_frame_quiescent`];
     /// read in [`Self::response_for`] to default the whole interaction
     /// half out for every widget instead of re-deriving it per call.
     /// `focused` is excluded on purpose (see `snapshot_frame_quiescent`),
@@ -83,23 +85,23 @@ pub(crate) struct InputState {
     /// Latest modifier-key snapshot. Persists across `end_frame` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
-    pub(crate) modifiers: Modifiers,
+    modifiers: Modifiers,
     /// Currently focused widget, or `None`. Set on `PointerPressed(Left)`
     /// when the press lands on a focusable widget. Evicted in
     /// [`Self::end_frame`] when the focused widget vanishes from the
     /// tree (matches the per-id state map's eviction model). Read by
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
-    pub(crate) focused: Option<WidgetId>,
+    focused: Option<WidgetId>,
     /// This pass's scope routing — who owns which key class, and which
     /// layers are cut off. Resolved once per record pass; see
     /// [`Scopes`].
     scopes: Scopes,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
-    pub(crate) focus_policy: FocusPolicy,
+    focus_policy: FocusPolicy,
     /// Which "did input arrive?" signal the frame gate thresholds
     /// against. See [`InputPolicy`].
-    pub(crate) input_policy: InputPolicy,
+    input_policy: InputPolicy,
     /// Whether any event this record pass wrote state that an
     /// earlier-recorded widget could already have read — see
     /// [`EventOutcome::settles`], which is where each arm decides.
@@ -110,7 +112,7 @@ pub(crate) struct InputState {
     /// [`InputPolicy`] in
     /// `FrameRuntime::take_frame_plan`. Cleared with the per-frame event
     /// queues.
-    pub(crate) signal_since_last_frame: InputSignal,
+    signal_since_last_frame: InputSignal,
     /// Wake-gate watches ([`PointerWake`] / [`KeyboardWake`]
     /// flag masks + specific-chord list). Cleared pre-record (in
     /// `FrameCycle::record_pass`); widgets re-assert each active frame. The
@@ -128,6 +130,9 @@ pub(crate) struct InputState {
     /// [`Self::pointer_events`], which layer-gates it against
     /// [`Self::silenced`].
     frame_pointer_events: Vec<PointerEvent>,
+    /// Events held for a later frame — see [`InputQueue`]. Replayed at
+    /// the end of each frame by [`Self::next_frame`].
+    queue: InputQueue,
 }
 
 impl InputState {
@@ -144,6 +149,57 @@ impl InputState {
         self.snapshot_frame_quiescent();
     }
 
+    /// The focused widget, or `None`.
+    #[inline]
+    pub(crate) const fn focused(&self) -> Option<WidgetId> {
+        self.focused
+    }
+
+    /// The modifier keys held as of the last `ModifiersChanged`.
+    #[inline]
+    pub(crate) const fn modifiers(&self) -> Modifiers {
+        self.modifiers
+    }
+
+    /// The pointer in logical surface pixels, or `None` off the surface.
+    #[inline]
+    pub(crate) const fn pointer_pos(&self) -> Option<Vec2> {
+        self.pointer_pos
+    }
+
+    /// The widget under the pointer, as last routed.
+    #[inline]
+    pub(crate) const fn hovered(&self) -> Option<WidgetId> {
+        self.hovered
+    }
+
+    #[inline]
+    pub(crate) const fn focus_policy(&self) -> FocusPolicy {
+        self.focus_policy
+    }
+
+    #[inline]
+    pub(crate) const fn set_focus_policy(&mut self, policy: FocusPolicy) {
+        self.focus_policy = policy;
+    }
+
+    #[inline]
+    pub(crate) const fn input_policy(&self) -> InputPolicy {
+        self.input_policy
+    }
+
+    #[inline]
+    pub(crate) const fn set_input_policy(&mut self, policy: InputPolicy) {
+        self.input_policy = policy;
+    }
+
+    /// The strongest input signal since the last frame — what the frame
+    /// gate thresholds against.
+    #[inline]
+    pub(crate) const fn signal_since_last_frame(&self) -> InputSignal {
+        self.signal_since_last_frame
+    }
+
     /// Move focus. **Deliberately does not re-route this pass** — see
     /// [`Scopes`] for why mid-pass changes wait for the next resolution.
     pub(crate) fn set_focus(&mut self, id: Option<WidgetId>) {
@@ -155,6 +211,24 @@ impl InputState {
     /// this pass is unaffected.
     pub(crate) fn release_input_scope(&mut self, owner: WidgetId) {
         self.scopes.close(owner);
+    }
+
+    /// The state a warmup pass records against: no input at all, but this
+    /// state's focus, so a widget records as it will in the visible pass.
+    pub(crate) fn warmup_scratch(&self) -> Self {
+        Self {
+            focused: self.focused,
+            ..Self::default()
+        }
+    }
+
+    /// Keep what a warmup pass recorded against `warmup` asked of the
+    /// input: its focus moves and its scope withdrawals. An app that sets
+    /// focus once, on its first record, would otherwise lose it to the
+    /// discarded pass.
+    pub(crate) fn adopt_warmup(&mut self, warmup: &Self) {
+        self.focused = warmup.focused;
+        self.scopes.adopt_closing(&warmup.scopes);
     }
 
     pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
@@ -269,7 +343,9 @@ impl InputState {
     ///
     /// Three slots per button and at most two filled: a press frame can also
     /// cross the drag threshold, and a release frame has no press left to
-    /// report. Nothing is allocated — the slots are an array.
+    /// report — `InputQueue` admits one press-or-release per button per
+    /// frame, so a release and a new press never share one. Nothing is
+    /// allocated — the slots are an array.
     pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
         PointerButton::all().flat_map(move |button| {
             let cap = self.capture(button);
@@ -285,7 +361,8 @@ impl InputState {
             let dragging = press
                 .filter(|press| press.drag == PressDrag::Started)
                 .map(|press| of(press.target, PointerEdge::DragStarted));
-            // A release destroys the press, so this is the other frame: never
+            // A release destroys the press, and `InputQueue` holds a new
+            // press for the next frame, so this is the other frame: never
             // both, which is why one array covers either.
             let ended = cap.release.as_ref().and_then(|release| {
                 // A release that landed off its widget ended nothing anyone
@@ -391,7 +468,7 @@ impl InputState {
         self.pointer_pos.is_some() && self.push_pointer_event(wake, self.pointer_pos, make)
     }
 
-    /// Feed an palantir-native input event. Hit-tests against the
+    /// Feed a palantir-native input event. Hit-tests against the
     /// frozen `Cascade` from this frame's most recent run. Returns an
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active
@@ -412,12 +489,45 @@ impl InputState {
         if !event.is_valid() {
             return InputDelta::default();
         }
-        // Any host-pushed event that survived the screen above
-        // disqualifies the next frame from the paint-anim-only
-        // short-circuit — the recording closure might observe even a
-        // pointer move (hover styling) or modifier change (shortcut
-        // hint) — so it is at least `Inert`, and the arms below raise it
-        // to `Repaint` by returning `repaint: true`. A refused event
+        // A press of a button still held means its release was lost (the
+        // platform swallowed it). Synthesize the release first, so the
+        // press it ended leaves its capture the one way a press does —
+        // with a release edge — and the new press then waits a frame
+        // like any second change of one button.
+        if let InputEvent::PointerPressed(button) = event
+            && self.captures[button.idx()].press.is_some()
+        {
+            self.on_input(InputEvent::PointerReleased(button), cascade, now);
+        }
+        if !self.queue.is_empty() || !self.queue.admits(&event) {
+            self.queue.defer(event, now);
+            return InputDelta {
+                requests_repaint: true,
+            };
+        }
+        self.apply(event, cascade, now)
+    }
+
+    /// End the frame for input: forget what it changed, and apply the
+    /// held events the next frame admits, against the cascade the
+    /// finished frame left. Returns whether input already owes the next
+    /// frame — a replayed event, an eviction's release edge, or events
+    /// still waiting — so the caller can request it.
+    pub(crate) fn next_frame(&mut self, cascade: &Cascade) -> bool {
+        self.queue.next_frame();
+        while let Some(held) = self.queue.pop_admitted() {
+            self.apply(held.event, cascade, held.at);
+        }
+        self.signal_since_last_frame != InputSignal::None || !self.queue.is_empty()
+    }
+
+    /// Apply one admitted event — the body of [`Self::on_input`].
+    fn apply(&mut self, event: InputEvent, cascade: &Cascade, now: Duration) -> InputDelta {
+        // Any host-pushed event that survived the screen above is at
+        // least `Inert` — enough to force a record under
+        // `InputPolicy::Always`, whose app may observe even a pointer
+        // move the hit index ignores — and the arms below raise it to
+        // `Repaint` by returning `repaint: true`. A refused event
         // returns before this on purpose: it mutates nothing, so there is
         // nothing for the closure to observe. Cleared at the top of
         // `frame` after the gate has read it.
@@ -443,6 +553,10 @@ impl InputState {
                         {
                             press.drag = PressDrag::Started;
                             latched = true;
+                            // A press that became a drag is no click, so
+                            // it ends the multi-click run: a press back
+                            // on the same spot after the drag is a single.
+                            cap.run = None;
                         }
                     }
                 }
@@ -483,12 +597,28 @@ impl InputState {
                     self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Down { pos, button: btn }
                     });
+                // Any press breaks every other button's multi-click run,
+                // the native rule: a right-click between two left-clicks
+                // makes them two singles.
+                for (index, cap) in self.captures.iter_mut().enumerate() {
+                    if index != btn.idx() {
+                        cap.run = None;
+                    }
+                }
                 let cap = self.capture_mut(btn);
+                debug_assert!(
+                    cap.press.is_none(),
+                    "a held button's press synthesizes its release first",
+                );
                 match hit.zip(pointer_pos) {
-                    Some((target, pos)) => cap.begin_press(target, pos, now),
-                    // A missed press clears any stale capture and
-                    // leaves the run alone.
-                    None => cap.press = None,
+                    Some((target, pos)) => {
+                        cap.begin_press(target, pos, now);
+                        self.queue.note_button(btn);
+                    }
+                    // A press that hits nothing breaks this button's run
+                    // too: a click on bare surface between two clicks on
+                    // one widget makes them two singles.
+                    None => cap.run = None,
                 }
                 // Focus updates on a separate hit-test on the *left*
                 // button only — right/middle clicks shouldn't steal
@@ -520,8 +650,11 @@ impl InputState {
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
+                let was_captured = self.capture(btn).press.is_some();
+                if was_captured {
+                    self.queue.note_button(btn);
+                }
                 let cap = self.capture_mut(btn);
-                let was_captured = cap.press.is_some();
                 // A `Miss` only tears down a capture that exactly one
                 // widget reads, which is precisely what this module's
                 // settle rule excludes. A `Click` or `DragStopped` is the
@@ -603,11 +736,19 @@ impl InputState {
                 // chord check takes the whole `KeyPress` so the
                 // non-Latin layout fallback applies — an off-focus
                 // Cmd+Z still wakes on a Russian layout.
-                let observable = self.focused.is_some()
+                // A bare modifier arrives as `Key::Other` with no text. A
+                // focused widget does nothing with it — modifier *state*
+                // reaches it through `ModifiersChanged` — so it wakes only
+                // a watcher that asked for it.
+                let bare_modifier = key == Key::Other && text.is_empty();
+                let observable = (self.focused.is_some() && !bare_modifier)
                     || self.subs.matches_press(kp)
                     || self.subs.keyboard_mask.contains(KeyboardWake::KEY);
                 if observable {
                     self.frame_keyboard_events.push(kp);
+                    if text.is_empty() && !bare_modifier {
+                        self.queue.note_command_key(key);
+                    }
                 }
                 EventOutcome::settle(observable)
             }
@@ -723,6 +864,11 @@ impl InputState {
                 .is_some_and(|press| !cascade.by_id.contains_key(&press.target));
             if vanished {
                 cap.abandon_press();
+                // The release edge belongs to the next frame, and this
+                // runs after the queues drained: raise the signal so that
+                // frame records instead of painting from the retained tree
+                // and dropping the edge unseen.
+                self.signal_since_last_frame.raise(InputSignal::Repaint);
             }
         }
         // Focus eviction: same model as the per-button capture eviction
@@ -748,8 +894,9 @@ impl InputState {
     /// hold non-default interaction state this frame: no pointer on the
     /// surface, no routed scroll/pinch target or pending event-time
     /// delta, and no live button capture or per-frame click/double-click
-    /// edge. Taken once per record pass so [`Self::response_for`] can
-    /// default the interaction half out for every widget at once.
+    /// edge. Taken before `App::update` and once per record pass, so
+    /// [`Self::response_for`] can default the interaction half out for
+    /// every widget at once.
     ///
     /// `focused` is deliberately *not* part of this: [`crate::Ui::set_focus`]
     /// can set it mid-record, after the snapshot is taken, so
@@ -765,7 +912,7 @@ impl InputState {
     /// the surface. A pointer resting on inert surface still routes
     /// nothing, but it holds a position, so every widget takes the long
     /// probe that frame.
-    fn snapshot_frame_quiescent(&mut self) {
+    pub(crate) fn snapshot_frame_quiescent(&mut self) {
         debug_assert!(
             self.pointer_pos.is_some()
                 || (self.hovered.is_none()
@@ -928,6 +1075,28 @@ impl InputState {
             .map(|(pointer, layout)| pointer_in_widget_space(pointer, layout.min, transform));
 
         state
+    }
+}
+
+// Read by the frame harness, which feeds input the way a host does and
+// has to know what it already fed.
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::input::input_state::InputState;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    impl InputState {
+        /// Whether events are held for a later frame.
+        pub(crate) fn has_held_input(&self) -> bool {
+            !self.queue.is_empty()
+        }
+
+        /// The modifier set once every held event has landed — the state
+        /// a feeder compares against before sending a change, since the
+        /// live `modifiers` lags behind what it already sent.
+        pub(crate) fn modifiers_after_held_input(&self) -> Modifiers {
+            self.queue.last_held_modifiers().unwrap_or(self.modifiers)
+        }
     }
 }
 

@@ -4,13 +4,12 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Block, Configure, Corners, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing,
+    Background, Block, Configure, Corners, FramePaint, Panel, RgbaF32, Scroll, ScrollbarTheme,
+    Sizing,
 };
 
-use crate::fixtures::DARK_BG;
-use crate::goldens::assert_matches_golden;
+use crate::goldens::{assert_matches_golden, assert_same};
 use crate::harness::Harness;
-use palantir::golden::Tolerance;
 
 const CARD: RgbaF32 = RgbaF32::srgb(0.16, 0.20, 0.28);
 const ROW: RgbaF32 = RgbaF32::srgb(0.42, 0.55, 0.78);
@@ -61,8 +60,8 @@ fn scroll_vertical_overflow_matches_golden() {
             });
     }
     let size = UVec2::new(180, 200);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
-    assert_matches_golden("scroll_vertical_overflow", &img, Tolerance::default());
+    let img = h.size(size).settled_frame(1, scene).image;
+    assert_matches_golden("scroll_vertical_overflow", &img);
 }
 
 /// Wide content in a fixed-width horizontal scroll. Bar lands at the
@@ -97,8 +96,8 @@ fn scroll_horizontal_overflow_matches_golden() {
             });
     }
     let size = UVec2::new(220, 80);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
-    assert_matches_golden("scroll_horizontal_overflow", &img, Tolerance::default());
+    let img = h.size(size).settled_frame(1, scene).image;
+    assert_matches_golden("scroll_horizontal_overflow", &img);
 }
 
 /// Both-axis scroll over a content larger than the viewport on both
@@ -131,8 +130,8 @@ fn scroll_xy_overflow_matches_golden() {
             });
     }
     let size = UVec2::new(160, 160);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
-    assert_matches_golden("scroll_xy_overflow", &img, Tolerance::default());
+    let img = h.size(size).settled_frame(1, scene).image;
+    assert_matches_golden("scroll_xy_overflow", &img);
 }
 
 /// Content fits inside the viewport — no overflow, no bar, no
@@ -165,8 +164,8 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
             });
     }
     let size = UVec2::new(160, 160);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
-    assert_matches_golden("scroll_no_bar_when_fits", &img, Tolerance::default());
+    let img = h.size(size).settled_frame(1, scene).image;
+    assert_matches_golden("scroll_no_bar_when_fits", &img);
 }
 
 /// Scroll with user-set padding. The bar must land in the reserved
@@ -204,8 +203,8 @@ fn scroll_with_user_padding_matches_golden() {
             });
     }
     let size = UVec2::new(180, 180);
-    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
-    assert_matches_golden("scroll_with_user_padding", &img, Tolerance::default());
+    let img = h.size(size).settled_frame(1, scene).image;
+    assert_matches_golden("scroll_with_user_padding", &img);
 }
 
 /// Warm-cache parity: render the same scene three times. Frame 1 has
@@ -219,7 +218,7 @@ fn scroll_with_user_padding_matches_golden() {
 /// from cold-cache encode. Pin frame 3 byte-identical to frame 2.
 /// No golden — pure intra-test invariant.
 #[test]
-fn scroll_warm_cache_matches_cold_encoded_second_frame() {
+fn scroll_warm_cache_repaint_matches_the_cold_encode() {
     let mut h = Harness::new();
     fn scene(ui: &mut palantir::Ui) {
         light_thumb_theme(ui);
@@ -261,25 +260,15 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                 }
             });
     }
-    let size = UVec2::new(280, 200);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let frame_2 = h.render(size, 1.0, DARK_BG, scene);
-    let frame_3 = h.render(size, 1.0, DARK_BG, scene);
-    // Strict byte-equality: same scene, deterministic encode → identical pixels.
-    // If the encoder cache or compose cache corrupts replay, this diverges.
-    assert_eq!(
-        frame_2.dimensions(),
-        frame_3.dimensions(),
-        "frame dimensions must match"
-    );
-    let mut diffs = 0usize;
-    for (p2, p3) in frame_2.pixels().zip(frame_3.pixels()) {
-        if p2 != p3 {
-            diffs += 1;
-        }
-    }
-    assert_eq!(
-        diffs, 0,
-        "warm-cache frame diverged from cold-encoded second frame in {diffs} pixels"
-    );
+    // The cold frame encodes everything fresh; the invalidated one repaints
+    // the whole target again with every cache warm. Same scene,
+    // deterministic encode → identical pixels, so a cache that corrupts
+    // replay diverges here. Both paint modes are pinned: an unchanged scene
+    // would otherwise skip and compare two copies of one backbuffer.
+    let cold = h.size(UVec2::new(280, 200)).frame(scene);
+    assert_eq!(cold.paint, FramePaint::Full);
+    h.host.invalidate_target_contents();
+    let warm = h.frame(scene);
+    assert_eq!(warm.paint, FramePaint::Full, "the warm frame repaints");
+    assert_same("scroll_warm_cache_repaint", &warm.image, &cold.image);
 }

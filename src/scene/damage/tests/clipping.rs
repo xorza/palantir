@@ -1,15 +1,15 @@
 //! What a clip and an overhang do to the region that comes out.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size};
-use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame};
+use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -45,10 +45,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                 Block::new()
                                     .id(WidgetId::from_hash("overflow"))
                                     .size(child_size)
-                                    .background(Background {
-                                        fill: fill.into(),
-                                        ..Default::default()
-                                    })
+                                    .background(Background::fill(fill))
                                     .show(ui)
                                     .node(),
                             );
@@ -93,10 +90,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(BLUE))
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::shadow(Shadow {
@@ -161,7 +155,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         // damage is the visible portion of `prev_rect`.
         assert_eq!(
             rects,
-            vec![prev_rect.clamp_to(TEST_SURFACE)],
+            vec![prev_rect.clamp_to(DISPLAY.logical_rect())],
             "[{label}] damage region",
         );
     }
@@ -195,10 +189,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("card"))
                                 .size((Sizing::fixed(card), Sizing::fixed(card)))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::shadow(Shadow {
@@ -259,10 +250,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
             Panel::hstack()
                 .id(host_id)
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(BLUE))
                 .clip_rect()
                 .show(ui, |ui| {
                     ui.add_shape(
@@ -298,4 +286,44 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
         "direct shape rect must be clipped to the host's own mask; \
          host_rect = {host_rect:?}, shape_rect = {shape_rect:?}",
     );
+}
+
+/// A transparent container with a rounded clip keeps a chrome row only
+/// so the mask can read its corners. The row paints nothing, so adding
+/// the container damages only its child: a 100×100 container at the
+/// origin holding a 20×20 child at its top-left, both added in one
+/// frame, damages exactly the child's 20×20.
+#[test]
+fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
+    use crate::primitives::corners::Corners;
+
+    const CHILD: f32 = 20.0;
+    let build = |ui: &mut Ui, with_host: bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            if !with_host {
+                return;
+            }
+            Panel::zstack()
+                .id(WidgetId::from_hash("rounded-host"))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                .background(Background {
+                    corners: Corners::all(12.0),
+                    ..Default::default()
+                })
+                .clip_rounded()
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("inner"))
+                        .size(CHILD)
+                        .background(Background::fill(BLUE))
+                        .show(ui);
+                });
+        });
+    };
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| build(ui, false));
+    frame(&mut h, |ui| build(ui, true));
+
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    assert_eq!(rects, [Rect::new(0.0, 0.0, CHILD, CHILD)]);
 }

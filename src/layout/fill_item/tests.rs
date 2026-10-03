@@ -185,10 +185,10 @@ fn allocations_do_not_depend_on_item_order() {
         for (index, (a, b)) in forward.iter().zip(&reversed).enumerate() {
             // The two runs subtract the frozen sizes off the budget in
             // opposite orders, so they agree to f32 rounding, not to the bit.
-            assert!(
-                (a - b).abs() < 1e-3,
+            assert_eq!(
+                a, b,
                 "item {index} got {a} in list order and {b} reversed\n\
-                 items: {items:?}\n forward: {forward:?}\n reversed: {reversed:?}",
+                 items: {items:?}\n forward: {forward:?}\n reversed: {reversed:?}"
             );
         }
     }

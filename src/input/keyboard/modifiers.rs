@@ -1,6 +1,8 @@
 //! Which modifier keys are held, as a level the input state carries
 //! between events rather than an edge.
 
+use crate::common::platform::Platform;
+
 /// Modifier-key state. Sent as a standalone `InputEvent::ModifiersChanged`
 /// whenever the held set changes; widgets read the latest snapshot from the
 /// input state.
@@ -48,10 +50,26 @@ impl Modifiers {
     pub const fn any_command(self) -> bool {
         self.ctrl || self.alt || self.mac_ctrl
     }
+
+    /// Whether a press under these modifiers on `platform` composes text
+    /// rather than commanding — the platform's own rule, which the host
+    /// does not restate:
+    ///
+    /// - macOS: Option composes (`@` is Option+L on a German layout), so
+    ///   only Cmd (`ctrl` here) and raw Control make a command.
+    /// - Windows and Linux: Ctrl+Alt is AltGr, which composes; Ctrl alone
+    ///   or Alt alone is a command (a shortcut, a menu mnemonic).
+    pub(crate) const fn compose_text(self, platform: Platform) -> bool {
+        match platform {
+            Platform::Mac => !self.ctrl && !self.mac_ctrl,
+            Platform::Win | Platform::Linux => self.ctrl == self.alt,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::common::platform::Platform;
     use crate::input::keyboard::modifiers::Modifiers;
 
     #[test]
@@ -77,5 +95,36 @@ mod tests {
             }
             .any_command()
         );
+    }
+
+    /// Every modifier combination on every platform, hand-derived from the
+    /// platform rules: (shift, ctrl, alt, mac_ctrl) → composes on
+    /// (Mac, Win, Linux).
+    #[test]
+    fn compose_text_follows_each_platforms_rule() {
+        let rows = [
+            // Bare and shifted keys type everywhere.
+            ((false, false, false, false), [true, true, true]),
+            ((true, false, false, false), [true, true, true]),
+            // Ctrl alone (Cmd on macOS) commands everywhere.
+            ((false, true, false, false), [false, false, false]),
+            // Alt alone: Option composes on macOS, a mnemonic elsewhere.
+            ((false, false, true, false), [true, false, false]),
+            ((true, false, true, false), [true, false, false]),
+            // Ctrl+Alt: Cmd+Option commands on macOS, AltGr composes elsewhere.
+            ((false, true, true, false), [false, true, true]),
+            // Raw Control on macOS commands.
+            ((false, false, false, true), [false, true, true]),
+        ];
+        for ((shift, ctrl, alt, mac_ctrl), expected) in rows {
+            let mods = Modifiers {
+                shift,
+                ctrl,
+                alt,
+                mac_ctrl,
+            };
+            let got = [Platform::Mac, Platform::Win, Platform::Linux].map(|p| mods.compose_text(p));
+            assert_eq!(got, expected, "{mods:?}");
+        }
     }
 }

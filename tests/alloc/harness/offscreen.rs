@@ -1,10 +1,5 @@
-//! The offscreen host every audit that needs the renderer draws through.
-//!
-//! Two callers with different reasons. `gates.rs` renders the whole frame
-//! bench tree to ask what a full-scale frame costs; `fixtures/renderer.rs`
-//! renders one shape kind at a time to ask what that kind costs per
-//! shape. Both need a device, because `Ui::frame` stops at damage and the
-//! encode and compose passes live behind a `Frontend`.
+//! The offscreen host every audit that needs a device draws through:
+//! the gates in `gates/on_gpu.rs`, which ask what the driver costs.
 //!
 //! Written once because every caller has to agree on the target's format,
 //! usage and clear colour. Those decide how much submission work a frame
@@ -16,9 +11,12 @@
 // of the library's own modules.
 #![allow(clippy::disallowed_types)]
 
+use std::time::Duration;
+
 use glam::UVec2;
-use palantir::internals::{HeadlessTestGpuLease, RecordApp};
-use palantir::{OffscreenHost, RgbaF32, Ui};
+use palantir::internals::HeadlessTestGpuLease;
+use palantir::internals::record_app::RecordApp;
+use palantir::{FixedClock, FrameReport, OffscreenHost, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.
 #[derive(Debug)]
@@ -29,26 +27,15 @@ pub(crate) struct OffscreenTarget {
 
 impl OffscreenTarget {
     /// The public offscreen path always copies from its backbuffer, so
-    /// what every caller pins excludes the direct-present path.
+    /// what every caller pins excludes the direct-present path. The clock
+    /// stands still, so no frame's work depends on how fast the last one
+    /// ran.
     pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
-        let mut host = OffscreenHost::builder(gpu.handles()).build();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .clock(FixedClock::new(Duration::ZERO))
+            .build();
         host.ui().theme_mut().window_clear = RgbaF32::TRANSPARENT;
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: surface.x,
-                height: surface.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let texture = gpu.target(label, surface);
         Self { host, texture }
     }
 
@@ -61,14 +48,11 @@ impl OffscreenTarget {
         gpu: &HeadlessTestGpuLease,
         dpr: f32,
         record: impl FnMut(&mut Ui),
-    ) {
-        self.host
+    ) -> FrameReport {
+        let report = self
+            .host
             .frame(&self.texture, dpr, &mut RecordApp::new(record));
-        gpu.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
+        gpu.wait();
+        report
     }
 }

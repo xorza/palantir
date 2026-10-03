@@ -153,7 +153,7 @@ mod tests {
         let one = UserScale::ONE;
         assert_eq!(one.stepped_up().get(), 1.1);
         assert_eq!(one.stepped_down().get(), 0.9);
-        // Two steps up from 1.0 is 1.25, and back down again is 1.0.
+        // Two steps up from 1.0 is 1.25, and one back down is 1.1.
         assert_eq!(one.stepped_up().stepped_up().get(), 1.25);
         assert_eq!(one.stepped_up().stepped_up().stepped_down().get(), 1.1);
 
@@ -168,12 +168,22 @@ mod tests {
     }
 
     /// A value between two rungs must move on the first step, in both
-    /// directions — 1.37 sits between 1.25 and 1.5.
+    /// directions — 1.37 sits between 1.25 and 1.5. Within `EPS` of a
+    /// rung a value counts as on it, so both steps leave that rung behind;
+    /// past `EPS` above it, a step down lands on it.
     #[test]
     fn stepping_from_between_rungs_lands_on_the_neighbours() {
-        let between = UserScale::new(1.37);
-        assert_eq!(between.stepped_up().get(), 1.5);
-        assert_eq!(between.stepped_down().get(), 1.25);
+        for (factor, up, down) in [
+            (1.37, 1.5, 1.25),
+            (1.0 + EPS * 0.5, 1.1, 0.9),
+            (1.0 - EPS * 0.5, 1.1, 0.9),
+            (1.0 + EPS * 2.0, 1.1, 1.0),
+            (1.0 - EPS * 2.0, 1.0, 0.9),
+        ] {
+            let scale = UserScale::new(factor);
+            assert_eq!(scale.stepped_up().get(), up, "{factor} up");
+            assert_eq!(scale.stepped_down().get(), down, "{factor} down");
+        }
     }
 
     #[test]

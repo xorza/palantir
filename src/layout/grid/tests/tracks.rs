@@ -5,14 +5,14 @@ use crate::layout::axis::Axis;
 use crate::layout::grid::axis_scratch::AxisScratch;
 use crate::layout::grid::axis_scratch::HugRanges;
 
-use crate::layout::intrinsic::LenReq;
+use crate::internals::harness::UiHarness;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel};
 use glam::UVec2;
@@ -415,60 +415,49 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut grid_node = None;
     let mut kids = Vec::new();
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                grid_node = Some(
-                    Grid::new()
-                        .id(WidgetId::from_hash("multi-row"))
-                        .cols([Track::fixed(50.0)])
-                        .rows([Track::HUG, Track::HUG, Track::HUG])
-                        .size((Sizing::HUG, Sizing::HUG))
-                        .show(ui, |ui| {
-                            kids.push(
-                                Block::new()
-                                    .id(WidgetId::from_hash("short"))
-                                    .size((50.0, 10.0))
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            kids.push(
-                                Block::new()
-                                    .id(WidgetId::from_hash("tall"))
-                                    .size((50.0, 80.0))
-                                    .grid_cell((1, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            kids.push(
-                                Block::new()
-                                    .id(WidgetId::from_hash("med"))
-                                    .size((50.0, 30.0))
-                                    .grid_cell((2, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                        })
-                        .response
-                        .node(),
-                );
+                Grid::new()
+                    .id(WidgetId::from_hash("multi-row"))
+                    .cols([Track::fixed(50.0)])
+                    .rows([Track::HUG, Track::HUG, Track::HUG])
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        kids.push(
+                            Block::new()
+                                .id(WidgetId::from_hash("short"))
+                                .size((50.0, 10.0))
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node(),
+                        );
+                        kids.push(
+                            Block::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((50.0, 80.0))
+                                .grid_cell((1, 0))
+                                .show(ui)
+                                .node(),
+                        );
+                        kids.push(
+                            Block::new()
+                                .id(WidgetId::from_hash("med"))
+                                .size((50.0, 30.0))
+                                .grid_cell((2, 0))
+                                .show(ui)
+                                .node(),
+                        );
+                    });
             });
     });
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[0].idx()].size.h, 10.0);
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[1].idx()].size.h, 80.0);
     assert_eq!(h.ui.layout(Layer::Main).rect[kids[2].idx()].size.h, 30.0);
-    assert_eq!(
-        h.layout_rect(WidgetId::from_hash("multi-row"))
-            .expect("arranged")
-            .size
-            .h,
-        120.0
-    );
+    assert_eq!(h.arranged(WidgetId::from_hash("multi-row")).size.h, 120.0);
 }
 
 fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {

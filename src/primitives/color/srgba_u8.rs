@@ -1,7 +1,8 @@
 //! sRGB-encoded bytes: what a hex code, an image texel, or a number shown
 //! to a person means.
 
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 
 /// A 4-byte **sRGB-encoded** colour with a straight 8-bit alpha.
 ///

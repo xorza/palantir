@@ -32,14 +32,22 @@ pub(super) struct RasterProgram {
     shader: wgpu::ShaderModule,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl RasterProgram {
     pub(super) fn new(device: &wgpu::Device) -> Self {
+        let layout = Self::create_layout(device);
+        // Group 0 = atlas textures + sampler. Viewport and atlas sizes ride
+        // the shared immediate region, so there is no uniform buffer.
+        let pipeline_layout =
+            PipelineRecipe::pipeline_layout(device, "palantir.raster.pl", &[Some(&layout)]);
         Self {
             shader: RasterQuad::shader_module(device, "palantir.raster.shader"),
-            layout: Self::create_layout(device),
+            layout,
             sampler: Self::create_sampler(device),
+            pipeline_layout,
         }
     }
 
@@ -66,17 +74,13 @@ impl RasterProgram {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Group 0 = atlas textures + sampler. Viewport and atlas sizes ride
-        // the shared immediate region, so there is no uniform buffer.
-        let layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.raster.pl", &[Some(&self.layout)]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.raster.pipeline",
                 stencil_label: "palantir.raster.pipeline.stencil_test",
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(RasterQuad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },

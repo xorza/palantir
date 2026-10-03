@@ -3,21 +3,22 @@
 
 use crate::Ui;
 use crate::input::shortcut::Shortcut;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::ShapeBrush;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::tests::support::{SURFACE, trigger_id};
+use crate::widgets::context_menu::tests::support::{
+    MenuRow, SURFACE, menu_body, menu_rows, trigger_id,
+};
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -57,16 +58,12 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     // Only the row carrying a shortcut has a gutter to widen, but rows
     // stretch to the body's content width, so both follow it.
     for (i, (a, b)) in after.iter().zip(&before).enumerate() {
-        assert_close(
-            a.rect.size.w - b.rect.size.w,
-            10.0,
-            &format!("row {i} width"),
-        );
-        assert_close(a.rect.size.h, b.rect.size.h, &format!("row {i} height"));
+        assert_eq!(a.rect.size.w - b.rect.size.w, 10.0, "row {i} width");
+        assert_eq!(a.rect.size.h, b.rect.size.h, "row {i} height");
     }
     let pitch_before = before[1].rect.min.y - before[0].rect.min.y;
     let pitch_after = after[1].rect.min.y - after[0].rect.min.y;
-    assert_close(
+    assert_eq!(
         pitch_after - pitch_before,
         6.0,
         "row pitch grows by the menu gap delta",
@@ -101,19 +98,19 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
     let unset = rows(&mut h, None);
     assert_eq!(unset.len(), 2);
     let unset_pitch = unset[1].rect.min.y - unset[0].rect.min.y;
-    assert_close(unset_pitch, unset[0].rect.size.h + 7.0, "themed pitch");
+    assert_eq!(unset_pitch, unset[0].rect.size.h + 7.0, "themed pitch");
 
     // Explicit zero: rows sit flush, theme gap ignored.
     let zeroed = rows(&mut h, Some(0.0));
     let zero_pitch = zeroed[1].rect.min.y - zeroed[0].rect.min.y;
-    assert_close(zero_pitch, zeroed[0].rect.size.h, "explicit 0.0 pitch");
+    assert_eq!(zero_pitch, zeroed[0].rect.size.h, "explicit 0.0 pitch");
     assert_ne!(unset_pitch, zero_pitch);
 
     // And a non-zero explicit value still wins over the theme, so the
     // fallback keys on "set at all", not on "non-zero".
     let wide = rows(&mut h, Some(20.0));
     let wide_pitch = wide[1].rect.min.y - wide[0].rect.min.y;
-    assert_close(
+    assert_eq!(
         wide_pitch,
         wide[0].rect.size.h + 20.0,
         "explicit 20.0 pitch",
@@ -151,13 +148,13 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     assert_eq!(rows.len(), 3, "two rows plus the separator between them");
     let [first, sep, second] = [rows[0], rows[1], rows[2]];
 
-    assert_close(sep.rect.size.h, 3.0, "thickness is the rule's height");
-    assert_close(
+    assert_eq!(sep.rect.size.h, 3.0, "thickness is the rule's height");
+    assert_eq!(
         sep.rect.min.y - first.rect.max().y,
         7.0,
         "margin.top clears the row above",
     );
-    assert_close(
+    assert_eq!(
         second.rect.min.y - sep.rect.max().y,
         7.0,
         "margin.bottom clears the row below",
@@ -289,7 +286,7 @@ fn per_instance_style_overrides_global_menu_theme() {
         Spacing::xy(2.0, 6.0),
         "row margin"
     );
-    assert_close(rows[1].rect.size.h, 5.0, "rule thickness");
+    assert_eq!(rows[1].rect.size.h, 5.0, "rule thickness");
     // Same styled bundle, but this row set both itself.
     assert_eq!(
         layout[rows[2].node.idx()].padding,
@@ -333,11 +330,13 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     });
 
     let derived = trigger_id().with("body");
-    let index = popup_node(&h, derived).expect("context menu body node");
+    let menu = h.node_of(derived).expect("context menu body node");
+    assert_eq!(menu.layer, Layer::Menu);
     let tree = h.ui.tree(Layer::Menu);
+    let index = menu.node.idx();
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(5.0));
-    assert_eq!(tree.bounds(NodeId(index as u32)).min_size, Size::ZERO);
+    assert_eq!(tree.bounds(menu.node).min_size, Size::ZERO);
 
     // Same trigger, caller-set id: the derived one must not appear.
     let explicit = WidgetId::from_hash("my-own-menu-body");
@@ -348,71 +347,36 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
             .id(explicit)
             .show(ui, |_, _| {});
     });
-    assert!(
-        popup_node(&h, explicit).is_some(),
+    assert_eq!(
+        h.node_of(explicit).map(|at| at.layer),
+        Some(Layer::Menu),
         "an explicit id must reach the recorded menu body",
     );
-    assert!(
-        popup_node(&h, derived).is_none(),
+    assert_eq!(
+        h.node_of(derived),
+        None,
         "the trigger-derived id must not also be recorded",
     );
 }
 
-/// Layout arithmetic lands within f32 slop of the hand-computed value —
-/// row extents fold in text measurement, and the gap/margin knobs
-/// round-trip through the node columns' f16 lanes.
-#[track_caller]
-fn assert_close(actual: f32, expected: f32, what: &str) {
-    assert!(
-        (actual - expected).abs() < 1e-3,
-        "{what}: expected {expected}, got {actual}",
-    );
-}
+/// Every widget constructor is `#[track_caller]`, the separator included:
+/// two separators written on two lines take two call-site ids, rather
+/// than one id and its second occurrence.
+#[test]
+fn separators_take_their_call_site_ids() {
+    use crate::widgets::panel::Panel;
 
-fn menu_body(h: &UiHarness, for_id: WidgetId) -> NodeId {
-    let body_id = for_id.with("body");
-    let index =
-        h.ui.tree(Layer::Menu)
-            .records
-            .widget_id()
-            .iter()
-            .position(|id| *id == body_id)
-            .expect("context menu body recorded");
-    NodeId(index as u32)
-}
-
-#[derive(Clone, Copy, Debug)]
-struct MenuRow {
-    node: NodeId,
-    rect: Rect,
-}
-
-/// The open menu's direct children in record order (separators
-/// included), each with the rect arrange gave it. Walks `subtree_end`
-/// so a row's own label / shortcut leaves are skipped.
-fn menu_rows(h: &UiHarness, for_id: WidgetId) -> Vec<MenuRow> {
-    let body = menu_body(h, for_id).idx();
-    let tree = h.ui.tree(Layer::Menu);
-    let ends = tree.records.subtree_end();
-    let body_end = ends[body].end() as usize;
-    let rects = &h.ui.layout(Layer::Menu).rect;
-    let mut rows = Vec::new();
-    let mut i = body + 1;
-    while i < body_end {
-        rows.push(MenuRow {
-            node: NodeId(i as u32),
-            rect: rects[i],
-        });
-        i = ends[i].end() as usize;
-    }
-    rows
-}
-
-/// Record index of the popup-layer node carrying `id`, if any.
-fn popup_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
-    h.ui.tree(Layer::Menu)
-        .records
-        .widget_id()
-        .iter()
-        .position(|recorded| *recorded == id)
+    let mut h = UiHarness::new(SURFACE);
+    let ids = h.frame_value(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("seps"))
+            .show(ui, |ui| {
+                let first = MenuItem::separator().show(ui).id;
+                let second = MenuItem::separator().show(ui).id;
+                (first, second)
+            })
+            .inner
+    });
+    assert_ne!(ids.0, ids.1);
+    assert_ne!(ids.1, ids.0.with(1), "not an occurrence of the first");
 }

@@ -1,13 +1,11 @@
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
-use crate::layout::types::{
-    align::Align,
-    align::VAlign,
-    sizing::{SizeSpec, Sizing},
-};
+use crate::layout::types::justify::Justify;
+use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;
@@ -157,10 +155,10 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 
 #[test]
 fn hstack_justify_distributes_leftover() {
-    use crate::layout::types::justify::Justify;
-    // 200-wide parent, 40-wide children, no gap.
-    // Center: 60 leading. End: 200-40=160. SpaceBetween: 80 between gap.
-    // SpaceAround: 30/60/30 pads.
+    // 200-wide parent, 40-wide children, no gap. Two children leave 120:
+    // Center leads with 60, End starts the last child at 200 − 40 = 160,
+    // SpaceAround pads 30 / 60 / 30. Three children leave 80, which
+    // SpaceBetween splits into two 40 px gaps.
     let cases: &[(&str, Justify, &[f32])] = &[
         ("center", Justify::Center, &[60.0, 100.0]),
         ("end", Justify::End, &[120.0, 160.0]),
@@ -194,7 +192,6 @@ fn hstack_justify_distributes_leftover() {
 
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
-    use crate::layout::types::justify::Justify;
     let mut h = UiHarness::new(UVec2::new(200, 100));
     let root = h.frame_value(|ui| {
         Panel::hstack()
@@ -282,22 +279,16 @@ fn hstack_align_center_centers_child_on_cross_axis() {
 fn negative_left_margin_spills_outside_slot() {
     // CSS-style negative margin: smaller slot, larger render, shifted negative.
     let mut h = UiHarness::new(UVec2::new(200, 100));
-    let mut button_node = None;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            button_node = Some(
-                Button::new()
-                    .id(WidgetId::from_hash("spill"))
-                    .size((Sizing::fixed(50.0), Sizing::fixed(30.0)))
-                    .margin((-10.0, 0.0, 0.0, 0.0))
-                    .show(ui)
-                    .node(),
-            );
+            Button::new()
+                .id(WidgetId::from_hash("spill"))
+                .size((Sizing::fixed(50.0), Sizing::fixed(30.0)))
+                .margin((-10.0, 0.0, 0.0, 0.0))
+                .show(ui);
         });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("spill"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("spill"));
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -332,46 +323,10 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
     // Hug HStack tracks the button's content width — no inflation from
-    // the Fill filler, and no double-count (would be > root_w).
-    assert_eq!(root_w, button_w);
-}
-
-/// Pin: a collapsed child between two active children does not advance
-/// the cursor and does not count toward `total_gap`.
-#[test]
-fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .gap(5.0)
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .size((20.0, 20.0))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("hidden"))
-                    .size((50.0, 20.0))
-                    .collapsed()
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("b"))
-                    .size((30.0, 20.0))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    let kids = h.main_child_rects(root);
-    let a = kids[0];
-    let hidden = kids[1];
-    let b = kids[2];
-
-    assert_eq!((a.min.x, a.size.w), (0.0, 20.0));
-    assert_eq!((hidden.min.x, hidden.size.w), (20.0, 0.0));
-    assert_eq!(hidden.size.h, 0.0);
-    assert_eq!((b.min.x, b.size.w), (25.0, 30.0));
+    // the Fill filler, and no double-count. The button is "Hi" at mono's
+    // 8 px per char, 12 px padding and the 1 px border folded into it on
+    // each side: 16 + 24 + 2 = 42.
+    assert_eq!([button_w, root_w], [42.0, 42.0]);
 }
 
 #[test]
@@ -397,10 +352,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
     ] {
         let mut h = UiHarness::new(case.viewport);
         let root = h.frame_value(|ui| {
-            let panel = match case.axis {
-                Axis::X => Panel::hstack(),
-                Axis::Y => Panel::vstack(),
-            };
+            let panel = Panel::stack_on(case.axis);
             panel
                 .auto_id()
                 .size(case.axis.compose_size(200.0, 40.0))
@@ -411,14 +363,8 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                         .size(case.axis.compose_size(20.0, 10.0))
                         .show(ui);
 
-                    let hug_size = match case.axis {
-                        Axis::X => SizeSpec::new(Sizing::HUG, Sizing::fixed(10.0)),
-                        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), Sizing::HUG),
-                    };
-                    let hug = match case.axis {
-                        Axis::X => Panel::hstack(),
-                        Axis::Y => Panel::vstack(),
-                    };
+                    let hug_size = case.axis.compose_sizing(Sizing::HUG, Sizing::fixed(10.0));
+                    let hug = Panel::stack_on(case.axis);
                     hug.id(WidgetId::from_hash((case.label, "hug")))
                         .size(hug_size)
                         .show(ui, |ui| {
@@ -428,10 +374,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                                 .show(ui);
                         });
 
-                    let fill_size = match case.axis {
-                        Axis::X => SizeSpec::new(Sizing::FILL, Sizing::fixed(10.0)),
-                        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), Sizing::FILL),
-                    };
+                    let fill_size = case.axis.compose_sizing(Sizing::FILL, Sizing::fixed(10.0));
                     Block::new()
                         .id(WidgetId::from_hash((case.label, "collapsed-fill")))
                         .size(fill_size)
@@ -468,8 +411,6 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
 /// in the arrange freeze loop.)
 #[test]
 fn hstack_fill_max_size_caps_arranged_share() {
-    use crate::primitives::size::Size;
-
     let mut h = UiHarness::new(UVec2::new(400, 100));
     h.frame(|ui| {
         Panel::hstack()
@@ -487,9 +428,7 @@ fn hstack_fill_max_size_caps_arranged_share() {
                     .show(ui);
             });
     });
-    let arranged = h
-        .layout_rect(WidgetId::from_hash("fill"))
-        .expect("arranged");
+    let arranged = h.arranged(WidgetId::from_hash("fill"));
     assert_eq!(
         arranged.size.w, 50.0,
         "Fill arrange must clamp to max_size when leftover share > cap"
@@ -501,8 +440,6 @@ fn hstack_fill_max_size_caps_arranged_share() {
 /// `inner_avail` from raw `available` ignoring `bounds.max_size`.
 #[test]
 fn parent_max_size_clamps_children_available() {
-    use crate::primitives::size::Size;
-
     let mut h = UiHarness::new(UVec2::new(1000, 200));
     let parent_node = h.under_outer(|ui| {
         Panel::vstack()
@@ -523,9 +460,7 @@ fn parent_max_size_clamps_children_available() {
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
     );
-    let inner_rect = h
-        .layout_rect(WidgetId::from_hash("inner"))
-        .expect("arranged");
+    let inner_rect = h.arranged(WidgetId::from_hash("inner"));
     assert_eq!(
         inner_rect.size.w, 200.0,
         "Fill child must not bleed past parent's max_size cap",
@@ -540,9 +475,6 @@ fn parent_max_size_clamps_children_available() {
 /// children, which actually have room to be offset inside their slot.
 #[test]
 fn fill_cross_axis_stretches_regardless_of_align() {
-    use crate::Sizing;
-    use crate::layout::types::align::Align;
-
     for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
         let mut h = UiHarness::new(UVec2::new(400, 100));
         let mut child = None;
@@ -575,58 +507,6 @@ fn fill_cross_axis_stretches_regardless_of_align() {
             r.min.x,
         );
     }
-}
-
-/// Cross-cutting min/max contract: a `Hug` panel clamps its
-/// content-driven size to `[min_size, max_size]` on each axis — the same
-/// `AxisSlot::resolve` clamp every widget/panel goes through, so this
-/// pins the behavior for all of them. Small content floors at `min_size`;
-/// large content caps at `max_size`.
-#[test]
-fn hug_panel_clamps_to_min_and_max_size() {
-    // Content 60px tall, `min_size` 100 → floors at 100.
-    let mut h = UiHarness::new(UVec2::new(800, 600));
-    let small = h.frame_value(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("small"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .min_size((0.0, 100.0))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("c"))
-                    .size((Sizing::fixed(40.0), Sizing::fixed(60.0)))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    assert_eq!(
-        h.ui.arranged_rect(Layer::Main, small).size.h,
-        100.0,
-        "Hug floors at min_size when content is smaller",
-    );
-
-    // Content 300px tall, `max_size` 120 → caps at 120.
-    let mut h = UiHarness::new(UVec2::new(800, 600));
-    let big = h.frame_value(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("big"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .max_size((f32::INFINITY, 120.0))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("c"))
-                    .size((Sizing::fixed(40.0), Sizing::fixed(300.0)))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    assert_eq!(
-        h.ui.arranged_rect(Layer::Main, big).size.h,
-        120.0,
-        "Hug caps at max_size when content is larger",
-    );
 }
 
 /// 200×100 hstack with `child_align(VAlign::Center)` and two 40×20

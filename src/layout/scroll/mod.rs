@@ -1,12 +1,14 @@
 //! Layout-side scroll driver. Measure records the content extent on
-//! [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content);
+//! [`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content);
 //! arrange delegates child placement to the matching stack driver, and
 //! intrinsic answers the same per-axis contribution rule measure does.
 
 use crate::layout::axis::Axis;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::stack::Stack;
 use crate::layout::types::scroll_axes::{ScrollAxes, ScrollChildLayout};
@@ -62,7 +64,7 @@ impl LayoutDriver for Scroll {
     ///
     /// **A scroll's two content sizes differ in kind, so one rule can't serve
     /// both.** *Min*-content on a panned axis is zero: being able to shrink
-    /// below the content is what scrolling *is*, and `resolve_sizing` floors the
+    /// below the content is what scrolling *is*, and `AxisSlot::resolve` floors the
     /// viewport's own size with this, so anything larger pins a `Hug` scroll open
     /// at its content. *Max*-content is what the viewport would take given room
     /// — the content extent exactly when the author asked it to `fit`.

@@ -2,14 +2,16 @@
 
 use crate::Ui;
 use crate::display::user_scale::UserScale;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
 use crate::scene::damage::Damage;
-use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, one_frame};
-use crate::ui::harness::UiHarness;
+use crate::scene::damage::tests::support::{
+    BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame,
+};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};
@@ -78,33 +80,18 @@ fn display_change_forces_full_repaint() {
         };
 
         // Steady-state: Full first frame, then Skip on identical re-record.
-        let f1 = h.frame_without_baseline(&mut build).plan;
-        assert!(
-            matches!(
-                f1,
-                Some(RenderPlan {
-                    damage: Damage::Full,
-                    ..
-                })
-            ),
-            "case: {label} f1"
-        );
-        let f2 = h.frame(&mut build).plan;
+        let f1 = frame_without_baseline(&mut h, &mut build);
+        assert!(matches!(f1, Some(Damage::Full)), "case: {label} f1");
+        let f2 = frame(&mut h, &mut build);
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(
             h.engines.damage.counters.dirty().is_empty(),
             "case: {label} steady"
         );
         // Mutate Display; identical authoring; must short-circuit to Full.
-        let mutated_plan = h.set_display(*mutated).frame(&mut build).plan;
+        let mutated_plan = frame(h.set_display(*mutated), &mut build);
         assert!(
-            matches!(
-                mutated_plan,
-                Some(RenderPlan {
-                    damage: Damage::Full,
-                    ..
-                })
-            ),
+            matches!(mutated_plan, Some(Damage::Full)),
             "case: {label} display change"
         );
         assert!(
@@ -113,7 +100,7 @@ fn display_change_forces_full_repaint() {
         );
 
         // Stable surface at the new size, identical authoring → back to Skip.
-        let stable = h.frame(&mut build).plan;
+        let stable = frame(&mut h, &mut build);
         assert!(
             stable.is_none(),
             "case: {label} post-mutation steady must Skip",
@@ -157,24 +144,17 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                 Block::new()
                     .id(WidgetId::from_hash("big"))
                     .size((60.0, 60.0))
-                    .background(Background {
-                        fill: BLUE.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(BLUE))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("small"))
                     .size((50.0, 60.0))
-                    .background(Background {
-                        fill: BLUE.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(BLUE))
                     .show(ui);
             });
     };
 
-    h.frame(&mut scene);
-    h.frame(&mut scene);
+    h.prime(2, &mut scene);
     assert!(h.engines.damage.counters.dirty().is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
@@ -190,19 +170,10 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         .expect("small in prev");
     snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
 
-    let resize_plan = h
-        .resize(UVec2::new(1999, 2000))
-        .frame_without_baseline(&mut scene)
-        .plan;
+    let resize_plan = frame_without_baseline(h.resize(UVec2::new(1999, 2000)), &mut scene);
 
     assert!(
-        matches!(
-            resize_plan,
-            Some(RenderPlan {
-                damage: Damage::Full,
-                ..
-            })
-        ),
+        matches!(resize_plan, Some(Damage::Full)),
         "small-damage + surface-change must force full repaint \
          (this is the showcase resize-flicker case — encoder would emit a \
          damage-filtered partial paint over a backend-cleared backbuffer)",
@@ -225,18 +196,14 @@ fn stable_surface_does_not_short_circuit() {
 
     // Warm up: two identical frames bring damage to steady state.
     h.frame(|ui| build(ui, BLUE));
-    let warm = h.frame(|ui| build(ui, BLUE)).plan;
+    let warm = frame(&mut h, |ui| build(ui, BLUE));
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(h.engines.damage.counters.dirty().is_empty());
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
-    let changed = h.frame(|ui| build(ui, RED)).plan;
-    let Some(RenderPlan {
-        damage: Damage::Partial(damage),
-        ..
-    }) = changed
-    else {
+    let changed = frame(&mut h, |ui| build(ui, RED));
+    let Some(Damage::Partial(damage)) = changed else {
         panic!(
             "stable surface + one-leaf change should produce a partial \
              repaint, got {changed:?} — surface-change short-circuit fired incorrectly",
@@ -260,31 +227,23 @@ fn a_new_clear_colour_forces_full_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
     h.frame(|ui| one_frame(ui, BLUE));
     assert!(
-        h.frame(|ui| one_frame(ui, BLUE)).plan.is_none(),
+        frame(&mut h, |ui| one_frame(ui, BLUE)).is_none(),
         "premise: an unchanged scene skips",
     );
 
     h.ui().theme_mut().window_clear = RED;
-    let recleared = h.frame(|ui| one_frame(ui, BLUE)).plan;
-    assert!(
-        matches!(
-            recleared,
-            Some(RenderPlan {
-                damage: Damage::Full,
-                ..
-            })
-        ),
-        "a clear colour reaches the screen through a full repaint or not \
-         at all: {recleared:?}",
-    );
     assert_eq!(
-        recleared.map(|plan| plan.clear),
-        Some(RED),
-        "and the repaint clears to the colour it escalated for",
+        h.frame(|ui| one_frame(ui, BLUE)).plan,
+        Some(RenderPlan {
+            clear: RED,
+            damage: Damage::Full,
+        }),
+        "a clear colour reaches the screen through a full repaint or not \
+         at all, and the repaint clears to the colour it escalated for",
     );
 
     assert!(
-        h.frame(|ui| one_frame(ui, BLUE)).plan.is_none(),
+        frame(&mut h, |ui| one_frame(ui, BLUE)).is_none(),
         "the colour the last frame presented under is the baseline now",
     );
 }
@@ -294,15 +253,9 @@ fn invalid_prior_output_forces_full_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
     h.frame(|ui| one_frame(ui, BLUE));
 
-    let next = h.frame_without_baseline(|ui| one_frame(ui, RED)).plan;
+    let next = frame_without_baseline(&mut h, |ui| one_frame(ui, RED));
     assert!(
-        matches!(
-            next,
-            Some(RenderPlan {
-                damage: Damage::Full,
-                ..
-            })
-        ),
+        matches!(next, Some(Damage::Full)),
         "invalid output must discard the incremental baseline: {next:?}",
     );
 }
@@ -310,26 +263,14 @@ fn invalid_prior_output_forces_full_damage() {
 #[test]
 fn valid_skip_preserves_incremental_damage_baseline() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    let first = h.frame_without_baseline(|ui| one_frame(ui, BLUE)).plan;
-    assert!(matches!(
-        first,
-        Some(RenderPlan {
-            damage: Damage::Full,
-            ..
-        })
-    ));
-    let skip = h.frame(|ui| one_frame(ui, BLUE)).plan;
+    let first = frame_without_baseline(&mut h, |ui| one_frame(ui, BLUE));
+    assert!(matches!(first, Some(Damage::Full)));
+    let skip = frame(&mut h, |ui| one_frame(ui, BLUE));
     assert!(skip.is_none(), "identical content must Skip");
 
-    let next = h.frame(|ui| one_frame(ui, RED)).plan;
+    let next = frame(&mut h, |ui| one_frame(ui, RED));
     assert!(
-        matches!(
-            next,
-            Some(RenderPlan {
-                damage: Damage::Partial(..),
-                ..
-            })
-        ),
+        matches!(next, Some(Damage::Partial(..))),
         "valid skip must retain the incremental baseline: {next:?}",
     );
 }

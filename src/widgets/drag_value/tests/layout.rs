@@ -2,10 +2,14 @@
 //! node.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
+use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
+use crate::scene::layer::Layer;
 use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::{DragValue, DragValueState};
 use crate::widgets::panel::Panel;
@@ -13,14 +17,6 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn editing_a_long_value_holds_the_field_width() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::drag_value::DragValue;
-    use crate::widgets::panel::Panel;
-    use glam::UVec2;
-
     let surface = UVec2::new(400, 120);
     let id = WidgetId::from_hash("dv-width");
     let mut v = 1.984_573_845_634_985_2_f64;
@@ -29,38 +25,33 @@ fn editing_a_long_value_holds_the_field_width() {
     // condition where the width-cap matters. The chip shows "1.985"; the
     // editor seeds the full-precision value on entry and must scroll it
     // inside the chip's width rather than grow the row.
-    let render = |ui: &mut Ui, v: &mut f64| -> NodeId {
-        let mut node = None;
+    let render = |ui: &mut Ui, v: &mut f64| {
         Panel::hstack()
             .id(WidgetId::from_hash("dv-row"))
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                node = Some(
-                    DragValue::new(v)
-                        .editable(true)
-                        .decimals(3)
-                        .size((Sizing::fill(1.0), Sizing::HUG))
-                        .min_size((40.0, 0.0))
-                        .id(id)
-                        .show(ui)
-                        .response
-                        .node(),
-                );
+                DragValue::new(v)
+                    .editable(true)
+                    .decimals(3)
+                    .size((Sizing::fill(1.0), Sizing::HUG))
+                    .min_size((40.0, 0.0))
+                    .id(id)
+                    .show(ui);
             });
-        node.unwrap()
     };
 
     let mut h = UiHarness::new(surface);
-    let mut node = None;
-    h.frame(|ui| node = Some(render(ui, &mut v)));
-    let display_w = h.layout_rect(id).expect("arranged").size.w;
+    h.frame(|ui| render(ui, &mut v));
+    let display_w = h.arranged(id).size.w;
 
     // Enter edit mode; entry seeds the full-precision text.
     h.set_focus(id);
-    h.frame(|ui| node = Some(render(ui, &mut v)));
-    let edit_w = h.layout_rect(id).expect("arranged").size.w;
+    h.frame(|ui| render(ui, &mut v));
+    let edit_w = h.arranged(id).size.w;
 
-    assert!(display_w >= 40.0, "min_size floor honored ({display_w})");
+    // "1.985": five 8 px mono chars, 2 × 12 padding, 2 × 1 border — above
+    // the 40 px floor.
+    assert_eq!(display_w, 40.0 + 24.0 + 2.0);
     assert_eq!(
         display_w, edit_w,
         "editing the full-precision value must not resize the field \
@@ -70,15 +61,6 @@ fn editing_a_long_value_holds_the_field_width() {
 
 #[test]
 fn editing_under_a_scaled_canvas_does_not_panic() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::translate_scale::TranslateScale;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::drag_value::DragValue;
-    use crate::widgets::panel::Panel;
-    use glam::{UVec2, Vec2};
-
     let surface = UVec2::new(400, 120);
     let id = WidgetId::from_hash("dv-zoom");
     let mut v = 1.984_573_845_634_985_2_f64;
@@ -124,11 +106,6 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
 /// fields added later.
 #[test]
 fn entering_edit_mode_preserves_the_callers_node_placement() {
-    use crate::layout::types::align::Align;
-    use crate::primitives::size::Size;
-    use crate::primitives::spacing::Spacing;
-    use crate::scene::layer::Layer;
-
     const POSITION: Vec2 = Vec2::new(23.0, 11.0);
     let padding = Spacing::all(7.0);
     let margin = Spacing::all(3.0);
@@ -161,22 +138,25 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     /// a line-height floor a chip does not), so they are not carried by the
     /// node policy and comparing them would pin theme configuration rather
     /// than this fix.
-    fn placement(ui: &Ui, id: WidgetId) -> (Spacing, Align, Vec2, Size) {
+    #[derive(Debug, PartialEq)]
+    struct Placement {
+        margin: Spacing,
+        align: Align,
+        position: Vec2,
+        max_size: Size,
+    }
+
+    fn placement(ui: &Ui, id: WidgetId) -> Placement {
+        let node = ui.cascade().endpoint(id).expect("drag value node").node;
         let tree = ui.tree(Layer::Main);
-        let index = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|w| *w == id)
-            .expect("drag value node");
-        let layout = tree.records.layout()[index];
-        let bounds = tree.bounds(NodeId(index as u32));
-        (
-            layout.margin,
-            layout.meta.align(),
-            bounds.position,
-            bounds.max_size,
-        )
+        let layout = tree.records.layout()[node.idx()];
+        let bounds = tree.bounds(node);
+        Placement {
+            margin: layout.margin,
+            align: layout.meta.align(),
+            position: bounds.position,
+            max_size: bounds.max_size,
+        }
     }
 
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -197,7 +177,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     // taken at all — then both frames would be chips and match trivially.
     assert!(
         matches!(
-            h.ui.state_or_default::<DragValueState>(id),
+            h.state::<DragValueState>(id),
             DragValueState::Editing { .. }
         ),
         "second frame must have recorded the inline editor",
@@ -222,14 +202,6 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 /// last rect, so only the vertical padding difference showed.
 #[test]
 fn entering_edit_mode_keeps_the_chips_box() {
-    use crate::Ui;
-    use crate::layout::types::sizing::Sizing;
-    use crate::primitives::widget_id::WidgetId;
-    use crate::widgets::configure::Configure;
-    use crate::widgets::drag_value::DragValue;
-    use crate::widgets::panel::Panel;
-    use glam::UVec2;
-
     let id = WidgetId::from_hash("dv-box");
     let mut fps = 120_i64;
     // A `Hug` height is what exposes the difference — a fixed one would pin
@@ -252,11 +224,11 @@ fn entering_edit_mode_keeps_the_chips_box() {
 
     let mut h = UiHarness::new(UVec2::new(400, 120));
     h.frame(|ui| render(ui, &mut fps));
-    let chip = h.layout_rect(id).expect("arranged").size;
+    let chip = h.arranged(id).size;
 
     h.set_focus(id);
     h.frame(|ui| render(ui, &mut fps));
-    let editor = h.layout_rect(id).expect("arranged").size;
+    let editor = h.arranged(id).size;
 
     assert_eq!(
         (chip.w, chip.h),

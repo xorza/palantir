@@ -1,59 +1,48 @@
 use crate::Ui;
+use crate::input::capture::DOUBLE_CLICK_WINDOW;
+use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::input::sense::Sense;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
+
+/// A gap between two presses that stays inside [`DOUBLE_CLICK_WINDOW`].
+/// Stated rather than left to the harness clock, which stands still
+/// until a test moves it — every click would otherwise be simultaneous.
+const IN_WINDOW: Duration = Duration::from_millis(100);
+const _: () = assert!(IN_WINDOW.as_millis() < DOUBLE_CLICK_WINDOW.as_millis());
 
 #[test]
 fn input_state_press_release_emits_click() {
     // Frame 1 lays out the button; frame 2 reads .left.clicked() after a
     // press+release pair lands inside its rect; frame 3 confirms the
     // click is one-shot.
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("target"))
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    };
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = build_button(WidgetId::from_hash("target"));
     h.frame(build);
     h.click_at(Vec2::new(50.0, 20.0));
 
-    let mut got_click = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            got_click |= Button::new()
-                .id(WidgetId::from_hash("target"))
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui)
-                .left
-                .clicked();
-        });
-    });
-    assert!(got_click, "press+release inside button rect should click");
-
-    let mut still_clicking = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            still_clicking |= Button::new()
-                .id(WidgetId::from_hash("target"))
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui)
-                .left
-                .clicked();
-        });
-    });
-    assert!(!still_clicking, "click is one-shot");
+    let clicked = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                fixed_button(WidgetId::from_hash("target"))
+                    .label("hi")
+                    .show(ui)
+                    .left
+                    .clicked()
+            })
+            .inner
+    };
+    assert!(
+        h.frame_value(clicked),
+        "press+release inside button rect should click"
+    );
+    assert!(!h.frame_value(clicked), "click is one-shot");
 }
 
 #[test]
@@ -105,24 +94,20 @@ fn stack_sense_routing() {
         h.frame(build);
         h.click_at(*click_pos);
 
-        let mut child_clicked = false;
-        let mut stack_clicked = false;
-        let mut stack_hovered = false;
-        h.frame(|ui| {
+        let [stack_clicked, stack_hovered, child_clicked] = h.frame_value(|ui| {
             let r = Panel::hstack()
                 .id(WidgetId::from_hash("stack"))
                 .padding(20.0)
                 .sense(*sense)
                 .show(ui, |ui| {
-                    child_clicked |= Button::new()
+                    Button::new()
                         .id(WidgetId::from_hash("inside"))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .left
-                        .clicked();
+                        .clicked()
                 });
-            stack_clicked |= r.response.left.clicked();
-            stack_hovered |= r.response.hovered();
+            [r.response.left.clicked(), r.response.hovered(), r.inner]
         });
         assert_eq!(
             stack_clicked, *expect_stack_click,
@@ -158,13 +143,12 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
         ("disabled cover", Sense::CLICK, true, false, None),
     ] {
         let mut h = UiHarness::new(UVec2::splat(100));
-        let mut clicked = false;
-        let build = |ui: &mut Ui, clicked: &mut bool| {
+        let build = |ui: &mut Ui| {
             Panel::zstack()
                 .auto_id()
                 .size(Sizing::fixed(100.0))
                 .show(ui, |ui| {
-                    *clicked |= Block::new()
+                    let clicked = Block::new()
                         .id(under)
                         .size(Sizing::FILL)
                         .sense(Sense::CLICK)
@@ -178,11 +162,15 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                         .sense(sense)
                         .disabled(disabled)
                         .show(ui);
-                });
+                    clicked
+                })
+                .inner
         };
-        h.frame(|ui| build(ui, &mut false));
+        h.frame(|ui| {
+            build(ui);
+        });
         h.click_at(Vec2::splat(50.0));
-        h.frame(|ui| build(ui, &mut clicked));
+        let clicked = h.frame_value(build);
 
         assert_eq!(clicked, expect_click, "{label}: the widget underneath");
         assert_eq!(h.focused_id(), expect_focus, "{label}: focus");
@@ -195,26 +183,31 @@ fn input_state_release_outside_does_not_click() {
     let mut h = UiHarness::new(surface);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(WidgetId::from_hash("target"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
+            fixed_button(WidgetId::from_hash("target")).show(ui);
         });
     });
-    h.press_at(Vec2::new(50.0, 20.0));
-    h.drag_to(Vec2::new(300.0, 20.0));
+    let target = WidgetId::from_hash("target");
+    let (inside, outside) = (Vec2::new(50.0, 20.0), Vec2::new(300.0, 20.0));
+    assert_eq!(
+        h.hit_at(inside),
+        Some(target),
+        "the press lands on the button"
+    );
+    assert_ne!(h.hit_at(outside), Some(target), "the release is off it");
+    h.press_at(inside);
+    h.drag_to(outside);
     h.release();
 
-    let mut got_click = false;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            got_click |= Button::new()
-                .id(WidgetId::from_hash("target"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui)
-                .left
-                .clicked();
-        });
+    let got_click = h.frame_value(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                fixed_button(WidgetId::from_hash("target"))
+                    .show(ui)
+                    .left
+                    .clicked()
+            })
+            .inner
     });
     assert!(
         !got_click,
@@ -226,30 +219,44 @@ fn input_state_release_outside_does_not_click() {
 fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     let surface = UVec2::new(400, 400);
     let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui, capture: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Panel::zstack()
-                .id(WidgetId::from_hash("clipper"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-                .clip_rect()
-                .show(ui, |ui| {
-                    *capture |= Button::new()
-                        .id(WidgetId::from_hash("inner"))
-                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-                        .show(ui)
-                        .left
-                        .clicked();
-                });
-        });
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("clipper"))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                    .clip_rect()
+                    .show(ui, |ui| {
+                        Button::new()
+                            .id(WidgetId::from_hash("inner"))
+                            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                            .show(ui)
+                            .left
+                            .clicked()
+                    })
+                    .inner
+            })
+            .inner
     };
-    let mut sink = false;
-    h.frame(|ui| build(ui, &mut sink));
-    h.click_at(Vec2::new(150.0, 150.0));
+    h.frame(|ui| {
+        build(ui);
+    });
+    // The control: the same button clicks where the clip shows it.
+    let inner = WidgetId::from_hash("inner");
+    let (shown, overflow) = (Vec2::new(50.0, 50.0), Vec2::new(150.0, 150.0));
+    assert_eq!(h.hit_at(shown), Some(inner));
+    h.click_at(shown);
+    assert!(h.frame_value(build), "a click inside the clip registers");
 
-    let mut clicked = false;
-    h.frame(|ui| build(ui, &mut clicked));
+    assert_ne!(
+        h.hit_at(overflow),
+        Some(inner),
+        "the clip hides the overflow"
+    );
+    h.click_at(overflow);
     assert!(
-        !clicked,
+        !h.frame_value(build),
         "click on overflow outside clip should not register"
     );
 }
@@ -290,66 +297,67 @@ fn transformed_panels_route_clicks_by_composed_world_rect() {
     for (label, parent_transform, child_transform, click_pos, expect) in cases {
         let surface = UVec2::new(400, 400);
         let mut h = UiHarness::new(surface);
-        let build = |ui: &mut Ui, capture: &mut bool| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Panel::zstack()
-                    .id(WidgetId::from_hash("zoomer"))
-                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                    .transform(parent_transform)
-                    .show(ui, |ui| {
-                        Panel::zstack()
-                            .id(WidgetId::from_hash("inner_transform"))
-                            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                            .transform(child_transform)
-                            .show(ui, |ui| {
-                                *capture |= Button::new()
-                                    .id(WidgetId::from_hash("inner"))
-                                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                                    .show(ui)
-                                    .left
-                                    .clicked();
-                            });
-                    });
-            });
+        let build = |ui: &mut Ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id(WidgetId::from_hash("zoomer"))
+                        .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
+                        .transform(parent_transform)
+                        .show(ui, |ui| {
+                            Panel::zstack()
+                                .id(WidgetId::from_hash("inner_transform"))
+                                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
+                                .transform(child_transform)
+                                .show(ui, |ui| {
+                                    Button::new()
+                                        .id(WidgetId::from_hash("inner"))
+                                        .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
+                                        .show(ui)
+                                        .left
+                                        .clicked()
+                                })
+                                .inner
+                        })
+                        .inner
+                })
+                .inner
         };
-        let mut sink = false;
-        h.frame(|ui| build(ui, &mut sink));
+        h.frame(|ui| {
+            build(ui);
+        });
         h.click_at(click_pos);
-
-        let mut clicked = false;
-        h.frame(|ui| build(ui, &mut clicked));
+        let clicked = h.frame_value(build);
         assert_eq!(clicked, expect, "case {label}");
     }
 }
 
 #[test]
 fn secondary_click_press_release_emits_secondary_clicked() {
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui, sink: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let r = Button::new()
-                .id(WidgetId::from_hash("rc_target"))
-                .label("rc")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-            *sink |= r.right.clicked();
-            // Left-click must NOT flip secondary_clicked.
-            assert!(!(r.left.clicked() && r.right.clicked()));
-        });
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let r = fixed_button(WidgetId::from_hash("rc_target"))
+                    .label("rc")
+                    .show(ui);
+                [r.left.clicked(), r.right.clicked()]
+            })
+            .inner
     };
-    let mut sink = false;
-    h.frame(|ui| build(ui, &mut sink));
+    h.frame(|ui| {
+        build(ui);
+    });
     h.right_click_at(Vec2::new(50.0, 20.0));
 
-    let mut got = false;
-    h.frame(|ui| build(ui, &mut got));
-    assert!(got, "right press+release should set secondary_clicked");
-
-    // One-shot.
-    let mut still = false;
-    h.frame(|ui| build(ui, &mut still));
-    assert!(!still, "secondary_clicked is one-shot");
+    assert_eq!(
+        h.frame_value(build),
+        [false, true],
+        "a right press+release clicks right, and only right"
+    );
+    assert_eq!(h.frame_value(build), [false, false], "a click is one-shot");
 }
 
 #[test]
@@ -357,50 +365,45 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     // Two clicks on the same widget within DOUBLE_CLICK_WINDOW must
     // set `double_clicked` on the second-click frame. The first click
     // alone must not fire it (otherwise every click would double).
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui, single: &mut bool, double: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let r = Button::new()
-                .id(WidgetId::from_hash("dc_target"))
-                .label("dc")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-            *single |= r.left.clicked();
-            *double |= r.left.double_clicked();
-        });
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let r = fixed_button(WidgetId::from_hash("dc_target"))
+                    .label("dc")
+                    .show(ui);
+                [r.left.clicked(), r.left.double_clicked()]
+            })
+            .inner
     };
-    h.frame(|ui| build(ui, &mut false, &mut false));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     // First click — must report clicked but not double_clicked.
     h.click_at(Vec2::new(50.0, 20.0));
-    let mut single = false;
-    let mut double = false;
-    h.frame(|ui| build(ui, &mut single, &mut double));
+    let [single, double] = h.frame_value(build);
     assert!(single, "first click should fire `clicked`");
     assert!(!double, "first click must not fire `double_clicked`");
 
-    // Second click — must report both. Tests run in real time but
-    // well under the 400ms window.
+    // Second click, 100 ms on — must report both.
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
-    let mut single = false;
-    let mut double = false;
-    h.frame(|ui| build(ui, &mut single, &mut double));
+    let [single, double] = h.frame_value(build);
     assert!(single, "second click should still fire `clicked`");
     assert!(double, "second click should fire `double_clicked`");
 
     // One-shot: a follow-up frame with no input clears the flag.
-    let mut still = false;
-    h.frame(|ui| build(ui, &mut false, &mut still));
+    let [_, still] = h.frame_value(build);
     assert!(!still, "double_clicked is one-shot");
 
     // Third click within the window must NOT re-fire double_clicked —
     // the timer reset on the previous fire so the third click is the
     // first half of a potential new pair.
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
-    let mut single = false;
-    let mut double = false;
-    h.frame(|ui| build(ui, &mut single, &mut double));
+    let [single, double] = h.frame_value(build);
     assert!(single, "third click should fire `clicked`");
     assert!(!double, "third click must not chain another double");
 }
@@ -415,33 +418,33 @@ fn two_left_clicks_within_window_emit_double_clicked() {
 /// double-clicking it is an ordinary interaction.
 #[test]
 fn a_double_click_survives_the_idle_before_it() {
-    let mut h = UiHarness::new(UVec2::new(200, 80));
-    let build = |ui: &mut Ui, single: &mut bool, double: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let r = Button::new()
-                .id(WidgetId::from_hash("idle_target"))
-                .label("dc")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-            *single |= r.left.clicked();
-            *double |= r.left.double_clicked();
-        });
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let r = fixed_button(WidgetId::from_hash("idle_target"))
+                    .label("dc")
+                    .show(ui);
+                [r.left.clicked(), r.left.double_clicked()]
+            })
+            .inner
     };
-    h.frame(|ui| build(ui, &mut false, &mut false));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     // Ten seconds of nothing: no input, and so no frame either.
     h.advance(Duration::from_secs(10));
     h.click_at(Vec2::new(50.0, 20.0));
-    let (mut single, mut double) = (false, false);
-    h.frame(|ui| build(ui, &mut single, &mut double));
+    let [single, double] = h.frame_value(build);
     assert!(single, "the waking click is a click");
     assert!(!double, "and the first of a pair is not a double");
 
     // 100 ms later, well inside the window that separates the two.
-    h.advance(Duration::from_millis(100));
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
-    let (mut single, mut double) = (false, false);
-    h.frame(|ui| build(ui, &mut single, &mut double));
+    let [single, double] = h.frame_value(build);
     assert!(single, "the second click is a click");
     assert!(
         double,
@@ -455,27 +458,37 @@ fn two_clicks_outside_radius_do_not_double_click() {
     // Same widget, within the window, but the second press lands more
     // than `DOUBLE_CLICK_RADIUS` from the first — a slow drift between
     // presses is two clicks, not a double.
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui, double: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let r = Button::new()
-                .id(WidgetId::from_hash("dc_radius_target"))
-                .label("dc")
-                .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
-                .show(ui);
-            *double |= r.left.double_clicked();
-        });
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let r = Button::new()
+                    .id(WidgetId::from_hash("dc_radius_target"))
+                    .label("dc")
+                    .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
+                    .show(ui);
+                [r.left.clicked(), r.left.double_clicked()]
+            })
+            .inner
     };
-    h.frame(|ui| build(ui, &mut false));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     h.click_at(Vec2::new(20.0, 20.0));
-    h.frame(|ui| build(ui, &mut false));
+    assert_eq!(
+        h.frame_value(build),
+        [true, false],
+        "control: the first click"
+    );
 
-    // Second click on the same Button but ~20px away — must NOT double.
+    // Second click on the same Button, inside the window but ~20px
+    // away — must NOT double.
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(40.0, 20.0));
-    let mut double = false;
-    h.frame(|ui| build(ui, &mut double));
+    let [single, double] = h.frame_value(build);
+    assert!(single, "control: the second press lands on the button");
     assert!(
         !double,
         "clicks more than DOUBLE_CLICK_RADIUS apart must not double-click"
@@ -488,58 +501,54 @@ fn click_on_different_widget_resets_double_click() {
     // fire double_clicked — the gesture is per-id.
     let surface = UVec2::new(300, 80);
     let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui, a: &mut bool, b: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            *a |= Button::new()
-                .id(WidgetId::from_hash("dc_a"))
-                .label("a")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui)
-                .left
-                .click_count()
-                == 2;
-            *b |= Button::new()
-                .id(WidgetId::from_hash("dc_b"))
-                .label("b")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui)
-                .left
-                .click_count()
-                == 2;
-        });
+    // Each button's click count this frame.
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                ["dc_a", "dc_b"].map(|id| {
+                    fixed_button(WidgetId::from_hash(id))
+                        .label(id)
+                        .show(ui)
+                        .left
+                        .click_count()
+                })
+            })
+            .inner
     };
-    h.frame(|ui| build(ui, &mut false, &mut false));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     h.click_at(Vec2::new(50.0, 20.0)); // hits A
-    h.frame(|ui| build(ui, &mut false, &mut false));
+    assert_eq!(h.frame_value(build), [1, 0], "control: A takes one click");
+    h.advance(IN_WINDOW);
     h.click_at(Vec2::new(150.0, 20.0)); // hits B
-
-    let mut got_a = false;
-    let mut got_b = false;
-    h.frame(|ui| build(ui, &mut got_a, &mut got_b));
-    assert!(!got_a, "A must not fire double_clicked");
-    assert!(!got_b, "B must not fire double_clicked (different target)");
+    assert_eq!(
+        h.frame_value(build),
+        [0, 1],
+        "B's first click is a single, not the second of A's pair",
+    );
 }
 
 #[test]
 fn left_and_right_click_are_independent() {
     use crate::input::pointer::PointerButton;
-    let surface = UVec2::new(200, 80);
-    let mut h = UiHarness::new(surface);
-    let build = |ui: &mut Ui, lc: &mut bool, rc: &mut bool| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let r = Button::new()
-                .id(WidgetId::from_hash("indep"))
-                .label("x")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-            *lc |= r.left.clicked();
-            *rc |= r.right.clicked();
-        });
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let r = fixed_button(WidgetId::from_hash("indep"))
+                    .label("x")
+                    .show(ui);
+                [r.left.clicked(), r.right.clicked()]
+            })
+            .inner
     };
-    let mut a = false;
-    let mut b = false;
-    h.frame(|ui| build(ui, &mut a, &mut b));
+    h.frame(|ui| {
+        build(ui);
+    });
 
     // Left-press, then a right press+release while left is still held —
     // both should latch separately.
@@ -548,9 +557,7 @@ fn left_and_right_click_are_independent() {
     h.release_button(PointerButton::Right);
     h.release();
 
-    let mut lc = false;
-    let mut rc = false;
-    h.frame(|ui| build(ui, &mut lc, &mut rc));
+    let [lc, rc] = h.frame_value(build);
     assert!(lc, "left click should still fire");
     assert!(rc, "right click should still fire alongside left");
 }
@@ -571,58 +578,47 @@ fn drain_per_frame_queues_clears_action_latch() {
     assert!(!input.take_action_flag());
 }
 
-/// `press_started` is a press-edge (unlike `clicked`, which fires on
-/// the release), and `press_count` numbers the multi-press run: presses
-/// on the same target within the double-click window + radius chain
-/// 1 → 2 → 3; a press past the radius restarts at 1. Both ride only
-/// the frame that processed the press — other frames read `(false, 0)`.
+/// `press_count` numbers the multi-press run on the press edge (unlike
+/// `clicked`, which fires on the release): presses on the same target
+/// within the double-click window + radius chain 1 → 2 → 3; a press past
+/// the radius restarts at 1. It rides only the frame that processed the
+/// press — other frames read 0.
 #[test]
 fn press_started_counts_multi_press_runs() {
-    const SURFACE: UVec2 = UVec2::new(200, 80);
-
-    fn probe(h: &mut UiHarness) -> (bool, u8) {
+    fn probe(h: &mut UiHarness) -> u8 {
         let id = WidgetId::from_hash("target");
-        let mut seen = (false, 0u8);
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Button::new()
-                    .id(id)
-                    .label("hi")
-                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                    .show(ui);
-                let r = ui.response_for(id);
-                seen.0 |= r.left.press_count() > 0;
-                seen.1 = seen.1.max(r.left.press_count());
-            });
-        });
-        seen
+        h.frame_value(|ui| {
+            build_button(id)(ui);
+            let r = ui.response_for(id);
+            r.left.press_count()
+        })
     }
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     probe(&mut h); // settle layout
 
     h.press_on(WidgetId::from_hash("target"));
-    assert_eq!(probe(&mut h), (true, 1), "first press starts a run");
+    assert_eq!(probe(&mut h), 1, "first press starts a run");
     h.release();
-    assert_eq!(
-        probe(&mut h),
-        (false, 0),
-        "edge + count clear off the press frame"
-    );
+    assert_eq!(probe(&mut h), 0, "the count clears off the press frame");
 
+    h.advance(IN_WINDOW);
     h.press();
-    assert_eq!(probe(&mut h), (true, 2), "same-spot follow-up chains");
+    assert_eq!(probe(&mut h), 2, "same-spot follow-up chains");
     h.release();
     probe(&mut h);
 
+    h.advance(IN_WINDOW);
     h.press();
-    assert_eq!(probe(&mut h), (true, 3), "third press keeps counting");
+    assert_eq!(probe(&mut h), 3, "third press keeps counting");
     h.release();
     probe(&mut h);
 
-    // Past DOUBLE_CLICK_RADIUS (5 px): the run restarts.
+    // Past DOUBLE_CLICK_RADIUS (5 px), inside the window: the run
+    // restarts.
+    h.advance(IN_WINDOW);
     h.press_at(Vec2::new(80.0, 20.0));
-    assert_eq!(probe(&mut h), (true, 1), "far press restarts the run");
+    assert_eq!(probe(&mut h), 1, "far press restarts the run");
     h.release();
 }
 
@@ -634,11 +630,10 @@ fn press_started_counts_multi_press_runs() {
 /// is a thing to pin rather than to trust, so every edge below is checked
 /// against the `Response` the same frame hands back.
 ///
-/// Accumulated across passes rather than read off the last, like every action
-/// test here: a frame carrying action input records twice and the second pass is
-/// given none of it, so the last pass's answer is `false` for the poll and empty
-/// for the collation alike. That the two agree *about that too* is half of what
-/// this is checking.
+/// Read per pass: a frame whose input settles something records twice, and the
+/// second pass is given none of it, so pass B's answer is `false` for the poll
+/// and empty for the collation alike. That the two agree *about that too* is
+/// half of what this is checking.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
     use crate::input::pointer::PointerButton;
@@ -647,16 +642,8 @@ fn pointer_actions_report_the_edges_the_response_reports() {
     use crate::input::response::pointer_edge::PointerEdge;
 
     let id = WidgetId::from_hash("collated");
-    let mut h = UiHarness::new(UVec2::new(200, 80));
-    let build = |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(id)
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    };
+    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let build = build_button(id);
     h.frame(build);
 
     let at = |edge| PointerAction {
@@ -668,36 +655,46 @@ fn pointer_actions_report_the_edges_the_response_reports() {
     // The press frame. A capture is latched on the press and destroyed by the
     // release, so no frame carries both edges.
     h.press_at(Vec2::new(50.0, 20.0));
-    let mut edges = Vec::new();
-    let mut down = false;
-    h.frame(|ui| {
-        edges.extend(ui.pointer_actions());
-        down |= matches!(ui.response_for(id).left.phase, ButtonPhase::Down { .. });
+    let pressed = h.frame_passes(|ui| {
+        let edges = ui.pointer_actions().collect::<Vec<_>>();
+        let down = matches!(ui.response_for(id).left.phase, ButtonPhase::Down { .. });
         build(ui);
+        (edges, down)
     });
-    assert_eq!(edges, [at(PointerEdge::Pressed { count: 1 })]);
-    assert!(down, "the response disagreed with the collation");
+    assert_eq!(
+        *pressed.a(),
+        (vec![at(PointerEdge::Pressed { count: 1 })], true),
+        "the response and the collation agree on the press",
+    );
+    assert_eq!(pressed.len(), 1, "the press settles nothing, so no pass B");
 
     // The release frame.
     h.release();
-    let mut edges = Vec::new();
-    let mut clicked = false;
-    h.frame(|ui| {
-        edges.extend(ui.pointer_actions());
-        clicked |= ui.response_for(id).left.clicked();
+    let released = h.frame_passes(|ui| {
+        let edges = ui.pointer_actions().collect::<Vec<_>>();
+        let clicked = ui.response_for(id).left.clicked();
         build(ui);
+        (edges, clicked)
     });
-    assert_eq!(edges, [at(PointerEdge::Clicked { count: 1 })]);
-    assert!(clicked, "the response disagreed with the collation");
+    assert_eq!(
+        *released.a(),
+        (vec![at(PointerEdge::Clicked { count: 1 })], true),
+        "the response and the collation agree on the click",
+    );
+    assert_eq!(
+        released.b(),
+        Some(&(vec![], false)),
+        "and on pass B's silence"
+    );
 
     // A quiet frame collates nothing — these are edges, not levels.
-    let mut edges = Vec::new();
-    h.frame(|ui| {
-        edges.extend(ui.pointer_actions());
+    let quiet = h.frame_value(|ui| {
+        let edges = ui.pointer_actions().collect::<Vec<_>>();
         build(ui);
+        edges
     });
     assert!(
-        edges.is_empty(),
+        quiet.is_empty(),
         "an edge outlived the frame it happened on"
     );
 }

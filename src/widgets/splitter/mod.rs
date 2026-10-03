@@ -1,6 +1,8 @@
 //! Two panes divided by a draggable rule: the widget, the per-pane bodies
 //! it takes, and the split ratio it keeps between frames.
 
+pub(crate) mod split_half;
+
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::grid_cell::GridCell;
@@ -14,6 +16,7 @@ use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
+use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::value_response::ValueResponse;
 use crate::widgets::widget::Widget;
@@ -45,16 +48,6 @@ pub struct Splitter<'a> {
     axis: Axis,
     min_pane: f32,
     style: Option<&'a SplitterTheme>,
-}
-
-/// Which pane [`Splitter::show`]'s body is currently recording.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SplitHalf {
-    /// The leading pane — left of a vertical divider, above a
-    /// horizontal one.
-    First,
-    /// The trailing pane.
-    Second,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

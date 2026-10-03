@@ -1,12 +1,10 @@
 //! Click-to-edit: the draft buffer, and every way it can end.
 
 use crate::Ui;
-use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_text::KeyText;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::tests::support::deferred_frame;
 use crate::widgets::drag_value::{DragValue, DragValueState};
@@ -24,56 +22,83 @@ fn click_to_edit_types_and_commits_on_enter() {
     h.press_at(Vec2::new(50.0, 20.0));
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed, "the click itself commits nothing");
+    assert!(!s.a().committed, "the click itself commits nothing");
 
     // Editor frame: entry seeds the buffer from the value.
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed);
+    assert!(!s.a().committed);
     assert_eq!(edit_buffer(&mut h.ui, id), "5.0", "seeded on entry");
 
     // First keystroke replaces the select-all'd seed; second appends.
-    key(&mut h.ui, Key::Char('7'));
+    h.key(Key::Char('7'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('2'));
+    h.key(Key::Char('2'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 5.0, "typing is a live draft, not a commit");
 
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(s.committed && s.commits == 1, "Enter commits once");
+    assert!(
+        s.a().committed && s.count_where(|e| e.committed) == 1,
+        "Enter commits once"
+    );
     assert_eq!(canonical, 72.0);
 
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed, "commit is a one-frame edge");
+    assert!(!s.a().committed, "commit is a one-frame edge");
 }
 
+/// Escape ends the edit with the value it opened on and commits nothing.
+/// A live binding holds the typed 42 until then, so the revert is a
+/// change; a deferred caller never adopted 42, so it sees neither.
 #[test]
-fn escape_blur_commits_pending_draft_once() {
-    let id = WidgetId::from_hash("dv-escape-blur");
+fn escape_reverts_the_draft_without_a_commit() {
+    let id = WidgetId::from_hash("dv-escape-revert");
     let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
-
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('4'));
-    deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('2'));
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    for c in ['4', '2'] {
+        h.key(Key::Char(c));
+        deferred_frame(&mut h, id, &mut canonical, true, false);
+    }
+    h.key(Key::Escape);
+    for _ in 0..2 {
+        let s = deferred_frame(&mut h, id, &mut canonical, true, false);
+        assert!(
+            !s.a().changed && !s.a().committed && s.count_where(|e| e.committed) == 0,
+            "{s:?}"
+        );
+    }
+    assert_eq!(canonical, 5.0);
+    assert!(h.ui.focused_id().is_none(), "Escape blurs");
 
-    // Escape blurs the editor (typing left no selection, so one Escape).
-    // The pending draft resolves on the first chip record after the blur —
-    // the same frame when it re-records, the next frame otherwise — with
-    // exactly one commit either way.
-    key(&mut h.ui, Key::Escape);
-    let a = deferred_frame(&mut h, id, &mut canonical, true, false);
-    let b = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(a.committed || b.committed, "blur commits the draft");
-    assert_eq!(a.commits + b.commits, 1, "exactly one commit");
-    assert_eq!(canonical, 42.0);
-
-    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed);
+    let live_id = WidgetId::from_hash("dv-escape-live");
+    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut value = 5.0_f64;
+    let live = |h: &mut UiHarness, value: &mut f64| {
+        h.frame_value(|ui| {
+            let r = DragValue::new(&mut *value)
+                .editable(true)
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .id(live_id)
+                .show(ui);
+            (r.changed, r.committed)
+        })
+    };
+    live(&mut h, &mut value);
+    h.set_focus(live_id);
+    live(&mut h, &mut value);
+    for c in ['4', '2'] {
+        h.key(Key::Char(c));
+        live(&mut h, &mut value);
+    }
+    assert_eq!(value, 42.0, "the typed text is written live");
+    h.key(Key::Escape);
+    assert_eq!(live(&mut h, &mut value), (true, false), "the revert");
+    assert_eq!(value, 5.0);
+    assert_eq!(live(&mut h, &mut value), (false, false), "no residue");
 }
 
 #[test]
@@ -89,11 +114,11 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     // First session commits 42 and leaves "42" in the buffer state.
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('4'));
+    h.key(Key::Char('4'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('2'));
+    h.key(Key::Char('2'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 42.0);
 
@@ -103,7 +128,7 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(edit_buffer(&mut h.ui, id), "99.0");
 
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 99.0, "no stale-buffer revert to 42");
 }
@@ -124,7 +149,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(matches!(
-        h.ui.state_or_default::<DragValueState>(id),
+        h.state::<DragValueState>(id),
         DragValueState::Editing { .. }
     ));
 
@@ -132,7 +157,10 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // now or later.
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed, "disarmed scrub must not commit into the edit");
+    assert!(
+        !s.a().committed,
+        "disarmed scrub must not commit into the edit"
+    );
 
     // A typed draft (hand-set: the still-held-then-released button placed
     // a caret, so simulated keystrokes wouldn't select-all-replace here;
@@ -140,13 +168,16 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // + Enter: the draft wins, exactly one commit — the stale scrubbed 30
     // must not overwrite it from the same-frame chip pass.
     *edit_buffer(&mut h.ui, id) = "42".to_string();
-    key(&mut h.ui, Key::Enter);
+    h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(s.committed && s.commits == 1);
+    assert!(s.a().committed && s.count_where(|e| e.committed) == 1);
     assert_eq!(canonical, 42.0, "typed value, not the stale scrub");
 
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed && !s.changed, "no residual scrub commit");
+    assert!(
+        !s.a().committed && !s.a().changed,
+        "no residual scrub commit"
+    );
     assert_eq!(canonical, 42.0);
 }
 
@@ -167,7 +198,7 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
         h.clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, true, false);
         assert!(
-            s.committed && !s.changed,
+            s.a().committed && !s.a().changed,
             "{bad:?}: commit reported, nothing written"
         );
         assert_eq!(canonical, 42.0, "{bad:?} must not land");
@@ -183,23 +214,23 @@ fn disabling_mid_edit_discards_the_draft() {
 
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('9'));
+    h.key(Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // The widget is disabled while the user edits: focus is kicked, the
     // draft is discarded — a locked control must not emit an edit.
     let s = deferred_frame(&mut h, id, &mut canonical, true, true);
-    assert!(!s.committed, "locked control emits no commit");
+    assert!(!s.a().committed, "locked control emits no commit");
     assert_eq!(h.focused_id(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
-        h.ui.state_or_default::<DragValueState>(id),
+        h.state::<DragValueState>(id),
         DragValueState::Idle
     ));
 
     // Re-enabled later: no phantom replay of the stale "9".
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed && !s.changed);
+    assert!(!s.a().committed && !s.a().changed);
     assert_eq!(canonical, 5.0);
 }
 
@@ -214,23 +245,26 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
 
     h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    key(&mut h.ui, Key::Char('9'));
-    key(&mut h.ui, Key::Char('9'));
-    key(&mut h.ui, Key::Char('9'));
+    h.key(Key::Char('9'));
+    h.key(Key::Char('9'));
+    h.key(Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Rendered read-only mid-edit: the pending draft is discarded.
     h.clear_focus();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
-    assert!(!s.committed, "read-only frame commits nothing");
+    assert!(!s.a().committed, "read-only frame commits nothing");
     assert!(matches!(
-        h.ui.state_or_default::<DragValueState>(id),
+        h.state::<DragValueState>(id),
         DragValueState::Idle
     ));
 
     // Back to editable, focus elsewhere: nothing to replay.
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert!(!s.committed && !s.changed, "no phantom commit of '999'");
+    assert!(
+        !s.a().committed && !s.a().changed,
+        "no phantom commit of '999'"
+    );
     assert_eq!(canonical, 5.0);
 }
 
@@ -273,23 +307,9 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
     );
 }
 
-/// One key press, reported the way a window reports one: a printable
-/// key carries the text it produced, and a named key carries none.
-fn key(ui: &mut Ui, k: Key) {
-    ui.inject_input(InputEvent::KeyDown {
-        key: k,
-        repeat: false,
-        physical: Key::Other,
-        text: match k {
-            Key::Char(c) => KeyText::from_char(c),
-            _ => KeyText::EMPTY,
-        },
-    });
-}
-
 fn edit_buffer(ui: &mut Ui, id: WidgetId) -> &mut String {
     match ui.state_or_default::<DragValueState>(id) {
-        DragValueState::Editing { buffer } => buffer,
+        DragValueState::Editing { buffer, .. } => buffer,
         state => panic!("expected DragValue edit state, got {state:?}"),
     }
 }

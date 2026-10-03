@@ -2,14 +2,15 @@
 //! stability across frames.
 
 use crate::layout::types::anchor::Anchor;
+use crate::ui::frame_report::FrameProcessing;
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -26,7 +27,6 @@ use glam::{UVec2, Vec2};
 ///   can't sit at the anchor without overflowing.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
-    use crate::scene::layer::Layer;
     let anchor = Vec2::new(20.0, 30.0);
     let cases: &[(Sizing, Sizing, Size, Vec2)] = &[
         (Sizing::HUG, Sizing::HUG, Size::new(100.0, 60.0), anchor),
@@ -62,9 +62,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                         });
                 });
         });
-        let popup_tree = h.ui.tree(Layer::Popup);
-        let body_root = popup_tree.roots[1].first_node.idx();
-        let body_rect = h.ui.layout(Layer::Popup).rect[body_root];
+        let body_rect = body_rect(&h, WidgetId::from_hash("sized-popup"));
         assert_eq!(
             body_rect.size, expected_size,
             "size=({:?},{:?}) → expected {:?}, got {:?}",
@@ -81,7 +79,6 @@ fn popup_body_sizing_matches_sizing_mode() {
 /// A popup keeps its natural size and flips above a near-bottom anchor.
 #[test]
 fn popup_near_bottom_flips_upward() {
-    use crate::scene::layer::Layer;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // 20 px of room below.
     let content = Size::new(120.0, 200.0); // Body wants ~200 tall.
@@ -105,9 +102,7 @@ fn popup_near_bottom_flips_upward() {
     };
     h.frame(scene);
 
-    let popup_tree = h.ui.tree(Layer::Popup);
-    let body_root = popup_tree.roots[1].first_node.idx();
-    let body_rect = h.ui.layout(Layer::Popup).rect[body_root];
+    let body_rect = body_rect(&h, WidgetId::from_hash("flip-popup"));
     assert_eq!(
         body_rect.size, content,
         "body measured at full content size (anchor-independent available)",
@@ -121,11 +116,10 @@ fn popup_near_bottom_flips_upward() {
     );
 }
 
-/// The placement policy participates in the cascade fingerprint, so the
-/// painted position stays synchronized with layout.
+/// A flip moves the root's arranged rect, which the cascade key holds, so
+/// the painted position stays synchronized with layout.
 #[test]
 fn popup_flip_reaches_cascade_not_just_layout() {
-    use crate::scene::layer::Layer;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // near the bottom → must flip.
     let content = Size::new(120.0, 200.0);
@@ -151,18 +145,16 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     h.frame(scene);
 
     let flipped_min = Vec2::new(anchor.x, anchor.y - content.h); // (20, 80)
-    let body_root = h.ui.tree(Layer::Popup).roots[1].first_node.idx();
-    let layout_min = h.ui.layout(Layer::Popup).rect[body_root].min;
+    let layout_min = body_rect(&h, body_id).min;
     assert_eq!(layout_min, flipped_min, "layout sanity: popup flipped");
 
     // The cascade-backed response rect is what the encoder paints. It
     // must agree with the layout — a mismatch means the flip didn't
     // propagate to paint (the reported clipping bug).
-    let painted_min =
-        h.ui.response_for(body_id)
-            .rect
-            .expect("popup body has a cascade rect after the opening frame")
-            .min;
+    let painted_min = h
+        .rect(body_id)
+        .expect("popup body has a cascade rect after the opening frame")
+        .min;
     assert_eq!(
         painted_min, flipped_min,
         "painted (cascade) popup position must match the flipped layout, \
@@ -254,17 +246,12 @@ fn popup_placement_is_stable_across_frames() {
             });
     };
     let body_id = WidgetId::from_hash("stable-popup");
-    let body_rect_of = |ui: &Ui| {
-        ui.response_for(body_id)
-            .rect
-            .expect("popup body has an arranged rect after the opening frame")
-    };
     h.frame(scene);
-    let first = body_rect_of(&h.ui);
+    let first = body_rect(&h, body_id);
     // Pretend an input arrived (cursor move over the popup).
     h.move_to(Vec2::new(50.0, 100.0));
     h.frame(scene);
-    let second = body_rect_of(&h.ui);
+    let second = body_rect(&h, body_id);
     assert_eq!(
         first, second,
         "popup must not shift between opening frame and the next input-triggered frame",
@@ -314,9 +301,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
         let mut h = UiHarness::new(EDGE_SURFACE);
         let body_id = WidgetId::from_hash("dynamic-popup");
         let frame = |h: &mut UiHarness, size: Size| {
-            let mut passes = 0;
-            h.frame(|ui| {
-                passes += 1;
+            let report = h.frame(|ui| {
                 let popup = match edge {
                     Edge::Top => Popup::above(anchor),
                     Edge::Right => Popup::right_of(anchor),
@@ -334,10 +319,12 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
                             .show(ui, |_| {});
                     });
             });
-            assert_eq!(passes, 1, "{edge:?} must converge in one pass");
-            h.ui.response_for(body_id)
-                .rect
-                .expect("popup body arranged")
+            assert_eq!(
+                report.processing,
+                FrameProcessing::SingleLayout,
+                "{edge:?} must converge in one pass"
+            );
+            h.rect(body_id).expect("popup body arranged")
         };
 
         let small = frame(&mut h, Size::new(80.0, 40.0));
@@ -361,4 +348,11 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
         let shrunk = frame(&mut h, Size::new(80.0, 40.0));
         assert_eq!(shrunk, small, "{edge:?} shrink must reposition immediately");
     }
+}
+
+/// The arranged rect of the popup body recorded under `id`.
+fn body_rect(h: &UiHarness, id: WidgetId) -> Rect {
+    let body = h.node_of(id).expect("popup body recorded");
+    assert_eq!(body.layer, Layer::Popup);
+    h.ui.layout(Layer::Popup).rect[body.node.idx()]
 }

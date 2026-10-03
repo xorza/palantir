@@ -1,6 +1,7 @@
 //! Rects that lie partly or wholly outside the surface.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
@@ -10,7 +11,6 @@ use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
@@ -125,10 +125,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("off"))
                     .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                    .background(Background {
-                        fill: BLUE.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(BLUE))
                     .show(ui, |_| {});
             });
     });
@@ -185,10 +182,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                             Block::new()
                                 .id(WidgetId::from_hash(key))
                                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui);
                         }
                     });
@@ -208,7 +202,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     assert!(
         covers_c,
         "curr-extent push must cover the newly revealed node. region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 
     // Still frame: nothing changed — tier 1 skips at the root.
@@ -227,7 +221,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         assert!(
             region.any_intersects(probe),
             "second move must damage c's {label} position; region = {:?}",
-            region.iter_rects().collect::<Vec<_>>(),
+            region,
         );
     }
 

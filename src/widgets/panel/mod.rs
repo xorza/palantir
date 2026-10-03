@@ -13,7 +13,7 @@ use std::rc::Rc;
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
 /// [`Self::background`]) and/or installs a clip (via
-/// [`Configure::clip_rect`](crate::Configure::clip_rect) / [`Configure::clip_rounded`](crate::Configure::clip_rounded)). Cards,
+/// [`Configure::clip_rect`] / [`Configure::clip_rounded`]). Cards,
 /// rows, columns, and layered overlays all share this one type —
 /// `HStack::new()` / `VStack::new()` / `ZStack::new()` just preselect
 /// the layout.
@@ -113,6 +113,31 @@ impl Configure for Panel {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::layout::axis::Axis;
+    use crate::widgets::panel::Panel;
+
+    impl Panel {
+        /// [`Panel::hstack`] or [`Panel::vstack`], stacking along `axis`.
+        pub(crate) fn stack_on(axis: Axis) -> Self {
+            match axis {
+                Axis::X => Self::hstack(),
+                Axis::Y => Self::vstack(),
+            }
+        }
+
+        /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing
+        /// along `axis`.
+        pub(crate) fn wrap_stack_on(axis: Axis) -> Self {
+            match axis {
+                Axis::X => Self::wrap_hstack(),
+                Axis::Y => Self::wrap_vstack(),
+            }
+        }
     }
 }
 

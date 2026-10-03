@@ -17,7 +17,7 @@
 //! vstack it is handed, and paint demos go in fixed [`TILE`]-square
 //! [`demo_cell`]s so every tile in the app is the same size.
 
-use palantir::demo_swatches;
+use palantir::internals::demo_swatches;
 use std::hash::Hash;
 
 use palantir::{
@@ -69,7 +69,7 @@ pub(crate) const INK_DISABLED: RgbaF32 = RgbaF32::hex(0x5f6673);
 /// second literal is how two of them drift apart.
 pub(crate) const ACCENT: RgbaF32 = A;
 
-// Aliased from `palantir::demo_swatches`, which the benchmark fixture
+// Aliased from `palantir::internals::demo_swatches`, which the benchmark fixture
 // reads too — the one set of ink both bundled demo surfaces use. Named
 // A-E here because this page is a *tour*: what matters is that two
 // chips differ, not what either means.

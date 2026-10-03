@@ -146,6 +146,6 @@ impl PaintInput<'_> {
             .id(self.block_id)
             .size((Sizing::fixed(size.w), Sizing::fixed(size.h)))
             .align(layout.block_align())
-            .transform(self.scroll.transform())
+            .transform(self.scroll.transform(Vec2::ZERO))
     }
 }

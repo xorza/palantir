@@ -28,7 +28,7 @@ impl PaintTier {
     pub(crate) const COUNT: usize = 4;
 
     #[inline]
-    pub(crate) fn idx(self) -> usize {
+    pub(crate) const fn idx(self) -> usize {
         self as usize
     }
 }

@@ -18,8 +18,6 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod capture;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 pub(crate) mod paint_sink;
@@ -38,6 +36,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
+use std::num::NonZeroU32;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
 #[derive(Debug)]
@@ -70,7 +69,7 @@ impl Frontend {
     /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
     /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
     /// the [`Composer`] which uniformly downsamples oversized composited views.
-    pub(crate) fn new(max_texture_dim: u32, gradient_atlas: SharedGradientAtlas) -> Self {
+    pub(crate) fn new(max_texture_dim: NonZeroU32, gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
             encoder: Encoder::new(gradient_atlas),
             composer: Composer::new(max_texture_dim),
@@ -103,14 +102,15 @@ impl Frontend {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
-pub(crate) mod test_support {
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
     use crate::renderer::frontend::Frontend;
+    use std::num::NonZeroU32;
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench
     /// frontends — they have no `wgpu::Device` to query, and 8192 is the
     /// downlevel-default cap real adapters meet or exceed.
-    const TEST_MAX_TEXTURE_DIM: u32 = 8192;
+    pub(crate) const TEST_MAX_TEXTURE_DIM: NonZeroU32 = NonZeroU32::new(8192).unwrap();
 
     impl Frontend {
         /// Deviceless frontend for tests and benchmarks.

@@ -1,5 +1,4 @@
-use crate::common::clipboard::{Clipboard, test_support};
-use crate::input::keyboard::key_text::KeyText;
+use crate::common::clipboard::{Clipboard, internals};
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against
@@ -34,28 +33,21 @@ fn context_menu_cut_copy_paste_clear() {
     /// — a fixed row pitch would silently start clicking the neighbour
     /// the moment the theme's row padding moved.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
-        let body_id = editor_id().with("body");
-        let tree = h.ui.tree(Layer::Menu);
-        let body_idx = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|id| *id == body_id)
+        let menu = h
+            .node_of(editor_id().with("body"))
             .expect("context menu body recorded");
-        let ends = tree.records.subtree_end();
-        let body_end = ends[body_idx].end() as usize;
-        let rects = &h.ui.layout(Layer::Menu).rect;
-        let mut row = body_idx + 1;
-        for _ in 0..row_idx {
-            row = ends[row].end() as usize;
-            assert!(row < body_end, "menu has no row {row_idx}");
-        }
-        h.click_at(rects[row].center());
+        let tree = h.ui.tree(menu.layer);
+        let row = tree
+            .children(menu.node)
+            .nth(row_idx)
+            .unwrap_or_else(|| panic!("menu has no row {row_idx}"));
+        let row_id = tree.records.widget_id()[row.id.idx()];
+        h.click_on(row_id);
         h.frame(|ui| body(ui, buf));
     }
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
-    let mut h = ui_at_no_cosmic(SMALL);
+    let mut h = UiHarness::new(SMALL);
     h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
@@ -86,7 +78,7 @@ fn context_menu_cut_copy_paste_clear() {
     click_menu_row(&mut h, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
     assert_eq!(h.clipboard_text(), "ell");
-    let st = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
+    let st = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 1);
     assert_eq!(st.edit.selection, None);
 
@@ -94,7 +86,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 2); // row 2 == Paste
     assert_eq!(buf, "hello", "paste inserts clipboard at caret");
-    let st = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
+    let st = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 4, "caret advances past pasted text");
 
     // Clear → buffer wiped, caret reset. Row 3 is the separator,
@@ -102,7 +94,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 5);
     assert_eq!(buf, "");
-    let st = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
+    let st = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 0);
 
     // Regression: pasting `\n`-bearing clipboard via the menu must
@@ -126,7 +118,7 @@ fn context_menu_cut_copy_paste_clear() {
     });
     h.key(Key::Char('a'));
     h.frame(|ui| body(ui, &mut buf));
-    let state = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
+    let state = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(state.edit.sel_range(), Some(0..buf.len()));
     assert!(
         !ContextMenu::is_open(&h.ui, editor_id()),
@@ -145,30 +137,24 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
     fn primary(c: char) -> KeyPress {
-        KeyPress {
-            key: Key::Char(c),
-            mods: Modifiers {
+        KeyPress::with(
+            Key::Char(c),
+            Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char(c),
-        }
+        )
     }
 
     // A non-command modifier — must NOT trigger clipboard shortcuts.
     fn non_primary(c: char) -> KeyPress {
-        KeyPress {
-            key: Key::Char(c),
-            mods: Modifiers {
+        KeyPress::with(
+            Key::Char(c),
+            Modifiers {
                 alt: true,
                 ..Modifiers::NONE
             },
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char(c),
-        }
+        )
     }
 
     clipboard.set_text("").unwrap();
@@ -213,9 +199,17 @@ fn clipboard_shortcuts_apply_keypresses() {
         "non-primary must not copy"
     );
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
-    assert_eq!(text2, "hello", "non-primary must not paste");
+    // Option composes text on macOS, so there each key types its
+    // character: `c` over the selected "ell", then `v` after it. Alt alone
+    // types nothing elsewhere. Neither pastes "CLIP".
+    let typed = if PLATFORM == Platform::Mac {
+        "hcvo"
+    } else {
+        "hello"
+    };
+    assert_eq!(text2, typed, "non-primary must not paste");
 
-    let rejecting = test_support::rejecting();
+    let rejecting = internals::rejecting();
     let mut rejected_text = String::from("hello");
     let mut rejected_state = EditState {
         caret: 4,
@@ -303,16 +297,13 @@ fn clipboard_shortcut_does_not_insert_char() {
     apply_key_with_clipboard(
         &mut text,
         &mut state,
-        KeyPress {
-            key: Key::Char('c'),
-            mods: Modifiers {
+        KeyPress::with(
+            Key::Char('c'),
+            Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-            repeat: false,
-            physical: Key::Other,
-            text: KeyText::from_char('c'),
-        },
+        ),
         &clipboard,
     );
     assert_eq!(text, "ab", "primary+c without a selection is a no-op");
@@ -334,7 +325,7 @@ fn secondary_click_opens_text_edit_menu() {
         });
     }
 
-    let mut h = ui_at_no_cosmic(SMALL);
+    let mut h = UiHarness::new(SMALL);
     let mut buf = String::from("hi");
     h.frame(|ui| body(ui, &mut buf));
     assert!(!ContextMenu::is_open(&h.ui, editor_id));
@@ -353,7 +344,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
 
     let a_id = WidgetId::from_hash("focused-editor");
     let b_id = WidgetId::from_hash("menu-editor");
-    let mut h = ui_at_no_cosmic(UVec2::new(400, 120));
+    let mut h = UiHarness::new(UVec2::new(400, 120));
     let mut a = String::from("focused");
     let mut b = String::from("menu");
     let body = |ui: &mut Ui, a: &mut String, b: &mut String| {

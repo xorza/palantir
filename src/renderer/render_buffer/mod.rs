@@ -173,7 +173,7 @@ impl RenderBuffer {
 
     /// Reset every per-frame column (capacity retained) and stamp the
     /// frame's viewport + scale from `display`. Called by
-    /// `Composer::compose` at frame start — the reset lives here,
+    /// `Composer::begin` at frame start — the reset lives here,
     /// beside the fields, so adding a column forces choosing its reset
     /// in the same edit instead of in the composer's preamble.
     pub(crate) fn start_frame(&mut self, display: Display, time: Duration) {
@@ -232,6 +232,7 @@ impl RenderBuffer {
         FrameViews {
             draws: &self.frame_targets,
             live: &self.live_targets,
+            display_scale: self.display.scale_factor(),
         }
     }
 

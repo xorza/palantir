@@ -1,21 +1,21 @@
 //! Coarse gates over the whole pipeline, the counterpart to the
 //! fine-grained fixtures next door.
 //!
-//! Those audit ~20 small scenes, most of them GPU-less, so a failure can
-//! name the line that allocated. These three answer what a small scene
-//! cannot:
-//! whether the pipeline allocates at all at *full* scale, whether the
-//! wgpu floor beneath it has drifted, and what a frame costs when every
-//! glyph and icon on it misses its atlas.
+//! Those audit small scenes one at a time, with no device, so a failure
+//! can name the line that allocated. These three answer what a small
+//! scene cannot: whether the pipeline allocates at all at *full* scale,
+//! whether the wgpu floor beneath it has drifted, and what a frame costs
+//! when every glyph and icon on it misses its atlas.
 //!
 //! | gate | covers | budget |
 //! |---|---|---|
-//! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage over the frame bench's own tree, through real cosmic shaping. `Ui::frame` stops before the frontend, so no paint | strict zero |
-//! | [`on_gpu::offscreen_frame_stays_at_driver_floor`] | a whole frame through `OffscreenHost::frame` — encode, compose, and the wgpu submission, over a still tree | the driver floor |
-//! | [`on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | the same frame under a continuous zoom: full damage, glyph and icon rasterization, both atlases' insert paths | the measured miss cost |
+//! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage → encode → compose over the frame bench's own tree, through real cosmic shaping, on a deviceless frontend | strict zero |
+//! | [`on_gpu::still_tree_frame_costs_the_empty_floor`] | a whole frame through `OffscreenHost::frame`, wgpu submission included, over a still tree | an empty scene's cost on the same adapter |
+//! | [`on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | a frame under a continuous zoom: full damage, glyph and icon rasterization, both atlases' insert paths | the measured miss cost |
 //!
-//! The two in [`on_gpu`] read a ceiling the driver sets rather than a
-//! strict zero, which is what earns them a module of their own.
+//! The two in [`on_gpu`] take a device, and what they count is partly
+//! the driver's rather than a strict zero, which is what earns them a
+//! module of their own.
 //!
 //! All three audit each measured frame on its own rather than summing a
 //! window, so an intermittent grow-on-Nth-frame allocation (`Vec`
@@ -24,7 +24,10 @@
 
 pub(crate) mod on_gpu;
 
-use palantir::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+use palantir::FramePaint;
+use palantir::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+use palantir::internals::harness::UiHarness;
+use palantir::internals::harness::frontend_harness::FrontendHarness;
 
 use crate::harness::Audit;
 
@@ -46,18 +49,27 @@ pub(crate) const MEASURE_FRAMES: usize = 256;
 /// the tree that bench times, not a smaller stand-in whose quieter
 /// caches prove less.
 ///
-/// Coverage stops where `Ui::frame` does, at damage. The encode and
-/// compose passes need a device: the two gates below run them over the
-/// whole tree, and `fixtures/renderer.rs` runs them one shape kind at a
-/// time.
+/// Every frame runs the whole CPU pipeline, through encode and compose
+/// on the deviceless frontend. The tree stands still, so its frames plan
+/// no paint after the first; each then repaints the whole scene anyway,
+/// as the frame bench's `cached_cpu` arm does, so the encoder and the
+/// composer see every node on every measured frame.
 #[test]
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
+    let mut frontend = FrontendHarness::new(UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR));
     Audit::new()
-        .text()
-        .surface(BENCH_SURFACE)
-        .dpr(BENCH_DPR)
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)
-        .run(|ui| state.render(BENCH_SCALE, ui));
+        .run_frames(|| {
+            let mut recorded = false;
+            let report = frontend.frame(|ui| {
+                recorded = true;
+                state.render(BENCH_SCALE, ui);
+            });
+            assert!(recorded, "a still tree's frame still records");
+            if report.paint() == FramePaint::Skip {
+                frontend.paint_full();
+            }
+        });
 }

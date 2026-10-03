@@ -18,6 +18,7 @@ pub struct Stroke {
     /// Ink colour.
     pub color: RgbaF32,
     /// Width in logical pixels.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub width: f32,
 }
 
