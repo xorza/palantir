@@ -49,42 +49,48 @@ impl Track {
     pub const FILL: Self = Self::new(Sizing::FILL);
 
     /// [`Sizing::fixed`] as a track.
+    ///
+    /// # Panics
+    ///
+    /// As [`Sizing::fixed`].
+    #[track_caller]
     pub const fn fixed(v: f32) -> Self {
         Self::new(Sizing::fixed(v))
     }
 
     /// [`Sizing::fill`] as a track.
+    ///
+    /// # Panics
+    ///
+    /// As [`Sizing::fill`].
+    #[track_caller]
     pub const fn fill(weight: f32) -> Self {
         Self::new(Sizing::fill(weight))
     }
 
-    /// Set the lower size clamp.
+    /// Set the lower size clamp. `min`: a *length*. The order against the
+    /// maximum is coerced: the minimum wins, as in CSS and WPF, so a
+    /// maximum below it is raised to it.
     ///
     /// # Panics
     ///
-    /// Panics if `min` is negative, non-finite, or greater than the current
-    /// maximum.
+    /// Panics unless `min` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn with_min(mut self, min: f32) -> Self {
-        assert!(
-            domain::is_length(min) && min <= self.max,
-            "Track minimum must be finite, non-negative, and not exceed its maximum",
-        );
-        self.min = min;
+        self.min = domain::length(min);
+        self.max = self.max.max(min);
         self
     }
 
-    /// Set the upper size clamp.
+    /// Set the upper size clamp. `max`: an *extent*, so `+inf` is the
+    /// unbounded maximum. A maximum below the minimum is raised to it.
     ///
     /// # Panics
     ///
-    /// Panics if `max` is negative, NaN, or less than the current minimum.
-    /// Positive infinity is the unbounded sentinel.
+    /// Panics unless `max` is an [extent](crate::widget::domain::extent).
+    #[track_caller]
     pub const fn with_max(mut self, max: f32) -> Self {
-        assert!(
-            domain::is_extent(max) && max >= self.min,
-            "Track maximum must be non-negative and not be less than its minimum",
-        );
-        self.max = max;
+        self.max = domain::extent(max).max(self.min);
         self
     }
 

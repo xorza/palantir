@@ -61,6 +61,7 @@ pub struct ExpanderTheme {
     /// Named apart from [`SlotDefaults::padding`], which this bundle
     /// flattens: that one is the box default the header takes, and two
     /// fields of one name collide on the wire.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub body_padding: Spacing,
     /// Spacing and transition spec — see [`SlotDefaults`]. `anim` is
     /// `None` by default, so a reveal snaps until an application asks

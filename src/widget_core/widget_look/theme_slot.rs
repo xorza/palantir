@@ -78,8 +78,10 @@ pub trait ThemeSlot {
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none. Applied at
     /// `show()` time; explicit zero spacing overrides it.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
     /// Margin the widget takes when its builder set none.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
     pub margin: Spacing,
     /// Spec the state transitions run under. `None` by default —
     /// animation is opt-in. Round-trips through serde, so a theme file

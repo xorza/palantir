@@ -30,6 +30,7 @@ pub struct ContextMenuTheme {
     /// gutter between chrome and rows.
     pub panel: Background,
     /// Padding inside the container, around the column of items.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
     /// Floor for the menu's container width.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

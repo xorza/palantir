@@ -21,6 +21,7 @@ pub struct ModalTheme {
     /// black at partial alpha reads as a neutral dim.
     pub backdrop: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
     /// Minimum panel width in logical px (the panel hugs its content
     /// above this floor).

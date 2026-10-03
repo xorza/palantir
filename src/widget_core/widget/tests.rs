@@ -10,10 +10,10 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::layout::limits::MAX_PACKED_GAP;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::math::domain::{self, MAX_GAP};
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::node::node_mode::NodeMode;
@@ -234,48 +234,42 @@ fn node_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
     assert_eq!(unbounded.node.max_size, Some(Size::INF));
 }
 
+/// A minimum above the maximum resolves as CSS resolves it — the minimum
+/// wins, on each axis and in either setter order — and each bound panics
+/// only on a value outside its own kind: a minimum is a length, a maximum
+/// an extent.
 #[test]
-fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
+fn node_bounds_coerce_their_order_and_validate_their_kinds() {
     type Case = (&'static str, fn() -> Widget);
+    let raised = Widget::leaf()
+        .max_size((10.0, f32::INFINITY))
+        .min_size((11.0, 0.0));
+    assert_eq!(raised.node.max_size, Some(Size::new(11.0, f32::INFINITY)));
+    let raised = Widget::leaf()
+        .min_size((0.0, 11.0))
+        .max_size((f32::INFINITY, 10.0));
+    assert_eq!(raised.node.max_size, Some(Size::new(f32::INFINITY, 11.0)));
 
     let cases: &[Case] = &[
-        ("minimum exceeds existing x maximum", || {
-            Widget::leaf()
-                .max_size((10.0, f32::INFINITY))
-                .min_size((11.0, 0.0))
-        }),
-        ("minimum exceeds existing y maximum", || {
-            Widget::leaf()
-                .max_size((f32::INFINITY, 10.0))
-                .min_size((0.0, 11.0))
-        }),
-        ("maximum is below existing x minimum", || {
-            Widget::leaf()
-                .min_size((11.0, 0.0))
-                .max_size((10.0, f32::INFINITY))
-        }),
-        ("maximum is below existing y minimum", || {
-            Widget::leaf()
-                .min_size((0.0, 11.0))
-                .max_size((f32::INFINITY, 10.0))
-        }),
-        ("infinite x minimum", || {
+        (domain::LENGTH_RULE, || {
             Widget::leaf().min_size((f32::INFINITY, 0.0))
         }),
-        ("infinite y minimum", || {
+        (domain::LENGTH_RULE, || {
             Widget::leaf().min_size((0.0, f32::INFINITY))
         }),
-        ("NaN minimum", || Widget::leaf().min_size((f32::NAN, 0.0))),
-        ("negative infinite maximum", || {
+        (domain::LENGTH_RULE, || {
+            Widget::leaf().min_size((f32::NAN, 0.0))
+        }),
+        (domain::LENGTH_RULE, || Widget::leaf().min_size((-1.0, 0.0))),
+        (domain::EXTENT_RULE, || {
             Widget::leaf().max_size((f32::NEG_INFINITY, f32::INFINITY))
         }),
-        ("NaN maximum", || {
+        (domain::EXTENT_RULE, || {
             Widget::leaf().max_size((f32::INFINITY, f32::NAN))
         }),
     ];
-
-    for &(_label, build) in cases {
-        panic_probe::assert_panics_with("node minimums must be finite", build);
+    for &(rule, build) in cases {
+        panic_probe::assert_panics_with(rule, build);
     }
 }
 
@@ -283,11 +277,9 @@ fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     type Case = (&'static str, fn() -> Widget);
 
-    let valid = Widget::hstack()
-        .gap(MAX_PACKED_GAP)
-        .line_gap(MAX_PACKED_GAP);
-    assert_eq!(valid.authored_gap(), Some(MAX_PACKED_GAP));
-    assert_eq!(valid.authored_line_gap(), Some(MAX_PACKED_GAP));
+    let valid = Widget::hstack().gap(MAX_GAP).line_gap(MAX_GAP);
+    assert_eq!(valid.authored_gap(), Some(MAX_GAP));
+    assert_eq!(valid.authored_line_gap(), Some(MAX_GAP));
 
     let cases: &[Case] = &[
         ("negative gap", || Widget::hstack().gap(-1.0)),
@@ -298,9 +290,7 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
         ("negative infinite gap", || {
             Widget::hstack().gap(f32::NEG_INFINITY)
         }),
-        ("f16-overflow gap", || {
-            Widget::hstack().gap(MAX_PACKED_GAP + 1.0)
-        }),
+        ("f16-overflow gap", || Widget::hstack().gap(MAX_GAP + 1.0)),
         ("negative line gap", || Widget::wrap_hstack().line_gap(-1.0)),
         ("NaN line gap", || Widget::wrap_hstack().line_gap(f32::NAN)),
         ("positive infinite line gap", || {
@@ -310,12 +300,12 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
             Widget::wrap_hstack().line_gap(f32::NEG_INFINITY)
         }),
         ("f16-overflow line gap", || {
-            Widget::wrap_hstack().line_gap(MAX_PACKED_GAP + 1.0)
+            Widget::wrap_hstack().line_gap(MAX_GAP + 1.0)
         }),
     ];
 
     for &(_label, build) in cases {
-        panic_probe::assert_panics_with("gap must be finite, non-negative", build);
+        panic_probe::assert_panics_with(domain::GAP_RULE, build);
     }
 }
 
@@ -435,16 +425,58 @@ fn auto_id_redirects_to_call_site() {
     assert_distinct("auto_id() at call site", a, b);
 }
 
-/// A themed fallback faces the same NaN screen an authored value does.
-/// A NaN edge that slips through reaches layout and surfaces frames
-/// later as a widget that measured to nothing, with nothing pointing
-/// back at the theme that set it.
-///
-/// Debug-only: the screen itself is a `debug_assert!`, one per set
-/// padding per frame.
-#[cfg(debug_assertions)]
+/// A themed fallback faces the same check an authored value does, in
+/// every build: padding edges are lengths, margin edges offsets. A NaN
+/// edge that slipped through would reach layout and surface frames later
+/// as a widget that measured to nothing.
 #[test]
-#[should_panic(expected = "NaN in padding")]
-fn a_themed_padding_is_nan_screened_like_an_authored_one() {
-    let _ = Panel::vstack().default_padding(Spacing::all(f32::NAN));
+fn spacings_validate_their_kinds_authored_or_themed() {
+    type Case = (&'static str, fn() -> Panel);
+    let cases: &[Case] = &[
+        (domain::LENGTH_RULE, || {
+            Panel::vstack().default_padding(Spacing::all(f32::NAN))
+        }),
+        (domain::LENGTH_RULE, || {
+            Panel::vstack().padding(Spacing::all(-1.0))
+        }),
+        (domain::LENGTH_RULE, || {
+            Panel::vstack().padding(Spacing::new(0.0, 0.0, 0.0, f32::INFINITY))
+        }),
+        (domain::OFFSET_RULE, || {
+            Panel::vstack().default_margin(Spacing::all(f32::NAN))
+        }),
+        (domain::OFFSET_RULE, || {
+            Panel::vstack().margin(Spacing::new(f32::NEG_INFINITY, 0.0, 0.0, 0.0))
+        }),
+    ];
+    for &(rule, build) in cases {
+        panic_probe::assert_panics_with(rule, build);
+    }
+    // A negative margin is an offset, so it is taken.
+    let _ = Panel::vstack().margin(Spacing::all(-4.0));
+}
+
+/// A canvas position is an offset on each axis, and a grid span a count:
+/// zero names no cell, so it panics rather than being raised to one.
+#[test]
+fn position_and_grid_span_validate_their_kinds() {
+    panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+        Widget::leaf().position(Vec2::new(f32::NAN, 0.0))
+    });
+    panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+        Widget::leaf().position(Vec2::new(0.0, f32::INFINITY))
+    });
+    let at = Widget::leaf().position(Vec2::new(-5.0, 7.0));
+    assert_eq!(at.node.position, Vec2::new(-5.0, 7.0));
+
+    for (rows, cols) in [(0, 1), (1, 0)] {
+        panic_probe::assert_panics_with(domain::COUNT_RULE, || {
+            GridCell::at(0, 0).with_span(rows, cols)
+        });
+    }
+    let cell = GridCell::at(1, 2).with_span(3, 4);
+    assert_eq!(
+        (cell.row(), cell.col(), cell.row_span(), cell.col_span()),
+        (1, 2, 3, 4),
+    );
 }

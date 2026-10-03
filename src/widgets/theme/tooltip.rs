@@ -26,6 +26,7 @@ pub struct TooltipTheme {
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub text: TextStyleOverrides,
     /// Padding between chrome and the text.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is
     /// usually `INF` so tall tooltips just keep growing. Builder

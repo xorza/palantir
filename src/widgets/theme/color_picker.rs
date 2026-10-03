@@ -74,6 +74,7 @@ pub struct ColorPickerTheme {
     /// Padding between that chrome and the panel inside it. Wider than
     /// [`Self::gap`], so the panel reads as set in a card rather than as one
     /// more of its own rows.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub popup_padding: Spacing,
     /// What the channel values wear: [`Theme::drag_value`](crate::Theme) in
     /// the bundled monospace face.
