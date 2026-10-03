@@ -10,13 +10,12 @@
 //! event vocabulary — no routing logic.
 
 use glam::Vec2;
-use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Which pointer button an event came from. The discriminants are the
 /// indices of the matching [`ButtonState`](crate::ButtonState) slots on
 /// [`ResponseState`](crate::ResponseState), so the three buttons get an
 /// identical query surface — middle-click is as queryable as left.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumCount, EnumIter)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PointerButton {
     /// Primary button. Drives clicks, drags, and focus.
@@ -28,24 +27,34 @@ pub enum PointerButton {
 }
 
 impl PointerButton {
-    /// Iterate every variant in declaration order. Wraps
-    /// `strum::IntoEnumIterator` so callers don't need to bring the
-    /// trait into scope.
+    pub(crate) const COUNT: usize = 3;
+
+    /// Every button in declaration order.
     ///
-    /// Widget code reaches for this when a rule is "any button" rather
-    /// than a named one — `Popup`'s outside-click dismissal — so that
-    /// adding a fourth button doesn't leave a hand-written
-    /// `left || right || middle` silently short.
-    #[inline]
-    pub(crate) fn all() -> impl Iterator<Item = Self> {
-        <Self as IntoEnumIterator>::iter()
-    }
+    /// Code reaches for this when a rule is "any button" rather than a
+    /// named one — `Popup`'s outside-click dismissal — so that adding a
+    /// fourth button doesn't leave a hand-written `left || right ||
+    /// middle` silently short.
+    pub(crate) const ALL: [Self; Self::COUNT] = [Self::Left, Self::Right, Self::Middle];
 
     #[inline]
     pub(crate) const fn idx(self) -> usize {
         self as usize
     }
 }
+
+// `ALL[i]` is the button whose slot is `i`, for every slot.
+const _: () = {
+    let mut i = 0;
+    while i < PointerButton::COUNT {
+        assert!(
+            PointerButton::ALL[i].idx() == i,
+            "PointerButton::ALL must list every discriminant in order",
+        );
+        i += 1;
+    }
+    assert!(PointerButton::Middle.idx() + 1 == PointerButton::COUNT);
+};
 
 /// Unified pointer event stream populated when the matching
 /// [`PointerWake`](crate::PointerWake) flag is set. Each variant is the raw

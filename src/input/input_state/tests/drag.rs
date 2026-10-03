@@ -329,7 +329,7 @@ fn right_button_drag_also_latches() {
 #[test]
 fn left_wins_over_simultaneously_latched_middle() {
     // Both left and middle are latched on the same widget. Only one
-    // drag is reported — the priority-first in `PointerButton::all()`
+    // drag is reported — the priority-first in `PointerButton::ALL`
     // (left). `dragged_by(Middle)` is false even though the middle
     // press is still captured.
     let s = UVec2::new(300, 300);

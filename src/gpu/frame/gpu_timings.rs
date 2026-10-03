@@ -33,7 +33,6 @@ use std::array;
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering::Acquire, Ordering::Release};
-use strum::IntoEnumIterator;
 
 const BYTES_PER_U64: u64 = 8;
 
@@ -472,8 +471,8 @@ fn publish_timestamps(
     }
     // Per-batch attribution when we collected midpoint marks.
     if count >= 3 {
-        let mut per_kind_ns = [0u64; <BatchKind as strum::EnumCount>::COUNT];
-        let mut seen = [false; <BatchKind as strum::EnumCount>::COUNT];
+        let mut per_kind_ns = [0u64; BatchKind::COUNT];
+        let mut seen = [false; BatchKind::COUNT];
         for i in 0..count - 1 {
             let t0 = tick(ts, i);
             let t1 = tick(ts, i + 1);
@@ -482,7 +481,7 @@ fn publish_timestamps(
             seen[kind.idx()] = true;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }
-        for kind in BatchKind::iter() {
+        for kind in BatchKind::ALL {
             if seen[kind.idx()] {
                 sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
             }
@@ -554,7 +553,7 @@ mod tests {
         // keeping frame 1's values.
         publish_timestamps(&ts_bytes(&[10_000, 14_000]), 2, &[], 1.0, &sink);
         assert_eq!(sink.last_pass_ms(), Some(0.004));
-        for kind in BatchKind::iter() {
+        for kind in BatchKind::ALL {
             assert_eq!(
                 sink.last_kind_ms(kind),
                 None,

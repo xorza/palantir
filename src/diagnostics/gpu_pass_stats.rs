@@ -24,13 +24,9 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use strum::{EnumCount, EnumIter, IntoStaticStr};
 
 /// Categories of work the per-batch timestamp marker distinguishes.
-/// `IntoStaticStr` with `serialize_all = "lowercase"` powers
-/// [`Self::label`] — `PreClear` → `"preclear"`, etc.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumCount, EnumIter, IntoStaticStr)]
-#[strum(serialize_all = "lowercase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BatchKind {
     /// Setup work between the pass beginning and the first drawing
@@ -59,17 +55,58 @@ pub enum BatchKind {
 }
 
 impl BatchKind {
+    /// How many kinds there are.
+    pub const COUNT: usize = 9;
+
+    /// Every kind, in discriminant order — the order a reporter lists
+    /// them in.
+    pub const ALL: [Self; Self::COUNT] = [
+        Self::Setup,
+        Self::PreClear,
+        Self::Mask,
+        Self::Quads,
+        Self::Text,
+        Self::Mesh,
+        Self::Image,
+        Self::Curve,
+        Self::Icon,
+    ];
+
     pub(crate) const fn idx(self) -> usize {
         self as u8 as usize
     }
 
-    /// Human-readable label for debug overlays / bench reporters.
-    /// Lowercased variant name via `strum::IntoStaticStr` — adding a
-    /// new variant carries its label automatically.
-    pub fn label(self) -> &'static str {
-        self.into()
+    /// Human-readable label for debug overlays and bench reporters: the
+    /// variant name, lowercased.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Setup => "setup",
+            Self::PreClear => "preclear",
+            Self::Mask => "mask",
+            Self::Quads => "quads",
+            Self::Text => "text",
+            Self::Mesh => "mesh",
+            Self::Image => "image",
+            Self::Curve => "curve",
+            Self::Icon => "icon",
+        }
     }
 }
+
+// `ALL` lists every discriminant once, in order, so `idx` indexes it and
+// a `[_; COUNT]` table keyed by `idx` has a slot per kind. A new variant
+// fails `label`'s match first, and this second.
+const _: () = {
+    let mut i = 0;
+    while i < BatchKind::COUNT {
+        assert!(
+            BatchKind::ALL[i].idx() == i,
+            "BatchKind::ALL must list every discriminant in order",
+        );
+        i += 1;
+    }
+    assert!(BatchKind::Icon.idx() + 1 == BatchKind::COUNT);
+};
 
 /// Counters surfaced by [`GpuPassStats::last_pipeline_stats`]. Order
 /// matches `wgpu::PipelineStatisticsTypes`.
@@ -91,7 +128,7 @@ pub struct PipelineStats {
 #[derive(Clone, Copy, Debug, Default)]
 struct Inner {
     pass_ns: Option<u64>,
-    kind_ns: [Option<u64>; <BatchKind as EnumCount>::COUNT],
+    kind_ns: [Option<u64>; BatchKind::COUNT],
     stats: Option<PipelineStats>,
     main_pass_cpu_ns: Option<u64>,
 }
@@ -158,7 +195,7 @@ impl GpuPassStats {
     /// didn't run this frame don't keep showing the previous frame's
     /// number.
     pub(crate) fn clear_kinds(&self) {
-        self.inner.borrow_mut().kind_ns = [None; <BatchKind as EnumCount>::COUNT];
+        self.inner.borrow_mut().kind_ns = [None; BatchKind::COUNT];
     }
 
     pub(crate) fn record_pipeline_stats(&self, stats: PipelineStats) {
@@ -173,7 +210,6 @@ fn ns_to_ms(ns: u64) -> f32 {
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::gpu_pass_stats::*;
-    use strum::IntoEnumIterator as _;
 
     #[test]
     fn starts_uninit() {
@@ -245,7 +281,7 @@ mod tests {
         s.record_main_pass_cpu_ns(500_000);
         s.record_pipeline_stats(stats);
         s.clear_kinds();
-        for kind in BatchKind::iter() {
+        for kind in BatchKind::ALL {
             assert_eq!(s.last_kind_ms(kind), None, "{kind:?}");
         }
         assert_eq!(s.last_pass_ms(), Some(3.0));
@@ -255,16 +291,9 @@ mod tests {
 
     #[test]
     fn labels_match_lowercased_variant_names() {
-        // Pin: `IntoStaticStr` + `serialize_all = "lowercase"` strips
-        // the camel-case, no underscore. Adding a new variant breaks
-        // this only if its name uses a multi-word form the lowercase
-        // rule would mangle — choose names that round-trip cleanly.
-        let mut labelled = 0;
-        for kind in BatchKind::iter() {
+        for kind in BatchKind::ALL {
             assert_eq!(kind.label(), format!("{kind:?}").to_lowercase(), "{kind:?}");
-            labelled += 1;
         }
-        assert_eq!(labelled, BatchKind::COUNT, "every variant iterated");
     }
 
     #[test]

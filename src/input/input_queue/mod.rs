@@ -16,7 +16,6 @@ use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use std::collections::VecDeque;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 /// Events held back for a later frame, and what the current frame has
 /// already changed.

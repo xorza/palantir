@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `8dadcdc8`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `6f2d806d`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -323,8 +323,10 @@ trait            widget::ThemeSlot
 extern-reexport  widget::Animatable  -> palantir_anim_derive::Animatable
 enum             BatchKind
     variants: Setup, PreClear, Mask, Quads, Text, Mesh, Image, Curve, Icon
-    fn label(self)
-    traits: Clone, Copy, Debug, EnumCount, Eq, From, IntoEnumIterator, PartialEq, StructuralPartialEq
+    assoc_const COUNT
+    assoc_const ALL
+    const fn label(self)
+    traits: Clone, Copy, Debug, Eq, PartialEq, StructuralPartialEq
 struct           GpuPassStats
     fn last_pass_ms(self)
     fn last_kind_ms(self, kind)
@@ -511,7 +513,7 @@ struct           ResponseState
     const fn hovered(self)
     const fn clicked(self)
     const fn double_clicked(self)
-    fn any_clicked(self)
+    const fn any_clicked(self)
     const fn button(self, button)
     const fn pressed(self)
     fn press_fraction(self, band)
@@ -568,7 +570,7 @@ struct           Modifiers
     traits: Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
 enum             PointerButton
     variants: Left, Right, Middle
-    traits: Clone, Copy, Debug, EnumCount, Eq, Hash, IntoEnumIterator, PartialEq, StructuralPartialEq
+    traits: Clone, Copy, Debug, Eq, Hash, PartialEq, StructuralPartialEq
 enum             PointerEvent
     variants: Move, Down, Up, Scroll, Zoom, Leave
     traits: Clone, Copy, Debug, PartialEq, StructuralPartialEq
@@ -961,7 +963,7 @@ enum             TextInput
     traits: Debug, Default, From
 enum             Layer
     variants: Main, Popup, Modal, Menu, Tooltip, Debug
-    traits: Clone, Copy, Debug, Default, EnumCount, Eq, Hash, Ord, PartialEq, PartialOrd, StructuralPartialEq, VariantArray
+    traits: Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, StructuralPartialEq
 extern-reexport  IVec2  -> glam::IVec2
 extern-reexport  UVec2  -> glam::UVec2
 extern-reexport  Vec2  -> glam::Vec2

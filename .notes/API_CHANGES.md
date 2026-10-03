@@ -16,19 +16,6 @@ Line numbers are against `50b34a49`.
 
 ---
 
-## A6. `BatchKind` without strum in its public derives
-
-**Findings.** REVIEW "Public API leaks third-party crate types"; TEST_REVIEW 2 (hand-listed
-"exhaustive" tests missed `BatchKind::Icon`).
-
-**Recommendation.** Inherent `iter()` and `COUNT` on each public enum that needs them, and no
-strum derive on any public type. Three types leak strum today, not one: `BatchKind`
-(`EnumIter`, `EnumCount`), `PointerButton` (`IntoEnumIterator`, `EnumCount`) and `Layer`
-(`VariantArray`, `EnumCount`). `Layer::PAINT_ORDER` already copies `VARIANTS` into a crate
-constant, but a derive implements a public trait on a public type, so it cannot be hidden: `Layer`
-loses the derive, and `PAINT_ORDER` becomes a written-out array with a `const` assertion that
-entry `i` has discriminant `i`.
-
 ## A7. `golden` module surface
 
 **Findings.** REVIEW "the public `golden` API takes and returns `image::RgbaImage` without
@@ -274,7 +261,7 @@ from one test that names them all. Touches `golden::Goldens`.
 The items below come from a review of the whole exported surface, listed in `API_SURFACE.md`
 (rustdoc JSON of `59b93e30`). Each item names what reads inconsistent, asymmetric, or
 non-canonical, and what to do about it. Where a finding extends an earlier item, the earlier item
-took it: A6, A7, A9, A10, A11, A15, A18 and A19. The plan at the end of the file orders all
+took it: A7, A9, A10, A11, A15, A18 and A19. The plan at the end of the file orders all
 items, old and new.
 
 ## A27. One response type for a value a widget writes
@@ -701,7 +688,7 @@ All seven are decided. Each item named here carries its decision in its own text
 1. Done: the `domain` module (A50 mechanism, A36).
 2. Done: the `const` sweep (A24).
 3. Done: flag sets (A32).
-4. **No strum on public types** (A6): `BatchKind`, `PointerButton`, `Layer`.
+4. Done: no strum on public types (A6).
 5. **Rules in AGENTS.md**: the chainer rule (A47), the wrapper rule (A39), the text rule (A51),
    and the validation model (A50 rules 1–4, the kinds table, and the decided exception: public
    input validation panics in release on per-frame paths too). Commit the inventory generator

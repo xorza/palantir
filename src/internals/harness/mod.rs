@@ -185,7 +185,6 @@ use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::any;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 pub mod frontend_harness;
 #[cfg(test)]

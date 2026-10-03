@@ -383,8 +383,6 @@ fn report_write_stats(surface: &Surface) {
         let mut state = FrameFixture::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
-            use strum::IntoEnumIterator;
-
             mutate(&mut state, frame);
             let _ = WriteStats::take();
             let target = &targets[frame % targets.len()];
@@ -410,7 +408,8 @@ fn report_write_stats(surface: &Surface) {
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
             // when at least one value resolved, so adapters that lack
             // the feature stay quiet.
-            let per_kind: Vec<String> = BatchKind::iter()
+            let per_kind: Vec<String> = BatchKind::ALL
+                .into_iter()
                 .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))
                 .map(|(k, ms)| format!("{}={ms:.2}", k.label()))
                 .collect();

@@ -190,8 +190,15 @@ impl ResponseState {
     /// button, and spelling it `left || right || middle` at each site
     /// leaves the next button silently unhandled.
     #[inline]
-    pub fn any_clicked(&self) -> bool {
-        PointerButton::all().any(|button| self.button(button).clicked())
+    pub const fn any_clicked(&self) -> bool {
+        let mut i = 0;
+        while i < PointerButton::COUNT {
+            if self.button(PointerButton::ALL[i]).clicked() {
+                return true;
+            }
+            i += 1;
+        }
+        false
     }
 
     /// The per-button slice for a **runtime** `button` value — the one
