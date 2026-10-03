@@ -633,7 +633,7 @@ pub trait Configure: Sized {
     /// focus is where typing *goes*. Conflating them is what forces an
     /// app to reconstruct one from the other.
     ///
-    /// [`KeyFilter::empty`] clears it — an empty filter is how "not a
+    /// [`KeyFilter::NONE`] clears it — an empty filter is how "not a
     /// scope" is stored.
     #[inline]
     #[must_use]

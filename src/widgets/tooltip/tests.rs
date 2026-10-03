@@ -451,7 +451,7 @@ fn delay_gates_visibility() {
     );
 }
 
-/// The bubble records with `Sense::empty()`, so a visible tooltip must
+/// The bubble records with `Sense::NONE`, so a visible tooltip must
 /// never become the hover target: after it appears, moving the pointer
 /// off the trigger clears the trigger's hover and hides the bubble.
 #[test]

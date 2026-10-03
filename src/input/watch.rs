@@ -47,11 +47,6 @@ flag_set! {
     }
 }
 
-impl PointerWake {
-    /// Watch nothing.
-    pub const NONE: Self = Self::empty();
-}
-
 flag_set! {
     /// Keyboard wake-gate categories. Orthogonal to focus routing —
     /// a focused widget always wakes on `KeyDown` regardless of these
@@ -67,11 +62,6 @@ flag_set! {
         /// reveal on Alt-press, modifier-state debug overlays.
         const MODIFIER = 1 << 1;
     }
-}
-
-impl KeyboardWake {
-    /// Watch nothing.
-    pub const NONE: Self = Self::empty();
 }
 
 /// Per-`Ui` wake-gate registry. Cleared pre-record; widgets re-OR /

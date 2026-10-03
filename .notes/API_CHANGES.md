@@ -332,18 +332,6 @@ the name reads as pixels; the field is `TextStyle::line_height_mult` and its cha
 **Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
 stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
 
-## A32. Flag sets expose two spellings and their bits
-
-**Findings.** The `flag_set!` types (`Sense`, `KeyFilter`, `KeyboardWake`, `PointerWake`) export
-both the macro's `empty()` / `all()` and hand-written `NONE` / `ALL`, so "no flags" has two names.
-They also export `bits()` and `from_bits_truncate()`, which only the crate's own packing
-(`NodeFlags`) uses: the bit layout becomes public by accident. Elsewhere in the crate, "nothing" is
-a `NONE` constant (`Modifiers`, `ShortcutMods`, `Background`, `Shadow`, `TextStyleOverrides`).
-
-**Recommendation.** Each flag type exports `NONE` and `ALL` constants, the named flags, the set
-operations and `BitOr`. `empty()`, `all()`, `bits()` and `from_bits_truncate()` become
-`pub(crate)`.
-
 ## A33. Two modifier types that do not convert
 
 **Findings.** `Modifiers { shift, ctrl, alt, mac_ctrl }` is event state; `ShortcutMods { ctrl,
@@ -712,8 +700,7 @@ All seven are decided. Each item named here carries its decision in its own text
 
 1. Done: the `domain` module (A50 mechanism, A36).
 2. Done: the `const` sweep (A24).
-3. **Flag sets** (A32): `NONE` and `ALL` on every flag type; `empty`, `all`, `bits` and
-   `from_bits_truncate` become `pub(crate)`. Before A22 adds bits to `Sense`.
+3. Done: flag sets (A32).
 4. **No strum on public types** (A6): `BatchKind`, `PointerButton`, `Layer`.
 5. **Rules in AGENTS.md**: the chainer rule (A47), the wrapper rule (A39), the text rule (A51),
    and the validation model (A50 rules 1–4, the kinds table, and the decided exception: public

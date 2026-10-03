@@ -438,7 +438,7 @@ impl CascadeEngine {
                 // nothing, the same rule `focusable` follows: a key has
                 // nowhere to go there.
                 let filter = if keyboard_off {
-                    KeyFilter::empty()
+                    KeyFilter::NONE
                 } else {
                     attrs.key_filter()
                 };

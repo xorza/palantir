@@ -93,7 +93,7 @@ impl<'a> Tooltip<'a> {
     #[track_caller]
     pub fn on(snapshot: &'a ResponseSnapshot) -> Self {
         // Bubble must never claim hover — would shadow its own trigger.
-        let widget = Widget::vstack().sense(Sense::empty());
+        let widget = Widget::vstack().sense(Sense::NONE);
         Self {
             snapshot,
             label: TextInput::default(),

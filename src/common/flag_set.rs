@@ -3,6 +3,11 @@
 /// Declare a `u8` flag set with exactly the operations this crate asks of
 /// one, and no more.
 ///
+/// Every set gets `NONE`, `ALL`, its named flags, the set operations and
+/// `|`. A set declared `struct Name: packed` also gets the crate-private
+/// `bits` and `from_bits_truncate`, for packing into a wider word; the bit
+/// layout is never public.
+///
 /// `bitflags` published a wider type than the crate wanted: `from_bits_retain`
 /// mints values with bits no arm handles, `iter` hands back a
 /// `bitflags::iter::Iter` a caller cannot name, and the `Flags` impl put that
@@ -18,9 +23,28 @@
 /// in `lib.rs` is what carries it, which is why that declaration comes first —
 /// textual scoping reaches only the modules declared after it.
 macro_rules! flag_set {
+    (@packed $name:ident, packed) => {
+        impl $name {
+            /// The raw bits, for packing into a wider word.
+            #[inline]
+            pub(crate) const fn bits(self) -> u8 {
+                self.0
+            }
+
+            /// Rebuild from packed bits, dropping any that name no flag.
+            ///
+            /// Truncating rather than retaining: a set is the union of its
+            /// declared bits, and a word unpacked from a node's flag field
+            /// carries neighbouring fields the mask may not have cleared.
+            #[inline]
+            pub(crate) const fn from_bits_truncate(bits: u8) -> Self {
+                Self(bits & Self::ALL.0)
+            }
+        }
+    };
     (
         $(#[$meta:meta])*
-        $vis:vis struct $name:ident {
+        $vis:vis struct $name:ident $(: $packed:ident)? {
             $(
                 $(#[$flag_meta:meta])*
                 const $flag:ident = $bit:expr;
@@ -39,33 +63,11 @@ macro_rules! flag_set {
                 $vis const $flag: Self = Self($bit);
             )+
 
-            /// No flags set.
-            #[inline]
-            $vis const fn empty() -> Self {
-                Self(0)
-            }
+            /// No flags set. Also the `Default`.
+            $vis const NONE: Self = Self(0);
 
             /// Every declared flag.
-            #[inline]
-            $vis const fn all() -> Self {
-                Self(0 $(| Self::$flag.0)+)
-            }
-
-            /// The raw bits, for packing into a wider word.
-            #[inline]
-            $vis const fn bits(self) -> u8 {
-                self.0
-            }
-
-            /// Rebuild from packed bits, dropping any that name no flag.
-            ///
-            /// Truncating rather than retaining: a set is the union of its
-            /// declared bits, and a word unpacked from a node's flag field
-            /// carries neighbouring fields the mask may not have cleared.
-            #[inline]
-            $vis const fn from_bits_truncate(bits: u8) -> Self {
-                Self(bits & Self::all().0)
-            }
+            $vis const ALL: Self = Self(0 $(| Self::$flag.0)+);
 
             /// True while no flag is set.
             #[inline]
@@ -99,19 +101,19 @@ macro_rules! flag_set {
 
             /// Add every flag in `other`.
             #[inline]
-            $vis fn insert(&mut self, other: Self) {
+            $vis const fn insert(&mut self, other: Self) {
                 self.0 |= other.0;
             }
 
             /// Drop every flag in `other`.
             #[inline]
-            $vis fn remove(&mut self, other: Self) {
+            $vis const fn remove(&mut self, other: Self) {
                 self.0 &= !other.0;
             }
 
             /// Add or drop every flag in `other`, per `on`.
             #[inline]
-            $vis fn set(&mut self, other: Self, on: bool) {
+            $vis const fn set(&mut self, other: Self, on: bool) {
                 if on {
                     self.insert(other);
                 } else {
@@ -119,6 +121,8 @@ macro_rules! flag_set {
                 }
             }
         }
+
+        $(flag_set!(@packed $name, $packed);)?
 
         impl std::ops::BitOr for $name {
             type Output = Self;
@@ -157,7 +161,7 @@ mod tests {
     flag_set! {
         /// Bit 2 is skipped on purpose: the truncation test needs a gap
         /// inside the declared range as well as the spare bits above it.
-        struct Fixture {
+        struct Fixture: packed {
             const A = 1 << 0;
             const B = 1 << 1;
             const C = 1 << 3;
@@ -180,17 +184,18 @@ mod tests {
         assert!(!ab.intersects(Fixture::C));
 
         // The empty set is contained by everything and intersects nothing.
-        assert!(ab.contains(Fixture::empty()));
-        assert!(!ab.intersects(Fixture::empty()));
-        assert!(Fixture::empty().is_empty());
+        assert!(ab.contains(Fixture::NONE));
+        assert!(!ab.intersects(Fixture::NONE));
+        assert!(Fixture::NONE.is_empty());
         assert!(!ab.is_empty());
 
         assert_eq!(ab.difference(Fixture::A), Fixture::B);
         assert_eq!(ab.difference(Fixture::C), ab);
         assert_eq!(Fixture::A | Fixture::B, ab);
 
-        assert_eq!(Fixture::all().bits(), 0b1011);
-        assert_eq!(Fixture::empty().bits(), 0);
+        assert_eq!(Fixture::ALL.bits(), 0b1011);
+        assert_eq!(Fixture::NONE.bits(), 0);
+        assert_eq!(Fixture::default(), Fixture::NONE);
     }
 
     /// The property the hand-written set buys over a generated one: no value
@@ -199,13 +204,13 @@ mod tests {
     #[test]
     fn undeclared_bits_cannot_survive_a_round_trip() {
         // `Fixture` leaves bits 2 and 4..8 unnamed.
-        assert_eq!(Fixture::from_bits_truncate(0b1111_0100), Fixture::empty());
+        assert_eq!(Fixture::from_bits_truncate(0b1111_0100), Fixture::NONE);
         assert_eq!(
             Fixture::from_bits_truncate(0b1111_0110),
             Fixture::B,
             "the undeclared bits go, the declared one stays",
         );
-        assert_eq!(Fixture::from_bits_truncate(u8::MAX), Fixture::all());
+        assert_eq!(Fixture::from_bits_truncate(u8::MAX), Fixture::ALL);
     }
 
     #[test]
@@ -228,7 +233,7 @@ mod tests {
     /// mask has to read out.
     #[test]
     fn debug_names_the_flags_that_are_set() {
-        assert_eq!(format!("{:?}", Fixture::empty()), "Fixture(empty)");
+        assert_eq!(format!("{:?}", Fixture::NONE), "Fixture(empty)");
         assert_eq!(format!("{:?}", Fixture::A), "Fixture(A)");
         assert_eq!(
             format!("{:?}", Fixture::A.union(Fixture::C)),

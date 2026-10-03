@@ -232,11 +232,11 @@ impl InputState {
         self.scopes.adopt_closing(&warmup.scopes);
     }
 
-    pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
+    pub(crate) const fn watch_pointer(&mut self, flags: PointerWake) {
         self.subs.pointer_mask.insert(flags);
     }
 
-    pub(crate) fn watch_keyboard(&mut self, flags: KeyboardWake) {
+    pub(crate) const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.subs.keyboard_mask.insert(flags);
     }
 
