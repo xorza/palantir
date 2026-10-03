@@ -1,12 +1,12 @@
 //! Pixel-diff coverage: what counts as differing, and what decides the
 //! verdict — and the golden directory's bookkeeping around it.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 
 use image::{Rgba, RgbaImage};
 
 use crate::golden::{Goldens, Tolerance};
+use crate::internals::panic_probe;
 
 /// A pair covering no pixels differs nowhere, so the verdict is a pass
 /// and the ratio is a real number.
@@ -185,12 +185,13 @@ impl Drop for Scratch {
 /// An update run rewrites what is missing or failing and leaves a passing
 /// golden alone; a pass clears an earlier failure's output; without the
 /// flag, a failure panics and writes its artifacts, and a missing golden
-/// is written and failed.
+/// is written and failed. Two held images compared through `assert_same`
+/// take the same handling, and write no golden.
 ///
 /// `near` is one step off `base`, inside the 2-step tolerance; `far` is
-/// forty steps off, outside it.
+/// forty steps off, outside it, in all 16 pixels.
 #[test]
-fn update_rewrites_only_what_fails_and_a_pass_clears_old_output() {
+fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     let dir = Scratch::new("update");
     let goldens = Goldens::new(&dir.0).tolerance(Tolerance {
         per_channel: 2,
@@ -218,15 +219,35 @@ fn update_rewrites_only_what_fails_and_a_pass_clears_old_output() {
     goldens.check("g", &far, true);
     assert_eq!(stored(), far, "a failing golden is rewritten by an update");
 
-    let failed = catch_unwind(AssertUnwindSafe(|| goldens.check("g", &base, false)));
-    assert!(failed.is_err(), "a failure panics without the flag");
+    panic_probe::assert_panics_with("`g` does not match its golden", || {
+        goldens.check("g", &base, false)
+    });
     assert!(
         output.join("actual.png").exists(),
         "and leaves its artifacts"
     );
     assert_eq!(stored(), far, "and keeps the golden");
 
-    let missing = catch_unwind(AssertUnwindSafe(|| goldens.check("h", &base, false)));
-    assert!(missing.is_err(), "a missing golden fails without the flag");
+    panic_probe::assert_panics_with("no golden for `h`", || goldens.check("h", &base, false));
     assert!(goldens.golden_path("h").exists(), "after it is written");
+
+    let pair = dir.0.join("output").join("pair");
+    std::fs::create_dir_all(&pair).unwrap();
+    goldens.assert_same("pair", &near, &base);
+    assert!(!pair.exists(), "a pair that passes clears its old output");
+    panic_probe::assert_panics_with("differing pixels  16", || {
+        goldens.assert_same("pair", &far, &base)
+    });
+    for (file, written) in [("actual.png", &far), ("expected.png", &base)] {
+        assert_eq!(
+            image::open(pair.join(file)).unwrap().to_rgba8(),
+            *written,
+            "{file}"
+        );
+    }
+    assert!(pair.join("diff.png").exists(), "and the diff map");
+    assert!(
+        !goldens.golden_path("pair").exists(),
+        "comparing two images writes no golden"
+    );
 }

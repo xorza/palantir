@@ -10,7 +10,8 @@ use palantir::golden::{Goldens, Tolerance};
 /// `output/`.
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/visual");
 
-/// Where a failure named `name` leaves its images.
+/// Where a failure named `name` leaves its images, as `Goldens` lays the
+/// directory out.
 fn output_dir(name: &str) -> PathBuf {
     Path::new(ROOT).join("output").join(name)
 }
@@ -36,32 +37,13 @@ pub(crate) fn assert_matches_golden_within(name: &str, actual: &RgbaImage, toler
         .assert_matches(name, actual);
 }
 
-/// `actual` and `expected` agree in every pixel. On a failure the pair
-/// and a map of where they differ go to `output/<name>/`, as a golden
-/// mismatch does — `name` is a file name, not a sentence.
+/// `actual` and `expected` agree in every pixel — `name` is a file name,
+/// not a sentence.
 #[track_caller]
 pub(crate) fn assert_same(name: &str, actual: &RgbaImage, expected: &RgbaImage) {
-    let report = EXACT.diff(actual, expected);
-    if report.passes() {
-        return;
-    }
-    let output = output_dir(name);
-    std::fs::create_dir_all(&output).expect("create comparison output directory");
-    actual.save(output.join("actual.png")).expect("save actual");
-    expected
-        .save(output.join("expected.png"))
-        .expect("save expected");
-    report
-        .diff_image
-        .save(output.join("diff.png"))
-        .expect("save diff");
-    panic!(
-        "`{name}`: {} pixels differ (ratio {:.4}), by up to {} per channel — written to {}",
-        report.differing_pixels,
-        report.differing_ratio,
-        report.max_channel_delta,
-        output.display(),
-    );
+    Goldens::new(ROOT)
+        .tolerance(EXACT)
+        .assert_same(name, actual, expected);
 }
 
 /// [`assert_same`] over the pixels of `region` only.
