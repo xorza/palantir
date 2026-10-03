@@ -20,25 +20,17 @@
 
 use std::hash::Hash;
 
-use glam::Vec2;
 use serde::{Deserialize, Serialize};
 
-use crate::input::keyboard::key::Key;
-use crate::input::shortcut::Shortcut;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::ui::Ui;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_op::{DockDrop, DockOp};
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::error::DockError;
-use crate::widgets::dock::pane_geometry::{DropTarget, PaneGeometry};
 use crate::widgets::dock::split_side::SplitSide;
-use crate::widgets::dock::tab_drag::TabDrag;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
-use crate::widgets::tabs::tab_strip::TabStrip;
 use std::mem;
 
 /// Split-ratio clamp: neither pane can be squeezed below a tenth of the
@@ -223,6 +215,18 @@ impl<T: DockTab> DockState<T> {
     /// The tab that refuses to close.
     pub const fn pinned(&self) -> T {
         self.pinned
+    }
+
+    /// The seed this dock's widget ids derive from, so two docks in one
+    /// application cannot collide.
+    pub const fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    /// The split directions a drop may create. See
+    /// [`Self::with_allowed_splits`].
+    pub const fn allowed_splits(&self) -> AllowedSplits {
+        self.allowed_splits
     }
 
     /// The group keyboard shortcuts and newly opened tabs go to.
@@ -667,193 +671,6 @@ impl<T: DockTab> DockState<T> {
         }
         Ok(())
     }
-
-    /// The id everything else this dock records derives from.
-    pub fn dock_id(&self) -> WidgetId {
-        WidgetId::from_hash(("palantir.dock", self.seed))
-    }
-
-    /// A group's pane container — strip row and content together. The
-    /// rect the drop classification keys off.
-    pub fn pane_id(&self, group: TabGroupId) -> WidgetId {
-        self.dock_id().with(("pane", group))
-    }
-
-    /// A group's *content* area — the space below the strip that the
-    /// active tab's view fills.
-    ///
-    /// Keyed by the group rather than by the tab it happens to be
-    /// showing, which is the whole point: switching tabs leaves this
-    /// widget in place, so a view can be handed its arranged size on the
-    /// very pass it first records.
-    pub fn content_id(&self, group: TabGroupId) -> WidgetId {
-        self.dock_id().with(("content", group))
-    }
-
-    /// A group's tab strip.
-    pub fn strip_id(&self, group: TabGroupId) -> WidgetId {
-        self.dock_id().with(("strip", group))
-    }
-
-    /// The splitter at a tree path.
-    pub fn splitter_id(&self, path: DockPath) -> WidgetId {
-        self.dock_id().with(("splitter", path))
-    }
-
-    pub(crate) fn drag_id(&self) -> WidgetId {
-        self.dock_id().with("drag")
-    }
-
-    /// The chip key a tab is drawn under — the one derivation, so the
-    /// strip and a caller polling last frame's responses ask the same
-    /// question.
-    pub fn tab_key(tab: T) -> u64 {
-        WidgetId::from_hash(tab).0
-    }
-
-    /// Navigation-phase scan: focus follows a press into a pane, then
-    /// one pass over every strip's last-frame chip responses — close
-    /// clicks (which win over activation), activation clicks, and the
-    /// drag arming — then the in-flight drag's lifecycle.
-    ///
-    /// **Run this before the record, and apply what it emits.** Palantir
-    /// cannot see this frame's layout during a record, so a widget that
-    /// learned of a tab click mid-record would draw the pane the click
-    /// replaced. Scanning a phase earlier settles the new arrangement
-    /// first, so a switch — or a committed drop — draws on the frame it
-    /// lands rather than the one after.
-    pub fn scan(&self, ui: &mut Ui, ops: &mut Vec<DockOp<T>>) {
-        // Ahead of the chip pass: a read-only focus query that only ever
-        // moves `focused`, so it composes with an activation from the
-        // same scan rather than racing it.
-        if let Some(group) = self
-            .groups()
-            .find(|g| g.id != self.focused && ui.focus_within(self.pane_id(g.id)))
-        {
-            ops.push(DockOp::FocusPane { group: group.id });
-        }
-        let mut dragged = self.drag(ui);
-        for group in self.groups() {
-            let strip = self.strip_id(group.id);
-            for &tab in &group.tabs {
-                let key = Self::tab_key(tab);
-                if ui
-                    .response_for(TabStrip::close_id(strip, key))
-                    .left
-                    .clicked()
-                {
-                    ops.push(DockOp::CloseTab { tab });
-                    continue;
-                }
-                let chip = ui.response_for(TabStrip::chip_id(strip, key));
-                if chip.clicked() {
-                    ops.push(DockOp::ActivateTab { tab });
-                }
-                if dragged.is_none() && chip.left.drag.started() {
-                    dragged = Some(tab);
-                    self.set_drag(ui, Some(tab));
-                }
-            }
-        }
-        let Some(tab) = dragged else {
-            return;
-        };
-        let Some(address) = self.find_tab(tab) else {
-            self.set_drag(ui, None);
-            return;
-        };
-        if ui.key_pressed(Shortcut::key(Key::Escape)) {
-            self.set_drag(ui, None);
-            return;
-        }
-        // The release edge fires on the chip that caught the press.
-        let chip = TabStrip::chip_id(self.strip_id(address.group), Self::tab_key(tab));
-        if ui.response_for(chip).left.drag.stopped() {
-            if let Some(target) = self.drop_target(ui) {
-                ops.push(DockOp::MoveTab {
-                    tab,
-                    to: target.drop,
-                });
-            }
-            self.set_drag(ui, None);
-        }
-    }
-
-    /// The tab a pointer is currently carrying, if any.
-    pub(crate) fn drag(&self, ui: &Ui) -> Option<T> {
-        ui.state::<TabDrag<T>>(self.drag_id()).and_then(|d| d.tab)
-    }
-
-    fn set_drag(&self, ui: &mut Ui, tab: Option<T>) {
-        ui.state_or_default::<TabDrag<T>>(self.drag_id()).tab = tab;
-    }
-
-    /// The drop the pointer currently indicates: the pane whose rect
-    /// contains it, classified into a zone.
-    ///
-    /// Panes tile the dock without overlapping, so plain containment
-    /// against last frame's rects is exact. Deliberately *not* a hover
-    /// test: the hover resolves only to sensed widgets, and a pane's
-    /// content can be entirely inert — the pointer over it hovers
-    /// nothing, and the drop would go dark. `None` over a divider, the
-    /// chrome around the dock, or off-window; a release there cancels.
-    pub(crate) fn drop_target(&self, ui: &mut Ui) -> Option<DropTarget> {
-        let p = ui.pointer_pos()?;
-        let (edge_fraction, caret_width) = {
-            let dock = &ui.theme().dock;
-            (dock.edge_fraction, dock.caret_width)
-        };
-        let (group, pane) = self.groups().find_map(|g| {
-            let rect = ui.response_for(self.pane_id(g.id)).rect?;
-            rect.contains(p).then_some((g, rect))
-        })?;
-        let strip_id = self.strip_id(group.id);
-        let strip = ui.response_for(strip_id).rect?;
-        let can_split = self.can_split(group.id);
-        let allowed = self.allowed_splits;
-        let dock_id = self.dock_id();
-        ui.with_state::<ChipRects, _>(dock_id, |ui, buf| {
-            buf.rects.clear();
-            // An upper bound, not a count — a tab that recorded no rect
-            // drops out — so `reserve`, and a no-op from the drag's
-            // second frame on.
-            buf.rects.reserve(group.tabs.len());
-            buf.rects.extend(group.tabs.iter().filter_map(|&tab| {
-                ui.response_for(TabStrip::chip_id(strip_id, Self::tab_key(tab)))
-                    .rect
-            }));
-            Some(
-                PaneGeometry {
-                    group: group.id,
-                    pane,
-                    strip,
-                    chips: &buf.rects,
-                    can_split,
-                    allowed,
-                    edge_fraction,
-                    caret_width,
-                }
-                .classify(p),
-            )
-        })
-    }
-
-    /// The arranged size of a group's content area, `None` before its
-    /// first layout — the one frame in a group's life where a view has
-    /// to size itself.
-    pub fn content_size(&self, ui: &Ui, group: TabGroupId) -> Option<Vec2> {
-        let size = ui.response_for(self.content_id(group)).layout_rect?.size;
-        (size.w > 0.0 && size.h > 0.0).then(|| Vec2::new(size.w, size.h))
-    }
-}
-
-/// The chip rects one drop classification reads.
-///
-/// Kept on the dock's own state row rather than rebuilt per frame: a
-/// held drag asks for them on every pointer move.
-#[derive(Debug, Default)]
-struct ChipRects {
-    rects: Vec<Rect>,
 }
 
 #[cfg(test)]

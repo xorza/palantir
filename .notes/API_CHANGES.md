@@ -41,18 +41,6 @@ W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key
 Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
 display gets the platform glyph. Low priority.
 
-## A11. Dock model and view split
-
-**Findings.** REVIEW "Big widgets design": `DockState` is documented as pure data, but `scan`,
-`drag`, `set_drag`, `drop_target` and `content_size` take `Ui`. `content_size` returns
-`Option<Vec2>` where `Size` exists.
-
-**Recommendation.** Move `scan` and `content_size` to `DockView` (the private ones follow);
-`content_size` returns `Option<Size>`. Check `dock_tabs.rs:200` for the same `Vec2`. The id
-derivations (`dock_id`, `pane_id`, `content_id`, `strip_id`, `splitter_id` and the static
-`tab_key`) are view facts too, and go with them — `TabStrip::chip_id` / `close_id` already live on
-the view.
-
 ## A12. TabbedView page identity
 
 **Findings.** REVIEW "TabbedView reorder and identity": chips are keyed by index, so after a close

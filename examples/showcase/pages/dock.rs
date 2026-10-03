@@ -3,10 +3,9 @@
 
 use crate::support;
 use crate::support::{body_style, note_style, well_bg};
-use glam::Vec2;
 use palantir::{
     Button, Configure, DockDrop, DockOp, DockState, DockTabMenu, DockTabs, DockView, InternedStr,
-    MenuItem, Panel, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
+    MenuItem, Panel, Size, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
 };
 
 /// The showcase's own tab key: a small `Copy` value, which is all the
@@ -83,7 +82,7 @@ impl DockTabs for Panes {
         ui.intern(tab.label())
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Vec2>) {
+    fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
         Panel::vstack()
             .id_salt(("pane", tab.label()))
             .size((Sizing::FILL, Sizing::FILL))
@@ -100,7 +99,7 @@ impl DockTabs for Panes {
                     .style(&note_style())
                     .show(ui);
                 let measured = match size {
-                    Some(s) => fmt!(ui, "content area {:.0} x {:.0}", s.x, s.y),
+                    Some(s) => fmt!(ui, "content area {:.0} x {:.0}", s.w, s.h),
                     None => ui.intern("content area not laid out yet"),
                 };
                 Text::new(measured)
@@ -162,7 +161,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 // arrangement before the record walks it, so a click draws
                 // on the frame it lands.
                 s.ops.clear();
-                s.dock.scan(ui, &mut s.ops);
+                DockView::scan(&s.dock, ui, &mut s.ops);
                 for op in s.ops.drain(..) {
                     s.dock.apply(op);
                 }

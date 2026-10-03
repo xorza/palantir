@@ -1,7 +1,7 @@
 //! What the application answers about each tab, and the menu bundle one
 //! of those answers is handed.
 
-use glam::Vec2;
+use crate::primitives::geometry::size::Size;
 
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::text::interned_str::InternedStr;
@@ -38,7 +38,7 @@ pub trait DockTabs {
     /// in a pane's life that has not been laid out yet. It is the
     /// *group's* content area, which outlives the tab in it, so a view
     /// that first records on this pass is still handed a size.
-    fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Vec2>);
+    fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>);
 
     /// Whether the chip carries a close button. The pinned tab is
     /// refused by the model whatever this answers.

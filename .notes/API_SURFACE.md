@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `6e29a633`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `535a5a46`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -1294,6 +1294,8 @@ struct           DockState
     fn with_max_depth(self, depth)
     const fn with_allowed_splits(self, allowed)
     const fn pinned(self)
+    const fn seed(self)
+    const fn allowed_splits(self)
     const fn focused(self)
     fn node(self, idx)
     fn groups(self)
@@ -1306,14 +1308,6 @@ struct           DockState
     fn find_or_insert(self, tab, group)
     fn retain_tabs(self, keep)
     fn can_split(self, group)
-    fn dock_id(self)
-    fn pane_id(self, group)
-    fn content_id(self, group)
-    fn strip_id(self, group)
-    fn splitter_id(self, path)
-    fn tab_key(tab)
-    fn scan(self, ui, ops)
-    fn content_size(self, ui, group)
     traits: Clone, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 struct           TabAddress
     fields: group, index
@@ -1332,6 +1326,14 @@ struct           DockView
     fn style(self, s)
     fn show(self, ui, tabs)
     fn run(ui, state, tabs)
+    fn dock_id(state)
+    fn pane_id(state, group)
+    fn content_id(state, group)
+    fn strip_id(state, group)
+    fn splitter_id(state, path)
+    fn tab_key(tab)
+    fn scan(state, ui, ops)
+    fn content_size(state, ui, group)
     traits: Configure, Debug
 enum             DockError
     variants: NonCanonical, NodeOutOfRange, SplitNesting, SplitRatio, UnreachableSlots, MissingPinnedTab, DuplicateGroup, EmptyGroup, ActiveTabOutOfRange, DuplicateTab, MissingFocusedGroup, GroupAllocator
