@@ -1,5 +1,6 @@
 //! Okhsv — the picker's default axes, and the sRGB gamut solve behind them.
 
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab;
 use std::f32::consts::TAU;
@@ -68,7 +69,9 @@ const HALLEY_STEPS: usize = 3;
 
 impl Okhsv {
     /// Construct from the three axes. Out-of-range values are the caller's
-    /// until [`Self::to_color`], which wraps the hue and clamps the rest.
+    /// until [`Self::to_color`], which reads the hue as a *turn* and the
+    /// rest as *fractions*: it wraps the hue, clamps the rest, and reads a
+    /// non-finite axis as `0`.
     pub const fn new(h: f32, s: f32, v: f32) -> Self {
         Self { h, s, v }
     }
@@ -87,7 +90,7 @@ impl Okhsv {
     /// What a colour field is built from: every texel of one field shares the
     /// hue, and the cusp solve is the expensive half of the conversion.
     pub fn slice(hue: f32) -> OkhsvSlice {
-        let (sin, cos) = (TAU * hue.rem_euclid(1.0)).sin_cos();
+        let (sin, cos) = (TAU * domain::turn(hue)).sin_cos();
         OkhsvSlice::from_direction(cos, sin)
     }
 
@@ -101,7 +104,7 @@ impl Okhsv {
         let chroma = lab[1].hypot(lab[2]);
         if chroma < GREY_CHROMA || lightness <= 0.0 {
             return Self {
-                h: fallback_hue.rem_euclid(1.0),
+                h: domain::turn(fallback_hue),
                 s: 0.0,
                 v: toe(lightness).clamp(0.0, 1.0),
             };
@@ -161,8 +164,8 @@ impl OkhsvSlice {
 
     /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
     pub fn color(self, s: f32, v: f32) -> RgbaF32 {
-        let sat = s.clamp(0.0, 1.0);
-        let val = v.clamp(0.0, 1.0);
+        let sat = domain::fraction(s);
+        let val = domain::fraction(v);
 
         // The gamut slice as a perfect triangle first: `l_v` / `c_v` are the
         // lightness and chroma at `v = 1`.

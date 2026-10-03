@@ -361,9 +361,7 @@ Each line is one commit; none depends on another inside the phase.
 
 One area per commit. Each adds its setters to the per-kind input tables of phase 1 step 1.
 
-1. **Coercion** (rule 2), first, because it removes release panics on data: `ComboBox`,
-   `TabbedView` (and its zero-page case) and `TabStrip::selected` coerce their index; `Limits`
-   orders every range; fractions and turns coerce.
+1. Done: coercion (rule 2). `Limits` already ordered every range.
 2. **Layout**: `Sizing`, `Track`, `gap`, `line_gap`, `min_size`, `max_size`, `padding`, `margin`,
    `position`, `TranslateScale`; `GridCell` gets private fields with `with_span`. Every check in
    the area panics with its kind's message; the debug-only ones (`padding`, `margin`) become

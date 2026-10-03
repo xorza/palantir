@@ -19,35 +19,37 @@ use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
-/// A selection the option list doesn't contain has no rendering: the
-/// trigger shows the current choice and there is no placeholder. Falling
-/// back to a blank label made a broken caller model look like an
-/// ordinary empty control, so it panics instead.
-///
-/// An empty list is the same failure — every index is out of range —
-/// which is why it is the second case rather than a carve-out.
+/// The selection is an index coerced for display: one past the end of the
+/// list — a list that shrank under it — shows the last option, measured
+/// through the trigger label's width ("Longer" against "A"), and the bound
+/// index stays where the caller left it. An empty list shows an empty
+/// label rather than panicking.
 #[test]
-#[should_panic(expected = "out of range for 1 option(s)")]
-fn an_out_of_range_selection_panics() {
+fn a_stale_selection_shows_the_last_option_without_writing_back() {
+    const OPTIONS: [&str; 2] = ["A", "Longer"];
+    let ids = [0, 1, 9].map(|i| WidgetId::from_hash(("combo", i)));
+    let empty = WidgetId::from_hash("combo-empty");
+    let mut picks = [0usize, 1, 9];
+    let mut none = 4usize;
     let mut h = UiHarness::new(SURFACE);
-    let mut selected = 3;
     h.frame(|ui| {
-        ComboBox::new(&mut selected, &["One"])
-            .id(WidgetId::from_hash("combo"))
-            .show(ui);
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (selected, id) in picks.iter_mut().zip(ids) {
+                    ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+                }
+                ComboBox::new(&mut none, &[] as &[&str]).id(empty).show(ui);
+            });
     });
-}
-
-#[test]
-#[should_panic(expected = "out of range for 0 option(s)")]
-fn an_empty_option_list_panics() {
-    let mut h = UiHarness::new(SURFACE);
-    let mut selected = 0;
-    h.frame(|ui| {
-        ComboBox::new(&mut selected, &[] as &[&str])
-            .id(WidgetId::from_hash("combo"))
-            .show(ui);
-    });
+    let width = |id: WidgetId| h.rect(id.with("label")).expect("label arranged").size.w;
+    let [first, last, stale] = ids.map(width);
+    assert_ne!(first, last, "premise: the two options measure apart");
+    assert_eq!(stale, last, "a stale index shows the last option");
+    assert_eq!(picks, [0, 1, 9], "nothing was written back");
+    assert_eq!(width(empty), 0.0, "an empty list shows an empty label");
+    assert_eq!(none, 4);
 }
 
 /// `labeled` reads the row's projected field, not the row: a dropdown over

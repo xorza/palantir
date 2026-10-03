@@ -1,6 +1,7 @@
 //! The model-tagged triple a picker drives, so no widget branches on the
 //! model.
 
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::hsv::Hsv;
@@ -98,30 +99,31 @@ impl ColorCoords {
         }
     }
 
-    /// Set the hue, clamped to `0..=1`. Both ends name red, and both are
-    /// kept: a hue bar dragged to its right edge reads 1 and draws its
-    /// marker there, where a wrap to 0 jumped it to the left. A caller
-    /// stepping round the circle wraps its own arithmetic.
+    /// Set the hue, as a *fraction* — clamped to `0..=1`, and `0` when it is
+    /// not finite. Both ends name red, and both are kept: a hue bar dragged
+    /// to its right edge reads 1 and draws its marker there, where a wrap
+    /// to 0 jumped it to the left. A caller stepping round the circle wraps
+    /// its own arithmetic.
     pub const fn set_hue(&mut self, h: f32) {
-        let h = h.clamp(0.0, 1.0);
+        let h = domain::fraction(h);
         match self {
             Self::Okhsv(c) => c.h = h,
             Self::Hsv(c) => c.h = h,
         }
     }
 
-    /// Set the saturation, clamped to `0..1`.
+    /// Set the saturation, as a *fraction*.
     pub const fn set_sat(&mut self, s: f32) {
-        let s = s.clamp(0.0, 1.0);
+        let s = domain::fraction(s);
         match self {
             Self::Okhsv(c) => c.s = s,
             Self::Hsv(c) => c.s = s,
         }
     }
 
-    /// Set the value, clamped to `0..1`.
+    /// Set the value, as a *fraction*.
     pub const fn set_val(&mut self, v: f32) {
-        let v = v.clamp(0.0, 1.0);
+        let v = domain::fraction(v);
         match self {
             Self::Okhsv(c) => c.v = v,
             Self::Hsv(c) => c.v = v,
