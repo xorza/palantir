@@ -357,3 +357,35 @@ suite; and nothing reports a golden no test compares against any more.
 fails a comparison against a sidecar from another adapter with that reason instead of a pixel
 diff; `Goldens::orphans(names)` lists golden files not among `names`, for a suite to assert empty
 from one test that names them all. Touches `golden::Goldens`.
+
+## A27. What a `Hug` axis is floored at
+
+**Findings.** ISSUES "In a FILL zstack (padding 16) holding a Fixed-360 Hug vstack ...". The
+public contract of `Sizing::HUG` is "`min(content, available)`, floored at the intrinsic minimum"
+(`src/layout/types/sizing.rs`). The intrinsic minimum is computed at unbounded width, so on the
+block axis a wrapping paragraph's minimum is one line. Under a short available height, a Hug panel
+and the text inside it shrink below the height the text takes at the width they are laid out at,
+and the paragraph's rects overlap what follows it. No signature changes; the documented behaviour
+of an exported item does.
+
+**Options.**
+
+1. Floor Hug at the content's own minimum *at the constraints it was measured under*: what the
+   subtree cannot shrink below at its committed width (wrapped text height, Fixed extents, the
+   floors of its children), and not below the intrinsic minimum either. A Hug axis still shrinks
+   what can shrink — a `Scroll` on its panned axis, a `Fill` child — so the flex-shrink design
+   stays.
+2. Stop capping Hug at `available` (CSS block `height: auto`). Every Hug axis then overflows
+   instead of shrinking, which drops the flex-shrink behaviour a Hug stack around a `Scroll`
+   relies on.
+3. Leave the contract and document the overlap. Rejected: a rect smaller than the text painted in
+   it is wrong output, and the docs cannot make it right.
+
+**Recommendation.** 1. The doc becomes: "Shrink-wrap the content: `min(content, available)`,
+floored at the smallest extent the content takes at the size it is laid out at — its wrapped
+text, its fixed and minimum sizes. Content that can give way, such as a scroll on its panned
+axis, still shrinks." Layouts that today shrink wrapped text below its height grow and overflow
+their parent instead, as a rigid child already does.
+
+**Touches.** `Sizing::HUG` docs and behaviour; `src/layout/axis_slot.rs`, the measure contract of
+every layout driver, the measure cache columns.
