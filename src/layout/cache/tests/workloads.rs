@@ -3,7 +3,8 @@
 
 use crate::internals::harness::UiHarness;
 use crate::layout::cache::internals::{
-    BROAD_DEPTH, BROAD_FANOUT, DEEP_DEPTH, build_broad, build_broad_variant, build_deep,
+    BROAD_DEPTH, BROAD_FANOUT, BroadChange, DEEP_DEPTH, build_broad, build_broad_variant,
+    build_deep,
 };
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -48,18 +49,25 @@ fn adversarial_workloads_retain_one_row_per_node() {
     );
 }
 
+/// One changed leaf re-measures the panels above it, and every sibling
+/// subtree beside that path hits: seven at each of the three levels.
+///
+/// The surface is 400 logical px tall, so the 512 one-pixel leaves
+/// overflow it, and each panel offers its children its own minimum
+/// rather than the surface. A taller leaf moves that minimum, 512 → 513
+/// at the root, so every sibling is offered more than it was measured
+/// at — and still hits, because a Hug stack of fixed leaves holds under
+/// any offer past its content.
 #[test]
 fn localized_change_hits_unchanged_sibling_subtrees() {
-    let mut h = UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
-    let _ = h.frame(|ui| {
-        build_broad_variant(ui, false);
-    });
-    let _ = h.frame(|ui| {
-        build_broad_variant(ui, true);
-    });
-    assert_eq!(
-        h.engines.layout.scratch.counters.cache_hits().len(),
-        21,
-        "seven unchanged siblings hit at each of the three branch levels",
-    );
+    for change in [BroadChange::FillWeight, BroadChange::LeafHeight] {
+        let mut h = UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
+        let _ = h.frame(|ui| build_broad_variant(ui, None));
+        let _ = h.frame(|ui| build_broad_variant(ui, Some(change)));
+        assert_eq!(
+            h.engines.layout.scratch.counters.cache_hits().len(),
+            21,
+            "{change:?}: seven unchanged siblings hit at each of the three branch levels",
+        );
+    }
 }

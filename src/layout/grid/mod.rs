@@ -11,6 +11,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::interned_text::InternedText;
@@ -58,7 +59,7 @@ impl LayoutDriver for Grid {
         node: NodeId,
         idx: Self::Payload,
         inner_avail: Size,
-    ) -> Size {
+    ) -> Measured {
         let depth = pass.grid_mut().depth_stack.enter();
         let result = measure_inner(pass, node, idx, depth, inner_avail);
         pass.grid_mut().depth_stack.exit();

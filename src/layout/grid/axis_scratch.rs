@@ -8,6 +8,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::fill_item::FillItem;
 use crate::layout::grid::grid_track_store::GridTrackStore;
+use crate::layout::measured::Measured;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
 use crate::primitives::num::F32Px;
@@ -26,6 +27,13 @@ pub(super) struct AxisScratch {
     pub(super) sizes: Vec<f32>,
     pub(super) resolved: FixedBitSet,
     pub(super) offsets: Vec<f32>,
+    /// The least finite `total` from which the last
+    /// [`Self::resolve_axis`] sizes its Fixed and Hug tracks the same — see
+    /// [`Measured::stable_from`](crate::layout::measured::Measured).
+    /// Fixed tracks read no total, and Hug tracks read it only while they
+    /// do not all fit at their preferred extent. Fill tracks read every
+    /// total, which the caller answers for.
+    pub(super) stable_from: f32,
     flexible: Vec<FillItem<usize>>,
     hug_bounds: Vec<HugBound>,
 }
@@ -212,6 +220,7 @@ impl AxisScratch {
         // Phase 2: Hug, constraint-solved against remaining-after-Fixed.
         // Single pass: snapshot each Hug track's clamped `(lo, hi)` once,
         // pick the distribution rule from the totals, then write sizes.
+        self.stable_from = 0.0;
         self.hug_bounds.clear();
         let mut hug_min_sum = 0.0_f32;
         let mut hug_max_sum = 0.0_f32;
@@ -239,6 +248,15 @@ impl AxisScratch {
             // distribute slack proportional to per-track `(hi - lo)`.
             let unconstrained = total.is_infinite() || hug_max_sum <= remaining_after_fixed;
             let cramped = !unconstrained && hug_min_sum >= remaining_after_fixed;
+            // Every Hug at its preferred extent holds while what is left
+            // still holds them all; one squeezed holds at this total alone.
+            self.stable_from = if !unconstrained {
+                Measured::AT_OFFER_ONLY
+            } else if hug_max_sum > 0.0 {
+                consumed + fill_floors + hug_max_sum
+            } else {
+                0.0
+            };
             let slack = remaining_after_fixed - hug_min_sum;
             let total_range = hug_max_sum - hug_min_sum;
 

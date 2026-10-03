@@ -36,16 +36,16 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let first = h.ui.layout(Layer::Main).text_shapes[span.start as usize];
     let second = h.ui.layout(Layer::Main).text_shapes[(span.start + 1) as usize];
     assert!(
-        first.measured.w > 0.0 && second.measured.w > 0.0,
+        first.extent.size.w > 0.0 && second.extent.size.w > 0.0,
         "both runs must have measured nonzero width: first={:?} second={:?}",
-        first.measured,
-        second.measured,
+        first.extent.size,
+        second.extent.size,
     );
     assert!(
-        second.measured.w > first.measured.w,
+        second.extent.size.w > first.extent.size.w,
         "second run is longer text and should measure wider; first={} second={}",
-        first.measured.w,
-        second.measured.w,
+        first.extent.size.w,
+        second.extent.size.w,
     );
     assert_ne!(
         first.key, second.key,
@@ -119,13 +119,14 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
         "cache hit must replay the exact same TextShapeKeys per slot",
     );
     assert!(
-        f1_first.measured == f2_first.measured && f1_second.measured == f2_second.measured,
+        f1_first.extent.size == f2_first.extent.size
+            && f1_second.extent.size == f2_second.extent.size,
         "cache hit must replay the exact same measured sizes per slot; \
      f1=({:?}, {:?}) f2=({:?}, {:?})",
-        f1_first.measured,
-        f1_second.measured,
-        f2_first.measured,
-        f2_second.measured,
+        f1_first.extent.size,
+        f1_second.extent.size,
+        f2_first.extent.size,
+        f2_second.extent.size,
     );
 }
 

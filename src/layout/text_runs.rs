@@ -21,7 +21,7 @@ use crate::scene::shapes::record::ShapeRecord;
 ///
 /// Both walks over a node's shapes use this — the encoder's paint emission
 /// and cascade's paint-rect rollup. They read different fields off the
-/// answer (`key` and `measured` against `measured` alone) but they consume
+/// answer (`key` and `extent` against `extent` alone) but they consume
 /// the same column in the same order, and the bounds and drained checks
 /// below are the contract that keeps them agreeing.
 #[derive(Debug)]

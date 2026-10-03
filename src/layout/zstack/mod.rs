@@ -8,6 +8,7 @@ use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -39,7 +40,7 @@ impl LayoutDriver for ZStack {
         node: NodeId,
         (): Self::Payload,
         inner_avail: Size,
-    ) -> Size {
+    ) -> Measured {
         pass.measure_per_axis_hug(node, inner_avail, |_, _| Vec2::ZERO)
     }
 

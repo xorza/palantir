@@ -58,7 +58,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     );
     assert_eq!(text_wrap_of(&h, node), TextWrap::WrapWithOverflow);
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
-    assert_eq!(shaped.measured, r.size);
+    assert_eq!(shaped.extent.size, r.size);
 }
 
 /// A `Button` with a label wider than its `Fixed` width elides to one
@@ -90,7 +90,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     // Elided, the paragraph stays one line, cut to fit the 80 px box
     // less the button's 2 × 12 padding and 2 × 1 border: 54 px of room.
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
-    assert_eq!(shaped.measured, Size::new(52.0, lines_h(1, 16.0)));
+    assert_eq!(shaped.extent.size, Size::new(52.0, lines_h(1, 16.0)));
 }
 
 /// A wrapping `Text` inside a
@@ -105,7 +105,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
     // Four lines at the resolved column width, inside the 200 px surface.
-    assert_eq!(shaped.measured, Size::new(93.0, lines_h(4, 16.0)));
+    assert_eq!(shaped.extent.size, Size::new(93.0, lines_h(4, 16.0)));
 }
 
 /// `Ui::intrinsic` returns sane values for a wrapping text leaf
@@ -124,68 +124,98 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
 }
 
 /// Pin (contains-content rule, cross axis): a FILL chrome panel
-/// wrapping a paragraph in a Fixed(width) inner panel must grow on Y
+/// wrapping a paragraph in a Fixed(width) inner container must grow on Y
 /// to contain its wrapped content, even when surface_h is smaller.
 /// The intrinsic-min query alone underestimates this (wrapping text
 /// intrinsic runs at INF width → single-line height), so the floor
-/// has to come from the post-dispatch measured content. Without the
-/// fix, surface_h < natural content height makes the chrome panel
-/// rect shorter than its content, visibly clipping at the bottom.
+/// comes from the measure, which shaped the text at the width it is
+/// laid out at: the paragraph, the Hug container around it and the
+/// chrome are each at least as tall as the three lines. Every driver
+/// that offers its child the width hands that floor up — the stacks sum
+/// it on their main axis and take the largest on the cross axis, a grid
+/// floors its Hug row with it.
 #[test]
 fn fill_panel_grows_to_contain_wrapped_content_on_y() {
+    use crate::layout::types::track::Track;
     use crate::scene::tree::node_id::NodeId;
+    use crate::widgets::grid::Grid;
     use crate::widgets::panel::Panel;
-    fn build(ui: &mut Ui) -> (NodeId, NodeId) {
+
+    #[derive(Clone, Copy, Debug)]
+    enum Inner {
+        Panel(fn() -> Panel),
+        Grid,
+    }
+    fn build(ui: &mut Ui, inner_kind: Inner) -> [NodeId; 3] {
         let mut inner = NodeId(0);
+        let mut text = NodeId(0);
         Panel::zstack()
             .auto_id()
             .padding(16.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                inner = Panel::vstack()
-                    .id_salt("inner")
-                    .size((Sizing::fixed(360.0), Sizing::HUG))
-                    .padding(8.0)
-                    .show(ui, |ui| {
-                        Text::new(
-                            "The quick brown fox jumps over the lazy dog. \
-                             Pack my box with five dozen liquor jugs. \
-                             How vexingly quick daft zebras jump!",
-                        )
-                        .auto_id()
-                        .font_size(14.0)
-                        .text_wrap(TextWrap::WrapWithOverflow)
-                        .show(ui);
-                    })
-                    .response
-                    .node();
+                let paragraph = |ui: &mut Ui| {
+                    Text::new(
+                        "The quick brown fox jumps over the lazy dog. \
+                         Pack my box with five dozen liquor jugs. \
+                         How vexingly quick daft zebras jump!",
+                    )
+                    .auto_id()
+                    .font_size(14.0)
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .show(ui)
+                    .node()
+                };
+                let size = (Sizing::fixed(360.0), Sizing::HUG);
+                inner = match inner_kind {
+                    Inner::Panel(panel) => panel()
+                        .id_salt("inner")
+                        .size(size)
+                        .padding(8.0)
+                        .show(ui, |ui| text = paragraph(ui))
+                        .response
+                        .node(),
+                    Inner::Grid => Grid::new()
+                        .id_salt("inner")
+                        .cols([Track::FILL])
+                        .rows([Track::HUG])
+                        .size(size)
+                        .padding(8.0)
+                        .show(ui, |ui| text = paragraph(ui))
+                        .response
+                        .node(),
+                };
             });
         // The chrome panel is the first child of the implicit root.
-        (NodeId(1), inner)
+        [NodeId(1), inner, text]
     }
-    // The inner Fixed-width panel is Hug on Y, so its rect.size.h is the
-    // measured wrapped-paragraph height (+ inner padding). Chrome must
-    // be at least that + chrome padding (16*2 = 32) on Y, at every
-    // surface height — including ones smaller than the natural content.
-    for h in [800u32, 400, 300, 200, 150, 100, 50] {
-        let mut harness = UiHarness::with_text(UVec2::new(800, h));
-        let mut nodes = (NodeId(0), NodeId(0));
-        harness.frame(|ui| {
-            nodes = build(ui);
-        });
-        let (chrome, inner) = nodes;
-        let chrome_h = harness.ui.arranged_rect(Layer::Main, chrome).size.h;
-        let inner_h = harness.ui.arranged_rect(Layer::Main, inner).size.h;
-        // Three 14 px lines and 2 × 8 padding, unless the surface is too
-        // short to offer them (see ISSUES). The chrome fills the surface,
-        // and grows past it to its inner panel plus 2 × 16 padding.
-        let expected_inner = if h > 50 {
-            lines_h(3, 14.0) + 16.0
-        } else {
-            lines_h(1, 14.0) + 16.0
-        };
-        assert_eq!(inner_h, expected_inner, "surface_h={h}");
-        assert_eq!(chrome_h, (h as f32).max(inner_h + 32.0), "surface_h={h}");
+    let inners = [
+        ("vstack", Inner::Panel(Panel::vstack)),
+        ("hstack", Inner::Panel(Panel::hstack)),
+        ("wrap_vstack", Inner::Panel(Panel::wrap_vstack)),
+        ("zstack", Inner::Panel(Panel::zstack)),
+        ("grid", Inner::Grid),
+    ];
+    for (label, inner_kind) in inners {
+        for h in [800u32, 400, 300, 200, 150, 100, 50] {
+            let mut harness = UiHarness::with_text(UVec2::new(800, h));
+            let [chrome, inner, text] = harness.frame_value(|ui| build(ui, inner_kind));
+            let height = |node| harness.ui.arranged_rect(Layer::Main, node).size.h;
+            // Three 14 px lines, and 2 × 8 padding around them, at every
+            // surface height. The chrome fills the surface, and grows past
+            // it to its inner container plus 2 × 16 padding.
+            assert_eq!(height(text), lines_h(3, 14.0), "{label} surface_h={h}");
+            assert_eq!(
+                height(inner),
+                lines_h(3, 14.0) + 16.0,
+                "{label} surface_h={h}"
+            );
+            assert_eq!(
+                height(chrome),
+                (h as f32).max(height(inner) + 32.0),
+                "{label} surface_h={h}"
+            );
+        }
     }
 }
 
@@ -223,6 +253,6 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
     // Five lines inside the 300 px column: five 19.203125 px lines end at
     // 96.015625, which ceils to 97.
-    assert_eq!(shaped.measured, Size::new(285.0, lines_h(5, 16.0)));
+    assert_eq!(shaped.extent.size, Size::new(285.0, lines_h(5, 16.0)));
     assert_eq!(lines_h(5, 16.0), 97.0);
 }

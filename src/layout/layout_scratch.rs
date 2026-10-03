@@ -6,6 +6,7 @@ use crate::layout::counters::LayoutCounters;
 use crate::layout::grid::grid_context::GridContext;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::layer_layout::LayerLayout;
+use crate::layout::measured::Measured;
 use crate::layout::stack::StackScratch;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::size::Size;
@@ -62,15 +63,17 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
 ///
 /// 3. **Node-indexed measure memos, round-tripped by the cache** —
-///    `intrinsics` and `available_q`. Not stacks: `resize_for` fills
-///    them per node and nothing truncates them. They look drainable
-///    because arrange never queries them, but they *do* carry state out
-///    — [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree) reads both after arrange, so on a
-///    cache-hit subtree (whose slots measure never filled) they have to
-///    be splatted back by [`Self::restore_after_cache_hit`] first or the next
-///    snapshot records NaN for `intrinsics` and `INVALID_AVAILABLE` for
-///    `available_q` — which silently makes that subtree uncacheable from
-///    then on.
+///    `intrinsics`, `available_q`, `floor` and `stable_from`. Not
+///    stacks: `resize_for` fills them per node and nothing truncates
+///    them. They look drainable because arrange never queries them, but
+///    they *do* carry state out —
+///    [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree)
+///    reads them after arrange, so on a cache-hit subtree (whose slots
+///    measure never filled) they have to be splatted back by
+///    [`Self::restore_after_cache_hit`] first or the next snapshot records
+///    NaN for `intrinsics` and `INVALID_AVAILABLE` for `available_q` —
+///    which silently makes that subtree uncacheable from then on — and
+///    zeroes for the floor and range a later hit hands its parent.
 ///
 /// **Adding a new field to category (2)** takes three coordinated
 /// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
@@ -99,6 +102,14 @@ pub(crate) struct LayoutScratch {
     pub(super) wrap: WrapScratch,
     pub(super) stack_fill: StackScratch,
     pub(super) desired: Vec<Size>,
+    /// Each node's measured floor, margin-inclusive — see
+    /// [`Measured`](crate::layout::measured::Measured). Read by no pass
+    /// after measure; kept per node so the measure cache can hand a hit
+    /// subtree's floor back to the parent that asks for it.
+    pub(super) floor: Vec<Size>,
+    /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from),
+    /// kept beside `floor` for the same reader.
+    pub(super) stable_from: Vec<Size>,
     /// Snapshot arena row of each node whose subtree measure was restored
     /// from the cache this frame — the hit root and every node under it —
     /// or [`NO_ARRANGE_SRC`]. Written at the measure-hit site, read once
@@ -132,12 +143,23 @@ impl LayoutScratch {
             wrap: _,
             stack_fill: _,
             desired,
+            floor,
+            stable_from,
             arrange_src,
             intrinsics,
             available_q,
         } = self;
         desired.clear();
         desired.resize(n, Size::ZERO);
+        floor.clear();
+        floor.resize(n, Size::ZERO);
+        // A node measure never reaches, below a collapsed one, has no
+        // range to claim, so its row claims none.
+        stable_from.clear();
+        stable_from.resize(
+            n,
+            Size::new(Measured::AT_OFFER_ONLY, Measured::AT_OFFER_ONLY),
+        );
         arrange_src.clear();
         arrange_src.resize(n, NO_ARRANGE_SRC);
         intrinsics.clear();
@@ -178,13 +200,15 @@ impl LayoutScratch {
         //
         // The three `_` bindings are the fields that are deliberately not
         // this function's job: `root` and `nodes_base` describe the
-        // snapshot rather than being columns of it, and `desired` is
-        // restored by the measure-hit site itself (`LayoutPass::measure`)
-        // because it is what decides the hit.
+        // snapshot rather than being columns of it, and
+        // `desired` is restored by the measure-hit site itself
+        // (`LayoutPass::measure`) because it is what decides the hit.
         let CachedSubtree {
             root: _,
             nodes_base: _,
             desired: _,
+            floor,
+            stable_from,
             scroll_content,
             text_spans,
             intrinsics,
@@ -219,6 +243,8 @@ impl LayoutScratch {
                 }
             }
             self.available_q[subtree.clone()].copy_from_slice(available_q);
+            self.floor[subtree.clone()].copy_from_slice(floor);
+            self.stable_from[subtree.clone()].copy_from_slice(stable_from);
         }
         // `grid.track_state` — gated on `Tree::subtree_has_grid` (one bit-test
         // off the same `subtree_end` word the caller already read) so

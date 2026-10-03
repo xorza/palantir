@@ -117,12 +117,12 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .expect("tooltip text shaped");
     // Forty 6.5 px chars a line, broken mid-token, inside the 14 px of
     // padding and border.
-    assert_eq!(shaped.measured, Size::new(260.0, 2.0 * 15.59375));
+    assert_eq!(shaped.extent.size, Size::new(260.0, 2.0 * 15.59375));
     assert_eq!(bubble.size.w, 260.0 + 14.0);
     assert!(
-        shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
+        shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
         "text width {} must fit inside bubble width {}",
-        shaped.measured.w,
+        shaped.extent.size.w,
         bubble.size.w,
     );
 }

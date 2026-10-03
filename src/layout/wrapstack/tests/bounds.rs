@@ -262,3 +262,41 @@ fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
     }
     assert_eq!(h.arranged(WidgetId::from_hash("wrap")).max().y, 55.0);
 }
+
+/// A Hug wrap stack offered less height than its lines take keeps every
+/// line: its floor across is each line's tallest child, summed with the
+/// line gaps, so it overflows its parent rather than its lines
+/// overlapping what follows. Five 40 × 20 blocks with a 10 px gap break
+/// 40 + 10 + 40 = 90 per line in a 100 px width — lines of 2, 2 and 1 —
+/// so three 20 px lines and two 5 px line gaps: 3 × 20 + 2 × 5 = 70 in a
+/// 30 px parent.
+#[test]
+fn a_hug_wrap_stack_keeps_its_lines_under_a_short_parent() {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(100.0), Sizing::fixed(30.0)))
+            .show(ui, |ui| {
+                Panel::wrap_hstack()
+                    .id(WidgetId::from_hash("wrap"))
+                    .gap(10.0)
+                    .line_gap(5.0)
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .show(ui, |ui| {
+                        for i in 0..5u32 {
+                            Block::new()
+                                .id(WidgetId::from_hash(("item", i)))
+                                .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
+                                .show(ui);
+                        }
+                    });
+            });
+    });
+    assert_eq!(h.arranged(WidgetId::from_hash("wrap")).size.h, 70.0);
+    assert_eq!(
+        h.arranged(WidgetId::from_hash(("item", 4u32))).min.y,
+        50.0,
+        "the third line starts below two lines and two gaps"
+    );
+}

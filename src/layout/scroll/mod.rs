@@ -9,6 +9,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::layout::stack::Stack;
 use crate::layout::types::scroll_axes::{ScrollAxes, ScrollChildLayout};
@@ -36,7 +37,7 @@ impl LayoutDriver for Scroll {
         node: NodeId,
         axes: Self::Payload,
         inner_avail: Size,
-    ) -> Size {
+    ) -> Measured {
         // A panned axis measures unbounded: what it scrolls over is not
         // limited by what it shows.
         let child_avail = Size::INF.select(axes.pan_mask(), inner_avail);
@@ -45,9 +46,15 @@ impl LayoutDriver for Scroll {
             ScrollChildLayout::Flow(main) => Stack::measure(pass, node, main, child_avail),
         };
 
-        pass.set_scroll_content(node, raw);
+        pass.set_scroll_content(node, raw.size);
 
-        raw.select(axes.contributes_mask(), Size::ZERO)
+        // A panned axis gives way whatever it shows, so it floors at
+        // nothing — the measure-side peer of its zero min-content.
+        Measured {
+            size: raw.size.select(axes.contributes_mask(), Size::ZERO),
+            floor: Size::ZERO.select(axes.pan_mask(), raw.floor),
+            stable_from: Size::ZERO.select(axes.pan_mask(), raw.stable_from),
+        }
     }
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axes: Self::Payload, inner: Rect) {

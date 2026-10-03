@@ -90,8 +90,8 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
 fn mono_extent(text: &str, shape: TestShape, fit: LineFit) -> Size {
     let request = shape.request(text, fit);
     match request.max_width_px() {
-        None => mono::root(request, WrapFloor::Skip).size,
-        Some(_) => mono::resolve(request),
+        None => mono::root(request, WrapFloor::Skip).extent.size,
+        Some(_) => mono::resolve(request).size,
     }
 }
 

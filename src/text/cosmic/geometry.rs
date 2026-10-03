@@ -6,6 +6,7 @@
 //! call them while holding other fields of it mutably.
 
 use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, WrapFloor};
 use cosmic_text::Buffer;
@@ -31,12 +32,14 @@ pub(super) struct ShapedGeometry {
 }
 
 impl ShapedGeometry {
-    /// These facts read as a run's unbounded shape. Sound only for a
-    /// buffer shaped without a width — the callers that lift one are the
-    /// unbounded paths, and they are the only ones.
-    pub(super) fn root(self) -> TextRoot {
+    /// These facts, with the buffer's `extent`, read as a run's unbounded
+    /// shape. Sound only for a buffer shaped without a width — the
+    /// callers that lift one are the unbounded paths, and they are the
+    /// only ones.
+    pub(super) fn root(self, extent: TextExtent) -> TextRoot {
+        debug_assert_eq!(extent.size, self.size, "the extent of another buffer");
         TextRoot {
-            size: self.size,
+            extent,
             intrinsic_min: self.intrinsic_min,
             single_line: self.single_line,
         }

@@ -143,7 +143,7 @@ fn assert_layout_matches_cold(h: &UiHarness) {
             let runs = |layout: &LayerLayout| {
                 layout.text_shapes[layout.text_spans[node].range()]
                     .iter()
-                    .map(|shaped: &ShapedText| (shaped.measured, shaped.key))
+                    .map(|shaped: &ShapedText| (shaped.extent.size, shaped.key))
                     .collect::<Vec<_>>()
             };
             assert_eq!(runs(warm), runs(cold), "shaped text of {}", at());

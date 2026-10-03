@@ -1,6 +1,9 @@
 use super::*;
 use crate::common::hash;
+use crate::text::font_scope::internals::INTER;
+use crate::text::font_source::FontSource;
 use crate::text::probe::Caret;
+use crate::text::render::RunPlacement;
 
 /// `cursor_xy(...).x`. Mono fallback: each ASCII byte is
 /// `font_size * 0.5` wide. Caret x is independent of `line_height`
@@ -74,8 +77,8 @@ fn cursor_xy_walks_with_the_paragraph_direction() {
     // last one in the array, which in an RTL run is the leftmost — that
     // would report the run as one letter wide and let the backend clip
     // it. One letter alone rounds its 10.5 up to 11.
-    assert_eq!(shaper.measure(rtl_text, shape).measured.w, 42.0);
-    assert_eq!(shaper.measure("\u{5e9}", shape).measured.w, 11.0);
+    assert_eq!(shaper.measure(rtl_text, shape).extent.size.w, 42.0);
+    assert_eq!(shaper.measure("\u{5e9}", shape).extent.size.w, 11.0);
 }
 
 #[test]
@@ -390,7 +393,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     let m = TextShaper::new();
     let text = "abc\n";
     let shape = ui_shape(16.0).width(200.0).halign(HAlign::Right);
-    let block = m.measure(text, shape).measured.w;
+    let block = m.measure(text, shape).extent.size.w;
     // "abc" is 28 px, far narrower than the 200 px wrap target, so the
     // block edge and the wrap target cannot be mistaken for each other.
     assert_eq!(block, 28.0);
@@ -489,5 +492,135 @@ fn caret_and_hit_test_round_trip_in_block_local_space() {
             shape,
         );
         assert_eq!(hit, byte, "byte {byte} at x = {} round-trips", caret.x);
+    }
+}
+
+/// A run's ink outsets, cross-checked against the rasterizer: every
+/// glyph is drawn as the backend draws it, at scale 1 from the block's
+/// origin, and the coverage that lands past the block on each side has to
+/// be inside the outset — and the outset no more than one whole pixel
+/// past it, which is the rounding up to whole pixels.
+///
+/// Each case reaches past the block its own way: an italic `f` hangs its
+/// top right and its tail left, at a variable face's regular and bold
+/// instances alike; a synthetic italic leans right through the skew
+/// alone; a ring above a capital and a descender below a line one font
+/// size tall leave the line box; and a glyph with a negative left side
+/// bearing starts left of its pen. A plain `x` in a UI-leading line stays
+/// inside on every side.
+#[test]
+fn ink_outsets_cover_what_the_rasterizer_draws() {
+    let inter_regular_only = || {
+        let mut m = CosmicMeasure::with_no_fonts();
+        let family = m
+            .load_font(FontSource::from(INTER))
+            .expect("the bundled Inter loads");
+        (m, family)
+    };
+    // (label, text, slant, weight, leading = size, sides that must reach)
+    let cases = [
+        (
+            "italic",
+            "f",
+            FontSlant::Italic,
+            FontWeight::REGULAR,
+            false,
+            [true, false, true, false],
+        ),
+        (
+            "bold italic",
+            "f",
+            FontSlant::Italic,
+            FontWeight::BOLD,
+            false,
+            [true, false, true, false],
+        ),
+        (
+            "ring and descender",
+            "Åg",
+            FontSlant::Normal,
+            FontWeight::REGULAR,
+            true,
+            [false, true, false, true],
+        ),
+        (
+            "negative bearing",
+            "j",
+            FontSlant::Normal,
+            FontWeight::REGULAR,
+            false,
+            [true, false, false, false],
+        ),
+        (
+            "inside",
+            "x",
+            FontSlant::Normal,
+            FontWeight::REGULAR,
+            false,
+            [false, false, false, false],
+        ),
+    ];
+    let synthetic = (
+        "synthetic italic",
+        "f",
+        FontSlant::Italic,
+        FontWeight::REGULAR,
+        false,
+        [false, false, true, false],
+    );
+    for (index, (label, text, slant, weight, tight, reaches)) in
+        cases.into_iter().chain([synthetic]).enumerate()
+    {
+        let (mut m, family) = if index == cases.len() {
+            inter_regular_only()
+        } else {
+            (CosmicMeasure::default(), FontFamily::SANS)
+        };
+        let base = if tight { shape(64.0) } else { ui_shape(64.0) };
+        let request = base
+            .family(family)
+            .slant(slant)
+            .weight(weight)
+            .unbounded_request(text);
+        let root = m.root(request, WrapFloor::Skip);
+
+        let mut placed = Vec::new();
+        m.extract_glyphs(
+            request,
+            RunPlacement {
+                origin: glam::Vec2::ZERO,
+                scale: 1.0,
+                bounds: None,
+            },
+            &mut placed,
+        );
+        let (mut lo, mut hi) = (glam::IVec2::MAX, glam::IVec2::MIN);
+        for glyph in &placed {
+            let Some(image) = m.rasterize_glyph(glyph.raster_key) else {
+                continue;
+            };
+            let top_left = glam::IVec2::new(glyph.x + image.bearing.x, glyph.y - image.bearing.y);
+            lo = lo.min(top_left);
+            hi = hi.max(top_left + image.size.as_ivec2());
+        }
+        let past = |reach: i32| reach.max(0) as f32;
+        let drawn = [
+            past(-lo.x),
+            past(-lo.y),
+            past(hi.x - root.extent.size.w as i32),
+            past(hi.y - root.extent.size.h as i32),
+        ];
+        let ink = root.extent.ink.as_array();
+        for side in 0..4 {
+            assert!(
+                drawn[side] <= ink[side] && ink[side] <= drawn[side] + 1.0,
+                "{label}: side {side} draws {drawn:?} past the block, ink says {ink:?}",
+            );
+            assert_eq!(
+                ink[side] > 0.0,
+                reaches[side],
+                "{label}: side {side}, ink {ink:?}"
+            );
+        }
     }
 }

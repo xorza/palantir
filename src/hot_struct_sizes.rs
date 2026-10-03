@@ -121,7 +121,7 @@ const UI_SIZE: usize = 6296;
 /// cell are zero-sized in a release build, which leaves a shipped
 /// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
 /// the production footprint.
-const FRAME_ENGINES_SIZE: usize = 1760;
+const FRAME_ENGINES_SIZE: usize = 1904;
 
 /// Single source of truth for the per-frame hot-struct inventory.
 /// Each entry is `pin::<Type>("name", expected_size, expected_align)`.
@@ -223,9 +223,9 @@ const PINS: &[Pin] = &[
     pin::<GpuView>("widgets::GpuView", 144, 8),
     pin::<ContextMenu<'static>>("widgets::ContextMenu", 288, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
-    pin::<ShapedText>("layout::ShapedText", 32, 8),
+    pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
-    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 312, 8),
+    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 360, 8),
     pin::<AnimRow<AnimatedLook>>("animation::AnimRow<AnimatedLook>", 496, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
@@ -240,7 +240,7 @@ const PINS: &[Pin] = &[
     pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),
     pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
     pin::<DrawQuadPayload>("payload::DrawQuadPayload", 76, 4),
-    pin::<DrawTextPayload>("payload::DrawTextPayload", 56, 8),
+    pin::<DrawTextPayload>("payload::DrawTextPayload", 64, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 48, 4),
     pin::<DrawImagePayload>("payload::DrawImagePayload", 56, 8),

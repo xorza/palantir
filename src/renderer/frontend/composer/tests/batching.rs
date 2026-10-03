@@ -4,6 +4,7 @@ use crate::icons::icon_set::IconRef;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
@@ -12,8 +13,8 @@ use crate::primitives::{
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, mesh, params, params_unsnapped,
-    polyline_cmd, run, text,
+    clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, inked_text, mesh, params,
+    params_unsnapped, polyline_cmd, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -930,12 +931,47 @@ fn text_batch_drains_past_a_non_overlapping_image() {
 /// 0.25 % a side (0.251 px across, 0.05 px down) and covered, that is x
 /// 9..111, y 9..31. The snapped box ended at 110, and cut the last column
 /// of antialiasing.
+///
+/// Ink reaching past the block widens it from the same origin: 3, 2, 5
+/// and 4 px out make 7..115.4 by 8..34, a 108.4 × 26 extent, padded by
+/// 0.271 × 0.065 to 6.729..115.671 by 7.935..34.065 and covered as x
+/// 6..116, y 7..35. At display scale 2 the same run is 216.8 × 52 from
+/// (20, 20) − (6, 4) = (14, 16), padded by 0.542 × 0.13: x 13..232, y
+/// 15..69. The origin the glyphs are placed at does not move.
 #[test]
 fn a_text_scissor_covers_the_snapped_glyph_block() {
-    let mut display = params(1.0, UVec2::new(200, 100));
-    display.pixel_snap = true;
-    let buf = run(|b, _| text(b, Rect::new(10.0, 10.0, 100.4, 20.0)), &display);
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.texts[0].origin, Vec2::new(10.0, 10.0));
-    assert_eq!(buf.text_batches[0].scissor, URect::new(9, 9, 102, 22));
+    let block = Rect::new(10.0, 10.0, 100.4, 20.0);
+    let ink = Spacing::new(3.0, 2.0, 5.0, 4.0);
+    // (scale, physical, ink, origin, scissor)
+    let cases = [
+        (
+            1.0,
+            UVec2::new(200, 100),
+            Spacing::ZERO,
+            10.0,
+            URect::new(9, 9, 102, 22),
+        ),
+        (
+            1.0,
+            UVec2::new(200, 100),
+            ink,
+            10.0,
+            URect::new(6, 7, 110, 28),
+        ),
+        (
+            2.0,
+            UVec2::new(400, 200),
+            ink,
+            20.0,
+            URect::new(13, 15, 219, 54),
+        ),
+    ];
+    for (scale, physical, ink, origin, scissor) in cases {
+        let mut display = params(scale, physical);
+        display.pixel_snap = true;
+        let buf = run(|b, _| inked_text(b, block, ink), &display);
+        assert_eq!(buf.text_batches.len(), 1);
+        assert_eq!(buf.texts[0].origin, Vec2::splat(origin), "{scale} {ink:?}");
+        assert_eq!(buf.text_batches[0].scissor, scissor, "{scale} {ink:?}");
+    }
 }

@@ -3,6 +3,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::grid::grid_context::GridContext;
 use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
@@ -16,7 +17,7 @@ pub(super) fn measure_inner(
     idx: GridDefId,
     depth: usize,
     inner_avail: Size,
-) -> Size {
+) -> Measured {
     let tree = pass.tree;
     let def = tree.grid_defs[usize::from(idx)];
     let row_tracks = &tree.grid_tracks[def.rows.range()];
@@ -40,7 +41,7 @@ pub(super) fn measure_inner(
         for c in tree.children(node).map(|c| c.id) {
             pass.measure(c, Size::ZERO);
         }
-        return Size::ZERO;
+        return Measured::ZERO;
     }
 
     // Phase 1: query column intrinsics for Hug-column span-1 cells.
@@ -156,21 +157,20 @@ pub(super) fn measure_inner(
 
         let d = pass.measure(c, avail);
 
-        // A row's content range, both ends, under the same rule the column
-        // phase uses: the min from the child's min-content intrinsic, the
-        // max from what it actually wants. The max is the *measured* `d.h`
-        // rather than a Y intrinsic, because the column solve above already
-        // committed the width and the wrapped height is what the cell will
-        // paint.
+        // A row's content range, both ends, read off the measure: the
+        // min is the child's floor, the max what it actually wants. Both
+        // are *measured* rather than Y intrinsics, because the column
+        // solve above already committed the width, and the wrapped height
+        // is what the cell will paint.
         //
         // The min is what a cramped total falls back on — `resolve_axis`
         // floors Hug at it (Phase 2) and Fill at it (Phase 3, matching
-        // Stack's freeze-loop floor). It cannot be `d.h`: a scrollable
-        // child's desired height is not its minimum, and a row that
-        // refused to shrink below it would deny a viewport the slot its
-        // grid was capped to. Left unwritten it is 0.0, and a cramped Hug
-        // row collapses all the way to `Track.min` where the same content
-        // in a column stops at its min-content.
+        // Stack's freeze-loop floor). It is the floor and not `d.size.h`:
+        // a scrollable child's desired height is not its minimum, and a
+        // row that refused to shrink below it would deny a viewport the
+        // slot its grid was capped to. Left unwritten it is 0.0, and a
+        // cramped Hug row collapses all the way to `Track.min` where the
+        // same content in a column stops at its min-content.
         //
         // Skip multi-row spans: their height is distributed across rows,
         // not attributable to one row.
@@ -178,11 +178,10 @@ pub(super) fn measure_inner(
             let row = cell.row as usize;
             let sizing = row_tracks[row].size;
             if sizing.is_hug() || sizing.fill_weight().is_some() {
-                let min = pass.intrinsic(c, Axis::Y, LenReq::MinContent);
                 let rows = pass.grid_track_state_mut().ranges_mut(idx, Axis::Y);
-                rows.min[row] = rows.min[row].max(min);
+                rows.min[row] = rows.min[row].max(d.floor.h);
                 if sizing.is_hug() {
-                    rows.max[row] = rows.max[row].max(d.h);
+                    rows.max[row] = rows.max[row].max(d.size.h);
                 }
             }
         }
@@ -213,11 +212,66 @@ pub(super) fn measure_inner(
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
     // claims leftover at arrange; `AxisSlot::resolve` separately floors this
-    // raw answer at the Grid intrinsic, which includes Fill content.
-    let s = pass.grid_mut().depth_stack.at(depth);
+    // raw answer at the Grid intrinsic, which includes Fill content. The
+    // floor sums the same tracks at what each cannot go below: a Fixed
+    // track's size, a Hug track's content floor.
+    let GridContext {
+        depth_stack,
+        track_state,
+        ..
+    } = pass.grid_mut();
+    let s = depth_stack.at(depth);
     let total_w = sum_non_fill(col_tracks, &s.col.sizes) + col_gap.gaps_between(n_cols);
     let total_h = sum_non_fill(row_tracks, &s.row.sizes) + row_gap.gaps_between(n_rows);
-    Size::new(total_w, total_h)
+    let floor_w = floor_non_fill(
+        col_tracks,
+        track_state.ranges(idx, Axis::X).min,
+        &s.col.sizes,
+    ) + col_gap.gaps_between(n_cols);
+    let floor_h = floor_non_fill(
+        row_tracks,
+        track_state.ranges(idx, Axis::Y).min,
+        &s.row.sizes,
+    ) + row_gap.gaps_between(n_rows);
+    // Cells are offered their column widths and, down, Fixed rows or
+    // nothing, so the grid holds while its Fixed and Hug tracks do. Fill
+    // track sizes reach neither the content size nor a cell — except Fill
+    // columns a non-Hug grid commits, whose widths its cells measure at.
+    let commits_fill_cols =
+        !grid_sizing_w.is_hug() && col_tracks.iter().any(|t| t.size.fill_weight().is_some());
+    let stable_from = Size::new(
+        if commits_fill_cols {
+            Measured::AT_OFFER_ONLY
+        } else {
+            s.col.stable_from
+        },
+        s.row.stable_from,
+    );
+    Measured {
+        size: Size::new(total_w, total_h),
+        floor: Size::new(floor_w, floor_h),
+        stable_from,
+    }
+}
+
+/// What [`sum_non_fill`] sums, at each track's least: a Fixed track's
+/// resolved size, a Hug track's content floor. Never more than the sum,
+/// because the solve never sizes a Hug track below its floor.
+fn floor_non_fill(tracks: &[Track], content_min: &[f32], sizes: &[f32]) -> f32 {
+    tracks
+        .iter()
+        .zip(content_min)
+        .zip(sizes)
+        .map(|((t, &min), &size)| {
+            if t.size.fill_weight().is_some() {
+                0.0
+            } else if t.size.is_hug() {
+                t.content_floor(min)
+            } else {
+                size
+            }
+        })
+        .sum()
 }
 
 fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {

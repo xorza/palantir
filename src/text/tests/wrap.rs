@@ -1,4 +1,5 @@
 use super::*;
+use crate::layout::measured::Measured;
 
 #[test]
 fn mono_measure_cases() {
@@ -75,7 +76,7 @@ fn the_mono_root_reports_one_line_and_a_segment_floor() {
     let params = shape(16.0);
     let root = mono_root("hello world", params);
     assert!(root.single_line, "an unbounded mono run is one line");
-    assert_eq!(root.size, Size::new(88.0, 16.0), "11 bytes × 8 px");
+    assert_eq!(root.extent.size, Size::new(88.0, 16.0), "11 bytes × 8 px");
     // "hello " and "world" are the two unbreakable segments; the space
     // hangs off the first, so both measure five 8 px cells.
     assert_eq!(root.wrap_floor(), 40.0);
@@ -148,8 +149,15 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         content: Size,
         min_content: Size,
         max_content: Size,
+        /// `stable_from_w` offered 24 px, 64 px and no width.
+        stable_from_w: [f32; 3],
     }
 
+    // "aa bbbb" is 7 cells of 8 px: 56 wide on one line. A policy that
+    // never binds holds anywhere; a truncating fit holds from the root's
+    // 56 once the text fits — at 64, and unbounded — and only at its
+    // offer where it cuts; a wrapping one binds to every width it gets.
+    const AT: f32 = Measured::AT_OFFER_ONLY;
     let mut text = TextSystem::mono();
     let widget_id = WidgetId::from_hash("wrap policy");
     let cases = [
@@ -159,6 +167,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             content: Size::new(56.0, 16.0),
             min_content: Size::new(56.0, 16.0),
             max_content: Size::new(56.0, 16.0),
+            stable_from_w: [0.0, 0.0, 0.0],
         },
         Case {
             wrap: TextWrap::Scroll,
@@ -166,6 +175,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             content: Size::new(0.0, 16.0),
             min_content: Size::new(0.0, 16.0),
             max_content: Size::new(0.0, 16.0),
+            stable_from_w: [0.0, 0.0, 0.0],
         },
         Case {
             wrap: TextWrap::Truncate,
@@ -173,6 +183,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             content: Size::new(24.0, 16.0),
             min_content: Size::new(0.0, 16.0),
             max_content: Size::new(56.0, 16.0),
+            stable_from_w: [AT, 56.0, 56.0],
         },
         Case {
             wrap: TextWrap::Ellipsis,
@@ -180,6 +191,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             content: Size::new(24.0, 16.0),
             min_content: Size::new(0.0, 16.0),
             max_content: Size::new(56.0, 16.0),
+            stable_from_w: [AT, 56.0, 56.0],
         },
         Case {
             wrap: TextWrap::Wrap,
@@ -187,6 +199,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             content: Size::new(24.0, 48.0),
             min_content: Size::new(0.0, 16.0),
             max_content: Size::new(56.0, 16.0),
+            stable_from_w: [AT, AT, AT],
         },
         Case {
             wrap: TextWrap::WrapWithOverflow,
@@ -194,6 +207,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             content: Size::new(32.0, 32.0),
             min_content: Size::new(32.0, 16.0),
             max_content: Size::new(56.0, 16.0),
+            stable_from_w: [AT, AT, AT],
         },
     ];
 
@@ -203,9 +217,15 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         let slot = slot_at(widget_id, ordinal as u16);
         let unbounded = text.root(slot, request, case.wrap);
         let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
-        assert_eq!(resolved.measured, case.measured, "{case:?}");
+        let resolved_stable_from_w = [Some(24.0), Some(64.0), None].map(|width| {
+            text.measure(slot, request, case.wrap, HAlign::Auto, width)
+                .stable_from_w
+        });
+        assert_eq!(resolved_stable_from_w, case.stable_from_w, "{case:?}");
+        let resolved = resolved.shaped;
+        assert_eq!(resolved.extent.size, case.measured, "{case:?}");
         assert_eq!(
-            case.wrap.content_size(resolved.measured),
+            case.wrap.content_size(resolved.extent.size),
             case.content,
             "{case:?}"
         );
@@ -256,7 +276,7 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
     for shaper in [TextShaper::new(), TextShaper::test_mono()] {
         let calls = shaper.measure_calls();
         let measured = shaper.measure("", params);
-        assert_eq!(measured.measured, Size::ZERO);
+        assert_eq!(measured.extent.size, Size::ZERO);
         assert!(measured.key.is_none(), "empty text mints no buffer");
         assert_eq!(shaper.measure_calls(), calls, "no dispatch for no bytes");
         assert_eq!(shaper.cosmic_cache_len(), 0, "and no cached buffer");
@@ -388,7 +408,7 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     // against the resident buffer.
     let overflow = text.root(slot_at(wid, 1), request, TextWrap::WrapWithOverflow);
     let floor = overflow.wrap_floor();
-    assert_eq!(overflow.size.w, 137.0);
+    assert_eq!(overflow.extent.size.w, 137.0);
     assert_eq!(
         floor, 109.0,
         "the backfilled floor is the width of \"extraordinarily\", not a zero \
@@ -463,6 +483,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
                 HAlign::Auto,
                 Some(width),
             )
+            .shaped
             .key;
 
         let probed = system.shaper().layout(&TextRun {

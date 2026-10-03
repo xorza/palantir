@@ -3,6 +3,7 @@
 use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::error::FontLoadError;
+use crate::text::extent::TextExtent;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
 use crate::text::font_source::FontSource;
@@ -145,7 +146,7 @@ impl ShaperInner {
     /// contract structural rather than asserted at two layers: a wrapping
     /// floor belongs to the unbounded root, and there is no way to ask a
     /// bounded resolve for one.
-    pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> Size {
+    pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         self.tally_dispatch();
         #[cfg(any(test, feature = "internals"))]
         if self.mono {
@@ -284,14 +285,17 @@ impl TextShaper {
                     .wrap
                     .commit(width, halign, fit, || inner.root(unbounded, floor))
                 {
-                    WrapCommit::Unbounded { size } => (unbounded.key, size),
+                    WrapCommit::Unbounded { extent } => (unbounded.key, extent.size),
                     WrapCommit::Bound(bound) => {
                         let bound = unbounded.with_bound(bound);
-                        (bound.key, inner.resolve(bound))
+                        (bound.key, inner.resolve(bound).size)
                     }
                 }
             }
-            _ => (unbounded.key, inner.root(unbounded, WrapFloor::Skip).size),
+            _ => (
+                unbounded.key,
+                inner.root(unbounded, WrapFloor::Skip).extent.size,
+            ),
         };
         TextProbe::new(size, run.text, Some(key), halign, inner)
     }
@@ -311,7 +315,7 @@ impl TextShaper {
 
     /// The extent this run resolves to at the width its key commits — the
     /// bounded half of [`Self::root`], and the shape a renderer replays.
-    pub(super) fn resolve(&self, request: TextShapeRequest<'_>) -> Size {
+    pub(super) fn resolve(&self, request: TextShapeRequest<'_>) -> TextExtent {
         self.shared.inner.borrow_mut().resolve(request)
     }
 
@@ -441,10 +445,23 @@ pub(crate) mod internals {
         /// test that read one was pinning the invention rather than the
         /// shaper.
         pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ShapedText {
-            self.probe_layout(text, shape, |probe| ShapedText {
-                measured: probe.size(),
+            let mut shaped = self.probe_layout(text, shape, |probe| ShapedText {
+                extent: TextExtent::inked_within(probe.size()),
                 key: probe.shaped_key(),
-            })
+            });
+            // The probe keeps no ink; the buffer it shaped is filed with
+            // it. A run that shaped no buffer read no outlines.
+            if let Some(key) = shaped.key {
+                shaped.extent.ink = self
+                    .shared
+                    .inner
+                    .borrow()
+                    .cosmic
+                    .cached_extent(key)
+                    .expect("a probe's shaped key names a resident buffer")
+                    .ink;
+            }
+            shaped
         }
 
         /// Describes the fixture as a [`TextRun`] rather than lowering it

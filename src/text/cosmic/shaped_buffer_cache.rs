@@ -379,6 +379,8 @@ pub(crate) mod internals {
     use crate::common::counters::CounterSet;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
+    #[cfg(test)]
+    use crate::text::extent::TextExtent;
 
     /// Frames one revolution of the expiry ring takes.
     pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
@@ -404,6 +406,12 @@ pub(crate) mod internals {
 
         pub(crate) fn counts(&self) -> CacheCounts {
             self.counters.counts()
+        }
+
+        /// What the buffer filed under `key` measured to, without
+        /// touching its life.
+        pub(crate) fn extent(&self, key: TextShapeKey) -> Option<TextExtent> {
+            self.entries.get(&key).map(|entry| entry.extent.extent())
         }
 
         pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {

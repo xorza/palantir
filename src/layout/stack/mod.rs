@@ -16,6 +16,7 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::JustifyOffsets;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Px;
@@ -86,7 +87,7 @@ impl LayoutDriver for Stack {
         node: NodeId,
         axis: Self::Payload,
         inner_avail: Size,
-    ) -> Size {
+    ) -> Measured {
         let tree = pass.tree;
         let gap = tree.panel(node).gaps.gap();
         let cross_avail = axis.cross(inner_avail);
@@ -110,6 +111,14 @@ impl LayoutDriver for Stack {
         let main_avail = axis.main(inner_avail);
         let main_finite = main_avail.is_finite();
         let mut max_cross = 0.0f32;
+        // The floor composes like the content: children's floors summed
+        // along the pack axis, the widest across it.
+        let mut floor_main = 0.0f32;
+        let mut floor_cross = 0.0f32;
+        // Every child is offered the stack's own main and cross, so each
+        // holds as long as those stay past its range.
+        let mut stable_main = 0.0f32;
+        let mut stable_cross = 0.0f32;
         let StackPlan {
             sum_non_fill_main,
             total_gap,
@@ -122,8 +131,12 @@ impl LayoutDriver for Stack {
             gap,
             |pass, c| {
                 let d = pass.measure(c, axis.compose_size(main_avail, cross_avail));
-                max_cross = max_cross.max(axis.cross(d));
-                axis.main(d)
+                max_cross = max_cross.max(axis.cross(d.size));
+                floor_main += axis.main(d.floor);
+                floor_cross = floor_cross.max(axis.cross(d.floor));
+                stable_main = stable_main.max(axis.main(d.stable_from));
+                stable_cross = stable_cross.max(axis.cross(d.stable_from));
+                axis.main(d.size)
             },
             |pass, c| {
                 if main_finite {
@@ -171,12 +184,24 @@ impl LayoutDriver for Stack {
                 f32::INFINITY
             };
             let desired = pass.measure(entry.key, axis.compose_size(fill_avail, cross_avail));
-            fill_main += axis.main(desired);
-            max_cross = max_cross.max(axis.cross(desired));
+            fill_main += axis.main(desired.size);
+            max_cross = max_cross.max(axis.cross(desired.size));
+            floor_main += axis.main(desired.floor);
+            floor_cross = floor_cross.max(axis.cross(desired.floor));
+            stable_cross = stable_cross.max(axis.cross(desired.stable_from));
         }
         pass.stack_scratch_mut().truncate(fill_start);
+        // A Fill child is offered its share of the main axis, which moves
+        // with every change to it.
+        if fill_end > fill_start {
+            stable_main = Measured::AT_OFFER_ONLY;
+        }
 
-        axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross)
+        Measured {
+            size: axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross),
+            floor: axis.compose_size(floor_main + total_gap, floor_cross),
+            stable_from: axis.compose_size(stable_main, stable_cross),
+        }
     }
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Rect) {

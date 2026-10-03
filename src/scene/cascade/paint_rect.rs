@@ -45,20 +45,20 @@ pub(super) fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
 }
 
 /// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its
-/// measured extent on each axis side, then re-clamp to `clip`.
+/// inked extent on each axis side, then re-clamp to `clip`.
 ///
 /// The composer paints glyphs at the ladder-*snapped* scale
 /// (`composer::geometry::snap_text_scale`), while the cascade lifts the rect at
 /// the unsnapped scale. The painted block can be up to
 /// `|snapped − cascade| ≤ STEP/2` longer per axis than the lifted
-/// rect, which works out to `measured × STEP/2` of absolute screen
+/// rect, which works out to `inked × STEP/2` of absolute screen
 /// pixels per side — independent of cascade scale. A local-coord pad
 /// would multiply by cascade and underflow at `cascade < 1`
 /// (zoomed-out content), leaking glyph fringes past the damage rect.
 /// Padding in screen space keeps damage covering the worst-case
 /// painted extent at any zoom.
 #[inline]
-fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect {
+fn inflate_text_damage(screen: Rect, inked: Size, clip: Option<Rect>) -> Rect {
     // `screen` is already clipped, so a fully-off-clip run has collapsed
     // to zero on an axis (a zero-width box pinned at the clip edge). It
     // has no visible glyphs to pad; inflating it here would re-grow the
@@ -70,8 +70,8 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
     if screen.is_paint_empty() {
         return screen;
     }
-    let pad_w = measured.w * (TEXT_SCALE_STEP * 0.5);
-    let pad_h = measured.h * (TEXT_SCALE_STEP * 0.5);
+    let pad_w = inked.w * (TEXT_SCALE_STEP * 0.5);
+    let pad_h = inked.h * (TEXT_SCALE_STEP * 0.5);
     let inflated = Rect {
         min: Vec2::new(screen.min.x - pad_w, screen.min.y - pad_h),
         size: Size {
@@ -280,15 +280,18 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     // the only reader, so a node with no text shape never
                     // touches the column.
                     let padding = tree.records.layout()[node.idx()].padding;
-                    let local = record::text_paint_bbox_local(
+                    // The glyphs paint their ink, which can reach past the
+                    // block that places them.
+                    let inked = record::text_paint_bbox_local(
                         *local_origin,
                         *align,
                         padding,
                         layout_rect.size,
-                        shaped.measured,
-                    );
-                    let screen = lift_to_screen(local, layout_rect.min, shape_transform, None);
-                    inflate_text_damage(screen, shaped.measured, shape_clip)
+                        shaped.extent.size,
+                    )
+                    .inflated_by(shaped.extent.ink);
+                    let screen = lift_to_screen(inked, layout_rect.min, shape_transform, None);
+                    inflate_text_damage(screen, inked.size, shape_clip)
                 }
                 ShapeRecord::Polyline {
                     width,

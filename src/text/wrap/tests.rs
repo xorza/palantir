@@ -1,6 +1,7 @@
 use crate::layout::cache::MeasureCache;
 use crate::primitives::num::F32Px;
 use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, TextWrap};
 
@@ -53,7 +54,7 @@ fn every_line_fit_is_some_policys_and_only_the_two_unbounded_ones_have_none() {
 /// input the bounded-shaping decisions read.
 fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextRoot {
     TextRoot {
-        size: Size::new(width_px, 16.0),
+        extent: TextExtent::inked_within(Size::new(width_px, 16.0)),
         intrinsic_min: Some(intrinsic_min),
         single_line,
     }

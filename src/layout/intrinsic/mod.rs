@@ -57,7 +57,7 @@ fn outer(
         max: axis.main(bounds.max_size),
     };
     for (_, value) in content.requested(query) {
-        *value = slot.resolve(*value + pad);
+        *value = slot.resolve(*value + pad, 0.0);
     }
     content
 }
