@@ -1,6 +1,7 @@
 //! A settled dock as a recordable scene, at the scale a real editor runs
 //! one.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
@@ -13,7 +14,6 @@ use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::TabBadge;
 use crate::widgets::text::Text;
-use glam::Vec2;
 
 /// Three panes and two dividers: the pinned canvas beside a split-off
 /// console, with an output pane under the console, and five tabs across
@@ -91,7 +91,7 @@ impl DockFixture {
     /// responses into the reused op buffer, apply them, then show.
     pub fn record_scanned(&mut self, ui: &mut Ui) {
         self.ops.clear();
-        self.dock.scan(ui, &mut self.ops);
+        DockView::scan(&self.dock, ui, &mut self.ops);
         for op in self.ops.drain(..) {
             self.dock.apply(op);
         }
@@ -114,7 +114,7 @@ impl DockTabs for Panes {
         ui.intern(tab.title())
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Vec2>) {
+    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt(("pane", tab.title()))
             .size((Sizing::FILL, Sizing::FILL))

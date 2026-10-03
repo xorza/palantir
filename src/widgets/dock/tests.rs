@@ -856,7 +856,7 @@ impl DockTabs for Labels {
         })
     }
 
-    fn content(&mut self, ui: &mut Ui, _tab: Tab, _size: Option<Vec2>) {
+    fn content(&mut self, ui: &mut Ui, _tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt("body")
             .size((Sizing::FILL, Sizing::FILL))
@@ -889,8 +889,12 @@ fn a_split_dock_tiles_its_panes_and_strips() {
         DockView::run(ui, &mut d, &mut tabs);
     });
 
-    let left_pane = h.rect(d.pane_id(primary)).expect("the left pane arranged");
-    let right_pane = h.rect(d.pane_id(right)).expect("the right pane arranged");
+    let left_pane = h
+        .rect(DockView::pane_id(&d, primary))
+        .expect("the left pane arranged");
+    let right_pane = h
+        .rect(DockView::pane_id(&d, right))
+        .expect("the right pane arranged");
     // A 0.5 ratio halves the 600 px less the splitter's 1 px rule, and
     // both panes take the full height.
     assert_eq!(left_pane, Rect::new(0.0, 0.0, 299.5, 400.0));
@@ -899,7 +903,9 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     // Each strip rides its pane's top edge at the pane's width, one 27.2
     // px chip row under 4 px of top padding; the content takes the rest.
     for (group, pane) in [(primary, left_pane), (right, right_pane)] {
-        let strip = h.rect(d.strip_id(group)).expect("the strip arranged");
+        let strip = h
+            .rect(DockView::strip_id(&d, group))
+            .expect("the strip arranged");
         assert_eq!(
             strip,
             Rect {
@@ -907,7 +913,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
                 ..pane
             }
         );
-        let content = h.arranged(d.content_id(group));
+        let content = h.arranged(DockView::content_id(&d, group));
         assert_eq!(
             content,
             Rect::new(
@@ -921,9 +927,14 @@ fn a_split_dock_tiles_its_panes_and_strips() {
 
     // Chip ids are the strip's, keyed on the tab — the same derivation
     // the navigation scan polls.
-    let chip = TabStrip::chip_id(d.strip_id(primary), DockState::<Tab>::tab_key(Tab::Prefs));
+    let chip = TabStrip::chip_id(
+        DockView::strip_id(&d, primary),
+        DockView::tab_key(Tab::Prefs),
+    );
     let chip_rect = h.rect(chip).expect("the Prefs chip arranged");
-    let strip = h.rect(d.strip_id(primary)).expect("the strip arranged");
+    let strip = h
+        .rect(DockView::strip_id(&d, primary))
+        .expect("the strip arranged");
     // The Prefs chip sits in its own strip, below the 4 px padding and
     // down to the strip's bottom.
     assert_eq!(chip_rect, Rect::new(86.5, 4.0, 76.0, strip.size.h - 4.0));
@@ -941,13 +952,14 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
     let chip = TabStrip::chip_id(
-        d.strip_id(d.primary().id),
-        DockState::<Tab>::tab_key(Tab::Prefs),
+        DockView::strip_id(&d, d.primary().id),
+        DockView::tab_key(Tab::Prefs),
     );
     h.click_on(chip);
     let content = h.frame_value(|ui| {
         DockView::run(ui, &mut d, &mut tabs);
-        ui.response_for(d.content_id(d.primary().id)).rect
+        ui.response_for(DockView::content_id(&d, d.primary().id))
+            .rect
     });
     assert_eq!(
         d.primary().active_tab(),
@@ -967,8 +979,8 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut tabs = Labels;
     h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
 
-    let strip = d.strip_id(d.primary().id);
-    let close = TabStrip::close_id(strip, DockState::<Tab>::tab_key(Tab::Prefs));
+    let strip = DockView::strip_id(&d, d.primary().id);
+    let close = TabStrip::close_id(strip, DockView::tab_key(Tab::Prefs));
     h.click_on(close);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
 
@@ -997,7 +1009,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     fn frame(h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut ops = Vec::new();
-            d.scan(ui, &mut ops);
+            DockView::scan(d, ui, &mut ops);
             for op in ops.drain(..) {
                 d.apply(op);
             }
@@ -1020,7 +1032,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
         frame(&mut h, &mut d, &mut tabs);
     }
 
-    let strip = d.strip_id(d.primary().id);
+    let strip = DockView::strip_id(&d, d.primary().id);
     let chevron = strip.with("overflow");
     assert!(
         h.rect(chevron).is_some(),
@@ -1033,7 +1045,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
 
     let entry = strip
         .with("overflow_menu")
-        .with(DockState::<Tab>::tab_key(viewer(1)));
+        .with(DockView::tab_key(viewer(1)));
     assert!(h.rect(entry).is_some(), "the menu lists every tab");
     h.click_on(entry);
     frame(&mut h, &mut d, &mut tabs);
