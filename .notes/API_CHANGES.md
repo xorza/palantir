@@ -136,149 +136,9 @@ items, old and new.
 **Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
 stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
 
-## A50. One validation model for every public input
+---
 
-**Findings.** An audit of every public function that takes a number, a range, an index or a value
-type (about 260, from the rustdoc JSON of `59b93e30`) finds seven different behaviours for an
-invalid input. The same kind of value gets different ones: a negative length panics in
-`Sizing::fixed`, is a debug-only check in `padding`, is silently clamped in `Splitter::min_pane`,
-paints nothing as a `Stroke::width`, and is a deserialization error in a theme file.
-
-| Behaviour today | Examples |
-|---|---|
-| Release panic on a per-frame authoring call (the guide allows release asserts only on cold paths) | `Sizing::{fixed, fill, share}`, `Track::{min, max}`, `gap` / `line_gap`, `min_size` / `max_size` bounds, `TranslateScale::new` and `from_*`, `Slider::new` (finite range), `Slider::step`, `Stop::new` / `GradientBuilder::stop`, `Scroll::zoom_by`, `PaintAnim::steps`, `ColorField` / `ColorStrip` / `ColorPicker::downsample`, `FontWeight::new`, `AnimSpec::{duration, spring}`, `ImageHandle::update` (wrong size) |
-| Release panic on *data* (the guide: untrusted data is never an assert) | `ComboBox` and `TabbedView` panic when the bound index is out of range — a stale index after the app removed an option, and every `TabbedView` with zero pages; `Image::from_srgba8` asserts the byte length of pixels that usually come from a decoder; `FontFamily::named` panics when the family table is full, for a name that usually comes from configuration (the fallible `try_named` is crate-only) |
-| Debug-only check, nothing in release | `padding` / `margin` (`debug_assert!` on NaN, so a release NaN enters layout), `Rect::from_min_max` |
-| No check (one of them corrupts the bound value) | `DragValue::speed(NaN)`: the first drag stores `-inf` in an unbounded `f64` (NaN offset → the clamp's `max(-inf)`); `Configure::position` NaN; negative `padding`; `Display::from_physical` with a zero or NaN scale; `Hsv::new` / `Okhsv::new` out of range |
-| Silent coercion, no report in debug either | `GridCell::span(0, _)` → 1; `Splitter::min_pane` and `DockView::min_pane` clamp; `Spinner::diameter`, `Separator::thickness` and every theme length through `themed_length`; reversed `DragValue` ranges ordered by `Limits`; `IconTable::from_svgs` drops an SVG it cannot read, so a malformed icon file vanishes without an error |
-| Fallible | `UserScale::new`, `ZoomFactor::new` (`Option`); `Ui::load_image`, `Ui::load_font` (`Result`); theme files through `checked::*`, `TextStyle` / `TextStyleOverrides` `try_from`, `AnimSpec` and `DockState` deserializers |
-| Public fields that skip every constructor check | `Rect`, `Size`, `RgbaF32`, `Stroke`, `Shadow`, `GridCell`, `TextStyle`, `Display`, `DockSplit`, `TabItem`, `WindowConfig`, every `Theme` field (a theme file is checked; a theme built in code is not) |
-
-No rule says which behaviour a new setter gets, so each author picked one, and some cases are
-caller bugs that are hidden (`GridCell::span(0, _)`) while others are ordinary data that crashes
-(`ComboBox` with a stale index).
-
-**Established practice.**
-
-- WPF, whose layout contract this crate follows, asks two separate questions of every property
-  value: a `ValidateValueCallback` (is the value valid at all — `Width` must not be negative; an
-  invalid value throws) and a `CoerceValueCallback` (does a valid value fit its context —
-  `Slider.Value` is pulled into `[Minimum, Maximum]` silently).
-- Rust API Guidelines C-VALIDATE: prefer static enforcement through types; otherwise document a
-  `# Panics` section or return `Result`; use `debug_assert!` where a check is too costly for
-  release.
-- Flutter checks constructor arguments with debug-only asserts, because widgets are built every
-  frame.
-- This repository's guide: `debug_assert!` on per-frame paths, release `assert!` only for public
-  misuse outside hot paths and for cold configuration, `Result` for untrusted data, never an
-  assert on data.
-
-**Recommendation.** One model, in four rules, and one mechanism that implements it.
-
-1. **Two questions, as WPF asks them.** *Validation* is about the value alone: finite,
-   not negative, a power of two. *Coercion* is about the value against its context: inside a
-   range, an index that exists, a `min` below its `max`. Each input names which question each of
-   its rules belongs to.
-2. **Coercion is total and silent, always.** It never asserts and never panics, because the
-   context is data: an option list shrinks, a saved ratio comes from an older layout, a range
-   comes from a settings file. Its result is documented on the API. Concretely: `ComboBox` and
-   `TabbedView` show a stale index as the last option, without writing the clamped index back
-   (**decided 2026-10-04**: the bound `usize` changes only when the user picks, and
-   `ValueResponse::changed` stays `false`); with no options, `ComboBox` shows an empty chip and
-   `TabbedView` records its strip with no page;
-   reversed ranges are ordered (`Limits`, crate-wide); a fraction is clamped to `0..=1` with NaN
-   as `0`. A zero `GridCell` span is not context but a caller bug, so it is a `count` under
-   rule 3, not a coercion.
-3. **Validation depends on where the value comes from.**
-   - *Per-frame authoring* — builder setters and the value constructors a record pass calls
-     (`Sizing`, `Track`, `Corners`, `Spacing`, `Stroke`, `TranslateScale`, `AnimSpec`,
-     `Shape::*`): a release `assert!` with `#[track_caller]`, whose message names the value's
-     kind and its rule, documented under `# Panics`. **Decided 2026-10-04:** a release panic,
-     not a neutral value — never quietly wrong. This is a deliberate exception to the global
-     guide's "`debug_assert!` on hot paths" for one case, public input validation, and AGENTS.md
-     states it. The cost is one comparison per value per frame. The consequence for apps: a
-     value *computed* at run time (a `0 / 0` thickness) must go through a coercing kind or an
-     `is_*` predicate before it reaches a validating setter, or it crashes the app — which is why
-     every validating kind also exports its predicate.
-   - *Cold configuration* — host builders, `Theme::scale_text`, dock configuration, icon tables:
-     a release `assert!` documented under `# Panics`.
-   - *Data from outside the program* — files, persisted settings, decoded images, numbers a user
-     typed: fallible. `Option` when one rule can fail (`UserScale::new`), `Result` with an error
-     enum when several can (`Image::from_srgba8` and `IconTable::from_svgs` become `Result`).
-     `FontFamily::named` returns `Option`, the public form of today's `try_named`. Serde goes through
-     the same predicates.
-4. **Plain data stays plain.** `Rect`, `Size`, `RgbaF32`, `Stroke`, `Shadow` and `Spacing` keep
-   public fields: arithmetic passes through invalid intermediate values (a negative width out of
-   a subtraction) on its way to a valid one. They are checked where they *enter* a widget, a
-   shape or a node, by the same kind functions. Types whose consumers rely on an invariant keep
-   or get private fields with a checked constructor — today's `Sizing`, `Track`,
-   `TranslateScale`, `UserScale`, `ZoomFactor`, `FontWeight`; and also `GridCell` (spans) and
-   `DockSplit` (ratio), which have public fields now. Theme fields stay public and are read
-   through the kind functions (what `themed_length` does today, for lengths only).
-
-**The mechanism (landed).** The public `widget::domain` module, which replaced `widget::approx`
-and `F32Ext`: one public home for every scalar rule. Each validating kind is two `const fn`s — an `is_*` predicate and an asserting
-checker — with one message; each coercing kind is one total `const fn`. Public, because AGENTS.md
-lets a widget reach only the public API, and a widget outside the crate validates its own setters
-and reads theme values through the same functions:
-
-```rust
-/// A distance: finite and not negative.
-pub const fn is_length(v: f32) -> bool {
-    v.is_finite() && v >= 0.0
-}
-
-/// `v`, which must be a length.
-///
-/// # Panics
-///
-/// Panics unless [`is_length`]`(v)`.
-#[track_caller]
-pub const fn length(v: f32) -> f32 {
-    assert!(is_length(v), "a length must be finite and not negative");
-    v
-}
-```
-
-Every setter calls its kind: `Spinner::diameter(px)` stores `domain::length(px)`, `gap` stores
-`domain::gap(g)`. The serde validators in `primitives::packed::serde::checked` become thin
-wrappers over the same `is_*` predicates, so a file and a call site cannot disagree.
-`#[track_caller]` puts the panic on the caller's line, and the message stays a constant so the
-function stays `const`.
-
-| Kind | Rule | On a value outside it | Used by |
-|---|---|---|---|
-| `offset` | finite | panic | margin, position, translation, shadow offset |
-| `length` | finite, ≥ 0 | panic | padding, thickness, diameter, stroke width, radius, font size (`0` shapes nothing, as a sub-epsilon size does today), `Sizing::fixed`, `Sizing::share` |
-| `extent` | ≥ 0, `+inf` allowed | panic | `max_size` |
-| `gap` | length ≤ 65 504 (the f16 lane) | panic | `gap`, `line_gap` |
-| `positive` | finite, > 0 | panic | scales, zoom factors, slider step, drag speed, fill weights |
-| `angle` | finite | panic | gradient angles, arc angles |
-| `color` | every channel finite (HDR values above `1` stay valid: tween outputs reach them) | panic | every `RgbaF32` that enters a shape, a look or a widget |
-| `count` | ≥ 1, or a power of two in a range | panic | paint steps, `GridCell` spans, `texel_size` (A28) |
-| `range` | both ends finite | panic; the *order* is coerced (`Limits`) | `Slider::new`, `DragValue::range`, `ZoomConfig::new` |
-| `fraction` | `0..=1` | coerced: clamped, NaN → `0` | progress, split ratio, `Hsv` / `Okhsv` saturation and value |
-| `turn` | `0..1` | coerced: wrapped, NaN → `0` | `Hsv` / `Okhsv` hue, `ColorCoords` fallback hue |
-| `index` | `0..len` | coerced for display: clamped, never written back; no index when `len == 0` | `ComboBox`, `TabbedView`, `TabStrip::selected` |
-
-Every numeric parameter's doc names its kind ("`px`: a *length*"), and the crate docs carry the
-table. `ImageHandle::update` with a wrong size keeps its release panic: it is a `count`-like
-contract on a whole image rather than a scalar, and the rule is the same.
-
-**Tests.** The theme suite's `file_values` walk already proves one property for files: every
-number is rejected on load or safe to render. The same property for code: one table per kind feeds
-`NaN`, `±inf`, `-1`, `0` and the boundary values through every setter of that kind, and asserts
-either the kind's panic message (`panic_probe::assert_panics_with`) or the coerced value. One more
-test records a frame from every coercing input at its worst (NaN fractions, stale indices, reversed
-ranges) and asserts that no NaN reaches layout or paint.
-
-**Decided 2026-10-04.** A per-frame contract violation panics in release (rule 3), and a stale
-selection shows as the last option without being written back (rule 2).
-
-**Touches.** Every builder setter and value constructor listed above; `primitives::packed::serde::checked`;
-`ComboBox`, `TabbedView`, `Image`, `IconTable` (with A18, whose two new rejections become this
-`Result`'s variants), `GridCell`, `DockSplit`; the crate docs. Split into one go-ahead
-for the `domain` module plus the rules, and then one per area (layout, paint, widgets, host).
+# Implementation plan
 
 ## Phase 0 — decisions before any code
 
@@ -323,17 +183,8 @@ Each line is one commit; none depends on another inside the phase.
 
 ## Phase 4 — the validation rollout (A50 rules 2–4)
 
-One area per commit. Each adds its setters to the per-kind input tables of phase 1 step 1.
-
-1. Done: coercion (rule 2). `Limits` already ordered every range.
-2. Done: layout. A `min` above its `max` (a `Track`, a node's bounds) is coerced — the minimum
-   wins, as in CSS and WPF — rather than checked.
-3. Done: paint. Points, rects and mesh vertices (bulk data) stay with the record-time NaN gate.
-4. Done: widgets. `DragValue::range` refuses only NaN ends: an infinite end is its unbounded
-   default, so the finite *range* kind would remove a supported use.
-5. Done: data and host (with A16, A18, A21).
-6. **The frame property**: a test records one frame from every coercing input at its worst and
-   asserts that no NaN reaches layout or paint.
+Done. The rules are in AGENTS.md, the kinds in `widget::domain`, and
+`widgets::tests::coercing_inputs_at_their_worst_paint_no_nan` holds the frame property.
 
 ## Phase 5 — goldens
 
