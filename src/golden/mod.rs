@@ -124,9 +124,10 @@ const UPDATE: &str = "UPDATE_GOLDEN";
 
 /// A directory of golden images and the tolerance they are held to.
 ///
-/// Goldens live at `<root>/golden/<name>.png`. A failure writes what it
-/// actually got, what it expected, and a map of where they differ to
-/// `<root>/output/<name>/`.
+/// Goldens live at `<root>/golden/<name>.png`. A failure — against a
+/// golden, or between two images through [`Self::assert_same`] — writes
+/// what it actually got, what it expected, and a map of where they differ
+/// to `<root>/output/<name>/`.
 #[derive(Debug, Clone)]
 pub struct Goldens {
     root: PathBuf,
@@ -157,6 +158,10 @@ impl Goldens {
         self.root.join("golden").join(format!("{name}.png"))
     }
 
+    fn output_dir(&self, name: &str) -> PathBuf {
+        self.root.join("output").join(name)
+    }
+
     /// Compare `actual` against the golden called `name`, panicking with the
     /// measured difference if they disagree by more than the tolerance.
     ///
@@ -170,16 +175,40 @@ impl Goldens {
     /// from `actual` and passes; a passing one is left as it is, so an
     /// update run changes only what it has to. A pass clears whatever an
     /// earlier failure left under `output/<name>/`.
+    #[track_caller]
     pub fn assert_matches(&self, name: &str, actual: &RgbaImage) {
         let forced = std::env::var_os(UPDATE).is_some_and(|value| !value.is_empty());
         self.check(name, actual, forced);
     }
 
+    /// Compare `actual` against `expected`, two images the caller already
+    /// holds, under the same tolerance: a replay of a scene, or one scene
+    /// drawn two ways. A failure writes the pair and a map of where they
+    /// differ to `output/<name>/` and panics, as a golden mismatch does. A
+    /// pass clears whatever an earlier failure left there.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the images differ by more than the tolerance, or differ
+    /// in size.
+    #[track_caller]
+    pub fn assert_same(&self, name: &str, actual: &RgbaImage, expected: &RgbaImage) {
+        let output = self.output_dir(name);
+        let report = self.tolerance.diff(actual, expected);
+        if report.passes() {
+            Self::clear_output(&output);
+            return;
+        }
+        let stats = self.record_failure(&output, actual, expected, &report);
+        panic!("`{name}`: the two images differ:\n{stats}");
+    }
+
     /// [`Self::assert_matches`] with the update flag passed in rather than
     /// read from the environment, which a test cannot set for itself alone.
+    #[track_caller]
     fn check(&self, name: &str, actual: &RgbaImage, forced: bool) {
         let golden = self.golden_path(name);
-        let output = self.root.join("output").join(name);
+        let output = self.output_dir(name);
         if !golden.exists() {
             self.write(&golden, actual);
             if forced {
@@ -213,7 +242,24 @@ impl Goldens {
             );
         };
 
-        std::fs::create_dir_all(&output).expect("create golden output directory");
+        let stats = self.record_failure(&output, actual, &expected, &report);
+        panic!(
+            "`{name}` does not match its golden:\n{stats}\n\
+             Re-run with {UPDATE}=1 once the change is the one you wanted."
+        );
+    }
+
+    /// Leave a failure's artifacts in `output` — what the test got, what it
+    /// expected, and the map of where they differ — and describe the
+    /// failure against this set's tolerance, for the panic.
+    fn record_failure(
+        &self,
+        output: &Path,
+        actual: &RgbaImage,
+        expected: &RgbaImage,
+        report: &DiffReport,
+    ) -> String {
+        std::fs::create_dir_all(output).expect("create golden output directory");
         actual.save(output.join("actual.png")).expect("save actual");
         expected
             .save(output.join("expected.png"))
@@ -222,21 +268,18 @@ impl Goldens {
             .diff_image
             .save(output.join("diff.png"))
             .expect("save diff");
-
-        panic!(
-            "`{name}` does not match its golden:\n  \
-             max channel delta {}\n  \
+        format!(
+            "  max channel delta {}\n  \
              differing pixels  {} ({:.4} of the image)\n  \
              allowed           {} per channel, {} of the image\n  \
-             written to        {}\n\
-             Re-run with {UPDATE}=1 once the change is the one you wanted.",
+             written to        {}",
             report.max_channel_delta,
             report.differing_pixels,
             report.differing_ratio,
             self.tolerance.per_channel,
             self.tolerance.max_ratio,
             output.display(),
-        );
+        )
     }
 
     /// Remove a failure's artifacts, so `output/` names only what fails now.
