@@ -11,6 +11,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::theme::tabs::TabsTheme;
+use std::hash::Hash;
 use std::rc::Rc;
 
 /// What one pass over a [`TabbedView`] asks its caller to do.
@@ -85,14 +86,21 @@ pub struct TabbedViewResponse<'a> {
 /// index — including any index into an empty list — is a caller bug and
 /// panics. A caller whose option list shrinks between frames owns
 /// re-deriving the index alongside it.
+///
+/// Chips are keyed by index unless [`keyed`](Self::keyed) names a key per
+/// page — what a list that closes or reorders pages needs, so a chip's
+/// hover and animation stay with its page rather than its slot.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct TabbedView<'a, S, L> {
+pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64> {
     widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
     /// Reads one option's label. `new` fills this with `S::as_ref`.
     label: L,
+    /// The chip key of the page at an index. `labeled` fills this with
+    /// the index itself; [`Self::keyed`] with a hash of the page's key.
+    key: K,
     closable: bool,
     reorderable: bool,
     overflow: TabOverflow,
@@ -120,6 +128,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             selected,
             options,
             label,
+            key: index_key::<S>,
             closable: true,
             reorderable: false,
             overflow: TabOverflow::default(),
@@ -127,6 +136,31 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
         }
     }
 
+    /// Key each page's chip by `key(page)` rather than by its index, so
+    /// a chip's hover and look animation follow its page when an earlier
+    /// page closes or the pages reorder. The key is any `Hash`, hashed the
+    /// way [`DockView::tab_key`](crate::DockView::tab_key) hashes a tab, so
+    /// the two widgets derive chip identity one way. Keys must be unique
+    /// within the list.
+    pub fn keyed<H: Hash>(
+        self,
+        key: impl Fn(&S) -> H,
+    ) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> u64> {
+        TabbedView {
+            widget: self.widget,
+            selected: self.selected,
+            options: self.options,
+            label: self.label,
+            key: move |_: usize, page: &S| WidgetId::from_hash(key(page)).0,
+            closable: self.closable,
+            reorderable: self.reorderable,
+            overflow: self.overflow,
+            style: self.style,
+        }
+    }
+}
+
+impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> {
     /// Whether each chip carries a close button. Default `true`; a view
     /// over a fixed set of pages passes `false`.
     pub const fn closable(mut self, closable: bool) -> Self {
@@ -168,6 +202,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             selected,
             options,
             label,
+            key,
             closable,
             reorderable,
             overflow,
@@ -190,7 +225,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
                 for (i, option) in options.iter().enumerate() {
                     let text = ui.intern(label(option));
                     buf.items.push(TabItem {
-                        key: i as u64,
+                        key: key(i, option),
                         label: text,
                         closable,
                         draggable: reorderable,
@@ -222,7 +257,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             // so neither is a reorder.
             if let Some(from) = hit.drag_stopped
                 && reorderable
-                && let Some(to) = dropped_slot(ui, strip_id, options.len())
+                && let Some(to) = dropped_slot(ui, strip_id, options, &key)
                 && to != from
                 && to != from + 1
             {
@@ -241,7 +276,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
     }
 }
 
-impl<S, L> Configure for TabbedView<'_, S, L> {
+impl<S, L, K> Configure for TabbedView<'_, S, L, K> {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()
@@ -263,15 +298,27 @@ struct StripHit {
 ///
 /// `None` unless the release is over the strip: a chip let go deep in the
 /// page, or over another widget, was not dropped among the chips.
-fn dropped_slot(ui: &mut Ui, strip: WidgetId, len: usize) -> Option<usize> {
+fn dropped_slot<S>(
+    ui: &mut Ui,
+    strip: WidgetId,
+    options: &[S],
+    key: impl Fn(usize, &S) -> u64,
+) -> Option<usize> {
     let pointer = ui.pointer_pos()?;
     if !ui.response_for(strip).rect?.contains(pointer) {
         return None;
     }
     let x = pointer.x;
-    let chips =
-        (0..len).filter_map(|slot| ui.response_for(TabStrip::chip_id(strip, slot as u64)).rect);
+    let chips = options.iter().enumerate().filter_map(|(slot, page)| {
+        ui.response_for(TabStrip::chip_id(strip, key(slot, page)))
+            .rect
+    });
     Some(TabStrip::insertion_slot(chips, x))
+}
+
+/// The default chip key: the page's index.
+const fn index_key<S>(index: usize, _: &S) -> u64 {
+    index as u64
 }
 
 /// Where the page at `index` sits after [`TabsAction::Reordered`] moves
