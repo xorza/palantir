@@ -220,21 +220,6 @@ non-canonical, and what to do about it. Where a finding extends an earlier item,
 took it: A7, A9, A10, A11, A15, A18 and A19. The plan at the end of the file orders all
 items, old and new.
 
-## A27. One response type for a value a widget writes
-
-**Findings.** Widgets that write a bound value report it three ways. `Slider`, `DragValue`,
-`Splitter`, `ColorButton`, `ColorField`, `ColorPicker` and `ColorStrip` return `ValueResponse
-{ changed, committed }`. `RadioButton` and `ComboBox` return `SelectResponse { changed }`.
-`Checkbox` and `Switch` toggle a `&mut bool` and return a plain `Response`, so a caller cannot
-tell a toggle from a click on a disabled box without comparing the bool itself. `ExpanderResponse`
-names the same flag `toggled`.
-
-**Recommendation.** Every value-writing widget returns `ValueResponse`. A discrete pick commits at
-once, so `RadioButton`, `ComboBox`, `Checkbox` and `Switch` set `committed == changed`. Remove
-`SelectResponse`. Rename `ExpanderResponse::toggled` to `changed`.
-
-**Touches.** `Checkbox`, `Switch`, `RadioButton`, `ComboBox`, `Expander`, `SelectResponse`, prelude.
-
 ## A31. Text arguments take one type
 
 **Blocked** on `QUESTIONS.md` Q1.
@@ -489,8 +474,7 @@ Each line is one commit; none depends on another inside the phase.
 
 ## Phase 3 — structural API
 
-1. **One value response** (A27): `Checkbox`, `Switch`, `RadioButton` and `ComboBox` return
-   `ValueResponse`; `SelectResponse` goes; `ExpanderResponse::changed`.
+1. Done: one value response (A27).
 2. **Wrappers** (A39): `ConfigureWidget::adopt_placement`; `MenuSeparator` holds a `Separator`;
    `default_background` on the eight chrome-bearing widgets, with the test that keeps them in
    step.

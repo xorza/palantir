@@ -13,7 +13,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
-use crate::widget_core::select_response::SelectResponse;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::menu_item::MenuItem;
@@ -117,10 +117,10 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
 
     /// Record the trigger, and the dropdown when it is open.
     ///
-    /// The [`SelectResponse`]'s own `response` is the trigger's — read
-    /// `changed` for the pick. See [`SelectResponse`] for why the two
-    /// differ.
-    pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
+    /// The [`ValueResponse`]'s own `response` is the trigger's — read
+    /// `changed` for the pick, which commits at once. See [`ValueResponse`]
+    /// for why the two differ.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
 
@@ -230,9 +230,10 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             ui.state_or_default::<ComboState>(id).open = open;
         }
 
-        SelectResponse {
+        ValueResponse {
             response: Response::eager(id, ui, response),
             changed,
+            committed: changed,
         }
     }
 }

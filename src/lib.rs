@@ -267,10 +267,10 @@ pub mod prelude {
         Align, App, Axis, Background, Block, Brush, Button, Checkbox, ComboBox, Configure,
         ContextMenu, Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify,
         Key, KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
-        ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, SelectResponse, Sense,
-        Separator, Shadow, Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter,
-        Stroke, Switch, TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui,
-        VAlign, ValueResponse, Vec2, WidgetId, WindowToken, fmt,
+        ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, Sense, Separator, Shadow,
+        Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter, Stroke, Switch,
+        TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui, VAlign,
+        ValueResponse, Vec2, WidgetId, WindowToken, fmt,
     };
 }
 
@@ -462,7 +462,6 @@ pub use ui::layer_scope::LayerScope;
 pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::OverlayResponse;
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
-pub use widget_core::select_response::SelectResponse;
 pub use widget_core::value_response::ValueResponse;
 pub use widget_core::widget_look::WidgetLook;
 pub use widget_core::widget_look::animated_look::AnimatedLook;

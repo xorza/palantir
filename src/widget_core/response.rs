@@ -34,7 +34,6 @@ use std::ops;
 /// A widget that owes the caller more than interaction returns a wrapper
 /// holding this in a `response` field — [`InnerResponse`],
 /// [`ValueResponse`](crate::ValueResponse),
-/// [`SelectResponse`](crate::SelectResponse),
 /// [`TextEditResponse`](crate::TextEditResponse) and the rest. **None of
 /// them derefs to it**, so interaction is always spelled
 /// `r.response.clicked()` there where a plain response spells
@@ -177,7 +176,6 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::widget_core::response::InnerResponse;
-    use crate::widget_core::select_response::SelectResponse;
     use crate::widget_core::value_response::ValueResponse;
     use crate::widgets::expander::ExpanderResponse;
     use crate::widgets::tabs::tab_strip::TabStripResponse;
@@ -191,7 +189,6 @@ mod tests {
     // cannot drift into "three of them".
     assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
     assert_not_impl_any!(ValueResponse<'static>: Deref);
-    assert_not_impl_any!(SelectResponse<'static>: Deref);
     assert_not_impl_any!(TextEditResponse<'static>: Deref);
     assert_not_impl_any!(ExpanderResponse<'static, ()>: Deref);
     assert_not_impl_any!(TabStripResponse<'static>: Deref);

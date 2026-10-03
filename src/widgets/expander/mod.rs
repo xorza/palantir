@@ -263,7 +263,7 @@ impl<'a> Expander<'a> {
         ExpanderResponse {
             response: Response::eager(header_id, ui, pass.header),
             inner: pass.inner,
-            toggled: pass.toggled,
+            changed: pass.toggled,
             openness: pass.openness,
         }
     }
@@ -324,8 +324,9 @@ pub struct ExpanderResponse<'a, R> {
     /// not record. A collapsed [`Expander::keep_body`](crate::Expander::keep_body) section still
     /// records, so it still answers `Some`.
     pub inner: Option<R>,
-    /// The header was activated this frame, by click or by key.
-    pub toggled: bool,
+    /// The header was activated this frame, by click or by key, so the
+    /// section flipped open or closed.
+    pub changed: bool,
     /// `0.0` closed, `1.0` open, in between while the reveal animates.
     pub openness: f32,
 }

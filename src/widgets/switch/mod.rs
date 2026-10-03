@@ -9,7 +9,7 @@ use crate::primitives::text::text_input::TextInput;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
-use crate::widget_core::response::Response;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -63,16 +63,15 @@ impl<'a> Switch<'a> {
         self
     }
 
-    /// Record the row and hand back its [`Response`].
-    ///
-    /// **`clicked()` is the change edge**, for the reason
-    /// [`Checkbox::show`](crate::Checkbox::show) gives: a switch flips on
-    /// every activation, so a click always writes the bound `bool`.
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    /// Record the row and report whether this frame flipped the bound
+    /// `bool`. A flip commits at once, so `committed == changed`.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
 
+        let before = *self.value;
         let on = ToggleChrome::toggled(&response, self.value);
+        let changed = on != before;
 
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.switch);
@@ -94,7 +93,7 @@ impl<'a> Switch<'a> {
             )),
             pill: Some(track_h * 0.5),
         };
-        chrome.record_row(ui, self.widget, response, self.label, |ui, track| {
+        let response = chrome.record_row(ui, self.widget, response, self.label, |ui, track| {
             // The track's border auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
             // declared position is content-box-relative. Feed the border
@@ -120,7 +119,12 @@ impl<'a> Switch<'a> {
                 .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
                 .position(Vec2::new(knob_x, geom.knob_y));
             knob.record(ui, Some(&knob_bg), |_| {});
-        })
+        });
+        ValueResponse {
+            response,
+            changed,
+            committed: changed,
+        }
     }
 }
 
