@@ -40,6 +40,57 @@ macro. When it needs more, make that public first, with the docs a stranger
 needs. The test: someone could reimplement the widget outside the crate, line
 for line.
 
+**Chainer names.** A *builder* exists to be consumed once — by a terminal
+`show` or `build`, or by `Ui::add_shape` — and its setters are bare: widgets,
+shapes, `LayerScope`, the host builders, `GradientBuilder`. Every other type is
+a *value*: it is stored, passed or compared, and a chaining setter that takes
+an argument is `with_*`. A shorthand that takes none keeps its adjective
+(`TextStyle::bold`, `Shadow::inset`).
+
+**Wrappers.** A wrapper holds the widget it wraps, forwards `Configure` to it,
+and finishes it through that widget's public setters. It never reaches past
+them through a hook only it calls.
+
+**Text.** Required text goes in the constructor (`Text::new(text)`,
+`MenuItem::new(label)`); optional text goes through `.label(..)`.
+
+### Input validation
+
+Every public input is asked two questions, as WPF asks them of a property
+value. *Validation* is about the value alone: finite, not negative, a power of
+two. *Coercion* is about the value against its context: inside a range, an
+index that exists, a `min` below its `max`.
+
+1. **Coercion is total and silent.** It never asserts, because its context is
+   data: an option list shrinks, a saved ratio comes from an older layout. Its
+   result is documented on the API. A stale selection shows as the last option
+   and is not written back; reversed ranges are ordered; a fraction is clamped
+   to `0..=1`; a turn wraps.
+2. **Validation depends on where the value comes from.**
+   - *Per-frame authoring* — builder setters and the value constructors a
+     record pass calls: a release `assert!` with `#[track_caller]`, whose
+     message is the kind's rule, under `# Panics`. **This is a deliberate
+     exception to the global guide's "`debug_assert!` on hot paths"**, for
+     public input validation only: a wrong value is never drawn quietly, and
+     the cost is one comparison per value. A value computed at run time goes
+     through the kind's `is_*` predicate or a coercing kind first.
+   - *Cold configuration* — host builders, theme scaling, dock configuration,
+     icon tables: a release `assert!` under `# Panics`.
+   - *Data from outside the program* — files, persisted settings, decoded
+     images, typed numbers: `Option` when one rule can fail, `Result` with an
+     error enum when several can. Theme files go through the same predicates.
+3. **Plain data stays plain.** `Rect`, `Size`, `RgbaF32`, `Stroke`, `Shadow` and
+   `Spacing` keep public fields, because arithmetic passes through invalid
+   intermediate values. They are checked where they enter a widget, a shape or
+   a node. Types whose consumers rely on an invariant keep private fields
+   behind a checked constructor.
+
+The kinds live in `widget::domain`, public because a widget outside the crate
+validates its setters the same way. Each validating kind is an `is_*`
+predicate and a checker that returns its argument; each coercing kind is one
+total `const fn`. Every numeric parameter's doc names its kind ("`px`: a
+*length*"). The table is in the `domain` module doc.
+
 ## Architecture
 
 Five passes per frame over a tree rebuilt every frame: **record → measure →

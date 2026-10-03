@@ -689,11 +689,8 @@ All seven are decided. Each item named here carries its decision in its own text
 2. Done: the `const` sweep (A24).
 3. Done: flag sets (A32).
 4. Done: no strum on public types (A6).
-5. **Rules in AGENTS.md**: the chainer rule (A47), the wrapper rule (A39), the text rule (A51),
-   and the validation model (A50 rules 1–4, the kinds table, and the decided exception: public
-   input validation panics in release on per-frame paths too). Commit the inventory generator
-   (rustdoc JSON on the nightly toolchain) as `scripts/api_surface.py`, so the regeneration every
-   step needs is one command.
+5. Done: the chainer, wrapper, text and validation rules are in AGENTS.md, and
+   `scripts/api_surface.py` regenerates `API_SURFACE.md`.
 
 ## Phase 2 — renames and removals
 

@@ -26,6 +26,7 @@ exclude = [
     "assets/logo/",
     "benches/bench-perf.sh",
     "docs/",
+    "scripts/",
 ]
 
 # `internals` exposes test-only reach-ins and `bench` the criterion
