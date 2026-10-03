@@ -3,19 +3,19 @@
 pub(crate) mod menu_item;
 pub(crate) mod menu_separator;
 
-use crate::layout::types::anchor::Anchor;
-use crate::primitives::background::Background;
-use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::popup::Popup;
-use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 
 use glam::Vec2;

@@ -65,7 +65,7 @@ mod runtime;
 mod window;
 mod window_set;
 
-use crate::gpu::power_preference::PowerPreference;
+use crate::gpu::device::power_preference::PowerPreference;
 use std::marker::PhantomData;
 use std::time::Instant;
 
@@ -78,7 +78,7 @@ use winit::window::WindowId;
 use crate::app::App;
 use crate::common::platform::PLATFORM;
 use crate::display;
-use crate::gpu::surface_manager::SurfaceManager;
+use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};

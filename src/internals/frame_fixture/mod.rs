@@ -25,7 +25,7 @@
 //! It sits in `crate::internals` rather than beside any one driver because
 //! no driver owns it: the frame benches (`crate::ui::bench`), the allocation
 //! gates in `tests/alloc/gates/` and the cascade bench
-//! (`crate::scene::cascade::bench`) all record this same tree, and its
+//! (`crate::cascade::bench`) all record this same tree, and its
 //! node structure is what makes their numbers comparable release to
 //! release. Treat the structure as frozen — retheming is free, but adding
 //! or removing nodes retargets every recorded series at once.
@@ -44,12 +44,12 @@ mod specimen;
 mod stat_strip;
 mod tokens;
 
-use crate::layout::types::sizing::Sizing;
-use crate::layout::types::track::Track;
-use crate::primitives::background::Background;
-use crate::primitives::translate_scale::TranslateScale;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::track::Track;
+use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use glam::Vec2;

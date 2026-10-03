@@ -6,18 +6,18 @@ use glam::{UVec2, Vec2};
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::keyboard::key::Key;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx::internals::assert_close;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::approx::internals::assert_close;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget_look::theme_slot::SlotDefaults;
 use crate::widgets::arrow::Arrow;
-use crate::widgets::configure::Configure;
 use crate::widgets::expander::{Expander, ExpanderState};
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::expander::ExpanderTheme;
-use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 

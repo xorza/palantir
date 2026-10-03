@@ -1,11 +1,11 @@
 use crate::internals::harness::UiHarness;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::color_coords::ColorCoords;
-use crate::primitives::color::color_model::ColorModel;
-use crate::primitives::image::Image;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::image::Image;
+use crate::widget_core::configure::Configure;
 use crate::widgets::color_strip::{ColorStrip, StripPaint};
-use crate::widgets::configure::Configure;
 use glam::{UVec2, Vec2};
 
 const BAR: UVec2 = UVec2::new(208, 14);

@@ -105,7 +105,7 @@ pub(crate) mod wrap;
 /// block is up to `TEXT_SCALE_STEP / 2` wider or narrower on each axis
 /// than the layout-space rect it nominally fills. `TextDrawRow.bounds`
 /// clips the extra width, and
-/// [`crate::scene::shapes::record::text_paint_bbox_local`] inflates text
+/// [`crate::shape::record::text_paint_bbox_local`] inflates text
 /// damage rects by the same fraction, so a rung jump between consecutive
 /// frames repaints every affected pixel.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
@@ -114,7 +114,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// of the protected tier of the shaped-buffer cache, which each entry
 /// extends by its own share of [`RENDERED_RUN_KEEP_SPREAD_MASK`], and
 /// the ceiling the backend's glyph-template window
-/// (`gpu::text::encode::cache::ENCODED_CACHE_KEEP_FRAMES`) must
+/// (`gpu::raster::text_backend::encode::cache::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
 ///
 /// **The relation between the two windows is an ordering, not an

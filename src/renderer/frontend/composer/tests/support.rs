@@ -1,13 +1,16 @@
 //! The composer a test drives, the payloads it is fed, and what it is read
 //! back through.
 
+use crate::common::span::Span;
 use crate::display::Display;
 use crate::icons::icon_set::IconRef;
 use crate::internals::paint_capture::PaintCapture;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::span::Span;
-use crate::primitives::texture_id::TextureId;
-use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -24,7 +27,7 @@ use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::record::ColorMode;
+use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -246,7 +249,7 @@ pub(super) fn polyline_cmd(
 
 pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::curve_basis::CurveBasis;
+    use crate::shape::paint::curve_basis::CurveBasis;
     b.draw_curve(
         DrawCurvePayload {
             bounds: StrokeBounds::Still(bbox),

@@ -1,7 +1,7 @@
 //! The clip in force during a compose pass, and the stack it comes off.
 
-use crate::primitives::span::Span;
-use crate::primitives::urect::URect;
+use crate::common::span::Span;
+use crate::primitives::geometry::urect::URect;
 
 /// One clip level: the resolved scissor plus the rounded-mask chain that
 /// travels with it, so a `PopClip` restores both as a unit.

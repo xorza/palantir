@@ -1,7 +1,7 @@
 //! One chip's whole draw state, and the two small values it carries.
 
 use crate::icons::icon_set::IconHandle;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::text::interned_str::InternedStr;
 
 /// One tab, as [`TabStrip`](crate::TabStrip) draws it.
 ///

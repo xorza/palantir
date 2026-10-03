@@ -6,9 +6,9 @@
 //! pure function of a measurement layout already holds, or of the text
 //! itself.
 
-use crate::layout::types::align::HAlign;
-use crate::primitives::num::F32Px;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::align::HAlign;
+use crate::primitives::math::num::F32Px;
 use crate::text::extent::TextExtent;
 use crate::text::key::WrapBound;
 use crate::text::root::TextRoot;

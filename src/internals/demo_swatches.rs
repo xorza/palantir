@@ -19,7 +19,7 @@
 //! Not part of the supported surface; it exists only because both demo
 //! surfaces ship in-tree.
 
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::color::RgbaF32;
 
 /// Teal-blue. The default when one colour is enough.
 pub const TEAL: RgbaF32 = RgbaF32::hex(0x4cd3ff);

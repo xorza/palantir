@@ -4,11 +4,11 @@
 //! re-deriving palantir's recipes per widget. [`Palette::DEFAULT`] is
 //! the built-in neutral dark grayscale with a single blue accent.
 
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use glam::Vec2;
 
 /// Semantic color roster for theme assembly. Fields are the roles the

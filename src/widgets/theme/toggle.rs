@@ -3,17 +3,17 @@
 //! rather than in what they can be told.
 
 use crate::animation::anim_spec::AnimSpec;
-use crate::input::response::response_state::ResponseState;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
+use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 
 /// Visuals for two-state toggles — [`crate::Checkbox`],
@@ -37,30 +37,30 @@ pub struct ToggleTheme {
     /// (RadioButton). Painted on top of the `checked` chrome.
     pub indicator: RgbaF32,
     /// Outer box/pip square side in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub box_size: f32,
     /// Stroke width of the check polyline (Checkbox).
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indicator_stroke: f32,
     /// The check polyline's three points (Checkbox only), as fractions
     /// of [`Self::box_size`] — origin top-left, `1.0` the far edge. Unit
     /// space rather than pixels so the tick keeps its proportions at any
     /// box size, and so the shape carries no reference size of its own
     /// to fall out of step with `box_size`.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::finite_points3")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite_points3")]
     pub check_pts: [Vec2; 3],
     /// Inset of the filled dot inside the pip (RadioButton).
     /// Dot side = `box_size - 2 * indicator_inset`.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indicator_inset: f32,
     /// Gap between the box/pip and the label.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Track width as a multiple of its height — [`crate::Switch`]
     /// only, where `box_size` is the track height. A switch reads as a
     /// switch (rather than a checkbox) at roughly 7:4. `1.0` on the
     /// checkbox and radio bundles, whose box is square.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub track_aspect: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]

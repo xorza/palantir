@@ -7,9 +7,9 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::internals::harness::UiHarness;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);

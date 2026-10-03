@@ -4,7 +4,7 @@
 
 use crate::animation::animatable::Animatable;
 use crate::common::time::MAX_ANIM_DT;
-use crate::primitives::approx::EPS;
+use crate::primitives::math::approx::EPS;
 
 pub(super) const SPRING_ERROR: &str = "spring parameters must be positive, finite, convergent, and settle without a long velocity tail";
 

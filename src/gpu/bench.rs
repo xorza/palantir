@@ -65,19 +65,19 @@
 
 use crate::bench::Run;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::gpu::schedule::internals::Walk;
+use crate::gpu::frame::schedule::internals::Walk;
 use crate::host::offscreen::{OffscreenHost, internals as offscreen_support};
 use crate::internals::record_app::RecordApp;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::image::{Image, ImageFit};
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::image::{Image, ImageFit};
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;

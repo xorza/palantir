@@ -1,30 +1,31 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
 use crate::Ui;
+use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::input::keyboard::key::Key;
 use crate::input::policy::InputPolicy;
 use crate::input::policy::InputSignal;
 use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
-use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::primitives::lut_row::LutRow;
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::RgbaF32, rect::Rect};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::encoder;
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
 use std::collections::HashSet;
@@ -573,7 +574,7 @@ fn input_policy_routes_paint_only_gate() {
 
     // only with focus or a chord watcher, so prime focus first.
     {
-        use crate::primitives::widget_id::WidgetId;
+        use crate::primitives::identity::widget_id::WidgetId;
         let mut h = UiHarness::new(SURFACE);
         h.ui.set_input_policy(InputPolicy::OnDelta);
         let _ = h.frame(|ui| body(ui, half));

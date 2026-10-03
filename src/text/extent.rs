@@ -1,7 +1,7 @@
 //! What a shaped run measured to: its block, and the ink past it.
 
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 
 /// The block a shaped run lays out to, and how far its glyphs' ink
 /// reaches past that block on each side.

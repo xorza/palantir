@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::app::App;
+use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
-use crate::gpu::power_preference::PowerPreference;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};

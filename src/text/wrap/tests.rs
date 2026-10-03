@@ -1,6 +1,6 @@
 use crate::layout::cache::MeasureCache;
-use crate::primitives::num::F32Px;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::math::num::F32Px;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, TextWrap};

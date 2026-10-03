@@ -1,6 +1,6 @@
 //! What a splitter's divider wears, and how wide it is to grab.
 
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Splitter`]: the divider between the two panes.
@@ -12,12 +12,12 @@ use crate::widgets::theme::palette::Palette;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SplitterTheme {
     /// Overlay grab-bar breadth in logical px — the draggable hit area.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub grab_thickness: f32,
     /// Resting rule color (the visible seam between the panes).
     pub rule: RgbaF32,
     /// Rule breadth in logical px — the layout space the seam reserves.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub rule_thickness: f32,
     /// Full-bar fill while hovered.
     pub hovered: RgbaF32,

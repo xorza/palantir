@@ -9,11 +9,11 @@
 
 use crate::internals::frame_fixture::FrameFixture;
 use crate::internals::harness::UiHarness;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::theme::Theme;

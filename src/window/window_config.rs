@@ -1,6 +1,6 @@
 //! The backend-agnostic options a window opens with.
 
-use crate::primitives::image::Image;
+use crate::primitives::paint::image::Image;
 use crate::window::window_placement::WindowPlacement;
 use glam::{IVec2, UVec2};
 

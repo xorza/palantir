@@ -1,6 +1,6 @@
 //! How far a shaped run's glyphs reach past the block it measured to.
 
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::text::cosmic::geometry::ShapedGeometry;
 use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, glyph_scaler};
 use crate::text::extent::TextExtent;

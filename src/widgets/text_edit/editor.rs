@@ -2,10 +2,10 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::edit_state::{
     EditDelta, EditKind, EditParts, EditState, SelectionState,

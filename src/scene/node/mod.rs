@@ -1,7 +1,7 @@
 //! The layout, interaction and paint record a [`Widget`] carries, in the
 //! shape the tree reads it.
 //!
-//! [`Widget`]: crate::widgets::widget::Widget
+//! [`Widget`]: crate::widget_core::widget::Widget
 
 pub(crate) mod authored_gaps;
 pub(crate) mod bounds_extras;
@@ -13,17 +13,18 @@ pub(crate) mod node_flags;
 pub(crate) mod node_mode;
 pub(crate) mod panel_extras;
 
-use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::grid_cell::GridCell;
-use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::types::limits;
-use crate::layout::types::sizing::SizeSpec;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::translate_scale::TranslateScale;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::grid_cell::GridCell;
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::layout::limits;
+use crate::primitives::layout::sizing::SizeSpec;
+use crate::primitives::layout::visibility::Visibility;
 use crate::scene::node::authored_gaps::AuthoredGaps;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
@@ -31,7 +32,6 @@ use crate::scene::node::node_columns::NodeColumns;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::node::panel_extras::PanelExtras;
-use crate::scene::visibility::Visibility;
 use glam::Vec2;
 
 /// Per-node config: spatial layout + interaction + paint flags. Every
@@ -42,8 +42,8 @@ use glam::Vec2;
 /// paint. Identity is the widget's, not the node's — a node is what a
 /// widget records, and it never carries the id it records under.
 ///
-/// [`Widget`]: crate::widgets::widget::Widget
-/// [`Widget::record`]: crate::widgets::widget::Widget::record
+/// [`Widget`]: crate::widget_core::widget::Widget
+/// [`Widget::record`]: crate::widget_core::widget::Widget::record
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Node {
     pub(crate) mode: NodeMode,
@@ -107,7 +107,7 @@ impl Node {
     /// The four `set_*` writers below own every check an authored field
     /// owes, and everything that writes one goes through them: the
     /// consuming [`Configure`](crate::Configure) setter, the
-    /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
+    /// [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults)
     /// fallback beside it, and the widgets that hold a `&mut Node` and
     /// cannot move it through a builder. A field written past them is a
     /// field whose bound or NaN screen did not run.
@@ -163,7 +163,7 @@ impl Node {
     /// does.
     ///
     /// `fill_`, not `default_`: the consuming
-    /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
+    /// [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults)
     /// wrapper owns that name, and reads apart from it.
     ///
     /// A default also yields to the *other* bound the caller set: a themed

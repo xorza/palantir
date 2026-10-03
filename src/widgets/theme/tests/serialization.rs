@@ -1,11 +1,11 @@
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
+use crate::widget_core::widget_look::WidgetLook;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
 
 use super::pretty;
 

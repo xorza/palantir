@@ -2,9 +2,10 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::layout::shaped_text::ShapedText;
-use crate::primitives::span::Span;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::common::span::Span;
+use crate::layout::text::shaped_text::ShapedText;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use std::hash::Hasher as _;
 

@@ -6,7 +6,7 @@
 //! `src/text/`. [`TextGlyphs`](crate::widget::TextGlyphs) is the lease it drives
 //! them through.
 
-use crate::primitives::urect::URect;
+use crate::primitives::geometry::urect::URect;
 use cosmic_text::{CacheKey, SubpixelBin};
 use glam::Vec2;
 

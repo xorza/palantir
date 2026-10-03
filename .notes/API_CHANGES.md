@@ -51,7 +51,7 @@ public type both callers already hold. Then 1 for the rest, item by item, in the
 item lives today. A new `authoring` module would be a second place to look for the same kind of
 item. Split this item into one go-ahead per row of the table.
 
-**Touches.** `src/widgets/**`, `src/layout/scrollbars`, `src/layout/types/scroll_axes.rs`,
+**Touches.** `src/widgets/**`, `src/layout/drivers/scrollbars`, `src/primitives/layout/scroll_axes.rs`,
 `src/ui/mod.rs`, `src/renderer/gpu_paint`, `src/primitives/geometry` helpers, `lib.rs` exports.
 
 ## A2. Colour-only text override in a widget look
@@ -72,7 +72,7 @@ disabled fields and tab chips that change size on press.
 **Recommendation.** 2. One field, one meaning, and `Inherit` is the explicit default. Check
 `WidgetLook::resolve` and the `AnimatedLook` lerp, which must lerp the colour of a `Color` arm.
 
-**Touches.** `widgets/theme/widget_look`, every recipe that bakes `TextStyle::default()`
+**Touches.** `widget_core/widget_look`, every recipe that bakes `TextStyle::default()`
 (`text_edit.rs:153`, `tabs.rs:149-150`, `button.rs:65`, `toggle.rs:158`, `expander.rs:109`,
 `menu_item.rs:85`), the theme serde format.
 
@@ -121,7 +121,7 @@ compounds". REDESIGN D7 adds a unit-free interim.
 2. A method `fn settle_distance_squared(self) -> f32` that each type scales into a common unit.
 
 **Recommendation.** 1, with a default, so existing implementations still compile. The derive
-change is in `anim-derive`. After this lands, remove D7's interim (one absolute `1e-4` floor for
+change is in `palantir-anim-derive`. After this lands, remove D7's interim (one absolute `1e-4` floor for
 every spring), which costs about 0.4 s of extra repaint per pixel spring.
 
 ## A6. `BatchKind` without strum in its public derives

@@ -11,9 +11,9 @@
 
 use crate::internals::frame_fixture::FrameFixture;
 use crate::internals::frame_fixture::tokens;
-use crate::layout::types::sizing::Sizing;
+use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::splitter::split_half::SplitHalf;

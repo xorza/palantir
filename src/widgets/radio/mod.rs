@@ -1,19 +1,19 @@
 //! One option of a radio group, over the shared value the whole group
 //! writes through.
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::num::F32Ext;
-use crate::primitives::rect::Rect;
-use crate::primitives::text_input::TextInput;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::select_response::SelectResponse;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::select_response::SelectResponse;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
-use crate::widgets::widget::Widget;
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected

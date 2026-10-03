@@ -13,8 +13,8 @@
 //! drawing text in the same faces as the UI around it is not a coincidence to
 //! be arranged but a consequence of asking the same shaper.
 
-use crate::primitives::raster_image::RasterImage;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::paint::raster_image::RasterImage;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};

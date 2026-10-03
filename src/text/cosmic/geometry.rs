@@ -5,7 +5,7 @@
 //! none of them needs the measurer — which is what lets the shaping paths
 //! call them while holding other fields of it mutably.
 
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, WrapFloor};

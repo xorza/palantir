@@ -3,7 +3,7 @@
 
 use glam::Vec2;
 
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_op::DockDrop;
 use crate::widgets::dock::split_side::SplitSide;

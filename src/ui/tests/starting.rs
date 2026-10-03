@@ -1,17 +1,18 @@
 //! The first frames: the warm-up pass, and what an empty `Ui` still does.
 
+use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::internals::harness::UiHarness;
-use crate::primitives::background::Background;
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::RgbaF32, rect::Rect};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::ui::tests::support::{SURFACE, cold_ui};
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -265,7 +266,7 @@ fn warmup_keeps_focus_requests() {
 fn warmup_keeps_scope_releases() {
     use crate::input::key_class::KeyFilter;
     use crate::input::keyboard::key::Key;
-    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::layout::sizing::Sizing;
 
     let root = WidgetId::from_hash("warmup-root");
     let inner = WidgetId::from_hash("warmup-inner");

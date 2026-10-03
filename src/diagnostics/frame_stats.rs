@@ -1,16 +1,16 @@
 //! The opt-in frame-stats readout: the counters one frame publishes, and the
 //! `Layer::Debug` widget that draws them.
 
-use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::text::font_family::FontFamily;
 use crate::text::font_weight::FontWeight;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;

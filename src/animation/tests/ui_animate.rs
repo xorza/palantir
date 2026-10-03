@@ -3,9 +3,9 @@
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
 use crate::internals::harness::UiHarness;
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::color::RgbaF32;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use std::time::Duration;
 
 /// End-to-end through `Ui::animate` + `FrameOutput::repaint_requested`:
@@ -113,13 +113,13 @@ fn animate_some_then_none_drops_stale_row() {
 /// real spec (rows allocated for non-trivial components).
 #[test]
 fn widget_look_animate_resolves_components_and_falls_back() {
-    use crate::primitives::background::Background;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::shadow::Shadow;
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::widget_core::widget_look::WidgetLook;
+    use crate::widget_core::widget_look::animated_look::AnimatedLook;
     use crate::widgets::theme::text_style::TextStyle;
-    use crate::widgets::theme::widget_look::WidgetLook;
-    use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
     use std::cell::Cell;
 
     let AnimUi { mut h, id } = setup_anim_ui("look-test");

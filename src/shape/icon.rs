@@ -2,12 +2,12 @@
 //! box. Lowers to `ShapeRecord::Icon`.
 
 use crate::icons::icon_set::IconHandle;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::image::ImageFit;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::image::ImageFit;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 use glam::Vec2;
 
@@ -151,7 +151,7 @@ impl sealed::LowerShape for IconShape {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::rect::Rect;
+    use crate::primitives::geometry::rect::Rect;
     use crate::shape::icon::IconFit;
     use glam::Vec2;
 

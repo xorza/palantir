@@ -25,6 +25,7 @@ pub(crate) mod payload;
 
 use std::time::Duration;
 
+use crate::cascade::Cascade;
 use crate::common::tracy;
 use crate::display::Display;
 use crate::layout::Layout;
@@ -34,7 +35,6 @@ use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 use std::num::NonZeroU32;
 

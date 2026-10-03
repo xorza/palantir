@@ -13,7 +13,7 @@
 //!
 //! [`probe`]: crate::text::probe
 
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 use crate::text::extent::TextExtent;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;

@@ -6,22 +6,19 @@
 //! out to the caller instead of held here, because the cascade, the encoder,
 //! hit testing and scroll refresh all read it.
 //!
-//! Each container kind is a [`LayoutDriver`](driver::LayoutDriver), and the
+//! Each container kind is a [`LayoutDriver`](drivers::LayoutDriver), and the
 //! three passes reach one through the single dispatch in that module.
 
-pub(crate) mod axis;
 mod axis_align_pair;
 mod axis_placement;
 mod axis_share;
 mod axis_slot;
 pub(crate) mod cache;
-mod canvas;
 pub(crate) mod counters;
 pub(crate) mod depth_scratch;
-mod driver;
+pub(crate) mod drivers;
 pub(crate) mod engine;
 mod fill_item;
-pub(crate) mod grid;
 mod hug_item;
 pub(crate) mod intrinsic;
 mod justify_offsets;
@@ -29,21 +26,11 @@ pub(crate) mod layer_layout;
 pub(crate) mod layout_scratch;
 pub(crate) mod measured;
 pub(crate) mod pass;
-pub(crate) mod scroll;
-pub(crate) mod scrollbars;
-pub(crate) mod shaped_text;
-pub(crate) mod stack;
-pub(crate) mod text_runs;
-pub(crate) mod text_shape_input;
-pub(crate) mod types;
-pub(crate) mod wrapstack;
-pub(crate) mod zstack;
-
-#[cfg(test)]
-mod cross_driver_tests;
+pub(crate) mod text;
 
 use crate::layout::layer_layout::LayerLayout;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
@@ -71,7 +58,7 @@ impl Layout {
     /// isn't a `LayoutMode::Scroll`.
     ///
     /// Takes an [`Endpoint`] because that is what
-    /// [`Cascade::endpoint`](crate::scene::cascade::Cascade::endpoint)
+    /// [`Cascade::endpoint`](crate::cascade::Cascade::endpoint)
     /// hands back: the two tables are keyed differently (by widget id,
     /// by node index) and only a caller holding both can bridge them.
     /// Naming each half keeps the bridge from being four raw indexes.
@@ -109,3 +96,6 @@ impl IndexMut<Layer> for Layout {
         &mut self.layers[layer]
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -3,11 +3,11 @@ use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::widgets::configure::Configure;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::response::Response;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 

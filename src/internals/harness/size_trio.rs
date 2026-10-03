@@ -3,11 +3,11 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::{SizeSpec, Sizing};
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 

@@ -1,6 +1,6 @@
 //! [`WinitHostConfig`] — startup tunables for [`WinitHost`](super::WinitHost).
 
-use crate::gpu::power_preference::PowerPreference;
+use crate::gpu::device::power_preference::PowerPreference;
 use crate::text::font_scope::FontScope;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;

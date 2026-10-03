@@ -1,13 +1,13 @@
 //! The rectangle builder. Lowers to `ShapeRecord::Quad(QuadShape::Rect)`.
 
-use crate::primitives::brush::Brush;
-use crate::primitives::corners::Corners;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::rect::Rect;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::lower;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::lower;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 
 #[repr(u8)]

@@ -1,18 +1,18 @@
 //! The thin divider rule, on either axis.
 
-use crate::layout::axis::Axis;
-use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::num::F32Ext;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use crate::widgets::theme::separator::SeparatorTheme;
-use crate::widgets::widget::Widget;
 
 /// A thin divider rule between content. [`Separator::horizontal`]
 /// stretches across the parent's width as a `thickness`-tall line;

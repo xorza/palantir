@@ -1,6 +1,6 @@
 //! The theme bundle every widget styles from: one submodule per widget's
 //! own theme, over the shared [`palette`], [`text_style`] and
-//! [`widget_look`] vocabulary they are all built out of.
+//! [`widget_look`](crate::widget_core::widget_look) vocabulary they are all built out of.
 //!
 //! [`Theme`] aggregates them. A widget opts in by reading its own slice,
 //! so a bundle grows a field without any existing widget changing.
@@ -26,11 +26,10 @@ pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
-pub(crate) mod widget_look;
 
-use crate::layout::types::clip_mode::ClipMode;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::color_picker::ColorPickerTheme;

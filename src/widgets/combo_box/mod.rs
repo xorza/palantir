@@ -2,25 +2,25 @@
 //! open/closed flag one trigger site keeps between frames.
 
 use crate::input::sense::Sense;
-use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::Response;
+use crate::widget_core::select_response::SelectResponse;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::Popup;
-use crate::widgets::response::Response;
-use crate::widgets::select_response::SelectResponse;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.

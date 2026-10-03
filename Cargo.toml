@@ -35,7 +35,7 @@ exclude = [
 all-features = false
 
 [workspace]
-members = ["anim-derive"]
+members = ["palantir-anim-derive"]
 
 [lints.rust]
 missing_debug_implementations = "deny"
@@ -51,7 +51,7 @@ private_intra_doc_links = "deny"
 redundant_explicit_links = "deny"
 
 [dependencies]
-palantir-anim-derive = { path = "anim-derive", version = "=0.7.1" }
+palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.7.1" }
 arboard = { version = "3.6", default-features = false, optional = true }
 bytemuck = { version = "1.25", features = ["derive"] }
 cosmic-text = "0.19"

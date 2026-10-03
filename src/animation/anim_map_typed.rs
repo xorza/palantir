@@ -5,7 +5,7 @@ use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::common::typed_stores::TypedStore;
-use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -209,7 +209,7 @@ pub(crate) mod internals {
     use crate::animation::anim_slot::AnimSlot;
     use crate::animation::anim_spec::AnimSpec;
     use crate::animation::animatable::Animatable;
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::WidgetId;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     /// A render frame id no earlier call returned, so the multi-pass

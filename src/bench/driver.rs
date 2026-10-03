@@ -2,7 +2,9 @@
 //! crate has.
 
 use crate::bench::{Arms, Run};
-use crate::{animation, gpu, input, layout, primitives, renderer, scene, text, ui, widgets};
+use crate::{
+    animation, cascade, damage, gpu, input, layout, primitives, renderer, scene, text, ui, widgets,
+};
 use criterion::Criterion;
 
 /// One criterion driver, as [`run`](super::run) sees it.
@@ -57,11 +59,14 @@ pub(super) struct Driver {
 pub(super) const DRIVERS: &[Driver] = &[
     driver("animation", animation::bench::bench),
     driver("caches", layout::cache::bench::bench),
-    driver("cascade", scene::cascade::bench::bench),
+    driver("cascade", cascade::bench::bench),
     driver("color_field", widgets::color_field::bench::bench),
     driver("composer", renderer::frontend::composer::bench::bench),
-    gpu_driver("curve_pipeline", gpu::curve_pipeline::bench::bench),
-    driver("damage", scene::damage::bench::bench),
+    gpu_driver(
+        "curve_pipeline",
+        gpu::pipeline::curve_pipeline::bench::bench,
+    ),
+    driver("damage", damage::bench::bench),
     // The one row with both arms, and the reason `run` takes `Arms` at
     // all: `Cpu` executes zero GPU code while `Gpu` requests an adapter,
     // so it has to be told which was asked for. `opt_in` because the
@@ -75,8 +80,11 @@ pub(super) const DRIVERS: &[Driver] = &[
     },
     driver("gradient", renderer::frontend::bench::bench),
     driver("gradient_atlas", renderer::gradient_atlas::bench::bench),
-    driver("half_simd", primitives::half_simd::bench::bench),
-    gpu_driver("image_pipeline", gpu::image_pipeline::bench::bench),
+    driver("half_simd", primitives::packed::half_simd::bench::bench),
+    gpu_driver(
+        "image_pipeline",
+        gpu::pipeline::image_pipeline::bench::bench,
+    ),
     driver("input", input::bench::bench),
     driver("paint_anims", scene::tree::paint_anims::bench::bench),
     gpu_driver("record_pass", gpu::bench::bench),
@@ -84,8 +92,8 @@ pub(super) const DRIVERS: &[Driver] = &[
         "rect_grid",
         renderer::frontend::composer::rect_grid::bench::bench,
     ),
-    driver("schedule", gpu::schedule::bench::bench),
-    gpu_driver("text_atlas", gpu::text::bench::bench),
+    driver("schedule", gpu::frame::schedule::bench::bench),
+    gpu_driver("text_atlas", gpu::raster::text_backend::bench::bench),
     driver("text_edit", widgets::text_edit::bench::bench),
     driver("text_shape", text::bench::bench),
 ];

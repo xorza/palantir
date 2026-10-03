@@ -27,7 +27,7 @@
 //! [`BenchOnly`] is `cfg(any(test, feature = "bench"))`: for the
 //! counters a benchmark reads. Widening one costs a build's worth of
 //! increments, so it is done for a real bench rather than a hypothetical
-//! one — [`crate::scene::damage::counters`] explains its own case.
+//! one — [`crate::damage::counters`] explains its own case.
 //!
 //! `bench` and not `internals`, though `bench` implies it: the two
 //! integration suites turn `internals` on to reach past the published
@@ -90,8 +90,8 @@
 //! test can drive.
 //!
 //! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
-//! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
-//! [`CascadeCounters`]: crate::scene::cascade::counters::CascadeCounters
+//! [`DamageCounters`]: crate::damage::counters::DamageCounters
+//! [`CascadeCounters`]: crate::cascade::counters::CascadeCounters
 
 use std::cell::Cell;
 

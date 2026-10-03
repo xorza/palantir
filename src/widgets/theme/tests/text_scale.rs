@@ -153,7 +153,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 
 #[test]
 fn scale_text_rejects_invalid_factors_without_partial_mutation() {
-    use crate::primitives::approx::EPS;
+    use crate::primitives::math::approx::EPS;
     const FACTOR: &str = "text scale factor must be finite and positive";
     const RESULT: &str = "text scale would make font size or line height invalid";
     for (label, factor, expected) in [

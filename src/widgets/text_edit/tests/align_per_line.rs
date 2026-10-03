@@ -362,7 +362,7 @@ fn stable_multiline_holds_constant_per_frame_cost() {
 #[test]
 fn placeholder_per_line_aligns_under_wrap() {
     use crate::scene::layer::Layer;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
     let mut h = cosmic_ui();
     let mut buf = String::new();
     let mut record = |ui: &mut Ui| {

@@ -1,9 +1,9 @@
 use crate::internals::panic_probe;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::brush::gradient::{Interp, Spread};
-use crate::primitives::color::RgbaF32;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::{Interp, Spread};
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::RecordedGradients;

@@ -2,19 +2,19 @@
 
 use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::quad_shape::QuadShape;
-use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::record::ShapeRecord;
 use crate::shape::rect::{RectKind, RectShape};
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 
 #[test]
@@ -172,7 +172,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
 /// re-merge or setter mis-routing trips here.
 #[test]
 fn extras_columns_split_by_field_kind() {
-    use crate::primitives::size::Size;
+    use crate::primitives::geometry::size::Size;
 
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {

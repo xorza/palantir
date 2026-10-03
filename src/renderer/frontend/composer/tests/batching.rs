@@ -1,15 +1,17 @@
 //! Which draws share a group and a batch, and what forces a split.
 
+use crate::common::span::Span;
 use crate::icons::icon_set::IconRef;
 use crate::internals::paint_capture::PaintCapture;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::span::Span;
-use crate::primitives::texture_id::TextureId;
-use crate::primitives::{
-    color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, urect::URect,
-};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -26,7 +28,7 @@ use crate::renderer::frontend::payload::stroke_bounds::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::record::ColorMode;
+use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
@@ -658,10 +660,10 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
 /// does NOT disqualify (the skip is coverage-based, not opacity-based).
 #[test]
 fn quad_fast_path_flag_cases() {
-    use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::fill_axis::FillAxis;
-    use crate::primitives::fill_kind::FillKind;
-    use crate::primitives::lut_row::LutRow;
+    use crate::primitives::packed::fill_axis::FillAxis;
+    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::brush::gradient::Spread;
+    use crate::primitives::paint::lut_row::LutRow;
 
     let solid = |c: RgbaF32| BrushSource::Solid(c.into());
     let opaque = RgbaF32::srgb(0.5, 0.5, 0.5);

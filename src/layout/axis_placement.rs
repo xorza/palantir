@@ -1,11 +1,11 @@
 //! One axis's arranged extent and its alignment offset.
 
-use crate::layout::axis::Axis;
 use crate::layout::axis_align_pair::AxisAlignPair;
-use crate::layout::types::align::{Align, AxisAlign};
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::align::{Align, AxisAlign};
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
 use glam::{BVec2, Vec2};

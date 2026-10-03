@@ -1,7 +1,7 @@
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
-use crate::primitives::image::Image;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::image::Image;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;

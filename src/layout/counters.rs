@@ -15,7 +15,7 @@
 //! mutator needs no `#[cfg]` of its own.
 
 use crate::common::counters::{BenchOnly, TestOnly, counter_snapshot};
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
 
 /// CPU nanoseconds one `LayoutEngine::run` spent in each half of the
 /// layout pass, summed over every root in every layer.
@@ -206,7 +206,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::layout::counters::ReplayCounts;
     #[cfg(test)]
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::WidgetId;
 
     impl LayoutCounters {
         #[cfg(feature = "bench")]

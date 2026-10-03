@@ -1,7 +1,7 @@
 //! What a full atlas does: grow, evict LRU, or fall back at the cap.
 
 use crate::common::counters::CounterSet;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::renderer::gradient_atlas::tests::support::{
     assert_real_row, distinct_grad, fill_rows, fresh_row,
 };

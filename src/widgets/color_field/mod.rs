@@ -3,27 +3,27 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::color_coords::ColorCoords;
-use crate::primitives::color::color_model::ColorModel;
-use crate::primitives::image::Image;
-use crate::primitives::image::ImageFit;
-use crate::primitives::num::F32Ext;
-use crate::primitives::size::Size;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::paint::image::Image;
+use crate::primitives::paint::image::ImageFit;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::Response;
+use crate::widget_core::value_response::ValueResponse;
+use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::AxisKeys;
 use crate::widgets::axis_keys::KeyPair;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
-use crate::widgets::value_response::ValueResponse;
-use crate::widgets::widget::Widget;
 use glam::Vec2;
 
 /// The two-axis area of a colour picker: saturation left to right, value

@@ -2,14 +2,14 @@
 //! selection, output validity, and the record-store lifecycle.
 
 mod present_mode_tests {
+    use crate::damage::Damage;
+    use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive};
     use crate::host::window_driver::{PresentPath, present_path};
-    use crate::primitives::color::RgbaF32;
-    use crate::primitives::rect::Rect;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::scene::damage::Damage;
-    use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
     /// 100×100 logical surface (10_000 px²) the partial fixtures collapse
     /// against, so a `w×h` damage rect carries `coverage = w·h / 10_000`.
@@ -122,14 +122,14 @@ mod present_mode_tests {
 mod output_validity_tests {
     use glam::UVec2;
 
-    use crate::gpu::render_target::TargetFormat;
+    use crate::gpu::surface::render_target::TargetFormat;
     use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
-    use crate::primitives::color::RgbaF32;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::render_plan::RenderPlan;
 
-    use crate::scene::damage::Damage;
+    use crate::damage::Damage;
 
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::ui::resources::UiResources;
@@ -500,11 +500,11 @@ mod record_store_tests {
 
     use crate::host::clock::FixedClock;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::primitives::color::RgbaF32;
-    use crate::primitives::color::rgba_f16::RgbaF16;
-    use crate::primitives::mesh::{Mesh, MeshVertex};
-    use crate::primitives::stroke::Stroke;
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
 
@@ -704,7 +704,7 @@ mod display_tests {
 
     use crate::display::user_scale::UserScale;
     use crate::host::window_driver::WindowDriver;
-    use crate::primitives::size::Size;
+    use crate::primitives::geometry::size::Size;
 
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;

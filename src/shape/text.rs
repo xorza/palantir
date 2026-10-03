@@ -1,12 +1,12 @@
 //! The text-run builder. Lowers to `ShapeRecord::Text`, with its source
 //! normalized into the active text arena.
 
-use crate::layout::types::align::Align;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::interned_str::InternedStr;
-use crate::primitives::nan::NanCheck;
+use crate::primitives::layout::align::Align;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::text::interned_str::InternedStr;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;

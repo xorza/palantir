@@ -1,7 +1,7 @@
 //! Shared cross-frame handle for CPU gradient registration and flushing.
 
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::lut_row::LutRow;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::gradient_atlas::{
     CpuGradientAtlas, DEFAULT_MAX_ATLAS_ROWS, FlushedRows, MAX_ATLAS_ROWS,
 };

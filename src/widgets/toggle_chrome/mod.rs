@@ -1,18 +1,18 @@
 //! The shared `HStack [box, label]` scaffolding behind the three
 //! toggle widgets, and the resolved chrome each hands it.
 
-use crate::input::response::response_state::ResponseState;
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
-use crate::layout::types::align::{Align, VAlign};
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::text_input::TextInput;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::paint::background::Background;
+use crate::primitives::text::text_input::TextInput;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::look_plan::LookPlan;
 use crate::widgets::text::Text;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
-use crate::widgets::widget::Widget;
 
 /// What [`ToggleChrome::record_row`] needs from its caller beyond the
 /// entry, the label, and the indicator body.

@@ -1,11 +1,11 @@
 //! Theme sharing, and a subtree disabled between frames.
 
 use crate::internals::harness::UiHarness;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::ui::tests::support::SURFACE;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::Vec2;
 
@@ -46,8 +46,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "interactions must mask on the disable frame"
     );
 
-    use crate::primitives::color::rgba_f16::RgbaF16;
-    use crate::scene::shapes::paint::shape_brush::ShapeBrush;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::shape::paint::shape_brush::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);

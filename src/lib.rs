@@ -133,7 +133,7 @@ extern crate self as palantir;
 // `#[macro_export]` is scoped textually, so that placement — and only that
 // placement — hands the macro to every file in that subtree and to nothing
 // outside it. `widgets`, `widgets::theme`, `shape`, `primitives`, and
-// `primitives::brush::gradient` each carry their own set on those terms, and
+// `primitives::paint::brush::gradient` each carry their own set on those terms, and
 // a second subtree wanting one of them is the sign it was filed in the wrong
 // place, not a reason to widen its reach.
 //
@@ -149,6 +149,8 @@ pub(crate) mod animation;
 pub(crate) mod app;
 #[cfg(feature = "bench")]
 pub mod bench;
+pub(crate) mod cascade;
+pub(crate) mod damage;
 pub(crate) mod diagnostics;
 /// Per-output display state (physical size, the system and user scale
 /// factors, pixel-snap, refresh) — cross-cutting host/render vocabulary,
@@ -170,6 +172,7 @@ pub(crate) mod scene;
 pub(crate) mod shape;
 pub(crate) mod text;
 pub(crate) mod ui;
+pub(crate) mod widget_core;
 pub(crate) mod widgets;
 pub(crate) mod window;
 
@@ -279,13 +282,13 @@ pub mod prelude {
 pub mod widget {
     pub use crate::animation::anim_slot::AnimSlot;
     pub use crate::animation::animatable::Animatable;
-    pub use crate::primitives::approx;
-    pub use crate::primitives::content_type::ContentType;
-    pub use crate::primitives::mesh::{Mesh, MeshVertex};
-    pub use crate::primitives::num::F32Ext;
-    pub use crate::primitives::raster_image::RasterImage;
-    pub use crate::primitives::spacing::Sums;
-    pub use crate::primitives::span::Span;
+    pub use crate::common::span::Span;
+    pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
+    pub use crate::primitives::geometry::spacing::Sums;
+    pub use crate::primitives::math::approx;
+    pub use crate::primitives::math::num::F32Ext;
+    pub use crate::primitives::paint::content_type::ContentType;
+    pub use crate::primitives::paint::raster_image::RasterImage;
     /// The paint-time animation curves the crate ships. A caller's own curve
     /// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
     pub use crate::scene::tree::paint_anims::curves;
@@ -312,12 +315,12 @@ pub mod widget {
     pub use crate::text::probe::TextProbe;
     pub use crate::text::render::{GlyphRasterKey, PlacedGlyph};
     pub use crate::text::run::TextRun;
-    pub use crate::widgets::configure::ConfigureWidget;
-    pub use crate::widgets::configure::ThemeDefaults;
+    pub use crate::widget_core::configure::ConfigureWidget;
+    pub use crate::widget_core::configure::ThemeDefaults;
+    pub use crate::widget_core::widget::Widget;
+    pub use crate::widget_core::widget_look::look_plan::LookPlan;
+    pub use crate::widget_core::widget_look::theme_slot::ThemeSlot;
     pub use crate::widgets::theme::text_style::TextStyleOverrides;
-    pub use crate::widgets::theme::widget_look::look_plan::LookPlan;
-    pub use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-    pub use crate::widgets::widget::Widget;
     pub use palantir_anim_derive::Animatable;
 }
 
@@ -332,13 +335,13 @@ pub use display::Display;
 /// platform reports. Written through
 /// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
 pub use display::user_scale::UserScale;
-pub use gpu::device_requirements::DeviceRequirements;
+pub use gpu::device::device_requirements::DeviceRequirements;
+pub use gpu::device::power_preference::PowerPreference;
+pub use gpu::device::requested_gpu::{Gpu, RequestedGpu};
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
 pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
-pub use gpu::power_preference::PowerPreference;
-pub use gpu::render_target::{RenderTarget, TargetFormat};
-pub use gpu::requested_gpu::{Gpu, RequestedGpu};
+pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
@@ -356,6 +359,16 @@ pub use host::winit::{
 /// own translates its platform's events into these — see
 /// [`OffscreenHost::on_input`].
 pub use input::input_event::InputEvent;
+pub use input::interaction::button_phase::ButtonPhase;
+pub use input::interaction::button_state::ButtonState;
+pub use input::interaction::drag::Drag;
+/// The verdict [`OffscreenHost::on_input`] reads back, so a host knows
+/// whether an event asks for a repaint.
+pub use input::interaction::input_delta::InputDelta;
+pub use input::interaction::pointer_action::PointerAction;
+pub use input::interaction::pointer_edge::PointerEdge;
+pub use input::interaction::response_state::ResponseState;
+pub use input::interaction::scroll_delta::ScrollDelta;
 pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::key::Key;
 pub use input::keyboard::key_press::KeyPress;
@@ -363,59 +376,49 @@ pub use input::keyboard::key_text::KeyText;
 pub use input::keyboard::modifiers::Modifiers;
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};
-pub use input::response::button_phase::ButtonPhase;
-pub use input::response::button_state::ButtonState;
-pub use input::response::drag::Drag;
-/// The verdict [`OffscreenHost::on_input`] reads back, so a host knows
-/// whether an event asks for a repaint.
-pub use input::response::input_delta::InputDelta;
-pub use input::response::pointer_action::PointerAction;
-pub use input::response::pointer_edge::PointerEdge;
-pub use input::response::response_state::ResponseState;
-pub use input::response::scroll_delta::ScrollDelta;
 pub use input::sense::Sense;
 pub use input::shortcut::{Shortcut, ShortcutMods};
 pub use input::watch::{KeyboardWake, PointerWake};
 pub use input::zoom_factor::ZoomFactor;
-pub use layout::axis::Axis;
-pub use layout::types::align::{Align, HAlign, VAlign};
-pub use layout::types::anchor::{Anchor, AnchorAlign};
-pub use layout::types::clip_mode::ClipMode;
-pub use layout::types::grid_cell::GridCell;
-pub use layout::types::justify::Justify;
-pub use layout::types::sizing::{SizeSpec, Sizing};
-pub use layout::types::track::Track;
-pub use primitives::background::Background;
-pub use primitives::brush::Brush;
-pub use primitives::brush::gradient::color_ramp::ColorRamp;
-pub use primitives::brush::gradient::conic_geometry::{
+pub use primitives::geometry::corners::Corners;
+pub use primitives::geometry::rect::Rect;
+pub use primitives::geometry::size::Size;
+pub use primitives::geometry::spacing::Spacing;
+pub use primitives::layout::align::{Align, HAlign, VAlign};
+pub use primitives::layout::anchor::{Anchor, AnchorAlign};
+pub use primitives::layout::axis::Axis;
+pub use primitives::layout::clip_mode::ClipMode;
+pub use primitives::layout::grid_cell::GridCell;
+pub use primitives::layout::justify::Justify;
+pub use primitives::layout::sizing::{SizeSpec, Sizing};
+pub use primitives::layout::track::Track;
+pub use primitives::layout::visibility::Visibility;
+pub use primitives::paint::background::Background;
+pub use primitives::paint::brush::Brush;
+pub use primitives::paint::brush::gradient::color_ramp::ColorRamp;
+pub use primitives::paint::brush::gradient::conic_geometry::{
     ConicGeometry, ConicGradient, ConicGradientBuilder,
 };
-pub use primitives::brush::gradient::gradient_builder::GradientBuilder;
-pub use primitives::brush::gradient::linear_geometry::{
+pub use primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+pub use primitives::paint::brush::gradient::linear_geometry::{
     LinearGeometry, LinearGradient, LinearGradientBuilder,
 };
-pub use primitives::brush::gradient::radial_geometry::{
+pub use primitives::paint::brush::gradient::radial_geometry::{
     RadialGeometry, RadialGradient, RadialGradientBuilder,
 };
-pub use primitives::brush::gradient::stops::{GradientStops, Stop};
-pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
-pub use primitives::color::RgbaF32;
-pub use primitives::color::color_coords::ColorCoords;
-pub use primitives::color::color_model::{ColorModel, HueSlice};
-pub use primitives::color::hsv::Hsv;
-pub use primitives::color::okhsv::{Okhsv, OkhsvSlice};
-pub use primitives::color::srgba_u8::SrgbaU8;
-pub use primitives::corners::Corners;
-pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
-pub use primitives::interned_str::InternedStr;
-pub use primitives::rect::Rect;
-pub use primitives::shadow::Shadow;
-pub use primitives::size::Size;
-pub use primitives::spacing::Spacing;
-pub use primitives::text_input::TextInput;
+pub use primitives::paint::brush::gradient::stops::{GradientStops, Stop};
+pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
+pub use primitives::paint::color::RgbaF32;
+pub use primitives::paint::color::color_coords::ColorCoords;
+pub use primitives::paint::color::color_model::{ColorModel, HueSlice};
+pub use primitives::paint::color::hsv::Hsv;
+pub use primitives::paint::color::okhsv::{Okhsv, OkhsvSlice};
+pub use primitives::paint::color::srgba_u8::SrgbaU8;
+pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
+pub use primitives::paint::shadow::Shadow;
+pub use primitives::text::interned_str::InternedStr;
+pub use primitives::text::text_input::TextInput;
 pub use scene::layer::Layer;
-pub use scene::visibility::Visibility;
 // Signed screen coordinates: `WindowConfig::position`,
 // `WindowPlacement.position`, `RasterImage.bearing`. Re-exported for the
 // reason `UVec2` and `Vec2` are — a consumer naming one of those would
@@ -430,13 +433,13 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
-pub use gpu::gpu_frame_ctx::GpuFrameCtx;
-pub use gpu::gpu_init_ctx::GpuInitCtx;
+pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
+pub use gpu::device::gpu_init_ctx::GpuInitCtx;
 pub use icons::icon_set::{IconHandle, IconSet};
 pub use icons::icon_table::{IconDef, IconId, IconTable};
-pub use primitives::stroke::Stroke;
-pub use primitives::translate_scale::TranslateScale;
-pub use primitives::widget_id::WidgetId;
+pub use primitives::geometry::translate_scale::TranslateScale;
+pub use primitives::identity::widget_id::WidgetId;
+pub use primitives::paint::stroke::Stroke;
 pub use renderer::error::ImageLoadError;
 pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::image_registry::image_handle::ImageHandle;
@@ -451,6 +454,15 @@ pub use text::wrap::TextWrap;
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::layer_scope::LayerScope;
+pub use widget_core::configure::Configure;
+pub use widget_core::overlay_response::OverlayResponse;
+pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
+pub use widget_core::select_response::SelectResponse;
+pub use widget_core::value_response::ValueResponse;
+pub use widget_core::widget_look::WidgetLook;
+pub use widget_core::widget_look::animated_look::AnimatedLook;
+pub use widget_core::widget_look::stateful_look::StatefulLook;
+pub use widget_core::widget_look::theme_slot::SlotDefaults;
 pub use widgets::block::Block;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
@@ -461,7 +473,6 @@ pub use widgets::color_picker::ColorPicker;
 pub use widgets::color_strip::ColorStrip;
 pub use widgets::color_swatch::ColorSwatch;
 pub use widgets::combo_box::ComboBox;
-pub use widgets::configure::Configure;
 pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;
@@ -479,21 +490,18 @@ pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
 pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;
 pub use widgets::expander::Expander;
-pub use widgets::expander::expander_response::ExpanderResponse;
+pub use widgets::expander::ExpanderResponse;
 pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;
 pub use widgets::modal::Modal;
-pub use widgets::overlay_response::OverlayResponse;
 pub use widgets::panel::Panel;
 pub use widgets::popup::Popup;
 pub use widgets::popup::click_outside::ClickOutside;
 pub use widgets::progress_bar::ProgressBar;
 pub use widgets::radio::RadioButton;
-pub use widgets::response::{InnerResponse, Response, ResponseSnapshot};
 pub use widgets::scroll::Scroll;
 pub use widgets::scroll::bars::BarMode;
 pub use widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
-pub use widgets::select_response::SelectResponse;
 pub use widgets::separator::Separator;
 pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
@@ -527,19 +535,11 @@ pub use widgets::theme::text_edit::TextEditTheme;
 pub use widgets::theme::text_style::TextStyle;
 pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
-pub use widgets::theme::widget_look::WidgetLook;
-pub use widgets::theme::widget_look::animated_look::AnimatedLook;
-pub use widgets::theme::widget_look::stateful_look::StatefulLook;
-pub use widgets::theme::widget_look::theme_slot::SlotDefaults;
 pub use widgets::tooltip::Tooltip;
-pub use widgets::tooltip::tooltip_response::TooltipResponse;
-pub use widgets::value_response::ValueResponse;
+pub use widgets::tooltip::TooltipResponse;
 pub use window::cursor_icon::CursorIcon;
 pub use window::vsync::Vsync;
 pub use window::window_config::WindowConfig;
 pub use window::window_geometry::WindowGeometry;
 pub use window::window_placement::WindowPlacement;
 pub use window::window_token::WindowToken;
-
-#[cfg(test)]
-mod hot_struct_sizes;

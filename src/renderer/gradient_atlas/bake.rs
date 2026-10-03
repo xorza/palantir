@@ -6,13 +6,13 @@
 //! The shaders filter between texels in the same space.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::approx;
-use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::oklab;
-use crate::primitives::color::rgba_f16::RgbaF16;
+use crate::primitives::math::approx;
+use crate::primitives::paint::brush::gradient::Interp;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::oklab;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
 pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
@@ -198,12 +198,12 @@ fn lerp_oklab(
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::approx::internals::assert_close;
-    use crate::primitives::brush::gradient::Interp;
-    use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-    use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-    use crate::primitives::color::RgbaF32;
-    use crate::primitives::color::rgba_f16::RgbaF16;
+    use crate::primitives::math::approx::internals::assert_close;
+    use crate::primitives::paint::brush::gradient::Interp;
+    use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+    use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, RampTexels};
 
     /// The bake `zip`s the ramp against a fixed-length row, so a ramp

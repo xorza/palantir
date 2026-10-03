@@ -8,7 +8,8 @@
 //! module at the end of a file, which reaches that file's private items
 //! for whoever needs them; this one holds what is a subsystem in its own
 //! right. Benchmark drivers live apart, in `bench.rs` files and the
-//! `bench` facade.
+//! `bench` facade, and golden-image comparison in `golden`,
+//! which crates outside this one use.
 //!
 //! An item here is `pub` when code outside the crate calls it, and
 //! `pub(crate)` when only this crate's own tests and benches do. Each
@@ -19,6 +20,8 @@ pub mod demo_swatches;
 #[cfg(feature = "internals")]
 pub mod frame_fixture;
 pub mod harness;
+#[cfg(test)]
+mod hot_struct_sizes;
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod paint_capture;
 #[cfg(test)]

@@ -1,11 +1,11 @@
 //! What a drag value wears: the scrub chip, and the text field it becomes
 //! while it is being typed into.
 
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Theme for [`crate::DragValue`]: the scrub `chip` (a [`ButtonTheme`]) and the
 /// inline `editor` (a [`TextEditTheme`]) it swaps to under

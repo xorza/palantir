@@ -1,8 +1,8 @@
 //! The colour lanes every GPU fill writes.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::lut_row::LutRow;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::lut_row::LutRow;
 
 /// The three lanes a fill is, whatever tier draws it.
 ///

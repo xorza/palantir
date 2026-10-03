@@ -3,9 +3,9 @@ use crate::input::capture::DOUBLE_CLICK_WINDOW;
 use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
-use crate::widgets::configure::Configure;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -263,7 +263,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 
 #[test]
 fn transformed_panels_route_clicks_by_composed_world_rect() {
-    use crate::primitives::translate_scale::TranslateScale;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
     let cases = [
         (
             "scale_2x_inside",
@@ -636,10 +636,10 @@ fn press_started_counts_multi_press_runs() {
 /// half of what this is checking.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
+    use crate::input::interaction::button_phase::ButtonPhase;
+    use crate::input::interaction::pointer_action::PointerAction;
+    use crate::input::interaction::pointer_edge::PointerEdge;
     use crate::input::pointer::PointerButton;
-    use crate::input::response::button_phase::ButtonPhase;
-    use crate::input::response::pointer_action::PointerAction;
-    use crate::input::response::pointer_edge::PointerEdge;
 
     let id = WidgetId::from_hash("collated");
     let mut h = UiHarness::new(BUTTON_SURFACE);

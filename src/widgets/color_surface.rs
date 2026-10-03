@@ -1,8 +1,8 @@
 //! A CPU-built texture a colour widget paints itself with, and the rule that
 //! decides when to build it again.
 
-use crate::primitives::image::Image;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::paint::image::Image;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::ui::Ui;
 use glam::UVec2;
@@ -124,7 +124,7 @@ impl<K: PartialEq> ColorSurface<K> {
 mod tests {
     use super::*;
     use crate::internals::harness::UiHarness;
-    use crate::primitives::color::srgba_u8::SrgbaU8;
+    use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
     #[test]
     fn cached_surface_reuses_pixels_and_handle_until_resize() {

@@ -1,6 +1,6 @@
 //! The caret as the painter draws it.
 
-use crate::primitives::color::RgbaF32;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::text::probe::Caret;
 

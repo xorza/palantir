@@ -14,10 +14,10 @@
 //! that scan only on the first read at a given record position, the rest
 //! of a chord table hitting [`ReaderMemo`].
 
+use crate::cascade::Cascade;
+use crate::cascade::entry::ScopeRow;
 use crate::input::key_class::KeyClass;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascade;
-use crate::scene::cascade::entry::ScopeRow;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 
 /// This pass's resolved scope routing.

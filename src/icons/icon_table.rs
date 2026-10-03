@@ -2,8 +2,8 @@
 //! name-sorted table plus one SVG blob a set is read from. No SVG parser —
 //! the facts a definition carries are surveyed in `svg_facts`.
 
+use crate::common::span::Span;
 use crate::icons::svg_facts::SvgFacts;
-use crate::primitives::span::Span;
 use glam::Vec2;
 use std::borrow::Cow;
 

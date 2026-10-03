@@ -2,12 +2,12 @@
 //! each input step as ephemeral [`ScrollBounds`] rather than becoming
 //! another retained widget-state copy.
 
-use crate::layout::axis::Axis;
-use crate::layout::scrollbars::bar_geometry::BarGeometry;
-use crate::primitives::approx;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::translate_scale::TranslateScale;
+use crate::layout::drivers::scrollbars::bar_geometry::BarGeometry;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::math::approx;
 use glam::Vec2;
 
 /// Where a viewport is scrolled to, and the interaction state that moves

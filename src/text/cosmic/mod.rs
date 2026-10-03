@@ -20,9 +20,9 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use crate::primitives::content_type::ContentType;
-use crate::primitives::num::F32Px;
-use crate::primitives::raster_image::RasterImage;
+use crate::primitives::math::num::F32Px;
+use crate::primitives::paint::content_type::ContentType;
+use crate::primitives::paint::raster_image::RasterImage;
 use crate::text::cosmic::cache_entry::CachedExtent;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;

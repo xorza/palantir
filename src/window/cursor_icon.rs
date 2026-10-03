@@ -1,6 +1,6 @@
 //! The pointer shape a widget asks the host to show.
 
-use crate::layout::axis::Axis;
+use crate::primitives::layout::axis::Axis;
 
 /// The mouse cursor a widget wants shown this frame, requested through
 /// [`Ui::set_cursor`](crate::Ui::set_cursor). Backend-agnostic subset of

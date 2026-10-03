@@ -3,14 +3,14 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::text::font_scope::internals::INTER;
 use crate::ui::tests::support::SURFACE;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 
@@ -19,7 +19,7 @@ use glam::{UVec2, Vec2};
 /// that moves an arranged rect — re-runs it.
 #[test]
 fn cascade_skip_fires_on_unchanged_reruns_on_change() {
-    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::layout::sizing::Sizing;
 
     fn build(ui: &mut Ui, w: f32) {
         Block::new()
@@ -71,8 +71,8 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
 /// `widgets::scroll::tests::cascade_skip_busts_on_scroll_offset_change`.
 #[test]
 fn the_key_covers_authoring_input_classes() {
-    use crate::layout::types::clip_mode::ClipMode;
-    use crate::scene::visibility::Visibility;
+    use crate::primitives::layout::clip_mode::ClipMode;
+    use crate::primitives::layout::visibility::Visibility;
 
     fn probe(ui: &mut Ui, cfg: impl FnOnce(Block) -> Block) {
         cfg(Block::new().id(WidgetId::from_hash("probe")).size(50.0)).show(ui);

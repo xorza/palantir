@@ -1,7 +1,7 @@
 //! Internal renderer work selected after scene damage classification.
 
-use crate::primitives::color::RgbaF32;
-use crate::scene::damage::Damage;
+use crate::damage::Damage;
+use crate::primitives::paint::color::RgbaF32;
 
 /// WindowDriver-facing render plan, present only when there's actual render
 /// work this frame — `FrameReport.plan = None` is the skip signal, so neither

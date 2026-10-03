@@ -11,15 +11,15 @@
 //! this needs — and the magenta stroke — leave the release build with
 //! it instead of becoming dead weight behind `#[cfg]`s.
 
+use crate::cascade::Cascade;
 use crate::layout::Layout;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::corners::Corners;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
-use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 
 /// Magenta — distinct from the opt-in red damage-rect overlay. Painted

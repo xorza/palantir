@@ -1,8 +1,8 @@
 //! [`LayerScope`] — the builder [`Ui::layer`] hands out.
 
-use crate::layout::types::anchor::Anchor;
-use crate::layout::types::placement::Placement;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::layout::placement::Placement;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;

@@ -3,18 +3,18 @@
 pub(crate) mod click_outside;
 
 use crate::input::sense::Sense;
-use crate::layout::types::anchor::Anchor;
-use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
+use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::overlay_response::OverlayResponse;
-use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::popup::click_outside::ClickOutside;
-use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// A side-layer container placed relative to a screen-space anchor.
@@ -124,7 +124,7 @@ impl Popup {
     }
 
     /// Chrome to fall back on when the caller set none — the `Popup`
-    /// peer of [`ThemeDefaults::default_padding`](crate::widgets::configure::ThemeDefaults::default_padding),
+    /// peer of [`ThemeDefaults::default_padding`](crate::widget_core::configure::ThemeDefaults::default_padding),
     /// since chrome is a field here rather than on the node.
     ///
     /// Takes a borrow so a wrapper's themed panel is cloned only where

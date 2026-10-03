@@ -1,5 +1,6 @@
 use crate::FocusPolicy;
 use crate::KeyFilter;
+use crate::cascade::Cascade;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::input_state::tests::{
@@ -9,14 +10,13 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascade;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::visibility::Visibility;
 use crate::scene::layer::Layer;
-use crate::scene::visibility::Visibility;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {

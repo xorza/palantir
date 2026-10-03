@@ -1,8 +1,8 @@
 //! The seam between a registered image's CPU lifecycle and the textures
 //! behind it.
 
-use crate::primitives::image::Image;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::image::Image;
 use std::fmt::Debug;
 
 /// Where a registered image's texels go.

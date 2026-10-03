@@ -6,7 +6,7 @@
 //!    (the `any_mask` short-circuit gates the push);
 //!  * pre-record clear drops stale watches.
 use crate::input::input_state::tests::{Stream, sample_layers};
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
 
 use crate::KeyFilter;
 use crate::Ui;
@@ -18,14 +18,14 @@ use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::PointerWake;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

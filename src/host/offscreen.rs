@@ -2,7 +2,7 @@
 //! [`WinitHost`](crate::WinitHost). Both build on the same [`HostCore`]: one
 //! [`UiResources`](crate::ui::resources::UiResources), one
 //! [`Frontend`](crate::renderer::frontend::Frontend), one
-//! [`WgpuBackend`](crate::gpu::WgpuBackend), and one
+//! [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend), and one
 //! [`WindowDriver`]. Unlike `WinitHost` there's no winit and no swapchain —
 //! the driver renders into a caller-supplied [`RenderTarget`].
 //! [`OffscreenHost::frame`] accepts the same [`App`] lifecycle as
@@ -41,14 +41,14 @@ use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
-use crate::gpu::render_target::RenderTarget;
-use crate::gpu::requested_gpu::Gpu;
+use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::Clock;
 use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::input::input_event::InputEvent;
-use crate::input::response::input_delta::InputDelta;
-use crate::primitives::approx::EPS;
+use crate::input::interaction::input_delta::InputDelta;
+use crate::primitives::math::approx::EPS;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -338,7 +338,7 @@ impl OffscreenHost {
 /// because the first two call `internals`-gated `WgpuBackend` helpers.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use crate::gpu::render_target::TargetFormat;
+    use crate::gpu::surface::render_target::TargetFormat;
     use crate::host::offscreen::OffscreenHost;
     #[cfg(feature = "bench")]
     use crate::renderer::render_buffer::RenderBuffer;
@@ -382,10 +382,10 @@ mod tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::PresentPath;
     use crate::internals::record_app::RecordApp;
-    use crate::primitives::background::Background;
-    use crate::primitives::color::RgbaF32;
+    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
-    use crate::widgets::configure::Configure;
     use glam::UVec2;
 
     /// The CPU half leaves a frame's output pending and the GPU half

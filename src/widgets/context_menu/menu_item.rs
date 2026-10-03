@@ -1,21 +1,21 @@
 //! One activatable row inside a context menu.
 
-use crate::input::response::button_phase::ButtonPhase;
+use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
-use crate::layout::types::align::{Align, HAlign};
-use crate::layout::types::justify::Justify;
-use crate::primitives::text_input::TextInput;
+use crate::primitives::layout::align::{Align, HAlign};
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::text::text_input::TextInput;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::context_menu::menu_separator::MenuSeparator;
-use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::widget::Widget;
 
 /// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu). Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports

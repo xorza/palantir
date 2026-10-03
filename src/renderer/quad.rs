@@ -3,10 +3,12 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
 
 /// Half-width of the quad SDF's physical-pixel antialiasing transition.
@@ -60,6 +62,6 @@ pub(crate) struct Quad {
 
 // Layout guards live where the layout is consumed: the compile-time
 // `offset_of!` asserts beside `QUAD_INSTANCE_ATTRS` in
-// `backend/quad_pipeline.rs` pin every field against its vertex
+// `gpu/pipeline/quad_pipeline/mod.rs` pin every field against its vertex
 // attribute, and the `hot_struct_sizes_are_pinned` inventory in
 // `lib.rs` pins the 60/4 footprint.

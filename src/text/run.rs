@@ -8,7 +8,7 @@
 //! a widget needs to place a caret, turn a click into an offset, or paint
 //! a selection.
 
-use crate::layout::types::align::Align;
+use crate::primitives::layout::align::Align;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;

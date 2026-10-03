@@ -1,8 +1,8 @@
 //! One baked-icon draw.
 
 use crate::icons::icon_set::IconRef;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
 /// One baked-icon draw, in logical px.
 ///

@@ -46,6 +46,14 @@ Five passes per frame over a tree rebuilt every frame: **record → measure →
 arrange → cascade → encode + compose + paint**. Colour is linear-RGB f32 on
 the CPU side; sRGB encoding happens on the GPU at swapchain write.
 
+Each pass has one top-level module: `scene` holds what record writes,
+`layout` measures and arranges it, `cascade` derives the tables input and
+paint read, `damage` decides what repaints, `renderer` encodes and
+composes, and `gpu` paints. `layout`, `cascade` and `damage` each keep their
+result type in `mod.rs` and their engine in `engine.rs`.
+`primitives` is the value vocabulary below all of them, `widget_core` the
+framework the bundled `widgets` are written on.
+
 Read `benches/AGENTS.md` before measuring or reaching for `perf`: it holds the
 A/B protocol and the traps that cost a wasted capture each.
 
@@ -79,7 +87,7 @@ A change a user can see ends with a look at `cargo run --example showcase`.
 
 ## Non-shipping code
 
-Code that does not ship has three homes, apart from a file's own
+Code that does not ship has four homes, apart from a file's own
 `#[cfg(test)] mod tests` and the helpers only that module uses.
 
 - **`internals` at the end of a file** — a reach-in: test or bench code
@@ -95,6 +103,9 @@ Code that does not ship has three homes, apart from a file's own
   rather than a reach-in goes here, never among production modules.
 - **`bench.rs`** beside the code it measures, under `feature = "bench"`,
   reached through the `bench` facade in `src/lib.rs`.
+- **`crate::golden`** (`src/golden/`) — golden-image comparison, under
+  `feature = "golden"`. It is public API rather than a reach-in, because
+  suites outside this crate that draw through Palantir use it too.
 
 Visibility says who reaches in: `pub` when code outside the crate calls it
 (`tests/visual`, `tests/alloc`, the showcase, `benches/`), `pub(crate)` when

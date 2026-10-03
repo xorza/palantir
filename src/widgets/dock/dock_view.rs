@@ -1,13 +1,15 @@
 //! The dock widget: the split walk, one strip-over-content pane per
 //! group, and the drag-docking gesture.
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_op::DockOp;
@@ -18,14 +20,12 @@ use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::split_side::SplitDir;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::panel::Panel;
-use crate::widgets::response::Response;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
 use crate::widgets::theme::dock::DockTheme;
-use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use std::rc::Rc;
 

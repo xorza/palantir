@@ -1,17 +1,17 @@
 //! The determinate progress bar: a rounded track with an accent fill
 //! sized to a 0..1 fraction.
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::num::F32Ext;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
-use crate::widgets::widget::Widget;
 
 /// Determinate progress bar: a rounded `track` with an accent fill
 /// spanning `fraction` (clamped to `0..=1`) of its width.

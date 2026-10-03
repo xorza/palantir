@@ -6,15 +6,15 @@
 //! [`Ui::probe_text`](crate::Ui::probe_text), never by the shaping hot path.
 //! Placing a measured block inside its leaf rect is plain box alignment with
 //! no text state, so it lives with `Align` as
-//! [`crate::layout::types::align::Align::place_in`].
+//! [`crate::primitives::layout::align::Align::place_in`].
 //!
 //! Nothing shaped escapes `src/text/`: [`TextProbe`] answers in plain
 //! geometry and the cosmic-text buffer behind it stays private to this file.
 
 use crate::common::hash;
-use crate::layout::types::align::HAlign;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::key::TextShapeKey;
 use crate::text::shaper::ShaperInner;

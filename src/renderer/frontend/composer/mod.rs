@@ -134,7 +134,7 @@ struct GroupCursors {
 struct OpenBatch {
     /// Cursor into `out.texts` where this batch's run span begins.
     /// Combined with `out.texts.len()` at close-time to compute the
-    /// finalized [`Span`](crate::primitives::span::Span).
+    /// finalized [`Span`](crate::common::span::Span).
     ///
     /// Recorded rather than derived from the previous batch's span end,
     /// which it always equals. Deriving it would make the two agree by

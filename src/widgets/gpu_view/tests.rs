@@ -1,20 +1,20 @@
 use super::*;
 use crate::internals::harness::UiHarness;
 
+use crate::damage::Damage;
+use crate::damage::region::DamageRegion;
 use crate::input::sense::Sense;
-use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::gpu_paint::gpu_paint_ref::internals::NoopPaint;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
-use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::image_source::ImageSource;
-use crate::scene::shapes::record::ShapeRecord;
-use crate::widgets::configure::Configure;
+use crate::shape::paint::image_source::ImageSource;
+use crate::shape::record::ShapeRecord;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 

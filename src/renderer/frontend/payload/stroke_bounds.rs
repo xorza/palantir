@@ -1,7 +1,7 @@
 //! A stroked shape's cull bound, and the spin it may carry — shared by
 //! the polyline and curve payloads.
 
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
 use glam::Vec2;
 
 /// Where a stroked shape rotates, for the shapes that do.

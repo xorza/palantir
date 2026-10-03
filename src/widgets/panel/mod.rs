@@ -1,13 +1,13 @@
 //! The container widget — every stack, wrap and canvas layout an app
 //! reaches for, over the one node the layout drivers dispatch on.
 
-use crate::primitives::background::Background;
+use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::response::InnerResponse;
-use crate::widgets::widget::Widget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::InnerResponse;
+use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -118,7 +118,7 @@ impl Configure for Panel {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::layout::axis::Axis;
+    use crate::primitives::layout::axis::Axis;
     use crate::widgets::panel::Panel;
 
     impl Panel {

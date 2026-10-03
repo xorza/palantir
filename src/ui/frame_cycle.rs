@@ -22,23 +22,23 @@
 //! question — does the user closure re-assert it?
 
 use crate::app::App;
+use crate::cascade::cascade_key::CascadeKey;
 use crate::common::tracy;
+use crate::damage::engine::DamageInput;
+use crate::damage::frame_baseline::FrameBaseline;
 use crate::diagnostics::frame_stats;
 use crate::display;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade::cascade_key::CascadeKey;
-use crate::scene::damage::engine::DamageInput;
-use crate::scene::damage::frame_baseline::FrameBaseline;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
 use crate::ui::frame_stamp::FrameInput;
-use crate::widgets::configure::Configure;
-use crate::widgets::widget::Widget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 

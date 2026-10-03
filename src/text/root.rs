@@ -56,7 +56,7 @@ const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape:
 #[cfg(test)]
 pub(crate) mod internals {
     use super::*;
-    use crate::primitives::size::Size;
+    use crate::primitives::geometry::size::Size;
     use crate::text::key::TextShapeKey;
 
     /// Shaping result as the in-tree tests read it: the measurement plus

@@ -1,17 +1,17 @@
 //! What a colour picker wears: the surfaces it paints, the handle that rides
 //! them, and the checker behind anything translucent.
 
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
+use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Visuals and geometry for [`crate::ColorPicker`] and the four widgets it
 /// arranges — [`crate::ColorField`], [`crate::ColorStrip`],
@@ -26,25 +26,25 @@ use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px. Also the width of the
     /// bars and of the panel's rows.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub field_width: f32,
     /// Saturation/value field height in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub field_height: f32,
     /// Hue and alpha bar height in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub bar_thickness: f32,
     /// Side of the preview chip beside the bars, in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub chip_size: f32,
     /// Side of one swatch in the preset row, in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub swatch_size: f32,
     /// Radius of the ring marking the field's position, in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub handle_radius: f32,
     /// Stroke width of each of the handle's two rings, in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub handle_width: f32,
     /// Outer ring of every handle. Dark, and **not** a palette colour: a
     /// handle sits on top of every colour the field can show, so one taken
@@ -57,16 +57,16 @@ pub struct ColorPickerTheme {
     /// Dark square of the same checker.
     pub checker_dark: RgbaF32,
     /// Side of one checker square in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::positive")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::positive")]
     pub checker_cell: f32,
     /// Hairline around the chip and each swatch, so a white colour still
     /// reads as a shape against a light panel.
     pub border: RgbaF32,
     /// Width of that hairline in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub border_width: f32,
     /// Gap between the panel's rows and between swatches, in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
     /// [`Palette::popup_panel`], the same as a menu's and a combo list's, so a

@@ -11,7 +11,7 @@ use crate::text::font_scope::internals::{INTER, MONO};
 use crate::text::font_slant::FontSlant;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::resources::UiResources;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use glam::UVec2;

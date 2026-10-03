@@ -2,8 +2,11 @@
 //! a join is chosen, and how a logical rectangle lands on physical pixels.
 
 use crate::display::Display;
-use crate::primitives::approx::EPS;
-use crate::primitives::{num::F32Px, rect::Rect, translate_scale::TranslateScale, urect::URect};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::approx::EPS;
+use crate::primitives::math::num::F32Px;
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, SEGMENTS_PER_INSTANCE,

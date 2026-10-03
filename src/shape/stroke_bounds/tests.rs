@@ -1,4 +1,4 @@
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
 use crate::shape::stroke_bounds;
 use crate::shape::style::{LineCap, LineJoin};
 

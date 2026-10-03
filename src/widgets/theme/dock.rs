@@ -1,14 +1,14 @@
 //! What a dock paints that a tab strip does not: the drop preview, the
 //! insertion caret, and the chip trailing the pointer.
 
-use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
+use crate::widget_core::widget_look::WidgetLook;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`] — and only for what is dock-specific.
@@ -24,22 +24,22 @@ pub struct DockTheme {
     /// Outline around that region.
     pub preview_stroke: Stroke,
     /// Corner radius of the preview.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub preview_corner: f32,
     /// Breadth of the insertion mark drawn between two chips.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub caret_width: f32,
     /// The chip trailing the pointer while a tab is dragged.
     pub ghost: WidgetLook,
     /// Inset between the ghost chip's edges and its label.
     pub ghost_padding: Spacing,
     /// Where the ghost chip sits relative to the pointer.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::finite2")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite2")]
     pub ghost_offset: Vec2,
     /// How far in from each edge the split wedges reach, as a fraction
     /// of the pane's content rect. `0.25` leaves the inner half as the
     /// join zone.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::fraction")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
     pub edge_fraction: f32,
 }
 

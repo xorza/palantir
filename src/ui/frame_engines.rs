@@ -1,9 +1,9 @@
 //! [`FrameEngines`] — the incremental machinery one window's frame loop
 //! drives, held by the driver rather than by the recorder it drives.
 
+use crate::cascade::engine::CascadeEngine;
+use crate::damage::engine::DamageEngine;
 use crate::layout::engine::LayoutEngine;
-use crate::scene::cascade::engine::CascadeEngine;
-use crate::scene::damage::engine::DamageEngine;
 use crate::ui::resources::UiResources;
 
 /// The three engines [`FrameCycle`](crate::ui::frame_cycle::FrameCycle) runs

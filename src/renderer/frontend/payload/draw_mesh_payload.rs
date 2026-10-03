@@ -1,7 +1,7 @@
 //! One indexed-triangle mesh draw.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::rect::Rect;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::Vec2;
 
 /// Mesh draw payload. Vertex/index data lives in the window's

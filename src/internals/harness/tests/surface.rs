@@ -2,7 +2,7 @@
 
 use crate::internals::harness::tests::support::{SURFACE, button};
 use crate::internals::harness::*;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 use crate::ui::frame_report::FramePaint;
 
 #[test]

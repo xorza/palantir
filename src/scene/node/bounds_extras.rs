@@ -1,8 +1,8 @@
 //! The per-node placement column: explicit position, cell, and size bounds.
 
-use crate::layout::types::grid_cell::GridCell;
-use crate::primitives::approx::{self, FloatHash};
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::grid_cell::GridCell;
+use crate::primitives::math::approx::{self, FloatHash};
 use glam::Vec2;
 use std::hash::Hash;
 

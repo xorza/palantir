@@ -16,7 +16,7 @@
 //! equal therefore means the two encodes agreed on every painted
 //! operation, in order.
 
-use crate::primitives::translate_scale::TranslateScale;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;

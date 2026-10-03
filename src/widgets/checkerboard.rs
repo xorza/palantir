@@ -1,10 +1,10 @@
 //! The checkerboard a translucent colour is read against.
 
-use crate::primitives::color::RgbaF32;
-use crate::primitives::num::F32Ext;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::color_picker::ColorPickerTheme;

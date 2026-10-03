@@ -3,7 +3,7 @@
 use glam::UVec2;
 use std::fmt::{Display, Formatter};
 
-/// Why an [`Image`](crate::primitives::image::Image) could not be loaded
+/// Why an [`Image`](crate::primitives::paint::image::Image) could not be loaded
 /// for GPU upload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ImageLoadError {

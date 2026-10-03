@@ -1,13 +1,13 @@
 //! The WPF-style grid: explicit row and column tracks, with each child
 //! placed into a cell it names.
 
-use crate::layout::types::track::Track;
-use crate::primitives::background::Background;
+use crate::primitives::layout::track::Track;
+use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::InnerResponse;
-use crate::widgets::widget::Widget;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::InnerResponse;
+use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
@@ -107,8 +107,8 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 #[cfg(test)]
 mod tests {
     use super::Grid;
-    use crate::layout::types::limits::MAX_PACKED_GAP;
-    use crate::widgets::configure::Configure;
+    use crate::primitives::layout::limits::MAX_PACKED_GAP;
+    use crate::widget_core::configure::Configure;
 
     /// A grid's spacing is the node column every other container uses,
     /// so it is set through the same two setters; the packed-gap range

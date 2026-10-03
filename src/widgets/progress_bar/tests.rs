@@ -1,9 +1,9 @@
 use crate::internals::harness::UiHarness;
 use crate::internals::harness::size_trio::SizeTrio;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 
-use crate::layout::types::sizing::Sizing;
-use crate::widgets::configure::Configure;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::progress_bar::ProgressBar;
 use glam::UVec2;
 

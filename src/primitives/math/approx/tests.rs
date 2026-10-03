@@ -1,0 +1,310 @@
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::approx::{
+    EPS, FloatHash, approx_zero, canon_bits, paints_nothing, share_of, vec2_approx_eq,
+};
+use glam::Vec2;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher as _;
+
+fn finish_hash(write: impl FnOnce(&mut DefaultHasher)) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    write(&mut hasher);
+    hasher.finish()
+}
+
+/// **The NaN audit.** Every *paint* no-op predicate — "would this
+/// put down a texel" — must answer `true` for a NaN anywhere in its
+/// inputs, because a NaN that survives the gate goes on to poison a
+/// bbox, a damage rect, or a shader lane, and does it silently.
+///
+/// Deliberately excluded are the predicates that ask a *different*
+/// question: `approx_zero`, `Size::approx_zero`, `Rect::approx_zero`,
+/// `Corners::approx_zero`, and `TranslateScale::is_identity` all mean "is
+/// this value ≈ this constant", and they gate **fast paths**, not
+/// paint. Answering `true` there would route a NaN *into* the sharp /
+/// identity shortcut instead of away from it — the opposite of safe.
+/// They are covered by the shape-level gate instead, which drops a
+/// NaN before any of them is ever reached.
+#[test]
+fn every_paint_noop_predicate_treats_nan_as_invisible() {
+    use crate::primitives::geometry::mesh::Mesh;
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::paint::brush::Brush;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::shape::paint::lowered_shadow::LoweredShadow;
+    use crate::shape::paint::shape_stroke::ShapeStroke;
+    use glam::Vec2;
+
+    const N: f32 = f32::NAN;
+    let nan_color = RgbaF32::srgba(0.0, 0.0, 0.0, N);
+    let mut nan_mesh = Mesh::new();
+    nan_mesh.vertex(Vec2::new(N, 0.0), RgbaF32::WHITE);
+    nan_mesh.vertex(Vec2::ZERO, RgbaF32::WHITE);
+    nan_mesh.vertex(Vec2::X, RgbaF32::WHITE);
+    nan_mesh.triangle(0, 1, 2);
+
+    let cases: &[(&str, bool)] = &[
+        ("paints_nothing", paints_nothing(N)),
+        ("Size::is_paint_empty/w", Size::new(N, 4.0).is_paint_empty()),
+        ("Size::is_paint_empty/h", Size::new(4.0, N).is_paint_empty()),
+        (
+            "Rect::is_paint_empty/size",
+            Rect::new(0.0, 0.0, N, 4.0).is_paint_empty(),
+        ),
+        (
+            "Rect::is_paint_empty/min",
+            Rect::new(N, 0.0, 4.0, 4.0).is_paint_empty(),
+        ),
+        ("RgbaF32::is_noop", nan_color.is_noop()),
+        ("RgbaF16::is_noop", RgbaF16::from(nan_color).is_noop()),
+        (
+            "Stroke::is_noop/width",
+            Stroke::new(RgbaF32::WHITE, N).is_noop(),
+        ),
+        (
+            "Stroke::is_noop/color",
+            Stroke::new(nan_color, 2.0).is_noop(),
+        ),
+        (
+            "ShapeStroke::is_noop/width",
+            ShapeStroke::from(Stroke::new(RgbaF32::WHITE, N)).is_noop(),
+        ),
+        (
+            "ShapeStroke::is_noop/color",
+            ShapeStroke::from(Stroke::new(nan_color, 2.0)).is_noop(),
+        ),
+        ("Brush::is_noop", Brush::Solid(nan_color).is_noop()),
+        (
+            "Shadow::is_noop/color",
+            Shadow {
+                color: nan_color,
+                ..Shadow::default()
+            }
+            .is_noop(),
+        ),
+        (
+            "Shadow::is_noop/blur",
+            Shadow {
+                color: RgbaF32::WHITE,
+                blur: N,
+                ..Shadow::default()
+            }
+            .is_noop(),
+        ),
+        (
+            "Shadow::is_noop/offset",
+            Shadow {
+                color: RgbaF32::WHITE,
+                offset: Vec2::new(N, 0.0),
+                ..Shadow::default()
+            }
+            .is_noop(),
+        ),
+        (
+            "Shadow::is_noop/spread",
+            Shadow {
+                color: RgbaF32::WHITE,
+                spread: N,
+                ..Shadow::default()
+            }
+            .is_noop(),
+        ),
+        ("Mesh::is_noop", nan_mesh.is_noop()),
+        // The convenience constructors pre-cache their own bbox
+        // instead of routing through `Mesh::vertex`, so they need
+        // covering separately — a bare fold there is how a NaN
+        // vertex reaches the shader with a finite box.
+        (
+            "Mesh::filled_triangle/is_noop",
+            Mesh::filled_triangle(Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, RgbaF32::WHITE).is_noop(),
+        ),
+        (
+            "Mesh::filled_polygon/is_noop",
+            Mesh::filled_polygon(
+                &[Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Vec2::Y],
+                RgbaF32::WHITE,
+            )
+            .is_noop(),
+        ),
+        // Chrome has no record-level gate to fall back on — it does
+        // not pass through `Shapes::add` — so these four are the
+        // only thing standing between a NaN `Background` and the
+        // shader.
+        (
+            "RgbaF16::is_noop/red",
+            RgbaF16::from(RgbaF32::srgba(N, 0.0, 0.0, 1.0)).is_noop(),
+        ),
+        (
+            "RgbaF32::is_noop/red",
+            RgbaF32::srgba(N, 0.0, 0.0, 1.0).is_noop(),
+        ),
+        (
+            "LoweredShadow::is_noop/blur",
+            LoweredShadow::from(Shadow {
+                color: RgbaF32::WHITE,
+                blur: N,
+                ..Shadow::default()
+            })
+            .is_noop(),
+        ),
+        (
+            "LoweredShadow::is_noop/offset",
+            LoweredShadow::from(Shadow {
+                color: RgbaF32::WHITE,
+                offset: Vec2::new(N, 0.0),
+                ..Shadow::default()
+            })
+            .is_noop(),
+        ),
+    ];
+
+    let missed: Vec<&str> = cases
+        .iter()
+        .filter(|(_, is_noop)| !is_noop)
+        .map(|(label, _)| *label)
+        .collect();
+    assert!(
+        missed.is_empty(),
+        "these paint no-op predicates let a NaN through: {missed:?}",
+    );
+}
+
+#[test]
+fn approx_zero_handles_boundary_sign_and_nan() {
+    let cases: &[(&str, f32, bool)] = &[
+        ("exact_zero", 0.0, true),
+        ("neg_zero", -0.0, true),
+        ("at_eps", EPS, true),
+        ("at_neg_eps", -EPS, true),
+        ("just_above_eps", EPS * 1.1, false),
+        ("just_below_neg_eps", -EPS * 1.1, false),
+        ("nan", f32::NAN, false),
+    ];
+    for (label, v, want) in cases {
+        assert_eq!(approx_zero(*v), *want, "case: {label}");
+    }
+}
+
+#[test]
+fn exact_hash_helpers_collapse_only_signed_zero() {
+    let positive = Rect::new(0.0, 0.0, 0.0, 0.0);
+    let negative = Rect::new(-0.0, -0.0, -0.0, -0.0);
+    let sub_eps = Rect::new(EPS * 0.5, 0.0, 0.0, 0.0);
+
+    assert_eq!(
+        finish_hash(|h| positive.hash_eq(h)),
+        finish_hash(|h| negative.hash_eq(h)),
+    );
+    assert_ne!(
+        finish_hash(|h| positive.hash_eq(h)),
+        finish_hash(|h| sub_eps.hash_eq(h)),
+    );
+}
+
+#[test]
+fn visual_hash_helpers_collapse_zero_noise_and_nan_payloads() {
+    let zero = Rect::ZERO;
+    let sub_eps = Rect::new(EPS * 0.5, -EPS * 0.5, EPS, -EPS);
+    assert_eq!(
+        finish_hash(|h| zero.hash_visual(h)),
+        finish_hash(|h| sub_eps.hash_visual(h)),
+    );
+
+    let nan_a = f32::from_bits(0x7fc0_0001);
+    let nan_b = f32::from_bits(0x7fc0_0002);
+    assert_eq!(canon_bits(nan_a), canon_bits(nan_b));
+    assert_eq!(
+        finish_hash(|h| nan_a.hash_visual(h)),
+        finish_hash(|h| nan_b.hash_visual(h)),
+    );
+}
+
+/// A share of a collapsed divisor is nothing, not a huge number: zero,
+/// sub-`EPS` and negative divisors all answer 0. Above the floor it is the
+/// plain quotient.
+#[test]
+fn share_of_answers_zero_for_a_collapsed_divisor() {
+    for (label, n, d, want) in [
+        ("plain", 3.0, 4.0, 0.75),
+        ("whole", 5.0, 5.0, 1.0),
+        ("zero divisor", 3.0, 0.0, 0.0),
+        ("sub-eps divisor", 3.0, EPS * 0.5, 0.0),
+        ("negative divisor", 3.0, -4.0, 0.0),
+    ] {
+        assert_eq!(share_of(n, d), want, "{label}");
+    }
+}
+
+/// Two points coincide within `EPS` of Euclidean distance, inclusive.
+/// Measured from the origin so the offsets are exact: `EPS` on one axis
+/// is on the boundary, and `EPS` on both is √2 · `EPS` away.
+#[test]
+fn vec2_approx_eq_is_euclidean_and_inclusive() {
+    for (label, b, want) in [
+        ("same", Vec2::ZERO, true),
+        ("half eps on x", Vec2::new(EPS * 0.5, 0.0), true),
+        ("one eps on y", Vec2::new(0.0, EPS), true),
+        ("two eps on x", Vec2::new(EPS * 2.0, 0.0), false),
+        ("eps on both axes", Vec2::splat(EPS), false),
+        ("half eps on both axes", Vec2::splat(EPS * 0.5), true),
+    ] {
+        assert_eq!(vec2_approx_eq(Vec2::ZERO, b), want, "{label}");
+        assert_eq!(vec2_approx_eq(b, Vec2::ZERO), want, "{label}: swapped");
+    }
+}
+
+/// Every `FloatHash` type hashes `0.0` and `-0.0` alike, since it
+/// compares them equal — the `Hash` / `Eq` agreement a map relies on.
+/// Through `hash_eq` for the two foreign types, and through `Hash` for
+/// the crate's own.
+#[test]
+fn signed_zeros_hash_alike_for_every_float_hash_type() {
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::layout::sizing::{SizeSpec, Sizing};
+    use crate::primitives::layout::track::Track;
+    use crate::primitives::paint::color::RgbaF32;
+    use std::fmt::Debug;
+    use std::hash::Hash;
+
+    #[track_caller]
+    fn agree<T: Hash + PartialEq + Debug>(positive: T, negative: T) {
+        assert_eq!(positive, negative);
+        assert_eq!(
+            finish_hash(|h| positive.hash(h)),
+            finish_hash(|h| negative.hash(h)),
+            "{positive:?}",
+        );
+    }
+
+    assert_eq!(
+        finish_hash(|h| 0.0_f32.hash_eq(h)),
+        finish_hash(|h| (-0.0_f32).hash_eq(h)),
+        "f32",
+    );
+    assert_eq!(
+        finish_hash(|h| Vec2::ZERO.hash_eq(h)),
+        finish_hash(|h| Vec2::splat(-0.0).hash_eq(h)),
+        "Vec2",
+    );
+    agree(Size::new(0.0, 0.0), Size::new(-0.0, -0.0));
+    agree(
+        Rect::new(0.0, 0.0, 0.0, 0.0),
+        Rect::new(-0.0, -0.0, -0.0, -0.0),
+    );
+    agree(
+        RgbaF32::new(0.0, 0.0, 0.0, 0.0),
+        RgbaF32::new(-0.0, -0.0, -0.0, -0.0),
+    );
+    agree(Sizing::fixed(0.0), Sizing::fixed(-0.0));
+    agree(
+        SizeSpec::new(Sizing::fixed(0.0), Sizing::HUG),
+        SizeSpec::new(Sizing::fixed(-0.0), Sizing::HUG),
+    );
+    agree(
+        Track::new(Sizing::fixed(0.0)).min(0.0),
+        Track::new(Sizing::fixed(-0.0)).min(-0.0),
+    );
+}

@@ -1,13 +1,13 @@
 //! What one row's texels come out as: interpolation space, stop order, and
 //! edge clamping.
 
-use crate::primitives::approx;
-use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::RgbaF32;
-use crate::primitives::color::oklab;
-use crate::primitives::color::rgba_f16::RgbaF16;
+use crate::primitives::math::approx;
+use crate::primitives::paint::brush::gradient::Interp;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::oklab;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;

@@ -1,0 +1,223 @@
+//! What fills a shape: a solid colour or a gradient.
+//!
+//! **Where colours blend, they blend premultiplied.** Every interpolation
+//! between two colours — a gradient's stops (in linear light, or Oklab
+//! under [`Interp::Oklab`](crate::Interp)), a mesh's vertex colours, a
+//! polyline's per-point colours and the average its joins paint — weighs
+//! each colour by its alpha first, the rule CSS Color 4 §12.3 sets for
+//! gradients. A fade from opaque white to transparent black is therefore
+//! white at half alpha midway: the transparent end's hue contributes
+//! nothing, rather than darkening the blend.
+
+pub(crate) mod gradient;
+
+use crate::animation::animatable::Animatable;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::gradient::conic_geometry::{
+    ConicGradient, ConicGradientBuilder,
+};
+use crate::primitives::paint::brush::gradient::linear_geometry::{
+    LinearGradient, LinearGradientBuilder,
+};
+use crate::primitives::paint::brush::gradient::radial_geometry::{
+    RadialGradient, RadialGradientBuilder,
+};
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+
+/// Paint source for gradient-capable fills.
+///
+/// `Solid(RgbaF32)` is the hot 99% path — 16 B inline, animation-lerpable.
+/// `Linear`/`Radial`/`Conic` carry their geometry plus a
+/// [`GradientStops`](crate::GradientStops) array inline, which
+/// is what sizes the whole enum; gradient morph animations snap across
+/// variants and across distinct gradients of the same variant.
+// `Brush` is intentionally **not `Copy`**: the gradient variants carry
+// 40 B of inline stops, and the recording chain threads it (usually
+// inside a `Background`) through three or four functions per chromed
+// widget. `animation::animatable::Animatable` states the argument once
+// for all three types it applies to.
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+pub enum Brush {
+    /// One colour everywhere.
+    Solid(RgbaF32),
+    /// A gradient along a line.
+    Linear(LinearGradient),
+    /// A gradient out from a centre.
+    Radial(RadialGradient),
+    /// A gradient around a centre.
+    Conic(ConicGradient),
+}
+
+impl Brush {
+    /// Paints nothing. The identity a fill falls back to.
+    pub const TRANSPARENT: Self = Self::Solid(RgbaF32::TRANSPARENT);
+
+    /// Paints nothing visible.
+    #[inline]
+    pub fn is_noop(&self) -> bool {
+        match self {
+            Brush::Solid(c) => c.is_noop(),
+            Brush::Linear(g) => g.is_noop(),
+            Brush::Radial(g) => g.is_noop(),
+            Brush::Conic(g) => g.is_noop(),
+        }
+    }
+
+    /// Extracts the underlying `RgbaF32` for the solid fast path. Returns
+    /// `None` for gradient variants. Takes `&self` so callers with a borrowed
+    /// `Brush` don't need to clone just to pull out the solid color.
+    #[inline]
+    pub const fn as_solid(&self) -> Option<RgbaF32> {
+        match self {
+            Brush::Solid(c) => Some(*c),
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
+        }
+    }
+}
+
+impl Default for Brush {
+    #[inline]
+    fn default() -> Self {
+        Brush::TRANSPARENT
+    }
+}
+
+impl From<RgbaF32> for Brush {
+    #[inline]
+    fn from(c: RgbaF32) -> Self {
+        Brush::Solid(c)
+    }
+}
+
+impl From<SrgbaU8> for Brush {
+    #[inline]
+    fn from(color: SrgbaU8) -> Self {
+        Brush::Solid(color.into())
+    }
+}
+
+impl From<LinearGradient> for Brush {
+    #[inline]
+    fn from(gradient: LinearGradient) -> Self {
+        Brush::Linear(gradient)
+    }
+}
+
+impl From<LinearGradientBuilder> for Brush {
+    #[inline]
+    fn from(builder: LinearGradientBuilder) -> Self {
+        Brush::Linear(builder.build())
+    }
+}
+
+impl From<RadialGradient> for Brush {
+    #[inline]
+    fn from(gradient: RadialGradient) -> Self {
+        Brush::Radial(gradient)
+    }
+}
+
+impl From<RadialGradientBuilder> for Brush {
+    #[inline]
+    fn from(builder: RadialGradientBuilder) -> Self {
+        Brush::Radial(builder.build())
+    }
+}
+
+impl From<ConicGradient> for Brush {
+    #[inline]
+    fn from(gradient: ConicGradient) -> Self {
+        Brush::Conic(gradient)
+    }
+}
+
+impl From<ConicGradientBuilder> for Brush {
+    #[inline]
+    fn from(builder: ConicGradientBuilder) -> Self {
+        Brush::Conic(builder.build())
+    }
+}
+
+impl Animatable for Brush {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        // Match on `(&a, &b)` instead of `(a, b)` so the gradient
+        // fallback can still hand back one of the originals without
+        // re-`Clone` — the tuple-by-value pattern needs `Brush: Copy`,
+        // and the trait requires only `Clone`.
+        match (&a, &b) {
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(RgbaF32::lerp(*x, *y, t)),
+            // Gradient morphs snap until interpolation between gradient payloads exists.
+            _ => {
+                if t >= 1.0 {
+                    b
+                } else {
+                    a
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        match (&self, &other) {
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.sub(*y)),
+            _ => Self::zero(),
+        }
+    }
+
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        match (&self, &other) {
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.add(*y)),
+            _ => self,
+        }
+    }
+
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        match self {
+            Brush::Solid(c) => Brush::Solid(c.scale(k)),
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => Self::zero(),
+        }
+    }
+
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        match self {
+            Brush::Solid(c) => c.magnitude_squared(),
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => 0.0,
+        }
+    }
+
+    #[inline]
+    fn zero() -> Self {
+        Brush::Solid(RgbaF32::zero())
+    }
+
+    #[inline]
+    fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
+        if !matches!((&*self, target), (Brush::Solid(_), Brush::Solid(_))) {
+            if self != target {
+                *self = target.clone();
+            }
+            *velocity = Self::zero();
+        }
+    }
+}
+
+impl NanCheck for Brush {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Solid(color) => color.has_nan(),
+            Self::Linear(gradient) => gradient.has_nan(),
+            Self::Radial(gradient) => gradient.has_nan(),
+            Self::Conic(gradient) => gradient.has_nan(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

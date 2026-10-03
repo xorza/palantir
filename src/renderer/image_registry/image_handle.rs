@@ -1,5 +1,5 @@
-use crate::primitives::image::Image;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::image::Image;
 use crate::renderer::image_registry::ImageRegistry;
 use glam::UVec2;
 use std::cell::Cell;
@@ -108,8 +108,8 @@ impl ImageHandle {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::image::Image;
-    use crate::primitives::texture_id::TextureId;
+    use crate::primitives::identity::texture_id::TextureId;
+    use crate::primitives::paint::image::Image;
     use crate::renderer::image_registry::ImageRegistry;
     use crate::renderer::image_registry::image_handle::ImageHandle;
     use glam::UVec2;

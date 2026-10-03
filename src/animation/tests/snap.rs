@@ -7,10 +7,10 @@ use crate::animation::tests::support::{
     AnimUi, SLOT, closed_form_settle_step, setup_anim_ui, spring_velocity, wid,
 };
 use crate::internals::harness::UiHarness;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::color::RgbaF32;
+use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::configure::Configure;
 use std::time::Duration;
 
 /// Pin: `#[animate(snap)]` fields update on retarget mid-spring, not
@@ -19,10 +19,10 @@ use std::time::Duration;
 /// would only land when the spring snaps to target.
 #[test]
 fn spring_snap_fields_carry_target_immediately() {
-    use crate::primitives::background::Background;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::shadow::Shadow;
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
 
     let mut map = AnimMapTyped::<Background>::default();
     let id = wid("snap-carry");
@@ -65,12 +65,12 @@ fn spring_snap_fields_carry_target_immediately() {
 
 #[test]
 fn gradient_snap_clears_only_its_background_velocity() {
-    use crate::primitives::background::Background;
-    use crate::primitives::brush::Brush;
-    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::shadow::Shadow;
-    use crate::primitives::stroke::Stroke;
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::brush::Brush;
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
 
     let mut map = AnimMapTyped::<Background>::default();
     let id = wid("gradient-background-velocity");
@@ -121,11 +121,11 @@ fn gradient_snap_clears_only_its_background_velocity() {
 
 #[test]
 fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
-    use crate::primitives::background::Background;
-    use crate::primitives::brush::Brush;
-    use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::brush::Brush;
+    use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::widget_core::widget_look::animated_look::AnimatedLook;
     use crate::widgets::theme::text_style::TextStyle;
-    use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
     let AnimUi { mut h, id } = setup_anim_ui("gradient-look-settle");
     let start = AnimatedLook {

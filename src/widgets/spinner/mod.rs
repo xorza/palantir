@@ -1,23 +1,23 @@
 //! The indeterminate activity spinner: a rounded arc that rotates on the
 //! paint clock, so an idle window animates it without recording.
 
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::color::RgbaF32;
-use crate::primitives::num::F32Ext;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::num::F32Ext;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::configure::ThemeDefaults;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
 use crate::widgets::theme::spinner::SpinnerTheme;
-use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::f32::consts::TAU;
 use std::time::Duration;

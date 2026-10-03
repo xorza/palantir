@@ -16,7 +16,7 @@ use winit::window::WindowId;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
-use crate::gpu::surface_manager::{HostGpuConfig, SurfaceManager, SurfaceStartup};
+use crate::gpu::surface::surface_manager::{HostGpuConfig, SurfaceManager, SurfaceStartup};
 use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::config::WinitHostConfig;

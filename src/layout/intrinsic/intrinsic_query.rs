@@ -1,16 +1,16 @@
 //! Which content sizes one intrinsic query asks for, and the walk that
 //! answers it.
 
-use crate::layout::axis::Axis;
-use crate::layout::driver::DriverOp;
+use crate::layout::drivers::DriverOp;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic;
 use crate::layout::intrinsic::IntrinsicOp;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::intrinsic_walk::IntrinsicWalk;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::primitives::interned_text::InternedText;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::text::interned_text::InternedText;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 

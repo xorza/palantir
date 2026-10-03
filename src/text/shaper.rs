@@ -1,6 +1,6 @@
 //! The app-global shaping coordinator every window measures through.
 
-use crate::primitives::size::Size;
+use crate::primitives::geometry::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::error::FontLoadError;
 use crate::text::extent::TextExtent;
@@ -54,7 +54,7 @@ struct Shared {
 
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
 /// Both [`crate::Ui`] (layout-time measurement) and
-/// [`crate::gpu::WgpuBackend`]
+/// [`crate::gpu::wgpu_backend::WgpuBackend`]
 /// (shaping during render) borrow this; the backend reaches the measurer
 /// through [`TextShaper::glyphs`] and reads its clock through
 /// [`TextShaper::frame`].
@@ -401,9 +401,9 @@ impl TextShaper {
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
-    use crate::layout::shaped_text::ShapedText;
+    use crate::layout::text::shaped_text::ShapedText;
     #[cfg(test)]
-    use crate::layout::types::align::Align;
+    use crate::primitives::layout::align::Align;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
     #[cfg(test)]

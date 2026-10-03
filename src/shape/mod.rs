@@ -1,5 +1,7 @@
-//! Authoring shapes: one concrete builder type per paint primitive, each
-//! lowering itself into a `ShapeRecord`.
+//! Shapes from authoring to record: one concrete builder type per paint
+//! primitive, each lowering itself into a [`ShapeRecord`](record::ShapeRecord);
+//! the per-tree [`Shapes`](shapes::Shapes) buffer that holds the records; and
+//! the lowering, hashing and paint-side code over them.
 //!
 //! `private_interfaces` is allowed module-wide: every `impl
 //! sealed::LowerShape` names the crate-private `RecordStore` and
@@ -9,23 +11,28 @@
 #![allow(private_interfaces)]
 
 pub(crate) mod curve;
+pub(crate) mod hash;
 pub(crate) mod icon;
 pub(crate) mod image;
+pub(crate) mod lower;
 pub(crate) mod mesh;
+pub(crate) mod paint;
 pub(crate) mod polyline;
+pub(crate) mod record;
 pub(crate) mod rect;
 pub(crate) mod shadow;
+pub(crate) mod shapes;
 pub(crate) mod stroke_bounds;
 pub(crate) mod style;
 pub(crate) mod text;
 pub(crate) mod triangle;
 
 use crate::icons::icon_set::IconHandle;
-use crate::primitives::interned_str::InternedStr;
-use crate::primitives::mesh::Mesh;
-use crate::primitives::rect::Rect;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::text::interned_str::InternedStr;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::shape::curve::{CurveGeometry, CurveShape};
 use crate::shape::icon::IconShape;
@@ -69,7 +76,7 @@ impl<T: sealed::LowerShape> Lower for T {}
 
 mod sealed {
     use crate::scene::record_store::RecordStore;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
 
     // `unreachable_pub` and `private_interfaces` both fire here, and both
     // describe the seal rather than a mistake: the trait must be `pub`
@@ -98,7 +105,7 @@ mod sealed {
         /// they are read off the AABB they were already folded into —
         /// memoized on a `Mesh`, computed once at construction for a
         /// polyline — under the contract that a NaN vertex yields a NaN
-        /// bbox. See [`Aabb`](crate::primitives::rect::aabb::Aabb).
+        /// bbox. See [`Aabb`](crate::primitives::geometry::rect::aabb::Aabb).
         ///
         /// Separate from `is_noop` rather than folded into it: "paints
         /// nothing" and "carries a NaN" are different facts about a

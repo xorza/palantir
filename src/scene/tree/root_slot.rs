@@ -1,8 +1,8 @@
 //! One top-level subtree within a layer's tree, and where it is placed.
 
-use crate::layout::types::placement::Placement;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::placement::Placement;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 

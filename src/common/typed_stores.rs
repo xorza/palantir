@@ -1,6 +1,6 @@
 //! One `TypeId`-keyed container of type-erased per-widget stores.
 
-use crate::primitives::widget_id::WidgetIdSet;
+use crate::primitives::identity::widget_id::WidgetIdSet;
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 

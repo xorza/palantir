@@ -1,7 +1,7 @@
 //! A node's layout mode, and the two cases where it is not known yet — a
 //! grid or a bar overlay built before its definition was interned.
 
-use crate::layout::types::layout_mode::LayoutMode;
+use crate::primitives::layout::layout_mode::LayoutMode;
 use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

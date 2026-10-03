@@ -119,7 +119,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
         .find_map(|line| line.trim().strip_prefix("at "))
         .expect("at least one kept frame");
     assert!(
-        first_at.starts_with("src/primitives/mesh/mod.rs:"),
+        first_at.starts_with("src/primitives/geometry/mesh/mod.rs:"),
         "the innermost kept frame is the allocating constructor:\n{rendered}",
     );
     assert!(

@@ -2,15 +2,18 @@
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::brush::gradient::Spread;
-use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::fill_axis::FillAxis;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::RgbaF32, rect::Rect, size::Size, stroke::Stroke};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::brush::gradient::Spread;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
     as_rect, as_shadow, count_draw_rects, quad_rect,
@@ -20,8 +23,8 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::scene::layer::Layer;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::shape_brush::ShapeBrush;
-use crate::widgets::configure::Configure;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -145,7 +148,7 @@ fn baseline_draw_rect_count_cases() {
 /// `Line` variants are filtered at `add_shape` time.
 #[test]
 fn manually_pushed_shapes_emit_expected_cmds() {
-    use crate::primitives::lut_row::LutRow;
+    use crate::primitives::paint::lut_row::LutRow;
     use crate::shape::Shape;
 
     let tint = RgbaF32::new(0.5, 0.25, 1.0, 0.5);
@@ -245,7 +248,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::Shadow;
 
-    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::packed::fill_kind::FillKind;
     use crate::shape::Shape;
 
     let mut h = UiHarness::new(UVec2::new(200, 200));

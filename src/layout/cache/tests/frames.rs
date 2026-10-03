@@ -4,7 +4,7 @@
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
 
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::font_scope::internals::INTER;
 use crate::text::wrap::TextWrap;
 
@@ -12,16 +12,18 @@ use crate::TextStyle;
 use crate::Ui;
 use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::internals::assert_same_capture;
-use crate::layout::types::{sizing::Sizing, track::Track};
-use crate::primitives::background::Background;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::{
-    color::RgbaF32, corners::Corners, stroke::Stroke, translate_scale::TranslateScale,
-};
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::track::Track;
+use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::visibility::Visibility;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{
     block::Block, button::Button, grid::Grid, panel::Panel, scroll::Scroll, text::Text,
 };
@@ -820,7 +822,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
 /// Shape: a Hug zstack under a 50 px bound holds a wrapped paragraph
 /// panel, the hit, and a label that changes each frame, which forces the
 /// zstack to re-measure. The paragraph wraps to three 14 px lines in 344
-/// px, 51 px tall (`cross_driver_tests::support::lines_h(3, 14.0)`), so the zstack is floored at 51 rather than capped at
+/// px, 51 px tall (`layout::tests::support::lines_h(3, 14.0)`), so the zstack is floored at 51 rather than capped at
 /// the 50 its parent offers. Read from a hit that dropped the floor, it
 /// would take the 50.
 #[test]

@@ -2,14 +2,14 @@
 //! Lowers to `ShapeRecord::Polyline` — the one stroke with interior joins,
 //! which is what separates it from the single strokes in `curve`.
 
-use crate::primitives::color::RgbaF32;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::rect::Rect;
-use crate::primitives::rect::aabb::Aabb;
-use crate::primitives::stroke::Stroke;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::aabb::Aabb;
+use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::lower;
-use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::lower;
+use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;

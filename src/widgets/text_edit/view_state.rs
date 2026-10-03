@@ -1,8 +1,8 @@
 //! The editor's viewport: where the text block is scrolled to, and when
 //! the caret blinks.
 
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;

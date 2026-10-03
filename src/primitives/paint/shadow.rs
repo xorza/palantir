@@ -1,0 +1,121 @@
+//! One drop or inset shadow: the offset, blur and spread a chrome or a
+//! shape paints behind itself.
+
+use crate::primitives::math::nan::{self, NanCheck};
+use crate::primitives::paint::color::RgbaF32;
+use glam::Vec2;
+use palantir_anim_derive::Animatable;
+
+/// Single drop-or-inset shadow. Used in two places: embedded in a
+/// `Shape::Shadow` (paints via the shape buffer, multi-shadow stacks
+/// allowed by record order) and as `Background::shadow` (paints via
+/// the encoder's chrome branch, before the rect fill, single-shadow
+/// only). Both routes share the `LoweredShadow::paint_rect_local`
+/// overhang formula and the one `emit_shadow` path.
+///
+/// `Shadow::NONE` (also `Default`) is the "no shadow" sentinel —
+/// matches the `Stroke::ZERO` convention so consumers can store a
+/// plain `Shadow` field instead of `Option<Shadow>` and animate
+/// componentwise through it.
+///
+/// `offset` shifts in logical px (CSS `box-shadow` x/y). `blur` is
+/// the Gaussian σ in logical px (CSS `blur-radius / 2`); 0 collapses
+/// to a sharp SDF. `spread` inflates (drop) or deflates (inset) the
+/// source rect. `inset = true` paints inside the chrome boundary;
+/// `false` paints outside it.
+///
+/// Multi-shadow stacks are intentionally not modelled here — drop a
+/// `Shape::Shadow` directly when you need more than one.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
+)]
+pub struct Shadow {
+    /// Ink colour, alpha included.
+    pub color: RgbaF32,
+    /// Shift in logical pixels — CSS `box-shadow`'s x and y.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite2")]
+    pub offset: Vec2,
+    /// Gaussian σ in logical pixels, half CSS's `blur-radius`. Zero
+    /// collapses to a sharp edge.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub blur: f32,
+    /// Inflates a drop shadow's source rect, and deflates an inset
+    /// one's.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    pub spread: f32,
+    /// Paint inside the chrome boundary rather than outside it.
+    #[animate(snap)]
+    pub inset: bool,
+}
+
+impl Shadow {
+    /// Canonical "no shadow" sentinel. Equivalent to
+    /// `Shadow::default()` but `const`, so callers can use it in
+    /// `const` contexts (theme tables, look defaults). Reports
+    /// `is_noop()` — emits nothing.
+    pub const NONE: Self = Self {
+        color: RgbaF32::TRANSPARENT,
+        offset: Vec2::ZERO,
+        blur: 0.0,
+        spread: 0.0,
+        inset: false,
+    };
+
+    /// A drop shadow: `color`, Gaussian-blurred by `blur` (σ, logical px)
+    /// and shifted by `offset`, painting outside the shape with no spread.
+    /// Chain [`Self::with_spread`] / [`Self::inset`] for the variations.
+    pub const fn drop(color: RgbaF32, offset: Vec2, blur: f32) -> Self {
+        Self {
+            color,
+            offset,
+            blur,
+            spread: 0.0,
+            inset: false,
+        }
+    }
+
+    /// Inflate (positive) or deflate (negative) the source rect by `spread`
+    /// logical px before blurring.
+    pub const fn with_spread(mut self, spread: f32) -> Self {
+        self.spread = spread;
+        self
+    }
+
+    /// Paint inside the shape boundary (interior/pressed feel) instead of
+    /// outside it.
+    pub const fn inset(mut self) -> Self {
+        self.inset = true;
+        self
+    }
+
+    /// `&self` for the reason [`Stroke::is_noop`](crate::Stroke::is_noop)
+    /// gives: `Background` names this in a `skip_serializing_if`.
+    #[inline]
+    pub const fn is_noop(&self) -> bool {
+        // Geometry is screened for NaN only, not magnitude: a zero-σ
+        // zero-offset shadow still paints a hard-edged rect, so the
+        // tint is the only thing whose *size* decides visibility.
+        self.color.is_noop() || self.has_nan()
+    }
+
+    /// True if any scalar the shadow carries is NaN. `const`, so
+    /// [`Self::is_noop`] can reuse it instead of repeating the field
+    /// walk; the [`NanCheck`] impl below delegates here for the same
+    /// reason.
+    ///
+    /// [`NanCheck`]: crate::primitives::math::nan::NanCheck
+    #[inline]
+    pub(crate) const fn has_nan(&self) -> bool {
+        self.color.has_nan()
+            || nan::vec2_has_nan(self.offset)
+            || self.blur.is_nan()
+            || self.spread.is_nan()
+    }
+}
+
+impl NanCheck for Shadow {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        Shadow::has_nan(self)
+    }
+}

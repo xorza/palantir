@@ -1,5 +1,5 @@
 use super::*;
-use crate::primitives::content_type::ContentType;
+use crate::primitives::paint::content_type::ContentType;
 use crate::text::shaper::TextShaper;
 use glam::UVec2;
 

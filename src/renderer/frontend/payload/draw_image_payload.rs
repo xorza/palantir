@@ -1,8 +1,8 @@
 //! One textured-quad draw, and the pair a sink takes it as.
 
-use crate::primitives::color::rgba_f16::RgbaF16;
-use crate::primitives::rect::Rect;
-use crate::primitives::texture_id::TextureId;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 
 /// Image draw payload. `rect` is the logical-px paint rect (encoder

@@ -2,17 +2,17 @@
 //! button did to it.
 
 use crate::input::sense::Sense;
-use crate::layout::types::align::Align;
-use crate::primitives::text_input::TextInput;
+use crate::primitives::layout::align::Align;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
-use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::Response;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::ConfigureWidget;
+use crate::widget_core::response::Response;
+use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::widget::Widget;
 
 /// A clickable, themed rectangle carrying an optional label.
 ///
@@ -124,13 +124,13 @@ impl Configure for Button<'_> {
 mod tests {
     use crate::internals::harness::UiHarness;
 
-    use crate::primitives::background::Background;
-    use crate::primitives::spacing::Spacing;
+    use crate::primitives::geometry::spacing::Spacing;
+    use crate::primitives::paint::background::Background;
     use crate::scene::layer::Layer;
+    use crate::widget_core::configure::Configure;
+    use crate::widget_core::widget_look::theme_slot::SlotDefaults;
     use crate::widgets::button::Button;
-    use crate::widgets::configure::Configure;
     use crate::widgets::theme::button::ButtonTheme;
-    use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
     use glam::UVec2;
 
     #[test]

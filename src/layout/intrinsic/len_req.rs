@@ -1,6 +1,6 @@
 //! Which intrinsic content size a query asks for.
 
-use crate::layout::axis::Axis;
+use crate::primitives::layout::axis::Axis;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]

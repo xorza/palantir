@@ -4,14 +4,14 @@
 
 pub(crate) mod menu_item;
 
-use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::background::Background;
+use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Visuals for [`crate::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
@@ -31,12 +31,12 @@ pub struct ContextMenuTheme {
     /// Padding inside the container, around the column of items.
     pub padding: Spacing,
     /// Floor for the menu's container width.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_width: f32,
     /// Vertical gutter between rows. `0.0` (the default) stacks them
     /// flush, so a hovered row's chip meets its neighbour's — the look
     /// every native menu has. Raise it for a spaced, card-like list.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,

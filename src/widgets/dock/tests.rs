@@ -5,12 +5,12 @@
 use glam::{UVec2, Vec2};
 
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::interned_str::InternedStr;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_op::{DockDrop, DockOp};

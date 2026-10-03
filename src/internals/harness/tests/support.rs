@@ -1,9 +1,9 @@
 //! The one button a harness test drives, and the positions on and off it.
 
 use crate::internals::harness::*;
-use crate::layout::types::sizing::Sizing;
+use crate::primitives::layout::sizing::Sizing;
+use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 120);

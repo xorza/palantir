@@ -1,8 +1,8 @@
 //! What a divider rule wears. Its default margin depends on where the
 //! rule is used, so a menu's separator names its own.
 
-use crate::primitives::color::RgbaF32;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Separator`]: the thin divider rule between
@@ -22,7 +22,7 @@ pub struct SeparatorTheme {
     /// Rule color.
     pub color: RgbaF32,
     /// Rule breadth in logical px.
-    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub thickness: f32,
     /// Breathing room around the rule, applied when the builder left
     /// margin unset. `ZERO` for an in-flow rule; the menu slot opens a

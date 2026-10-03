@@ -2,14 +2,14 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::types::scroll_axes::ScrollAxes;
-use crate::layout::types::sizing::{SizeSpec, Sizing};
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::justify::Justify;
+use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::node::node_mode::NodeMode;
-use crate::widgets::configure::Configure;
+use crate::widget_core::configure::Configure;
 use crate::widgets::scroll::{Scroll, ScrollWrappers};
 
 /// The outer wrapper is what the caller's interaction flags land on, the

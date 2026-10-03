@@ -1,8 +1,8 @@
+use crate::cascade::Cascade;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascade;
+use crate::primitives::identity::widget_id::WidgetId;
 use glam::Vec2;
 
 #[test]

@@ -1,6 +1,6 @@
 //! Non-text draw ranges deferred to the group that drains them.
 
-use crate::primitives::span::Span;
+use crate::common::span::Span;
 use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 
 /// A contiguous non-text draw range anchored to the group that drains it.

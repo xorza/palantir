@@ -1,7 +1,7 @@
 use crate::internals::harness::UiHarness;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::widget_core::configure::Configure;
 use crate::widgets::checkbox::Checkbox;
-use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::theme::palette::Palette;
 use glam::{UVec2, Vec2};
@@ -16,7 +16,7 @@ use glam::{UVec2, Vec2};
 #[test]
 fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     use crate::scene::layer::Layer;
-    use crate::scene::shapes::record::ShapeRecord;
+    use crate::shape::record::ShapeRecord;
     use crate::widgets::theme::toggle::ToggleTheme;
 
     fn drawn(theme: ToggleTheme) -> Vec<Vec2> {

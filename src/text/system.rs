@@ -32,9 +32,9 @@
 //! on dispatch cost, not as the layer's value.
 
 use crate::layout::measured::Measured;
-use crate::layout::shaped_text::ShapedText;
-use crate::layout::types::align::HAlign;
-use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use crate::layout::text::shaped_text::ShapedText;
+use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::layout::align::HAlign;
 use crate::text::extent::TextExtent;
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::request::TextShapeRequest;
@@ -421,7 +421,7 @@ struct WrapSlot {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::primitives::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::WidgetId;
     use crate::text::request::internals::TestShape;
     use crate::text::root::internals::TestMeasure;
     use crate::text::shaper::TextShaper;

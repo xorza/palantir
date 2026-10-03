@@ -1,13 +1,14 @@
 //! Push/pop balance, and when a rounded clip needs the stencil.
 
 use crate::internals::harness::UiHarness;
-use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::RgbaF32, stroke::Stroke};
-use crate::widgets::configure::Configure;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::background::Background;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
+use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
@@ -53,7 +54,7 @@ fn clip_emits_balanced_push_pop() {
 
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
-    use crate::primitives::corners::Corners;
+    use crate::primitives::geometry::corners::Corners;
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
