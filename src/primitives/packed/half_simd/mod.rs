@@ -25,7 +25,6 @@
 //! where the dispatch is the point.
 
 use crate::primitives::math::approx::EPS;
-use core::mem;
 use std::hash;
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
@@ -259,9 +258,10 @@ pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     #[cfg(not(target_arch = "x86_64"))]
     {
         // `half`'s slice path: `fcvtl` on aarch64-fp16, scalar elsewhere.
+        use half::slice::HalfFloatSliceExt as _;
         let arr: &[half::f16; 4] = bytemuck::cast_ref(&bits);
         let mut out = [0.0f32; 4];
-        half::slice::HalfFloatSliceExt::convert_to_f32_slice(arr.as_slice(), &mut out);
+        arr.convert_to_f32_slice(&mut out);
         out
     }
 }
@@ -284,8 +284,9 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
+        use half::slice::HalfFloatSliceExt as _;
         let mut out = [half::f16::ZERO; 4];
-        half::slice::HalfFloatSliceExt::convert_from_f32_slice(out.as_mut_slice(), &src);
+        out.convert_from_f32_slice(&src);
         bytemuck::cast(out)
     }
 }
@@ -349,7 +350,7 @@ unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
     unsafe {
         let v = _mm_loadl_epi64(bits.as_ptr().cast());
         let f = _mm_cvtph_ps(v);
-        mem::transmute(f)
+        core::mem::transmute(f)
     }
 }
 

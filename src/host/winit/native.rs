@@ -116,7 +116,7 @@ fn with_app_id(attrs: WindowAttributes, cfg: &WindowConfig) -> WindowAttributes 
     target_os = "netbsd",
     target_os = "openbsd",
 )))]
-fn with_app_id(attrs: WindowAttributes, _cfg: &WindowConfig) -> WindowAttributes {
+const fn with_app_id(attrs: WindowAttributes, _cfg: &WindowConfig) -> WindowAttributes {
     attrs
 }
 
