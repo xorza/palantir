@@ -6,6 +6,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::edit_state::{
     EditDelta, EditKind, EditParts, EditState, SelectionState,
@@ -86,7 +87,7 @@ impl<'a> Editor<'a> {
             let has_text = self.has_text();
             for item in EditAction::MENU {
                 if item.separator_before {
-                    MenuItem::separator().show(ui);
+                    MenuSeparator::new().show(ui);
                 }
                 let enabled = match item.availability {
                     ActionAvailability::Always => true,

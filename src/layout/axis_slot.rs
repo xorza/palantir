@@ -2,7 +2,6 @@
 
 use crate::layout::measured::Measured;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::geometry::spacing::Sums;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::node::layout_core::LayoutCore;
 
@@ -201,13 +200,13 @@ impl AxisSlot {
         max_size: Size,
         dispatch: impl FnOnce(Size) -> Measured,
     ) -> Measured {
-        let Sums {
-            horizontal: p_horiz,
-            vertical: p_vert,
+        let Size {
+            w: p_horiz,
+            h: p_vert,
         } = layout.padding.sums();
-        let Sums {
-            horizontal: m_horiz,
-            vertical: m_vert,
+        let Size {
+            w: m_horiz,
+            h: m_vert,
         } = layout.margin.sums();
 
         let w = Self {

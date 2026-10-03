@@ -18,14 +18,13 @@ pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
 /// pokes the winit event loop turns into a redraw of a window, a
 /// run-on-main callback, or an exit. Generic over the host's app type
 /// `T` so [`Self::RunOnMain`] carries a typed `&mut T` closure with no
-/// downcast. Public only as the type parameter of `EventLoopProxy`;
-/// construct via the methods on [`HostHandle`].
+/// downcast. Built only by the methods on [`HostHandle`].
 ///
 /// There is no `OpenWindow` / `CloseWindow` variant: window lifecycle is
 /// an in-frame UI action ([`Ui::open_window`](crate::Ui::open_window)),
 /// not an off-thread one — a background thread that wants a new window
 /// pokes a `Repaint` and lets the next `frame` call `open_window`.
-pub enum UserEvent<T> {
+pub(crate) enum UserEvent<T> {
     /// Wake the loop and request one redraw of the named window.
     /// Coalesced — many in a row collapse to one frame.
     Repaint(WindowToken),

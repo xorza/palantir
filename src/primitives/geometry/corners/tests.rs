@@ -132,19 +132,7 @@ fn approx_zero_handles_edge_lane_patterns() {
 }
 
 #[test]
-fn from_vec2_and_size_map_to_pairs() {
-    use crate::primitives::geometry::size::Size;
-    use glam::Vec2;
-    assert_eq!(
-        Corners::from(Vec2::new(3.0, 7.0)).as_array(),
-        [3.0, 3.0, 7.0, 7.0],
-        "Vec2 → (x,x,y,y)",
-    );
-    assert_eq!(
-        Corners::from(Size::new(3.0, 7.0)).as_array(),
-        [3.0, 3.0, 7.0, 7.0],
-        "Size → (w,w,h,h)",
-    );
+fn tuples_map_to_lanes() {
     // The 2-tuple pairs by edge, like every other 2-value form here.
     assert_eq!(
         Corners::from((3.0, 7.0)).as_array(),

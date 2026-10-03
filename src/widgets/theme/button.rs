@@ -16,7 +16,7 @@ use crate::widgets::theme::text_style::TextStyleOverrides;
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live
-/// response state and `NodeFlags::is_disabled` via [`Self::pick`].
+/// response state and `NodeFlags::is_disabled` via [`ThemeSlot::look`](crate::widget::ThemeSlot::look).
 ///
 /// `padding`/`margin` apply when the user didn't call `.padding(...)`
 /// / `.margin(...)` on the builder. Explicit zero spacing overrides
@@ -118,24 +118,19 @@ impl ButtonTheme {
             },
         }
     }
-
-    /// Pick the visual state for `state`: `active` = pressed.
-    /// Disabled wins over hover/press; pressed wins over hover;
-    /// otherwise normal. `state.disabled` already carries the node's own
-    /// flag — [`Widget::response`](crate::widget::Widget) merges it, so a button
-    /// disabled this frame paints disabled without waiting for the
-    /// cascade.
-    #[inline(always)]
-    pub const fn pick(&self, state: &ResponseState) -> &WidgetLook {
-        self.looks.pick(state, state.pressed())
-    }
 }
 
 impl ThemeSlot for ButtonTheme {
     type Pick = ();
 
+    /// `active` = pressed. Disabled wins over hover and press, pressed over
+    /// hover; otherwise normal. `response.disabled` already carries the
+    /// node's own flag — [`Widget::response`](crate::widget::Widget) merges
+    /// it, so a button disabled this frame paints disabled without waiting
+    /// for the cascade.
+    #[inline(always)]
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.pick(response)
+        self.looks.pick(response, response.pressed())
     }
 
     fn defaults(&self) -> SlotDefaults {

@@ -13,6 +13,7 @@ use crate::widgets::button::Button;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::ContextMenuState;
 use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -203,7 +204,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                     clicked: row.left.clicked(),
                     id: row.id,
                 };
-                MenuItem::separator().show(ui);
+                MenuSeparator::new().show(ui);
                 MenuItem::new("Paste").show(ui, popup);
             });
         });

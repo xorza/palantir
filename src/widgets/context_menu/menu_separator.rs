@@ -10,8 +10,7 @@ use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
 use std::rc::Rc;
 
-/// The rule [`MenuItem::separator`](crate::widgets::context_menu::menu_item::MenuItem::separator)
-/// records between menu groups: a
+/// The rule between menu groups: a
 /// [`crate::Separator`] wearing [`crate::Theme::context_menu`]'s
 /// `separator` slot instead of the app-wide `theme.separator`.
 ///
@@ -20,9 +19,9 @@ use std::rc::Rc;
 /// rather than unpacking it field by field.
 ///
 /// ```
-/// # use palantir::{MenuItem, Ui};
+/// # use palantir::{MenuSeparator, Ui};
 /// # fn demo(ui: &mut Ui) {
-/// MenuItem::separator().show(ui);
+/// MenuSeparator::new().show(ui);
 /// # }
 /// ```
 #[derive(Debug)]
@@ -34,10 +33,6 @@ pub struct MenuSeparator<'a> {
 
 impl<'a> MenuSeparator<'a> {
     /// An unstyled rule.
-    ///
-    /// [`MenuItem::separator`](crate::MenuItem::separator) is the same
-    /// thing under the menu's own vocabulary, and reads better inside a
-    /// menu body.
     #[track_caller]
     pub fn new() -> Self {
         Self {

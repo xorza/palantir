@@ -146,7 +146,7 @@ impl<'a> ContextMenu<'a> {
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
-        // `resp.closed()`, so no hand-rolled `escape_pressed` here.
+        // `resp.closed()`, so no hand-rolled Escape check here.
         //
         // Read via `state` so a never-opened menu doesn't materialize a
         // StateMap row every frame `show` is called (matches `is_open`'s no-alloc

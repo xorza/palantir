@@ -5,7 +5,6 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
-use glam::Vec2;
 
 /// Per-corner radii, packed as four f16 lanes in a `u64` (8 bytes).
 ///
@@ -176,18 +175,6 @@ impl<T: Num, B: Num> From<(T, B)> for Corners {
 impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners {
     fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {
         Self::new(tl.as_f32(), tr.as_f32(), br.as_f32(), bl.as_f32())
-    }
-}
-
-impl From<Vec2> for Corners {
-    fn from(v: Vec2) -> Self {
-        Self::new(v.x, v.x, v.y, v.y)
-    }
-}
-
-impl From<Size> for Corners {
-    fn from(s: Size) -> Self {
-        Self::new(s.w, s.w, s.h, s.h)
     }
 }
 

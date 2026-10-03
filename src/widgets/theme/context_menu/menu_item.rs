@@ -54,11 +54,6 @@ impl MenuItemTheme {
         looks.for_each_text(f);
     }
 
-    /// Pick the visual state: `active` = pressed.
-    pub const fn pick(&self, state: &ResponseState) -> &WidgetLook {
-        self.looks.pick(state, state.pressed())
-    }
-
     /// Rows transparent at rest, one surface step brighter on hover.
     pub fn from_palette(p: &Palette) -> Self {
         // Rows are transparent at rest; hover paints one surface-step
@@ -104,8 +99,9 @@ impl MenuItemTheme {
 impl ThemeSlot for MenuItemTheme {
     type Pick = ();
 
+    /// `active` = pressed.
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.pick(response)
+        self.looks.pick(response, response.pressed())
     }
 
     fn defaults(&self) -> SlotDefaults {

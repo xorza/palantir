@@ -1,6 +1,5 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::mesh::*;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 
@@ -231,16 +230,6 @@ fn bbox_spans_vertex_extent() {
     assert_eq!(b.min, Vec2::new(-1.0, 2.0));
     assert_eq!(b.size.w, 5.0);
     assert_eq!(b.size.h, 5.0);
-}
-
-#[test]
-fn with_known_bbox_skips_compute() {
-    let bogus = Rect {
-        min: Vec2::new(100.0, 100.0),
-        size: Size { w: 1.0, h: 1.0 },
-    };
-    let m = red_tri().with_known_bbox(bogus);
-    assert_eq!(m.bbox(), bogus);
 }
 
 /// Which caches each mutation drops, from a mesh with both primed. A

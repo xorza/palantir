@@ -42,7 +42,7 @@ pub struct ContextMenuTheme {
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,
     /// Thin horizontal divider between groups (for
-    /// [`crate::MenuItem::separator`]).
+    /// [`crate::MenuSeparator`]).
     pub separator: SeparatorTheme,
 }
 

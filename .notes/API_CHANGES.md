@@ -30,15 +30,6 @@ far a pixel may differ, and `render*` drops the `FrameReport`.
 - The tolerance is A25 and the adapter sidecar and orphan report are A26; the three items land
   together (phase 5 of the plan).
 
-## A8. Remove `WinitHostError::Gpu`
-
-**Findings.** REVIEW "Input and host structure". `WinitHostError::Gpu` and
-`From<GpuRequestError>` are never constructed in production. Device failures already surface as
-`Surface { source: SurfaceError::Device }`.
-
-**Recommendation.** Remove the variant and the `From` impl. Tests that build it move to the
-`Surface` variant.
-
 ## A9. Test-driven additions
 
 **Findings.** TEST_REVIEW 10 (50 `Modifiers { ctrl: true, ..Modifiers::NONE }` literals) and 15
@@ -82,14 +73,6 @@ or reorder, slot `i`'s hover and look animation move to the page that slid into 
 `impl Hash`, hashed the way `DockState::tab_key` hashes a tab, so the two widgets derive chip
 identity one way. Without it, index keys as today, so a static page list needs nothing. A bare
 name, because `TabbedView` is a builder (A47).
-
-## A13. One way to pick a look
-
-**Findings.** REVIEW "Big widgets design": `ButtonTheme`, `TextEditTheme`, `TabsTheme`,
-`ToggleTheme` and `MenuItemTheme` each have a public `pick` that duplicates `ThemeSlot::look`;
-`ExpanderTheme` has none.
-
-**Recommendation.** Remove the five `pick` methods; callers use `ThemeSlot::look`.
 
 ## A14. Attach-to-trigger naming
 
@@ -303,23 +286,6 @@ shift, alt }` is binding vocabulary. The field order differs, and the conversion
 order their fields `ctrl, shift, alt` (then `mac_ctrl` on `Modifiers`, and A10's `meta` on both),
 and both carry the same constants: `NONE`, `SHIFT`, `CTRL`, `ALT`, `CTRL_SHIFT`.
 
-## A34. Remove `Sums`
-
-**Findings.** `Spacing::sums()` returns `widget::Sums { horizontal, vertical }`, which is a `Size`
-under other names, beside `horizontal_sum()` and `vertical_sum()` that answer the same thing. Two
-call sites use `sums()`.
-
-**Recommendation.** Remove `Sums` and `Spacing::sums()`; the two call sites read the two methods.
-
-## A35. Remove `From<Vec2>` and `From<Size>` for `Corners`
-
-**Findings.** `Corners: From<Vec2>` reads `x` as both top radii and `y` as both bottom radii, and
-`From<Size>` reads `w` and `h` the same way. Neither type means "top and bottom" anywhere else, so
-the conversion is a guess a reader cannot make. `From<(top, bottom)>` and `Corners::top_bottom`
-already state the pairing.
-
-**Recommendation.** Remove both impls.
-
 ## A37. Seal `GradientGeometry`
 
 **Findings.** `GradientGeometry` is a public, implementable trait whose items are renderer
@@ -329,14 +295,6 @@ and the four items are not something a user calls.
 
 **Recommendation.** Seal it the way `widget::Lower` is sealed: the items move to a private
 supertrait, and the public trait stays only as the bound on `Gradient<G>`.
-
-## A38. Hide `UserEvent`
-
-**Findings.** `UserEvent` is exported, and its doc says it is public only as the type parameter of
-`EventLoopProxy`. But the proxy is a `pub(super)` field of `HostHandle`, so no public signature
-names `UserEvent`, and a user can do nothing with it.
-
-**Recommendation.** `pub(crate)`, and remove it from `lib.rs`.
 
 ## A39. Wrapper hooks on single widgets
 
@@ -366,13 +324,6 @@ forwards `Configure` to it, and finishes it through that widget's public setters
   eight in step, one table-driven test records each of them with only a default, with only a
   background, and with both, and asserts the painted fill each time.
 
-## A40. Remove `MenuItem::separator`
-
-**Findings.** `MenuItem::separator()` returns a `MenuSeparator`, which `MenuSeparator::new()`
-already builds.
-
-**Recommendation.** Remove `MenuItem::separator`.
-
 ## A41. `Popup` mirrors `Anchor` but not all of it
 
 **Findings.** `Popup::below`, `above`, `left_of` and `right_of(rect)` are `Popup::new(Anchor::…)`
@@ -381,31 +332,6 @@ pointer needs is the one that has to be spelled long.
 
 **Recommendation.** Add `Popup::at_point(point)`, so the shorthand covers every `Anchor`
 constructor.
-
-## A43. One way to configure the windowed host
-
-**Findings.** `WinitHostBuilder` has a setter per setting, a `config(WinitHostConfig)` that takes
-the same settings as one struct, and `title` beside `window(WindowConfig)`, which also carries the
-title. `OffscreenHostBuilder` has setters only.
-
-**Recommendation.** Remove `WinitHostConfig` and `WinitHostBuilder::config`, so both builders
-configure the same way. Keep `title` as the documented shorthand for the bootstrap window.
-
-## A48. `Mesh::with_known_bbox` trusts its caller silently
-
-**Findings.** `Mesh::with_known_bbox(bbox)` skips the lazy bounding-box computation, and its doc
-says a wrong box "silently breaks scissor culling". It is the one public setter in the crate that
-can make paint wrong without a check, and it saves only the lazy computation the mesh does anyway.
-
-**Recommendation.** Remove it. If a measured workload needs it, keep it with a `debug_assert!` that
-every vertex lies inside the box.
-
-## A49. `Ui::escape_pressed`
-
-**Findings.** `Ui::escape_pressed()` is `key_pressed(Shortcut::key(Key::Escape))` and nothing more,
-the only key with its own method.
-
-**Recommendation.** Remove it; `Modal` and the other callers spell the shortcut. Low priority.
 
 ## A50. One validation model for every public input
 
@@ -606,9 +532,7 @@ Each line is one commit; none depends on another inside the phase.
 
 1. Done: names (A28, A29, A30, A42, A45, A46).
 2. Done: chainers (A47, A44).
-3. **Removals.** A8 (`WinitHostError::Gpu`), A13 (the five `pick` methods), A34 (`Sums`), A35
-   (`Corners` from `Vec2` / `Size`), A38 (`UserEvent`), A40 (`MenuItem::separator`), A43
-   (`WinitHostConfig`), A48 (`Mesh::with_known_bbox`), A49 (`Ui::escape_pressed`).
+3. Done: removals (A8, A13, A34, A35, A38, A40, A43, A48, A49).
 4. **Argument types.** A31 (`placeholder` and `suffix` take `TextInput`), A33 (`From<Modifiers>`,
    one field order, one constant set) with A9 (`Panel::stack`, `Widget::stack`), A37 (seal
    `GradientGeometry`).

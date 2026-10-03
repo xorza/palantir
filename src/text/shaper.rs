@@ -189,7 +189,7 @@ impl TextShaper {
     /// a standalone recorder, a golden test and a bench all reach for:
     /// deterministic metrics, and no font directory to walk. A window
     /// says otherwise through
-    /// [`WinitHostConfig::fonts`](crate::WinitHostConfig::fonts).
+    /// [`WinitHostBuilder::fonts`](crate::WinitHostBuilder::fonts).
     pub fn new() -> Self {
         Self::with_fonts(FontScope::Bundled)
     }

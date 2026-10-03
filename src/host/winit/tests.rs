@@ -1,8 +1,7 @@
 use crate::Ui;
 use crate::app::App;
 use crate::gpu::device::power_preference::PowerPreference;
-use crate::gpu::error::GpuRequestError;
-use crate::host::winit::config::WinitHostConfig;
+use crate::gpu::error::{GpuRequestError, SurfaceError};
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
 use crate::internals::harness::UiHarness;
@@ -46,7 +45,7 @@ impl App for CountingApp {
 }
 
 #[test]
-fn builder_retains_defaults_and_granular_overrides() {
+fn builder_retains_defaults_and_overrides() {
     let defaults = WinitHost::<CountingApp>::builder(WindowToken(3));
     assert_eq!(defaults.first_token, WindowToken(3));
     assert_eq!(defaults.config.vsync, Vsync::On);
@@ -56,14 +55,6 @@ fn builder_retains_defaults_and_granular_overrides() {
     assert_eq!(defaults.config.fonts, FontScope::System);
 
     let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
-        .config(WinitHostConfig {
-            window: WindowConfig::new("config"),
-            vsync: Vsync::Off,
-            power_preference: PowerPreference::Any,
-            collect_gpu_stats: false,
-            fonts: FontScope::Bundled,
-            pixel_snap: true,
-        })
         .window(WindowConfig::new("window"))
         .title("title")
         .power_preference(PowerPreference::HighPerformance)
@@ -83,7 +74,7 @@ fn builder_retains_defaults_and_granular_overrides() {
     assert!(builder.config.collect_gpu_stats);
     assert!(
         !builder.config.pixel_snap,
-        "a granular setter overrides what `config` supplied",
+        "the setter overrides the default",
     );
 }
 
@@ -100,14 +91,22 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
     ));
 
     let host_failure = finish_run(
-        Some(GpuRequestError::NoBackend.into()),
+        Some(WinitHostError::Surface {
+            token: WindowToken(0),
+            source: SurfaceError::Device {
+                source: GpuRequestError::NoBackend,
+            },
+        }),
         Err(error::EventLoopError::RecreationAttempt),
     )
     .unwrap_err();
     assert!(matches!(
         host_failure,
-        WinitHostError::Gpu {
-            source: GpuRequestError::NoBackend
+        WinitHostError::Surface {
+            source: SurfaceError::Device {
+                source: GpuRequestError::NoBackend
+            },
+            ..
         }
     ));
 }

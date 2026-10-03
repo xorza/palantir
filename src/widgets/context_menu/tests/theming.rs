@@ -17,6 +17,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::widget_look::theme_slot::SlotDefaults;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::context_menu::tests::support::{
     MenuRow, SURFACE, menu_body, menu_rows, trigger_id,
 };
@@ -126,7 +127,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     fn menu(ui: &mut Ui) {
         ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
             MenuItem::new("Copy").show(ui, popup);
-            MenuItem::separator().show(ui);
+            MenuSeparator::new().show(ui);
             MenuItem::new("Paste").show(ui, popup);
         });
     }
@@ -251,7 +252,7 @@ fn per_instance_style_overrides_global_menu_theme() {
             .style(&custom)
             .show(ui, |ui, popup| {
                 MenuItem::new("Copy").style(&custom.item).show(ui, popup);
-                MenuItem::separator().style(&custom.separator).show(ui);
+                MenuSeparator::new().style(&custom.separator).show(ui);
                 MenuItem::new("Bare")
                     .style(&custom.item)
                     .padding(Spacing::ZERO)
@@ -371,8 +372,8 @@ fn separators_take_their_call_site_ids() {
         Panel::vstack()
             .id(WidgetId::from_hash("seps"))
             .show(ui, |ui| {
-                let first = MenuItem::separator().show(ui).id;
-                let second = MenuItem::separator().show(ui).id;
+                let first = MenuSeparator::new().show(ui).id;
+                let second = MenuSeparator::new().show(ui).id;
                 (first, second)
             })
             .inner

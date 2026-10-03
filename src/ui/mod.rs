@@ -36,7 +36,6 @@ use crate::input::input_state::InputState;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::interaction::response_state::ResponseState;
-use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
@@ -371,14 +370,6 @@ impl Ui {
         let layer = self.forest.current_layer();
         let parent = self.forest.current_parent_id();
         self.input.key_pressed(layer, parent, &self.cascade, sc)
-    }
-
-    /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
-    /// Used by overlays without exclusive keyboard capture, such as
-    /// [`crate::widgets::modal::Modal`].
-    #[inline]
-    pub fn escape_pressed(&mut self) -> bool {
-        self.key_pressed(Shortcut::key(Key::Escape))
     }
 
     /// Re-record this frame after measure runs, for authoring code that

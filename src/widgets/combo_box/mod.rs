@@ -192,7 +192,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             open = false;
         }
         // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
-        // separate `escape_pressed` here.
+        // separate Escape check here.
 
         if open && let Some(rect) = trigger_rect {
             let ctx = &theme.context_menu;

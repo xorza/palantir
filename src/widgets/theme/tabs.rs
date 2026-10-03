@@ -133,16 +133,6 @@ impl TabsTheme {
         close.for_each_text(f);
     }
 
-    /// Pick the chrome+label look for this `(state, selected)` pair
-    /// (`active` = pressed).
-    pub const fn pick(&self, state: &ResponseState, selected: bool) -> &WidgetLook {
-        if selected {
-            self.active.pick(state, state.pressed())
-        } else {
-            self.inactive.pick(state, state.pressed())
-        }
-    }
-
     /// The cap colour a strip paints under its selected chip.
     pub const fn cap(&self, focused: bool) -> RgbaF32 {
         if focused {
@@ -230,8 +220,15 @@ impl Default for TabsTheme {
 impl ThemeSlot for TabsTheme {
     type Pick = bool;
 
+    /// The selected or the unselected pack, then its state (`active` =
+    /// pressed).
     fn look(&self, response: &ResponseState, selected: bool) -> &WidgetLook {
-        self.pick(response, selected)
+        let pack = if selected {
+            &self.active
+        } else {
+            &self.inactive
+        };
+        pack.pick(response, response.pressed())
     }
 
     fn defaults(&self) -> SlotDefaults {
