@@ -1,6 +1,7 @@
 use ::serde::de::value::{Error, MapDeserializer, SeqDeserializer};
 
 use crate::primitives::packed::serde::{LaneCodec, deserialize_lanes};
+use std::iter;
 
 /// A codec with neutral lane names, so these tests pin the shared
 /// machinery rather than either real type's field spellings. The
@@ -109,7 +110,7 @@ fn map_defaults_missing_lanes_and_rejects_duplicate_or_unknown_fields() {
         "unknown field `typo`, expected one of `a`, `b`, `c`, `d`",
     );
 
-    let empty = MapDeserializer::<_, Error>::new(std::iter::empty::<(&str, f32)>());
+    let empty = MapDeserializer::<_, Error>::new(iter::empty::<(&str, f32)>());
     let error = deserialize_lanes::<TestLanes, _>(empty).unwrap_err();
     assert_eq!(
         error.to_string(),

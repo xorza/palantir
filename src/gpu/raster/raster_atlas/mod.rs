@@ -228,20 +228,20 @@ struct PendingCopy {
 
 impl PendingCopy {
     /// Pitch of one unpadded row — what the rasterizer wrote.
-    fn bytes_per_row(self) -> u32 {
+    const fn bytes_per_row(self) -> u32 {
         self.size.x * self.content.bytes_per_pixel()
     }
 
     /// Pitch `copy_buffer_to_texture` reads this raster's rows at. Every
     /// raster's region is a whole number of these, so each one's buffer
     /// offset is 256-aligned too — the second alignment that copy wants.
-    fn padded_bytes_per_row(self) -> u32 {
+    const fn padded_bytes_per_row(self) -> u32 {
         self.bytes_per_row()
             .next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT)
     }
 
     /// This raster's bytes in [`RasterAtlas::pending_pixels`].
-    fn pixels(self) -> Range<usize> {
+    const fn pixels(self) -> Range<usize> {
         let len = self.bytes_per_row() as usize * self.size.y as usize;
         self.pixels_start..self.pixels_start + len
     }
@@ -332,7 +332,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     }
 
     /// `[color, mask]` side extents, as the shader reads them.
-    pub(super) fn atlas_px(&self) -> [u32; 2] {
+    pub(super) const fn atlas_px(&self) -> [u32; 2] {
         self.bound.atlas_px()
     }
 
@@ -351,6 +351,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// `queue.write_texture` calls. Grows if full; returns `None`
     /// only at GPU-max and still doesn't fit. On success returns the
     /// new slot's slab index.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "etagere allocates inside the atlas, whose coordinates start at zero"
+    )]
     pub(super) fn insert(
         &mut self,
         device: &wgpu::Device,
@@ -381,18 +385,15 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// Park `slot` in the slab (reusing a freed index when available)
     /// and map `key` to it.
     fn store(&mut self, key: K, mut slot: AtlasSlot) -> u32 {
-        let idx = match self.free.claim() {
-            Some(i) => {
-                slot.generation = self.slots[i as usize].generation;
-                self.slots[i as usize] = slot;
-                self.slot_keys[i as usize] = key;
-                i
-            }
-            None => {
-                self.slots.push(slot);
-                self.slot_keys.push(key);
-                (self.slots.len() - 1) as u32
-            }
+        let idx = if let Some(i) = self.free.claim() {
+            slot.generation = self.slots[i as usize].generation;
+            self.slots[i as usize] = slot;
+            self.slot_keys[i as usize] = key;
+            i
+        } else {
+            self.slots.push(slot);
+            self.slot_keys.push(key);
+            (self.slots.len() - 1) as u32
         };
         let prev = self.cache.insert(key, idx);
         // A double-insert would leak the previous slab slot; callers
@@ -612,7 +613,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             self.counters.oversized.bump();
             return None;
         }
-        let need = size2(size.x as i32, size.y as i32);
+        let need = size2(i32::from(size.x), i32::from(size.y));
         loop {
             if let Some(a) = self.sides[content as usize].packer.allocate(need) {
                 return Some(a);
@@ -722,7 +723,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.hand = sweep.hand;
         self.counters
             .evict_scans
-            .edit(|n| *n += sweep.examined as u64);
+            .edit(|n| *n += u64::from(sweep.examined));
         let Some(idx) = sweep.victim else {
             self.sides[target as usize].dry_frame = Some(self.current_frame);
             return false;

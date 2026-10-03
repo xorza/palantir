@@ -8,6 +8,8 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use serde::de::Error as _;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::hash;
+use std::ops;
 use tinyvec::ArrayVec;
 
 /// Hard cap on stops in a single gradient. 8 covers >99% of UI use
@@ -199,7 +201,7 @@ impl GradientStopsBuilder {
     }
 }
 
-impl std::ops::Deref for GradientStops {
+impl ops::Deref for GradientStops {
     type Target = [Stop];
 
     fn deref(&self) -> &Self::Target {
@@ -207,7 +209,7 @@ impl std::ops::Deref for GradientStops {
     }
 }
 
-impl std::hash::Hash for GradientStops {
+impl hash::Hash for GradientStops {
     /// **Colour goes in the low half.** `SrgbaU8::to_u32` is
     /// `from_be_bytes([r, g, b, a])`, so red is its top byte; packing the
     /// colour into the *high* half of this word puts red at bit 56, and
@@ -229,7 +231,7 @@ impl std::hash::Hash for GradientStops {
     /// multiply can spread them. Pinned by
     /// `tests::hash_spreads_across_buckets_for_structured_palettes`.
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u8(self.len() as u8);
         for stop in self.iter() {
             state.write_u64((u64::from(stop.offset_u8) << 32) | u64::from(stop.color.to_u32()));

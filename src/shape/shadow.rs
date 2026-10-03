@@ -12,6 +12,7 @@ use crate::shape::sealed;
 
 /// Gaussian-blurred rounded rectangle shadow.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct ShadowShape {
     pub(crate) local_rect: Option<Rect>,
     pub(crate) corners: Corners,
@@ -19,7 +20,7 @@ pub struct ShadowShape {
 }
 
 impl ShadowShape {
-    pub(super) fn new(shadow: Shadow) -> Self {
+    pub(super) const fn new(shadow: Shadow) -> Self {
         Self {
             local_rect: None,
             corners: Corners::ZERO,

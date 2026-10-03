@@ -86,6 +86,10 @@ pub(super) fn closed_form_settle_step(
     let h = damping / 2.0;
     let psi_sq = h * h - stiffness;
     let mut t = 0.0;
+    #[expect(
+        clippy::maybe_infinite_iter,
+        reason = "every caller passes a damped spring, and a damped spring settles"
+    )]
     (1..)
         .find(|&n| {
             t += f64::from(dt_of(n));

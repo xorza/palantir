@@ -756,7 +756,7 @@ fn quad_fast_path_flag_cases() {
                     .corners(*corners)
                     .brush(*brush)
                     .stroke(*stroke)
-                    .draw(b)
+                    .draw(b);
             },
             &params_unsnapped(*dpr, UVec2::new(400, 400)),
         );

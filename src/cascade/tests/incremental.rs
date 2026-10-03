@@ -30,7 +30,7 @@ use glam::Vec2;
 fn cascade_input_hash_collapses_visual_zero_noise() {
     use crate::primitives::math::approx::EPS;
 
-    assert_eq!(std::mem::size_of::<CascadePrefixBits>(), 32);
+    assert_eq!(size_of::<CascadePrefixBits>(), 32);
     let hash = |transform, rect| {
         let prefix = build_cascade_prefix(CascadeContext {
             transform,

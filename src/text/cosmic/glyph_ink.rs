@@ -7,6 +7,7 @@ use crate::text::extent::TextExtent;
 use cosmic_text::{Buffer, CacheKeyFlags, FontSystem, LayoutGlyph, fontdb};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
+use std::fmt;
 use swash::scale::ScaleContext;
 use swash::scale::outline::Outline;
 
@@ -34,8 +35,8 @@ pub(super) struct GlyphInk {
     outline: Outline,
 }
 
-impl std::fmt::Debug for GlyphInk {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for GlyphInk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GlyphInk")
             .field("bounds", &self.bounds.len())
             .finish_non_exhaustive()

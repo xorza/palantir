@@ -13,6 +13,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use glam::Vec2;
+use std::slice;
 
 mod text_rig;
 
@@ -195,10 +196,7 @@ fn deferred_upload_keeps_batches_distinct() {
         ..rig.row("File", 16.8, Vec2::new(20.0, 60.0))
     };
 
-    rig.frame(
-        1.0,
-        &[std::slice::from_ref(&run_a), std::slice::from_ref(&run_b)],
-    );
+    rig.frame(1.0, &[slice::from_ref(&run_a), slice::from_ref(&run_b)]);
 
     // Same text → same glyph count n per batch; ranges partition
     // the vec as [0..n] + [n..2n].
@@ -242,7 +240,7 @@ fn partially_culled_run_is_not_cached() {
 
     // Frame 1: clipped encode → 1 line * 3 glyphs = 3 instances,
     // and no cache entry.
-    rig.frame(1.0, &[std::slice::from_ref(&run)]);
+    rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(
         rig.backend.pass.instances.len(),
         3,
@@ -257,7 +255,7 @@ fn partially_culled_run_is_not_cached() {
 
     // Frame 2, same clipped run: still a miss, re-encodes to the
     // same 3 instances, still nothing cached.
-    rig.frame(1.0, &[std::slice::from_ref(&run)]);
+    rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(rig.backend.pass.instances.len(), 3);
     assert_eq!(rig.backend.encoder.cache().rows(), 0);
     rig.backend.tick_frame();
@@ -266,7 +264,7 @@ fn partially_culled_run_is_not_cached() {
     // the full encode is cached (same key as the clipped frames —
     // that's exactly why the clipped ones must not insert).
     run.bounds = URect::new(0, 0, PHYSICAL.x, PHYSICAL.y);
-    rig.frame(1.0, &[std::slice::from_ref(&run)]);
+    rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(rig.backend.pass.instances.len(), 9);
     assert_eq!(rig.backend.encoder.cache().rows(), 1);
     let (_, cached) = rig
@@ -288,7 +286,7 @@ fn partially_culled_run_is_not_cached() {
 
     // Frame 4 replays the cached template: same 9 instances with
     // no re-encode (the arena didn't grow).
-    rig.frame(1.0, &[std::slice::from_ref(&run)]);
+    rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(rig.backend.pass.instances.len(), 9);
     assert_eq!(rig.backend.encoder.cache().rows(), 1);
     assert_eq!(

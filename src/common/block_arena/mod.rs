@@ -75,7 +75,7 @@ fn block_class<T: BlockSlot>(len: u32) -> usize {
 /// class boundary, which is what makes [`BlockArena::release`] able to
 /// recover a block's capacity from the span length alone.
 #[inline]
-fn block_capacity<T: BlockSlot>(class: usize) -> u32 {
+const fn block_capacity<T: BlockSlot>(class: usize) -> u32 {
     (class as u32 + 1) * T::GRANULE
 }
 

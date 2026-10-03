@@ -1,5 +1,6 @@
 //! The per-widget tag that lets one widget animate several things at once.
 
+use std::hash;
 /// Slot tag for stacking multiple animations on one widget. Widgets
 /// declare their own slot consts (e.g. `const HOVER: AnimSlot =
 /// AnimSlot::new("hover"); const PRESS: AnimSlot =
@@ -64,9 +65,9 @@ impl PartialEq for AnimSlot {
 
 impl Eq for AnimSlot {}
 
-impl std::hash::Hash for AnimSlot {
+impl hash::Hash for AnimSlot {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.hash);
     }
 }

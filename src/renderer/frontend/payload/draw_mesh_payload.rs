@@ -45,7 +45,7 @@ impl DrawMeshPayload {
     /// one full triangle, an index count that isn't a multiple of 3,
     /// or fully transparent tint.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         self.v_len == 0 || self.i_len < 3 || !self.i_len.is_multiple_of(3) || self.tint.is_noop()
     }
 }

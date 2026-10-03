@@ -29,6 +29,8 @@ use crate::text::font_scan::FontScan;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
+use std::fmt;
+use std::mem;
 
 pub(super) struct WinitRuntime<T> {
     /// The caller's app, created once the first window's `Ui` existed.
@@ -43,8 +45,8 @@ pub(super) struct WinitRuntime<T> {
     pending_commands: WindowCommands,
 }
 
-impl<T> std::fmt::Debug for WinitRuntime<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T> fmt::Debug for WinitRuntime<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WinitRuntime")
             .field("surfaces", &self.surfaces)
             .field("core", &self.core)
@@ -89,7 +91,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             .create_app
             .take()
             .expect("bootstrap app factory already consumed");
-        let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
+        let pending_tasks = mem::take(&mut bootstrap.pending_tasks);
 
         let mut app = create_app(&mut driver.ui, handle);
         for task in pending_tasks {
@@ -163,7 +165,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             self.close_window(token);
         }
         for pending in commands.opens {
-            self.spawn_window(event_loop, pending.token, pending.config)?;
+            self.spawn_window(event_loop, pending.token, &pending.config)?;
         }
         if self.windows.is_empty() {
             // Every window closed (titlebar X or `close_window`) — nothing
@@ -208,13 +210,13 @@ impl<T: App + 'static> WinitRuntime<T> {
         &mut self,
         event_loop: &ActiveEventLoop,
         token: WindowToken,
-        config: WindowConfig,
+        config: &WindowConfig,
     ) -> Result<(), WinitHostError> {
         if self.windows.slot_of_token(token).is_some() {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return Ok(());
         }
-        let window = native::create_window(event_loop, token, &config)?;
+        let window = native::create_window(event_loop, token, config)?;
         let surface = self
             .surfaces
             .make_surface(&window, native::physical_size(&window))
@@ -239,7 +241,7 @@ impl<T: App + 'static> WinitRuntime<T> {
 
 /// The host config's device-and-swapchain half, in the graphics layer's own
 /// words.
-fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
+const fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
     HostGpuConfig {
         power_preference: config.power_preference,
         vsync: config.vsync,

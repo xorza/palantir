@@ -86,7 +86,7 @@ impl Ident {
     /// debug overlay while leaving auto collisions silent, and the
     /// theme's `default_id` uses it to know whether the caller spoke.
     #[inline]
-    pub(crate) fn is_explicit(self) -> bool {
+    pub(crate) const fn is_explicit(self) -> bool {
         !matches!(self, Ident::Auto(_))
     }
 }

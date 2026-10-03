@@ -8,6 +8,7 @@
 //! prefix and the `::h<hash>` suffix.
 
 use backtrace::Backtrace;
+use std::env;
 use std::fmt::Write as _;
 use std::path::{self, Path};
 
@@ -16,7 +17,7 @@ use std::path::{self, Path};
 /// filter and dump the raw resolved backtrace instead.
 pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
     bt.resolve();
-    if std::env::var_os("PALANTIR_ALLOC_FULL_BT").is_some() {
+    if env::var_os("PALANTIR_ALLOC_FULL_BT").is_some() {
         return format!("{bt:?}");
     }
 
@@ -42,11 +43,10 @@ pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
                 FrameKind::Fixture => seen_fixture_frame = true,
                 FrameKind::Src => {}
             }
-            let name = symbol
-                .name()
-                .map(|n| format!("{n:#}"))
-                .map(strip_test_crate_prefix)
-                .unwrap_or_else(|| String::from("<unknown>"));
+            let name = symbol.name().map(|n| format!("{n:#}")).map_or_else(
+                || String::from("<unknown>"),
+                |n| strip_test_crate_prefix(&n),
+            );
             let line = symbol.lineno().unwrap_or(0);
             let col = symbol.colno().unwrap_or(0);
             let _ = writeln!(out, "  {idx:>2}: {name}");
@@ -88,7 +88,7 @@ fn classify(rel: &str) -> FrameKind {
 /// (`frame<alloc::harness::tests::…>`). The test binary built from
 /// `tests/alloc/main.rs` is named `alloc`, so the prefix is the same
 /// everywhere and adds no information.
-fn strip_test_crate_prefix(name: String) -> String {
+fn strip_test_crate_prefix(name: &str) -> String {
     name.replace("alloc::", "")
 }
 

@@ -1,7 +1,6 @@
 use crate::common::hash::Hasher;
 use crate::primitives::math::approx::internals::assert_close;
-use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintChannel, PaintRepeat};
+use crate::scene::tree::paint_anims::paint_anim::{PaintChannel, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
 use std::f32::consts::TAU;
 use std::hash::Hasher as _;

@@ -18,6 +18,8 @@ use crate::widgets::expander::{Expander, ExpanderState};
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::expander::ExpanderTheme;
+use std::f32::consts;
+use std::time;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 
@@ -270,7 +272,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         "no height was known, so the reveal snapped whole",
     );
     // A frame with the body whole is what measures it.
-    h.advance_frames(2, std::time::Duration::from_millis(16), |ui| {
+    h.advance_frames(2, time::Duration::from_millis(16), |ui| {
         record(ui);
     });
 
@@ -282,7 +284,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     // The click frame carries the new target but no elapsed time, so the
     // tween has not moved yet; the frame after it is the one that shows.
     assert_eq!(h.frame_value(&mut record), 1.0);
-    h.advance(std::time::Duration::from_millis(16));
+    h.advance(time::Duration::from_millis(16));
     // `MEDIUM` is 200 ms of ease-out cubic, so 16 ms in the reveal has
     // (1 − 16/200)³ = 0.92³ = 0.778688 left: the close tweened rather
     // than snapping.
@@ -333,7 +335,7 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         "the tip is the middle point, on the bottom edge",
     );
 
-    let turned = c.rotated(-std::f32::consts::FRAC_PI_2);
+    let turned = c.rotated(-consts::FRAC_PI_2);
     let expected = [
         Vec2::new(0.0, 8.0),
         Vec2::new(8.0, 4.0),
@@ -349,7 +351,7 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
 
     // Rounded by 1: the same turn on a 6 px arrow one px in from every
     // edge, so the dilated shape's extents are the box's again.
-    let rounded = c.rounded(1.0, -std::f32::consts::FRAC_PI_2);
+    let rounded = c.rounded(1.0, -consts::FRAC_PI_2);
     let expected = [
         Vec2::new(1.0, 7.0),
         Vec2::new(7.0, 4.0),
@@ -403,7 +405,7 @@ fn a_settling_reveal_stores_the_whole_height() {
     h.prime(2, |ui| {
         record(ui);
     });
-    let tick = std::time::Duration::from_millis(16);
+    let tick = time::Duration::from_millis(16);
     let toggle = |h: &mut UiHarness, record: &mut dyn FnMut(&mut Ui) -> f32| {
         h.advance_past_double_click();
         h.frame(|ui| {

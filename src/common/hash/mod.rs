@@ -19,6 +19,8 @@
 //! all ≤8 B, so the migration never tipped the balance.
 
 use rustc_hash::FxHasher;
+use std::fmt;
+use std::hash;
 use std::hash::Hasher as _;
 
 /// Canonical FxHash of a `str`'s bytes — the content hash stored by
@@ -41,8 +43,8 @@ pub(crate) struct Hasher(FxHasher);
 // Manual: `FxHasher` has no `Debug`, and its state is one opaque `u64`.
 // The digest so far is the only thing worth showing, and reading it is
 // non-destructive.
-impl std::fmt::Debug for Hasher {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Hasher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use std::hash::Hasher as _;
         f.debug_tuple("Hasher").field(&self.0.finish()).finish()
     }
@@ -50,7 +52,7 @@ impl std::fmt::Debug for Hasher {
 
 impl Hasher {
     #[inline]
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self(FxHasher::default())
     }
 
@@ -95,7 +97,7 @@ impl Hasher {
     }
 }
 
-impl std::hash::Hasher for Hasher {
+impl hash::Hasher for Hasher {
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         self.0.write(bytes);

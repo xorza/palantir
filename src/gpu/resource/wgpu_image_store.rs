@@ -10,6 +10,7 @@ use crate::primitives::paint::image::Image;
 use crate::renderer::image_registry::image_store::ImageStore;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
+use std::array;
 use std::cell::{Ref, RefCell};
 use std::sync::OnceLock;
 
@@ -58,7 +59,7 @@ impl WgpuImageStore {
         }
     }
 
-    pub(crate) fn binding(&self) -> &ImageBinding {
+    pub(crate) const fn binding(&self) -> &ImageBinding {
         &self.binding
     }
 
@@ -88,7 +89,7 @@ impl WgpuImageStore {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        let view = texture.create_view(&Default::default());
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = self
             .binding
             .bind_group(&self.device, &view, &bind_group_label);
@@ -195,7 +196,7 @@ fn premultiply_into(table: &[[u8; 256]; 256], texels: &[SrgbaU8], out: &mut Vec<
 fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
     static TABLE: OnceLock<Box<[[u8; 256]; 256]>> = OnceLock::new();
     TABLE.get_or_init(|| {
-        let decoded: [f32; 256] = std::array::from_fn(|value| {
+        let decoded: [f32; 256] = array::from_fn(|value| {
             RgbaF32::from(SrgbaU8 {
                 r: value as u8,
                 g: 0,
@@ -204,7 +205,8 @@ fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
             })
             .r
         });
-        let mut table = Box::new([[0u8; 256]; 256]);
+        let mut table: Box<[[u8; 256]; 256]> =
+            vec![[0u8; 256]; 256].into_boxed_slice().try_into().unwrap();
         for (alpha, row) in table.iter_mut().enumerate() {
             let coverage = alpha as f32 / 255.0;
             for (value, out) in row.iter_mut().enumerate() {
@@ -222,7 +224,7 @@ fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
         // GPU as the bytes it was handed. The decode and encode either
         // side of that multiply round-trip to within one LSB rather than
         // exactly, so the identity is stated instead of computed.
-        table[usize::from(u8::MAX)] = std::array::from_fn(|value| value as u8);
+        table[usize::from(u8::MAX)] = array::from_fn(|value| value as u8);
         table
     })
 }

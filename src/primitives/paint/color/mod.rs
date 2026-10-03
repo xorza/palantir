@@ -28,6 +28,8 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
+use std::hash;
+use std::str;
 
 #[repr(C)]
 #[derive(
@@ -57,6 +59,7 @@ use std::borrow::Cow;
 /// Writing an sRGB-encoded value straight into the fields skips the
 /// linearisation and will render too bright. Components may exceed `1.0`
 /// for HDR-shaped tween outputs. Hashing is approximate (`1e-4`).
+#[must_use]
 pub struct RgbaF32 {
     /// Red, linear, nominally 0..1.
     pub r: f32,
@@ -69,9 +72,9 @@ pub struct RgbaF32 {
     pub a: f32,
 }
 
-impl std::hash::Hash for RgbaF32 {
+impl hash::Hash for RgbaF32 {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.hash_eq(state);
     }
 }
@@ -86,7 +89,7 @@ impl std::hash::Hash for RgbaF32 {
 /// field and not the other.
 impl FloatHash for RgbaF32 {
     #[inline]
-    fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
         self.r.hash_eq(state);
         self.g.hash_eq(state);
         self.b.hash_eq(state);
@@ -94,7 +97,7 @@ impl FloatHash for RgbaF32 {
     }
 
     #[inline]
-    fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_visual<H: hash::Hasher>(&self, state: &mut H) {
         self.r.hash_visual(state);
         self.g.hash_visual(state);
         self.b.hash_visual(state);
@@ -309,7 +312,7 @@ impl<'de> Deserialize<'de> for RgbaF32 {
 /// The hex forms the wire format reads, so `"#3266cc".parse()` and a
 /// deserialized `"#3266cc"` cannot disagree. Not trimmed: the caller decides
 /// what whitespace means.
-impl std::str::FromStr for RgbaF32 {
+impl str::FromStr for RgbaF32 {
     type Err = &'static str;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {

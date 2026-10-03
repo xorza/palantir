@@ -140,7 +140,7 @@ impl Default for ExpanderTheme {
 impl ThemeSlot for ExpanderTheme {
     type Pick = ();
 
-    fn look(&self, response: &ResponseState, _: ()) -> &WidgetLook {
+    fn look(&self, response: &ResponseState, (): ()) -> &WidgetLook {
         self.looks.pick(response, response.pressed())
     }
 

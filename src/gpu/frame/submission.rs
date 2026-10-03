@@ -23,7 +23,7 @@ pub(crate) struct SubmissionTargets<'a> {
     pub(crate) stencil: Option<&'a Stencil>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Submission<'a> {
     pub(crate) owner: RenderOwnerId,
     pub(crate) targets: SubmissionTargets<'a>,
@@ -44,7 +44,7 @@ impl Submission<'_> {
 
     /// The debug dim flag, and only on a frame it can apply to — a full
     /// repaint has no undamaged region left to dim.
-    pub(crate) fn dim_undamaged(&self) -> bool {
+    pub(crate) const fn dim_undamaged(&self) -> bool {
         self.debug_overlay.dim_undamaged && self.plan.damage.is_partial()
     }
 }

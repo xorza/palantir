@@ -4,6 +4,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::math::approx::{self, FloatHash};
 use glam::Vec2;
+use std::hash;
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -16,7 +17,7 @@ pub(crate) struct BoundsExtras {
 
 impl Hash for BoundsExtras {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash<H: hash::Hasher>(&self, h: &mut H) {
         self.position.hash_visual(h);
         self.grid.hash(h);
         self.min_size.hash_visual(h);

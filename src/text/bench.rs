@@ -1,3 +1,8 @@
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
@@ -128,6 +133,12 @@ fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
 /// shaped-buffer cache to age, so charging it to one side only would
 /// bill the layer for a wheel drain it did not cause.
 fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
+    const WRAP_W: f32 = 150.0;
+
+    fn request_for(text: &str) -> TextShapeRequest<'_> {
+        UI_FACE.unbounded_request(text)
+    }
+
     let mut group = run.subgroup(c, "reuse_layer");
     bench_shared_content(&mut group);
 
@@ -140,10 +151,6 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
             ordinal: i as u16,
         })
         .collect();
-    fn request_for(text: &str) -> TextShapeRequest<'_> {
-        UI_FACE.unbounded_request(text)
-    }
-    const WRAP_W: f32 = 150.0;
 
     group.bench_function("single_line_hit_x64", |b| {
         let shaper = TextShaper::new();
@@ -245,6 +252,10 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
 /// respectively, and 37-43% on the plain hit paths, because a 24-byte
 /// `TextShapeKey` hash costs more than the row dedup saves.
 fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
+    fn request() -> TextShapeRequest<'static> {
+        UI_FACE.unbounded_request(REPEATED)
+    }
+
     const REPEATED: &str = "Enabled";
     const WRAP_W: f32 = 150.0;
     let slots: Vec<TextRunSlot> = (0..REUSE_LAYER_LABELS)
@@ -253,9 +264,6 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
             ordinal: i as u16,
         })
         .collect();
-    fn request() -> TextShapeRequest<'static> {
-        UI_FACE.unbounded_request(REPEATED)
-    }
 
     group.bench_function("shared_content_x64", |b| {
         let shaper = TextShaper::new();

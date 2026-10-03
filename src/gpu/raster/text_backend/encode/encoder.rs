@@ -112,21 +112,20 @@ impl TextEncoder {
         // so an atlas eviction during the walk cannot invalidate a
         // template already appended here.
         for g in placed.iter() {
-            let idx = match pass.atlas.touch(&g.raster_key) {
-                Some(i) => i,
-                None => {
-                    // No image at all is permanent — the same key
-                    // rasterizes to nothing next frame too — so a run
-                    // that skips this glyph is still a complete encode.
-                    let Some(image) = glyphs.rasterize(g.raster_key) else {
+            let idx = if let Some(i) = pass.atlas.touch(&g.raster_key) {
+                i
+            } else {
+                // No image at all is permanent — the same key
+                // rasterizes to nothing next frame too — so a run
+                // that skips this glyph is still a complete encode.
+                let Some(image) = glyphs.rasterize(g.raster_key) else {
+                    continue;
+                };
+                match pass.insert_raster(device, g.raster_key, image) {
+                    Rasterized::Slot(i) => i,
+                    Rasterized::AtlasFull => {
+                        starved = true;
                         continue;
-                    };
-                    match pass.insert_raster(device, g.raster_key, image) {
-                        Rasterized::Slot(i) => i,
-                        Rasterized::AtlasFull => {
-                            starved = true;
-                            continue;
-                        }
                     }
                 }
             };

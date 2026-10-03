@@ -149,6 +149,8 @@ pub(super) fn sidebar(ui: &mut Ui, items: usize) {
 }
 
 pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
+    const TOAST_W: f32 = 220.0;
+
     let bar = Panel::zstack()
         .id_salt("status")
         .size((Sizing::FILL, Sizing::fixed(34.0)))
@@ -208,7 +210,6 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
     // else was on screen to reach), but the fixture shares a window as the
     // showcase page. A toast annotates; it does not interrupt.
     let bar_rect = bar.rect.unwrap_or(Rect::new(12.0, 12.0, 240.0, 34.0));
-    const TOAST_W: f32 = 220.0;
     let anchor = Rect::new(
         bar_rect.min.x + (bar_rect.size.w - TOAST_W).max(0.0),
         bar_rect.min.y,

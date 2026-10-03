@@ -86,7 +86,7 @@ impl PackedQuad {
     /// Nothing rounded off its corners and nothing painted outside its
     /// rect — the shape both the clear fold and the fragment fast path
     /// start from.
-    fn is_sharp(&self) -> bool {
+    const fn is_sharp(&self) -> bool {
         paints_nothing(self.stroke_width) && self.corners.approx_zero()
     }
 
@@ -371,6 +371,10 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "every value is clamped to a non-negative range before the cast"
+    )]
     fn icon(&mut self, p: DrawIconPayload) {
         let ScaledRect {
             phys: phys_rect,
@@ -411,6 +415,10 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "every value is clamped to a non-negative range before the cast"
+    )]
     fn image(&mut self, draw: ImageDraw<'_>) {
         let ImageDraw { payload: p, view } = draw;
         let ScaledRect {
@@ -1332,11 +1340,11 @@ impl ComposeSession<'_> {
 /// with no alpha has no hue and comes back transparent black.
 fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
     let (a, b) = (a.premultiplied(), b.premultiplied());
-    let alpha = (a.a + b.a) * 0.5;
+    let alpha = f32::midpoint(a.a, b.a);
     if alpha <= 0.0 {
         return RgbaF32::TRANSPARENT;
     }
-    let channel = |x: f32, y: f32| (x + y) * 0.5 / alpha;
+    let channel = |x: f32, y: f32| f32::midpoint(x, y) / alpha;
     RgbaF32 {
         r: channel(a.r, b.r),
         g: channel(a.g, b.g),
@@ -1347,6 +1355,10 @@ fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
 
 /// `v` in `0..=1` as unorm16, the encoding `unpack2x16unorm` decodes:
 /// `bits / 65535`.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "every value is clamped to a non-negative range before the cast"
+)]
 const fn unorm16(v: f32) -> u16 {
     (v.clamp(0.0, 1.0) * 65535.0).round() as u16
 }

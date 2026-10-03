@@ -396,7 +396,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     let row = h.ui.cascade().layers[Layer::Main].paint_arena.rows[span.start as usize].screen;
 
     let pivot = owner.min + Vec2::new(40.0, 20.0);
-    let want = Rect::square_about(pivot, (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt()).inflated(1.0);
+    let want = Rect::square_about(pivot, 30.0_f32.hypot(10.0)).inflated(1.0);
     assert_eq!(row, want, "the damage is the swept square");
     // The recorded bbox stops at the owner box, so the quarter-turn
     // endpoint is the pixel the old bound left undamaged.
@@ -600,14 +600,12 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     assert!(
         intersects(prev_shape2_rect),
         "old position of moved shape must be in damage region; \
-         prev_rect = {prev_shape2_rect:?}, region = {:?}",
-        region,
+         prev_rect = {prev_shape2_rect:?}, region = {region:?}",
     );
     assert!(
         intersects(curr_shape2_rect),
         "new position of moved shape must be in damage region; \
-         curr_rect = {curr_shape2_rect:?}, region = {:?}",
-        region,
+         curr_rect = {curr_shape2_rect:?}, region = {region:?}",
     );
 
     // Sentinel: a rect on the chrome's top edge between shapes 0/1
@@ -620,8 +618,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     assert!(
         !intersects(stale_chrome_band),
         "unchanged chrome interior must not enter damage; \
-         stale_band = {stale_chrome_band:?}, region = {:?}",
-        region,
+         stale_band = {stale_chrome_band:?}, region = {region:?}",
     );
 }
 
@@ -718,12 +715,13 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
 
-    let mut h = UiHarness::new(DISPLAY.physical);
     // Mono fallback geometry: glyph width = font_size_px * 0.5, line
     // height = font_size_px. With font_size_px = 14, "abc" measures
     // 21×14 and "abcdef" measures 42×14.
     const FONT: f32 = 14.0;
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
+
+    let mut h = UiHarness::new(DISPLAY.physical);
     let leaf_id = WidgetId::from_hash("text-host");
     let build = |text: &'static str, ui: &mut Ui| {
         Panel::hstack()
@@ -793,8 +791,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     assert!(
         intersects(inside_new_only),
         "probe inside new text but past old text must be in damage; \
-         probe = {inside_new_only:?}, region = {:?}",
-        region,
+         probe = {inside_new_only:?}, region = {region:?}",
     );
 
     // Also assert prev's middle gets damaged (so the old glyph
@@ -803,8 +800,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     assert!(
         intersects(inside_old),
         "probe inside old text must be in damage; \
-         probe = {inside_old:?}, region = {:?}",
-        region,
+         probe = {inside_old:?}, region = {region:?}",
     );
 }
 
@@ -817,14 +813,14 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 /// which is what its scissor covers.
 #[test]
 fn a_text_run_damages_its_ink_past_the_block() {
+    const ORIGIN: Vec2 = Vec2::new(20.0, 10.0);
+    const FONT: f32 = 64.0;
+
     use crate::text::font_family::FontFamily;
     use crate::text::font_slant::FontSlant;
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
-
     let mut h = UiHarness::with_text(DISPLAY.physical);
-    const FONT: f32 = 64.0;
-    const ORIGIN: Vec2 = Vec2::new(20.0, 10.0);
     let leaf_id = WidgetId::from_hash("text-host");
     frame(&mut h, |ui| {
         Panel::hstack()

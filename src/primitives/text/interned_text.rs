@@ -11,7 +11,7 @@ pub(crate) struct InternedText<'a> {
 }
 
 impl<'a> InternedText<'a> {
-    pub(crate) fn new(bytes: &'a str) -> Self {
+    pub(crate) const fn new(bytes: &'a str) -> Self {
         Self { bytes }
     }
 

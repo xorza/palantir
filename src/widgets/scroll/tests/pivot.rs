@@ -40,7 +40,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                                 WidgetId::from_hash("scaled-scroll-content"),
                                 400.0,
                                 400.0,
-                            )
+                            );
                         });
                 });
         };

@@ -1,5 +1,10 @@
 //! What a full atlas does: grow, evict LRU, or fall back at the cap.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::renderer::gradient_atlas::tests::support::{

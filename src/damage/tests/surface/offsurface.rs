@@ -203,8 +203,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         .any(|r| r.min.x <= 100.5 && r.max().x >= 200.0 - 0.5 && r.max().y >= 40.0 - 0.5);
     assert!(
         covers_c,
-        "curr-extent push must cover the newly revealed node. region = {:?}",
-        region,
+        "curr-extent push must cover the newly revealed node. region = {region:?}",
     );
 
     // Still frame: nothing changed — tier 1 skips at the root.
@@ -222,8 +221,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     ] {
         assert!(
             region.any_intersects(probe),
-            "second move must damage c's {label} position; region = {:?}",
-            region,
+            "second move must damage c's {label} position; region = {region:?}",
         );
     }
 

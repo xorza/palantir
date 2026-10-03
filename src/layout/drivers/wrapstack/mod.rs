@@ -46,7 +46,7 @@ struct LinePack {
 }
 
 #[inline]
-fn child_pack(axis: Axis, d: Size) -> ChildPack {
+const fn child_pack(axis: Axis, d: Size) -> ChildPack {
     ChildPack {
         main: axis.main(d),
         cross: axis.cross(d),
@@ -315,7 +315,7 @@ impl LayoutDriver for WrapStack {
                     line_cross,
                     &mut cross_cursor,
                     &mut first_line,
-                )
+                );
             });
             pass.wrap_scratch_mut().push(c);
         }

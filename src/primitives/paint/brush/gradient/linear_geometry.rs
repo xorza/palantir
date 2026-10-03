@@ -6,6 +6,7 @@ use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
 use crate::primitives::paint::color::RgbaF32;
+use std::hash;
 
 /// Geometry of a linear gradient: colour runs along an axis at `angle`
 /// radians (0 = →, π/2 = ↓). Object-space — the gradient spans the brush
@@ -38,7 +39,7 @@ impl GradientGeometry for LinearGeometry {
         [cos, sin, 0.0, 1.0]
     }
 
-    fn hash_geometry<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {
         self.angle.hash_visual(state);
     }
 

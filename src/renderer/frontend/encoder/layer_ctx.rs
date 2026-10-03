@@ -191,7 +191,7 @@ impl LayerCtx<'_, '_> {
                             *border,
                         ),
                         alpha,
-                    )
+                    );
                 }
             },
             ShapeRecord::Text {

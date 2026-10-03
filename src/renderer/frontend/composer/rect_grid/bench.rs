@@ -18,6 +18,11 @@
 //!   spanning all of them, so every tile chains the spanning rects and
 //!   every query walks its tile's chain.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP, TILE_SIZE};
@@ -175,7 +180,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let mut fixture = RealisticFixture::new(labels);
         let hits = fixture.round();
         assert!(hits > 0, "fixture must produce hits to be meaningful");
-        group.throughput(Throughput::Elements(labels as u64));
+        group.throughput(Throughput::Elements(u64::from(labels)));
         group.bench_with_input(BenchmarkId::from_parameter(labels), &labels, |b, _| {
             b.iter(|| black_box(fixture.round()));
         });
@@ -195,7 +200,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             "[rect_grid] tiles={tiles} wide={wide} overflow={}",
             fixture.grid.overflow.len(),
         );
-        group.throughput(Throughput::Elements((tiles * wide) as u64));
+        group.throughput(Throughput::Elements(u64::from(tiles * wide)));
         group.bench_with_input(
             BenchmarkId::new(format!("{tiles}x{wide}"), tiles),
             &tiles,

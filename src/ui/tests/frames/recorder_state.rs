@@ -17,6 +17,9 @@ use glam::Vec2;
 /// a click land on just-disabled UI.
 #[test]
 fn freshly_disabled_subtree_masks_stale_interactions() {
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::shape::paint::shape_brush::ShapeBrush;
+
     let target = WidgetId::from_hash("target");
     let mut h = UiHarness::new(SURFACE);
     let run = |h: &mut UiHarness, disabled: bool| {
@@ -45,9 +48,6 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         !disabled.hovered(),
         "interactions must mask on the disable frame"
     );
-
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::shape::paint::shape_brush::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);

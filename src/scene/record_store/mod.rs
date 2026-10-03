@@ -31,6 +31,7 @@ use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::{GradientId, RecordedGradients};
 use crate::scene::record_store::text_store::TextStore;
 use glam::Vec2;
+use std::fmt;
 
 /// The payload columns themselves, and the only API that appends to them.
 ///
@@ -128,7 +129,7 @@ impl RecordStore {
     /// an arena-backed [`InternedStr`] spanning the freshly-written bytes.
     /// Backs [`crate::Ui::fmt`].
     #[must_use]
-    pub(crate) fn intern_fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
+    pub(crate) fn intern_fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
         self.text.intern_fmt(args)
     }
 

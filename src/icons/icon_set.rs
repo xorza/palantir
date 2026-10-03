@@ -7,6 +7,7 @@ use crate::icons::icon_table::IconId;
 use crate::shape::Shape;
 use crate::shape::icon::IconShape;
 use glam::Vec2;
+use std::fmt;
 use std::rc::Rc;
 
 /// Which icon of which loaded set — six bytes, and the whole of what the
@@ -59,7 +60,7 @@ impl IconHandle {
     /// Sound to read on a handle whose set is gone, unlike drawing with
     /// one: the number travelled with the handle and is baked.
     #[inline]
-    pub fn view_box(&self) -> Vec2 {
+    pub const fn view_box(&self) -> Vec2 {
         self.view_box
     }
 }
@@ -92,8 +93,8 @@ pub struct IconSet {
 /// list and release queue with them — from one `dbg!` on one handle. What a
 /// reader wants is which set this is and how widely it is held, which is what
 /// [`ImageHandle`](crate::ImageHandle) prints for the same reason.
-impl std::fmt::Debug for IconSet {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for IconSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IconSet")
             .field("id", &self.inner.id())
             .field("icons", &self.inner.table().icons().len())
@@ -103,7 +104,7 @@ impl std::fmt::Debug for IconSet {
 }
 
 impl IconSet {
-    pub(crate) fn from_token(inner: Rc<IconSetToken>) -> Self {
+    pub(crate) const fn from_token(inner: Rc<IconSetToken>) -> Self {
         Self { inner }
     }
 

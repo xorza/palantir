@@ -102,7 +102,7 @@ impl StrokeBounds {
 
     /// Owner-local rect the composer culls and batches against.
     #[inline]
-    pub(crate) fn cull_rect(self) -> Rect {
+    pub(crate) const fn cull_rect(self) -> Rect {
         match self {
             Self::Still(bbox) => bbox,
             Self::Spun { spin, radius } => Rect::square_about(spin.pivot, radius),
@@ -111,7 +111,7 @@ impl StrokeBounds {
 
     /// The spin to draw under, or `None` for the common still case.
     #[inline]
-    pub(crate) fn spin(self) -> Option<Spin> {
+    pub(crate) const fn spin(self) -> Option<Spin> {
         match self {
             Self::Still(_) => None,
             Self::Spun { spin, .. } => Some(spin),

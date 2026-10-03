@@ -66,7 +66,7 @@ pub struct TextProbe<'a> {
 }
 
 impl<'a> TextProbe<'a> {
-    pub(super) fn new(
+    pub(super) const fn new(
         size: Size,
         text: &'a str,
         key: Option<TextShapeKey>,
@@ -83,7 +83,7 @@ impl<'a> TextProbe<'a> {
     }
 
     /// Extent of the shaped run; `Size::ZERO` for empty text.
-    pub fn size(&self) -> Size {
+    pub const fn size(&self) -> Size {
         self.size
     }
 
@@ -157,7 +157,7 @@ impl<'a> TextProbe<'a> {
     ///
     /// Named because both of those answers assert on it, and a rule
     /// spelled at each is one that can be changed in only one.
-    fn shapes_nothing(&self) -> bool {
+    const fn shapes_nothing(&self) -> bool {
         self.text.is_empty() || self.key.is_none()
     }
 
@@ -186,6 +186,10 @@ impl<'a> TextProbe<'a> {
     /// tripping it.
     fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
         #[cfg(any(test, feature = "internals"))]
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names the path inline instead of a cfg'd import"
+        )]
         if let Some(key) = self.key.filter(|_| self.inner.is_mono()) {
             return crate::text::mono::single_line_caret_x(
                 self.text,
@@ -206,6 +210,10 @@ impl<'a> TextProbe<'a> {
     /// exactly one position, so production always answers 0.
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
         #[cfg(any(test, feature = "internals"))]
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names the path inline instead of a cfg'd import"
+        )]
         if let Some(key) = self.key.filter(|_| self.inner.is_mono()) {
             return crate::text::mono::nearest_byte(self.text, target_x, key.font_size_px());
         }
@@ -297,10 +305,11 @@ impl<'a> TextProbe<'a> {
             // before asking cosmic — the exact inverse of what
             // [`Self::caret_at`] subtracts, which is what keeps the
             // hit-test → caret round trip landing where it started.
-            Some(ShapedRun { buffer, left }) => buffer
-                .hit(x + left, y)
-                .map(|cursor| LineMap::new(buffer, self.text).byte(cursor))
-                .unwrap_or(self.text.len()),
+            Some(ShapedRun { buffer, left }) => {
+                buffer.hit(x + left, y).map_or(self.text.len(), |cursor| {
+                    LineMap::new(buffer, self.text).byte(cursor)
+                })
+            }
             None => self.unshaped_byte_at(x),
         }
     }

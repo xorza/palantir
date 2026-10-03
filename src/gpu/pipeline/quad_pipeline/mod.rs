@@ -22,6 +22,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::Vec2;
+use std::slice;
 
 /// Every quad pipeline one swapchain format needs.
 ///
@@ -244,9 +245,9 @@ impl QuadPipeline {
         }
     }
 
-    pub(super) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Quad>() as u64,
+            array_stride: size_of::<Quad>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &QUAD_INSTANCE_ATTRS,
         }
@@ -270,7 +271,7 @@ impl QuadPipeline {
                 label,
                 shader: &self.shader,
                 layout: &self.pipeline_layout,
-                vertex_buffers: std::slice::from_ref(&instance),
+                vertex_buffers: slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_format: format,
                 fragment_entry: "fs_mask",
@@ -288,7 +289,7 @@ impl QuadPipeline {
                     stencil_label: "palantir.quad.pipeline.stencil_test",
                     shader: &self.shader,
                     layout: &self.pipeline_layout,
-                    vertex_buffers: std::slice::from_ref(&instance),
+                    vertex_buffers: slice::from_ref(&instance),
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                 },
                 format,

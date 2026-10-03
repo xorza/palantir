@@ -25,6 +25,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
+use std::iter;
 
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     let clipboard = Clipboard::memory();
@@ -58,7 +59,7 @@ fn apply_key_with_clipboard(
 /// same closure both kinds.
 fn painted_shapes(ui: &Ui, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
     let tree = ui.tree(Layer::Main);
-    std::iter::once(node)
+    iter::once(node)
         .chain(tree.children(node).map(|child| child.id))
         .flat_map(move |n| tree.shapes_of(n))
 }
@@ -127,7 +128,7 @@ fn ctrl_shift_press(key: Key) -> KeyPress {
     kp
 }
 
-fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui) + 'a {
+fn editor_and_button(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
     use crate::widgets::button::Button;
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

@@ -88,7 +88,7 @@ impl Starvation {
     }
 
     /// Close a frame.
-    fn end_frame(&mut self) {
+    const fn end_frame(&mut self) {
         *self = match self {
             Self::Open => Self::Settling,
             Self::Clear | Self::Settling => Self::Clear,
@@ -156,15 +156,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         if metadata.is_empty() {
             return Rasterized::Slot(self.atlas.insert_unallocated(key));
         }
-        match self
+        if let Some(idx) = self
             .atlas
             .insert(device, key, image.content, metadata, image.data)
         {
-            Some(idx) => Rasterized::Slot(idx),
-            None => {
-                self.note_atlas_starved();
-                Rasterized::AtlasFull
-            }
+            Rasterized::Slot(idx)
+        } else {
+            self.note_atlas_starved();
+            Rasterized::AtlasFull
         }
     }
 

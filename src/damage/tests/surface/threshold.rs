@@ -115,7 +115,7 @@ fn damage_filter_threshold_cases() {
         let collapsed = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
         match (Damage::new(collapsed), want) {
             (damage, Some(want)) => {
-                assert_eq!(Damage::expect_partial(damage), *want, "case: {label}")
+                assert_eq!(Damage::expect_partial(damage), *want, "case: {label}");
             }
             (Some(Damage::Full), None) => {}
             (other, None) => panic!("case: {label}: expected Full, got {other:?}"),

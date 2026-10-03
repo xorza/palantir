@@ -3,6 +3,11 @@
 //! in-shader), linear vs nearest sampling under both magnification
 //! and minification, and the minification tap modes on a starfield.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "the showcase casts non-negative sizes, ids and colour channels"
+)]
+
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, section, tiles};
 use palantir::widget::Shape;

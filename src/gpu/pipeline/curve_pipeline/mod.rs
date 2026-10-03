@@ -115,9 +115,9 @@ impl CurvePipeline {
         }
     }
 
-    pub(super) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<CurveInstance>() as u64,
+            array_stride: size_of::<CurveInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &CURVE_INSTANCE_ATTRS,
         }

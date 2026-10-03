@@ -4,6 +4,7 @@
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
+use std::ops;
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
@@ -25,7 +26,7 @@ impl Spacing {
     /// Packed 8-byte form. Used by `LayoutCore::hash_with_flags` to fold the
     /// padding + margin lanes into the parent hasher write.
     #[inline]
-    pub(crate) fn as_u64(self) -> u64 {
+    pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
     }
 }
@@ -84,7 +85,7 @@ pub struct Sums {
     pub vertical: f32,
 }
 
-impl std::ops::Add for Spacing {
+impl ops::Add for Spacing {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {

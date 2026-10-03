@@ -32,7 +32,7 @@ pub struct TabItem {
 
 impl TabItem {
     /// A plain chip: closable, draggable, no badge and no icon.
-    pub fn new(key: u64, label: InternedStr) -> Self {
+    pub const fn new(key: u64, label: InternedStr) -> Self {
         Self {
             key,
             label,

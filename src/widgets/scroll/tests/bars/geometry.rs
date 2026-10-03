@@ -293,7 +293,7 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0);
                     });
             });
     };
@@ -341,7 +341,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("big"), 400.0, 400.0)
+                        fixed_block(ui, WidgetId::from_hash("big"), 400.0, 400.0);
                     });
             });
     };

@@ -73,7 +73,7 @@ impl Axis {
             Axis::Y => v.x,
         }
     }
-    pub(crate) fn main_sizing(self, s: SizeSpec) -> Sizing {
+    pub(crate) const fn main_sizing(self, s: SizeSpec) -> Sizing {
         match self {
             Axis::X => s.w(),
             Axis::Y => s.h(),
@@ -106,7 +106,7 @@ impl Axis {
     /// Order a main/cross pair the way the grid APIs take them:
     /// `[rows, cols]`. `Axis::X` distributes along columns, so its main
     /// list *is* the column list; `Axis::Y` distributes along rows.
-    pub(crate) fn rows_cols<T>(self, main: T, cross: T) -> [T; 2] {
+    pub(crate) const fn rows_cols<T>(self, main: T, cross: T) -> [T; 2] {
         match self {
             Axis::X => [cross, main],
             Axis::Y => [main, cross],

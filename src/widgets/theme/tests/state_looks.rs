@@ -13,6 +13,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
+use std::ptr;
 
 #[test]
 fn button_theme_pick_precedence() {
@@ -51,7 +52,7 @@ fn button_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            std::ptr::eq(theme.pick(state), *expected),
+            ptr::eq(theme.pick(state), *expected),
             "{label}: pick should return the matching slot",
         );
     }
@@ -61,9 +62,9 @@ fn button_theme_pick_precedence() {
 fn text_edit_theme_pick_precedence() {
     let theme = TextEditTheme::default();
     let state = |focused, pointer_over, disabled| ResponseState {
+        pointer_over,
         disabled,
         focused,
-        pointer_over,
         ..ResponseState::default()
     };
     let cases: &[(ResponseState, &WidgetLook, &str)] = &[
@@ -88,7 +89,7 @@ fn text_edit_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            std::ptr::eq(theme.pick(state), *expected),
+            ptr::eq(theme.pick(state), *expected),
             "{label}: pick should return the matching slot",
         );
     }
@@ -157,7 +158,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
     ];
     for (state, checked, expected, label) in cases {
         assert!(
-            std::ptr::eq(theme.pick(state, *checked), *expected),
+            ptr::eq(theme.pick(state, *checked), *expected),
             "{label}: pick should return the matching slot",
         );
     }
@@ -165,7 +166,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
     // The checked flag decides the answer on its own: one state, two packs.
     let idle = state(false, false, false);
     assert!(
-        !std::ptr::eq(theme.pick(&idle, false), theme.pick(&idle, true)),
+        !ptr::eq(theme.pick(&idle, false), theme.pick(&idle, true)),
         "checked and unchecked must not resolve to the same look",
     );
 }

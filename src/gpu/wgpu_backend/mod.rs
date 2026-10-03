@@ -128,6 +128,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use rustc_hash::FxHashMap;
+use std::iter;
 use std::rc::Rc;
 use std::time::Instant;
 use wgpu::util::StagingBelt;
@@ -213,7 +214,7 @@ pub(crate) struct WgpuBackend {
 /// stencil attachment when the frame uses rounded clipping, and the color the
 /// pass clears to. One frame's attachments are picked together — backbuffer vs.
 /// surface view, stencil or no stencil — so they arrive together.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct PassTarget<'a> {
     color_view: &'a wgpu::TextureView,
     stencil_view: Option<&'a wgpu::TextureView>,
@@ -403,9 +404,9 @@ impl WgpuBackend {
 
         // Alpha forced to 1 — the clear is the frame's bottom paint layer.
         let clear_color = wgpu::Color {
-            r: clear.r as f64,
-            g: clear.g as f64,
-            b: clear.b as f64,
+            r: f64::from(clear.r),
+            g: f64::from(clear.g),
+            b: f64::from(clear.b),
             a: 1.0,
         };
         // Shared field borrow (the entry was built by `ensure_format`
@@ -470,7 +471,7 @@ impl WgpuBackend {
         }
 
         self.staging_belt.finish_and_recall_on_submit(&encoder);
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.submit(iter::once(encoder.finish()));
 
         if let Some(t) = self.gpu_timings.as_mut() {
             t.after_submit(&self.device, &self.pass_stats);
@@ -634,7 +635,7 @@ impl WgpuBackend {
             &mut pass,
             fmt.quad.color.select(false),
             &self.gradient.bg,
-            &viewport,
+            viewport,
         );
     }
 
@@ -704,7 +705,7 @@ impl WgpuBackend {
         // skip the descriptor and write begin/end inline via
         // `pass_begin` / `pass_end` so a single sequential timestamp
         // stream covers begin → midpoints → end without index gaps.
-        let timestamp_writes = self.gpu_timings.as_ref().and_then(|t| t.pass_writes());
+        let timestamp_writes = self.gpu_timings.as_ref().and_then(GpuTimings::pass_writes);
         let started = Instant::now();
         // Scoped so `pass` drops — replaying its recorded commands into the
         // encoder — inside the measured window rather than after it.
@@ -731,7 +732,7 @@ impl WgpuBackend {
             }
             match repaint_scissors {
                 RepaintScissors::Full => {
-                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil, viewport)
+                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil, viewport);
                 }
                 RepaintScissors::Partial(rects) => {
                     let rect_count = rects.len();
@@ -770,8 +771,6 @@ impl WgpuBackend {
         use_stencil: bool,
         viewport: ViewportPush,
     ) {
-        tracy::zone!();
-        let images = self.image_store.read();
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every
@@ -802,18 +801,6 @@ impl WgpuBackend {
             /// is what fails.
             Raster,
         }
-        let mut bound = Bound::None;
-        let raster_pipeline = fmt.raster.select(use_stencil);
-
-        // Helper: thread a `BatchKind` marker through to `GpuTimings`
-        // when per-batch timestamps are enabled. Coalesced inside
-        // `GpuTimings::mark` — same-kind repeats are free, only true
-        // transitions write a `RenderPass::write_timestamp`.
-        let mark = |pass: &mut wgpu::RenderPass<'a>, kind: BatchKind| {
-            if let Some(t) = self.gpu_timings.as_ref() {
-                t.mark(pass, kind);
-            }
-        };
 
         // `viewport.push_into(pass)` is called after every (re)bind
         // below. Cheap (register-mapped `set_immediates`, no buffer
@@ -831,7 +818,7 @@ impl WgpuBackend {
             bound: &mut Bound,
             target: Bound,
             pass: &mut wgpu::RenderPass<'p>,
-            viewport: &ViewportPush,
+            viewport: ViewportPush,
             bind: impl FnOnce(&mut wgpu::RenderPass<'p>),
         ) {
             if *bound != target {
@@ -840,6 +827,21 @@ impl WgpuBackend {
                 *bound = target;
             }
         }
+
+        tracy::zone!();
+        let images = self.image_store.read();
+        let mut bound = Bound::None;
+        let raster_pipeline = fmt.raster.select(use_stencil);
+
+        // Helper: thread a `BatchKind` marker through to `GpuTimings`
+        // when per-batch timestamps are enabled. Coalesced inside
+        // `GpuTimings::mark` — same-kind repeats are free, only true
+        // transitions write a `RenderPass::write_timestamp`.
+        let mark = |pass: &mut wgpu::RenderPass<'a>, kind: BatchKind| {
+            if let Some(t) = self.gpu_timings.as_ref() {
+                t.mark(pass, kind);
+            }
+        };
 
         for_each_step(
             buffer,
@@ -874,9 +876,9 @@ impl WgpuBackend {
                 RenderStep::MaskStamp(mi) => {
                     mark(pass, BatchKind::Mask);
                     debug_marker::push(pass, "mask_stamp");
-                    rebind(&mut bound, Bound::MaskStamp, pass, &viewport, |pass| {
+                    rebind(&mut bound, Bound::MaskStamp, pass, viewport, |pass| {
                         self.quad
-                            .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg)
+                            .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg);
                     });
                     self.quad.draw_mask(pass, mi);
                     debug_marker::pop(pass);
@@ -884,9 +886,9 @@ impl WgpuBackend {
                 RenderStep::MaskClear(mi) => {
                     mark(pass, BatchKind::Mask);
                     debug_marker::push(pass, "mask_clear");
-                    rebind(&mut bound, Bound::MaskClear, pass, &viewport, |pass| {
+                    rebind(&mut bound, Bound::MaskClear, pass, viewport, |pass| {
                         self.quad
-                            .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg)
+                            .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg);
                     });
                     self.quad.draw_mask(pass, mi);
                     debug_marker::pop(pass);
@@ -894,9 +896,9 @@ impl WgpuBackend {
                 RenderStep::Quads { range } => {
                     mark(pass, BatchKind::Quads);
                     debug_marker::push(pass, "quads");
-                    rebind(&mut bound, Bound::QuadInstance, pass, &viewport, |pass| {
+                    rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
                         self.quad
-                            .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg)
+                            .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
                     });
                     self.quad.draw(pass, range);
                     debug_marker::pop(pass);
@@ -904,8 +906,8 @@ impl WgpuBackend {
                 RenderStep::Text { batch } => {
                     mark(pass, BatchKind::Text);
                     debug_marker::push(pass, "text");
-                    rebind(&mut bound, Bound::Raster, pass, &viewport, |pass| {
-                        pass.set_pipeline(raster_pipeline)
+                    rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
+                        pass.set_pipeline(raster_pipeline);
                     });
                     self.text.render_batch(batch, pass);
                     debug_marker::pop(pass);
@@ -921,8 +923,8 @@ impl WgpuBackend {
                     let items = || buffer.batches(tier)[batch].items;
                     match tier {
                         PaintTier::Mesh => {
-                            rebind(&mut bound, Bound::Mesh, pass, &viewport, |pass| {
-                                self.mesh.bind(pass, &fmt.mesh, use_stencil)
+                            rebind(&mut bound, Bound::Mesh, pass, viewport, |pass| {
+                                self.mesh.bind(pass, &fmt.mesh, use_stencil);
                             });
                             self.mesh.draw(
                                 pass,
@@ -933,8 +935,8 @@ impl WgpuBackend {
                             );
                         }
                         PaintTier::Image => {
-                            rebind(&mut bound, Bound::Image, pass, &viewport, |pass| {
-                                self.image.bind(pass, &fmt.image, use_stencil)
+                            rebind(&mut bound, Bound::Image, pass, viewport, |pass| {
+                                self.image.bind(pass, &fmt.image, use_stencil);
                             });
                             self.image.draw(
                                 pass,
@@ -950,15 +952,15 @@ impl WgpuBackend {
                             // The pipeline text draws through, so a text
                             // step followed by an icon one rebinds
                             // nothing — see [`Bound::Raster`].
-                            rebind(&mut bound, Bound::Raster, pass, &viewport, |pass| {
-                                pass.set_pipeline(raster_pipeline)
+                            rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
+                                pass.set_pipeline(raster_pipeline);
                             });
                             self.icon.render_batch(batch, pass);
                         }
                         PaintTier::Curve => {
-                            rebind(&mut bound, Bound::Curve, pass, &viewport, |pass| {
+                            rebind(&mut bound, Bound::Curve, pass, viewport, |pass| {
                                 self.curve
-                                    .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
+                                    .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg);
                             });
                             self.curve.draw(pass, items());
                         }
@@ -993,7 +995,7 @@ impl WgpuBackend {
             &mut pass,
             fmt.quad.color.select(false),
             &self.gradient.bg,
-            &viewport,
+            viewport,
             count,
         );
     }
@@ -1001,7 +1003,7 @@ impl WgpuBackend {
     /// The device every window's per-window attachment is built against
     /// — the one thing a host needs off the shared backend to size its
     /// own [`Backbuffer`] and [`Stencil`].
-    pub(crate) fn device(&self) -> &wgpu::Device {
+    pub(crate) const fn device(&self) -> &wgpu::Device {
         &self.device
     }
 
@@ -1048,7 +1050,7 @@ impl WgpuBackend {
             let view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.submit(iter::once(encoder.finish()));
     }
 
     /// Release every `GpuView` target owned by a render stream that has been
@@ -1059,9 +1061,13 @@ impl WgpuBackend {
     /// frame does not lose its views. A closed window never submits again, so
     /// without this its textures and bind groups would be held by every
     /// surviving window until the host shuts down.
-    // `allow` rather than `cfg`: the winit host is only the current caller, not
-    // the only conceivable one — an embedding host needs this entry point too.
-    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "winit"),
+        expect(
+            dead_code,
+            reason = "not `cfg`: the winit host is only the current caller, and an embedding host needs this entry point too"
+        )
+    )]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets.retire_owner(owner);
     }
@@ -1075,7 +1081,7 @@ impl WgpuBackend {
 /// about instrumentation. The replay below is the one place both are
 /// already in scope. Exhaustive, so a new tier cannot reach the pass
 /// untimed and unlabelled the way a forgotten `mark` call could.
-fn batch_kind(tier: PaintTier) -> BatchKind {
+const fn batch_kind(tier: PaintTier) -> BatchKind {
     match tier {
         PaintTier::Mesh => BatchKind::Mesh,
         PaintTier::Image => BatchKind::Image,

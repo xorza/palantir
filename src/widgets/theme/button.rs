@@ -125,7 +125,7 @@ impl ButtonTheme {
     /// disabled this frame paints disabled without waiting for the
     /// cascade.
     #[inline(always)]
-    pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
+    pub const fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())
     }
 }

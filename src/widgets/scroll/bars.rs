@@ -96,7 +96,7 @@ impl Bars {
 
     /// The axes in the order the layout driver addresses their nodes:
     /// vertical track + thumb, then horizontal.
-    fn axes(&self) -> [(Axis, &BarAxis); 2] {
+    const fn axes(&self) -> [(Axis, &BarAxis); 2] {
         [(Axis::Y, &self.v), (Axis::X, &self.h)]
     }
 

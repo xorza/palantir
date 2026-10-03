@@ -49,7 +49,7 @@ fn shapes_attached_to_button_node() {
 #[test]
 fn interleaved_shapes_record_correct_order() {
     fn pos_rect(slot: u16) -> RectShape {
-        let s = (slot + 1) as f32 * 10.0;
+        let s = f32::from(slot + 1) * 10.0;
         Shape::rect(Rect::new(0.0, 0.0, s, s)).fill(RgbaF32::srgb(1.0, 0.0, 0.0))
     }
     let mut h = UiHarness::new(SURFACE);

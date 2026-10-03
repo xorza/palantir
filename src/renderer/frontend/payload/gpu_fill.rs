@@ -36,7 +36,7 @@ impl GpuFill {
     /// baked at `ramp_row`. The one place a curve's fill is made, so a
     /// curve can carry no fill kind but these two.
     #[inline]
-    pub(crate) fn curve(color: RgbaF16, ramp_row: Option<LutRow>) -> Self {
+    pub(crate) const fn curve(color: RgbaF16, ramp_row: Option<LutRow>) -> Self {
         match ramp_row {
             None => Self {
                 color,
@@ -70,7 +70,7 @@ impl GpuFill {
     /// shader multiplies into every kind. A ramp whose stops are all
     /// transparent is caught before lowering.
     #[inline]
-    pub(crate) fn is_noop(self) -> bool {
+    pub(crate) const fn is_noop(self) -> bool {
         self.color.is_noop()
     }
 }

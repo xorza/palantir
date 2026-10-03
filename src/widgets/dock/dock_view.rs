@@ -27,6 +27,7 @@ use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
 use crate::widgets::theme::dock::DockTheme;
 use crate::window::cursor_icon::CursorIcon;
+use std::mem;
 use std::rc::Rc;
 
 /// The docked pane tree: splits onto [`Splitter`]s, leaves as a
@@ -92,14 +93,14 @@ impl<'a, T: DockTab> DockView<'a, T> {
 
     /// Floor either pane's extent on the split axis while a divider is
     /// dragged. Default `0.0`.
-    pub fn min_pane(mut self, px: f32) -> Self {
+    pub const fn min_pane(mut self, px: f32) -> Self {
         self.min_pane = px.max(0.0);
         self
     }
 
     /// What each pane's strip does with chips that do not fit. Default
     /// [`TabOverflow::Scroll`].
-    pub fn overflow(mut self, overflow: TabOverflow) -> Self {
+    pub const fn overflow(mut self, overflow: TabOverflow) -> Self {
         self.overflow = overflow;
         self
     }
@@ -159,7 +160,7 @@ impl<T: DockTab> DockView<'_, T> {
         let id = state.dock_id();
         let mut ops = ui
             .state_mut::<DockOpBuf<T>>(id)
-            .map(|buf| std::mem::take(&mut buf.ops))
+            .map(|buf| mem::take(&mut buf.ops))
             .unwrap_or_default();
         ops.clear();
         state.scan(ui, &mut ops);

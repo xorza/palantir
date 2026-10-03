@@ -1,6 +1,7 @@
 //! What a `GpuPaint` gets on every painted frame.
 
 use glam::UVec2;
+use std::fmt;
 use std::time::Duration;
 
 /// Handed to [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint) each painted frame.
@@ -61,8 +62,8 @@ pub struct GpuFrameCtx<'a> {
     pub dt: Duration,
 }
 
-impl std::fmt::Debug for GpuFrameCtx<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for GpuFrameCtx<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GpuFrameCtx")
             .field("size_px", &self.size_px)
             .field("display_scale", &self.display_scale)

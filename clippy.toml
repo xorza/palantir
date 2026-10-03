@@ -1,3 +1,11 @@
+# `println!` in a test is the test's output, not a stray print in the library.
+allow-print-in-tests = true
+# SIMD intrinsics modules export hundreds of functions; listing them by hand only rots.
+allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
+# The house rule bans inline `crate::` paths. A standard-library path may stay inline, which is
+# what a gated field or statement uses instead of a cfg'd import.
+absolute-paths-allowed-crates = ["std", "core", "alloc"]
+
 # wgpu belongs to `crate::gpu`, and nothing else may name one of its types.
 #
 # The module opts out with a single `#![allow(clippy::disallowed_types)]` at

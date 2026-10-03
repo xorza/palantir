@@ -246,7 +246,7 @@ impl CascadeEngine {
 /// the rollup ripples to the root. Called from both the per-node
 /// pop loop and the end-of-tree drain — identical logic, one source.
 #[inline]
-fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped: Frame) {
+const fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped: &Frame) {
     subtree_paint_rects[popped.node_idx] = popped.subtree_paint_rect;
     if let Some(parent) = stack.last_mut() {
         // A subtree that paints nothing carries the `Rect::ZERO` seed;
@@ -296,7 +296,7 @@ impl CascadeEngine {
         while i < n {
             // Pop completed frames, rolling each up into its parent.
             while let Some(popped) = self.stack.pop_if(|top| i >= top.subtree_end) {
-                finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
+                finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
             }
             let top = self.stack.last();
             let parent = top.map_or(CascadeContext::ROOT, |frame| frame.cascade);
@@ -457,19 +457,7 @@ impl CascadeEngine {
                 });
             }
 
-            if !has_children {
-                // Leaf: no descendants, so no frame — its
-                // `subtree_paint_rects` slot already holds the seed written
-                // above; fold the seed straight into the parent accumulator
-                // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
-                // identity). Skips a per-leaf Frame push/pop and the 32 B
-                // full-rebuild prefix-hash work leaves could never hand to
-                // a child.
-                if let Some(parent_frame) = self.stack.last_mut() {
-                    parent_frame.subtree_paint_rect =
-                        parent_frame.subtree_paint_rect.union(subtree_seed);
-                }
-            } else {
+            if has_children {
                 let cascade = CascadeContext {
                     transform: desc_transform,
                     clip: desc_clip,
@@ -483,13 +471,25 @@ impl CascadeEngine {
                     subtree_paint_rect: subtree_seed,
                     cascade_prefix: frame_prefix::<INCREMENTAL>(cascade),
                 });
+            } else {
+                // Leaf: no descendants, so no frame — its
+                // `subtree_paint_rects` slot already holds the seed written
+                // above; fold the seed straight into the parent accumulator
+                // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
+                // identity). Skips a per-leaf Frame push/pop and the 32 B
+                // full-rebuild prefix-hash work leaves could never hand to
+                // a child.
+                if let Some(parent_frame) = self.stack.last_mut() {
+                    parent_frame.subtree_paint_rect =
+                        parent_frame.subtree_paint_rect.union(subtree_seed);
+                }
             }
             i += 1;
         }
         // Drain frames whose subtree extends to the end of the tree —
         // they never hit the `< top.subtree_end` exit at the loop head.
         while let Some(popped) = self.stack.pop() {
-            finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
+            finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
         true
     }
@@ -549,8 +549,9 @@ pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
         Some(rect) => (rect.canon_lanes(), true),
         None => ([0; 4], false),
     };
-    let flags =
-        (clip_present as u32) | ((parent.disabled as u32) << 1) | ((parent.invisible as u32) << 2);
+    let flags = u32::from(clip_present)
+        | (u32::from(parent.disabled) << 1)
+        | (u32::from(parent.invisible) << 2);
     let packed = CascadePrefixBits {
         transform: [
             approx::canon_bits(parent.transform.translation.x),

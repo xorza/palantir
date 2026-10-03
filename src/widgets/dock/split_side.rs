@@ -29,7 +29,7 @@ pub enum SplitSide {
 
 impl SplitSide {
     /// The split this side implies.
-    pub fn dir(self) -> SplitDir {
+    pub const fn dir(self) -> SplitDir {
         match self {
             SplitSide::Left | SplitSide::Right => SplitDir::Row,
             SplitSide::Top | SplitSide::Bottom => SplitDir::Column,
@@ -38,7 +38,7 @@ impl SplitSide {
 
     /// Whether the new pane becomes the split's *first* child (left or
     /// top).
-    pub(crate) fn new_pane_first(self) -> bool {
+    pub(crate) const fn new_pane_first(self) -> bool {
         matches!(self, SplitSide::Left | SplitSide::Top)
     }
 }

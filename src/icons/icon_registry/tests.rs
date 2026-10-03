@@ -5,6 +5,7 @@ use super::*;
 use crate::common::span::Span;
 use crate::icons::icon_table::{IconDef, IconId};
 use glam::Vec2;
+use std::collections;
 
 const A_ICONS: &[IconDef] = &[IconDef {
     name: "a",
@@ -167,7 +168,7 @@ fn a_handle_outliving_its_set_panics_instead_of_naming_the_slot_s_new_owner() {
 #[test]
 fn loading_a_fresh_atlas_every_frame_cycles_a_fixed_pair_of_slots() {
     let reg = IconRegistry::default();
-    let mut slots_used = std::collections::BTreeSet::new();
+    let mut slots_used = collections::BTreeSet::new();
     let mut held: Option<IconSet> = None;
     let mut last = IconSetId::new(0, 0);
     for frame in 0..64u16 {

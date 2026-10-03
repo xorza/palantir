@@ -5,6 +5,8 @@ use crate::primitives::math::approx::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num::Num;
 use glam::{BVec2, Vec2};
+use serde::de;
+use std::hash;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -14,6 +16,7 @@ use glam::{BVec2, Vec2};
 ///
 /// Hashing is approximate (`1e-4` tolerance) so a sub-pixel float wobble
 /// doesn't invalidate the measure cache.
+#[must_use]
 pub struct Size {
     /// Width.
     pub w: f32,
@@ -21,9 +24,9 @@ pub struct Size {
     pub h: f32,
 }
 
-impl std::hash::Hash for Size {
+impl hash::Hash for Size {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.hash_eq(state);
     }
 }
@@ -32,14 +35,16 @@ impl std::hash::Hash for Size {
 /// round per size, matching [`Vec2`]'s packing.
 impl FloatHash for Size {
     #[inline]
-    fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(((approx::eq_bits(self.w) as u64) << 32) | approx::eq_bits(self.h) as u64);
+    fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(
+            (u64::from(approx::eq_bits(self.w)) << 32) | u64::from(approx::eq_bits(self.h)),
+        );
     }
 
     #[inline]
-    fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_visual<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(
-            ((approx::canon_bits(self.w) as u64) << 32) | approx::canon_bits(self.h) as u64,
+            (u64::from(approx::canon_bits(self.w)) << 32) | u64::from(approx::canon_bits(self.h)),
         );
     }
 }
@@ -207,7 +212,7 @@ impl<'de> ::serde::Deserialize<'de> for Size {
         if size.w >= 0.0 && size.h >= 0.0 {
             Ok(size)
         } else {
-            Err(::serde::de::Error::custom(format_args!(
+            Err(de::Error::custom(format_args!(
                 "a size axis must not be negative or NaN, got {size:?}"
             )))
         }

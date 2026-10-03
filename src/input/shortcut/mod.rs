@@ -90,7 +90,7 @@ impl ShortcutMods {
     /// primary command bit (Cmd on macOS, Ctrl elsewhere), folded in at
     /// the platform input boundary, so there's nothing
     /// to disambiguate here.
-    pub fn from_event(m: Modifiers) -> Self {
+    pub const fn from_event(m: Modifiers) -> Self {
         // Destructured exhaustively so a modifier added to `Modifiers`
         // is a compile error here rather than one that silently never
         // reaches shortcut matching. `mac_ctrl` is dropped on purpose —

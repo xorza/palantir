@@ -62,7 +62,7 @@ impl<'a> Modal<'a> {
 
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn backdrop(mut self, c: RgbaF32) -> Self {
+    pub const fn backdrop(mut self, c: RgbaF32) -> Self {
         self.backdrop = Some(c);
         self
     }
@@ -131,7 +131,7 @@ impl Modal<'_> {
     ///
     /// The panel chrome. Pass [`Background::NONE`] to suppress the themed
     /// panel chrome for this modal.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

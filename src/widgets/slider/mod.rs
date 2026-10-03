@@ -91,7 +91,7 @@ impl<'a> Slider<'a> {
     /// keeps, so a drag never stores a long tail. Ignored by the integer
     /// target, which rounds whole. Default `2`, matching
     /// [`DragValue::decimals`](crate::DragValue::decimals).
-    pub fn decimals(mut self, n: usize) -> Self {
+    pub const fn decimals(mut self, n: usize) -> Self {
         self.decimals = n;
         self
     }
@@ -219,9 +219,10 @@ impl Configure for Slider<'_> {
 /// and this stays the exact inverse of [`fraction_to_value`] there too.
 fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {
     let share = (value - min) / (max - min);
-    match share.is_finite() {
-        true => share.clamp(0.0, 1.0) as f32,
-        false => 0.0,
+    if share.is_finite() {
+        share.clamp(0.0, 1.0) as f32
+    } else {
+        0.0
     }
 }
 

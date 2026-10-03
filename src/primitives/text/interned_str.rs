@@ -28,13 +28,13 @@ pub struct InternedStr {
 }
 
 impl InternedStr {
-    pub(crate) fn new(span: Span, epoch: TextEpoch) -> Self {
+    pub(crate) const fn new(span: Span, epoch: TextEpoch) -> Self {
         Self { span, epoch }
     }
 
     /// Whether the interned run has no bytes.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.span.len == 0
     }
 }

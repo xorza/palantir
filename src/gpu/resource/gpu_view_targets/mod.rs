@@ -123,7 +123,10 @@ impl GpuViewTargets {
     /// preserves foreign owners' entries on every submit, so
     /// a closed window's targets would otherwise be held by the surviving
     /// windows for the life of the host.
-    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "winit"),
+        expect(dead_code, reason = "the winit host is the only caller today")
+    )]
     pub(crate) fn retire_owner(&mut self, owner: RenderOwnerId) {
         self.targets.retain(|_, target| target.owner != owner);
     }
@@ -179,6 +182,7 @@ mod tests {
     use glam::UVec2;
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
+    use std::slice;
     use std::time::Duration;
     use wgpu::util::StagingBelt;
 
@@ -259,7 +263,7 @@ mod tests {
             targets.paint_gpu_views(
                 &mut ctx,
                 FrameViews {
-                    draws: std::slice::from_ref(&draw),
+                    draws: slice::from_ref(&draw),
                     live: &[id],
                     display_scale: 1.0,
                 },

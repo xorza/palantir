@@ -60,6 +60,13 @@ pub(crate) struct PhaseSpan {
 
 impl PhaseSpan {
     #[inline]
+    #[cfg_attr(
+        not(feature = "bench"),
+        expect(
+            clippy::missing_const_for_fn,
+            reason = "with `bench` the body reads the clock"
+        )
+    )]
     pub(crate) fn start() -> Self {
         Self {
             #[cfg(feature = "bench")]
@@ -74,6 +81,13 @@ impl PhaseSpan {
     /// [`LayoutCounters`]'s timing mutators be plain cell edits: a
     /// closure body typechecks whether or not it runs.
     #[inline]
+    #[cfg_attr(
+        not(feature = "bench"),
+        expect(
+            clippy::missing_const_for_fn,
+            reason = "with `bench` the body reads the clock"
+        )
+    )]
     fn elapsed_ns(self) -> u64 {
         #[cfg(feature = "bench")]
         {
@@ -210,12 +224,12 @@ pub(crate) mod internals {
 
     impl LayoutCounters {
         #[cfg(feature = "bench")]
-        pub(crate) fn phase_timings(&self) -> PhaseTimings {
+        pub(crate) const fn phase_timings(&self) -> PhaseTimings {
             *self.phase_timings.get()
         }
 
         #[cfg(test)]
-        pub(crate) fn intrinsic_computes(&self) -> u32 {
+        pub(crate) const fn intrinsic_computes(&self) -> u32 {
             self.intrinsic_computes.count()
         }
 

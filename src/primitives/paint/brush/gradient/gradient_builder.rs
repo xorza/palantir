@@ -16,6 +16,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// finished [`Gradient`] on purpose, so a caller needn't know which side
 /// of the build it is holding.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct GradientBuilder<G> {
     geometry: G,
     stops: GradientStopsBuilder,

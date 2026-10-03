@@ -80,7 +80,7 @@ fn logical_keys_map_to_native_vocabulary() {
 
 #[test]
 fn physical_keys_map_layout_independent_identities() {
-    let code = |code| physical_key(&PhysicalKey::Code(code));
+    let code = |code| physical_key(PhysicalKey::Code(code));
     assert_eq!(code(KeyCode::KeyA), Key::Char('a'));
     assert_eq!(code(KeyCode::KeyM), Key::Char('m'));
     assert_eq!(code(KeyCode::KeyZ), Key::Char('z'));
@@ -91,7 +91,7 @@ fn physical_keys_map_layout_independent_identities() {
     assert_eq!(code(KeyCode::F1), Key::F1);
     assert_eq!(code(KeyCode::Insert), Key::Other);
     assert_eq!(
-        physical_key(&PhysicalKey::Unidentified(NativeKeyCode::Unidentified)),
+        physical_key(PhysicalKey::Unidentified(NativeKeyCode::Unidentified)),
         Key::Other
     );
 }
@@ -148,7 +148,7 @@ fn modifier_normalization_translates_each_bit() {
     ];
     for (state, platform, expected) in rows {
         assert_eq!(
-            normalize_modifiers(&state, platform),
+            normalize_modifiers(state, platform),
             expected,
             "{state:?} on {platform:?}"
         );
@@ -250,7 +250,7 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
     ];
     for &(named, code) in cases {
         let from_logical = logical_key(&WinitKey::Named(named));
-        let from_physical = physical_key(&PhysicalKey::Code(code));
+        let from_physical = physical_key(PhysicalKey::Code(code));
         assert_eq!(
             from_logical, from_physical,
             "{named:?} / {code:?} must denote one Key",
@@ -271,7 +271,7 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
 fn a_move_emits_logical_and_traces_physical() {
     let mut emitted = Vec::new();
     let trace = translate(&cursor_moved(300.0, 120.0), at(2.5), |event| {
-        emitted.push(event)
+        emitted.push(event);
     });
 
     assert!(matches!(

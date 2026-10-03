@@ -26,7 +26,7 @@ impl ImageBinding {
         }
     }
 
-    pub(crate) fn layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
     }
 

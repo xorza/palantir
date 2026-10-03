@@ -6,6 +6,7 @@ use crate::internals::harness::UiHarness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
+use std::cell;
 use std::time::Duration;
 
 /// End-to-end through `Ui::animate` + `FrameOutput::repaint_requested`:
@@ -235,7 +236,7 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     use crate::animation::easing::Easing;
     let AnimUi { mut h, id } = setup_anim_ui("from-rest");
     let record = |h: &mut UiHarness, at: Duration, target: f32| {
-        let value = std::cell::Cell::new(f32::NAN);
+        let value = cell::Cell::new(f32::NAN);
         h.at(at).frame(|ui| {
             value.set(ui.animate(id, SLOT, target, Some(AnimSpec::FAST)));
             Block::new().id(id).show(ui);

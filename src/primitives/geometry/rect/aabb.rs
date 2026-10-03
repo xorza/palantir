@@ -78,7 +78,7 @@ impl Aabb {
     }
 
     #[inline]
-    fn finish(self) -> Rect {
+    const fn finish(self) -> Rect {
         if self.saw_nan {
             return Rect::NAN;
         }
@@ -127,15 +127,12 @@ mod tests {
         for (label, points, want) in cases {
             let slice = Aabb::of(&points);
             let stream = Aabb::of_iter(points.iter().copied());
-            match want {
-                Some(rect) => {
-                    assert_eq!(slice, rect, "{label}");
-                    assert_eq!(stream, rect, "{label}: stream");
-                }
-                None => {
-                    assert!(slice.has_nan(), "{label}: {slice:?}");
-                    assert!(stream.has_nan(), "{label}: stream {stream:?}");
-                }
+            if let Some(rect) = want {
+                assert_eq!(slice, rect, "{label}");
+                assert_eq!(stream, rect, "{label}: stream");
+            } else {
+                assert!(slice.has_nan(), "{label}: {slice:?}");
+                assert!(stream.has_nan(), "{label}: stream {stream:?}");
             }
         }
     }

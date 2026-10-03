@@ -68,7 +68,7 @@ impl<'a> MenuItem<'a> {
     /// intercepts that keypress while the menu is open. Glyph-only
     /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
     /// `Shortcut::new(ShortcutMods::NONE, Key::Backspace)`.
-    pub fn shortcut(mut self, s: Shortcut) -> Self {
+    pub const fn shortcut(mut self, s: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Activate(s);
         self
     }
@@ -77,7 +77,7 @@ impl<'a> MenuItem<'a> {
     /// row does not intercept the keypress. For a menu that mirrors a
     /// chord something else already handles — an editor's own Ctrl+C, say
     /// — where binding it here would handle the press twice.
-    pub fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
+    pub const fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Hint(shortcut);
         self
     }

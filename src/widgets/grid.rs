@@ -74,7 +74,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     /// the default; theme fallback in [`Self::show`] fills it in from
     /// `ui.theme().panel_background` when unset. Pass [`Background::NONE`]
     /// to suppress that fallback for this grid.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

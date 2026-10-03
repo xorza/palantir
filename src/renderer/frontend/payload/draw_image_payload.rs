@@ -83,7 +83,7 @@ impl ImageDraw<'_> {
     /// that was dropped. A `GpuView` is never null-skipped, since its
     /// texture is framework-painted this frame.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         let Self { payload, view } = self;
         payload.rect.is_paint_empty()
             || payload.tint.is_noop()

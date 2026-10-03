@@ -64,7 +64,7 @@ macro_rules! paint_calls {
             /// Short name for assertion messages — the variant alone,
             /// without the payload a `Debug` dump would print.
             #[cfg(test)]
-            pub(crate) fn kind(&self) -> &'static str {
+            pub(crate) const fn kind(&self) -> &'static str {
                 match self {
                     $( Self::$variant(_) => stringify!($variant), )*
                     $( Self::$unit => stringify!($unit), )*

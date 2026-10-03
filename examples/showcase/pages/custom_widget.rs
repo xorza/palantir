@@ -251,6 +251,7 @@ impl Configure for Stepper<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Glyph {
     Minus,
     Plus,

@@ -39,13 +39,13 @@ impl PipelineRecipe<'_> {
             vertex: wgpu::VertexState {
                 module: self.shader,
                 entry_point: Some("vs"),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: self.vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: self.shader,
                 entry_point: Some(self.fragment_entry),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: self.color_format,
                     blend: self.blend,

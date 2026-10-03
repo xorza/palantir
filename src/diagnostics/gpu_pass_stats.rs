@@ -59,7 +59,7 @@ pub enum BatchKind {
 }
 
 impl BatchKind {
-    pub(crate) fn idx(self) -> usize {
+    pub(crate) const fn idx(self) -> usize {
         self as u8 as usize
     }
 
@@ -91,7 +91,7 @@ pub struct PipelineStats {
 #[derive(Clone, Copy, Debug, Default)]
 struct Inner {
     pass_ns: Option<u64>,
-    kind_ns: [Option<u64>; <BatchKind as strum::EnumCount>::COUNT],
+    kind_ns: [Option<u64>; <BatchKind as EnumCount>::COUNT],
     stats: Option<PipelineStats>,
     main_pass_cpu_ns: Option<u64>,
 }
@@ -158,7 +158,7 @@ impl GpuPassStats {
     /// didn't run this frame don't keep showing the previous frame's
     /// number.
     pub(crate) fn clear_kinds(&self) {
-        self.inner.borrow_mut().kind_ns = [None; <BatchKind as strum::EnumCount>::COUNT];
+        self.inner.borrow_mut().kind_ns = [None; <BatchKind as EnumCount>::COUNT];
     }
 
     pub(crate) fn record_pipeline_stats(&self, stats: PipelineStats) {

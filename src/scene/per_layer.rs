@@ -2,6 +2,8 @@
 
 use crate::scene::layer::Layer;
 use std::array;
+use std::ops;
+use std::slice;
 use strum::EnumCount as _;
 
 /// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`].
@@ -24,11 +26,11 @@ impl<T: Default> Default for PerLayer<T> {
 impl<T> PerLayer<T> {
     /// Every layer's slot, order unspecified — for folds that don't care
     /// which layer a value came from.
-    pub(crate) fn iter(&self) -> std::slice::Iter<'_, T> {
+    pub(crate) fn iter(&self) -> slice::Iter<'_, T> {
         self.0.iter()
     }
 
-    pub(crate) fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+    pub(crate) fn iter_mut(&mut self) -> slice::IterMut<'_, T> {
         self.0.iter_mut()
     }
 
@@ -42,7 +44,7 @@ impl<T> PerLayer<T> {
     }
 }
 
-impl<T> std::ops::Index<Layer> for PerLayer<T> {
+impl<T> ops::Index<Layer> for PerLayer<T> {
     type Output = T;
     #[inline]
     fn index(&self, layer: Layer) -> &T {
@@ -50,7 +52,7 @@ impl<T> std::ops::Index<Layer> for PerLayer<T> {
     }
 }
 
-impl<T> std::ops::IndexMut<Layer> for PerLayer<T> {
+impl<T> ops::IndexMut<Layer> for PerLayer<T> {
     #[inline]
     fn index_mut(&mut self, layer: Layer) -> &mut T {
         &mut self.0[layer.idx()]

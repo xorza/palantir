@@ -80,7 +80,7 @@ fn packed() -> Vec<[u16; 4]> {
 /// on it compares the SIMD path against itself and reads as a ~20%
 /// difference instead of the ~20x one below.
 #[inline]
-fn scalar_from_f32x4(src: [f32; 4]) -> [u16; 4] {
+const fn scalar_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     [
         f16::from_f32_const(src[0]).to_bits(),
         f16::from_f32_const(src[1]).to_bits(),
@@ -90,7 +90,7 @@ fn scalar_from_f32x4(src: [f32; 4]) -> [u16; 4] {
 }
 
 #[inline]
-fn scalar_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
+const fn scalar_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     [
         f16::from_bits(bits[0]).to_f32_const(),
         f16::from_bits(bits[1]).to_f32_const(),
@@ -114,7 +114,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 acc = f16x4_from_f32x4(black_box(*v));
             }
             acc
-        })
+        });
     });
     g.bench_function("from_f32x4/runtime_scalar", |b| {
         b.iter(|| {
@@ -123,7 +123,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 acc = scalar_from_f32x4(black_box(*v));
             }
             acc
-        })
+        });
     });
 
     g.bench_function("to_f32x4/runtime_simd", |b| {
@@ -133,7 +133,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 acc = f16x4_to_f32x4(black_box(*v));
             }
             acc
-        })
+        });
     });
     g.bench_function("to_f32x4/runtime_scalar", |b| {
         b.iter(|| {
@@ -142,7 +142,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 acc = scalar_to_f32x4(black_box(*v));
             }
             acc
-        })
+        });
     });
 
     // The fused decode-multiply-encode the composer runs per quad, against
@@ -155,7 +155,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 acc = f16x4_scaled(black_box(*v), black_box(1.75));
             }
             acc
-        })
+        });
     });
     g.bench_function("scaled/composed", |b| {
         b.iter(|| {
@@ -165,7 +165,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 acc = F16x4::from_lanes(F16x4::from_bits(black_box(*v)).lanes().map(|x| x * k));
             }
             acc
-        })
+        });
     });
 
     g.finish();

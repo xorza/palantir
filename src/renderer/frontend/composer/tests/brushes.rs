@@ -173,8 +173,8 @@ fn compose_emits_image_batch_for_drawimage() {
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(10.0, 20.0, 30.0, 40.0),
-                        uv_min: glam::Vec2::ZERO,
-                        uv_size: glam::Vec2::ONE,
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(0xc0ffee),
                         flags: 0,
@@ -199,8 +199,8 @@ fn compose_emits_image_batch_for_drawimage() {
     // Composer must forward the encoder's UV crop verbatim — a Zero
     // UV size means "sample one texel forever" and silently paints
     // every image as a uniform color (regression hunt: 2026-05).
-    assert_eq!(buf.images.instance()[0].uv_min, glam::Vec2::ZERO);
-    assert_eq!(buf.images.instance()[0].uv_size, glam::Vec2::ONE);
+    assert_eq!(buf.images.instance()[0].uv_min, Vec2::ZERO);
+    assert_eq!(buf.images.instance()[0].uv_size, Vec2::ONE);
 }
 
 #[test]
@@ -439,8 +439,8 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 100.0, 100.0),
-                        uv_min: glam::Vec2::new(0.25, 0.0),
-                        uv_size: glam::Vec2::new(0.5, 1.0),
+                        uv_min: Vec2::new(0.25, 0.0),
+                        uv_size: Vec2::new(0.5, 1.0),
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(1),
                         flags: 0,
@@ -452,8 +452,8 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.instance()[0].uv_min, glam::Vec2::new(0.25, 0.0));
-    assert_eq!(buf.images.instance()[0].uv_size, glam::Vec2::new(0.5, 1.0));
+    assert_eq!(buf.images.instance()[0].uv_min, Vec2::new(0.25, 0.0));
+    assert_eq!(buf.images.instance()[0].uv_size, Vec2::new(0.5, 1.0));
 }
 
 /// The composer forwards `flags` verbatim and keeps each draw's UV as-is
@@ -470,8 +470,8 @@ fn compose_forwards_flags_and_repeat_uv() {
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                        uv_min: glam::Vec2::ZERO,
-                        uv_size: glam::Vec2::ONE,
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(1),
                         flags: 0,
@@ -485,8 +485,8 @@ fn compose_forwards_flags_and_repeat_uv() {
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                        uv_min: glam::Vec2::ZERO,
-                        uv_size: glam::Vec2::new(3.0, 2.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::new(3.0, 2.0),
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(2),
                         flags: IMG_FLAG_TILED,
@@ -500,8 +500,8 @@ fn compose_forwards_flags_and_repeat_uv() {
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                        uv_min: glam::Vec2::ZERO,
-                        uv_size: glam::Vec2::ONE,
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(3),
                         flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
@@ -515,7 +515,7 @@ fn compose_forwards_flags_and_repeat_uv() {
     );
     assert_eq!(buf.images.instance()[0].flags, 0);
     assert_eq!(buf.images.instance()[1].flags, IMG_FLAG_TILED);
-    assert_eq!(buf.images.instance()[1].uv_size, glam::Vec2::new(3.0, 2.0));
+    assert_eq!(buf.images.instance()[1].uv_size, Vec2::new(3.0, 2.0));
     assert_eq!(
         buf.images.instance()[2].flags,
         IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST

@@ -127,7 +127,7 @@ pub(super) fn translate(
         }
         WindowEvent::ModifiersChanged(modifiers) => {
             emit(InputEvent::ModifiersChanged(normalize_modifiers(
-                &modifiers.state(),
+                modifiers.state(),
                 platform,
             )));
         }
@@ -198,7 +198,7 @@ macro_rules! shared_key {
 fn logical_key(key: &WinitKey) -> Key {
     match key {
         WinitKey::Named(named) => shared_key!(NamedKey, named).unwrap_or(Key::Other),
-        WinitKey::Character(text) => text.chars().next().map(Key::Char).unwrap_or(Key::Other),
+        WinitKey::Character(text) => text.chars().next().map_or(Key::Other, Key::Char),
         _ => Key::Other,
     }
 }
@@ -206,7 +206,7 @@ fn logical_key(key: &WinitKey) -> Key {
 /// The Latin letter and digit positions, which exist only on the
 /// physical side — the logical side reports whatever the layout puts
 /// there, as a `Character`.
-fn latin_position(code: &KeyCode) -> Option<Key> {
+const fn latin_position(code: KeyCode) -> Option<Key> {
     let c = match code {
         KeyCode::KeyA => 'a',
         KeyCode::KeyB => 'b',
@@ -249,7 +249,7 @@ fn latin_position(code: &KeyCode) -> Option<Key> {
     Some(Key::Char(c))
 }
 
-fn physical_key(physical: &PhysicalKey) -> Key {
+fn physical_key(physical: PhysicalKey) -> Key {
     let PhysicalKey::Code(code) = physical else {
         return Key::Other;
     };
@@ -317,12 +317,12 @@ fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputE
     Some(InputEvent::KeyDown {
         key: logical_key(facts.logical),
         repeat: facts.repeat,
-        physical: physical_key(facts.physical),
+        physical: physical_key(*facts.physical),
         text,
     })
 }
 
-fn normalize_modifiers(modifiers: &ModifiersState, platform: Platform) -> Modifiers {
+fn normalize_modifiers(modifiers: ModifiersState, platform: Platform) -> Modifiers {
     let mac = matches!(platform, Platform::Mac);
     Modifiers {
         shift: modifiers.shift_key(),

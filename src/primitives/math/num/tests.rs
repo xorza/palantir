@@ -1,3 +1,8 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::primitives::math::num::{F32Ext, F32Px, Vec2Ext, unit_to_u8};
 use glam::Vec2;
 
@@ -174,7 +179,7 @@ fn unit_to_u8_saturates_instead_of_wrapping() {
 #[test]
 fn unit_to_u8_round_trips_every_byte() {
     for b in 0..=u8::MAX {
-        assert_eq!(unit_to_u8(b as f32 / 255.0), b, "byte {b}");
+        assert_eq!(unit_to_u8(f32::from(b) / 255.0), b, "byte {b}");
     }
 }
 

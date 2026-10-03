@@ -1,10 +1,10 @@
 //! Headless wgpu device + one-frame render + texture readback into
 //! an `image::RgbaImage`.
 
-// Reaches Palantir the way an outside consumer does, through the published
-// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
-// of the library's own modules.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
+)]
 
 use std::sync::mpsc;
 use std::time::Duration;
@@ -19,6 +19,7 @@ use palantir::{
 };
 
 use crate::fixtures::DARK_BG;
+use std::iter;
 
 /// The palette every fixture renders under, pinned so that
 /// `Palette::DEFAULT` is free to move. Which colours the crate ships is a
@@ -105,7 +106,7 @@ impl Harness {
     /// Render as a target that cannot be copied into would — a GLES swapchain
     /// image. The renderer then presents its backbuffer by drawing it rather
     /// than copying it.
-    pub(crate) fn without_copy_dst(mut self) -> Self {
+    pub(crate) const fn without_copy_dst(mut self) -> Self {
         self.target_usages = NO_COPY_DST_USAGES;
         self
     }
@@ -210,7 +211,7 @@ fn readback(
     let padded = (size.x * BYTES_PER_PIXEL).div_ceil(COPY_ALIGN) * COPY_ALIGN;
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("palantir.visual_test.readback"),
-        size: (padded * size.y) as u64,
+        size: u64::from(padded * size.y),
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
@@ -239,7 +240,7 @@ fn readback(
             depth_or_array_layers: 1,
         },
     );
-    queue.submit(std::iter::once(encoder.finish()));
+    queue.submit(iter::once(encoder.finish()));
 
     let slice = buffer.slice(..);
     let (tx, rx) = mpsc::channel();

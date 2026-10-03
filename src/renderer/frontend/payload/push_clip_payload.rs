@@ -15,7 +15,7 @@ pub(crate) struct PushClipPayload {
 impl PushClipPayload {
     /// A plain rect clip — zero corners, which is what tells the
     /// composer to take the scissor path rather than the rounded mask.
-    pub(crate) fn rect(rect: Rect) -> Self {
+    pub(crate) const fn rect(rect: Rect) -> Self {
         Self {
             rect,
             corners: Corners::ZERO,

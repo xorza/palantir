@@ -400,9 +400,9 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
     // Sample the stroke's center (x=60, y=60). RgbaImage is
     // sRGB-encoded after the swapchain target's auto-encode.
     let px = img.get_pixel(60, 60);
-    let r = px.0[0] as i32;
-    let g = px.0[1] as i32;
-    let b = px.0[2] as i32;
+    let r = i32::from(px.0[0]);
+    let g = i32::from(px.0[1]);
+    let b = i32::from(px.0[2]);
     let dominant_green = g - r.max(b);
     assert!(
         dominant_green < 32,

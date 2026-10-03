@@ -41,7 +41,7 @@ impl Backdrop {
     /// The keys and the pointer together — the one decision this type
     /// exists to hold, so the three sites that gate on it read it here
     /// rather than each testing the variant.
-    fn owns_input(self) -> bool {
+    const fn owns_input(self) -> bool {
         !matches!(self, Self::None)
     }
 }

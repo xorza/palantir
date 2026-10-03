@@ -4,6 +4,7 @@
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use std::cell::RefCell;
+use std::fmt;
 use std::rc::{Rc, Weak};
 
 /// Identity of a loaded icon set: which slot of [`IconRegistry`]'s table,
@@ -52,8 +53,8 @@ pub(crate) struct IconSetToken {
 
 /// Summarized for the reason [`IconSet`]'s own impl states: `shared` is the
 /// whole registry, and `table` is every icon's bytes.
-impl std::fmt::Debug for IconSetToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for IconSetToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IconSetToken")
             .field("id", &self.id)
             .field("icons", &self.table.icons().len())
@@ -62,7 +63,7 @@ impl std::fmt::Debug for IconSetToken {
 }
 
 impl IconSetToken {
-    pub(crate) fn id(&self) -> IconSetId {
+    pub(crate) const fn id(&self) -> IconSetId {
         self.id
     }
 
@@ -179,18 +180,17 @@ impl IconRegistry {
             return IconSet::from_token(token);
         }
 
-        let slot = match inner.free.pop() {
-            Some(slot) => slot,
-            None => {
-                let slot = u16::try_from(inner.slots.len())
-                    .expect("more than 65536 icon sets resident at once");
-                inner.slots.push(Slot {
-                    generation: 0,
-                    table: None,
-                    token: Weak::new(),
-                });
-                slot
-            }
+        let slot = if let Some(slot) = inner.free.pop() {
+            slot
+        } else {
+            let slot = u16::try_from(inner.slots.len())
+                .expect("more than 65536 icon sets resident at once");
+            inner.slots.push(Slot {
+                generation: 0,
+                table: None,
+                token: Weak::new(),
+            });
+            slot
         };
         let id = IconSetId::new(slot, inner.slots[slot as usize].generation);
         let token = Rc::new(IconSetToken {

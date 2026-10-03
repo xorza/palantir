@@ -7,6 +7,7 @@ use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::scene::node::Node;
 use crate::scene::node::node_flags::NodeFlags;
+use std::hash;
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug)]
@@ -49,7 +50,7 @@ impl LayoutCore {
     /// into this one's tail word is what makes the pair three writes
     /// instead of four on a per-node path.
     #[inline]
-    pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
+    pub(crate) fn hash_with_flags<H: hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());

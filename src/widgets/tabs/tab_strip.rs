@@ -162,14 +162,14 @@ impl<'a> TabStrip<'a> {
     /// `false` dims the cap to [`TabsTheme::accent_idle`], so one strip
     /// among several reads as the one actions go to. Default `true` — a
     /// lone strip is always the live one.
-    pub fn focused(mut self, focused: bool) -> Self {
+    pub const fn focused(mut self, focused: bool) -> Self {
         self.focused = focused;
         self
     }
 
     /// What the strip does with chips that do not fit. Default
     /// [`TabOverflow::Scroll`].
-    pub fn overflow(mut self, overflow: TabOverflow) -> Self {
+    pub const fn overflow(mut self, overflow: TabOverflow) -> Self {
         self.overflow = overflow;
         self
     }

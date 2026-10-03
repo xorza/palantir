@@ -31,6 +31,7 @@ use palantir_anim_derive::Animatable;
 // of the three types `animation::animatable::Animatable` states the
 // whole argument and the measurement for.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
+#[must_use]
 pub struct Background {
     /// Interior paint. [`Brush::TRANSPARENT`] fills nothing.
     pub fill: Brush,

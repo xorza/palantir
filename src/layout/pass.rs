@@ -45,6 +45,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::system::{RunMeasure, TextRunSlot};
 use glam::Vec2;
+use std::mem;
 
 /// One layer's measure/arrange walk: the engine it mutates, the tree it
 /// reads, the text arena its shapes resolve against, and the column
@@ -163,7 +164,7 @@ impl<'a> LayoutPass<'a> {
         max
     }
 
-    pub(super) fn new(
+    pub(super) const fn new(
         engine: &'a mut LayoutEngine,
         tree: &'a Tree,
         interned_text: &'a InternedText<'a>,
@@ -201,26 +202,26 @@ impl LayoutPass<'_> {
     /// whole because `grid` disjoint-borrows the two halves in one
     /// expression.
     #[inline]
-    pub(super) fn grid_mut(&mut self) -> &mut GridContext {
+    pub(super) const fn grid_mut(&mut self) -> &mut GridContext {
         &mut self.engine.scratch.grid
     }
 
     /// The durable per-grid track store alone, for the sites that don't
     /// also need the depth stack.
     #[inline]
-    pub(super) fn grid_track_state_mut(&mut self) -> &mut GridTrackStore {
+    pub(super) const fn grid_track_state_mut(&mut self) -> &mut GridTrackStore {
         &mut self.engine.scratch.grid.track_state
     }
 
     /// Stack's flat Fill and Hug pools, shared across nesting depths.
     #[inline]
-    pub(super) fn stack_scratch_mut(&mut self) -> &mut StackScratch {
+    pub(super) const fn stack_scratch_mut(&mut self) -> &mut StackScratch {
         &mut self.engine.scratch.stack
     }
 
     /// WrapStack's flat per-depth line buffer.
     #[inline]
-    pub(super) fn wrap_scratch_mut(&mut self) -> &mut WrapScratch {
+    pub(super) const fn wrap_scratch_mut(&mut self) -> &mut WrapScratch {
         &mut self.engine.scratch.wrap
     }
 
@@ -441,7 +442,7 @@ impl LayoutPass<'_> {
         }
         self.out.rect[node.idx()] = rendered;
         let inner = layout.inner_rect(rendered);
-        let parent = std::mem::replace(&mut self.origin, inner.min);
+        let parent = mem::replace(&mut self.origin, inner.min);
         ArrangeOp {
             pass: self,
             node,

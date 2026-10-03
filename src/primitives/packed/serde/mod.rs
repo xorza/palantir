@@ -88,7 +88,7 @@ struct LaneVisitor<T>(PhantomData<T>);
 impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
     type Value = T;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "a number, a 1-, 2-, or 4-node array, or a {{{}}} table",
@@ -147,12 +147,13 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use ron::ser;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
 
     /// `value` in RON, as a theme file spells it.
     pub(crate) fn ron_text<T: Serialize>(value: &T) -> String {
-        ron::ser::to_string(value).expect("serialize")
+        ser::to_string(value).expect("serialize")
     }
 
     /// `text` read as RON into a `T`.

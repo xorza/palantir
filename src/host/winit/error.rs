@@ -5,6 +5,8 @@ use std::fmt::{Display, Formatter};
 
 use crate::gpu::error::{GpuRequestError, SurfaceError};
 use crate::window::window_token::WindowToken;
+use std::fmt;
+use winit::error;
 
 /// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no
 /// longer deliver to it.
@@ -23,7 +25,7 @@ use crate::window::window_token::WindowToken;
 pub struct HostDisconnected;
 
 impl Display for HostDisconnected {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("host event loop has exited; the scheduled work was not delivered")
     }
 }
@@ -37,19 +39,19 @@ pub enum WinitHostError {
     /// Winit could not create the application event loop.
     CreateEventLoop {
         /// What winit reported.
-        source: winit::error::EventLoopError,
+        source: error::EventLoopError,
     },
     /// Winit's event loop terminated with an error.
     RunEventLoop {
         /// What winit reported.
-        source: winit::error::EventLoopError,
+        source: error::EventLoopError,
     },
     /// The operating system could not create a native window.
     CreateWindow {
         /// The window that failed to open.
         token: WindowToken,
         /// What the platform reported.
-        source: winit::error::OsError,
+        source: error::OsError,
     },
     /// A native window has no surface Palantir can present through.
     Surface {
@@ -67,7 +69,7 @@ pub enum WinitHostError {
 }
 
 impl Display for WinitHostError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::CreateEventLoop { source } => write!(f, "failed to create event loop: {source}"),
             Self::RunEventLoop { source } => write!(f, "event loop failed: {source}"),
@@ -108,11 +110,12 @@ mod tests {
 
     use crate::gpu::error::{GpuRequestError, UnmetRequirements};
     use crate::host::winit::error::{HostDisconnected, WinitHostError};
+    use winit::error;
 
     #[test]
     fn host_errors_preserve_sources_and_explain_capability_failures() {
         let event_loop = WinitHostError::CreateEventLoop {
-            source: winit::error::EventLoopError::RecreationAttempt,
+            source: error::EventLoopError::RecreationAttempt,
         };
         assert_eq!(
             event_loop.to_string(),

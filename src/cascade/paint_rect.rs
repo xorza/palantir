@@ -140,7 +140,7 @@ fn push_paint(arena: &mut PaintArena, union: &mut Rect, screen: Rect, hash: Cont
 /// [`Self::has_children`] is the one that *is* here: the walk decides a
 /// leaf's rollup on it, so it already holds it, where it holds nothing
 /// about shapes.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct PaintRectCtx<'a> {
     pub(super) tree: &'a Tree,
     pub(super) layout: &'a LayerLayout,

@@ -134,7 +134,7 @@ impl TabsTheme {
 
     /// Pick the chrome+label look for this `(state, selected)` pair
     /// (`active` = pressed).
-    pub fn pick(&self, state: &ResponseState, selected: bool) -> &WidgetLook {
+    pub const fn pick(&self, state: &ResponseState, selected: bool) -> &WidgetLook {
         if selected {
             self.active.pick(state, state.pressed())
         } else {
@@ -143,7 +143,7 @@ impl TabsTheme {
     }
 
     /// The cap colour a strip paints under its selected chip.
-    pub fn cap(&self, focused: bool) -> RgbaF32 {
+    pub const fn cap(&self, focused: bool) -> RgbaF32 {
         if focused {
             self.accent
         } else {

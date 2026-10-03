@@ -35,7 +35,7 @@ pub struct SeparatorTheme {
 impl SeparatorTheme {
     /// A one-pixel rule in the palette's softest border colour, with no
     /// margin of its own.
-    pub fn from_palette(p: &Palette) -> Self {
+    pub const fn from_palette(p: &Palette) -> Self {
         Self {
             color: p.border_soft(),
             thickness: 1.0,

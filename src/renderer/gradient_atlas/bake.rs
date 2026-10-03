@@ -94,7 +94,7 @@ impl<'a> RampTexels<'a> {
     /// Seat the cursor on the first segment. [`GradientStops`] holds at
     /// least two entries by construction, which is what makes that
     /// segment exist.
-    fn new(
+    const fn new(
         stops: &'a GradientStops,
         linear: &'a [RgbaF32],
         oklab: &'a [[f32; 3]],

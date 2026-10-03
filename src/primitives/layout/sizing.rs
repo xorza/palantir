@@ -6,6 +6,8 @@ use crate::primitives::math::approx;
 use crate::primitives::math::approx::FloatHash;
 use crate::primitives::math::num::{F32Ext, Num};
 use glam::BVec2;
+use std::fmt;
+use std::hash;
 
 /// How one axis of a node resolves during layout.
 ///
@@ -160,24 +162,24 @@ impl Sizing {
     /// a raw `bytes_of` would hash junk. One write rather than two small
     /// ones costs one hasher round instead of two.
     #[inline]
-    pub(crate) fn hash_bits<H: std::hash::Hasher, F: Fn(f32) -> u32>(&self, h: &mut H, bits: F) {
+    pub(crate) fn hash_bits<H: hash::Hasher, F: Fn(f32) -> u32>(self, h: &mut H, bits: F) {
         let (tag, value) = match self.0 {
             SizingValue::Fixed(value) => (0u8, value),
             SizingValue::Hug => (1, 0.0),
             SizingValue::Fill(value) => (2, value),
         };
-        h.write_u64((tag as u64) | ((bits(value) as u64) << 8));
+        h.write_u64(u64::from(tag) | (u64::from(bits(value)) << 8));
     }
 }
 
 impl FloatHash for Sizing {
     #[inline]
-    fn hash_eq<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash_eq<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_bits(h, approx::eq_bits);
     }
 
     #[inline]
-    fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash_visual<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_bits(h, approx::canon_bits);
     }
 }
@@ -188,9 +190,9 @@ impl<T: Num> From<T> for Sizing {
     }
 }
 
-impl std::hash::Hash for Sizing {
+impl hash::Hash for Sizing {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_eq(h);
     }
 }
@@ -280,7 +282,7 @@ impl SizeSpec {
     /// pick per axis between "measure unbounded" and "measure against the
     /// room I have".
     #[inline]
-    pub(crate) fn hug_mask(self) -> BVec2 {
+    pub(crate) const fn hug_mask(self) -> BVec2 {
         BVec2::new(self.w().is_hug(), self.h().is_hug())
     }
 }
@@ -292,8 +294,8 @@ impl PartialEq for SizeSpec {
     }
 }
 
-impl std::fmt::Debug for SizeSpec {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for SizeSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SizeSpec")
             .field("w", &self.w())
             .field("h", &self.h())
@@ -307,9 +309,9 @@ impl From<Sizing> for SizeSpec {
     }
 }
 
-impl std::hash::Hash for SizeSpec {
+impl hash::Hash for SizeSpec {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash<H: hash::Hasher>(&self, h: &mut H) {
         h.write_u64(self.as_u64());
     }
 }
@@ -415,16 +417,17 @@ mod tests {
 
     #[test]
     fn constructors_accept_only_finite_valid_payloads() {
+        const FIXED: &str = "fixed sizing must be finite and non-negative";
+        const FILL: &str = "fill weight must be finite and positive";
+        const SHARE: &str = "share weight must be finite and non-negative";
+        type Case = (&'static str, fn() -> Sizing);
+
         assert_eq!(Sizing::fixed(f32::MAX).fixed_value(), Some(f32::MAX));
         assert_eq!(Sizing::fill(f32::MAX).fill_weight(), Some(f32::MAX));
         assert_eq!(Sizing::share(0.0), Sizing::fixed(0.0));
         assert_eq!(Sizing::share(-0.0), Sizing::fixed(0.0));
         assert_eq!(Sizing::share(2.5), Sizing::fill(2.5));
 
-        const FIXED: &str = "fixed sizing must be finite and non-negative";
-        const FILL: &str = "fill weight must be finite and positive";
-        const SHARE: &str = "share weight must be finite and non-negative";
-        type Case = (&'static str, fn() -> Sizing);
         let cases: &[Case] = &[
             (FIXED, || Sizing::fixed(-1.0)),
             (FIXED, || Sizing::fixed(f32::NAN)),

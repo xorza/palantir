@@ -28,6 +28,7 @@ macro_rules! flag_set {
         }
     ) => {
         $(#[$meta])*
+        #[must_use]
         #[repr(transparent)]
         #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
         $vis struct $name(u8);

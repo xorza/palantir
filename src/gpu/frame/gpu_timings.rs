@@ -29,6 +29,7 @@
 //! handle (e.g. via `OffscreenHost::gpu_pass_stats`).
 
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
+use std::array;
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering::Acquire, Ordering::Release};
@@ -172,7 +173,7 @@ impl GpuTimings {
             (None, None)
         };
 
-        let slots = std::array::from_fn(|_| Slot {
+        let slots = array::from_fn(|_| Slot {
             timestamps_buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.gpu_timings.timestamps.staging"),
                 size: TIMESTAMP_BUFFER_BYTES,
@@ -214,7 +215,7 @@ impl GpuTimings {
     /// mode. `None` when per-batch mode is active — there we write
     /// pass begin / end inline via `RenderPass::write_timestamp`
     /// instead, so we don't double-write index 0.
-    pub(crate) fn pass_writes(&self) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+    pub(crate) const fn pass_writes(&self) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         if self.inside_passes {
             return None;
         }
@@ -317,7 +318,7 @@ impl GpuTimings {
         } else {
             2
         };
-        let bytes = count as u64 * BYTES_PER_U64;
+        let bytes = u64::from(count) * BYTES_PER_U64;
         encoder.resolve_query_set(
             &self.timestamp_query_set,
             0..count,
@@ -395,12 +396,12 @@ impl GpuTimings {
     }
 }
 
-fn mappings_complete(state: u8, has_stats: bool) -> bool {
+const fn mappings_complete(state: u8, has_stats: bool) -> bool {
     let required = TIMESTAMPS_DONE | if has_stats { STATS_DONE } else { 0 };
     state & required == required
 }
 
-fn mappings_failed(state: u8) -> bool {
+const fn mappings_failed(state: u8) -> bool {
     state & (TIMESTAMPS_FAILED | STATS_FAILED) != 0
 }
 
@@ -447,6 +448,10 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
 /// Parse `count` resolved timestamps and publish pass + per-kind
 /// durations into `sink`. Split from [`consume_slot`] so the publish
 /// rules are testable without wgpu buffers.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
+)]
 fn publish_timestamps(
     ts: &[u8],
     count: usize,
@@ -461,7 +466,7 @@ fn publish_timestamps(
     if count >= 2 {
         let first = tick(ts, 0);
         let last = tick(ts, count - 1);
-        let delta_ns = (last.saturating_sub(first) as f64 * period_ns as f64) as u64;
+        let delta_ns = (last.saturating_sub(first) as f64 * f64::from(period_ns)) as u64;
         sink.record_pass_ns(delta_ns);
         sink.clear_kinds();
     }
@@ -473,7 +478,7 @@ fn publish_timestamps(
             let t0 = tick(ts, i);
             let t1 = tick(ts, i + 1);
             let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
-            let seg_ns = (t1.saturating_sub(t0) as f64 * period_ns as f64) as u64;
+            let seg_ns = (t1.saturating_sub(t0) as f64 * f64::from(period_ns)) as u64;
             seen[kind.idx()] = true;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }

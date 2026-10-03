@@ -101,7 +101,6 @@ impl Default for Placement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::layout::anchor::Anchor;
 
     const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 100.0);
     const MEASURED: Size = Size::new(50.0, 30.0);

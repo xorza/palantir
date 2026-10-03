@@ -166,7 +166,7 @@ impl Backbuffer {
     }
 
     /// The colour attachment to render into.
-    pub(crate) fn view(&self) -> &wgpu::TextureView {
+    pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
 

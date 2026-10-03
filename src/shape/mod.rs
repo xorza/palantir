@@ -2,13 +2,11 @@
 //! primitive, each lowering itself into a [`ShapeRecord`](record::ShapeRecord);
 //! the per-tree [`Shapes`](shapes::Shapes) buffer that holds the records; and
 //! the lowering, hashing and paint-side code over them.
-//!
-//! `private_interfaces` is allowed module-wide: every `impl
-//! sealed::LowerShape` names the crate-private `RecordStore` and
-//! `ShapeRecord` in a publicly *reachable* signature, which is the seal
-//! working as designed (see `sealed` below). The lint fires per impl site,
-//! so the decision belongs here rather than over each one.
-#![allow(private_interfaces)]
+
+#![expect(
+    private_interfaces,
+    reason = "every `impl sealed::LowerShape` names the crate-private `RecordStore` and `ShapeRecord` in a reachable signature, which is the seal working as designed; it fires per impl site"
+)]
 
 pub(crate) mod curve;
 pub(crate) mod hash;
@@ -77,6 +75,7 @@ impl<T: sealed::LowerShape> Lower for T {}
 mod sealed {
     use crate::scene::record_store::RecordStore;
     use crate::shape::record::ShapeRecord;
+    use std::fmt;
 
     // `unreachable_pub` and `private_interfaces` both fire here, and both
     // describe the seal rather than a mistake: the trait must be `pub`
@@ -84,11 +83,13 @@ mod sealed {
     // it one puts the crate-private `RecordStore` / `ShapeRecord` into a
     // publicly *reachable* signature. Nothing outside the crate can name
     // the trait to call or implement it, so neither exposure can occur.
-    // Each `impl` repeats the second allow, which fires per impl site.
     /// `Debug` is a supertrait so the NaN gate can name the shape it
     /// dropped. Every authoring kind derives it already.
-    #[allow(unreachable_pub, private_interfaces)]
-    pub trait LowerShape: std::fmt::Debug {
+    #[expect(
+        private_interfaces,
+        reason = "nothing outside the crate can name the sealed trait, so the crate-private types in its signature cannot leak"
+    )]
+    pub trait LowerShape: fmt::Debug {
         /// True if this shape paints nothing visible. Checked before
         /// [`Self::lower`] so a no-op never pays for payload staging,
         /// mesh hashing, or text interning.
@@ -142,34 +143,34 @@ impl Shape {
     /// A rounded rectangle painting `rect` (owner-relative). Starts
     /// transparent-filled, borderless, sharp-cornered — chain
     /// [`RectShape::fill`] / [`RectShape::border`] / [`RectShape::corners`].
-    pub fn rect(rect: Rect) -> RectShape {
+    pub const fn rect(rect: Rect) -> RectShape {
         RectShape::new(RectKind::Rounded, Some(rect))
     }
 
     /// A rounded rectangle painting the owner's full arranged rect.
-    pub fn owner_rect() -> RectShape {
+    pub const fn owner_rect() -> RectShape {
         RectShape::new(RectKind::Rounded, None)
     }
 
     /// An inverse-mask rectangle over `rect` — the sibling of
     /// [`Self::rect`], same chainable fill/border/corners.
-    pub fn windowed_rect(rect: Rect) -> RectShape {
+    pub const fn windowed_rect(rect: Rect) -> RectShape {
         RectShape::new(RectKind::Windowed, Some(rect))
     }
 
     /// A windowed rectangle painting the owner's full arranged rect.
-    pub fn owner_windowed_rect() -> RectShape {
+    pub const fn owner_windowed_rect() -> RectShape {
         RectShape::new(RectKind::Windowed, None)
     }
 
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp
     /// (radius 0), transparent-filled, borderless.
-    pub fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
+    pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
         TriangleShape::new(a, b, c)
     }
 
     /// A straight line from `a` to `b` in `stroke` (`Butt` cap).
-    pub fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
+    pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
         CurveShape::new(CurveGeometry::Line { a, b }, stroke)
     }
 
@@ -182,20 +183,26 @@ impl Shape {
 
     /// A cubic Bézier through control points `p0..=p3` in `stroke`
     /// (`Butt` cap).
-    pub fn cubic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, stroke: Stroke) -> CurveShape {
+    pub const fn cubic_bezier(
+        p0: Vec2,
+        p1: Vec2,
+        p2: Vec2,
+        p3: Vec2,
+        stroke: Stroke,
+    ) -> CurveShape {
         CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, stroke)
     }
 
     /// A quadratic Bézier through `p0`/`p1`/`p2`. See
     /// [`Self::cubic_bezier`].
-    pub fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
+    pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
         CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
     }
 
     /// A circular arc sweeping `sweep` radians from `start_angle` in
     /// `stroke` (`Butt` cap) — chain [`CurveShape::ramp`] /
     /// [`CurveShape::cap`].
-    pub fn arc(
+    pub const fn arc(
         center: Vec2,
         radius: f32,
         start_angle: f32,
@@ -215,7 +222,7 @@ impl Shape {
 
     /// A full circle — [`Self::arc`] with a `2π` sweep, which closes
     /// seamlessly under the default `Butt` cap.
-    pub fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
+    pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
         Self::arc(center, radius, 0.0, TAU, stroke)
     }
 
@@ -233,12 +240,12 @@ impl Shape {
     /// which place the bytes in the frame's text arena. Widget
     /// constructors take borrowed or owned text directly because they
     /// defer interning until `show`.
-    pub fn text(text: InternedStr, font: GlyphFont) -> TextShape {
+    pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape {
         TextShape::new(text, font)
     }
 
     /// A `shadow` of the owner's full rect.
-    pub fn shadow(shadow: Shadow) -> ShadowShape {
+    pub const fn shadow(shadow: Shadow) -> ShadowShape {
         ShadowShape::new(shadow)
     }
 
@@ -258,7 +265,7 @@ impl Shape {
     }
 
     /// A colored triangle `mesh` painting the owner's full rect, untinted.
-    pub fn mesh(mesh: &Mesh) -> MeshShape<'_> {
+    pub const fn mesh(mesh: &Mesh) -> MeshShape<'_> {
         MeshShape::new(mesh)
     }
 }

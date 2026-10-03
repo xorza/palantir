@@ -53,12 +53,12 @@ impl RasterProgram {
 
     /// The layout every raster bind group is built against, and every
     /// raster pipeline created with.
-    pub(super) fn layout(&self) -> &wgpu::BindGroupLayout {
+    pub(super) const fn layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
     }
 
     /// The sampler every raster bind group binds at slot 2.
-    pub(super) fn sampler(&self) -> &wgpu::Sampler {
+    pub(super) const fn sampler(&self) -> &wgpu::Sampler {
         &self.sampler
     }
 

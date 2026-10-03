@@ -29,6 +29,7 @@ mod widgets;
 use palantir::RgbaF32;
 
 use crate::harness::FIXTURE_PALETTE;
+use std::fmt;
 
 /// The scene background most fixtures render on — the suite palette's own
 /// window colour, so the ground matches the theme the widgets wear. It is
@@ -49,7 +50,7 @@ pub(crate) const SRGB_ROUND_TRIP: u8 = 1;
 /// Every channel of `got` is within `tol` of `want`, or a panic naming
 /// `what`, both pixels and the worst channel.
 #[track_caller]
-pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], tol: u8, what: impl std::fmt::Display) {
+pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], tol: u8, what: impl fmt::Display) {
     let worst = got
         .iter()
         .zip(want)

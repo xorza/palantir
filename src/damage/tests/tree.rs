@@ -75,8 +75,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
     assert!(
         !region.any_intersects(LINE_PROBE),
         "the canvas's own line shape must not be re-damaged by a sibling \
-         removal; region = {:?}",
-        region,
+         removal; region = {region:?}",
     );
 }
 
@@ -145,6 +144,8 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
 /// for it.
 #[test]
 fn raising_an_overlapping_node_redamages_only_the_overlap() {
+    type Record<'a> = &'a dyn Fn(&mut Ui, Order<'_>);
+
     // `a` and `b` overlap; `c` sits far from both.
     const A: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);
     const B: Rect = Rect::new(30.0, 30.0, 40.0, 40.0);
@@ -159,7 +160,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
             .background(Background::fill(BLUE))
     }
     type Order<'a> = [(&'a str, Rect); 3];
-    let canvas = |ui: &mut Ui, order: Order| {
+    let canvas = |ui: &mut Ui, order: Order<'_>| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -169,7 +170,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
                 }
             });
     };
-    let roots = |ui: &mut Ui, order: Order| {
+    let roots = |ui: &mut Ui, order: Order<'_>| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -184,8 +185,8 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     let a = ("a", A);
     let b = ("b", B);
     let c = ("c", C);
-    type Record<'a> = &'a dyn Fn(&mut Ui, Order);
-    let arrangements: [(&str, Record); 2] = [("canvas children", &canvas), ("layer roots", &roots)];
+    let arrangements: [(&str, Record<'_>); 2] =
+        [("canvas children", &canvas), ("layer roots", &roots)];
     for (label, record) in arrangements {
         let mut h = UiHarness::new(DISPLAY.physical);
         frame(&mut h, |ui| record(ui, [a, b, c]));
@@ -304,8 +305,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
     assert!(
         region.any_intersects(Rect::new(0.0, 5.0, 40.0, 5.0))
             && region.any_intersects(Rect::new(0.0, 25.0, 40.0, 5.0)),
-        "swapping stack children must damage both slots; region = {:?}",
-        region,
+        "swapping stack children must damage both slots; region = {region:?}",
     );
 }
 
@@ -381,14 +381,12 @@ fn shape_crossing_child_boundary_is_redamaged() {
     assert!(
         region.any_intersects(PROBE),
         "the shape's overlap with the child must be re-damaged when the \
-         shape crosses the child z-boundary; region = {:?}",
-        region,
+         shape crosses the child z-boundary; region = {region:?}",
     );
     assert!(
         !region.any_intersects(FAR_PROBE),
         "the stretch of the line outside the child paints identically in \
-         either order and must stay clean; region = {:?}",
-        region,
+         either order and must stay clean; region = {region:?}",
     );
 }
 
@@ -430,8 +428,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
     assert!(
         region.any_intersects(PROBE),
         "swapping two overlapping direct shapes must damage their \
-         overlap; region = {:?}",
-        region,
+         overlap; region = {region:?}",
     );
 }
 
@@ -482,14 +479,12 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     let region = h.damage_region();
     assert!(
         region.any_intersects(CHILD_B),
-        "the inserted child must be damaged; region = {:?}",
-        region,
+        "the inserted child must be damaged; region = {region:?}",
     );
     assert!(
         !region.any_intersects(LINE_PROBE),
         "an unchanged shape whose relative order is preserved must not \
-         be re-damaged by a child insert; region = {:?}",
-        region,
+         be re-damaged by a child insert; region = {region:?}",
     );
 }
 
@@ -535,14 +530,12 @@ fn rekeying_a_child_damages_only_the_child() {
     let region = h.damage_region();
     assert!(
         region.any_intersects(CHILD),
-        "a re-keyed child must be damaged (evict + re-add); region = {:?}",
-        region,
+        "a re-keyed child must be damaged (evict + re-add); region = {region:?}",
     );
     assert!(
         !region.any_intersects(LINE_PROBE),
         "the parent's unchanged sibling shape must not be re-damaged by \
-         a child re-key; region = {:?}",
-        region,
+         a child re-key; region = {region:?}",
     );
 }
 

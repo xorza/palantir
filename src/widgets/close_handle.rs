@@ -28,7 +28,7 @@ impl CloseHandle {
 
     /// Whether anything asked to dismiss — what the overlay that handed
     /// this out reads after its body ran.
-    pub fn requested(&self) -> bool {
+    pub const fn requested(&self) -> bool {
         self.requested.get()
     }
 }

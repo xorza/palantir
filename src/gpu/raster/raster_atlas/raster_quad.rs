@@ -65,13 +65,13 @@ impl RasterQuad {
             u32::from(u) <= U_MAX,
             "u must fit {U_BITS} bits; the rest carry the content type and DESATURATE",
         );
-        (u as u32) | ((kind as u32) << KIND_SHIFT) | ((v as u32) << 16)
+        u32::from(u) | ((kind as u32) << KIND_SHIFT) | (u32::from(v) << 16)
     }
 
     /// The vertex layout the instance stream is read through.
-    pub(crate) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(crate) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as u64,
+            array_stride: size_of::<Self>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &RASTER_QUAD_ATTRS,
         }
@@ -155,7 +155,7 @@ const _: () = {
 mod tests {
     use crate::gpu::raster::raster_atlas::raster_quad::{RasterQuad, U_MAX};
     use crate::primitives::paint::content_type::ContentType;
-    use std::mem::{align_of, offset_of, size_of};
+    use std::mem::offset_of;
 
     /// The GPU wire format. Pinned here rather than in either pass, because
     /// both draw through it and neither owns it.

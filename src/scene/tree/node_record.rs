@@ -1,5 +1,10 @@
 //! Per-`NodeId` record stored in `Tree`'s SoA arena.
 
+#![expect(
+    clippy::expl_impl_clone_on_copy,
+    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
+)]
+
 use crate::common::span::Span;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;

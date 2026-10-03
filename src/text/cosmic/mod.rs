@@ -48,6 +48,8 @@ use cosmic_text::{
     Metrics, Shaping, Style, Weight, fontdb,
 };
 use glam::{IVec2, UVec2};
+use std::fmt;
+use std::fs;
 use std::sync::Arc;
 use swash::scale::image::{Content, Image as SwashImage};
 use swash::scale::{Render, ScaleContext, Scaler, Source, StrikeWith};
@@ -72,7 +74,7 @@ const ELLIPSIS_MEMO_SLOTS: usize = 4;
 /// `GlyphFont` in, and every shaping path unpacks it here rather than
 /// through four accessors of its own, so no two of them can shape one
 /// key against different faces.
-fn metrics_of(key: TextShapeKey) -> Metrics {
+const fn metrics_of(key: TextShapeKey) -> Metrics {
     Metrics::new(key.font_size_px(), key.line_height_px())
 }
 
@@ -87,7 +89,7 @@ fn metrics_of(key: TextShapeKey) -> Metrics {
 /// `CacheKeyFlags::FAKE_ITALIC` when the matched face is upright and the
 /// request was not, and the flag is part of the glyph cache key, so the
 /// atlas keeps the slanted raster apart from the upright one.
-fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -> Attrs<'static> {
+const fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -> Attrs<'static> {
     // Skip TrueType bytecode hinting: skrifa's hint VM dominated zoom-frame
     // CPU time, and at HiDPI / during animated zoom the visual difference
     // is imperceptible.
@@ -178,7 +180,7 @@ fn shaping_name(family: FontFamily, present: bool) -> &'static str {
 /// align. `Auto` maps to `None` — cosmic falls back to its
 /// left-or-rtl-aware default, which is what "no per-line align" means.
 /// Cosmic's `Justified` and `End` aren't surfaced.
-fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
+const fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
     match align {
         LineAlign::Auto => None,
         LineAlign::Left => Some(CosmicAlign::Left),
@@ -219,7 +221,7 @@ fn glyph_scaler<'a>(
     font: &'a Font,
     size: f32,
     hint: bool,
-    weight: fontdb::Weight,
+    weight: Weight,
 ) -> Scaler<'a> {
     let face = font.as_swash();
     let mut builder = context.builder(face).size(size).hint(hint);
@@ -237,7 +239,7 @@ fn glyph_scaler<'a>(
 /// A pixel font rounds its bins away: its bitmaps are authored on the
 /// pixel grid, and rendering one at a quarter-pixel offset resamples the
 /// artwork it exists to preserve.
-fn subpixel_offset(key: CacheKey) -> Vector {
+const fn subpixel_offset(key: CacheKey) -> Vector {
     let (x, y) = (key.x_bin.as_float(), key.y_bin.as_float());
     if key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
         Vector::new(x.round(), y.round())
@@ -375,7 +377,7 @@ impl CosmicMeasure {
                 // there". fontdb maps the file to parse its face table and
                 // then keeps the path, re-mapping on the rare later read
                 // of the face data.
-                std::fs::File::open(&path).map_err(|source| FontLoadError::Io {
+                fs::File::open(&path).map_err(|source| FontLoadError::Io {
                     path: path.clone(),
                     source,
                 })?;
@@ -646,7 +648,7 @@ impl CosmicMeasure {
     /// The current reading of the shared frame clock, and the one call
     /// that advances it — both the cache's, since its own retention is
     /// what the clock measures.
-    pub(super) fn frame(&self) -> u64 {
+    pub(super) const fn frame(&self) -> u64 {
         self.cache.frame()
     }
 
@@ -696,7 +698,7 @@ impl CosmicMeasure {
                 }
             }
             let line_y_px = (run.line_y * scale).fast_round() as i32;
-            for glyph in run.glyphs.iter() {
+            for glyph in run.glyphs {
                 // The renderer caches encoded runs on one uniform area
                 // colour — correct only while cosmic never produces a
                 // per-glyph override ([`attrs_named`] sets no per-span
@@ -945,8 +947,8 @@ impl CosmicMeasure {
 
 // Manual: swash's `ScaleContext` and `Image` aren't `Debug`, and a
 // font database would be useless printed anyway.
-impl std::fmt::Debug for CosmicMeasure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for CosmicMeasure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CosmicMeasure")
             .field("cache", &self.cache.len())
             .field("frame", &self.cache.frame())

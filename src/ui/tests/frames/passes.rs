@@ -29,7 +29,7 @@ fn cascade_visible_to_relayout_pass() {
 
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        let probe_resp: std::cell::RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
+        let probe_resp: RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
                 Block::new()

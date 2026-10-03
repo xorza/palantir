@@ -71,8 +71,7 @@ fn audit_panics_with_diagnostic_message() {
         let msg = catch_unwind(audit)
             .expect_err("the audit should panic")
             .downcast::<String>()
-            .map(|s| *s)
-            .unwrap_or_else(|_| String::from("<non-string panic payload>"));
+            .map_or_else(|_| String::from("<non-string panic payload>"), |s| *s);
         assert!(
             msg.contains(expected),
             "panic message missing {expected:?}: {msg}"

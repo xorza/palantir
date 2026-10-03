@@ -51,7 +51,7 @@ impl DeviceRequirements {
         adapter: &wgpu::Adapter,
         optional: wgpu::Features,
     ) -> Result<Self, UnmetRequirements> {
-        Self::against(adapter.features(), adapter.limits(), optional)
+        Self::against(adapter.features(), &adapter.limits(), optional)
     }
 
     /// The two conditions Palantir cannot draw without: its non-negotiable
@@ -83,10 +83,10 @@ impl DeviceRequirements {
     /// adapter — which is what makes it answerable without a GPU present.
     pub(crate) fn against(
         available: wgpu::Features,
-        ceiling: wgpu::Limits,
+        ceiling: &wgpu::Limits,
         optional: wgpu::Features,
     ) -> Result<Self, UnmetRequirements> {
-        Self::check(available, &ceiling)?;
+        Self::check(available, ceiling)?;
 
         // The GLES-3 baseline rather than `Limits::default()`: the default
         // demands 16 inter-stage shader variables where `curve_pipeline/shader.wgsl`, the
@@ -106,7 +106,7 @@ impl DeviceRequirements {
         };
 
         let mut unmet = None;
-        limits.check_limits_with_fail_fn(&ceiling, true, |name, required, available| {
+        limits.check_limits_with_fail_fn(ceiling, true, |name, required, available| {
             unmet = Some(UnmetRequirements::Limit {
                 name,
                 required,
@@ -159,7 +159,7 @@ mod tests {
         // Only the optional features the adapter actually has come along; the
         // one it lacks is dropped rather than failing the request.
         let requirements =
-            DeviceRequirements::against(available, ceiling.clone(), optional).unwrap();
+            DeviceRequirements::against(available, &ceiling.clone(), optional).unwrap();
         assert_eq!(
             requirements.features,
             Features::IMMEDIATES | Features::TIMESTAMP_QUERY
@@ -168,7 +168,7 @@ mod tests {
 
         // The non-negotiable one is not dropped.
         let missing =
-            DeviceRequirements::against(Features::empty(), ceiling.clone(), optional).unwrap_err();
+            DeviceRequirements::against(Features::empty(), &ceiling.clone(), optional).unwrap_err();
         let UnmetRequirements::Features { missing } = &missing else {
             panic!("{missing:?}");
         };
@@ -179,7 +179,7 @@ mod tests {
 
         let mut short = ceiling;
         short.max_immediate_size = IMMEDIATES_BYTES - 1;
-        let unmet = DeviceRequirements::against(Features::IMMEDIATES, short, Features::empty())
+        let unmet = DeviceRequirements::against(Features::IMMEDIATES, &short, Features::empty())
             .unwrap_err();
         assert_eq!(
             unmet,
@@ -214,7 +214,7 @@ mod tests {
         );
 
         let requirements =
-            DeviceRequirements::against(Features::IMMEDIATES, ceiling.clone(), Features::empty())
+            DeviceRequirements::against(Features::IMMEDIATES, &ceiling.clone(), Features::empty())
                 .unwrap();
 
         assert!(requirements.limits.check_limits(&ceiling));

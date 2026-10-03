@@ -123,7 +123,7 @@ impl PaintAnims {
 fn next_shape(entries: &[PaintAnimEntry], next: usize) -> u64 {
     entries
         .get(next)
-        .map_or(CURSOR_END, |entry| entry.shape_idx as u64)
+        .map_or(CURSOR_END, |entry| u64::from(entry.shape_idx))
 }
 
 /// Monotonic encoder lookup over the sparse animation rows.
@@ -160,7 +160,7 @@ impl PaintAnimCursor<'_> {
             );
             self.last_sampled = Some(shape_idx);
         }
-        let shape_idx = shape_idx as u64;
+        let shape_idx = u64::from(shape_idx);
         while shape_idx > self.next_shape {
             self.advance();
         }

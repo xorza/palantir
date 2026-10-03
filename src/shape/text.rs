@@ -17,6 +17,7 @@ use glam::Vec2;
 
 /// Shaped text run owned by the active node.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct TextShape {
     /// `None` → encoder owns positioning: the glyph bbox is placed
     /// inside the owner's padded inner rect via `align`. Used by
@@ -44,7 +45,7 @@ pub struct TextShape {
 }
 
 impl TextShape {
-    pub(super) fn new(text: InternedStr, font: GlyphFont) -> Self {
+    pub(super) const fn new(text: InternedStr, font: GlyphFont) -> Self {
         Self {
             local_origin: None,
             text,
@@ -63,7 +64,7 @@ impl TextShape {
     /// Not `at`, which every rect-shaped kind spells for a whole
     /// [`Rect`](crate::Rect): a run has a pen position rather than a box,
     /// and one word cannot mean both.
-    pub fn at_origin(mut self, origin: Vec2) -> Self {
+    pub const fn at_origin(mut self, origin: Vec2) -> Self {
         self.local_origin = Some(origin);
         self
     }

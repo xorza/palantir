@@ -176,7 +176,11 @@ const TEXT_SCALE_ERROR: &str = "text scale factor must be finite and positive";
 const SCALED_TEXT_METRICS_ERROR: &str = "text scale would make font size or line height invalid";
 
 #[inline]
-fn is_clip_none(c: &ClipMode) -> bool {
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's `skip_serializing_if` passes the field by reference"
+)]
+const fn is_clip_none(c: &ClipMode) -> bool {
     matches!(c, ClipMode::None)
 }
 

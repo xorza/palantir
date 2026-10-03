@@ -1,5 +1,6 @@
 //! [`FontWeight`] — the numeric weight axis a face is matched on.
 
+use serde::de;
 use std::fmt;
 
 /// How black a face is, on the CSS 1–1000 scale: 400 is regular, 700 is
@@ -106,7 +107,7 @@ impl<'de> serde::Deserialize<'de> for FontWeight {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let weight = u16::deserialize(deserializer)?;
         if !Self::in_range(weight) {
-            return Err(serde::de::Error::custom("a font weight is 1..=1000"));
+            return Err(de::Error::custom("a font weight is 1..=1000"));
         }
         Ok(Self(weight))
     }
@@ -115,6 +116,7 @@ impl<'de> serde::Deserialize<'de> for FontWeight {
 #[cfg(test)]
 mod tests {
     use crate::text::font_weight::FontWeight;
+    use ron::ser;
 
     #[test]
     fn the_named_steps_are_the_css_scale() {
@@ -134,7 +136,7 @@ mod tests {
 
     #[test]
     fn serde_carries_the_number_and_checks_the_range() {
-        let encoded = ron::ser::to_string(&FontWeight::SEMI_BOLD).expect("serialize");
+        let encoded = ser::to_string(&FontWeight::SEMI_BOLD).expect("serialize");
         assert_eq!(encoded, "600");
         assert_eq!(
             ron::from_str::<FontWeight>(&encoded).expect("parse"),

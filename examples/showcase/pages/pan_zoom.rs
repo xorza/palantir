@@ -21,6 +21,7 @@ use palantir::{
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
     Text, TextStyle, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
 };
+use std::array;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Content {
@@ -333,7 +334,7 @@ fn canvas_polylines(ui: &mut Ui) {
                 // line per frame was six allocations for a shape whose size
                 // is a literal. Adjacent points are 24 px apart in x, so
                 // there is nothing for a coincident-point dedup to find.
-                let pts: [Vec2; 32] = std::array::from_fn(|i| {
+                let pts: [Vec2; 32] = array::from_fn(|i| {
                     let x = i as f32 * 24.0 + 8.0;
                     let phase = line as f32 * 0.6 + i as f32 * 0.25;
                     let y = 60.0 + phase.sin() * (16.0 + line as f32 * 3.0);

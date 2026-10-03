@@ -1,6 +1,7 @@
 //! Cloneable clipboard capability with an in-memory fallback.
 
 use std::cell::RefCell;
+use std::error;
 use std::fmt;
 use std::rc::Rc;
 
@@ -19,7 +20,7 @@ impl fmt::Display for ClipboardUnavailable {
     }
 }
 
-impl std::error::Error for ClipboardUnavailable {}
+impl error::Error for ClipboardUnavailable {}
 
 trait Backend: fmt::Debug {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable>;

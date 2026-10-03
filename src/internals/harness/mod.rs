@@ -183,6 +183,7 @@ use crate::ui::frame_stamp::FrameStamp;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
+use std::any;
 use std::time::Duration;
 use strum::EnumCount as _;
 
@@ -200,6 +201,7 @@ const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 /// Drives a [`Ui`] through frames with synthetic input. See the module
 /// doc for the pass model every helper here is built around.
 #[derive(Debug)]
+#[must_use]
 pub struct UiHarness {
     /// `pub(crate)` rather than behind an accessor: the recorder state the
     /// in-crate suites assert on is reached through `Ui`'s own gated
@@ -409,7 +411,7 @@ impl UiHarness {
     /// Park the absolute clock at `time` — [`Self::advance`] for a test
     /// written against absolute stamps rather than deltas, and the same
     /// clock on both doors.
-    pub fn at(&mut self, time: Duration) -> &mut Self {
+    pub const fn at(&mut self, time: Duration) -> &mut Self {
         self.time = time;
         self
     }
@@ -799,17 +801,17 @@ impl UiHarness {
     /// makes a between-frames read wrong. `response_for` deliberately
     /// stays off this rung; use [`Self::rect`] for geometry and
     /// [`Self::response_in`] for edges.
-    pub fn focused_id(&self) -> Option<WidgetId> {
+    pub const fn focused_id(&self) -> Option<WidgetId> {
         self.ui.focused_id()
     }
 
     /// [`Ui::set_focus`].
-    pub fn set_focus(&mut self, id: WidgetId) {
+    pub const fn set_focus(&mut self, id: WidgetId) {
         self.ui.set_focus(id);
     }
 
     /// [`Ui::clear_focus`].
-    pub fn clear_focus(&mut self) {
+    pub const fn clear_focus(&mut self) {
         self.ui.clear_focus();
     }
 
@@ -857,7 +859,7 @@ impl UiHarness {
         self.ui.state::<S>(id).unwrap_or_else(|| {
             panic!(
                 "no `{}` row for {id:?} — wrong id, wrong type, or it never recorded",
-                std::any::type_name::<S>(),
+                any::type_name::<S>(),
             )
         })
     }

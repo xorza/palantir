@@ -25,6 +25,8 @@ use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use crate::ui::frame_report::FrameReport;
+use std::cmp;
+use std::mem;
 
 /// The previous frame's paint rows, and the scratch the next check fills.
 #[derive(Debug, Default)]
@@ -110,7 +112,7 @@ impl Oracle {
                 }
             }
         }
-        std::mem::swap(&mut self.prev, &mut self.curr);
+        mem::swap(&mut self.prev, &mut self.curr);
         self.primed = true;
     }
 }
@@ -235,7 +237,7 @@ fn diff_rows<'a>(prev: &'a [OwnedPaint], curr: &'a [OwnedPaint]) -> RowDiff<'a> 
     while i < prev.len() || j < curr.len() {
         match (prev.get(i), curr.get(j)) {
             (Some(a), Some(b)) => match row_key(a).cmp(&row_key(b)) {
-                std::cmp::Ordering::Equal => {
+                cmp::Ordering::Equal => {
                     diff.kept.push(KeptRow {
                         screen: b.screen,
                         prev_rank: a.rank,
@@ -244,11 +246,11 @@ fn diff_rows<'a>(prev: &'a [OwnedPaint], curr: &'a [OwnedPaint]) -> RowDiff<'a> 
                     i += 1;
                     j += 1;
                 }
-                std::cmp::Ordering::Less => {
+                cmp::Ordering::Less => {
                     diff.changed.push((a, "previous"));
                     i += 1;
                 }
-                std::cmp::Ordering::Greater => {
+                cmp::Ordering::Greater => {
                     diff.changed.push((b, "current"));
                     j += 1;
                 }

@@ -15,6 +15,7 @@ use crate::shape::shapes::Shapes;
 use glam::UVec2;
 use glam::Vec2;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::slice;
 
 #[derive(Clone, Copy, Debug)]
 enum ColorSource {
@@ -141,7 +142,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                     assert_eq!(point_span.len, points_len as u32);
                     assert_eq!(color_span.len, source.stored_colors_len(points_len));
                     let expected = match source {
-                        ColorSource::Single => std::slice::from_ref(&tint),
+                        ColorSource::Single => slice::from_ref(&tint),
                         ColorSource::PerPoint | ColorSource::PerSegment => &tinted[..colors_len],
                     };
                     let expected: Vec<RgbaF16> = expected.iter().map(|&c| c.into()).collect();
@@ -175,7 +176,7 @@ fn image_dimensions_above_u16_survive_lowering() {
     else {
         panic!("image lowered to another record variant or source");
     };
-    assert_eq!(size, glam::UVec2::new(WIDTH, 1));
+    assert_eq!(size, UVec2::new(WIDTH, 1));
 }
 
 /// **The NaN contract**, exercised through `Shapes::add` for every
@@ -197,29 +198,6 @@ fn image_dimensions_above_u16_survive_lowering() {
 /// rely on.
 #[test]
 fn the_nan_gate_drops_every_shape_kind() {
-    use crate::primitives::geometry::mesh::Mesh;
-    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::{Lower, Shape};
-    use glam::Vec2;
-
-    const N: f32 = f32::NAN;
-    let nan_pt = Vec2::new(1.0, N);
-    let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
-    let white = RgbaF32::WHITE;
-    let mesh = |pos| {
-        let mut m = Mesh::new();
-        m.vertex(pos, white);
-        m.vertex(Vec2::new(4.0, 0.0), white);
-        m.vertex(Vec2::new(0.0, 4.0), white);
-        m.triangle(0, 1, 2);
-        m
-    };
-    let (mesh_nan, mesh_ok) = (mesh(nan_pt), mesh(Vec2::ZERO));
-    let pts_nan = [Vec2::ZERO, nan_pt, Vec2::new(4.0, 4.0)];
-    let pts_ok = [Vec2::ZERO, Vec2::new(2.0, 2.0), Vec2::new(4.0, 4.0)];
-
     // A generic helper, one call per case: without the erased `Shape`
     // enum the kinds no longer share a type, so they cannot sit in one
     // table. Each call monomorphizes, which is also what the production
@@ -263,6 +241,29 @@ fn the_nan_gate_drops_every_shape_kind() {
              tainted arm proves nothing",
         );
     }
+
+    use crate::primitives::geometry::mesh::Mesh;
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::shape::{Lower, Shape};
+    use glam::Vec2;
+
+    const N: f32 = f32::NAN;
+    let nan_pt = Vec2::new(1.0, N);
+    let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
+    let white = RgbaF32::WHITE;
+    let mesh = |pos| {
+        let mut m = Mesh::new();
+        m.vertex(pos, white);
+        m.vertex(Vec2::new(4.0, 0.0), white);
+        m.vertex(Vec2::new(0.0, 4.0), white);
+        m.triangle(0, 1, 2);
+        m
+    };
+    let (mesh_nan, mesh_ok) = (mesh(nan_pt), mesh(Vec2::ZERO));
+    let pts_nan = [Vec2::ZERO, nan_pt, Vec2::new(4.0, 4.0)];
+    let pts_ok = [Vec2::ZERO, Vec2::new(2.0, 2.0), Vec2::new(4.0, 4.0)];
 
     let tri = |c, r: f32| {
         Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), c)

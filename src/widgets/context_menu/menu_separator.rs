@@ -54,7 +54,7 @@ impl<'a> MenuSeparator<'a> {
     }
 
     /// Record the rule. It senses nothing.
-    pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
         // Handle, not a borrow: `Separator::style` holds the reference
         // across `show`'s `&mut Ui`, and this one may point into the
         // `Ui`'s own theme.

@@ -24,10 +24,10 @@ fn a_duplicate_add_or_an_unknown_remove_panics() {
     let directory = WindowDirectory::default();
     directory.add(WindowToken(1));
     panic_probe::assert_panics_with("already contains WindowToken(1)", || {
-        directory.add(WindowToken(1))
+        directory.add(WindowToken(1));
     });
     panic_probe::assert_panics_with("must be in the window directory", || {
-        directory.remove(WindowToken(2))
+        directory.remove(WindowToken(2));
     });
     assert!(
         directory.contains(WindowToken(1)),

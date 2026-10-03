@@ -40,6 +40,11 @@
 //!   cargo bench --bench gpu --features bench -- text_atlas
 //!   cargo bench --bench gpu --features bench -- 'zoom_smooth$'
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::common::counters::CounterSet;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -67,6 +72,7 @@ use crate::text::{RENDERED_RUN_KEEP_FRAMES, TEXT_SCALE_STEP};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
+use std::slice;
 use wgpu::util::StagingBelt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -170,10 +176,7 @@ impl BenchText {
     /// `Bound::Raster`), which leaves a standalone pass to bind its own.
     fn draw<'a>(&'a self, batch_index: usize, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(self.pipelines.select(false));
-        ViewportPush {
-            size: glam::Vec2::ZERO,
-        }
-        .push_into(pass);
+        ViewportPush { size: Vec2::ZERO }.push_into(pass);
         self.backend.render_batch(batch_index, pass);
     }
 
@@ -197,8 +200,10 @@ fn gpu() -> &'static Gpu {
     })
 }
 
-// Fixture builder: it mirrors the shape of the call under test rather than grouping.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a fixture builder that mirrors the call under test rather than grouping"
+)]
 fn make_run(
     store: &mut RecordStore,
     shaper: &TextShaper,
@@ -303,7 +308,7 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
 fn run_frame(
     g: &Gpu,
     backend: &mut BenchText,
-    belt: &mut wgpu::util::StagingBelt,
+    belt: &mut StagingBelt,
     target_view: &wgpu::TextureView,
     store: &RecordStore,
     runs: &[TextDrawRow],
@@ -315,14 +320,14 @@ fn run_frame(
         belt,
         target_view,
         store,
-        std::slice::from_ref(&BenchBatch { runs, scale }),
+        slice::from_ref(&BenchBatch { runs, scale }),
     );
 }
 
 fn run_batches(
     g: &Gpu,
     backend: &mut BenchText,
-    belt: &mut wgpu::util::StagingBelt,
+    belt: &mut StagingBelt,
     target_view: &wgpu::TextureView,
     store: &RecordStore,
     batches: &[BenchBatch<'_>],
@@ -426,7 +431,7 @@ fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
 fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     let atlas = &backend.backend.pass.atlas;
     let counts = atlas.counters.counts();
-    let per_frame = counts.evict_scans as f64 / frames.max(1) as f64;
+    let per_frame = counts.evict_scans as f64 / f64::from(frames.max(1));
     eprintln!(
         "[text_atlas] {label}: live_glyphs={} evictions={} grows={} \
          scanned={} ({per_frame:.0}/frame over {frames} frames) oversized={}",
@@ -818,7 +823,7 @@ fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
             fixture.churn_frame();
         }
         let saturated = fixture.arena_len();
-        group.throughput(Throughput::Elements((runs * glyphs) as u64));
+        group.throughput(Throughput::Elements(u64::from(runs * glyphs)));
         group.bench_with_input(
             BenchmarkId::new("churn", format!("{runs}x{glyphs}")),
             &runs,

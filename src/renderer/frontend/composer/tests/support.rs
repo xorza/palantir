@@ -1,6 +1,11 @@
 //! The composer a test drives, the payloads it is fed, and what it is read
 //! back through.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::icons::icon_set::IconRef;
@@ -205,8 +210,10 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     }
 }
 
-// Fixture builder: it mirrors the polyline command's own parameter list.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a fixture builder that mirrors the polyline command's own parameter list"
+)]
 pub(super) fn polyline_cmd(
     b: &mut PaintCapture,
     store: &mut RecordStore,
@@ -272,7 +279,6 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 }
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
-    use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
     b.draw_image(
         ImageDraw {
             payload: DrawImagePayload {

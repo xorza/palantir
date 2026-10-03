@@ -65,6 +65,7 @@ pub struct OffscreenHost {
 
 /// Seals offscreen policy before allocating the backend and window driver.
 #[derive(Debug)]
+#[must_use]
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
     /// See [`Self::retained_target`].
@@ -123,7 +124,7 @@ impl OffscreenHostBuilder {
 
     /// Opt into GPU timestamp and pipeline-statistics collection. The supplied
     /// device must have the corresponding wgpu features enabled.
-    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
+    pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
         self.collect_gpu_stats = collect;
         self
     }
@@ -152,13 +153,13 @@ impl OffscreenHostBuilder {
     /// **Only say it if it is true.** Turning this on while handing in a fresh
     /// texture each call leaves everything outside the damage region holding
     /// whatever that texture happened to contain.
-    pub fn retained_target(mut self, retained: bool) -> Self {
+    pub const fn retained_target(mut self, retained: bool) -> Self {
         self.retained_target = retained;
         self
     }
 
     /// Configure whether axis-aligned paint edges snap to physical pixels.
-    pub fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+    pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.pixel_snap = pixel_snap;
         self
     }
@@ -176,7 +177,7 @@ impl OffscreenHostBuilder {
     /// backend that refuses a write does not lose the copy. See
     /// [`Ui::clipboard`](crate::Ui::clipboard).
     #[cfg(feature = "system-clipboard")]
-    pub fn system_clipboard(mut self, system: bool) -> Self {
+    pub const fn system_clipboard(mut self, system: bool) -> Self {
         self.system_clipboard = system;
         self
     }
@@ -263,7 +264,7 @@ impl OffscreenHost {
     }
 
     /// Mutable access to the window's `Ui` for building scenes.
-    pub fn ui(&mut self) -> &mut Ui {
+    pub const fn ui(&mut self) -> &mut Ui {
         &mut self.driver.ui
     }
 
@@ -327,7 +328,7 @@ impl OffscreenHost {
 
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
-    pub fn gpu_pass_stats(&self) -> &GpuPassStats {
+    pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
         &self.core.resources.diagnostics().gpu_pass_stats
     }
 }
@@ -349,7 +350,7 @@ pub(crate) mod internals {
     /// backend never publishes, because counting steps on the production
     /// path would cost what the benchmark exists to measure.
     #[cfg(feature = "bench")]
-    pub(crate) fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
+    pub(crate) const fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
         &host.core.frontend.buffer
     }
 
@@ -370,7 +371,7 @@ pub(crate) mod internals {
 
         /// Paint the next frame in full, as after a swapchain reconfigure:
         /// the reference a partial repaint is compared against.
-        pub fn invalidate_target_contents(&mut self) {
+        pub const fn invalidate_target_contents(&mut self) {
             self.driver.invalidate_target_contents();
         }
     }

@@ -27,14 +27,6 @@ use glam::{UVec2, Vec2};
 /// toggle reading its neighbour's slot passed.
 #[test]
 fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
-    // Asymmetric, and different from each other, so neither a
-    // padding/margin swap nor an axis swap can read as a pass — and
-    // distinct per toggle, so nor can a slot mix-up.
-    let spacing = |n: f32| (Spacing::xy(n, n + 2.0), Spacing::xy(n + 4.0, n + 6.0));
-    let (cb_padding, cb_margin) = spacing(7.0);
-    let (rb_padding, rb_margin) = spacing(23.0);
-    let (sw_padding, sw_margin) = spacing(41.0);
-
     #[track_caller]
     fn check(label: &str, h: &UiHarness, nodes: [NodeId; 2], padding: Spacing, margin: Spacing) {
         let layouts = h.ui.tree(Layer::Main).records.layout();
@@ -45,6 +37,14 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
         assert_eq!(inherited.padding, padding, "{label}: theme padding");
         assert_eq!(inherited.margin, margin, "{label}: theme margin");
     }
+
+    // Asymmetric, and different from each other, so neither a
+    // padding/margin swap nor an axis swap can read as a pass — and
+    // distinct per toggle, so nor can a slot mix-up.
+    let spacing = |n: f32| (Spacing::xy(n, n + 2.0), Spacing::xy(n + 4.0, n + 6.0));
+    let (cb_padding, cb_margin) = spacing(7.0);
+    let (rb_padding, rb_margin) = spacing(23.0);
+    let (sw_padding, sw_margin) = spacing(41.0);
 
     let mut h = UiHarness::new(UVec2::new(400, 300));
     let theme = h.ui.theme_mut();

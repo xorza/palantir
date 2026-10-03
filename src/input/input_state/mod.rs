@@ -30,6 +30,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use glam::Vec2;
+use std::mem;
 use std::time::Duration;
 use strum::EnumCount as _;
 
@@ -202,7 +203,7 @@ impl InputState {
 
     /// Move focus. **Deliberately does not re-route this pass** — see
     /// [`Scopes`] for why mid-pass changes wait for the next resolution.
-    pub(crate) fn set_focus(&mut self, id: Option<WidgetId>) {
+    pub(crate) const fn set_focus(&mut self, id: Option<WidgetId>) {
         self.focused = id;
     }
 
@@ -378,12 +379,12 @@ impl InputState {
         })
     }
 
-    fn capture(&self, b: PointerButton) -> &Capture {
+    const fn capture(&self, b: PointerButton) -> &Capture {
         &self.captures[b.idx()]
     }
 
     #[inline]
-    fn capture_mut(&mut self, b: PointerButton) -> &mut Capture {
+    const fn capture_mut(&mut self, b: PointerButton) -> &mut Capture {
         &mut self.captures[b.idx()]
     }
 
@@ -670,9 +671,7 @@ impl InputState {
                     // otherwise a release back on the widget is a click
                     // carrying its press's run number — double-click is
                     // simply "the click whose press was #2 in the run".
-                    let kind = if press.drag != PressDrag::None {
-                        ReleaseKind::DragStopped
-                    } else {
+                    let kind = if press.drag == PressDrag::None {
                         // The same walk the press opened the capture
                         // with, so "did the release land back on it" is
                         // the question the press already answered rather
@@ -684,6 +683,8 @@ impl InputState {
                         } else {
                             ReleaseKind::Miss
                         }
+                    } else {
+                        ReleaseKind::DragStopped
                     };
                     settles = !matches!(kind, ReleaseKind::Miss);
                     kind
@@ -790,7 +791,7 @@ impl InputState {
     /// [`Self::pre_record`] when claims became scopes, because a scope
     /// path derives from focus and the cascade.
     pub(crate) fn take_action_flag(&mut self) -> bool {
-        std::mem::take(&mut self.frame_had_action)
+        mem::take(&mut self.frame_had_action)
     }
 
     /// Drain the per-frame input queues without touching cascade-

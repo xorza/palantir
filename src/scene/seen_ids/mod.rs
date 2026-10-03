@@ -37,6 +37,7 @@
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
 use std::collections::hash_map::Entry;
+use std::mem;
 
 /// Both nodes of one explicit-id collision, in recording order. What
 /// [`SeenIds::record_endpoint`] hands back when the endpoint it just
@@ -269,13 +270,13 @@ impl SeenIds {
         // — the prev-minus-curr diff can't see them, but any state /
         // anim / measure / text rows they created during that pass are
         // real and must be swept with everything else.
-        for wid in self.discarded.iter() {
+        for wid in &self.discarded {
             if !self.curr.contains_key(wid) {
                 self.removed.insert(*wid);
             }
         }
         self.discarded.clear();
-        std::mem::swap(&mut self.curr, &mut self.prev);
+        mem::swap(&mut self.curr, &mut self.prev);
         self.curr.clear();
         &self.removed
     }

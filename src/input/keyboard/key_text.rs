@@ -1,6 +1,7 @@
 //! The text one key press produced, as the input queue carries it.
 
 use std::fmt;
+use std::str;
 use tinyvec::ArrayVec;
 
 /// [`KeyText::CAP`]'s one definition, because a struct cannot name its
@@ -74,7 +75,7 @@ impl KeyText {
 
     /// The text, or `""` for a press that produced none.
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.utf8).expect("whole characters, encoded on the way in")
+        str::from_utf8(&self.utf8).expect("whole characters, encoded on the way in")
     }
 
     /// Whether the press produced no text to type.

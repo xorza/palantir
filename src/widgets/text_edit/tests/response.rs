@@ -1,5 +1,4 @@
 use crate::input::keyboard::key_text::KeyText;
-use crate::internals::harness::UiHarness;
 use crate::internals::harness::passes::Passes;
 use crate::widgets::text_edit::internals::EditEdges;
 use crate::widgets::text_edit::tests::*;

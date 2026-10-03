@@ -3,6 +3,7 @@
 use crate::primitives::identity::widget_id::WidgetIdSet;
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
+use std::fmt;
 
 /// Spelled once rather than at each of the three downcast sites: the
 /// argument is the same one every time — the entry is keyed by
@@ -39,8 +40,8 @@ pub(crate) struct TypedStores {
 // Manual: the values are `dyn TypedStore`, which has no `Debug` and
 // can't gain one without a supertrait every store would have to satisfy.
 // The store count is the shape worth reporting.
-impl std::fmt::Debug for TypedStores {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for TypedStores {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TypedStores")
             .field("stores", &self.by_type.len())
             .finish_non_exhaustive()

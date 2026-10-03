@@ -3,6 +3,7 @@
 
 use crate::common::hash::Hasher;
 use std::collections::{HashMap, HashSet};
+use std::hash;
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
 use std::hash::Hasher as _;
@@ -37,7 +38,7 @@ use std::panic::Location;
 #[derive(Debug, Default)]
 pub(crate) struct IdHasher(u64);
 
-impl std::hash::Hasher for IdHasher {
+impl hash::Hasher for IdHasher {
     #[inline]
     fn finish(&self) -> u64 {
         self.0
@@ -90,6 +91,7 @@ impl WidgetId {
     /// Derive a child id by mixing `h` into this id. Useful for nested widgets
     /// where the parent already has a stable id — widget authors use this to
     /// key the child nodes they open inside their `show` body.
+    #[must_use]
     pub fn with(self, h: impl Hash) -> Self {
         let mut hasher = Hasher::new();
         self.0.hash(&mut hasher);

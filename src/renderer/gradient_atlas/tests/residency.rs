@@ -1,7 +1,6 @@
 //! Row assignment: reuse, dedup, and the reserved fallback at row zero.
 
 use crate::primitives::paint::brush::gradient::Interp;
-use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;

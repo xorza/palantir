@@ -50,7 +50,9 @@ use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 use std::f32::consts::TAU;
+use std::hash;
 use std::hash::Hasher as _;
+use std::slice;
 
 /// Stable content hash for a gradient kind or a curve ramp: discriminant
 /// byte then the value's `Hash` impl (a gradient's hashes f32
@@ -59,7 +61,7 @@ use std::hash::Hasher as _;
 /// `CurveRamp::Interned` beside its id, so downstream cache keys don't
 /// need the store.
 #[inline]
-fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
+fn grad_hash<G: hash::Hash>(tag: u8, g: &G) -> u64 {
     let mut h = Hasher::new();
     h.write_u8(tag);
     g.hash(&mut h);
@@ -264,7 +266,7 @@ pub(crate) fn polyline(
     // `Single` stages one white multiplier, so every mode takes the same
     // multiply and the stroke colour lands exactly: `1.0 × c` is `c`.
     let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
-        PolylineColors::Single => (ColorMode::Single, std::slice::from_ref(&RgbaF32::WHITE)),
+        PolylineColors::Single => (ColorMode::Single, slice::from_ref(&RgbaF32::WHITE)),
         PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
         PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
     };
@@ -300,7 +302,7 @@ pub(crate) fn polyline(
         point.hash_visual(&mut h);
     }
     h.pod_slice(lowered_colors);
-    let style = (approx::canon_bits(stroke.width) as u64) << 24
+    let style = u64::from(approx::canon_bits(stroke.width)) << 24
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
         | (join as u64);
@@ -419,7 +421,7 @@ fn cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> BoundedBasis {
 /// The record hash (`compute_record_hash`) covers the basis + stroke +
 /// cap directly; the only lowering-time hash it reads is the one an
 /// interned `ramp` carries.
-fn curve_record(
+const fn curve_record(
     bounded: BoundedBasis,
     stroke: ShapeStroke,
     ramp: CurveRamp,

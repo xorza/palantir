@@ -43,7 +43,7 @@ pub(crate) struct FormatPipelines {
 /// and pipeline layouts off. They live side by side on the backend and are handed over as a
 /// set, so a new pipeline kind is one field here rather than one more parameter at
 /// every call.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct PipelineSources<'a> {
     pub(crate) quad: &'a QuadPipeline,
     pub(crate) mesh: &'a MeshPipeline,

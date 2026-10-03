@@ -22,7 +22,7 @@ enum Motion {
 }
 
 impl Motion {
-    fn spec(self) -> AnimSpec {
+    const fn spec(self) -> AnimSpec {
         match self {
             Self::Duration => AnimSpec::duration(0.2, Easing::OutCubic),
             Self::Spring => AnimSpec::SPRING,

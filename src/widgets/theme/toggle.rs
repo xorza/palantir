@@ -95,7 +95,7 @@ impl ToggleTheme {
 
     /// Pick the chrome+label look for this `(state, checked)` pair
     /// (`active` = pressed).
-    pub fn pick(&self, state: &ResponseState, checked: bool) -> &WidgetLook {
+    pub const fn pick(&self, state: &ResponseState, checked: bool) -> &WidgetLook {
         if checked {
             self.checked.pick(state, state.pressed())
         } else {
@@ -225,7 +225,7 @@ impl ToggleTheme {
 /// The three same-typed lengths [`ToggleTheme::built`] would otherwise
 /// take positionally, where any two of them swap and still compile —
 /// the reason [`SlotDefaults`] is a struct too.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct ToggleGeometry {
     /// Corner radius of the box/pip chrome in logical px. `box_size / 2`
     /// makes the pill the radio and the switch need.

@@ -266,7 +266,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 
     let cmds = h.encode_paint();
     let mut text_xs: Vec<f32> = Vec::new();
-    for command in cmds.calls.iter() {
+    for command in &cmds.calls {
         if let PaintCall::Text(payload) = command {
             text_xs.push(payload.rect.min.x);
         }
@@ -365,7 +365,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
 
     let cmds = h.encode_paint();
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
-    for command in cmds.calls.iter() {
+    for command in &cmds.calls {
         if let PaintCall::Text(payload) = command {
             entries.push((
                 payload.rect.min.x,
@@ -378,11 +378,10 @@ fn text_layouts_full_showcase_drawtext_dump() {
         for j in (i + 1)..entries.len() {
             let (xi, yi, hi) = entries[i];
             let (xj, yj, hj) = entries[j];
-            if hi != hj && (xi - xj).abs() < 0.5 && (yi - yj).abs() < 0.5 {
-                panic!(
-                    "two distinct texts at same (x,y): #{i} hash={hi:#x} vs #{j} hash={hj:#x} at ({xi}, {yi})",
-                );
-            }
+            assert!(
+                !(hi != hj && (xi - xj).abs() < 0.5 && (yi - yj).abs() < 0.5),
+                "two distinct texts at same (x,y): #{i} hash={hi:#x} vs #{j} hash={hj:#x} at ({xi}, {yi})",
+            );
         }
     }
 }

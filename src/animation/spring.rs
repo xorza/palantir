@@ -106,9 +106,10 @@ impl SpringTransition {
             // `sin(θ)/θ` rather than a series: the library `sin` is
             // accurate to under an ulp near zero, so the quotient is
             // too, and only the removable singularity needs naming.
-            let sinc = match theta == 0.0 {
-                true => 1.0,
-                false => theta.sin() / theta,
+            let sinc = if theta == 0.0 {
+                1.0
+            } else {
+                theta.sin() / theta
             };
             (decay * theta.cos(), decay * dt * sinc)
         } else {
@@ -120,9 +121,10 @@ impl SpringTransition {
             // spring is.
             let slow = ((psi - half_damping) * dt).exp();
             let shrink = (-2.0 * theta).exp_m1();
-            let sinhc = match theta == 0.0 {
-                true => 1.0,
-                false => -shrink / (2.0 * theta),
+            let sinhc = if theta == 0.0 {
+                1.0
+            } else {
+                -shrink / (2.0 * theta)
             };
             (slow * (2.0 + shrink) * 0.5, slow * dt * sinhc)
         };

@@ -66,6 +66,10 @@ pub(crate) fn checked_downsample(n: u32) -> u32 {
 /// the floor or the cap rather than reaching the registry, and a cap below
 /// the floor lowers the floor. The widgets take these numbers from
 /// application layout, so they cannot assert on them.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "the saturating cast is the clamp: a negative or NaN size lands on zero, then on the floor"
+)]
 pub(crate) fn texel_size(size: Size, downsample: u32, ui: &Ui) -> UVec2 {
     let scale = ui.display().scale_factor();
     let cap = ui.max_image_dimension().map_or(u32::MAX, NonZeroU32::get);

@@ -3,6 +3,7 @@
 use crate::internals::harness::tests::support::{INSIDE, SURFACE, button, target};
 use crate::internals::harness::*;
 use crate::internals::panic_probe;
+use std::cell;
 
 #[test]
 fn one_clock_stamps_both_frames_and_input() {
@@ -86,7 +87,7 @@ fn frames_until_idle_counts_the_frames_a_motion_takes() {
     let slot = AnimSlot::new("idle-count");
     let tween = Some(AnimSpec::duration(0.05, Easing::Linear));
     let mut harness = UiHarness::new(SURFACE);
-    let to = std::cell::Cell::new(0.0_f32);
+    let to = cell::Cell::new(0.0_f32);
     let mut record = |ui: &mut Ui| {
         let _ = ui.animate(target(), slot, to.get(), tween);
         button(ui);

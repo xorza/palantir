@@ -194,7 +194,7 @@ impl Configure for ColorStrip<'_> {
 }
 
 impl StripKind<'_> {
-    fn read(&self) -> f32 {
+    const fn read(&self) -> f32 {
         match self {
             Self::Hue(coords) => coords.hue(),
             Self::Alpha(color) => color.a,
@@ -210,7 +210,7 @@ impl StripKind<'_> {
         self.read() != before
     }
 
-    fn paint(&self) -> StripPaint {
+    const fn paint(&self) -> StripPaint {
         match self {
             Self::Hue(coords) => StripPaint::Hue(coords.model()),
             Self::Alpha(color) => StripPaint::Alpha(color.with_alpha(1.0)),
@@ -227,7 +227,7 @@ enum StripPaint {
 }
 
 impl StripPaint {
-    fn wants_checker(self) -> bool {
+    const fn wants_checker(self) -> bool {
         matches!(self, Self::Alpha(_))
     }
 

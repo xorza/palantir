@@ -319,8 +319,10 @@ fn peak_scale(lab: [f32; 3]) -> f32 {
 /// pulls the darks apart so a value step is one step to the eye down there
 /// too.
 fn toe(x: f32) -> f32 {
-    0.5 * (TOE_K3 * x - TOE_K1
-        + ((TOE_K3 * x - TOE_K1) * (TOE_K3 * x - TOE_K1) + 4.0 * TOE_K2 * TOE_K3 * x).sqrt())
+    f32::midpoint(
+        TOE_K3 * x - TOE_K1,
+        ((TOE_K3 * x - TOE_K1) * (TOE_K3 * x - TOE_K1) + 4.0 * TOE_K2 * TOE_K3 * x).sqrt(),
+    )
 }
 
 /// Inverse of [`toe`], in closed form.

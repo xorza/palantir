@@ -5,6 +5,7 @@
 //! name them — and keeping the selection logic there makes it
 //! unit-testable, which a `harness = false` target never is.
 
+use palantir::bench;
 fn main() {
-    palantir::bench::run();
+    bench::run();
 }

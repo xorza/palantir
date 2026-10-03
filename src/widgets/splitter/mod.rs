@@ -90,7 +90,7 @@ impl<'a> Splitter<'a> {
 
     /// Floor either pane's split-axis extent at `px` while dragging.
     /// Default `0.0` (panes can collapse to nothing).
-    pub fn min_pane(mut self, px: f32) -> Self {
+    pub const fn min_pane(mut self, px: f32) -> Self {
         self.min_pane = px.max(0.0);
         self
     }
@@ -116,11 +116,11 @@ impl<'a> Splitter<'a> {
     /// back is the share the panes were actually arranged at, which only
     /// layout knows. That is the price of never writing a ratio a pane's
     /// content floor overrides.
-    pub fn show<'u>(
+    pub fn show(
         mut self,
-        ui: &'u mut Ui,
+        ui: &mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
-    ) -> ValueResponse<'u> {
+    ) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
         let input = *self.ratio;
@@ -264,7 +264,7 @@ fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce
         .size((Sizing::FILL, Sizing::FILL))
         .clip_rect()
         .grid_cell(GridCell::along(axis, main_cell))
-        .record(ui, None, body)
+        .record(ui, None, body);
 }
 
 /// Recover the first pane's effective share after layout applied both

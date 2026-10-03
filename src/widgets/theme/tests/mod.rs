@@ -28,6 +28,7 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use ron::ser;
 use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 assert_not_impl_any!(Theme: Copy);
@@ -56,5 +57,5 @@ assert_impl_all!(TextStyle: Copy);
 
 /// A theme as RON text — what the tests below serialize, edit and compare.
 fn pretty<T: Serialize>(value: &T) -> String {
-    ron::ser::to_string_pretty(value, PrettyConfig::default()).expect("serialize")
+    ser::to_string_pretty(value, PrettyConfig::default()).expect("serialize")
 }

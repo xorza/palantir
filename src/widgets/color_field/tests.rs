@@ -1,3 +1,8 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::damage::Damage;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -10,6 +15,8 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_field::{ColorField, fill};
 use glam::{UVec2, Vec2};
+use std::array;
+use std::thread;
 
 const FIELD: UVec2 = UVec2::new(208, 160);
 
@@ -299,9 +306,9 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
 fn downsample_four_tracks_the_exact_colour() {
     // One thread per model and hue slice; each slice's worst is folded in
     // hue order, so a tie keeps the earlier slice's place.
-    let errors = std::thread::scope(|scope| {
+    let errors = thread::scope(|scope| {
         let sweeps = ColorModel::ALL.map(|model| {
-            std::array::from_fn::<_, 12, _>(|step| {
+            array::from_fn::<_, 12, _>(|step| {
                 scope.spawn(move || worst_errors(model, step as f32 / 12.0))
             })
         });

@@ -43,6 +43,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::{Cell, RefCell};
 
 use backtrace::Backtrace;
+use std::mem;
+use std::thread;
 
 #[derive(Debug)]
 pub(crate) struct CountingAllocator;
@@ -75,7 +77,7 @@ fn track(size: usize) {
     // Skipping it is also what keeps this allocator out of `dbghelp`
     // underneath a panic hook already inside it — see the module docs.
     // `panicking()` is a thread-local read, so the hot path is unmoved.
-    if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) || std::thread::panicking() {
+    if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) || thread::panicking() {
         return;
     }
     ALLOCS.with(|c| c.set(c.get() + 1));
@@ -162,7 +164,7 @@ pub(crate) fn with_audit<F: FnOnce()>(f: F) -> AuditResult {
     AuditResult {
         allocs: ALLOCS.with(Cell::get) - allocs0,
         bytes: BYTES.with(Cell::get) - bytes0,
-        traces: TRACES.with(|t| std::mem::take(&mut *t.borrow_mut())),
+        traces: TRACES.with(|t| mem::take(&mut *t.borrow_mut())),
     }
 }
 
@@ -173,10 +175,12 @@ pub(crate) fn with_audit<F: FnOnce()>(f: F) -> AuditResult {
 #[cfg(test)]
 mod tests {
     use crate::allocator::{TRACE_CAP, with_audit};
+    use std::hint;
     use std::hint::black_box;
     use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread;
 
     /// Force one heap alloc that the optimizer can't hoist or elide.
     fn one_alloc() {
@@ -225,9 +229,9 @@ mod tests {
         // Atomics never allocate.
         let go = Arc::new(AtomicBool::new(false));
         let g2 = Arc::clone(&go);
-        let t = std::thread::spawn(move || {
+        let t = thread::spawn(move || {
             while !g2.load(Ordering::Acquire) {
-                std::hint::spin_loop();
+                hint::spin_loop();
             }
             for _ in 0..1_000 {
                 one_alloc();
@@ -291,8 +295,10 @@ mod tests {
             let msg = catch_unwind(AssertUnwindSafe(|| with_audit(body)))
                 .expect_err("the body panics")
                 .downcast::<&str>()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|_| String::from("<non-str panic payload>"));
+                .map_or_else(
+                    |_| String::from("<non-str panic payload>"),
+                    |s| s.to_string(),
+                );
             assert_eq!(msg, expected);
             let r = with_audit(|| {});
             assert_eq!(

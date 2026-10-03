@@ -158,7 +158,7 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .show(ui, |ui| ui.escape_pressed())
+                    .show(ui, Ui::escape_pressed)
                     .inner;
                 [at_root, at_inner]
             })

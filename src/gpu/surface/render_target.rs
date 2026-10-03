@@ -40,7 +40,7 @@ impl<'a> RenderTarget<'a> {
         self.texture.usage().contains(wgpu::TextureUsages::COPY_DST)
     }
 
-    pub(crate) fn texture(self) -> &'a wgpu::Texture {
+    pub(crate) const fn texture(self) -> &'a wgpu::Texture {
         self.texture
     }
 }
@@ -67,7 +67,7 @@ impl<'a> From<&'a wgpu::Texture> for RenderTarget<'a> {
 pub struct TargetFormat(wgpu::TextureFormat);
 
 impl TargetFormat {
-    pub(crate) fn get(self) -> wgpu::TextureFormat {
+    pub(crate) const fn get(self) -> wgpu::TextureFormat {
         self.0
     }
 }
@@ -82,7 +82,7 @@ impl From<wgpu::TextureFormat> for TargetFormat {
 
 /// A render-target extent in the driver's own type. Depth is always one:
 /// every target Palantir draws into is a 2D texture.
-pub(crate) fn extent(size: UVec2) -> wgpu::Extent3d {
+pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
     wgpu::Extent3d {
         width: size.x,
         height: size.y,

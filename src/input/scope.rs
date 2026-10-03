@@ -19,6 +19,7 @@ use crate::cascade::entry::ScopeRow;
 use crate::input::key_class::KeyClass;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use std::mem;
 
 /// This pass's resolved scope routing.
 ///
@@ -192,7 +193,7 @@ impl Scopes {
     /// frame, after the last record pass.
     pub(super) fn end_frame(&mut self) {
         self.closed.clear();
-        std::mem::swap(&mut self.closed, &mut self.closing);
+        mem::swap(&mut self.closed, &mut self.closing);
     }
 
     /// Whether an overlay's scope cuts `reader`'s layer off both streams.

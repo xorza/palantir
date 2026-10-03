@@ -29,15 +29,15 @@ impl TransformStack {
 
     /// The live product — for a handler that needs the whole value, or
     /// its scale.
-    pub(super) fn current(&self) -> TranslateScale {
+    pub(super) const fn current(&self) -> TranslateScale {
         self.current
     }
 
-    pub(super) fn scale(&self) -> f32 {
+    pub(super) const fn scale(&self) -> f32 {
         self.current.scale
     }
 
-    pub(super) fn apply_rect(&self, rect: Rect) -> Rect {
+    pub(super) const fn apply_rect(&self, rect: Rect) -> Rect {
         self.current.apply_rect(rect)
     }
 

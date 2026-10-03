@@ -8,7 +8,7 @@ use crate::text::glyph_font::GlyphFont;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use glam::Vec2;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct LayoutInput {
     pub(super) response_rect: Option<Rect>,
     pub(super) padding: Spacing,
@@ -54,7 +54,7 @@ impl TextLayout {
     /// One definition because both ends of the placement read it — the
     /// block node hands it to the layout engine, and the record pass
     /// undoes it to hit-test a click against last frame's placement.
-    pub(super) fn block_align(&self) -> Align {
+    pub(super) const fn block_align(&self) -> Align {
         if self.ctx.multiline {
             Align::v(self.text_align.valign())
         } else {

@@ -1,5 +1,10 @@
 //! Composited image and off-screen `GpuView` draw records.
 
+#![expect(
+    clippy::expl_impl_clone_on_copy,
+    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
+)]
+
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;

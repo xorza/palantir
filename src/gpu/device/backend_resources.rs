@@ -17,7 +17,7 @@ use crate::text::shaper::TextShaper;
 /// backend attaches its texture store to the host's registry through this
 /// borrow, before the host mints a recorder, so every later clone carries
 /// the store.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct BackendResources<'a> {
     pub(crate) text: &'a TextShaper,
     pub(crate) images: &'a ImageRegistry,

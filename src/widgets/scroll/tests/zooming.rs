@@ -32,7 +32,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
                     .id(inner_id)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
+                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0);
                     });
             });
     };
@@ -129,7 +129,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                                 WidgetId::from_hash("content"),
                                 content_size,
                                 content_size,
-                            )
+                            );
                         });
                 });
         };
@@ -222,7 +222,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
+                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0);
                     });
             });
     };
@@ -263,7 +263,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
             .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                fixed_block(ui, WidgetId::from_hash("content"), 100.0, 100.0)
+                fixed_block(ui, WidgetId::from_hash("content"), 100.0, 100.0);
             });
     };
     h.frame(build);
@@ -272,7 +272,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
 
     let id = WidgetId::from_hash("scroll");
     let zoomed = *h.state::<ScrollState>(id);
-    let expected_zoomed_offset = (0.0 + 50.0) * 0.5 - 50.0;
+    let expected_zoomed_offset = f32::midpoint(0.0, 50.0) - 50.0;
     assert_eq!(zoomed.zoom, 0.5);
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
@@ -285,6 +285,8 @@ fn pivot_zoom_preserves_underflow_pan_range() {
 
 #[test]
 fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
+    use crate::input::keyboard::modifiers::Modifiers;
+
     // The wheel-step refactor split lines vs pixels at the input
     // layer; the zoom path must combine them so a touchpad gesture
     // under ctrl still zooms — pre-split it did, and regressing that
@@ -300,7 +302,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0)
+                        fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0);
                     });
             });
     };
@@ -311,7 +313,6 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
 
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
-    use crate::input::keyboard::modifiers::Modifiers;
     h.move_onto(scroll_id);
     h.set_modifiers(Modifiers {
         ctrl: true,
@@ -338,6 +339,8 @@ fn wheel_zoom_step_is_font_independent() {
     // `ZoomConfig::default().step` is 1.03, and scrolling down zooms out.
     let expected = 1.03_f32.powf(-1.0);
     for font_size in [12.0_f32, 16.0, 24.0] {
+        use crate::input::keyboard::modifiers::Modifiers;
+
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().text.font_size_px = font_size;
         let build_zoom = |ui: &mut Ui| {
@@ -349,13 +352,12 @@ fn wheel_zoom_step_is_font_independent() {
                         .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0)
+                            fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0);
                         });
                 });
         };
         h.frame(build_zoom);
 
-        use crate::input::keyboard::modifiers::Modifiers;
         h.move_onto(WidgetId::from_hash("fz"));
         h.set_modifiers(Modifiers {
             ctrl: true,
@@ -535,7 +537,7 @@ fn zoomable_with_clamps_to_its_own_range() {
                 .zoomable_with(config.clone())
                 .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .show(ui, |ui| {
-                    fixed_block(ui, WidgetId::from_hash("ranged-content"), 100.0, 100.0)
+                    fixed_block(ui, WidgetId::from_hash("ranged-content"), 100.0, 100.0);
                 });
         };
         h.frame(build);

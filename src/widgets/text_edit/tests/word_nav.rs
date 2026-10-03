@@ -1,5 +1,6 @@
 use crate::widgets::text_edit::input_pass::internals::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
+use std::ops;
 
 #[test]
 fn word_boundary_helpers_step_word_then_skip_whitespace() {
@@ -48,7 +49,7 @@ fn word_boundary_helpers_step_word_then_skip_whitespace() {
 
 #[test]
 fn word_range_at_picks_anchor_kind() {
-    let cases: &[(&str, &str, usize, std::ops::Range<usize>)] = &[
+    let cases: &[(&str, &str, usize, ops::Range<usize>)] = &[
         ("inside_word", "hello world", 3, 0..5),
         ("at_word_start", "hello world", 0, 0..5),
         ("at_word_end_picks_previous", "hello world", 5, 0..5),
@@ -85,7 +86,10 @@ fn apply_key_word_nav_cases() {
     }
 
     // Single-line apply_key. label, buf, caret, key, want_caret, want_sel.
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "one table row, named by the comment above"
+    )]
     let cases: &[(&str, &str, usize, KeyPress, usize, Option<usize>)] = &[
         (
             "right_jumps_to_word_end",

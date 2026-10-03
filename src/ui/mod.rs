@@ -92,6 +92,8 @@ use crate::window::window_output::WindowOutput;
 use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
+use std::fmt;
+use std::mem;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
@@ -170,7 +172,7 @@ pub struct Ui {
 /// arrange / cascade / finalize, and the resets between them — is
 /// `FrameCycle`'s, and user code never reaches it.
 impl Ui {
-    pub(crate) fn frame_scene(&self) -> FrameScene<'_> {
+    pub(crate) const fn frame_scene(&self) -> FrameScene<'_> {
         FrameScene {
             forest: &self.forest,
             layout: &self.layout,
@@ -187,18 +189,18 @@ impl Ui {
     pub(crate) fn new(resources: UiResources) -> Self {
         Self {
             resources,
-            forest: Default::default(),
-            theme: Default::default(),
-            state: Default::default(),
-            gpu_views: Default::default(),
-            layout: Default::default(),
-            cascade: Default::default(),
-            input: Default::default(),
-            display: Default::default(),
-            anim: Default::default(),
-            frame_runtime: Default::default(),
-            window_requests: Default::default(),
-            window_frame: Default::default(),
+            forest: Forest::default(),
+            theme: Rc::default(),
+            state: StateMap::default(),
+            gpu_views: GpuViews::default(),
+            layout: Layout::default(),
+            cascade: Cascade::default(),
+            input: InputState::default(),
+            display: Display::default(),
+            anim: AnimMap::default(),
+            frame_runtime: FrameRuntime::default(),
+            window_requests: WindowRequests::default(),
+            window_frame: WindowFrameState::default(),
         }
     }
 
@@ -217,7 +219,7 @@ impl Ui {
     /// Button::new().label("File").style(&theme.button).show(ui);
     /// ```
     #[inline]
-    pub fn theme(&self) -> &Rc<Theme> {
+    pub const fn theme(&self) -> &Rc<Theme> {
         &self.theme
     }
 
@@ -417,7 +419,7 @@ impl Ui {
     /// continuous motion like `Spinner`'s rides `PaintAnim` instead —
     /// sampled at encode time, no record-time clock read.)
     #[inline]
-    pub fn now(&self) -> Duration {
+    pub const fn now(&self) -> Duration {
         self.frame_runtime.time
     }
 
@@ -429,7 +431,7 @@ impl Ui {
     /// (typically off its hover/drag response). The host applies it
     /// after the frame, only on change; ignored in headless contexts.
     #[inline]
-    pub fn set_cursor(&mut self, cursor: CursorIcon) {
+    pub const fn set_cursor(&mut self, cursor: CursorIcon) {
         self.window_requests.levels.cursor = cursor;
     }
 
@@ -442,7 +444,7 @@ impl Ui {
     /// the window showing". A widget that wants to defer to a request
     /// already made reads it before writing its own.
     #[inline]
-    pub fn cursor(&self) -> CursorIcon {
+    pub const fn cursor(&self) -> CursorIcon {
         self.window_requests.levels.cursor
     }
 
@@ -461,7 +463,7 @@ impl Ui {
     /// Inert on hosts with no swapchain, which is every headless one — the
     /// level is still recorded and still reads back.
     #[inline]
-    pub fn set_vsync(&mut self, vsync: Vsync) {
+    pub const fn set_vsync(&mut self, vsync: Vsync) {
         self.window_requests.levels.vsync = vsync;
     }
 
@@ -473,7 +475,7 @@ impl Ui {
     /// liveness. A host launched with an explicit backend present mode
     /// reports whichever of the two states that mode paces like.
     #[inline]
-    pub fn vsync(&self) -> Vsync {
+    pub const fn vsync(&self) -> Vsync {
         self.window_requests.levels.vsync
     }
 
@@ -583,7 +585,7 @@ impl Ui {
     ///
     /// Always `false` in headless / offscreen contexts (no OS window).
     #[inline]
-    pub fn close_requested(&self) -> bool {
+    pub const fn close_requested(&self) -> bool {
         self.window_frame.close_requested
     }
 
@@ -591,7 +593,7 @@ impl Ui {
     /// The window stays open past this frame; close it for real later with
     /// [`Self::close_window`]. A no-op when no close was requested.
     #[inline]
-    pub fn keep_open(&mut self) {
+    pub const fn keep_open(&mut self) {
         self.window_requests.close_vetoed = true;
     }
 
@@ -627,7 +629,7 @@ impl Ui {
     /// configured present mode out from under the host.
     #[cfg(feature = "winit")]
     #[inline]
-    pub(crate) fn seed_vsync(&mut self, vsync: Vsync) {
+    pub(crate) const fn seed_vsync(&mut self, vsync: Vsync) {
         self.window_requests.levels.vsync = vsync;
     }
 
@@ -651,7 +653,7 @@ impl Ui {
     /// indices the draw list carries. Valid until the next record pass
     /// refills the arena.
     #[inline]
-    pub(crate) fn record_store(&self) -> &RecordStore {
+    pub(crate) const fn record_store(&self) -> &RecordStore {
         &self.forest.record_store
     }
 
@@ -669,6 +671,10 @@ impl Ui {
     /// platform, which never hears about [`Self::set_user_scale`], so
     /// dividing by the product instead would shrink the window by the user
     /// scale on every launch.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "a display's logical size is non-negative"
+    )]
     pub fn window_geometry(&self) -> WindowGeometry {
         let logical = self.display.system_logical_size();
         WindowGeometry {
@@ -747,7 +753,7 @@ impl Ui {
     /// off the shared resources, so it asks by name rather than reaching
     /// through the field.
     #[inline]
-    pub(crate) fn window_directory(&self) -> &WindowDirectory {
+    pub(crate) const fn window_directory(&self) -> &WindowDirectory {
         self.resources.windows()
     }
 
@@ -885,7 +891,7 @@ impl Ui {
     /// recorder with no device answers `None`, and a device that answered
     /// cannot have answered zero.
     #[inline]
-    pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
+    pub const fn max_image_dimension(&self) -> Option<NonZeroU32> {
         self.resources.texture_limit().max_dimension()
     }
 
@@ -963,7 +969,7 @@ impl Ui {
     /// the one `memcpy` the borrowed path pays anyway.
     #[must_use]
     #[inline]
-    pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
+    pub fn fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
         self.forest.record_store.intern_fmt(args)
     }
 
@@ -1201,7 +1207,7 @@ impl Ui {
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = std::mem::take(self.state_or_default::<S>(id));
+        let mut value = mem::take(self.state_or_default::<S>(id));
         let out = body(self, &mut value);
         // Re-probed rather than held: `body` may have inserted rows of the
         // same `S` at other ids, which can reallocate the store's data vec.
@@ -1261,7 +1267,7 @@ impl Ui {
 
     /// Currently focused widget id, or `None`.
     #[inline]
-    pub fn focused_id(&self) -> Option<WidgetId> {
+    pub const fn focused_id(&self) -> Option<WidgetId> {
         self.input.focused()
     }
 
@@ -1300,7 +1306,7 @@ impl Ui {
     /// by example/demo code that wants to inject synthetic input
     /// coordinates without threading window dimensions through itself.
     #[inline]
-    pub fn display(&self) -> Display {
+    pub const fn display(&self) -> Display {
         self.display
     }
 
@@ -1367,7 +1373,7 @@ impl Ui {
     /// (which records nothing, so no such code ran) advances nothing.
     /// [`Self::render_frame_id`] is the peer that counts painted frames.
     #[inline]
-    pub fn frame_id(&self) -> u64 {
+    pub const fn frame_id(&self) -> u64 {
         self.frame_runtime.frame_id
     }
 
@@ -1380,7 +1386,7 @@ impl Ui {
     /// window painting a caret blink advances this while no record pass runs
     /// at all. Anything asking "was I skipped" wants [`Self::frame_id`].
     #[inline]
-    pub fn render_frame_id(&self) -> u64 {
+    pub const fn render_frame_id(&self) -> u64 {
         self.frame_runtime.render_frame_id
     }
 
@@ -1450,14 +1456,14 @@ impl Ui {
     /// widget that blurs itself on Escape therefore does not also hand
     /// that Escape to the overlay around it.
     #[inline]
-    pub fn set_focus(&mut self, id: WidgetId) {
+    pub const fn set_focus(&mut self, id: WidgetId) {
         self.input.set_focus(Some(id));
     }
 
     /// Leave nothing focused. The clearing half of [`Self::set_focus`],
     /// and subject to the same routing lag.
     #[inline]
-    pub fn clear_focus(&mut self) {
+    pub const fn clear_focus(&mut self) {
         self.input.set_focus(None);
     }
 
@@ -1522,7 +1528,7 @@ impl Ui {
     /// continuously: the pointer will move, no frame will run, and the
     /// stale result stays on screen.
     #[inline]
-    pub fn peek_pointer_pos(&self) -> Option<Vec2> {
+    pub const fn peek_pointer_pos(&self) -> Option<Vec2> {
         self.input.pointer_pos()
     }
 
@@ -1544,27 +1550,27 @@ impl Ui {
     /// debug readout, a drag whose snap targets change under Ctrl while
     /// the pointer holds still.
     #[inline]
-    pub fn peek_modifiers(&self) -> Modifiers {
+    pub const fn peek_modifiers(&self) -> Modifiers {
         self.input.modifiers()
     }
 
     /// What a press on a non-focusable widget does to focus. See
     /// [`FocusPolicy`].
     #[inline]
-    pub fn focus_policy(&self) -> FocusPolicy {
+    pub const fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy()
     }
 
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     #[inline]
-    pub fn set_focus_policy(&mut self, p: FocusPolicy) {
+    pub const fn set_focus_policy(&mut self, p: FocusPolicy) {
         self.input.set_focus_policy(p);
     }
 
     /// Which "did input arrive?" signal the frame gate consults before
     /// it commits to a full record pass. See [`InputPolicy`].
     #[inline]
-    pub fn input_policy(&self) -> InputPolicy {
+    pub const fn input_policy(&self) -> InputPolicy {
         self.input.input_policy()
     }
 
@@ -1573,7 +1579,7 @@ impl Ui {
     /// scroll-over-nothing; [`InputPolicy::Always`] is for telemetry /
     /// custom canvases that need every event.
     #[inline]
-    pub fn set_input_policy(&mut self, p: InputPolicy) {
+    pub const fn set_input_policy(&mut self, p: InputPolicy) {
         self.input.set_input_policy(p);
     }
 }
@@ -1668,7 +1674,7 @@ pub(crate) mod internals {
     impl Ui {
         /// The whole forest, for the callers that re-run a pass over it —
         /// the cascade engine and the measure cache both walk every layer.
-        pub(crate) fn forest(&self) -> &Forest {
+        pub(crate) const fn forest(&self) -> &Forest {
             &self.forest
         }
 
@@ -1681,7 +1687,7 @@ pub(crate) mod internals {
         /// The whole layout table, for the handful of callers that re-run a
         /// pass over it — the cascade engine and `InputState::response_for`
         /// both walk every layer, so neither can take one layer's columns.
-        pub(crate) fn layout_tables(&self) -> &Layout {
+        pub(crate) const fn layout_tables(&self) -> &Layout {
             &self.layout
         }
     }

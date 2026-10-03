@@ -4,6 +4,11 @@
 //! *semantics* — the raster lands at the exact physical size, on whole pixels,
 //! with the tint applied the way the icon's kind says — rather than a snapshot.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use glam::{UVec2, Vec2};
 use palantir::widget::IconFit;
 use palantir::{Configure, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
@@ -11,6 +16,7 @@ use std::rc::Rc;
 
 use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
+use std::ops;
 
 /// Fills its whole 8x8 viewBox with one colour, so every covered pixel is
 /// fully opaque and the raster's extent is exactly the icon's box. Marked
@@ -374,7 +380,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
 
     // This run measures x 6..=51, y 9..=20, so it shows either side of
     // the icon's 20..40 box and passes straight through it.
-    let any_lit = |xs: std::ops::Range<u32>, ys: std::ops::Range<u32>| {
+    let any_lit = |xs: ops::Range<u32>, ys: ops::Range<u32>| {
         ys.flat_map(|y| xs.clone().map(move |x| (x, y)))
             .any(|(x, y)| img.get_pixel(x, y).0[0] > 32)
     };

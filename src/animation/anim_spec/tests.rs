@@ -4,6 +4,7 @@ use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
 use crate::internals::panic_probe;
 use crate::primitives::math::approx::EPS;
+use ron::ser;
 
 #[test]
 fn anim_spec_construction_validates_and_canonicalizes() {
@@ -67,7 +68,7 @@ fn anim_spec_serde_validates_and_roundtrips() {
     ];
     for spec in cases {
         let h = Holder { spec };
-        let s = ron::ser::to_string(&h).expect("serialize");
+        let s = ser::to_string(&h).expect("serialize");
         let back: Holder = ron::from_str(&s).expect("parse");
         assert_eq!(back, h, "roundtrip mismatch for {spec:?}\nRON:\n{s}");
     }
@@ -77,7 +78,7 @@ fn anim_spec_serde_validates_and_roundtrips() {
             .expect("sub-epsilon duration is a valid instant");
     assert!(canonical.spec.is_instant());
     assert!(
-        ron::ser::to_string(&canonical)
+        ser::to_string(&canonical)
             .expect("serialize canonical duration")
             .contains("secs:0.0"),
     );

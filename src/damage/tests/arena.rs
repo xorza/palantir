@@ -74,6 +74,8 @@ fn span_of(h: &UiHarness, id: &'static str) -> Span {
 /// growth, and therefore nothing to reclaim.
 #[test]
 fn a_toggling_shape_count_trades_two_blocks_forever() {
+    const FRAMES: u32 = 200;
+
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |shapes: u32| move |ui: &mut Ui| canvas(ui, "canvas", shapes);
 
@@ -94,7 +96,6 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     assert_eq!(free_classes(&h), 1, "the 4-row block is parked");
 
     let before = h.engines.damage.paints.counters.counts();
-    const FRAMES: u32 = 200;
     for f in 0..FRAMES {
         frame(&mut h, build(3 + f % 2));
         assert_eq!(

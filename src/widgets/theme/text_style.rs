@@ -36,6 +36,7 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
     palantir_anim_derive::Animatable,
 )]
 #[serde(try_from = "UncheckedTextStyle")]
+#[must_use]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it

@@ -192,7 +192,7 @@ impl TextWrap {
     /// floors at the widest unbreakable segment so those segments
     /// overflow rather than break — the same floor
     /// [`Self::min_content`] demands.
-    pub(super) fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
+    pub(super) const fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
             TextWrap::WrapWithOverflow => available_width_px.max(unbounded.wrap_floor()),
             TextWrap::SingleLine

@@ -129,7 +129,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
 
     /// Whether each chip carries a close button. Default `true`; a view
     /// over a fixed set of pages passes `false`.
-    pub fn closable(mut self, closable: bool) -> Self {
+    pub const fn closable(mut self, closable: bool) -> Self {
         self.closable = closable;
         self
     }
@@ -138,14 +138,14 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
     /// [`TabsAction::Reordered`]. Default `false` — the view holds a
     /// shared slice and cannot perform the move itself, so it is the
     /// caller who opts in to receiving one.
-    pub fn reorderable(mut self, reorderable: bool) -> Self {
+    pub const fn reorderable(mut self, reorderable: bool) -> Self {
         self.reorderable = reorderable;
         self
     }
 
     /// What the strip does with chips that do not fit. Default
     /// [`TabOverflow::Scroll`].
-    pub fn overflow(mut self, overflow: TabOverflow) -> Self {
+    pub const fn overflow(mut self, overflow: TabOverflow) -> Self {
         self.overflow = overflow;
         self
     }

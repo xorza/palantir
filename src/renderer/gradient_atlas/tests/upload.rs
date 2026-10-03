@@ -1,6 +1,11 @@
 //! The dirty span a flush hands the GPU, and how often a steady frame
 //! rebakes.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::common::counters::CounterSet;
 use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad};
 use crate::renderer::gradient_atlas::*;

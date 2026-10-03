@@ -28,7 +28,7 @@ pub(crate) struct StencilVariant {
 /// shares one layout across all of them. A layout carries no
 /// depth-stencil state and no fragment entry, so every pipeline of one
 /// family wants the same object.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct ColorVariantSpec<'a> {
     pub(crate) label: &'static str,
     pub(crate) stencil_label: &'static str,
@@ -70,7 +70,7 @@ impl StencilVariant {
 
     /// The pipeline to bind: the stencil-test twin in a rounded-clip
     /// pass, otherwise the base.
-    pub(crate) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
+    pub(crate) const fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
         if use_stencil { &self.test } else { &self.base }
     }
 }

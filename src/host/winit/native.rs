@@ -16,9 +16,10 @@ use crate::primitives::paint::image::Image;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
+use winit::window;
 
 /// Map the backend-agnostic cursor vocabulary onto winit's.
-pub(super) fn cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
+pub(super) const fn cursor(cursor: CursorIcon) -> window::CursorIcon {
     use winit::window::CursorIcon as W;
     match cursor {
         CursorIcon::Default => W::Default,

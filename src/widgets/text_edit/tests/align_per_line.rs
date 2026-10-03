@@ -17,7 +17,6 @@ use crate::text::request::internals::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::widgets::text_edit::tests::*;
 use crate::{Align, HAlign};
-use glam::UVec2;
 
 const FS: f32 = 16.0;
 const LH: f32 = 19.2;
@@ -112,7 +111,7 @@ fn a_narrow_line_shifts_within_the_block() {
     assert_eq!(left, 3.875);
     assert_eq!(right, 6.0 * 13.09375);
     assert_eq!(block, right.ceil());
-    assert_eq!(center, (left + right) / 2.0);
+    assert_eq!(center, f32::midpoint(left, right));
 }
 
 /// Measured width is the glyphs' own extent under every halign. It

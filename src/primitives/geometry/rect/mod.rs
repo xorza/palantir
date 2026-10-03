@@ -13,6 +13,7 @@ use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::math::num::F32Px;
 use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;
+use std::hash;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -23,6 +24,7 @@ use glam::Vec2;
 /// Half-open on both axes: [`Self::contains`] accepts the min edge and
 /// rejects the max, so adjacent rects tile without double-hitting a
 /// pointer on the seam. Hashing is approximate (`1e-4` tolerance).
+#[must_use]
 pub struct Rect {
     /// Top-left corner.
     pub min: Vec2,
@@ -31,9 +33,9 @@ pub struct Rect {
     pub size: Size,
 }
 
-impl std::hash::Hash for Rect {
+impl hash::Hash for Rect {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.hash_eq(state);
     }
 }
@@ -42,13 +44,13 @@ impl std::hash::Hash for Rect {
 /// `(Vec2, Size)` pair it is made of feed a hasher the same bytes.
 impl FloatHash for Rect {
     #[inline]
-    fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
         self.min.hash_eq(state);
         self.size.hash_eq(state);
     }
 
     #[inline]
-    fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_visual<H: hash::Hasher>(&self, state: &mut H) {
         self.min.hash_visual(state);
         self.size.hash_visual(state);
     }
@@ -110,7 +112,7 @@ impl Rect {
     /// rect the way everything else does without writing `canon_bits` out
     /// four times.
     #[inline]
-    pub(crate) fn canon_lanes(self) -> [u32; 4] {
+    pub(crate) const fn canon_lanes(self) -> [u32; 4] {
         [
             canon_bits(self.min.x),
             canon_bits(self.min.y),
@@ -267,14 +269,15 @@ impl Rect {
     /// area of a rounded fill.
     #[inline]
     pub fn inscribed_for_corners(self, corners: Corners) -> Self {
-        if corners.approx_zero() {
-            return self;
-        }
         // `1 - 1/√2 ≈ 0.2929`: the inscribed-square offset per unit
         // radius for a quarter-circle arc. Multiplying a corner
         // radius by this gives the distance from the bounding-box
         // corner inward to the arc's 45° point.
         const KAPPA: f32 = 1.0 - FRAC_1_SQRT_2;
+
+        if corners.approx_zero() {
+            return self;
+        }
         // Single SIMD f16x4→f32x4 unpack — `tl()`/`tr()`/`br()`/`bl()`
         // would each issue an independent f16→f32 conversion.
         let [tl, tr, br, bl] = corners.as_array();

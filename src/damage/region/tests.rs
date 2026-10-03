@@ -278,7 +278,7 @@ fn screenshot_cluster_budget_sweep() {
         Rect::new(260.0, 510.0, 230.0, 20.0),
         Rect::new(80.0, 580.0, 170.0, 20.0),
     ];
-    let bbox = rs.iter().copied().reduce(|a, b| a.union(b)).unwrap();
+    let bbox = rs.iter().copied().reduce(Rect::union).unwrap();
     let cases: &[(&str, f32, Vec<Rect>)] = &[
         (
             "default_budget_stays_split",

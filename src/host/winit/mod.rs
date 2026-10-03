@@ -89,6 +89,8 @@ use crate::ui::Ui;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
+use std::fmt;
+use winit::error::EventLoopError;
 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
@@ -103,8 +105,8 @@ pub(super) struct Bootstrap<T: 'static> {
     pub(super) pending_tasks: Vec<MainTask<T>>,
 }
 
-impl<T: 'static> std::fmt::Debug for Bootstrap<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: 'static> fmt::Debug for Bootstrap<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Bootstrap")
             .field("token", &self.token)
             .field("config", &self.config)
@@ -120,8 +122,8 @@ enum HostPhase<T: 'static> {
     Failed(WinitHostError),
 }
 
-impl<T: 'static> std::fmt::Debug for HostPhase<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: 'static> fmt::Debug for HostPhase<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bootstrap(bootstrap) => f.debug_tuple("Bootstrap").field(bootstrap).finish(),
             Self::Running(runtime) => f.debug_tuple("Running").field(runtime).finish(),
@@ -140,8 +142,8 @@ pub struct WinitHost<T: 'static> {
     proxy: EventLoopProxy<UserEvent<T>>,
 }
 
-impl<T: 'static> std::fmt::Debug for WinitHost<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: 'static> fmt::Debug for WinitHost<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WinitHost")
             .field("phase", &self.phase)
             .field("event_loop", &self.event_loop.is_some())
@@ -151,6 +153,7 @@ impl<T: 'static> std::fmt::Debug for WinitHost<T> {
 
 /// Startup configuration for [`WinitHost`].
 #[derive(Debug)]
+#[must_use]
 pub struct WinitHostBuilder<T> {
     first_token: WindowToken,
     config: WinitHostConfig,
@@ -187,7 +190,7 @@ where
     /// The door both hosts share — see
     /// [`OffscreenHostBuilder::fonts`](crate::OffscreenHostBuilder::fonts),
     /// which defaults the other way.
-    pub fn fonts(mut self, scope: FontScope) -> Self {
+    pub const fn fonts(mut self, scope: FontScope) -> Self {
         self.config.fonts = scope;
         self
     }
@@ -199,25 +202,25 @@ where
     /// Prefer this over asking for the same thing from the first frame: set
     /// here it reaches the *initial* swapchain, where the runtime request
     /// would build one swapchain and immediately replace it.
-    pub fn vsync(mut self, vsync: Vsync) -> Self {
+    pub const fn vsync(mut self, vsync: Vsync) -> Self {
         self.config.vsync = vsync;
         self
     }
 
     /// Set the adapter power preference used at startup.
-    pub fn power_preference(mut self, pref: PowerPreference) -> Self {
+    pub const fn power_preference(mut self, pref: PowerPreference) -> Self {
         self.config.power_preference = pref;
         self
     }
 
     /// Opt into GPU timestamp and pipeline-statistics collection.
-    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
+    pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
         self.config.collect_gpu_stats = collect;
         self
     }
 
     /// Whether axis-aligned paint edges snap to physical pixels.
-    pub fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+    pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.config.pixel_snap = pixel_snap;
         self
     }
@@ -319,7 +322,7 @@ where
 
 fn finish_run(
     failure: Option<WinitHostError>,
-    event_loop_result: Result<(), winit::error::EventLoopError>,
+    event_loop_result: Result<(), EventLoopError>,
 ) -> Result<(), WinitHostError> {
     match failure {
         Some(error) => Err(error),

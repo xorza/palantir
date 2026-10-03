@@ -37,6 +37,7 @@ use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_drag::TabDrag;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::tabs::tab_strip::TabStrip;
+use std::mem;
 
 /// Split-ratio clamp: neither pane can be squeezed below a tenth of the
 /// split, so a divider cannot be dragged into an unrecoverable sliver.
@@ -84,6 +85,7 @@ pub struct TabAddress {
     try_from = "RawDockState<T>",
     bound(deserialize = "T: DockTab + Deserialize<'de>")
 )]
+#[must_use]
 pub struct DockState<T> {
     /// Canonical pre-order — see the module doc. Private so every
     /// structural mutation goes through an op that re-packs.
@@ -211,18 +213,18 @@ impl<T: DockTab> DockState<T> {
     /// Which split directions a drag offers. Default
     /// [`AllowedSplits::All`]. On the state for the same reason as
     /// [`Self::max_depth`].
-    pub fn allowed_splits(mut self, allowed: AllowedSplits) -> Self {
+    pub const fn allowed_splits(mut self, allowed: AllowedSplits) -> Self {
         self.allowed_splits = allowed;
         self
     }
 
     /// The tab that refuses to close.
-    pub fn pinned(&self) -> T {
+    pub const fn pinned(&self) -> T {
         self.pinned
     }
 
     /// The group keyboard shortcuts and newly opened tabs go to.
-    pub fn focused(&self) -> TabGroupId {
+    pub const fn focused(&self) -> TabGroupId {
         self.focused
     }
 
@@ -502,7 +504,7 @@ impl<T: DockTab> DockState<T> {
         } else {
             (existing_idx, fresh_idx)
         };
-        let existing = std::mem::replace(
+        let existing = mem::replace(
             &mut self.nodes[slot],
             DockNode::Split(DockSplit {
                 dir: side.dir(),

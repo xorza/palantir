@@ -276,56 +276,56 @@ impl Widget {
     /// `size(&self)` would shadow [`Configure::size`] and break every
     /// builder chain.
     #[inline]
-    pub fn authored_size(&self) -> Option<SizeSpec> {
+    pub const fn authored_size(&self) -> Option<SizeSpec> {
         self.node.size
     }
 
     /// The lower size bound the caller authored, or `None`. See
     /// [`Self::authored_size`].
     #[inline]
-    pub fn authored_min_size(&self) -> Option<Size> {
+    pub const fn authored_min_size(&self) -> Option<Size> {
         self.node.min_size
     }
 
     /// The upper size bound the caller authored, or `None`. See
     /// [`Self::authored_size`].
     #[inline]
-    pub fn authored_max_size(&self) -> Option<Size> {
+    pub const fn authored_max_size(&self) -> Option<Size> {
         self.node.max_size
     }
 
     /// The padding the caller authored, or `None`. See
     /// [`Self::authored_size`].
     #[inline]
-    pub fn authored_padding(&self) -> Option<Spacing> {
+    pub const fn authored_padding(&self) -> Option<Spacing> {
         self.node.padding
     }
 
     /// The margin the caller authored, or `None`. See
     /// [`Self::authored_size`].
     #[inline]
-    pub fn authored_margin(&self) -> Option<Spacing> {
+    pub const fn authored_margin(&self) -> Option<Spacing> {
         self.node.margin
     }
 
     /// The paint transform the caller authored,
     /// [`TranslateScale::IDENTITY`] where they authored none.
     #[inline]
-    pub fn authored_transform(&self) -> TranslateScale {
+    pub const fn authored_transform(&self) -> TranslateScale {
         self.node.transform
     }
 
     /// The `Canvas`-parent position the caller authored, `Vec2::ZERO`
     /// where they authored none. Read by no other parent kind.
     #[inline]
-    pub fn authored_position(&self) -> Vec2 {
+    pub const fn authored_position(&self) -> Vec2 {
         self.node.position
     }
 
     /// The grid slot the caller named. A default [`GridCell`] means they
     /// named none, and is read only under a grid parent.
     #[inline]
-    pub fn authored_grid_cell(&self) -> GridCell {
+    pub const fn authored_grid_cell(&self) -> GridCell {
         self.node.grid
     }
 
@@ -346,7 +346,7 @@ impl Widget {
     /// The main-axis distribution the caller authored, `Justify::Start`
     /// where they stayed silent.
     #[inline]
-    pub fn authored_justify(&self) -> Justify {
+    pub const fn authored_justify(&self) -> Justify {
         self.node.justify
     }
 
@@ -354,53 +354,53 @@ impl Widget {
     /// each axis they left alone. The self-alignment half of
     /// [`Self::authored_child_align`].
     #[inline]
-    pub fn authored_align(&self) -> Align {
+    pub const fn authored_align(&self) -> Align {
         self.node.align
     }
 
     /// The child alignment the caller authored, `Auto` on each axis they
     /// left alone.
     #[inline]
-    pub fn authored_child_align(&self) -> Align {
+    pub const fn authored_child_align(&self) -> Align {
         self.node.child_align
     }
 
     /// What the caller made this widget sense.
     #[inline]
-    pub fn authored_sense(&self) -> Sense {
+    pub const fn authored_sense(&self) -> Sense {
         self.node.flags.sense()
     }
 
     /// Whether the caller disabled this widget.
     #[inline]
-    pub fn authored_disabled(&self) -> bool {
+    pub const fn authored_disabled(&self) -> bool {
         self.node.flags.is_disabled()
     }
 
     /// Whether the caller made this widget focusable.
     #[inline]
-    pub fn authored_focusable(&self) -> bool {
+    pub const fn authored_focusable(&self) -> bool {
         self.node.flags.is_focusable()
     }
 
     /// The input scope the caller declared, empty where they declared
     /// none. See [`Configure::input_scope`].
     #[inline]
-    pub fn authored_input_scope(&self) -> KeyFilter {
+    pub const fn authored_input_scope(&self) -> KeyFilter {
         self.node.flags.key_filter()
     }
 
     /// What the caller set this widget's visibility to,
     /// [`Visibility::Visible`] where they left it alone.
     #[inline]
-    pub fn authored_visibility(&self) -> Visibility {
+    pub const fn authored_visibility(&self) -> Visibility {
         self.node.visibility
     }
 
     /// The clip mode the caller authored, or `None`. See
     /// [`Self::authored_size`].
     #[inline]
-    pub fn authored_clip(&self) -> Option<ClipMode> {
+    pub const fn authored_clip(&self) -> Option<ClipMode> {
         self.node.clip
     }
 
@@ -463,7 +463,7 @@ impl Widget {
     /// auto id from the moment it is built — silence is an id the caller
     /// did not choose, not the absence of one.
     #[inline]
-    pub(crate) fn fill_id(&mut self, id: WidgetId) {
+    pub(crate) const fn fill_id(&mut self, id: WidgetId) {
         if !self.ident.is_explicit() {
             self.ident = Ident::Verbatim(id);
         }

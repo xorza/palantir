@@ -39,7 +39,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
                 .pan_by(pan)
                 .size((Sizing::fixed(200.0), Sizing::fixed(viewport_h)))
                 .show(ui, |ui| {
-                    fixed_block(ui, WidgetId::from_hash("content"), 200.0, content_h)
+                    fixed_block(ui, WidgetId::from_hash("content"), 200.0, content_h);
                 });
         });
 }
@@ -56,7 +56,7 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
         scroll = scroll.zoom_by(*factor);
     }
     scroll.show(ui, |ui| {
-        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
+        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0);
     });
 }
 

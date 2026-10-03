@@ -12,6 +12,7 @@ use glam::IVec2;
 use resvg::tiny_skia;
 use resvg::usvg;
 use rustc_hash::FxHashMap;
+use std::fmt;
 
 /// Resident parsed documents. Past this, a parse that would be the
 /// `MAX_PARSED_TREES + 1`th retires the one longest unused.
@@ -86,8 +87,8 @@ impl Default for IconRasterizer {
 
 /// `usvg::Options` holds a font database and is not `Debug`; the caches are
 /// summarized by size, since printing parsed SVG trees would be useless.
-impl std::fmt::Debug for IconRasterizer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for IconRasterizer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IconRasterizer")
             .field("parsed", &self.trees.len())
             .field(

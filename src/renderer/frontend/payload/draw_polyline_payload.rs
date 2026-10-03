@@ -68,7 +68,7 @@ impl DrawPolylinePayload {
     /// can legitimately be zero-area (horizontal / vertical line) and
     /// still paint stroke pixels, so it isn't checked either.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         self.is_degenerate() || paints_nothing(self.alpha)
     }
 
@@ -80,7 +80,7 @@ impl DrawPolylinePayload {
     /// are authoring-derived and already guaranteed by
     /// `Shape::Polyline::is_noop`.
     #[inline]
-    pub(crate) fn is_degenerate(&self) -> bool {
+    pub(crate) const fn is_degenerate(&self) -> bool {
         self.points_len < 2 || paints_nothing(self.width)
     }
 }

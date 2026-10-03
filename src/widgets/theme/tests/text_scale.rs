@@ -3,6 +3,7 @@ use ron::Value;
 
 use super::pretty;
 use crate::widgets::theme::Theme;
+use ron::ser;
 
 fn disabled_size(theme: &Theme) -> f32 {
     theme
@@ -84,7 +85,7 @@ fn scale_text_reaches_every_font_size() {
     /// both sides are flattened the same way, so what is compared here still
     /// differs exactly where the theme does.
     fn tree(theme: &Theme) -> Value {
-        ron::from_str(&ron::ser::to_string(theme).expect("serialize")).expect("reparse")
+        ron::from_str(&ser::to_string(theme).expect("serialize")).expect("reparse")
     }
 
     let mut theme = Theme::default();

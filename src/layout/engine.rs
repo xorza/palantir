@@ -57,7 +57,7 @@ impl LayoutEngine {
     /// the same reason [`LayoutPass`]'s accessors exist; the intrinsic
     /// query itself stays off the pass, so it asks the engine directly.
     #[inline]
-    pub(super) fn grid_track_aggregator(&mut self) -> &mut Vec<f32> {
+    pub(super) const fn grid_track_aggregator(&mut self) -> &mut Vec<f32> {
         &mut self.scratch.grid.track_aggregator
     }
 

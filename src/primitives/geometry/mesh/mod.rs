@@ -241,6 +241,7 @@ impl Mesh {
     /// Caller is responsible for correctness — a wrong bbox silently
     /// breaks scissor culling. Use for procedural / baked meshes where
     /// the AABB falls out of the construction algorithm.
+    #[must_use]
     pub fn with_known_bbox(self, bbox: Rect) -> Self {
         self.cached_bbox.set(Some(bbox));
         self
@@ -296,7 +297,7 @@ fn checked_vertex_index(index: usize) -> u32 {
 }
 
 #[inline]
-fn checked_rebased_index(base: u32, index: u32) -> u32 {
+const fn checked_rebased_index(base: u32, index: u32) -> u32 {
     base.checked_add(index)
         .expect("appended mesh index exceeds u32 range")
 }

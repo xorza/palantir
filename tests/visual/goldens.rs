@@ -1,10 +1,21 @@
 //! This suite's golden directory, bound once so a fixture names only its image.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+#![expect(
+    clippy::print_stderr,
+    reason = "a rewritten golden is reported to the terminal so the run says which files changed"
+)]
+
 use std::path::{Path, PathBuf};
 
 use image::{RgbaImage, imageops};
 use palantir::Rect;
 use palantir::golden::{Goldens, Tolerance};
+use std::fs;
+use std::thread;
 
 /// The suite's directory: goldens under `golden/`, failures under
 /// `output/`.
@@ -82,13 +93,12 @@ impl<'a> KeptOnFailure<'a> {
 
 impl Drop for KeptOnFailure<'_> {
     fn drop(&mut self) {
-        if !std::thread::panicking() {
+        if !thread::panicking() {
             return;
         }
         let output = output_dir(self.name);
         // A failure to write must not turn the test's panic into an abort.
-        if std::fs::create_dir_all(&output).is_ok()
-            && self.image.save(output.join("actual.png")).is_ok()
+        if fs::create_dir_all(&output).is_ok() && self.image.save(output.join("actual.png")).is_ok()
         {
             eprintln!("`{}`: frame written to {}", self.name, output.display());
         }

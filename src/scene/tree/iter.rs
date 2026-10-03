@@ -62,7 +62,7 @@ impl Child {
     }
 }
 
-impl<'a> Iterator for ChildIter<'a> {
+impl Iterator for ChildIter<'_> {
     type Item = Child;
     fn next(&mut self) -> Option<Child> {
         if self.next >= self.end {

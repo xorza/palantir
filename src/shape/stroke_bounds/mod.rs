@@ -3,6 +3,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::shape::style::{LineCap, LineJoin};
+use std::f32::consts;
 
 /// Half-width of the antialiasing fringe every stroke adds beyond its core
 /// half-width, in physical pixels. The curve shader specializes the same value.
@@ -22,7 +23,7 @@ pub(crate) fn bbox(
     join: Option<LineJoin>,
 ) -> Rect {
     let cap_factor = match cap {
-        LineCap::Square => std::f32::consts::SQRT_2,
+        LineCap::Square => consts::SQRT_2,
         LineCap::Butt | LineCap::Round => 1.0,
     };
     let join_factor = match join {

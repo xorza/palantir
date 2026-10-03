@@ -12,6 +12,7 @@ use glam::{IVec2, UVec2};
 /// `UVec2` logical pixels (DPI-independent), `.x` = width, `.y` = height
 /// — the same integer-extent vocabulary as [`Display`](crate::Display).
 #[derive(Clone, Debug, Default)]
+#[must_use]
 pub struct WindowConfig {
     /// Native window title.
     pub title: String,
@@ -62,21 +63,21 @@ impl WindowConfig {
     }
 
     /// Initial inner size in logical pixels (`.x` = width, `.y` = height).
-    pub fn inner_size(mut self, size: UVec2) -> Self {
+    pub const fn inner_size(mut self, size: UVec2) -> Self {
         self.inner_size = Some(size);
         self
     }
 
     /// Minimum inner size in logical pixels — the window can't shrink below
     /// it.
-    pub fn min_inner_size(mut self, size: UVec2) -> Self {
+    pub const fn min_inner_size(mut self, size: UVec2) -> Self {
         self.min_inner_size = Some(size);
         self
     }
 
     /// Initial outer position in physical pixels (top-left of the frame) —
     /// half of [`Self::placement`], for a caller that has only this half.
-    pub fn position(mut self, position: IVec2) -> Self {
+    pub const fn position(mut self, position: IVec2) -> Self {
         self.placement.position = Some(position);
         self
     }
@@ -84,14 +85,14 @@ impl WindowConfig {
     /// Position and maximized state together — the restore door, for a
     /// [`WindowGeometry::placement`](crate::WindowGeometry) read back from
     /// wherever the app persisted it.
-    pub fn placement(mut self, placement: WindowPlacement) -> Self {
+    pub const fn placement(mut self, placement: WindowPlacement) -> Self {
         self.placement = placement;
         self
     }
 
     /// Start the window maximized (holding [`Self::inner_size`] as the
     /// un-maximize size).
-    pub fn maximized(mut self, maximized: bool) -> Self {
+    pub const fn maximized(mut self, maximized: bool) -> Self {
         self.placement.maximized = maximized;
         self
     }

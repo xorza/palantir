@@ -21,6 +21,7 @@ pub(crate) enum RectKind {
 
 /// Filled and/or bordered rectangle.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct RectShape {
     pub(crate) kind: RectKind,
     pub(crate) local_rect: Option<Rect>,
@@ -30,7 +31,7 @@ pub struct RectShape {
 }
 
 impl RectShape {
-    pub(super) fn new(kind: RectKind, local_rect: Option<Rect>) -> Self {
+    pub(super) const fn new(kind: RectKind, local_rect: Option<Rect>) -> Self {
         Self {
             kind,
             local_rect,

@@ -66,6 +66,7 @@ impl IconFit {
 /// a **colour** icon takes only the tint's alpha, so it can be faded for a
 /// disabled state but not recoloured.
 #[derive(Clone, Copy, Debug)]
+#[must_use]
 pub struct IconShape {
     pub(crate) handle: IconHandle,
     pub(crate) local_rect: Option<Rect>,

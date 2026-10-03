@@ -154,7 +154,7 @@ impl Image {
     }
 
     /// Width and height in texels.
-    pub fn size(&self) -> UVec2 {
+    pub const fn size(&self) -> UVec2 {
         self.size
     }
 

@@ -26,7 +26,7 @@ use std::hint::black_box;
 /// 208 × 160 at display scale 1.5.
 const PHYSICAL: UVec2 = UVec2::new(312, 240);
 
-fn size_at(divisor: u32) -> UVec2 {
+const fn size_at(divisor: u32) -> UVec2 {
     UVec2::new(PHYSICAL.x / divisor, PHYSICAL.y / divisor)
 }
 
@@ -40,7 +40,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 b.iter(|| {
                     fill(&mut image, black_box(model), black_box(0.6));
                     image.texels().len()
-                })
+                });
             });
         }
     }

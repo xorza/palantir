@@ -490,6 +490,8 @@ fn prune_steady_state_across_repeated_compose_calls() {
 /// prior scene.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
+    type Build = fn(&mut PaintCapture);
+
     use crate::primitives::packed::fill_axis::FillAxis;
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::Spread;
@@ -502,7 +504,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     let folded = RgbaF16::from(bg).unpack();
 
     // (case, builder, expected quad count, expected override)
-    type Build = fn(&mut PaintCapture);
     let cases: &[(&str, Build, usize, Option<RgbaF32>)] = &[
         (
             "qualifying root folds, later quad stays",

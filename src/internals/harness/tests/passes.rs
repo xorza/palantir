@@ -3,6 +3,7 @@
 use crate::internals::harness::tests::support::{INSIDE, SURFACE, button, target};
 use crate::internals::harness::*;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
+use std::mem;
 
 #[test]
 fn warm_constructors_run_one_pass_and_cold_runs_two() {
@@ -122,6 +123,6 @@ struct PassCounter(u32);
 
 impl PassCounter {
     fn take(&mut self) -> u32 {
-        std::mem::replace(&mut self.0, 0)
+        mem::replace(&mut self.0, 0)
     }
 }

@@ -81,12 +81,13 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 /// the layout rect.
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
+    type Build = fn(&mut Ui);
+
     use crate::Shadow;
 
     let frame_size = 50.0;
     let expected_paint_size = frame_size + 2.0 * (3.0 * 8.0 + 2.0);
 
-    type Build = fn(&mut Ui);
     let cases: &[(&str, Build)] = &[
         ("shape", |ui| {
             Panel::hstack()

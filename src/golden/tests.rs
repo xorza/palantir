@@ -7,6 +7,9 @@ use image::{Rgba, RgbaImage};
 
 use crate::golden::{Goldens, Tolerance};
 use crate::internals::panic_probe;
+use std::env;
+use std::fs;
+use std::process;
 
 /// A pair covering no pixels differs nowhere, so the verdict is a pass
 /// and the ratio is a real number.
@@ -169,16 +172,15 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("palantir-golden-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = env::temp_dir().join(format!("palantir-golden-{name}-{}", process::id()));
+        let _ = fs::remove_dir_all(&dir);
         Self(dir)
     }
 }
 
 impl Drop for Scratch {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        let _ = fs::remove_dir_all(&self.0);
     }
 }
 
@@ -209,7 +211,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     goldens.check("g", &near, true);
     assert_eq!(stored(), base, "a passing golden is left as it is");
 
-    std::fs::create_dir_all(&output).unwrap();
+    fs::create_dir_all(&output).unwrap();
     goldens.check("g", &near, false);
     assert!(
         !output.exists(),
@@ -220,7 +222,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     assert_eq!(stored(), far, "a failing golden is rewritten by an update");
 
     panic_probe::assert_panics_with("`g` does not match its golden", || {
-        goldens.check("g", &base, false)
+        goldens.check("g", &base, false);
     });
     assert!(
         output.join("actual.png").exists(),
@@ -232,11 +234,11 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     assert!(goldens.golden_path("h").exists(), "after it is written");
 
     let pair = dir.0.join("output").join("pair");
-    std::fs::create_dir_all(&pair).unwrap();
+    fs::create_dir_all(&pair).unwrap();
     goldens.assert_same("pair", &near, &base);
     assert!(!pair.exists(), "a pair that passes clears its old output");
     panic_probe::assert_panics_with("differing pixels  16", || {
-        goldens.assert_same("pair", &far, &base)
+        goldens.assert_same("pair", &far, &base);
     });
     for (file, written) in [("actual.png", &far), ("expected.png", &base)] {
         assert_eq!(

@@ -80,6 +80,13 @@ impl FrameSet {
     /// Claim the next set, in window creation order. Never reused, so a
     /// closed window's frame history stays its own instead of a later
     /// window continuing it.
+    #[cfg_attr(
+        not(feature = "profile-with-tracy"),
+        expect(
+            clippy::missing_const_for_fn,
+            reason = "with `profile-with-tracy` the body calls the Tracy client"
+        )
+    )]
     pub(crate) fn claim() -> Self {
         FrameSet {
             #[cfg(feature = "profile-with-tracy")]
@@ -94,6 +101,13 @@ impl FrameSet {
     }
 
     /// End one frame in this window's set.
+    #[cfg_attr(
+        not(feature = "profile-with-tracy"),
+        expect(
+            clippy::missing_const_for_fn,
+            reason = "with `profile-with-tracy` the body calls the Tracy client"
+        )
+    )]
     pub(crate) fn mark(self) {
         #[cfg(feature = "profile-with-tracy")]
         tracy_client::Client::running()
@@ -109,6 +123,13 @@ impl FrameSet {
 /// holds. The winit host marks it in `WinitRuntime::draw`, where the
 /// live window count is already known.
 #[cfg(feature = "winit")]
+#[cfg_attr(
+    not(feature = "profile-with-tracy"),
+    expect(
+        clippy::missing_const_for_fn,
+        reason = "with `profile-with-tracy` the body calls the Tracy client"
+    )
+)]
 pub(crate) fn mark_main_frame() {
     #[cfg(feature = "profile-with-tracy")]
     tracy_client::frame_mark();

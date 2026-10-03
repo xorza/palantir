@@ -620,7 +620,7 @@ fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
 
 /// Cool-neutral recolor of the stock palette so widget chrome and the
 /// showcase's own surfaces come from one ladder.
-fn showcase_palette() -> Palette {
+const fn showcase_palette() -> Palette {
     Palette {
         text: support::INK,
         text_muted: support::INK_DIM,

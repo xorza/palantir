@@ -9,6 +9,7 @@ use crate::widgets::switch::{Switch, switch_geom, track_width};
 /// below are computed from it.
 const ASPECT: f32 = 1.75;
 use glam::UVec2;
+use std::time;
 
 /// Geometry math for the 20 px default with a 1 px track border:
 /// `track_w = 35`, `knob = 14`. The border auto-insets the Canvas
@@ -112,7 +113,7 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
 
     h.click_on(id);
     h.frame(&mut record);
-    let tick = std::time::Duration::from_millis(16);
+    let tick = time::Duration::from_millis(16);
     h.frames_until_idle(120, tick, &mut record)
         .expect("the knob and the look it rides settle inside 2 s");
     assert_eq!(margins(&h), [18.0, 3.0, 3.0, 3.0], "on, at the right");

@@ -41,6 +41,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
+use std::mem;
 
 /// The host-driven half of a frame, borrowing the [`Ui`] it drives and the
 /// [`FrameEngines`] it drives it with.
@@ -59,7 +60,7 @@ pub(super) struct FrameCycle<'a> {
 }
 
 impl<'a> FrameCycle<'a> {
-    pub(super) fn new(ui: &'a mut Ui, engines: &'a mut FrameEngines) -> Self {
+    pub(super) const fn new(ui: &'a mut Ui, engines: &'a mut FrameEngines) -> Self {
         Self { ui, engines }
     }
 
@@ -299,9 +300,9 @@ impl<'a> FrameCycle<'a> {
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
         tracy::zone!("Ui::record_pass.warmup");
         let scratch = self.ui.input.warmup_scratch();
-        let saved_input = std::mem::replace(&mut self.ui.input, scratch);
+        let saved_input = mem::replace(&mut self.ui.input, scratch);
         let _ = self.record_pass(win, app);
-        let warmup_input = std::mem::replace(&mut self.ui.input, saved_input);
+        let warmup_input = mem::replace(&mut self.ui.input, saved_input);
         self.ui.input.adopt_warmup(&warmup_input);
         self.ui.input.refresh_pointer_targets(&self.ui.cascade);
         self.ui.frame_runtime.relayout_requested = false;

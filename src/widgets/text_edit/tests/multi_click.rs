@@ -9,9 +9,6 @@ use crate::widgets::text_edit::tests::*;
 /// gestures).
 #[test]
 fn double_and_triple_click_select_word_and_all() {
-    use std::time::Duration;
-
-    let ed_id = WidgetId::from_hash("multi-ed");
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -20,6 +17,10 @@ fn double_and_triple_click_select_word_and_all() {
                 .show(ui);
         });
     }
+
+    use std::time::Duration;
+
+    let ed_id = WidgetId::from_hash("multi-ed");
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
