@@ -125,6 +125,18 @@ impl<K: PartialEq> ColorSurface<K> {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use super::*;
+
+    impl<K> ColorSurface<K> {
+        /// The texture's size, once built.
+        pub(crate) fn built_size(&self) -> Option<UVec2> {
+            self.built.as_ref().map(|built| built.image.size())
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::internals::harness::UiHarness;
