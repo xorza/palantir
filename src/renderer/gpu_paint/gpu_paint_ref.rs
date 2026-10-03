@@ -2,6 +2,7 @@
 
 use crate::renderer::gpu_paint::GpuPaint;
 use std::cell::RefCell;
+use std::fmt;
 use std::rc::Rc;
 
 /// The app's `GpuPaint` callback, flowing [`Ui::gpu_views`](crate::ui::Ui) →
@@ -13,8 +14,8 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub(crate) struct GpuPaintRef(pub(crate) Rc<RefCell<dyn GpuPaint>>);
 
-impl std::fmt::Debug for GpuPaintRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for GpuPaintRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("GpuPaint")
     }
 }

@@ -1,3 +1,8 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::Ui;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;

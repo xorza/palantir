@@ -248,7 +248,7 @@ impl CpuGradientAtlas {
     /// Rows currently allocated, including the reserved row 0. The
     /// per-row columns are resized together in [`Self::resize_rows`], so
     /// `baked` speaks for all of them.
-    pub(crate) fn capacity(&self) -> u32 {
+    pub(crate) const fn capacity(&self) -> u32 {
         self.baked.len() as u32
     }
 

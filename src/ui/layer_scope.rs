@@ -40,7 +40,7 @@ impl<'a> LayerScope<'a> {
     ///
     /// [`Self::anchored`] is the other form, and the one an overlay
     /// wants: it moves the body to keep it on screen.
-    pub fn fixed_at(mut self, point: Vec2) -> Self {
+    pub const fn fixed_at(mut self, point: Vec2) -> Self {
         self.placement = self.placement.with_fixed(point);
         self
     }
@@ -52,7 +52,7 @@ impl<'a> LayerScope<'a> {
     /// trigger, a menu at the pointer, a tooltip beside the thing it
     /// describes. Replaces an origin set by [`Self::fixed_at`] and keeps
     /// a cap set by [`Self::max_size`].
-    pub fn anchored(mut self, anchor: Anchor) -> Self {
+    pub const fn anchored(mut self, anchor: Anchor) -> Self {
         self.placement = self.placement.with_anchored(anchor);
         self
     }

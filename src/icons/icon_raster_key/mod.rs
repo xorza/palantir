@@ -46,7 +46,7 @@ pub(crate) struct IconRasterKey {
 impl IconRasterKey {
     /// The physical pixel box this raster is cached at. Never zero on
     /// either axis.
-    pub(crate) fn size(self) -> U16Vec2 {
+    pub(crate) const fn size(self) -> U16Vec2 {
         self.size
     }
 
@@ -62,6 +62,10 @@ impl IconRasterKey {
     /// ratio: the longer axis picks the rung and the shorter one follows it,
     /// so an icon never stretches by a pixel just because its two axes landed
     /// on different rungs.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "the box is asserted positive and finite above, and its long axis is held at 1 or more"
+    )]
     pub(crate) fn for_box(icon: IconRef, box_px: Vec2) -> Self {
         debug_assert!(
             box_px.x > 0.0 && box_px.y > 0.0 && box_px.is_finite(),

@@ -15,6 +15,7 @@ use crate::ui::tests::support::{SURFACE, cold_ui};
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
+use std::cell::RefCell;
 
 /// Pin: an empty frame drives the full pipeline without panicking and
 /// produces no draw commands.
@@ -114,7 +115,7 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
     let mut h = cold_ui();
     h.move_to(Vec2::new(40.0, 40.0));
 
-    let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
+    let observed: RefCell<Vec<Option<Vec2>>> = RefCell::default();
     h.frame(|ui| {
         observed.borrow_mut().push(ui.input.pointer_pos());
     });

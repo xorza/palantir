@@ -84,6 +84,9 @@ mod tests {
     fn a_deviceless_limit_accepts_any_size() {
         let limit = TextureLimit::default();
         assert_eq!(limit.max_dimension(), None);
-        assert_eq!(limit.accepts(UVec2::new(u16::MAX as u32 + 1, 1)), Ok(()));
+        assert_eq!(
+            limit.accepts(UVec2::new(u32::from(u16::MAX) + 1, 1)),
+            Ok(())
+        );
     }
 }

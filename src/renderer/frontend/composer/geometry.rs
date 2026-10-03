@@ -35,6 +35,10 @@ const TARGET_CHORD_PX: f32 = 1.5;
 /// enough `SEGMENTS_PER_INSTANCE`-chord instances that each chord
 /// lands near [`TARGET_CHORD_PX`], clamped to [`MAX_SUB_INSTANCES`].
 #[inline]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "the segment count is held at 1 or more before the cast"
+)]
 pub(super) fn sub_instance_count(len_px: f32) -> u32 {
     let total_segments = (len_px / TARGET_CHORD_PX).ceil().max(1.0) as u32;
     total_segments

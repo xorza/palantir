@@ -32,7 +32,7 @@ impl Gpu {
     /// It has to have been requested with what Palantir needs — see
     /// [`DeviceRequirements`]. [`OffscreenHost::builder`](crate::OffscreenHost::builder)
     /// checks that before it builds anything.
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    pub const fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         Self { device, queue }
     }
 
@@ -180,6 +180,10 @@ impl GpuRequest<'_> {
     /// controller and the NPU. Vulkan, Metal and Dx12 ignore the handle, so
     /// passing it costs a working backend nothing.
     #[cfg(feature = "winit")]
+    #[expect(
+        clippy::absolute_paths,
+        reason = "gated on `winit`, so it names the path inline instead of a cfg'd import"
+    )]
     pub(crate) fn windowed_instance<W>(
         window: &std::sync::Arc<W>,
     ) -> Result<wgpu::Instance, GpuRequestError>
@@ -194,7 +198,7 @@ impl GpuRequest<'_> {
         ))
     }
 
-    fn check_backend() -> Result<(), GpuRequestError> {
+    const fn check_backend() -> Result<(), GpuRequestError> {
         if wgpu::Instance::enabled_backend_features().is_empty() {
             return Err(GpuRequestError::NoBackend);
         }
@@ -264,7 +268,7 @@ impl GpuRequest<'_> {
 ///
 /// A free function rather than a `From` impl: the target type is foreign, and
 /// this crate does not implement a foreign trait for a foreign type.
-fn adapter_policy(preference: PowerPreference) -> wgpu::PowerPreference {
+const fn adapter_policy(preference: PowerPreference) -> wgpu::PowerPreference {
     match preference {
         PowerPreference::Any => wgpu::PowerPreference::None,
         PowerPreference::LowPower => wgpu::PowerPreference::LowPower,

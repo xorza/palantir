@@ -335,7 +335,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
                 buf,
                 Rect::new(10.0, 20.0, 24.0, 24.0),
                 IconRef::fixture(0, 3),
-            )
+            );
         },
         &params(1.5, UVec2::new(200, 200)),
     );
@@ -366,7 +366,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
                 buf,
                 Rect::new(10.0, 10.0, 50.0, 50.0),
                 IconRef::fixture(0, 0),
-            )
+            );
         },
         &params(1.5, UVec2::new(200, 200)),
     );
@@ -382,7 +382,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
                 buf,
                 Rect::new(10.0, 20.0, 300.0, 300.0),
                 IconRef::fixture(0, 0),
-            )
+            );
         },
         &params(2.0, UVec2::new(800, 800)),
     );
@@ -445,7 +445,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let [cx, cy, radius, _]: [u16; 4] = bytemuck::cast(quad.fill_axis);
     let decode = |x: u16, y: u16| {
         quad.rect.min
-            + Vec2::new(x as f32, y as f32) / 65535.0
+            + Vec2::new(f32::from(x), f32::from(y)) / 65535.0
                 * Vec2::new(quad.rect.size.w, quad.rect.size.h)
     };
     for (want, got) in points

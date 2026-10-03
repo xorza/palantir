@@ -1,6 +1,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::shape::stroke_bounds;
 use crate::shape::style::{LineCap, LineJoin};
+use std::f32::consts;
 
 #[test]
 fn stroke_bounds_account_for_cap_and_join_reach_once() {
@@ -25,7 +26,7 @@ fn stroke_bounds_account_for_cap_and_join_reach_once() {
         Case {
             cap: LineCap::Square,
             join: Some(LineJoin::Round),
-            expected_pad: 2.5 * std::f32::consts::SQRT_2,
+            expected_pad: 2.5 * consts::SQRT_2,
         },
         Case {
             cap: LineCap::Butt,

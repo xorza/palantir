@@ -13,6 +13,11 @@
 //! runs through the mono fallback (matches the frame and measure-cache
 //! benches).
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;

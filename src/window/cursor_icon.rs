@@ -37,7 +37,7 @@ impl CursorIcon {
     /// *vertical* divider, which wants the east-west arrows. Getting that
     /// backwards is easy enough by hand that the mapping is worth naming
     /// once.
-    pub(crate) fn resize_along(axis: Axis) -> Self {
+    pub(crate) const fn resize_along(axis: Axis) -> Self {
         match axis {
             Axis::X => Self::EwResize,
             Axis::Y => Self::NsResize,

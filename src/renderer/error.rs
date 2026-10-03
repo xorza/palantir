@@ -1,6 +1,8 @@
 //! Failures the renderer reports.
 
 use glam::UVec2;
+use std::error;
+use std::fmt;
 use std::fmt::{Display, Formatter};
 
 /// Why an [`Image`](crate::primitives::paint::image::Image) could not be loaded
@@ -14,7 +16,7 @@ pub struct ImageLoadError {
 }
 
 impl Display for ImageLoadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "image is {}x{} px but the device's maximum 2D texture dimension is {}",
@@ -23,4 +25,4 @@ impl Display for ImageLoadError {
     }
 }
 
-impl std::error::Error for ImageLoadError {}
+impl error::Error for ImageLoadError {}

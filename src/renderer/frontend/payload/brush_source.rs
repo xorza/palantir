@@ -26,7 +26,7 @@ impl BrushSource {
     ///
     /// [`DrawQuadPayload::faded`]: crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload::faded
     #[inline]
-    pub(crate) fn gpu_fill(self) -> GpuFill {
+    pub(crate) const fn gpu_fill(self) -> GpuFill {
         match self {
             Self::Solid(color) => GpuFill {
                 color,
@@ -45,7 +45,7 @@ impl BrushSource {
     /// shader ignores — but zeroed rather than arbitrary, so a Pod-byte
     /// cache key over a solid quad is deterministic.
     #[inline]
-    pub(crate) fn fill_axis(self) -> FillAxis {
+    pub(crate) const fn fill_axis(self) -> FillAxis {
         match self {
             Self::Solid(_) => FillAxis::ZERO,
             Self::Gradient(g) => g.axis,

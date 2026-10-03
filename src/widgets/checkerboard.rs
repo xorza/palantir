@@ -52,6 +52,10 @@ impl Checkerboard {
 
     /// Paint the pattern across the owner's rect. The caller decides whether
     /// it is needed; an opaque colour hides it either way.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "the cell count is held at zero or above before the cast"
+    )]
     pub(crate) fn paint(&self, ui: &mut Ui, size: Size) {
         ui.add_shape(Shape::owner_rect().fill(self.light));
         let columns = (size.w / self.cell).ceil().max(0.0) as u32;

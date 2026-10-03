@@ -1,5 +1,5 @@
-use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::*;
+use ron::ser;
 
 /// Every sRGB byte comes back from each wider form unchanged, alpha
 /// included: from `RgbaF32` exactly, and from `RgbaF16` because it holds
@@ -38,7 +38,7 @@ struct RonRoundTrip {
 
 /// Roundtrip a RgbaF32 through RON and parse the emitted hex back.
 fn ron_roundtrip(c: RgbaF32) -> RonRoundTrip {
-    let text = ron::ser::to_string(&c).expect("serialize");
+    let text = ser::to_string(&c).expect("serialize");
     let parsed = ron::from_str(&text).expect("parse");
     RonRoundTrip { text, parsed }
 }

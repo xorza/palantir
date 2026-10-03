@@ -62,6 +62,11 @@
 //! showcase's `frame bench` page — run `cargo run --example showcase` to eyeball the
 //! tree these numbers come from.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
@@ -76,6 +81,9 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
+use std::env;
+use std::fmt::Write as _;
+use std::fs;
 use std::fs::OpenOptions;
 use std::hint::black_box;
 use std::io::{ErrorKind, Write};
@@ -127,8 +135,9 @@ impl Surface {
 }
 
 fn gpu() -> &'static BenchGpu {
-    let gpu = BenchGpu::shared(Timing::Instrumented);
     static ANNOUNCED: OnceLock<()> = OnceLock::new();
+
+    let gpu = BenchGpu::shared(Timing::Instrumented);
     ANNOUNCED.get_or_init(|| {
         eprintln!("[frame_bench] timing features: {}", gpu.timing_summary());
     });
@@ -163,7 +172,7 @@ fn gpu_frame(
 #[derive(Debug)]
 struct CpuHarness {
     frontend: FrontendHarness,
-    start: std::time::Instant,
+    start: Instant,
 }
 
 impl CpuHarness {
@@ -374,6 +383,8 @@ fn report_write_stats(surface: &Surface) {
         let mut state = FrameFixture::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
+            use strum::IntoEnumIterator;
+
             mutate(&mut state, frame);
             let _ = WriteStats::take();
             let target = &targets[frame % targets.len()];
@@ -390,8 +401,7 @@ fn report_write_stats(surface: &Surface) {
             let stats = host.gpu_pass_stats();
             let gpu = stats
                 .last_pass_ms()
-                .map(|ms| format!("{ms:>5.2} ms"))
-                .unwrap_or_else(|| "  n/a   ".into());
+                .map_or_else(|| "  n/a   ".into(), |ms| format!("{ms:>5.2} ms"));
             eprintln!(
                 "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}",
                 s.texture_calls, s.texture_bytes,
@@ -400,7 +410,6 @@ fn report_write_stats(surface: &Surface) {
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
             // when at least one value resolved, so adapters that lack
             // the feature stay quiet.
-            use strum::IntoEnumIterator;
             let per_kind: Vec<String> = BatchKind::iter()
                 .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))
                 .map(|(k, ms)| format!("{}={ms:.2}", k.label()))
@@ -517,12 +526,14 @@ fn prepend_machine_results(run: Run<'_>) {
         Arms::Gpu => "gpu",
         Arms::Both => "both",
     };
-    block.push_str(&format!(
-        "=== {} — [{}] {} ===\n",
+    writeln!(
+        block,
+        "=== {} — [{}] {} ===",
         now_label(),
         mode_tag,
         bench_annotation(run.fixture.note)
-    ));
+    )
+    .unwrap();
     for name in arm_names(run) {
         let name = name.as_str();
         let row = match read_criterion_estimate(name) {
@@ -557,12 +568,12 @@ fn prepend_machine_results(run: Run<'_>) {
 fn prepend_block(dir: &Path, machine: &str, block: &str) {
     // The directory is gitignored, so a fresh checkout has none and the
     // tempfile open below would fail with ENOENT.
-    if let Err(e) = std::fs::create_dir_all(dir) {
+    if let Err(e) = fs::create_dir_all(dir) {
         eprintln!("[machine-results] create {}: {e}", dir.display());
         return;
     }
     let path = dir.join(format!("{machine}.txt"));
-    let prior = match std::fs::read(&path) {
+    let prior = match fs::read(&path) {
         Ok(prior) => prior,
         Err(e) if e.kind() == ErrorKind::NotFound => Vec::new(),
         Err(e) => {
@@ -591,13 +602,13 @@ fn prepend_block(dir: &Path, machine: &str, block: &str) {
     };
     if let Err(e) = f
         .write_all(block.as_bytes())
-        .and_then(|_| f.write_all(&prior))
+        .and_then(|()| f.write_all(&prior))
     {
         eprintln!("[machine-results] write {}: {e}", tmp_path.display());
         return;
     }
     drop(f);
-    if let Err(e) = std::fs::rename(&tmp_path, &path) {
+    if let Err(e) = fs::rename(&tmp_path, &path) {
         eprintln!(
             "[machine-results] rename {} -> {}: {e}",
             tmp_path.display(),
@@ -627,7 +638,7 @@ struct Estimate {
 /// standalone build shadows the real one and would feed the results row
 /// old estimates.
 fn criterion_root() -> PathBuf {
-    if let Ok(t) = std::env::var("CARGO_TARGET_DIR") {
+    if let Ok(t) = env::var("CARGO_TARGET_DIR") {
         return PathBuf::from(t).join("criterion");
     }
     // `current_exe()` = `<target>/<profile>/deps/<bin>`; the `target`
@@ -635,7 +646,7 @@ fn criterion_root() -> PathBuf {
     // dir being release / debug / a custom name). `ancestors()` runs
     // deepest-first, so this lands on the real cargo target, never a
     // coincidental "target" higher in the path.
-    if let Ok(exe) = std::env::current_exe()
+    if let Ok(exe) = env::current_exe()
         && let Some(target) = exe
             .ancestors()
             .find(|a| a.file_name() == Some("target".as_ref()))
@@ -659,7 +670,7 @@ fn criterion_root() -> PathBuf {
 /// into the named block and pick the three numbers in declaration order.
 /// Avoids pulling serde_json just for this.
 fn read_criterion_estimate(name: &str) -> Option<Estimate> {
-    let s = std::fs::read_to_string(estimates_path(&criterion_root(), name)).ok()?;
+    let s = fs::read_to_string(estimates_path(&criterion_root(), name)).ok()?;
     estimate_from_block(&s, "\"slope\":").or_else(|| estimate_from_block(&s, "\"mean\":"))
 }
 
@@ -761,8 +772,7 @@ fn now_label() -> String {
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_owned())
-        .unwrap_or_else(|| "unknown-time".into())
+        .map_or_else(|| "unknown-time".into(), |s| s.trim().to_owned())
 }
 
 // Longer per-arm measurement window than criterion's 5 s default —
@@ -805,6 +815,10 @@ mod tests {
     use crate::bench::Fixture;
     use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
     use crate::ui::bench::{RESIZE_POOL, Surface, estimates_path, prepend_block};
+    use std::env;
+    use std::fs;
+    use std::path;
+    use std::process;
 
     /// The results directory is gitignored, so the common case on a
     /// fresh checkout is that it does not exist — a writer that only
@@ -813,26 +827,25 @@ mod tests {
     /// run.
     #[test]
     fn a_row_creates_the_missing_results_dir_and_lands_on_top() {
-        let root =
-            std::env::temp_dir().join(format!("palantir-bench-results-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("palantir-bench-results-{}", process::id()));
         let dir = root.join("results");
-        let _ = std::fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&root);
         assert!(!dir.exists(), "the case under test is an absent dir");
 
         prepend_block(&dir, "rig", "older\n");
         prepend_block(&dir, "rig", "newer\n");
 
         let path = dir.join("rig.txt");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer\nolder\n");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "newer\nolder\n");
         assert!(
             !dir.join("rig.txt.tmp").exists(),
             "the rename must leave no tempfile behind",
         );
         // A second machine writes beside the first, not over it.
         prepend_block(&dir, "other", "elsewhere\n");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer\nolder\n");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "newer\nolder\n");
 
-        std::fs::remove_dir_all(&root).unwrap();
+        fs::remove_dir_all(&root).unwrap();
     }
 
     /// The history below the new row is not this run's to lose. Reading
@@ -841,21 +854,20 @@ mod tests {
     /// content that is not UTF-8 included.
     #[test]
     fn an_unreadable_history_is_kept_rather_than_replaced() {
-        let root =
-            std::env::temp_dir().join(format!("palantir-bench-unreadable-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("palantir-bench-unreadable-{}", process::id()));
         let dir = root.join("results");
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&dir).unwrap();
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&dir).unwrap();
 
         // Not UTF-8, so a `String` read fails where a byte read does not.
         let prior: &[u8] = b"\xff\xfe older\n";
         let path = dir.join("rig.txt");
-        std::fs::write(&path, prior).unwrap();
+        fs::write(&path, prior).unwrap();
         prepend_block(&dir, "rig", "newer\n");
         let mut want = b"newer\n".to_vec();
         want.extend_from_slice(prior);
         assert_eq!(
-            std::fs::read(&path).unwrap(),
+            fs::read(&path).unwrap(),
             want,
             "the row goes on top of bytes this run cannot decode",
         );
@@ -863,7 +875,7 @@ mod tests {
         // A read that fails for any other reason stops the write: the
         // rename would otherwise replace the history with one row.
         let blocked = dir.join("other.txt");
-        std::fs::create_dir(&blocked).unwrap();
+        fs::create_dir(&blocked).unwrap();
         prepend_block(&dir, "other", "newer\n");
         assert!(blocked.is_dir(), "an unreadable destination is left alone");
         assert!(
@@ -871,7 +883,7 @@ mod tests {
             "and the write never starts, so no tempfile is left behind",
         );
 
-        std::fs::remove_dir_all(&root).unwrap();
+        fs::remove_dir_all(&root).unwrap();
     }
 
     /// `--size` has to reach the pool as well as the cached arm, or the
@@ -918,7 +930,7 @@ mod tests {
     /// directory boundary and not part of one name.
     #[test]
     fn estimates_path_nests_the_group_and_arm() {
-        let root = std::path::Path::new("/t/criterion");
+        let root = path::Path::new("/t/criterion");
         assert_eq!(
             estimates_path(root, "frame/cached_gpu"),
             root.join("frame")

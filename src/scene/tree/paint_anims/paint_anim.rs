@@ -6,6 +6,7 @@ use crate::primitives::math::approx::FloatHash;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_mod::PaintMod;
 use std::f32::consts::TAU;
+use std::hash;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
@@ -131,6 +132,7 @@ pub struct PaintTiming {
 /// and comparing the curves would compare function addresses, which say
 /// nothing. Compare [`Self::channel`] and [`Self::timing`] instead.
 #[derive(Clone, Copy, Debug)]
+#[must_use]
 pub struct PaintAnim {
     /// What the animation drives, and over what range.
     pub channel: PaintChannel,
@@ -149,7 +151,7 @@ impl PaintAnim {
     /// but it is a sound change signal: two curves the linker folds to one
     /// address have the same code and paint alike, and one curve seen at
     /// two addresses only repaints a frame it need not have.
-    pub(crate) fn hash_static(&self, h: &mut impl std::hash::Hasher) {
+    pub(crate) fn hash_static(&self, h: &mut impl hash::Hasher) {
         let PaintChannel { alpha, turn } = self.channel;
         for range in [alpha, turn] {
             match range {
@@ -226,32 +228,32 @@ impl PaintAnim {
 
     /// Add an opacity range to an animation that already turns, so one
     /// curve drives both.
-    pub fn with_alpha(mut self, from: f32, to: f32) -> Self {
+    pub const fn with_alpha(mut self, from: f32, to: f32) -> Self {
         self.channel.alpha = Some((from, to));
         self
     }
 
     /// Add a rotation range to an animation that already fades.
-    pub fn with_turn(mut self, from: f32, to: f32) -> Self {
+    pub const fn with_turn(mut self, from: f32, to: f32) -> Self {
         self.channel.turn = Some((from, to));
         self
     }
 
     /// One pass of the curve takes this long. One second by default.
-    pub fn period(mut self, period: Duration) -> Self {
+    pub const fn period(mut self, period: Duration) -> Self {
         self.timing.period = period;
         self
     }
 
     /// Begin at this absolute time rather than the clock's origin.
     /// Before it the animation reads at phase zero.
-    pub fn started_at(mut self, at: Duration) -> Self {
+    pub const fn started_at(mut self, at: Duration) -> Self {
         self.timing.started_at = at;
         self
     }
 
     /// How many passes run. Default one, then hold at the end value.
-    pub fn repeat(mut self, repeat: PaintRepeat) -> Self {
+    pub const fn repeat(mut self, repeat: PaintRepeat) -> Self {
         self.timing.repeat = repeat;
         self
     }
@@ -264,7 +266,7 @@ impl PaintAnim {
     /// Panics on zero steps. It would read as a shape that never
     /// animates, with no other sign that the animation was asked for —
     /// and this is a cold builder, so the check costs a frame nothing.
-    pub fn steps(mut self, n: u32) -> Self {
+    pub const fn steps(mut self, n: u32) -> Self {
         let n = NonZeroU32::new(n).expect("a paint animation cannot have zero steps");
         self.timing.steps = PaintSteps::Steps(n);
         self
@@ -303,7 +305,7 @@ impl PaintAnim {
     /// A constant turn counts — the recorded bbox is unrotated either
     /// way.
     #[inline]
-    pub(crate) fn rotates(self) -> bool {
+    pub(crate) const fn rotates(self) -> bool {
         self.channel.turn.is_some()
     }
 
@@ -356,7 +358,7 @@ impl PaintTiming {
     /// The absolute time this animation stops changing, or `None` when it
     /// never does.
     #[inline]
-    fn settles_at(self) -> Option<Duration> {
+    const fn settles_at(self) -> Option<Duration> {
         match self.repeat {
             PaintRepeat::Once => Some(self.started_at.saturating_add(self.period)),
             PaintRepeat::Forever => None,
@@ -390,7 +392,7 @@ impl PaintTiming {
                 if step.is_zero() {
                     return None;
                 }
-                let elapsed = now - self.started_at;
+                let elapsed = now.checked_sub(self.started_at).unwrap();
                 let k = (elapsed.as_nanos() / step.as_nanos()) as u32;
                 self.started_at + step.saturating_mul(k + 1)
             }

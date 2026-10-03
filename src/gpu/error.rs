@@ -1,6 +1,7 @@
 //! What the device request and the window surface report when they fail.
 
 use std::error::Error;
+use std::fmt;
 use std::fmt::{Display, Formatter};
 
 /// Whatever the graphics driver reported, kept whole but not named.
@@ -20,7 +21,7 @@ impl DriverError {
 }
 
 impl Display for DriverError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
 }
@@ -59,7 +60,7 @@ pub enum UnmetRequirements {
 }
 
 impl Display for UnmetRequirements {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Features { missing } => write!(
                 f,
@@ -109,7 +110,7 @@ pub enum GpuRequestError {
 }
 
 impl Display for GpuRequestError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoBackend => f.write_str("no wgpu backend is compiled in for this target"),
             Self::RequestAdapter { source } => {
@@ -177,7 +178,7 @@ impl From<GpuRequestError> for SurfaceError {
 #[cfg(feature = "winit")]
 #[cfg(feature = "winit")]
 impl Display for SurfaceError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Create { source } => write!(f, "failed to create a window surface: {source}"),
             Self::Device { source } => Display::fmt(source, f),

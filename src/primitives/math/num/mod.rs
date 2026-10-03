@@ -19,6 +19,10 @@ use glam::Vec2;
 /// A free `const fn` rather than an [`F32Px`] method: `RgbaF32::hexa` is
 /// `const`, and a trait method cannot be called from one.
 #[inline]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "the saturating cast is the clamp: NaN and anything below the range land on zero"
+)]
 pub(crate) const fn unit_to_u8(x: f32) -> u8 {
     (x * 255.0 + 0.5) as u8
 }
@@ -46,6 +50,7 @@ pub trait F32Ext {
     /// The result is unclamped — a pointer outside the track reports
     /// outside `0..1`, and each caller pins it with the bounds it
     /// enforces, which is what [`Self::unit_fraction_or`] is for.
+    #[must_use]
     fn band_fraction(self, extent: Self, band: Self) -> Self;
 
     /// This value as a share of something — clamped into `0..=1`, or
@@ -61,6 +66,7 @@ pub trait F32Ext {
     /// `fallback` is the caller's, because "no share" resolves
     /// differently: unknown progress is empty, an unknown split is
     /// centred. The screen is shared, the neutral is not.
+    #[must_use]
     fn unit_fraction_or(self, fallback: Self) -> Self;
 
     /// A length read out of a theme, floored at `min`.
@@ -71,6 +77,7 @@ pub trait F32Ext {
     /// non-negative length. `min` is the widget's, not the type's. A rule
     /// the theme sets to zero is a rule the app wanted invisible, while a
     /// grab bar or a spinner that thin cannot be grabbed or seen at all.
+    #[must_use]
     fn themed_length(self, min: Self) -> Self;
 }
 
@@ -236,6 +243,10 @@ impl F32Px for f32 {
     }
 
     #[inline]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "the input is a non-negative pixel coordinate, debug-asserted before the cast"
+    )]
     fn ceil_px(self) -> u32 {
         // Any magnitude: from 2^24 up every f32 is a whole number, so the
         // truncation below is already the ceiling, saturating at
@@ -289,8 +300,21 @@ pub(crate) trait Num: Copy {
     fn as_f32(self) -> f32;
 }
 
+impl Num for f32 {
+    fn as_f32(self) -> f32 {
+        self
+    }
+}
+
 macro_rules! impl_num {
-    ($($t:ty),*) => {
+    (lossless: $($t:ty),*) => {
+        $(
+            impl Num for $t {
+                fn as_f32(self) -> f32 { f32::from(self) }
+            }
+        )*
+    };
+    (rounding: $($t:ty),*) => {
         $(
             impl Num for $t {
                 fn as_f32(self) -> f32 { self as f32 }
@@ -299,7 +323,8 @@ macro_rules! impl_num {
     };
 }
 
-impl_num!(f32, f64, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+impl_num!(lossless: i8, i16, u8, u16);
+impl_num!(rounding: f64, i32, i64, isize, u32, u64, usize);
 
 #[cfg(test)]
 mod tests;

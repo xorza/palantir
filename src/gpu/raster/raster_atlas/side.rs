@@ -4,6 +4,8 @@
 use crate::primitives::paint::content_type::ContentType;
 use etagere::{BucketedAtlasAllocator, size2};
 use glam::U16Vec2;
+use std::fmt;
+use std::mem;
 
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
@@ -61,8 +63,8 @@ pub(super) struct PendingGrow {
 }
 
 // Manual: etagere's `BucketedAtlasAllocator` isn't `Debug`.
-impl std::fmt::Debug for Side {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Side {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Side")
             .field("size", &self.size)
             .finish_non_exhaustive()
@@ -137,7 +139,7 @@ impl Side {
         let new_size = (self.size * ATLAS_GROWTH_FACTOR).min(self.ceiling);
         let new_texture = make_texture(device, texture_format(content), new_size, &self.label);
         let old_size = self.size;
-        let old_texture = std::mem::replace(&mut self.texture, new_texture);
+        let old_texture = mem::replace(&mut self.texture, new_texture);
 
         // If a previous grow this frame hasn't flushed yet, keep the
         // oldest texture — that's the one holding live pixel data
@@ -193,7 +195,7 @@ fn make_texture(
 /// Here rather than on [`ContentType`], which is primitives-layer vocabulary
 /// shared with the rasterizers: the choice of texel encoding is this module's,
 /// and naming a device format is the graphics layer's to do.
-fn texture_format(content: ContentType) -> wgpu::TextureFormat {
+const fn texture_format(content: ContentType) -> wgpu::TextureFormat {
     match content {
         ContentType::Mask => wgpu::TextureFormat::R8Unorm,
         ContentType::Color => wgpu::TextureFormat::Rgba8UnormSrgb,

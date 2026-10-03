@@ -249,6 +249,8 @@ fn an_hstack_shares_its_width_before_its_children_measure() {
 /// and a two-way scroll's layer, around an hstack of its own.
 #[test]
 fn scroll_content_does_not_give_way_on_its_panned_axis() {
+    type Scrolling = fn() -> Scroll<'static>;
+
     let labels = |ui: &mut Ui| {
         for name in ["one", "two", "three"] {
             Text::new("abcdefghijkl")
@@ -258,7 +260,6 @@ fn scroll_content_does_not_give_way_on_its_panned_axis() {
                 .show(ui);
         }
     };
-    type Scrolling = fn() -> Scroll<'static>;
     let scrolls: [(&str, Scrolling); 2] =
         [("horizontal", Scroll::horizontal), ("both", Scroll::both)];
     for (label, scroll) in scrolls {

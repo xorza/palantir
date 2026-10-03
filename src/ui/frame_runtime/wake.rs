@@ -27,7 +27,7 @@ impl WakeReasons {
     pub(crate) const ANIM: Self = Self(1 << 1);
 
     #[inline]
-    pub(super) fn merge(self, r: Self) -> Self {
+    pub(super) const fn merge(self, r: Self) -> Self {
         Self(self.0 | r.0)
     }
 

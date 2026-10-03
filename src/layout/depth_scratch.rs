@@ -28,7 +28,7 @@ impl<T> DepthScratch<T> {
     /// Where this depth's entries begin — hand it back to
     /// [`Self::since`] and [`Self::truncate`].
     #[inline]
-    pub(super) fn mark(&self) -> usize {
+    pub(super) const fn mark(&self) -> usize {
         self.pool.len()
     }
 

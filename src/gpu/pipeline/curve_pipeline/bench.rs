@@ -11,6 +11,11 @@
 //! complete record-to-GPU wall time; the keep-or-revert signal is the median
 //! curve timestamp and pipeline statistics printed before each case.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
@@ -147,16 +152,13 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
     let stats = host.gpu_pass_stats().last_pipeline_stats();
     let vs_per_instance = stats
         .map(|pipeline| pipeline.vertex_shader_invocations / workload.instances())
-        .map(|count| count.to_string())
-        .unwrap_or_else(|| "n/a".to_owned());
+        .map_or_else(|| "n/a".to_owned(), |count| count.to_string());
     eprintln!(
         "[curve_pipeline] {} instances={} vs_per_instance={vs_per_instance} \
          curve_median_ms={} pipeline={stats:?}",
         workload.label(),
         workload.instances(),
-        median(&mut curve_ms)
-            .map(|ms| format!("{ms:.4}"))
-            .unwrap_or_else(|| "n/a".to_owned()),
+        median(&mut curve_ms).map_or_else(|| "n/a".to_owned(), |ms| format!("{ms:.4}")),
     );
 }
 

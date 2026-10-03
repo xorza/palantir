@@ -49,6 +49,11 @@
 //! `connection`, which the own-branch keeps by construction. Baselines
 //! through `cargo criterion` are untested here.
 
+#![expect(
+    clippy::print_stdout,
+    reason = "listing the bench drivers is the output this command exists for"
+)]
+
 mod cli;
 mod driver;
 
@@ -57,6 +62,7 @@ use crate::bench::driver::DRIVERS;
 use clap::Parser as _;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
+use std::env;
 
 /// Which half of the pipeline is in play — on a driver row, what it
 /// measures; on the command line, what the run wants. One vocabulary for
@@ -77,18 +83,18 @@ pub(crate) enum Arms {
 }
 
 impl Arms {
-    pub(crate) fn includes_cpu(self) -> bool {
+    pub(crate) const fn includes_cpu(self) -> bool {
         matches!(self, Arms::Cpu | Arms::Both)
     }
 
-    pub(crate) fn includes_gpu(self) -> bool {
+    pub(crate) const fn includes_gpu(self) -> bool {
         matches!(self, Arms::Gpu | Arms::Both)
     }
 
     /// What a driver offering `self` should run when the caller asked
     /// for `want`, or `None` when they share nothing — the whole
     /// selection rule.
-    pub(crate) fn overlap(self, want: Arms) -> Option<Arms> {
+    pub(crate) const fn overlap(self, want: Arms) -> Option<Arms> {
         match (
             self.includes_cpu() && want.includes_cpu(),
             self.includes_gpu() && want.includes_gpu(),
@@ -148,7 +154,7 @@ impl Run<'_> {
         c.benchmark_group(self.subgroup_name(sub))
     }
 
-    pub(crate) fn group_name(&self) -> &'static str {
+    pub(crate) const fn group_name(&self) -> &'static str {
         self.driver
     }
 
@@ -179,7 +185,7 @@ pub fn run() {
     // Opt-in drivers stay out: test mode is a smoke check that every
     // benchmark still executes, and the frame matrix is ~90 s of that —
     // unoptimized, since `cargo test` builds the dev profile.
-    let argv: Vec<String> = std::env::args().collect();
+    let argv: Vec<String> = env::args().collect();
     if cli::delegates(argv.iter().map(String::as_str)) {
         for driver in DRIVERS.iter().filter(|d| !d.opt_in) {
             let mut criterion = (driver.config)().configure_from_args();

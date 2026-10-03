@@ -55,8 +55,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
     let velocity = *spring_velocity(row);
     assert!(
         velocity.abs() > 0.01,
-        "test setup: spring should have built up velocity by now; got {}",
-        velocity,
+        "test setup: spring should have built up velocity by now; got {velocity}",
     );
 
     let dur = AnimSpec::duration(0.1, Easing::Linear);

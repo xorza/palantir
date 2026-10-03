@@ -116,14 +116,14 @@ impl<'a> ColorPicker<'a> {
     /// Show the alpha bar and the opacity value. Off by default: most colours
     /// an app picks are opaque, and a bar for an axis nobody moves is one
     /// more thing to read past.
-    pub fn alpha(mut self, on: bool) -> Self {
+    pub const fn alpha(mut self, on: bool) -> Self {
         self.alpha = on;
         self
     }
 
     /// Pin the model instead of letting the user switch it. The switch itself
     /// only shows when the model is not pinned.
-    pub fn model(mut self, model: ColorModel) -> Self {
+    pub const fn model(mut self, model: ColorModel) -> Self {
         self.model = Some(model);
         self
     }
@@ -131,7 +131,7 @@ impl<'a> ColorPicker<'a> {
     /// Show a swatch row the picker fills itself: the preset colours, with
     /// each committed pick moving to the front. Replaces
     /// [`swatches`](Self::swatches).
-    pub fn history(mut self, on: bool) -> Self {
+    pub const fn history(mut self, on: bool) -> Self {
         self.swatches = if on {
             Swatches::Owned
         } else {
@@ -142,7 +142,7 @@ impl<'a> ColorPicker<'a> {
 
     /// Show a swatch row the app owns. Clicking one picks it; the picker
     /// never writes to the slice. Replaces [`history`](Self::history).
-    pub fn swatches(mut self, colors: &'a [RgbaF32]) -> Self {
+    pub const fn swatches(mut self, colors: &'a [RgbaF32]) -> Self {
         self.swatches = Swatches::Given(colors);
         self
     }
@@ -252,7 +252,7 @@ struct Edit {
 }
 
 /// Which control wrote, and so which part of the colour to rebuild.
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct Writes {
     /// The field, the hue bar, or the H / S / V values moved.
     axes: bool,
@@ -418,6 +418,10 @@ fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> Edit {
 /// or sat a gap's width off the one above it — would make a drag read as the
 /// row rearranging itself rather than as one number changing. The mono face
 /// the theme puts on them finishes the job at the digit level.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "the channel is clamped to 0..=255 before the cast"
+)]
 fn values_grid(
     ui: &mut Ui,
     state: &mut PickerState,

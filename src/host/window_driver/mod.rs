@@ -192,7 +192,7 @@ impl PresentPath {
     /// records — so both read it from here rather than each spelling out
     /// its own `Submission`. `SkipCopy` reads the backbuffer and renders
     /// nothing, so it is not one of them.
-    fn renders_via_backbuffer(self) -> bool {
+    const fn renders_via_backbuffer(self) -> bool {
         matches!(self, Self::ViaBackbuffer(_))
     }
 }
@@ -285,7 +285,7 @@ pub(super) struct WindowDriverBuilder<'a> {
 }
 
 impl WindowDriverBuilder<'_> {
-    pub(super) fn strategy(mut self, strategy: PresentStrategy) -> Self {
+    pub(super) const fn strategy(mut self, strategy: PresentStrategy) -> Self {
         self.strategy = strategy;
         self
     }
@@ -421,7 +421,7 @@ impl WindowDriver {
     /// correct only because `finish_cpu_frame` had already cleared
     /// `output_valid` on any frame that painted, which is a coupling
     /// nothing stated and nothing would have caught breaking.
-    pub(super) fn invalidate_target_contents(&mut self) {
+    pub(super) const fn invalidate_target_contents(&mut self) {
         self.output_valid = false;
         self.backbuffer_fresh = false;
     }

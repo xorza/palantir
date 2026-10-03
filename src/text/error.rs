@@ -1,7 +1,9 @@
 //! Failures the text system reports.
 
 use std::error::Error;
+use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::io;
 use std::path::PathBuf;
 
 /// A font could not be registered.
@@ -16,14 +18,14 @@ pub enum FontLoadError {
         /// The file that could not be read.
         path: PathBuf,
         /// What the filesystem reported.
-        source: std::io::Error,
+        source: io::Error,
     },
     /// The bytes parsed to no usable face.
     NoFaces,
 }
 
 impl Display for FontLoadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io { path, source } => {
                 write!(f, "cannot read the font file {}: {source}", path.display())

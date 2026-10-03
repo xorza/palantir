@@ -1,3 +1,8 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "the bench fixture's sizes are positive constants"
+)]
+
 use crate::bench::Run;
 use crate::common::span::Span;
 use crate::display::Display;
@@ -167,7 +172,7 @@ impl HigherKindCase {
     /// The display each arm composes against: 128 square for the arms
     /// that stack every draw at one spot, and the whole label grid —
     /// rounded up to whole rows — for the two that lay one out.
-    fn viewport(self, draw_count: usize) -> UVec2 {
+    const fn viewport(self, draw_count: usize) -> UVec2 {
         match self {
             Self::TextBetweenMeshClear | Self::TextBetweenMeshOver => {
                 let rows = (draw_count as u32).div_ceil(Self::TEXT_COLS);
@@ -183,7 +188,7 @@ impl HigherKindCase {
         }
     }
 
-    fn expected_groups(self, draw_count: usize) -> usize {
+    const fn expected_groups(self, draw_count: usize) -> usize {
         match self {
             Self::MixedOverlap => draw_count / 2 + 1,
             Self::SameTierMesh
@@ -197,7 +202,7 @@ impl HigherKindCase {
     /// The number the two text arms exist to separate: one batch for the
     /// whole grid when no mesh covers a label, one per label when they
     /// all do.
-    fn expected_text_batches(self, draw_count: usize) -> usize {
+    const fn expected_text_batches(self, draw_count: usize) -> usize {
         match self {
             Self::TextBetweenMeshClear => 1,
             Self::TextBetweenMeshOver => draw_count,
@@ -299,7 +304,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             );
             group.throughput(Throughput::Elements(draw_count as u64));
             group.bench_with_input(BenchmarkId::new(label, draw_count), &draw_count, |b, _| {
-                b.iter(|| black_box(fixture.compose()))
+                b.iter(|| black_box(fixture.compose()));
             });
         }
     }

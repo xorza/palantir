@@ -9,6 +9,7 @@ use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
+use std::mem;
 use std::time::Duration;
 
 const BLINK_HALF: Duration = Duration::from_millis(500);
@@ -46,7 +47,7 @@ impl ViewState {
     /// The select-all-on-focus edge fires from the input pass, which runs
     /// before this frame's focus is final, so it reads the old value
     /// here rather than waiting for [`Self::roll_focus`].
-    pub(super) fn was_focused(&self) -> bool {
+    pub(super) const fn was_focused(&self) -> bool {
         self.prev_focused
     }
 
@@ -55,8 +56,8 @@ impl ViewState {
     /// One call because the read and the write are one act: the edge is
     /// only true for the frame that crossed it, which is exactly the
     /// frame the stored value changes.
-    pub(super) fn roll_focus(&mut self, focused: bool) -> FocusEdges {
-        let was = std::mem::replace(&mut self.prev_focused, focused);
+    pub(super) const fn roll_focus(&mut self, focused: bool) -> FocusEdges {
+        let was = mem::replace(&mut self.prev_focused, focused);
         FocusEdges {
             gained: focused && !was,
             lost: was && !focused,

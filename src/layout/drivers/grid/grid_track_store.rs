@@ -166,7 +166,7 @@ impl GridTrackStore {
         }
     }
 
-    fn axis_total_idx(axis: Axis) -> usize {
+    const fn axis_total_idx(axis: Axis) -> usize {
         match axis {
             Axis::X => 0,
             Axis::Y => 1,

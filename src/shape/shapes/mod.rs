@@ -13,6 +13,7 @@ use crate::shape::Lower;
 use crate::shape::hash;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
+use std::fmt;
 use std::hash::Hasher as _;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
@@ -151,7 +152,7 @@ impl Shapes {
 /// behind it — sits `#[cold]`, off the path every recorded shape takes.
 #[cold]
 #[inline(never)]
-fn nan_rejected(shape: &impl std::fmt::Debug) {
+fn nan_rejected(shape: &impl fmt::Debug) {
     debug_assert!(
         false,
         "NaN in a paint-shape input — an arithmetic bug on the calling \

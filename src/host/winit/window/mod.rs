@@ -23,6 +23,7 @@ use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFrameState;
 use crate::window::window_placement::WindowPlacement;
+use std::mem;
 
 /// What only the windowing system can answer, held until an event that
 /// can change it.
@@ -62,7 +63,7 @@ struct PointerAnchor {
 impl PointerAnchor {
     /// The anchor `trace` leaves behind, given the one `held` now and the
     /// `scale` the event was translated at.
-    fn after(held: Option<Self>, trace: PointerTrace, scale: f32) -> Option<Self> {
+    const fn after(held: Option<Self>, trace: PointerTrace, scale: f32) -> Option<Self> {
         match trace {
             PointerTrace::Unchanged => held,
             PointerTrace::At(physical) => Some(Self { physical, scale }),
@@ -212,7 +213,7 @@ impl Window {
 
     /// Retain what an event said about the pointer, against the scale it
     /// was translated at.
-    pub(super) fn note_pointer(&mut self, trace: PointerTrace, scale: f32) {
+    pub(super) const fn note_pointer(&mut self, trace: PointerTrace, scale: f32) {
         self.pointer = PointerAnchor::after(self.pointer, trace, scale);
     }
 
@@ -255,7 +256,7 @@ impl Window {
     /// when an event has invalidated them.
     fn system_facts(&mut self) -> SystemFacts {
         if let Some(facts) = &mut self.system_facts {
-            if std::mem::take(&mut self.maximized_stale) {
+            if mem::take(&mut self.maximized_stale) {
                 facts.placement.maximized = self.window.is_maximized();
             }
             return *facts;
@@ -285,7 +286,7 @@ impl Window {
     /// it on another monitor — the three things the cached answers depend
     /// on. A superset is safe here and a missed event is not, so an event
     /// that merely *might* have changed one clears all three.
-    pub(super) fn invalidate_system_facts(&mut self) {
+    pub(super) const fn invalidate_system_facts(&mut self) {
         self.system_facts = None;
     }
 

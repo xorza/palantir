@@ -106,6 +106,34 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
 /// fields added later.
 #[test]
 fn entering_edit_mode_preserves_the_callers_node_placement() {
+    fn placement(ui: &Ui, id: WidgetId) -> Placement {
+        let node = ui.cascade().endpoint(id).expect("drag value node").node;
+        let tree = ui.tree(Layer::Main);
+        let layout = tree.records.layout()[node.idx()];
+        let bounds = tree.bounds(node);
+        Placement {
+            margin: layout.margin,
+            align: layout.meta.align(),
+            position: bounds.position,
+            max_size: bounds.max_size,
+        }
+    }
+
+    /// Recorded placement of `id` — the fields the swap must preserve.
+    ///
+    /// Padding and minimum height are excluded on purpose: both modes
+    /// resolve those from their own theme and intrinsics (a text editor has
+    /// a line-height floor a chip does not), so they are not carried by the
+    /// node policy and comparing them would pin theme configuration rather
+    /// than this fix.
+    #[derive(Debug, PartialEq)]
+    struct Placement {
+        margin: Spacing,
+        align: Align,
+        position: Vec2,
+        max_size: Size,
+    }
+
     const POSITION: Vec2 = Vec2::new(23.0, 11.0);
     let padding = Spacing::all(7.0);
     let margin = Spacing::all(3.0);
@@ -130,34 +158,6 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
                     .show(ui);
             });
     };
-
-    /// Recorded placement of `id` — the fields the swap must preserve.
-    ///
-    /// Padding and minimum height are excluded on purpose: both modes
-    /// resolve those from their own theme and intrinsics (a text editor has
-    /// a line-height floor a chip does not), so they are not carried by the
-    /// node policy and comparing them would pin theme configuration rather
-    /// than this fix.
-    #[derive(Debug, PartialEq)]
-    struct Placement {
-        margin: Spacing,
-        align: Align,
-        position: Vec2,
-        max_size: Size,
-    }
-
-    fn placement(ui: &Ui, id: WidgetId) -> Placement {
-        let node = ui.cascade().endpoint(id).expect("drag value node").node;
-        let tree = ui.tree(Layer::Main);
-        let layout = tree.records.layout()[node.idx()];
-        let bounds = tree.bounds(node);
-        Placement {
-            margin: layout.margin,
-            align: layout.meta.align(),
-            position: bounds.position,
-            max_size: bounds.max_size,
-        }
-    }
 
     let mut h = UiHarness::new(UVec2::new(300, 100));
     h.frame(scene);

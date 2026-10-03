@@ -25,6 +25,8 @@
 //! where the dispatch is the point.
 
 use crate::primitives::math::approx::EPS;
+use core::mem;
+use std::hash;
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
 /// storage core behind `Corners`, `Spacing`, `FillAxis`, `RgbaF16`,
@@ -207,10 +209,10 @@ impl F16x4 {
     }
 }
 
-impl std::hash::Hash for F16x4 {
+impl hash::Hash for F16x4 {
     /// One `u64` write — wrappers `#[derive(Hash)]` and delegate here.
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.as_u64());
     }
 }
@@ -328,10 +330,10 @@ unsafe fn f16x4_scaled_f16c(bits: [u16; 4], k: f32) -> [u16; 4] {
     // stays in the register between them. F16C presence enforced by
     // `#[target_feature]`.
     unsafe {
-        let lanes = _mm_cvtph_ps(_mm_loadl_epi64(bits.as_ptr() as *const _));
+        let lanes = _mm_cvtph_ps(_mm_loadl_epi64(bits.as_ptr().cast()));
         let packed = _mm_cvtps_ph::<_MM_FROUND_TO_NEAREST_INT>(_mm_mul_ps(lanes, _mm_set1_ps(k)));
         let mut out = [0u16; 4];
-        _mm_storel_epi64(out.as_mut_ptr() as *mut _, packed);
+        _mm_storel_epi64(out.as_mut_ptr().cast(), packed);
         out
     }
 }
@@ -345,9 +347,9 @@ unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
     // reads 8 B from the pointer, `_mm_cvtph_ps` converts the low 4 f16 lanes
     // to 4 f32 lanes. F16C feature presence enforced by `#[target_feature]`.
     unsafe {
-        let v = _mm_loadl_epi64(bits.as_ptr() as *const _);
+        let v = _mm_loadl_epi64(bits.as_ptr().cast());
         let f = _mm_cvtph_ps(v);
-        core::mem::transmute(f)
+        mem::transmute(f)
     }
 }
 
@@ -365,7 +367,7 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
         let v = _mm_loadu_ps(src.as_ptr());
         let h = _mm_cvtps_ph::<{ _MM_FROUND_TO_NEAREST_INT }>(v);
         let mut out = [0u16; 4];
-        _mm_storel_epi64(out.as_mut_ptr() as *mut _, h);
+        _mm_storel_epi64(out.as_mut_ptr().cast(), h);
         out
     }
 }

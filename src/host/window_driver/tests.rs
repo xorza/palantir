@@ -15,25 +15,25 @@ mod present_mode_tests {
     /// against, so a `w×h` damage rect carries `coverage = w·h / 10_000`.
     const SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
 
-    fn full() -> Option<RenderPlan> {
-        Some(RenderPlan {
+    fn full() -> RenderPlan {
+        RenderPlan {
             clear: RgbaF32::BLACK,
             damage: Damage::Full,
-        })
+        }
     }
     /// One `Rect` of `w·h` px², built through `collapse_from` against
     /// [`SURFACE`] so its coverage is `w·h / 10_000` — exactly what the
     /// damage engine seals in the real path.
-    fn partial(w: f32, h: f32) -> Option<RenderPlan> {
+    fn partial(w: f32, h: f32) -> RenderPlan {
         let damage = DamageRegion::collapse_from(
             &[Rect::new(0.0, 0.0, w, h)],
             DEFAULT_PASS_BUDGET_PX,
             SURFACE,
         );
-        Some(RenderPlan {
+        RenderPlan {
             clear: RgbaF32::BLACK,
             damage: Damage::Partial(damage),
-        })
+        }
     }
     const DIRECT_FULL: PresentPath = Direct(RenderPlan {
         clear: RgbaF32::BLACK,
@@ -47,12 +47,12 @@ mod present_mode_tests {
         // Backbuffer freshness is irrelevant here (every frame touches it).
         for fresh in [false, true] {
             assert_eq!(
-                present_path(full(), BackbufferCopy, fresh),
-                ViaBackbuffer(full().unwrap())
+                present_path(Some(full()), BackbufferCopy, fresh),
+                ViaBackbuffer(full())
             );
             assert_eq!(
-                present_path(partial(10.0, 10.0), BackbufferCopy, fresh),
-                ViaBackbuffer(partial(10.0, 10.0).unwrap())
+                present_path(Some(partial(10.0, 10.0)), BackbufferCopy, fresh),
+                ViaBackbuffer(partial(10.0, 10.0))
             );
             assert_eq!(present_path(None, BackbufferCopy, fresh), SkipCopy);
         }
@@ -64,8 +64,8 @@ mod present_mode_tests {
         // depends on backbuffer freshness.
         for fresh in [false, true] {
             assert_eq!(
-                present_path(full(), DirectAdaptive, fresh),
-                Direct(full().unwrap())
+                present_path(Some(full()), DirectAdaptive, fresh),
+                Direct(full())
             );
             assert_eq!(present_path(None, DirectAdaptive, fresh), SkipNoop);
         }
@@ -77,13 +77,13 @@ mod present_mode_tests {
         let small = partial(10.0, 10.0);
         // Fresh: the backbuffer mirrors the target, so paint just the region.
         assert_eq!(
-            present_path(small, DirectAdaptive, true),
-            ViaBackbuffer(small.unwrap())
+            present_path(Some(small), DirectAdaptive, true),
+            ViaBackbuffer(small)
         );
         // Stale (after a direct frame): resync with one full repaint first.
         assert_eq!(
-            present_path(small, DirectAdaptive, false),
-            ViaBackbuffer(full().unwrap())
+            present_path(Some(small), DirectAdaptive, false),
+            ViaBackbuffer(full())
         );
     }
 
@@ -93,7 +93,10 @@ mod present_mode_tests {
         // direct (dropping the copy) regardless of backbuffer freshness.
         let large = partial(80.0, 80.0);
         for fresh in [false, true] {
-            assert_eq!(present_path(large, DirectAdaptive, fresh), DIRECT_FULL);
+            assert_eq!(
+                present_path(Some(large), DirectAdaptive, fresh),
+                DIRECT_FULL
+            );
         }
     }
 
@@ -106,14 +109,14 @@ mod present_mode_tests {
         for (w, h) in [(63.0, 63.0), (40.0, 100.0)] {
             assert!(
                 matches!(
-                    present_path(partial(w, h), DirectAdaptive, true),
+                    present_path(Some(partial(w, h)), DirectAdaptive, true),
                     ViaBackbuffer(_)
                 ),
                 "{w}×{h}",
             );
         }
         assert_eq!(
-            present_path(partial(64.0, 64.0), DirectAdaptive, true),
+            present_path(Some(partial(64.0, 64.0)), DirectAdaptive, true),
             DIRECT_FULL
         );
     }

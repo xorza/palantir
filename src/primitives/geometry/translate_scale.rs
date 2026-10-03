@@ -18,6 +18,7 @@ use glam::Vec2;
 ///
 /// Apply `self` after `other` via `compose`: `compose(p) = self(other(p))`.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[must_use]
 pub struct TranslateScale {
     pub(crate) translation: Vec2,
     pub(crate) scale: f32,

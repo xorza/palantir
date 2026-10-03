@@ -81,16 +81,15 @@ impl<T> Store<T> {
     }
 
     fn get_or_insert_with<F: FnOnce() -> T>(&mut self, id: WidgetId, init: F) -> &mut T {
-        let idx = match self.index_of(id) {
-            Some(idx) => idx,
-            None => {
-                let idx = self.data.len();
-                debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
-                self.data.push(init());
-                self.owners.push(id);
-                self.map.insert(id, idx as u32);
-                idx
-            }
+        let idx = if let Some(idx) = self.index_of(id) {
+            idx
+        } else {
+            let idx = self.data.len();
+            debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
+            self.data.push(init());
+            self.owners.push(id);
+            self.map.insert(id, idx as u32);
+            idx
         };
         &mut self.data[idx]
     }

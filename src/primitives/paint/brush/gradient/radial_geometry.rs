@@ -8,6 +8,7 @@ use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
+use std::hash;
 
 /// Geometry of a radial gradient: colour runs outward from `center`
 /// along the elliptical radius `radius`. Both are object-space 0..1
@@ -40,7 +41,7 @@ impl GradientGeometry for RadialGeometry {
         [self.center.x, self.center.y, self.radius.x, self.radius.y]
     }
 
-    fn hash_geometry<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {
         self.center.hash_visual(state);
         self.radius.hash_visual(state);
     }

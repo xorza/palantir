@@ -1,4 +1,4 @@
-use crate::common::clipboard::{Clipboard, internals};
+use crate::common::clipboard::internals;
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against
@@ -132,8 +132,6 @@ fn context_menu_cut_copy_paste_clear() {
 /// per platform.
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
-    let clipboard = Clipboard::memory();
-
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
     fn primary(c: char) -> KeyPress {
@@ -156,6 +154,8 @@ fn clipboard_shortcuts_apply_keypresses() {
             },
         )
     }
+
+    let clipboard = Clipboard::memory();
 
     clipboard.set_text("").unwrap();
     let mut text = String::from("hello");
@@ -314,8 +314,6 @@ fn clipboard_shortcut_does_not_insert_char() {
 /// click → `ContextMenu::attach` wiring.
 #[test]
 fn secondary_click_opens_text_edit_menu() {
-    use crate::widgets::context_menu::ContextMenu;
-    let editor_id = WidgetId::from_hash("ctx-ed-sec");
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -324,6 +322,9 @@ fn secondary_click_opens_text_edit_menu() {
                 .show(ui);
         });
     }
+
+    use crate::widgets::context_menu::ContextMenu;
+    let editor_id = WidgetId::from_hash("ctx-ed-sec");
 
     let mut h = UiHarness::new(SMALL);
     let mut buf = String::from("hi");

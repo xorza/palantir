@@ -2,10 +2,14 @@
 //! callback renders into the framework-owned off-screen target, which is
 //! then composited into the UI through the image pipeline.
 
-// Reaches Palantir the way an outside consumer does, through the published
-// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
-// of the library's own modules.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
+)]
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -87,14 +91,14 @@ fn gpu_view_clear_red_reaches_screen() {
 struct DepthTriangle {
     pipeline: Option<wgpu::RenderPipeline>,
     depth: Option<wgpu::TextureView>,
-    depth_size: glam::UVec2,
+    depth_size: UVec2,
     logical_square: Option<f32>,
     last_size: UVec2,
     last_display_scale: f32,
     last_raster_scale: f32,
 }
 
-const TRI_SHADER: &str = r#"
+const TRI_SHADER: &str = r"
 @vertex
 fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     // Oversized triangle covering the whole clip space.
@@ -105,7 +109,7 @@ fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 fn fs() -> @location(0) vec4<f32> {
     return vec4<f32>(0.0, 1.0, 0.0, 1.0);
 }
-"#;
+";
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -128,13 +132,13 @@ impl GpuPaint for DepthTriangle {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs"),
-                    compilation_options: Default::default(),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                     buffers: &[],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs"),
-                    compilation_options: Default::default(),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: ctx.target_format,
                         blend: None,
@@ -229,7 +233,7 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
     let paint = Rc::new(RefCell::new(DepthTriangle {
         pipeline: None,
         depth: None,
-        depth_size: glam::UVec2::ZERO,
+        depth_size: UVec2::ZERO,
         logical_square: None,
         last_size: UVec2::ZERO,
         last_display_scale: 0.0,

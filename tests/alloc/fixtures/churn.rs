@@ -35,6 +35,7 @@
 use crate::harness::Audit;
 use palantir::{Configure, Panel, Sizing, Text, TextWrap};
 use std::fmt::Write as _;
+use std::hint;
 
 /// Labels per churning fixture — enough that a per-run leak shows up as
 /// a multiple rather than as noise.
@@ -234,7 +235,7 @@ fn changing_label_text_stays_flat() {
 fn reinterned_text_alloc_free() {
     Audit::new().warmup(8).run(move |ui| {
         let label = ui.intern("re-interned every frame");
-        std::hint::black_box(label);
+        hint::black_box(label);
         Panel::vstack()
             .id_salt("intern-per-frame")
             .size((Sizing::FILL, Sizing::FILL))

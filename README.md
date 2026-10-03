@@ -108,8 +108,9 @@ Pre-1.0 — these are known gaps, not design rejections:
 - **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
   `Ui::set_focus`), but `Tab` / `Shift+Tab` cycling does not.
 - **Rich text** — one family / size / colour per `Text`; no inline spans.
-- **RTL / bidirectional text** — right-to-left and mixed-direction scripts
-  aren't supported yet.
+- **Visual caret motion in bidirectional text** — `TextEdit`'s arrow keys
+  step graphemes in logical order, so inside a right-to-left run `←` moves
+  the caret visually rightward.
 
 ## Zero per-frame allocation
 

@@ -11,10 +11,10 @@
 //! and that format-independent resources (the uploaded image texture)
 //! survive the switch with no re-upload.
 
-// Reaches Palantir the way an outside consumer does, through the published
-// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
-// of the library's own modules.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
+)]
 
 use glam::UVec2;
 use palantir::widget::Shape;
@@ -158,7 +158,7 @@ thread_local! {
     /// GPU texture alive), so register once and hold it here for the
     /// whole test run — exactly what this fixture is asserting survives a
     /// format change.
-    static TEST_IMAGE: std::cell::RefCell<Option<palantir::ImageHandle>> =
+    static TEST_IMAGE: RefCell<Option<palantir::ImageHandle>> =
         const { RefCell::new(None) };
 }
 

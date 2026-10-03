@@ -249,7 +249,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let outer_r = outer_chain[0];
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
     assert_eq!(outer_r.corners.as_array()[0], 16.0);
-    assert_eq!(outer_r.mask_rect.min, glam::Vec2::new(20.0, 40.0));
+    assert_eq!(outer_r.mask_rect.min, Vec2::new(20.0, 40.0));
     assert_eq!(outer_r.mask_rect.size, Size::new(200.0, 160.0));
     assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
 

@@ -201,7 +201,7 @@ impl RenderBuffer {
     }
 
     /// This tier's per-group batches, for appending.
-    pub(crate) fn batches_mut(&mut self, tier: PaintTier) -> &mut Vec<GroupBatch> {
+    pub(crate) const fn batches_mut(&mut self, tier: PaintTier) -> &mut Vec<GroupBatch> {
         &mut self.batches[tier.idx()]
     }
 

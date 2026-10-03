@@ -32,6 +32,11 @@
 //! text fallback, same path as the colocated frame bench); the `heavy/*` arms
 //! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::internals::harness::UiHarness;
 use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_variant, build_deep};
@@ -417,6 +422,8 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
     let make = || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
 
     for (name, stride) in [("static", 0usize), ("scrolling", 1)] {
+        const FRAMES: usize = 64;
+
         let mut h = make();
         let mut first = 0usize;
         for _ in 0..8 {
@@ -424,7 +431,6 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
             first += stride;
         }
         let before = h.engines.layout.cache.snapshot_rebuilds.count();
-        const FRAMES: usize = 64;
         for _ in 0..FRAMES {
             let _ = h.frame(|ui| build_scroll_window(ui, first));
             first += stride;

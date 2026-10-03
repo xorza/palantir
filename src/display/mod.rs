@@ -138,7 +138,7 @@ impl Display {
     /// for either field instead has picked one of the two spaces, and
     /// wants to be sure it is the one it means.
     #[inline]
-    pub fn scale_factor(&self) -> f32 {
+    pub const fn scale_factor(&self) -> f32 {
         self.user_scale.applied_to(self.system_scale)
     }
 

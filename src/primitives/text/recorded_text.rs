@@ -16,7 +16,7 @@ pub(crate) struct RecordedText {
 }
 
 impl RecordedText {
-    pub(crate) fn new(span: Span, hash: u64) -> Self {
+    pub(crate) const fn new(span: Span, hash: u64) -> Self {
         Self { span, hash }
     }
 }

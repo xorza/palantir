@@ -155,7 +155,7 @@ impl Cli {
     /// Whether criterion will write `estimates.json` this run. Profile
     /// mode reports "Analysis Disabled" and writes nothing, so a driver
     /// that reads its own numbers back has to know.
-    pub(super) fn records(&self) -> bool {
+    pub(super) const fn records(&self) -> bool {
         self.profile_time.is_none()
     }
 

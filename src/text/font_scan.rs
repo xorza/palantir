@@ -4,6 +4,7 @@ use crate::text::cosmic::CosmicMeasure;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use cosmic_text::FontSystem;
+use std::thread;
 use std::thread::JoinHandle;
 
 /// A [`FontScope::build`] running off the main thread, joined for the
@@ -23,7 +24,7 @@ pub(crate) struct FontScan {
 
 impl FontScan {
     pub(crate) fn spawn(scope: FontScope) -> Self {
-        let handle = std::thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("palantir-font-scan".to_owned())
             .spawn(move || scope.build())
             .expect("cannot spawn the font scan thread");

@@ -12,6 +12,7 @@ use crate::shape::sealed;
 
 /// User-supplied colored triangle mesh.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct MeshShape<'a> {
     pub(crate) mesh: &'a Mesh,
     pub(crate) local_rect: Option<Rect>,
@@ -19,7 +20,7 @@ pub struct MeshShape<'a> {
 }
 
 impl<'a> MeshShape<'a> {
-    pub(super) fn new(mesh: &'a Mesh) -> Self {
+    pub(super) const fn new(mesh: &'a Mesh) -> Self {
         Self {
             mesh,
             local_rect: None,

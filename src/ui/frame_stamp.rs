@@ -17,7 +17,7 @@ pub(crate) struct FrameStamp {
 }
 
 impl FrameStamp {
-    pub(crate) fn new(display: Display, time: Duration) -> Self {
+    pub(crate) const fn new(display: Display, time: Duration) -> Self {
         Self { display, time }
     }
 }
@@ -37,7 +37,7 @@ pub(crate) struct FrameInput {
 }
 
 impl FrameInput {
-    pub(crate) fn new(stamp: FrameStamp, damage_baseline_valid: bool) -> Self {
+    pub(crate) const fn new(stamp: FrameStamp, damage_baseline_valid: bool) -> Self {
         Self {
             stamp,
             damage_baseline_valid,

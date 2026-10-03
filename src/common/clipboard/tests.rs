@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
+use std::error;
 
 #[derive(Debug)]
 struct PrimaryState {
@@ -62,7 +63,7 @@ fn clones_share_one_clipboard() {
 /// caller needs to put it in a `Box<dyn Error>` and print it.
 #[test]
 fn unavailable_reports_itself_as_an_error() {
-    let boxed: Box<dyn std::error::Error> = Box::new(ClipboardUnavailable);
+    let boxed: Box<dyn error::Error> = Box::new(ClipboardUnavailable);
     assert_eq!(boxed.to_string(), "no clipboard backend could answer");
 }
 

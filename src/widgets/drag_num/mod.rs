@@ -44,7 +44,7 @@ impl Num {
     /// This value as an `f64`, for the visual quantities a fraction of a
     /// track is made of. Lossy past 2^53, which is why no path that
     /// writes the value back goes through it.
-    pub(crate) fn widen(self) -> f64 {
+    pub(crate) const fn widen(self) -> f64 {
         match self {
             Num::I64(v) => v as f64,
             Num::F64(v) => v,
@@ -55,7 +55,7 @@ impl Num {
 impl DragNum<'_> {
     /// The bound value at the precision it is stored at — captured as the
     /// anchor a scrub moves from.
-    pub(crate) fn read(&self) -> Num {
+    pub(crate) const fn read(&self) -> Num {
         match self {
             DragNum::I64(v) => Num::I64(**v),
             DragNum::F64(v) => Num::F64(**v),
@@ -209,7 +209,7 @@ impl<'a> From<&'a mut f64> for DragNum<'a> {
 /// Rust's float→int cast saturates by language guarantee, so an enormous
 /// or infinite travel pins to the end of the integer domain rather than
 /// wrapping, and a NaN one moves the anchor nowhere.
-fn whole_step(offset: f64) -> i64 {
+const fn whole_step(offset: f64) -> i64 {
     offset.round() as i64
 }
 
@@ -236,9 +236,10 @@ fn round_to_decimals(v: f64, decimals: usize) -> f64 {
     let shifted = v * p;
     // NaN fails the comparison and passes through, as it did through the
     // shift.
-    match shifted.abs() < WHOLE_ONLY {
-        true => shifted.round() / p,
-        false => v,
+    if shifted.abs() < WHOLE_ONLY {
+        shifted.round() / p
+    } else {
+        v
     }
 }
 

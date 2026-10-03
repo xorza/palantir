@@ -60,7 +60,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         usage: wgpu::BufferUsages,
         initial_capacity: usize,
     ) -> Self {
-        let item_size = std::mem::size_of::<T>();
+        let item_size = size_of::<T>();
         assert!(
             item_size != 0,
             "DynamicBuffer does not support zero-sized rows"
@@ -121,7 +121,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         self.capacity = grown_capacity(needed_len);
         self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(self.label),
-            size: (self.capacity * std::mem::size_of::<T>()) as u64,
+            size: (self.capacity * size_of::<T>()) as u64,
             usage: self.usage,
             mapped_at_creation: true,
         });
@@ -129,7 +129,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     }
 }
 
-fn grown_capacity(needed_len: usize) -> usize {
+const fn grown_capacity(needed_len: usize) -> usize {
     needed_len.next_power_of_two()
 }
 

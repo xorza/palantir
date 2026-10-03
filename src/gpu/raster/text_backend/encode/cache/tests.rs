@@ -3,8 +3,6 @@
 
 use super::*;
 use crate::common::counters::CounterSet;
-use crate::common::span::Span;
-use crate::gpu::raster::text_backend::encode::EncodedKey;
 use crate::text::key::TextShapeKey;
 
 /// The scale rung is this fixture's only axis, so one run identity
@@ -342,12 +340,13 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
 /// retention question rather than a per-frame-cost one.
 #[test]
 fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
+    // Run past the window so the population reaches steady state.
+    const FRAMES: u64 = ENCODED_CACHE_KEEP_FRAMES * 2;
+
     const RUNS: u32 = 8;
     const GLYPHS: u32 = 12;
     let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
 
-    // Run past the window so the population reaches steady state.
-    const FRAMES: u64 = ENCODED_CACHE_KEEP_FRAMES * 2;
     for _ in 0..FRAMES {
         churn.churn_frame();
     }
@@ -395,6 +394,8 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
 /// gave the space back in one 122-frame-periodic copy.
 #[test]
 fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
+    const MEASURED: u64 = ENCODED_CACHE_KEEP_FRAMES;
+
     const RUNS: u32 = 8;
     const GLYPHS: u32 = 12;
     let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
@@ -407,7 +408,6 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
     let saturated_arena = churn.arena_len();
     let before = churn.block_counts();
 
-    const MEASURED: u64 = ENCODED_CACHE_KEEP_FRAMES;
     for _ in 0..MEASURED {
         churn.churn_frame();
     }

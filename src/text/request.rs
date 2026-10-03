@@ -71,14 +71,14 @@ impl<'a> TextShapeRequest<'a> {
         (!text.is_empty()).then_some(Self { text, key })
     }
 
-    pub(super) fn with_bound(self, bound: WrapBound) -> Self {
+    pub(super) const fn with_bound(self, bound: WrapBound) -> Self {
         Self {
             key: self.key.with_bound(bound),
             ..self
         }
     }
 
-    pub(super) fn unbounded_version(self) -> Self {
+    pub(super) const fn unbounded_version(self) -> Self {
         Self {
             key: self.key.unbounded_version(),
             ..self
@@ -163,7 +163,7 @@ pub(crate) mod internals {
         /// nothing-to-shape boundary is a wiring bug here rather than a
         /// case a test drives — the two crate edges that answer one do
         /// it in their own tests.
-        pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
+        pub(crate) fn unbounded_request(self, text: &str) -> TextShapeRequest<'_> {
             TextShapeRequest::unbounded(text, self.font)
                 .expect("a shaping fixture needs text and a usable face")
         }
@@ -267,7 +267,7 @@ pub(crate) mod internals {
         /// is some policy's — pinned by `wrap`'s
         /// `every_line_fit_is_some_policys_…` rather than restated here,
         /// since a copy of that mapping is a copy that can go stale.
-        pub(crate) fn request<'a>(self, text: &'a str, fit: LineFit) -> TextShapeRequest<'a> {
+        pub(crate) fn request(self, text: &str, fit: LineFit) -> TextShapeRequest<'_> {
             let request = self.unbounded_request(text);
             match self.max_width_px {
                 Some(width) => request.with_bound(WrapBound::new(width, self.halign, fit)),

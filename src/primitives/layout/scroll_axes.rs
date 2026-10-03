@@ -107,20 +107,20 @@ impl ScrollAxes {
     }
 
     #[inline]
-    pub(crate) fn pan_mask(self) -> BVec2 {
+    pub(crate) const fn pan_mask(self) -> BVec2 {
         BVec2::new(self.pans(Axis::X), self.pans(Axis::Y))
     }
 
     /// Which axes fold their measured content into the viewport's own
     /// reported size, as a lane mask — see [`Self::contributes`].
     #[inline]
-    pub(crate) fn contributes_mask(self) -> BVec2 {
+    pub(crate) const fn contributes_mask(self) -> BVec2 {
         BVec2::new(self.contributes(Axis::X), self.contributes(Axis::Y))
     }
 
     /// The driver that lays this viewport's children out.
     #[inline]
-    pub(crate) fn child_layout(self) -> ScrollChildLayout {
+    pub(crate) const fn child_layout(self) -> ScrollChildLayout {
         match (self.pans(Axis::X), self.pans(Axis::Y)) {
             (true, true) => ScrollChildLayout::Layered,
             (false, true) => ScrollChildLayout::Flow(Axis::Y),
@@ -146,7 +146,7 @@ impl ScrollAxes {
     /// itself open, ignoring both `max_size` and the space its parent
     /// actually has.
     #[inline]
-    pub(crate) fn contributes(self, axis: Axis) -> bool {
+    pub(crate) const fn contributes(self, axis: Axis) -> bool {
         !self.pans(axis) || self.fits(axis)
     }
 }

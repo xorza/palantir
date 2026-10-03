@@ -10,6 +10,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel};
 use glam::UVec2;
+use std::array;
 
 /// Pin: empty grid (zero rows or zero cols) measures + arranges to zero
 /// without panicking; child rects are zeroed at parent anchor. The other
@@ -104,7 +105,7 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
 #[test]
 fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     const COLS: usize = 64;
-    let cols: [Track; COLS] = std::array::from_fn(|i| Track::fixed((i + 1) as f32));
+    let cols: [Track; COLS] = array::from_fn(|i| Track::fixed((i + 1) as f32));
     let mut h = UiHarness::new(UVec2::new(3_000, 100));
     h.frame(|ui| {
         Grid::new()

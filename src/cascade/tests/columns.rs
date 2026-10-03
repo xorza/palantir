@@ -135,7 +135,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().id(row).show(ui, |ui| {
             // Layout-only spacer: occupies 50 px, paints nothing.

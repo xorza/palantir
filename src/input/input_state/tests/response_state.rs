@@ -212,7 +212,7 @@ fn frame_quiescent_predicate() {
     };
     broken("pointer_pos", &|s| s.pointer_pos = Some(Vec2::ZERO));
     broken("frame_target_deltas", &|s| {
-        s.frame_target_deltas.push(TargetScrollDelta::new(id))
+        s.frame_target_deltas.push(TargetScrollDelta::new(id));
     });
     broken("capture.press", &|s| {
         s.captures[PointerButton::Left.idx()].press = Some(Press {
@@ -222,19 +222,19 @@ fn frame_quiescent_predicate() {
             count: 1,
             fresh: true,
             drag: PressDrag::None,
-        })
+        });
     });
     broken("capture.release (click)", &|s| {
         s.captures[PointerButton::Right.idx()].release = Some(Release {
             target: id,
             kind: ReleaseKind::Click { count: 1 },
-        })
+        });
     });
     broken("capture.release (miss)", &|s| {
         s.captures[PointerButton::Middle.idx()].release = Some(Release {
             target: id,
             kind: ReleaseKind::Miss,
-        })
+        });
     });
 
     // `focused` is excluded: a focused widget on an otherwise idle frame

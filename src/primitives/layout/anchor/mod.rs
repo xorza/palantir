@@ -80,6 +80,7 @@ impl AnchorAlign {
 /// [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) is the other
 /// form: a top-left that never moves.
 #[derive(Clone, Copy, Debug)]
+#[must_use]
 pub struct Anchor {
     rect: Rect,
     side: AnchorSide,

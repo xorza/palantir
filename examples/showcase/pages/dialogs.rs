@@ -63,7 +63,7 @@ pub(crate) fn build(ui: &mut Ui) {
     // was sixteen lookups a frame to move four bytes around.
     let state_id = WidgetId::from_hash("showcase::dialogs::state");
     ui.with_state::<State, _>(state_id, |ui, state| {
-        ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, state, exit))
+        ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, state, exit));
     });
 }
 

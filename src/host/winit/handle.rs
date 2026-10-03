@@ -8,6 +8,7 @@ use winit::event_loop::EventLoopProxy;
 
 use crate::host::winit::error::HostDisconnected;
 use crate::window::window_token::WindowToken;
+use std::fmt;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`],
 /// invoked with `&mut` the host's app `T`.
@@ -35,8 +36,8 @@ pub enum UserEvent<T> {
     Quit,
 }
 
-impl<T> std::fmt::Debug for UserEvent<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T> fmt::Debug for UserEvent<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Repaint(token) => f.debug_tuple("Repaint").field(token).finish(),
             Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
@@ -68,8 +69,8 @@ impl<T: 'static> Clone for HostHandle<T> {
     }
 }
 
-impl<T: 'static> std::fmt::Debug for HostHandle<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: 'static> fmt::Debug for HostHandle<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HostHandle").finish_non_exhaustive()
     }
 }
@@ -124,7 +125,7 @@ mod tests {
     #[test]
     fn user_event_debug_formats_every_variant_without_an_app_bound() {
         let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7));
-        let task = UserEvent::RunOnMain(Box::new(|_: &mut ()| true));
+        let task = UserEvent::RunOnMain(Box::new(|(): &mut ()| true));
         let quit: UserEvent<()> = UserEvent::Quit;
 
         assert_eq!(format!("{repaint:?}"), "Repaint(WindowToken(7))");

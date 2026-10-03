@@ -9,8 +9,10 @@ use crate::primitives::paint::brush::gradient::{Gradient, Interp, Spread};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
+use ron::ser;
 use std::collections::hash_map::DefaultHasher;
 use std::f32::consts::{FRAC_PI_4, PI};
+use std::fmt;
 use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
 
@@ -164,19 +166,16 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
             rejection.is_none(),
             "deserializer count {count}",
         );
-        match rejection {
-            Some(message) => {
-                panic_probe::assert_panics_with(message, || GradientStops::new(stops(count)));
-                panic_probe::assert_panics_with(message, || built(count));
-                panic_probe::assert_panics_with(message, || radial(count));
-            }
-            None => {
-                assert!((2..=MAX_STOPS).contains(&count));
-                assert_eq!(GradientStops::new(stops(count)).len(), count);
-                assert_eq!(built(count).ramp.stops.len(), count);
-                assert_eq!(radial(count).ramp.stops.len(), count);
-                assert_eq!(deserialized.unwrap(), count);
-            }
+        if let Some(message) = rejection {
+            panic_probe::assert_panics_with(message, || GradientStops::new(stops(count)));
+            panic_probe::assert_panics_with(message, || built(count));
+            panic_probe::assert_panics_with(message, || radial(count));
+        } else {
+            assert!((2..=MAX_STOPS).contains(&count));
+            assert_eq!(GradientStops::new(stops(count)).len(), count);
+            assert_eq!(built(count).ramp.stops.len(), count);
+            assert_eq!(radial(count).ramp.stops.len(), count);
+            assert_eq!(deserialized.unwrap(), count);
         }
     }
 }
@@ -188,7 +187,7 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
 /// they name.
 #[test]
 fn two_stop_gradients_take_their_kind_defaults() {
-    fn check<G: Clone + std::fmt::Debug + PartialEq>(
+    fn check<G: Clone + fmt::Debug + PartialEq>(
         kind: &str,
         two_stop: impl Fn(RgbaF32, RgbaF32) -> Gradient<G>,
         interp: Interp,
@@ -208,7 +207,7 @@ fn two_stop_gradients_take_their_kind_defaults() {
 
         let other = match interp {
             Interp::Linear => Interp::Oklab,
-            _ => Interp::Linear,
+            Interp::Oklab => Interp::Linear,
         };
         let overridden = g.clone().with_spread(Spread::Repeat).with_interp(other);
         assert_eq!(
@@ -276,7 +275,7 @@ fn every_gradient_variant_round_trips_validated_stops() {
     ];
     for brush in brushes {
         let document = BrushDocument { brush };
-        let encoded = ron::ser::to_string(&document).expect("serialize valid gradient");
+        let encoded = ser::to_string(&document).expect("serialize valid gradient");
         let decoded = ron::from_str::<BrushDocument>(&encoded).expect("deserialize valid gradient");
         assert_eq!(decoded, document);
     }
@@ -328,10 +327,10 @@ fn linear_brush_animatable_snaps_on_t_one() {
     assert_eq!(Brush::lerp(a, b.clone(), 1.0), b);
 }
 
-fn assert_spring_normalizes_to_target(mut current: Brush, target: Brush) {
+fn assert_spring_normalizes_to_target(mut current: Brush, target: &Brush) {
     let mut velocity = Brush::Solid(RgbaF32::srgba(0.25, -0.5, 0.75, 1.0));
-    current.normalize_for_spring(&target, &mut velocity);
-    assert_eq!(current, target);
+    current.normalize_for_spring(target, &mut velocity);
+    assert_eq!(current, *target);
     assert_eq!(velocity, Brush::TRANSPARENT);
 }
 
@@ -358,12 +357,12 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
     ];
 
     for gradient in &gradients {
-        assert_spring_normalizes_to_target(solid.clone(), gradient.clone());
-        assert_spring_normalizes_to_target(gradient.clone(), solid.clone());
+        assert_spring_normalizes_to_target(solid.clone(), &gradient.clone());
+        assert_spring_normalizes_to_target(gradient.clone(), &solid.clone());
     }
     for source in &gradients {
         for target in &replacement_gradients {
-            assert_spring_normalizes_to_target(source.clone(), target.clone());
+            assert_spring_normalizes_to_target(source.clone(), &target.clone());
         }
     }
 }

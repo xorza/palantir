@@ -27,14 +27,14 @@ pub enum ContentType {
 }
 
 impl ContentType {
-    pub(crate) fn bytes_per_pixel(self) -> u32 {
+    pub(crate) const fn bytes_per_pixel(self) -> u32 {
         match self {
             Self::Mask => 1,
             Self::Color => 4,
         }
     }
 
-    pub(crate) fn side_name(self) -> &'static str {
+    pub(crate) const fn side_name(self) -> &'static str {
         match self {
             Self::Mask => "mask",
             Self::Color => "color",

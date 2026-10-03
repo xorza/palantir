@@ -6,9 +6,10 @@
 //! [`frame`], draws with the [`pipeline`]s and the [`raster`] tenants over
 //! the [`resource`]s, and lands the result on a [`surface`].
 
-// The one module that names wgpu — see `clippy.toml`, which stops every
-// other module doing the same.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "the one module that names wgpu; `clippy.toml` stops every other module doing the same"
+)]
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 #[cfg(feature = "bench")]

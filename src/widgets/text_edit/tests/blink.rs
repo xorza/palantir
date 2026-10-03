@@ -1,4 +1,3 @@
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::frame_report::FramePaint;
 use crate::widgets::text_edit::tests::*;
 use std::time::Duration;
@@ -13,7 +12,6 @@ use std::time::Duration;
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     use crate::scene::tree::iter::TreeItem;
     use crate::shape::paint::quad_shape::QuadShape;
-    use crate::shape::record::ShapeRecord;
     use crate::shape::rect::RectKind;
 
     let tree = ui.tree(Layer::Main);
@@ -220,9 +218,6 @@ fn caret_motion_alone_resets_blink() {
 /// `entry.anim.next_wake(prev_now) <= now`.
 #[test]
 fn caret_anim_does_not_damage_between_quantum_boundaries() {
-    let mut h = UiHarness::new(NARROW);
-    let mut buf = String::new();
-
     // Single recording site keeps `track_caller` happy — every
     // frame's `Panel::hstack` resolves to the same source location,
     // so the Panel's auto-id is stable and structural damage stays
@@ -235,6 +230,9 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
                 .show(ui);
         });
     }
+
+    let mut h = UiHarness::new(NARROW);
+    let mut buf = String::new();
 
     // Frame 1: warm up so the editor's WidgetId is recorded.
     h.at(Duration::from_secs_f32(0.0))
@@ -281,9 +279,6 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
 /// the "caret doesn't blink unless I move the mouse" bug.
 #[test]
 fn focus_gain_resets_blink_even_without_caret_change() {
-    let mut h = UiHarness::new(NARROW);
-    let mut buf = String::new();
-
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -292,6 +287,10 @@ fn focus_gain_resets_blink_even_without_caret_change() {
                 .show(ui);
         });
     }
+
+    let mut h = UiHarness::new(NARROW);
+    let mut buf = String::new();
+
     // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any
     // stale `last_caret_change=0` would put the blink past its cliff.
     h.at(Duration::from_secs_f32(100.0))

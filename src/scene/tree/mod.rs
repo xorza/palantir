@@ -379,7 +379,7 @@ impl Tree {
             }
             match mode {
                 LayoutMode::Grid(id) => {
-                    grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut lh)
+                    grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut lh);
                 }
                 LayoutMode::Scrollbars(id) => {
                     scrollbar_defs[usize::from(id)].def.hash_visual(&mut lh);
@@ -747,7 +747,6 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::scene::tree::node_id::NodeId;
     use crate::scene::tree::*;
     use crate::shape::record::ShapeRecord;
 

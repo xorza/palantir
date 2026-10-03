@@ -18,6 +18,7 @@ use crate::primitives::paint::color::okhsv::Okhsv;
 /// that re-derived every frame would lose the hue the moment the value
 /// reached zero.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[must_use]
 pub enum ColorCoords {
     /// Coordinates in [`ColorModel::Okhsv`].
     Okhsv(Okhsv),
@@ -101,7 +102,7 @@ impl ColorCoords {
     /// kept: a hue bar dragged to its right edge reads 1 and draws its
     /// marker there, where a wrap to 0 jumped it to the left. A caller
     /// stepping round the circle wraps its own arithmetic.
-    pub fn set_hue(&mut self, h: f32) {
+    pub const fn set_hue(&mut self, h: f32) {
         let h = h.clamp(0.0, 1.0);
         match self {
             Self::Okhsv(c) => c.h = h,
@@ -110,7 +111,7 @@ impl ColorCoords {
     }
 
     /// Set the saturation, clamped to `0..1`.
-    pub fn set_sat(&mut self, s: f32) {
+    pub const fn set_sat(&mut self, s: f32) {
         let s = s.clamp(0.0, 1.0);
         match self {
             Self::Okhsv(c) => c.s = s,
@@ -119,7 +120,7 @@ impl ColorCoords {
     }
 
     /// Set the value, clamped to `0..1`.
-    pub fn set_val(&mut self, v: f32) {
+    pub const fn set_val(&mut self, v: f32) {
         let v = v.clamp(0.0, 1.0);
         match self {
             Self::Okhsv(c) => c.v = v,

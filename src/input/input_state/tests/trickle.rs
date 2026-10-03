@@ -16,6 +16,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
+use std::cell;
 use std::time::Duration;
 
 const TARGET: Vec2 = Vec2::new(50.0, 50.0);
@@ -40,7 +41,7 @@ fn scene(ui: &mut Ui) {
 fn step_until_idle(h: &mut UiHarness) -> Vec<ButtonState> {
     let mut frames = Vec::new();
     loop {
-        let state = std::cell::Cell::new(None);
+        let state = cell::Cell::new(None);
         let report = h.step(|ui| {
             scene(ui);
             if state.get().is_none() {

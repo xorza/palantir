@@ -94,7 +94,7 @@ impl GpuView {
     /// the dirty signal from your own change tracking (camera moved, sim
     /// ticked); target retention is implemented in
     /// `src/gpu/gpu_view_targets/`.
-    pub fn repaint(mut self, repaint: bool) -> Self {
+    pub const fn repaint(mut self, repaint: bool) -> Self {
         self.repaint = repaint;
         self
     }

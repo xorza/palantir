@@ -21,6 +21,7 @@ use crate::widgets::drag_num::DragNum;
 use crate::widgets::drag_num::Num;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
+use std::mem;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
@@ -69,7 +70,7 @@ struct EditEnd {
 impl Scrub {
     /// How far the anchor has moved, in value units.
     fn offset(self) -> f64 {
-        self.travel as f64 * self.speed
+        f64::from(self.travel) * self.speed
     }
 }
 
@@ -131,7 +132,7 @@ impl<'a> DragValue<'a> {
     }
 
     /// Value change per logical pixel of horizontal drag. Default `1.0`.
-    pub fn speed(mut self, speed: f64) -> Self {
+    pub const fn speed(mut self, speed: f64) -> Self {
         self.speed = speed;
         self
     }
@@ -140,7 +141,7 @@ impl<'a> DragValue<'a> {
     ///
     /// A builder step here and a constructor argument on
     /// [`Slider::new`](crate::Slider::new), which says why.
-    pub fn range(mut self, range: RangeInclusive<f64>) -> Self {
+    pub const fn range(mut self, range: RangeInclusive<f64>) -> Self {
         self.min = *range.start();
         self.max = *range.end();
         self
@@ -150,7 +151,7 @@ impl<'a> DragValue<'a> {
     /// the precision a float drag snaps to (so dragging never stores a long
     /// tail — the value matches what's shown). Keyboard entry stays exact.
     /// Ignored by the integer target. Default `2`.
-    pub fn decimals(mut self, n: usize) -> Self {
+    pub const fn decimals(mut self, n: usize) -> Self {
         self.decimals = n;
         self
     }
@@ -158,7 +159,7 @@ impl<'a> DragValue<'a> {
     /// Text appended after the number — a unit (`"px"`, `"%"`), or
     /// whatever a locale table hands over. Borrowed for the frame, so it
     /// need not be `'static`.
-    pub fn suffix(mut self, s: &'a str) -> Self {
+    pub const fn suffix(mut self, s: &'a str) -> Self {
         self.suffix = s;
         self
     }
@@ -167,7 +168,7 @@ impl<'a> DragValue<'a> {
     /// (that doesn't latch a drag) focuses the field and swaps the chip for
     /// an inline `TextEdit`; Enter / click-away commits, Escape reverts.
     /// Default off.
-    pub fn editable(mut self, on: bool) -> Self {
+    pub const fn editable(mut self, on: bool) -> Self {
         self.editable = on;
         self
     }
@@ -182,9 +183,10 @@ impl<'a> DragValue<'a> {
     /// drop a `sense` set before it, keep the click after an
     /// `editable(false)`, and lose to a `sense` set after it.
     fn required_sense(&self) -> Sense {
-        match self.editable {
-            true => Sense::CLICK | Sense::DRAG,
-            false => Sense::DRAG,
+        if self.editable {
+            Sense::CLICK | Sense::DRAG
+        } else {
+            Sense::DRAG
         }
     }
 
@@ -373,8 +375,7 @@ impl<'a> DragValue<'a> {
         // Entry replaces any scrub state atomically, so its later release
         // cannot overwrite the typed result. Existing edit frames move the
         // same String through TextEdit without allocating a new buffer.
-        let (mut buffer, original) = match std::mem::take(ui.state_or_default::<DragValueState>(id))
-        {
+        let (mut buffer, original) = match mem::take(ui.state_or_default::<DragValueState>(id)) {
             DragValueState::Editing { buffer, original } => (buffer, original),
             DragValueState::Idle | DragValueState::Scrubbing(_) => {
                 (self.value.edit_string(), self.value.read())

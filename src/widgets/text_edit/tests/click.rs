@@ -1,7 +1,5 @@
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key_text::KeyText;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::internals::harness::UiHarness;
 use crate::{FocusPolicy, widgets::text_edit::tests::*};
 
 #[test]
@@ -281,6 +279,15 @@ fn click_uses_overridden_padding() {
 
 #[test]
 fn drag_select_continues_past_editor_bounds() {
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id(WidgetId::from_hash("drag-ed"))
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
+                .show(ui);
+        });
+    }
+
     // Regression: while the button is held, dragging the pointer outside
     // the editor's rect must keep extending the selection (caret rides the
     // clamped hit) and must NOT drop the drag anchor. Before the fix the
@@ -290,14 +297,6 @@ fn drag_select_continues_past_editor_bounds() {
     // selection. Now it gates on the capture-based, rect-independent `held`.
     // Mono fallback (8 px/char) for predictable hit math.
     let ed_id = WidgetId::from_hash("drag-ed");
-    fn body(ui: &mut Ui, buf: &mut String) {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            TextEdit::new(buf)
-                .id(WidgetId::from_hash("drag-ed"))
-                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    }
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world"); // 11 bytes
@@ -586,7 +585,7 @@ fn a_tap_places_the_caret() {
     let rect = h.arranged(ed_id);
     let inner_left = h.ui.theme().text_edit.defaults.padding.as_array()[0];
     let mid = rect.size.h * 0.5;
-    h.click_in(ed_id, glam::Vec2::new(inner_left + 14.0, mid));
+    h.click_in(ed_id, Vec2::new(inner_left + 14.0, mid));
     h.frame(editor_at(&mut buf, None));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
 
@@ -596,7 +595,7 @@ fn a_tap_places_the_caret() {
         shift: true,
         ..Modifiers::NONE
     });
-    h.click_in(ed_id, glam::Vec2::new(inner_left + 30.0, mid));
+    h.click_in(ed_id, Vec2::new(inner_left + 30.0, mid));
     h.frame(editor_at(&mut buf, None));
     let edit = &h.state::<TextEditState>(ed_id).edit;
     assert_eq!(

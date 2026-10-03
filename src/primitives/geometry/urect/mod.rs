@@ -4,6 +4,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::num::F32Px;
 use glam::UVec2;
+use std::hash;
 
 /// Axis-aligned rectangle in physical pixels (`u32`). Used for scissors,
 /// glyph clip bounds, viewport extents — anywhere the renderer hands
@@ -30,9 +31,9 @@ pub(crate) struct URect {
     pub size: UVec2,
 }
 
-impl std::hash::Hash for URect {
+impl hash::Hash for URect {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
     }
 }
@@ -80,6 +81,10 @@ impl URect {
     /// that picked one silently would be one no call site had to agree with.
     /// The widening direction has nothing to pick and *is* a `From`.
     #[inline]
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "each bound is held at zero or above before the cast"
+    )]
     pub(crate) fn covering(rect: Rect) -> Self {
         let (min, max) = (rect.min, rect.max());
         if !(min.x.is_finite() && min.y.is_finite() && max.x.is_finite() && max.y.is_finite()) {

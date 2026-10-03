@@ -211,7 +211,7 @@ impl ReleaseKind {
     /// [`PointerEdge::Clicked`](crate::PointerEdge). They walk the
     /// captures differently — see `ButtonPhase` for why — but they must
     /// not disagree about what a click was.
-    pub(super) fn click(self) -> Option<u8> {
+    pub(super) const fn click(self) -> Option<u8> {
         match self {
             Self::Click { count } => Some(count),
             Self::DragStopped | Self::Miss => None,

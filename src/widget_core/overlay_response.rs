@@ -35,7 +35,7 @@ impl<R> OverlayResponse<R> {
     /// side. The single close-signal predicate overlay-trigger widgets
     /// (`ComboBox`, `ContextMenu`) branch on, so the dismiss contract
     /// lives in one place.
-    pub fn closed(&self) -> bool {
+    pub const fn closed(&self) -> bool {
         self.dismissed || self.close_requested
     }
 }

@@ -25,7 +25,7 @@ impl AxisAlignPair {
     /// of truth for the alignment cascade — every layout (stack, grid,
     /// zstack) resolves through this or through [`Self::resolve_axis`], so
     /// they can't drift.
-    pub(super) fn resolve(child: &LayoutCore, parent_child_align: Align) -> Self {
+    pub(super) const fn resolve(child: &LayoutCore, parent_child_align: Align) -> Self {
         Self {
             h: Self::resolve_axis(Axis::X, child, parent_child_align),
             v: Self::resolve_axis(Axis::Y, child, parent_child_align),

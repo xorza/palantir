@@ -39,7 +39,7 @@ use crate::scene::forest::Forest;
 use std::num::NonZeroU32;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
@@ -105,6 +105,7 @@ impl Frontend {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use crate::renderer::frontend::Frontend;
+    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use std::num::NonZeroU32;
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench
@@ -115,7 +116,7 @@ pub(crate) mod internals {
     impl Frontend {
         /// Deviceless frontend for tests and benchmarks.
         pub(crate) fn for_test() -> Self {
-            Self::new(TEST_MAX_TEXTURE_DIM, Default::default())
+            Self::new(TEST_MAX_TEXTURE_DIM, SharedGradientAtlas::default())
         }
     }
 }

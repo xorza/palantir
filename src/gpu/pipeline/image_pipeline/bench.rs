@@ -18,6 +18,11 @@
 //! damage repaints every layer, then waits for the GPU; the keep-or-revert
 //! signal is the median image-batch timestamp printed before each case.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
@@ -35,7 +40,7 @@ use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
 
-const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
+const PHYSICAL: UVec2 = UVec2::new(1024, 1024);
 /// Source texture edge for the filter workloads. Smaller than the paint rect,
 /// so both run the magnification side of the filter choice.
 const TEXEL: u32 = 256;
@@ -242,20 +247,17 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
         }
     }
     let stats = fixture.host.gpu_pass_stats().last_pipeline_stats();
-    let fragments = stats
-        .map(|pipeline| pipeline.fragment_shader_invocations.to_string())
-        .unwrap_or_else(|| "n/a".to_owned());
+    let fragments = stats.map_or_else(
+        || "n/a".to_owned(),
+        |pipeline| pipeline.fragment_shader_invocations.to_string(),
+    );
     let summary = summarize(&mut image_ms);
     eprintln!(
         "[image_pipeline] {} layers={LAYERS} fragments={fragments} \
          image_min_ms={} image_median_ms={} pipeline={stats:?}",
         workload.label(),
-        summary
-            .map(|s| format!("{:.4}", s.min))
-            .unwrap_or_else(|| "n/a".to_owned()),
-        summary
-            .map(|s| format!("{:.4}", s.median))
-            .unwrap_or_else(|| "n/a".to_owned()),
+        summary.map_or_else(|| "n/a".to_owned(), |s| format!("{:.4}", s.min)),
+        summary.map_or_else(|| "n/a".to_owned(), |s| format!("{:.4}", s.median)),
     );
 }
 

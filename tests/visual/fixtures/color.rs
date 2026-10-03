@@ -9,6 +9,11 @@
 //! ramp sits in the dark range, where one display step is smallest in
 //! linear light.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use glam::{UVec2, Vec2};
 use palantir::widget::{IconFit, Mesh, Shape};
 use palantir::{Background, Block, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};

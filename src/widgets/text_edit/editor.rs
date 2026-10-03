@@ -15,6 +15,7 @@ use crate::widgets::text_edit::unicode::{
     sanitize_single_line, word_range_at,
 };
 use std::borrow::Cow;
+use std::ops;
 
 /// One frame's semantic editing session.
 #[derive(Debug)]
@@ -31,7 +32,7 @@ pub(super) struct Editor<'a> {
 }
 
 impl<'a> Editor<'a> {
-    pub(super) fn new(
+    pub(super) const fn new(
         text: &'a mut String,
         state: &'a mut EditState,
         multiline: bool,
@@ -113,15 +114,15 @@ impl<'a> Editor<'a> {
 
     /// This field takes newlines, so a vertical caret move and an
     /// `Enter` insertion both mean something.
-    pub(super) fn multiline(&self) -> bool {
+    pub(super) const fn multiline(&self) -> bool {
         self.multiline
     }
 
-    pub(super) fn edited(&self) -> bool {
+    pub(super) const fn edited(&self) -> bool {
         self.edited
     }
 
-    pub(super) fn caret(&self) -> usize {
+    pub(super) const fn caret(&self) -> usize {
         self.state.caret
     }
 
@@ -129,7 +130,7 @@ impl<'a> Editor<'a> {
         self.state.sel_range().is_some()
     }
 
-    pub(super) fn has_text(&self) -> bool {
+    pub(super) const fn has_text(&self) -> bool {
         !self.text.is_empty()
     }
 
@@ -182,7 +183,7 @@ impl<'a> Editor<'a> {
 
     /// The pointer gesture ended, so the next press starts a fresh
     /// selection instead of growing this one.
-    pub(super) fn end_drag(&mut self) {
+    pub(super) const fn end_drag(&mut self) {
         self.state.drag_anchor = None;
     }
 
@@ -191,7 +192,7 @@ impl<'a> Editor<'a> {
         self.select_range(at, at);
     }
 
-    fn selection_state(&self) -> SelectionState {
+    const fn selection_state(&self) -> SelectionState {
         SelectionState {
             caret: self.state.caret,
             selection: self.state.selection,
@@ -212,11 +213,11 @@ impl<'a> Editor<'a> {
         self.state.reconcile_before_edit(self.text);
     }
 
-    fn mark_local_edit(&mut self) {
+    const fn mark_local_edit(&mut self) {
         self.state.local_edit_pending = true;
     }
 
-    fn replace_range(&mut self, range: std::ops::Range<usize>, replacement: &str, kind: EditKind) {
+    fn replace_range(&mut self, range: ops::Range<usize>, replacement: &str, kind: EditKind) {
         debug_assert!(self.text.is_char_boundary(range.start));
         debug_assert!(self.text.is_char_boundary(range.end));
         debug_assert!(range.start <= range.end);
@@ -451,13 +452,12 @@ impl<'a> Editor<'a> {
     /// Delete back to the start of the caret's line, or the selection —
     /// macOS's Cmd+Backspace.
     pub(super) fn delete_to_line_start(&mut self) {
-        let range = match self.state.sel_range() {
-            Some(range) => range,
-            None => {
-                let caret = self.state.caret;
-                let start = self.text[..caret].rfind('\n').map_or(0, |i| i + 1);
-                start..caret
-            }
+        let range = if let Some(range) = self.state.sel_range() {
+            range
+        } else {
+            let caret = self.state.caret;
+            let start = self.text[..caret].rfind('\n').map_or(0, |i| i + 1);
+            start..caret
         };
         if !range.is_empty() {
             self.replace_range(range, "", EditKind::Delete);
@@ -518,7 +518,7 @@ impl<'a> Editor<'a> {
         self.move_caret(target, extend);
     }
 
-    pub(super) fn collapse_selection(&mut self) -> bool {
+    pub(super) const fn collapse_selection(&mut self) -> bool {
         if self.state.selection.is_none() {
             return false;
         }

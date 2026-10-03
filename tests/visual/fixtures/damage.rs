@@ -33,10 +33,10 @@ fn count_pixels(img: &RgbaImage, predicate: impl Fn(u8, u8, u8) -> bool) -> u32 
 }
 
 // sRGB tolerances cover round-trip + AA fringes.
-fn is_magenta(r: u8, g: u8, b: u8) -> bool {
+const fn is_magenta(r: u8, g: u8, b: u8) -> bool {
     r > 240 && g < 16 && b > 240
 }
-fn is_red(r: u8, g: u8, b: u8) -> bool {
+const fn is_red(r: u8, g: u8, b: u8) -> bool {
     r > 240 && g < 16 && b < 16
 }
 
@@ -328,8 +328,8 @@ fn corner_pair_change_keeps_center_unpainted() {
         for x in 50..150 {
             let Rgba([r1, g1, b1, _]) = *f1.get_pixel(x, y);
             let Rgba([r2, g2, b2, _]) = *f2.get_pixel(x, y);
-            f1_lum += r1 as u64 + g1 as u64 + b1 as u64;
-            f2_lum += r2 as u64 + g2 as u64 + b2 as u64;
+            f1_lum += u64::from(r1) + u64::from(g1) + u64::from(b1);
+            f2_lum += u64::from(r2) + u64::from(g2) + u64::from(b2);
             if is_magenta(r2, g2, b2) {
                 centre_magenta += 1;
             }

@@ -21,11 +21,14 @@ pub(crate) struct WindowSurface {
 }
 
 impl WindowSurface {
-    pub(super) fn new(surface: wgpu::Surface<'static>, config: wgpu::SurfaceConfiguration) -> Self {
+    pub(super) const fn new(
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
         Self { surface, config }
     }
 
-    pub(crate) fn size(&self) -> UVec2 {
+    pub(crate) const fn size(&self) -> UVec2 {
         UVec2::new(self.config.width, self.config.height)
     }
 
@@ -48,7 +51,7 @@ impl WindowSurface {
     }
 
     /// Which of [`Vsync`]'s two states this swapchain paces like.
-    pub(crate) fn vsync(&self) -> Vsync {
+    pub(crate) const fn vsync(&self) -> Vsync {
         vsync_of(self.config.present_mode)
     }
 

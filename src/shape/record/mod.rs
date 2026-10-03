@@ -23,6 +23,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
+use std::hash;
 use std::hash::Hash;
 
 #[repr(u8)]
@@ -239,18 +240,17 @@ pub(crate) fn text_paint_bbox_local(
     owner_size: Size,
     measured: Size,
 ) -> Rect {
-    match local_origin {
-        Some(origin) => Rect {
+    if let Some(origin) = local_origin {
+        Rect {
             min: origin,
             size: measured,
-        },
-        None => {
-            let owner_local = Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            };
-            align.place_in(owner_local.deflated_by(padding), measured)
         }
+    } else {
+        let owner_local = Rect {
+            min: Vec2::ZERO,
+            size: owner_size,
+        };
+        align.place_in(owner_local.deflated_by(padding), measured)
     }
 }
 
@@ -261,7 +261,7 @@ impl ShapeRecord {
     /// the face and metrics, the wrap and the alignment. Its colour and
     /// origin are paint, and stay out, so a recoloured label still hits
     /// the measure cache.
-    pub(crate) fn hash_layout_inputs(&self, h: &mut impl std::hash::Hasher) -> bool {
+    pub(crate) fn hash_layout_inputs(&self, h: &mut impl hash::Hasher) -> bool {
         let ShapeRecord::Text {
             text,
             font,

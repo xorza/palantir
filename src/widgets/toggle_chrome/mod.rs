@@ -66,7 +66,7 @@ impl ToggleChrome {
     /// [`RadioButton`](crate::RadioButton) latches instead —
     /// re-clicking the selected option is a no-op — so it resolves its
     /// own.
-    pub(crate) fn toggled(response: &ResponseState, value: &mut bool) -> bool {
+    pub(crate) const fn toggled(response: &ResponseState, value: &mut bool) -> bool {
         if response.clicked() {
             *value = !*value;
         }
@@ -85,12 +85,12 @@ impl ToggleChrome {
     /// and is handed the box's resolved chrome: `Switch` measures its knob
     /// inset against the *animating* stroke width, which is why the
     /// background is passed in rather than re-derived from the theme.
-    pub(crate) fn record_row<'ui, 'text>(
+    pub(crate) fn record_row<'ui>(
         self,
         ui: &'ui mut Ui,
         mut widget: Widget,
         response: ResponseState,
-        label: TextInput<'text>,
+        label: TextInput<'_>,
         body: impl FnOnce(&mut Ui, &Background),
     ) -> Response<'ui> {
         let id = widget.resolve(ui);

@@ -1,15 +1,20 @@
 //! What one row's texels come out as: interpolation space, stop order, and
 //! edge clamping.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::primitives::math::approx;
 use crate::primitives::paint::brush::gradient::Interp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
+use std::array;
 use std::collections::HashSet;
 
 /// `Interp::Linear`: midpoint of black→white in linear-RGB space
@@ -48,7 +53,7 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
         oklab::from_linear(1.0, 0.0, 0.0),
         oklab::from_linear(0.0, 1.0, 0.0),
     );
-    let [r, g, b] = oklab::to_linear(std::array::from_fn(|i| from[i] + (to[i] - from[i]) * t));
+    let [r, g, b] = oklab::to_linear(array::from_fn(|i| from[i] + (to[i] - from[i]) * t));
     let mid = texel(&out, 127);
     assert_stored(mid, RgbaF32::new(r, g, b, 1.0), "Oklab midpoint");
 }

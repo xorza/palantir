@@ -15,7 +15,7 @@ use crate::widgets::dock::tab_group::TabGroup;
 pub struct NodeIdx(pub(crate) u32);
 
 impl NodeIdx {
-    pub(crate) fn usize(self) -> usize {
+    pub(crate) const fn usize(self) -> usize {
         self.0 as usize
     }
 }

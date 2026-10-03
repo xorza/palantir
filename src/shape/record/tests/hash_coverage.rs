@@ -2,7 +2,6 @@
 //! hash or is listed as deliberately excluded.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
@@ -10,16 +9,12 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::hash::compute_record_hash;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_brush::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::*;
 use crate::shape::rect::RectKind;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
-use crate::text::glyph_font::GlyphFont;
-use glam::Vec2;
 
 /// **The hash-schedule sweep.** For every field of every record,
 /// change it and assert the hash moves — or, for the fields

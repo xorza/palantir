@@ -243,8 +243,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
         covered,
         "ancestor-transform shift moves a direct-shape leaf's pixels; \
          damage must still cover the shape area even though the \
-         clipped paint_rect is invariant. region = {:?}",
-        region,
+         clipped paint_rect is invariant. region = {region:?}",
     );
 }
 
@@ -347,8 +346,7 @@ fn self_transform_shift_damages_direct_shapes() {
     assert!(
         covered,
         "self-transform shift on a panel with direct shapes must \
-         damage both old and new shape positions. region = {:?}",
-        region,
+         damage both old and new shape positions. region = {region:?}",
     );
 }
 

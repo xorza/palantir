@@ -40,7 +40,7 @@ impl EventOutcome {
     /// Repaints, but does not force a second record pass — the common
     /// case, and the one whose reasoning is on [`Self::settles`].
     #[inline]
-    pub(super) fn repaint(repaint: bool) -> Self {
+    pub(super) const fn repaint(repaint: bool) -> Self {
         Self {
             repaint,
             settles: false,
@@ -50,7 +50,7 @@ impl EventOutcome {
     /// Repaints and settles together. Every arm that settles also
     /// repaints, so no arm needs to state the two separately.
     #[inline]
-    pub(super) fn settle(both: bool) -> Self {
+    pub(super) const fn settle(both: bool) -> Self {
         Self {
             repaint: both,
             settles: both,

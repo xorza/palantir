@@ -247,7 +247,7 @@ impl RectGrid {
                 let t = (row + tx) as usize;
                 let n = self.lens[t] as usize;
                 for &i in &self.slots[t][..n] {
-                    if self.hit(i as u32, q) {
+                    if self.hit(u32::from(i), q) {
                         return true;
                     }
                 }

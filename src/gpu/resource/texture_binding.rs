@@ -19,7 +19,7 @@
 /// them. The entry is the largest piece they can actually share, and
 /// sharing it is what keeps a `filterable` or `view_dimension` change
 /// from reaching some groups and not others.
-pub(crate) fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+pub(crate) const fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -35,7 +35,7 @@ pub(crate) fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 /// The filtering sampler that pairs with [`texture_entry`].
 /// Split out for the same reason: it trails a different number of
 /// texture bindings in each layout.
-pub(crate) fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+pub(crate) const fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::FRAGMENT,

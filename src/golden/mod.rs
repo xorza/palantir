@@ -12,6 +12,9 @@ use std::path::{Path, PathBuf};
 
 use crate::golden::row_stats::RowStats;
 use image::RgbaImage;
+use std::env;
+use std::fs;
+use std::io;
 
 /// Per-channel + ratio thresholds for [`Tolerance::diff`]. A pixel
 /// "differs" when any R/G/B/A channel deviates by more than
@@ -129,6 +132,7 @@ const UPDATE: &str = "UPDATE_GOLDEN";
 /// what it actually got, what it expected, and a map of where they differ
 /// to `<root>/output/<name>/`.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct Goldens {
     root: PathBuf,
     tolerance: Tolerance,
@@ -149,7 +153,7 @@ impl Goldens {
     /// The default suits flat, mostly axis-aligned drawing. A scene made of
     /// antialiased curves wants a looser ratio: the edge pixels are where two
     /// runs disagree, and a curve is nearly all edge.
-    pub fn tolerance(mut self, tolerance: Tolerance) -> Self {
+    pub const fn tolerance(mut self, tolerance: Tolerance) -> Self {
         self.tolerance = tolerance;
         self
     }
@@ -177,7 +181,7 @@ impl Goldens {
     /// earlier failure left under `output/<name>/`.
     #[track_caller]
     pub fn assert_matches(&self, name: &str, actual: &RgbaImage) {
-        let forced = std::env::var_os(UPDATE).is_some_and(|value| !value.is_empty());
+        let forced = env::var_os(UPDATE).is_some_and(|value| !value.is_empty());
         self.check(name, actual, forced);
     }
 
@@ -259,7 +263,7 @@ impl Goldens {
         expected: &RgbaImage,
         report: &DiffReport,
     ) -> String {
-        std::fs::create_dir_all(output).expect("create golden output directory");
+        fs::create_dir_all(output).expect("create golden output directory");
         actual.save(output.join("actual.png")).expect("save actual");
         expected
             .save(output.join("expected.png"))
@@ -284,15 +288,15 @@ impl Goldens {
 
     /// Remove a failure's artifacts, so `output/` names only what fails now.
     fn clear_output(output: &Path) {
-        match std::fs::remove_dir_all(output) {
+        match fs::remove_dir_all(output) {
             Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => panic!("clear {}: {error}", output.display()),
         }
     }
 
     fn write(&self, golden: &Path, actual: &RgbaImage) {
-        std::fs::create_dir_all(golden.parent().expect("golden path has a directory"))
+        fs::create_dir_all(golden.parent().expect("golden path has a directory"))
             .expect("create golden directory");
         actual.save(golden).expect("save golden");
     }

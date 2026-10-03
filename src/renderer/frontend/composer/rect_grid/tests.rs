@@ -61,7 +61,7 @@ fn rect_grid_chains_past_the_row_and_the_u16_index() {
     let mut g = RectGrid::default();
     g.start_frame(UVec2::new(64, 64));
     let indexed = URect::new(0, 0, 1, 1);
-    for _ in 0..u16::MAX as usize + 1 {
+    for _ in 0..=(u16::MAX as usize) {
         g.push(indexed);
     }
     let past_u16 = URect::new(10, 10, 1, 1);

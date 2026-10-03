@@ -96,7 +96,7 @@ impl DebugOverlay {
         pass: &mut wgpu::RenderPass<'a>,
         quad_base: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
-        viewport: &ViewportPush,
+        viewport: ViewportPush,
     ) {
         draw_quads(pass, quad_base, gradient_bg, viewport, self.dim.buffer(), 1);
     }
@@ -129,7 +129,7 @@ impl DebugOverlay {
             stroke_width,
             ..Default::default()
         };
-        let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
+        let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = ArrayVec::default();
         match plan.damage {
             Damage::Partial(damage) => {
                 // Outset, not inset: damage rects can be thinner than
@@ -171,7 +171,7 @@ impl DebugOverlay {
         pass: &mut wgpu::RenderPass<'a>,
         quad_base: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
-        viewport: &ViewportPush,
+        viewport: ViewportPush,
         count: u32,
     ) {
         draw_quads(
@@ -195,7 +195,7 @@ fn draw_quads<'a>(
     pass: &mut wgpu::RenderPass<'a>,
     quad_base: &'a wgpu::RenderPipeline,
     gradient_bg: &'a wgpu::BindGroup,
-    viewport: &ViewportPush,
+    viewport: ViewportPush,
     buffer: &'a wgpu::Buffer,
     count: u32,
 ) {

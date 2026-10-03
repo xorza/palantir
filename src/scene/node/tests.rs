@@ -1,11 +1,8 @@
 use crate::input::sense::Sense;
 use crate::internals::panic_probe;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::visibility::Visibility;
 use crate::scene::node::*;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -119,16 +116,16 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
     );
     // A pending grid takes only a grid definition.
     panic_probe::assert_panics_with("ZStack installed on a PendingGrid node", || {
-        Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack)
+        Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack);
     });
     // A pending bar overlay takes only a bar definition.
     panic_probe::assert_panics_with("installed on a PendingScrollbars node", || {
-        Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
+        Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id));
     });
     // A resolved mode is not re-kinded.
     panic_probe::assert_panics_with("installed on a Resolved(Stack(Y)) node", || {
         Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
-            .set_mode(LayoutMode::Grid(grid_id))
+            .set_mode(LayoutMode::Grid(grid_id));
     });
 
     let last_grid = GridDefId::from_index(65_534);

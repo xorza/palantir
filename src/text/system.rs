@@ -42,6 +42,7 @@ use crate::text::root::TextRoot;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::{TextWrap, WrapCommit, WrapFloor};
 use rustc_hash::FxHashMap;
+use std::mem;
 
 /// Both entry points take the run's *unbounded* request and derive every
 /// bounded key they need from it, so handing them a pre-bounded one would
@@ -287,14 +288,13 @@ impl TextSystem {
             }
             WrapCommit::Bound(bound) => bound,
         };
-        let extent = match entry.wrap.filter(|slot| slot.bound == bound) {
-            Some(slot) => slot.extent,
-            None => {
-                let extent = shaper.resolve(request.with_bound(bound));
-                entry.release_bound(shaper);
-                entry.wrap = Some(WrapSlot { bound, extent });
-                extent
-            }
+        let extent = if let Some(slot) = entry.wrap.filter(|slot| slot.bound == bound) {
+            slot.extent
+        } else {
+            let extent = shaper.resolve(request.with_bound(bound));
+            entry.release_bound(shaper);
+            entry.wrap = Some(WrapSlot { bound, extent });
+            extent
         };
         RunMeasure {
             shaped: shaped(shapes_buffers, request.key.with_bound(bound), extent),
@@ -330,7 +330,7 @@ impl TextSystem {
         };
         let entry = entries.entry(slot).or_insert_with(&fresh);
         if entry.key != request.key {
-            std::mem::replace(entry, fresh()).retire(shaper);
+            mem::replace(entry, fresh()).retire(shaper);
         } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
             entry.root = shaper.root(request, WrapFloor::Scan);
         }

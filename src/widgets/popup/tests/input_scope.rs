@@ -194,7 +194,7 @@ fn text_edit_inside_a_popup_receives_typing() {
     let field = WidgetId::from_hash("popup-field");
     let mut buf = String::new();
     let scene = |ui: &mut Ui, buf: &mut String| {
-        Popup::new(Anchor::at_point(glam::Vec2::ZERO))
+        Popup::new(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("host"))
             .show(ui, |ui, _handle| {
                 TextEdit::new(buf).id(field).show(ui);
@@ -228,11 +228,6 @@ fn text_edit_inside_a_popup_receives_typing() {
 /// focused field, and one keypress.
 #[test]
 fn a_field_decides_whether_escape_closes_the_popup_around_it() {
-    use crate::input::keyboard::key::Key;
-    use crate::widgets::text_edit::TextEdit;
-
-    let field = WidgetId::from_hash("filter-field");
-
     /// One popup holding one focused field, returning whether the popup
     /// dismissed this frame. `falls_through` picks the archetype.
     fn open(falls_through: bool) -> (bool, Option<WidgetId>) {
@@ -280,6 +275,11 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         let dismissed = h.frame_value(|ui| scene(ui, &mut buf));
         (dismissed, h.focused_id())
     }
+
+    use crate::input::keyboard::key::Key;
+    use crate::widgets::text_edit::TextEdit;
+
+    let field = WidgetId::from_hash("filter-field");
 
     // Default: the field owns Escape. It blurs, and the popup stays open.
     let (dismissed, focused) = open(false);

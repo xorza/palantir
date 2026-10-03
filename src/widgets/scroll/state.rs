@@ -81,13 +81,13 @@ pub(super) struct BarDomain {
 impl BarDomain {
     /// The range `[0, max_off]`.
     #[inline]
-    pub(super) fn new(max_off: f32) -> Self {
+    pub(super) const fn new(max_off: f32) -> Self {
         Self { max_off }
     }
 
     /// Pull `offset` into the range. The one place either end is named.
     #[inline]
-    pub(super) fn clamp(self, offset: f32) -> f32 {
+    pub(super) const fn clamp(self, offset: f32) -> f32 {
         offset.clamp(0.0, self.max_off)
     }
 }
@@ -113,7 +113,7 @@ impl ThumbTravel {
     /// thumb, not the bar's raw track: the two disagree by the track's
     /// floor, and a drag scaled by the wrong one moves the content at a
     /// rate the thumb does not follow.
-    pub(super) fn of(thumb: BarGeometry) -> Self {
+    pub(super) const fn of(thumb: BarGeometry) -> Self {
         Self {
             factor: approx::share_of(thumb.max_offset, thumb.travel),
             domain: BarDomain::new(thumb.max_offset),
@@ -133,7 +133,7 @@ pub(super) struct TrackPage {
 impl TrackPage {
     /// A click at `click_main` along the track of the bar `thumb`. A page
     /// is one track length, since the track spans the viewport.
-    pub(super) fn at(thumb: BarGeometry, click_main: f32) -> Self {
+    pub(super) const fn at(thumb: BarGeometry, click_main: f32) -> Self {
         Self {
             click_main,
             thumb_offset: thumb.thumb_offset,

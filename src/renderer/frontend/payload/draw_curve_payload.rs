@@ -52,7 +52,7 @@ impl DrawCurvePayload {
     /// stroke colour. A ramp whose stops are all transparent is caught
     /// by `CurveShape`'s no-op test before lowering.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         if paints_nothing(self.width) {
             return true;
         }

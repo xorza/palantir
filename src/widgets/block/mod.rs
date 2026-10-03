@@ -46,7 +46,7 @@ impl Block {
     ///
     /// `Block` is unthemed: there is no slot to fall back to, so an unset
     /// background paints nothing.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

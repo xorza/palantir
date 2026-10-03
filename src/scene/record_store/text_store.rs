@@ -5,6 +5,7 @@ use crate::common::span::Span;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::primitives::text::text_epoch::TextEpoch;
+use std::fmt;
 use std::fmt::Write as _;
 
 /// One window's record-pass text. A single arena cleared at the start of
@@ -59,7 +60,7 @@ impl TextStore {
         InternedStr::new(Span::new(start as u32, text.len() as u32), self.epoch)
     }
 
-    pub(super) fn intern_fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
+    pub(super) fn intern_fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
         let start = self.bytes.len();
         self.bytes.write_fmt(args).unwrap();
         let end = self.bytes.len();

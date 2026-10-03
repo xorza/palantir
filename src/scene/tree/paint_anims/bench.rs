@@ -32,7 +32,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(3));
-    group.throughput(Throughput::Elements(SHAPE_COUNT as u64));
+    group.throughput(Throughput::Elements(u64::from(SHAPE_COUNT)));
     group.bench_function("sequential_last_shape", |b| {
         b.iter(|| {
             let mut cursor = anims.cursor();

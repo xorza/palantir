@@ -55,7 +55,7 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for command in cmds.calls.iter() {
+    for command in &cmds.calls {
         match command {
             PaintCall::PushTransform(child) => {
                 t_stack.push(t);

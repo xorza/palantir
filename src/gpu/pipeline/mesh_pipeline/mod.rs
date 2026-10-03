@@ -84,9 +84,9 @@ impl MeshPipeline {
         }
     }
 
-    pub(super) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<MeshInstance>() as u64,
+            array_stride: size_of::<MeshInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &MESH_INSTANCE_ATTRS,
         }
@@ -217,9 +217,9 @@ const _: () = {
     assert!(MESH_VERTEX_ATTRS[1].offset == offset_of!(MeshVertex, color) as u64);
 };
 
-fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+const fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<MeshVertex>() as u64,
+        array_stride: size_of::<MeshVertex>() as u64,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &MESH_VERTEX_ATTRS,
     }

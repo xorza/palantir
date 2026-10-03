@@ -85,7 +85,7 @@ impl GradientPass<'_> {
 }
 
 impl Encoder {
-    pub(crate) fn new(gradient_atlas: SharedGradientAtlas) -> Self {
+    pub(crate) const fn new(gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
             gradients: GradientResolver {
                 atlas: gradient_atlas,

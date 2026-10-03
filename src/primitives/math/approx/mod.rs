@@ -94,12 +94,12 @@ impl FloatHash for f32 {
 impl FloatHash for Vec2 {
     #[inline]
     fn hash_eq<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(((eq_bits(self.x) as u64) << 32) | eq_bits(self.y) as u64);
+        state.write_u64((u64::from(eq_bits(self.x)) << 32) | u64::from(eq_bits(self.y)));
     }
 
     #[inline]
     fn hash_visual<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(((canon_bits(self.x) as u64) << 32) | canon_bits(self.y) as u64);
+        state.write_u64((u64::from(canon_bits(self.x)) << 32) | u64::from(canon_bits(self.y)));
     }
 }
 
@@ -148,7 +148,7 @@ pub const fn share_of(n: f32, d: f32) -> f32 {
 /// `sqrt`. Use when two points should be treated as coincident
 /// (degenerate stroke endpoints, zero-length segments).
 #[inline]
-pub const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
+pub const fn vec2_approx_eq(a: Vec2, b: Vec2) -> bool {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
     dx * dx + dy * dy <= EPS * EPS

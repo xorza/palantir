@@ -22,7 +22,7 @@ pub(crate) struct AppSetting<T: Copy + PartialEq> {
 
 impl<T: Copy + PartialEq> AppSetting<T> {
     #[inline]
-    pub(crate) fn get(&self) -> T {
+    pub(crate) const fn get(&self) -> T {
         self.value.get()
     }
 
@@ -41,7 +41,7 @@ impl<T: Copy + PartialEq> AppSetting<T> {
     /// one that has other windows to repaint.
     #[cfg(any(test, feature = "winit"))]
     #[inline]
-    pub(crate) fn take_change(&self) -> bool {
+    pub(crate) const fn take_change(&self) -> bool {
         self.changed.replace(false)
     }
 }

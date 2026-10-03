@@ -374,7 +374,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::common::counters::CounterSet;
     #[cfg(test)]
-    use crate::common::span::Span;
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
     use crate::text::key::TextShapeKey;
@@ -469,7 +468,7 @@ pub(crate) mod internals {
             self.cache.map.len()
         }
 
-        pub(crate) fn arena_len(&self) -> usize {
+        pub(crate) const fn arena_len(&self) -> usize {
             self.cache.arena.slots.len()
         }
 

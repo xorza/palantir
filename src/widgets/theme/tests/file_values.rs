@@ -20,6 +20,7 @@ use crate::widgets::theme::Theme;
 use crate::widgets::theme::tests::pretty;
 use glam::UVec2;
 use std::ops::Range;
+use std::panic;
 
 /// What a hand-edited file can put where a number belongs.
 const SUSPECTS: [&str; 5] = ["NaN", "inf", "-inf", "-1.0", "0.0"];
@@ -99,7 +100,7 @@ fn walk(shard: usize) {
                 continue;
             };
             let field = line_of(&base, span.start);
-            let rendered = std::panic::catch_unwind(|| {
+            let rendered = panic::catch_unwind(|| {
                 let mut h = UiHarness::new(UVec2::new(640, 480));
                 h.ui().set_theme(theme);
                 let mut fixture = FrameFixture::default();

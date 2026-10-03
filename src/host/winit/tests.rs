@@ -15,6 +15,7 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
+use winit::error;
 
 const SURFACE: UVec2 = UVec2::new(320, 200);
 
@@ -90,18 +91,17 @@ fn builder_retains_defaults_and_granular_overrides() {
 fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
     assert!(finish_run(None, Ok(())).is_ok());
 
-    let loop_failure =
-        finish_run(None, Err(winit::error::EventLoopError::RecreationAttempt)).unwrap_err();
+    let loop_failure = finish_run(None, Err(error::EventLoopError::RecreationAttempt)).unwrap_err();
     assert!(matches!(
         loop_failure,
         WinitHostError::RunEventLoop {
-            source: winit::error::EventLoopError::RecreationAttempt
+            source: error::EventLoopError::RecreationAttempt
         }
     ));
 
     let host_failure = finish_run(
         Some(GpuRequestError::NoBackend.into()),
-        Err(winit::error::EventLoopError::RecreationAttempt),
+        Err(error::EventLoopError::RecreationAttempt),
     )
     .unwrap_err();
     assert!(matches!(

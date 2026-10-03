@@ -15,6 +15,7 @@ use glam::Vec2;
 
 /// Filled and/or bordered triangle with optional uniform corner rounding.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct TriangleShape {
     pub(crate) a: Vec2,
     pub(crate) b: Vec2,
@@ -25,7 +26,7 @@ pub struct TriangleShape {
 }
 
 impl TriangleShape {
-    pub(super) fn new(a: Vec2, b: Vec2, c: Vec2) -> Self {
+    pub(super) const fn new(a: Vec2, b: Vec2, c: Vec2) -> Self {
         Self {
             a,
             b,

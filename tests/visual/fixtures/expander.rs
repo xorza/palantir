@@ -16,7 +16,6 @@ use crate::harness::Harness;
 /// fixture that later gives its theme an `AnimSpec` would need one.
 #[test]
 fn expander_open_and_closed_matches_golden() {
-    let mut h = Harness::new();
     fn scene(ui: &mut Ui) {
         Panel::vstack()
             .id_salt("well")
@@ -39,6 +38,8 @@ fn expander_open_and_closed_matches_golden() {
                 });
             });
     }
+
+    let mut h = Harness::new();
     let img = h.size(UVec2::new(280, 124)).settled_frame(2, scene).image;
     assert_matches_golden("expander_open_and_closed", &img);
 }

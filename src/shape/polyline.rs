@@ -17,6 +17,7 @@ use glam::Vec2;
 /// Stroked polyline, centred on its points like every path shape's
 /// stroke, in one colour or with it varied per point or per segment.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct PolylineShape<'a> {
     pub(crate) points: &'a [Vec2],
     pub(crate) stroke: Stroke,
@@ -52,7 +53,7 @@ impl<'a> PolylineShape<'a> {
     /// gradient along the line. Each multiplies the stroke colour,
     /// channel by channel — the rule a mesh tint follows. `colors.len()`
     /// must equal the number of points.
-    pub fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
+    pub const fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
         self.colors = PolylineColors::PerPoint(colors);
         self
     }
@@ -61,7 +62,7 @@ impl<'a> PolylineShape<'a> {
     /// two neighbours), multiplying the stroke colour like
     /// [`Self::per_point`]. `colors.len()` must be one less than the
     /// number of points.
-    pub fn per_segment(mut self, colors: &'a [RgbaF32]) -> Self {
+    pub const fn per_segment(mut self, colors: &'a [RgbaF32]) -> Self {
         self.colors = PolylineColors::PerSegment(colors);
         self
     }

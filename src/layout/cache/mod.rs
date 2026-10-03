@@ -22,6 +22,7 @@ use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use glam::{IVec2, Vec2};
+use std::mem;
 
 #[derive(Clone, Copy, Debug)]
 struct ArenaSnapshot {
@@ -69,7 +70,7 @@ pub(super) struct Arranged<'a> {
     pub(super) locals: &'a [Vec2],
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct CaptureTreeInput<'a> {
     pub(super) desired: &'a [Size],
     pub(super) floor: &'a [Size],
@@ -551,7 +552,7 @@ impl MeasureCache {
         if self.current.refresh_snapshots() {
             self.snapshot_rebuilds.bump();
         }
-        std::mem::swap(&mut self.previous, &mut self.current);
+        mem::swap(&mut self.previous, &mut self.current);
     }
 
     /// Force a cold start: both buffers forget everything, so the next

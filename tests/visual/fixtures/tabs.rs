@@ -18,7 +18,6 @@ use crate::harness::Harness;
 /// carrying an inked badge, and a close button on every one.
 #[test]
 fn tab_strip_matches_golden() {
-    let mut h = Harness::new();
     fn scene(ui: &mut Ui) {
         let items: Vec<TabItem> = [("curves", TabBadge::None), ("levels", TabBadge::On)]
             .into_iter()
@@ -37,6 +36,8 @@ fn tab_strip_matches_golden() {
                 TabStrip::new(&items).id_salt("strip").selected(1).show(ui);
             });
     }
+
+    let mut h = Harness::new();
     let img = h.size(UVec2::new(360, 76)).settled_frame(2, scene).image;
     assert_matches_golden("tab_strip", &img);
 }
@@ -45,7 +46,6 @@ fn tab_strip_matches_golden() {
 /// chip's bottom edge is seen dissolving into the page below it.
 #[test]
 fn tabbed_view_matches_golden() {
-    let mut h = Harness::new();
     fn scene(ui: &mut Ui) {
         ui.with_state::<usize, _>(WidgetId::from_hash("visual.page"), |ui, page| {
             *page = 1;
@@ -66,6 +66,8 @@ fn tabbed_view_matches_golden() {
                 });
         });
     }
+
+    let mut h = Harness::new();
     let img = h.size(UVec2::new(360, 140)).settled_frame(2, scene).image;
     assert_matches_golden("tabbed_view", &img);
 }
@@ -74,12 +76,13 @@ fn tabbed_view_matches_golden() {
 /// cap that marks the two panes not holding focus.
 #[test]
 fn dock_split_panes_matches_golden() {
-    let mut h = Harness::new();
     fn scene(ui: &mut Ui) {
         ui.with_state::<DockFixture, _>(WidgetId::from_hash("visual.dock"), |ui, dock| {
             dock.record(ui);
         });
     }
+
+    let mut h = Harness::new();
     let img = h.size(UVec2::new(520, 220)).settled_frame(2, scene).image;
     assert_matches_golden("dock_split_panes", &img);
 }

@@ -1,6 +1,4 @@
 use crate::layout::intrinsic::*;
-use crate::primitives::layout::axis::Axis;
-use crate::scene::tree::node_id::NodeId;
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -14,6 +12,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;
+use std::mem;
 
 /// Driver-triggered intrinsic queries during `run` must populate
 /// the per-node cache. Without this, every `engine.intrinsic` call
@@ -60,6 +59,8 @@ fn intrinsic_cache_populated_after_run() {
 /// — a recompute would overwrite the sentinel with the real value.
 #[test]
 fn intrinsic_query_short_circuits_on_cache_hit() {
+    const SENTINEL: f32 = 1234.5;
+
     let mut h = UiHarness::new(UVec2::new(400, 300));
     let root = h.frame_value(|ui| {
         Panel::hstack()
@@ -84,7 +85,6 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
             .unwrap();
     let slot = LenReq::MinContent.slot(Axis::X);
 
-    const SENTINEL: f32 = 1234.5;
     h.engines.layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
     let v = h.intrinsic(child, Axis::X, LenReq::MinContent);
@@ -146,7 +146,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     // scratch slots, which the cross-frame lookup would otherwise skip.
     h.engines.layout.cache.forget_all();
     let slot = LenReq::MaxContent.slot(Axis::X);
-    for entry in h.engines.layout.scratch.intrinsics.iter_mut() {
+    for entry in &mut h.engines.layout.scratch.intrinsics {
         entry[slot] = f32::NAN;
     }
 
@@ -246,8 +246,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     for expected in expected_modes {
         assert!(
             tree.records.layout().iter().any(|layout| {
-                std::mem::discriminant(&LayoutMode::from(layout.meta))
-                    == std::mem::discriminant(&expected)
+                mem::discriminant(&LayoutMode::from(layout.meta)) == mem::discriminant(&expected)
             }),
             "fixture must exercise {expected:?}",
         );

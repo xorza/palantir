@@ -56,7 +56,7 @@ impl BlockSlot for Paint {
     fn free_link(next: u32) -> Self {
         Self {
             screen: Rect::ZERO,
-            hash: ContentHash(next as u64),
+            hash: ContentHash(u64::from(next)),
         }
     }
 

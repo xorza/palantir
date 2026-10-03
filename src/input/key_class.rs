@@ -164,7 +164,7 @@ impl KeyFilter {
 
     /// Whether this filter takes `class`.
     #[inline]
-    pub fn takes(self, class: KeyClass) -> bool {
+    pub const fn takes(self, class: KeyClass) -> bool {
         self.contains(match class {
             KeyClass::Text => Self::TEXT,
             KeyClass::Edit => Self::EDIT,
@@ -196,7 +196,7 @@ impl KeyFilter {
     /// filter live in spare [`crate::scene::node::node_flags::NodeFlags`]
     /// bits without a separate presence flag.
     #[inline]
-    pub(crate) fn is_scope(self) -> bool {
+    pub(crate) const fn is_scope(self) -> bool {
         !self.is_empty()
     }
 }

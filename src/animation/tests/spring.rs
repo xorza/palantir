@@ -2,8 +2,7 @@
 //! its independence from how frames partition an interval, and how a row
 //! carrying one settles.
 
-use crate::animation::anim_map_typed::AnimMapTyped;
-use crate::animation::anim_spec::{AnimMotion, AnimSpec};
+use crate::animation::anim_spec::AnimMotion;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{
     SLOT, closed_form_settle_step, duration_motion, spring_velocity, wid,

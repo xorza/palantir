@@ -9,6 +9,7 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
+use std::hash;
 
 pub(crate) mod color_ramp;
 pub(crate) mod conic_geometry;
@@ -68,7 +69,7 @@ pub trait GradientGeometry {
     ///
     /// f32 fields go through `approx::canon_bits`, so `-0.0` / `+0.0` and
     /// NaN bit patterns don't fragment command-buffer dedup.
-    fn hash_geometry<H: std::hash::Hasher>(&self, state: &mut H);
+    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H);
 
     /// Whether the geometry holds a NaN.
     fn has_nan(&self) -> bool;
@@ -93,6 +94,7 @@ pub trait GradientGeometry {
 // 16, and `Brush` needs 64 B.
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[must_use]
 pub struct Gradient<G> {
     /// Where the parametric axis runs — see the geometry type.
     #[serde(flatten)]
@@ -151,11 +153,11 @@ impl<G: GradientGeometry> Gradient<G> {
 /// bit encoding, and the stops hash through their own packed form. Used
 /// by command-buffer dedup; the atlas keys its rows on the [`ColorRamp`]
 /// alone, which is kind-agnostic.
-impl<G: GradientGeometry> std::hash::Hash for Gradient<G> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl<G: GradientGeometry> hash::Hash for Gradient<G> {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.geometry.hash_geometry(state);
         state.write_u64(gradient_tag(self.spread, self.ramp.interp));
-        std::hash::Hash::hash(&self.ramp.stops, state);
+        hash::Hash::hash(&self.ramp.stops, state);
     }
 }
 

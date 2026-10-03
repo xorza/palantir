@@ -14,6 +14,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
+use std::fmt;
 
 /// One frame's diagnostic counters, as [`Ui::frame_stats`] snapshots them.
 ///
@@ -40,8 +41,8 @@ pub(crate) struct FrameStats {
 #[derive(Debug)]
 struct GpuSegment(Option<f32>);
 
-impl std::fmt::Display for GpuSegment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for GpuSegment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
             Some(ms) => write!(f, " · gpu {ms:>5.2} ms"),
             None => Ok(()),

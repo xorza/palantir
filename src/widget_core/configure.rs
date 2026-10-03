@@ -48,7 +48,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::id`].
     #[inline]
-    pub fn id(&mut self, id: WidgetId) -> &mut Self {
+    pub const fn id(&mut self, id: WidgetId) -> &mut Self {
         self.widget.ident = Ident::Verbatim(id);
         self
     }
@@ -105,7 +105,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::transform`].
     #[inline]
-    pub fn transform(&mut self, t: TranslateScale) -> &mut Self {
+    pub const fn transform(&mut self, t: TranslateScale) -> &mut Self {
         self.widget.node.transform = t;
         self
     }
@@ -140,28 +140,28 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::justify`].
     #[inline]
-    pub fn justify(&mut self, j: Justify) -> &mut Self {
+    pub const fn justify(&mut self, j: Justify) -> &mut Self {
         self.widget.node.justify = j;
         self
     }
 
     /// Borrowing form of [`Configure::align`].
     #[inline]
-    pub fn align(&mut self, a: Align) -> &mut Self {
+    pub const fn align(&mut self, a: Align) -> &mut Self {
         self.widget.node.align = a;
         self
     }
 
     /// Borrowing form of [`Configure::child_align`].
     #[inline]
-    pub fn child_align(&mut self, a: Align) -> &mut Self {
+    pub const fn child_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.child_align = a;
         self
     }
 
     /// Borrowing form of [`Configure::sense`].
     #[inline]
-    pub fn sense(&mut self, s: Sense) -> &mut Self {
+    pub const fn sense(&mut self, s: Sense) -> &mut Self {
         self.widget.node.flags.set_sense(s);
         self
     }
@@ -176,70 +176,70 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::disabled`].
     #[inline]
-    pub fn disabled(&mut self, d: bool) -> &mut Self {
+    pub const fn disabled(&mut self, d: bool) -> &mut Self {
         self.widget.node.flags.set_disabled(d);
         self
     }
 
     /// Borrowing form of [`Configure::focusable`].
     #[inline]
-    pub fn focusable(&mut self, f: bool) -> &mut Self {
+    pub const fn focusable(&mut self, f: bool) -> &mut Self {
         self.widget.node.flags.set_focusable(f);
         self
     }
 
     /// Borrowing form of [`Configure::input_scope`].
     #[inline]
-    pub fn input_scope(&mut self, takes: KeyFilter) -> &mut Self {
+    pub const fn input_scope(&mut self, takes: KeyFilter) -> &mut Self {
         self.widget.node.flags.set_key_filter(takes);
         self
     }
 
     /// Borrowing form of [`Configure::visibility`].
     #[inline]
-    pub fn visibility(&mut self, v: Visibility) -> &mut Self {
+    pub const fn visibility(&mut self, v: Visibility) -> &mut Self {
         self.widget.node.visibility = v;
         self
     }
 
     /// Borrowing form of [`Configure::hidden`].
     #[inline]
-    pub fn hidden(&mut self) -> &mut Self {
+    pub const fn hidden(&mut self) -> &mut Self {
         self.visibility(Visibility::Hidden);
         self
     }
 
     /// Borrowing form of [`Configure::collapsed`].
     #[inline]
-    pub fn collapsed(&mut self) -> &mut Self {
+    pub const fn collapsed(&mut self) -> &mut Self {
         self.visibility(Visibility::Collapsed);
         self
     }
 
     /// Borrowing form of [`Configure::clip`].
     #[inline]
-    pub fn clip(&mut self, mode: ClipMode) -> &mut Self {
+    pub const fn clip(&mut self, mode: ClipMode) -> &mut Self {
         self.widget.node.clip = Some(mode);
         self
     }
 
     /// Borrowing form of [`Configure::clip_rect`].
     #[inline]
-    pub fn clip_rect(&mut self) -> &mut Self {
+    pub const fn clip_rect(&mut self) -> &mut Self {
         self.clip(ClipMode::Rect);
         self
     }
 
     /// Borrowing form of [`Configure::clip_rounded`].
     #[inline]
-    pub fn clip_rounded(&mut self) -> &mut Self {
+    pub const fn clip_rounded(&mut self) -> &mut Self {
         self.clip(ClipMode::Rounded);
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_id`].
     #[inline]
-    pub fn default_id(&mut self, id: WidgetId) -> &mut Self {
+    pub const fn default_id(&mut self, id: WidgetId) -> &mut Self {
         self.widget.fill_id(id);
         self
     }
@@ -260,7 +260,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_align`].
     #[inline]
-    pub fn default_align(&mut self, a: Align) -> &mut Self {
+    pub const fn default_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.fill_align(a);
         self
     }
@@ -343,6 +343,7 @@ pub trait Configure: Sized {
     /// (so state stays well-formed) but flagged with a magenta runtime
     /// outline because they're caller bugs.
     #[inline]
+    #[must_use]
     fn id_salt(mut self, key: impl Hash) -> Self {
         self.configure().id_salt(key);
         self
@@ -361,6 +362,7 @@ pub trait Configure: Sized {
     /// moves the configuration it was handed under a child of the id
     /// its backdrop took — the reads made before were the root's.
     #[inline]
+    #[must_use]
     fn id(mut self, id: WidgetId) -> Self {
         self.configure().id(id);
         self
@@ -394,6 +396,7 @@ pub trait Configure: Sized {
     /// three id mechanisms a given widget wants.
     #[track_caller]
     #[inline]
+    #[must_use]
     fn auto_id(mut self) -> Self {
         self.configure().auto_id();
         self
@@ -402,6 +405,7 @@ pub trait Configure: Sized {
     /// Both axes at once. Takes a [`Sizing`](crate::Sizing), a bare
     /// number (fixed on both axes), a `(w, h)` pair, or a [`Size`].
     #[inline]
+    #[must_use]
     fn size(mut self, s: impl Into<SizeSpec>) -> Self {
         self.configure().size(s);
         self
@@ -412,6 +416,7 @@ pub trait Configure: Sized {
     /// Panics if the bound is negative, non-finite, or above a maximum
     /// already set on this node.
     #[inline]
+    #[must_use]
     fn min_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().min_size(s);
         self
@@ -422,6 +427,7 @@ pub trait Configure: Sized {
     /// Panics if the bound is negative, NaN, or below a minimum already
     /// set on this node. Positive infinity is the unbounded maximum.
     #[inline]
+    #[must_use]
     fn max_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().max_size(s);
         self
@@ -430,6 +436,7 @@ pub trait Configure: Sized {
     /// Space inside this node, between its edge and its children. Takes a
     /// number, a `(x, y)` pair, or a `(l, t, r, b)` quad.
     #[inline]
+    #[must_use]
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
         self.configure().padding(p);
         self
@@ -438,6 +445,7 @@ pub trait Configure: Sized {
     /// Space outside this node, between its edge and its siblings. Same
     /// argument shapes as [`Self::padding`].
     #[inline]
+    #[must_use]
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
         self.configure().margin(m);
         self
@@ -467,6 +475,7 @@ pub trait Configure: Sized {
     ///
     /// Inert on a leaf that records no shapes of its own.
     #[inline]
+    #[must_use]
     fn transform(mut self, t: TranslateScale) -> Self {
         self.configure().transform(t);
         self
@@ -475,6 +484,7 @@ pub trait Configure: Sized {
     /// Absolute position inside a `Canvas` parent (parent-inner coords).
     /// Ignored by other layout modes.
     #[inline]
+    #[must_use]
     fn position(mut self, p: impl Into<Vec2>) -> Self {
         self.configure().position(p);
         self
@@ -495,6 +505,7 @@ pub trait Configure: Sized {
     /// release builds skip that check, and the grid pass panics on the
     /// track index in layout instead.
     #[inline]
+    #[must_use]
     fn grid_cell(mut self, cell: impl Into<GridCell>) -> Self {
         self.configure().grid_cell(cell);
         self
@@ -504,6 +515,7 @@ pub trait Configure: Sized {
     /// HStack/VStack, the within-line direction of WrapHStack/
     /// WrapVStack, and a Grid's columns.
     #[inline]
+    #[must_use]
     fn gap(mut self, g: f32) -> Self {
         self.configure().gap(g);
         self
@@ -514,6 +526,7 @@ pub trait Configure: Sized {
     /// Inert in every other layout mode. Pair with `.gap(...)` for the
     /// within-line spacing.
     #[inline]
+    #[must_use]
     fn line_gap(mut self, g: f32) -> Self {
         self.configure().line_gap(g);
         self
@@ -524,6 +537,7 @@ pub trait Configure: Sized {
     /// with one on the main axis this distributes only what they leave:
     /// nothing, unless a max size caps them.
     #[inline]
+    #[must_use]
     fn justify(mut self, j: Justify) -> Self {
         self.configure().justify(j);
         self
@@ -532,6 +546,7 @@ pub trait Configure: Sized {
     /// Alignment inside the parent's inner rect. For single-axis use the
     /// [`Align::h`] / [`Align::v`] constructors.
     #[inline]
+    #[must_use]
     fn align(mut self, a: Align) -> Self {
         self.configure().align(a);
         self
@@ -541,6 +556,7 @@ pub trait Configure: Sized {
     /// Mirrors CSS `align-items`. For single-axis defaults use the
     /// [`Align::h`] / [`Align::v`] constructors.
     #[inline]
+    #[must_use]
     fn child_align(mut self, a: Align) -> Self {
         self.configure().child_align(a);
         self
@@ -548,6 +564,7 @@ pub trait Configure: Sized {
 
     /// Replace what this node senses. [`Self::add_sense`] folds instead.
     #[inline]
+    #[must_use]
     fn sense(mut self, s: Sense) -> Self {
         self.configure().sense(s);
         self
@@ -564,6 +581,7 @@ pub trait Configure: Sized {
     /// two were chained in would decide the answer. This makes the order
     /// stop mattering.
     #[inline]
+    #[must_use]
     fn add_sense(mut self, s: Sense) -> Self {
         self.configure().add_sense(s);
         self
@@ -577,6 +595,7 @@ pub trait Configure: Sized {
     /// stacked over a canvas is a hole in neither direction — the canvas
     /// does not receive the click, and the button does not act on it.
     #[inline]
+    #[must_use]
     fn disabled(mut self, d: bool) -> Self {
         self.configure().disabled(d);
         self
@@ -589,6 +608,7 @@ pub trait Configure: Sized {
     /// this flag. Unlike [`Sense`], which a disabled node keeps: it
     /// absorbs the press, and focus has nowhere useful to land.
     #[inline]
+    #[must_use]
     fn focusable(mut self, f: bool) -> Self {
         self.configure().focusable(f);
         self
@@ -616,6 +636,7 @@ pub trait Configure: Sized {
     /// [`KeyFilter::empty`] clears it — an empty filter is how "not a
     /// scope" is stored.
     #[inline]
+    #[must_use]
     fn input_scope(mut self, takes: KeyFilter) -> Self {
         self.configure().input_scope(takes);
         self
@@ -623,6 +644,7 @@ pub trait Configure: Sized {
 
     /// Three-state visibility. See [`Visibility`].
     #[inline]
+    #[must_use]
     fn visibility(mut self, v: Visibility) -> Self {
         self.configure().visibility(v);
         self
@@ -630,6 +652,7 @@ pub trait Configure: Sized {
 
     /// Shorthand for [`Visibility::Hidden`]: keeps the slot, hides paint + input.
     #[inline]
+    #[must_use]
     fn hidden(mut self) -> Self {
         self.configure().hidden();
         self
@@ -637,6 +660,7 @@ pub trait Configure: Sized {
 
     /// Shorthand for [`Visibility::Collapsed`]: skip the node entirely (zero slot).
     #[inline]
+    #[must_use]
     fn collapsed(mut self) -> Self {
         self.configure().collapsed();
         self
@@ -645,6 +669,7 @@ pub trait Configure: Sized {
     /// Generic clip setter. Most callers use the [`Self::clip_rect`]
     /// / [`Self::clip_rounded`] sugars instead.
     #[inline]
+    #[must_use]
     fn clip(mut self, mode: ClipMode) -> Self {
         self.configure().clip(mode);
         self
@@ -652,6 +677,7 @@ pub trait Configure: Sized {
 
     /// Axis-aligned scissor clip on this node's rect.
     #[inline]
+    #[must_use]
     fn clip_rect(mut self) -> Self {
         self.configure().clip_rect();
         self
@@ -662,6 +688,7 @@ pub trait Configure: Sized {
     /// a chrome leaves the radius at zero, equivalent to
     /// [`Self::clip_rect`].
     #[inline]
+    #[must_use]
     fn clip_rounded(mut self) -> Self {
         self.configure().clip_rounded();
         self
@@ -696,6 +723,7 @@ pub trait ThemeDefaults: Configure {
     /// `#[track_caller]` auto id doesn't count, since every widget has
     /// one and counting it would make the fallback unreachable.
     #[inline]
+    #[must_use]
     fn default_id(mut self, id: WidgetId) -> Self {
         self.configure().default_id(id);
         self
@@ -703,6 +731,7 @@ pub trait ThemeDefaults: Configure {
 
     /// The size to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_size(mut self, s: impl Into<SizeSpec>) -> Self {
         self.configure().default_size(s);
         self
@@ -710,6 +739,7 @@ pub trait ThemeDefaults: Configure {
 
     /// Padding to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_padding(mut self, p: impl Into<Spacing>) -> Self {
         self.configure().default_padding(p);
         self
@@ -717,6 +747,7 @@ pub trait ThemeDefaults: Configure {
 
     /// Margin to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_margin(mut self, m: impl Into<Spacing>) -> Self {
         self.configure().default_margin(m);
         self
@@ -725,6 +756,7 @@ pub trait ThemeDefaults: Configure {
     /// Alignment to fall back on, one axis at a time — an axis the
     /// caller aligned keeps what they gave it.
     #[inline]
+    #[must_use]
     fn default_align(mut self, a: Align) -> Self {
         self.configure().default_align(a);
         self
@@ -732,6 +764,7 @@ pub trait ThemeDefaults: Configure {
 
     /// Sibling spacing to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_gap(mut self, g: f32) -> Self {
         self.configure().default_gap(g);
         self
@@ -739,6 +772,7 @@ pub trait ThemeDefaults: Configure {
 
     /// Lower size bound to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_min_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().default_min_size(s);
         self
@@ -746,6 +780,7 @@ pub trait ThemeDefaults: Configure {
 
     /// Upper size bound to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_max_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().default_max_size(s);
         self
@@ -753,6 +788,7 @@ pub trait ThemeDefaults: Configure {
 
     /// Clip mode to fall back on when the caller set none.
     #[inline]
+    #[must_use]
     fn default_clip(mut self, mode: ClipMode) -> Self {
         self.configure().default_clip(mode);
         self

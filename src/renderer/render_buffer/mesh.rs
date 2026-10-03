@@ -1,5 +1,10 @@
 //! Mesh payload spans and per-draw GPU instance data.
 
+#![expect(
+    clippy::expl_impl_clone_on_copy,
+    reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
+)]
+
 use crate::common::span::Span;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::Vec2;

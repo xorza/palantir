@@ -223,7 +223,7 @@ impl Node {
     /// per axis. A widget defaulting one axis must not silently take
     /// the other with it.
     #[inline]
-    pub(crate) fn fill_align(&mut self, value: Align) {
+    pub(crate) const fn fill_align(&mut self, value: Align) {
         let h = match self.align.halign() {
             HAlign::Auto => value.halign(),
             set => set,

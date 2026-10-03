@@ -1,7 +1,5 @@
 //! Which rows the per-frame sweep drops.
 
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::wid;
 use crate::animation::*;
 use crate::primitives::paint::color::RgbaF32;

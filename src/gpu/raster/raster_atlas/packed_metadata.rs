@@ -28,7 +28,7 @@ impl PackedMetadata {
     /// Whether this raster covers no pixels — a whitespace glyph, or one
     /// the rasterizer produced nothing for. Such an entry is cached
     /// (so the miss is paid once) but owns no rectangle.
-    pub(crate) fn is_empty(self) -> bool {
+    pub(crate) const fn is_empty(self) -> bool {
         self.size.x == 0 || self.size.y == 0
     }
 }

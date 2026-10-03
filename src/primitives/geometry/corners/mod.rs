@@ -22,6 +22,7 @@ use glam::Vec2;
 /// `LayoutCore::hash_with_flags` → `SubtreeRollups`.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[must_use]
 pub struct Corners(F16x4);
 
 f16x4_lanes!(Corners, [tl, tr, br, bl]);
@@ -145,7 +146,7 @@ impl Corners {
     /// Packed 8-byte form, the peer of `Spacing::as_u64`. The chrome
     /// hash folds the four radii into one hasher write with it.
     #[inline]
-    pub(crate) fn as_u64(self) -> u64 {
+    pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
     }
 }

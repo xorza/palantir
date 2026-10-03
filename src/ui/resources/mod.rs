@@ -70,31 +70,31 @@ impl UiResources {
         }
     }
 
-    pub(crate) fn text(&self) -> &TextShaper {
+    pub(crate) const fn text(&self) -> &TextShaper {
         &self.text
     }
 
-    pub(crate) fn images(&self) -> &ImageRegistry {
+    pub(crate) const fn images(&self) -> &ImageRegistry {
         &self.images
     }
 
-    pub(crate) fn icons(&self) -> &IconRegistry {
+    pub(crate) const fn icons(&self) -> &IconRegistry {
         &self.icons
     }
 
-    pub(crate) fn gradient_atlas(&self) -> &SharedGradientAtlas {
+    pub(crate) const fn gradient_atlas(&self) -> &SharedGradientAtlas {
         &self.gradient_atlas
     }
 
-    pub(crate) fn texture_limit(&self) -> TextureLimit {
+    pub(crate) const fn texture_limit(&self) -> TextureLimit {
         self.texture_limit
     }
 
-    pub(crate) fn clipboard(&self) -> &Clipboard {
+    pub(crate) const fn clipboard(&self) -> &Clipboard {
         &self.clipboard
     }
 
-    pub(crate) fn diagnostics(&self) -> &Diagnostics {
+    pub(crate) const fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
     }
 
@@ -102,7 +102,7 @@ impl UiResources {
         &self.user_scale
     }
 
-    pub(crate) fn windows(&self) -> &WindowDirectory {
+    pub(crate) const fn windows(&self) -> &WindowDirectory {
         &self.windows
     }
 

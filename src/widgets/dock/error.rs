@@ -2,6 +2,8 @@
 //! that broke one of the invariants its module doc lists.
 
 use crate::widgets::dock::tab_group::TabGroupId;
+use std::error;
+use std::fmt;
 
 /// A structural violation found in a deserialized dock tree.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,8 +59,8 @@ pub enum DockError<T> {
     },
 }
 
-impl<T: std::fmt::Debug> std::fmt::Display for DockError<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: fmt::Debug> fmt::Display for DockError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonCanonical => write!(f, "dock nodes are not in canonical pre-order"),
             Self::NodeOutOfRange { index } => write!(f, "dock node index {index} out of range"),
@@ -80,4 +82,4 @@ impl<T: std::fmt::Debug> std::fmt::Display for DockError<T> {
     }
 }
 
-impl<T: std::fmt::Debug> std::error::Error for DockError<T> {}
+impl<T: fmt::Debug> error::Error for DockError<T> {}

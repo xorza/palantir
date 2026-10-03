@@ -85,11 +85,11 @@ impl WindowSet {
         Some(self.windows.swap_remove(slot.0))
     }
 
-    pub(super) fn len(&self) -> usize {
+    pub(super) const fn len(&self) -> usize {
         self.windows.len()
     }
 
-    pub(super) fn is_empty(&self) -> bool {
+    pub(super) const fn is_empty(&self) -> bool {
         self.windows.is_empty()
     }
 

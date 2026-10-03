@@ -1,7 +1,7 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
+use crate::widgets::text_edit::tests::*;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
-use crate::{scene::tree::node_id::NodeId, widgets::text_edit::tests::*};
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
@@ -515,10 +515,10 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
-    fn caret_height(style: Option<TextEditTheme>) -> f32 {
+    fn caret_height(style: Option<&TextEditTheme>) -> f32 {
         let mut h = UiHarness::new(NARROW);
         let mut buf = String::new();
-        let body = |ui: &mut Ui, buf: &mut String, style: &Option<TextEditTheme>| {
+        let body = |ui: &mut Ui, buf: &mut String, style: Option<&TextEditTheme>| {
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {
@@ -533,10 +533,10 @@ fn line_height_override_changes_caret_rect_height() {
                 .inner
         };
         h.frame(|ui| {
-            body(ui, &mut buf, &style);
+            body(ui, &mut buf, style);
         });
         h.click_at(Vec2::new(20.0, 20.0));
-        let leaf = h.frame_value(|ui| body(ui, &mut buf, &style));
+        let leaf = h.frame_value(|ui| body(ui, &mut buf, style));
         painted_shapes(&h.ui, leaf)
             .find_map(|s| match s {
                 ShapeRecord::Quad(QuadShape::Rect {
@@ -550,7 +550,7 @@ fn line_height_override_changes_caret_rect_height() {
     }
 
     let default = caret_height(None);
-    let doubled = caret_height(Some(TextEditTheme {
+    let doubled = caret_height(Some(&TextEditTheme {
         looks: StatefulLook {
             active: WidgetLook {
                 text: Some(TextStyle::default().with_line_height_mult(2.0)),

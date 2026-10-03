@@ -13,6 +13,7 @@ use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::error::{self, DriverError, SurfaceError};
 use crate::gpu::surface::window_surface::WindowSurface;
 use crate::window::vsync::Vsync;
+use std::fmt;
 
 /// What a surface must offer to be usable at all: somewhere to draw.
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT;
@@ -83,7 +84,7 @@ impl SurfaceManager {
         cfg: HostGpuConfig,
     ) -> Result<SurfaceStartup, SurfaceError>
     where
-        W: wgpu::DisplayAndWindowHandle + std::fmt::Debug + 'static,
+        W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
         // With the window's display handle, which is what lets the GLES
         // backend find the EGL display the window lives on — see
@@ -136,7 +137,7 @@ fn create_surface<W>(
     window: &Arc<W>,
 ) -> Result<wgpu::Surface<'static>, SurfaceError>
 where
-    W: wgpu::DisplayAndWindowHandle + std::fmt::Debug + 'static,
+    W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
 {
     instance
         .create_surface(Arc::clone(window))
@@ -165,7 +166,7 @@ impl SurfaceManager {
         size: UVec2,
     ) -> Result<WindowSurface, SurfaceError>
     where
-        W: wgpu::DisplayAndWindowHandle + std::fmt::Debug + 'static,
+        W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
         let surface = create_surface(&self.instance, window)?;
         self.build_window_surface(surface, size)
@@ -199,7 +200,7 @@ impl SurfaceManager {
 ///
 /// A free function rather than a `From` impl: the target type is foreign, and
 /// this crate does not implement a foreign trait for a foreign type.
-pub(super) fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
+pub(super) const fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
     match vsync {
         Vsync::On => wgpu::PresentMode::AutoVsync,
         Vsync::Off => wgpu::PresentMode::AutoNoVsync,
@@ -215,7 +216,7 @@ pub(super) fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
 /// A free function although `From<wgpu::PresentMode> for Vsync` would compile:
 /// that impl would have to live in [`Vsync`]'s own file, which would put a
 /// graphics-API type in `crate::window`.
-pub(super) fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
+pub(super) const fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
     match mode {
         wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => {
             Vsync::On

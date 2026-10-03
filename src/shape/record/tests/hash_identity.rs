@@ -1,7 +1,6 @@
 //! Shapes that must hash apart, and the spans that must not count.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::approx::EPS;
 use crate::primitives::paint::color::RgbaF32;
@@ -9,12 +8,9 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::hash::compute_record_hash;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_brush::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::*;
 use crate::shape::rect::RectKind;
-use glam::Vec2;
 
 /// Same rectangle payload, different paint kind: switching to a
 /// windowed rect inverts the painted region, so a hash collision

@@ -7,6 +7,7 @@ use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::shadow::Shadow;
 use glam::Vec2;
+use std::hash;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -97,14 +98,14 @@ impl From<Shadow> for LoweredShadow {
                 shadow.blur,
                 shadow.spread,
             ]),
-            inset_flag: shadow.inset as u16,
+            inset_flag: u16::from(shadow.inset),
         }
     }
 }
 
-impl std::hash::Hash for LoweredShadow {
+impl hash::Hash for LoweredShadow {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
     }
 }

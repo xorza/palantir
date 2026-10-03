@@ -125,14 +125,14 @@ impl<'a> Tooltip<'a> {
 
     /// Override the per-tooltip delay. Falls back to
     /// [`crate::widgets::theme::tooltip::TooltipTheme::delay`] when unset.
-    pub fn delay(mut self, delay: Duration) -> Self {
+    pub const fn delay(mut self, delay: Duration) -> Self {
         self.delay = Some(delay);
         self
     }
 
     /// Allow the tooltip to fire on disabled triggers. Off by default —
     /// most disabled tooltips would be UX noise.
-    pub fn when_disabled(mut self, yes: bool) -> Self {
+    pub const fn when_disabled(mut self, yes: bool) -> Self {
         self.when_disabled = yes;
         self
     }
@@ -182,16 +182,15 @@ impl<'a> Tooltip<'a> {
                 .state::<TooltipGlobal>(global_state_id())
                 .and_then(|global| global.last_visible_at)
                 .is_some_and(|t| now.saturating_sub(t) < warmup);
-            let started = match state.hover_started_at {
-                Some(t) => t,
-                None => {
-                    state.hover_started_at = Some(now);
-                    // One wake at the threshold is enough — the queue
-                    // remembers it. If the user moves off before then
-                    // the wake still fires into a no-op frame; cheap.
-                    ui.request_repaint_after(delay);
-                    now
-                }
+            let started = if let Some(t) = state.hover_started_at {
+                t
+            } else {
+                state.hover_started_at = Some(now);
+                // One wake at the threshold is enough — the queue
+                // remembers it. If the user moves off before then
+                // the wake still fires into a no-op frame; cheap.
+                ui.request_repaint_after(delay);
+                now
             };
             let elapsed = now.saturating_sub(started);
             if warmup_active || elapsed >= delay {
@@ -254,7 +253,7 @@ impl Tooltip<'_> {
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().tooltip.panel` when unset. Pass
     /// [`Background::NONE`] to suppress the themed bubble chrome.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

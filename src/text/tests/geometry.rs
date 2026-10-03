@@ -4,6 +4,7 @@ use crate::text::font_scope::internals::INTER;
 use crate::text::font_source::FontSource;
 use crate::text::probe::Caret;
 use crate::text::render::RunPlacement;
+use std::ops;
 
 /// `cursor_xy(...).x`. Mono fallback: each ASCII byte is
 /// `font_size * 0.5` wide. Caret x is independent of `line_height`
@@ -155,7 +156,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
     struct Case {
         label: &'static str,
         text: &'static str,
-        range: std::ops::Range<usize>,
+        range: ops::Range<usize>,
         max_width_px: Option<f32>,
     }
 
@@ -195,7 +196,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
         },
         Case {
             label: "soft_wrap_and_graphemes",
-            text: "á one two three four five",
+            text: "á one two three four five",
             range: 0..27,
             max_width_px: Some(48.0),
         },
@@ -263,9 +264,10 @@ fn selection_rects_match_cosmic_highlight_spans() {
 /// clamps to the text's end.
 #[test]
 fn byte_offsets_map_through_cosmic_lines() {
-    let m = TextShaper::new();
     // (offset, line, index, back)
     type Row = (usize, usize, usize, usize);
+
+    let m = TextShaper::new();
     let rows: &[(&str, &[Row])] = &[
         (
             "ab\ncde\nfg",

@@ -16,6 +16,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
+use std::fmt;
 
 /// One clip chain staged into the mask-quad buffer: the source span it
 /// was read from, and the run it was written to.
@@ -59,28 +60,27 @@ pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks:
     for group in &buffer.groups {
         let chain = group.rounded_clips;
         let mask_span = if group.scissor.is_some() && chain.len != 0 {
-            match plan
+            if let Some(staged) = plan
                 .staged
                 .iter()
                 .find(|staged| buffer.chains_equal(staged.chain, chain))
             {
-                Some(staged) => staged.masks,
-                None => {
-                    let start = masks.len() as u32;
-                    for clip in &buffer.rounded_clips[chain.range()] {
-                        masks.push(Quad {
-                            rect: clip.mask_rect,
-                            corners: clip.corners,
-                            ..Default::default()
-                        });
-                    }
-                    let staged = Span::new(start, chain.len);
-                    plan.staged.push(StagedChain {
-                        chain,
-                        masks: staged,
+                staged.masks
+            } else {
+                let start = masks.len() as u32;
+                for clip in &buffer.rounded_clips[chain.range()] {
+                    masks.push(Quad {
+                        rect: clip.mask_rect,
+                        corners: clip.corners,
+                        ..Default::default()
                     });
-                    staged
                 }
+                let staged = Span::new(start, chain.len);
+                plan.staged.push(StagedChain {
+                    chain,
+                    masks: staged,
+                });
+                staged
             }
         } else {
             Span::default()
@@ -369,8 +369,8 @@ struct PassState<'a> {
 }
 
 // Manual: `emit` is a `&mut dyn FnMut`, which has nothing to format.
-impl std::fmt::Debug for PassState<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for PassState<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PassState")
             .field("use_stencil", &self.use_stencil)
             .field("cur_scissor", &self.cur_scissor)
@@ -500,7 +500,7 @@ fn drain_group_batches(
     cursor: &mut usize,
     group: usize,
     mut step: impl FnMut(usize) -> RenderStep,
-    state: &mut PassState,
+    state: &mut PassState<'_>,
 ) {
     while pending_at(batches, *cursor, group) {
         state.push(step(*cursor));
@@ -525,7 +525,7 @@ fn drain_text_batches(
     target: usize,
     cursor: &mut usize,
     masks: &MaskPlan,
-    state: &mut PassState,
+    state: &mut PassState<'_>,
 ) {
     while *cursor < buffer.text_batches.len() && buffer.text_batches[*cursor].last_group() < target
     {
@@ -559,7 +559,7 @@ fn emit_group_body(
     effective: URect,
     masks: &MaskPlan,
     cursors: &mut ScheduleCursors,
-    state: &mut PassState,
+    state: &mut PassState<'_>,
 ) {
     let quads = buffer.groups[i].quads;
     if quads.len != 0 {

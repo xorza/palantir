@@ -2,6 +2,7 @@
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
+use std::f32::consts;
 
 /// Visuals and motion for [`crate::Spinner`]: the rotating comet arc.
 /// Builder overrides (`.color(...)` / `.diameter(...)` /
@@ -36,7 +37,7 @@ impl SpinnerTheme {
         Self {
             color: p.accent,
             diameter: 24.0,
-            sweep: 1.5 * std::f32::consts::PI,
+            sweep: 1.5 * consts::PI,
             speed: 4.5,
             thickness_ratio: 0.12,
             min_thickness: 1.5,

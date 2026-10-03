@@ -6,10 +6,10 @@
 //! owes, and a caller that differed would be measuring against a floor
 //! nobody else's number shares.
 
-// Reaches Palantir the way an outside consumer does, through the published
-// surface, where naming a wgpu type is the point. `clippy.toml` keeps them out
-// of the library's own modules.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
+)]
 
 use std::time::Duration;
 

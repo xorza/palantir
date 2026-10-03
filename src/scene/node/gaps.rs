@@ -1,6 +1,7 @@
 //! A panel's two inter-child gaps, as layout reads them.
 
 use half::f16;
+use std::fmt;
 
 /// The within-line and between-line spacing of one panel, packed as two
 /// f16 lanes. Every lane is finite and non-negative: an authoring gap
@@ -16,8 +17,8 @@ use half::f16;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Gaps([u16; 2]);
 
-impl std::fmt::Debug for Gaps {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Gaps {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Gaps")
             .field("gap", &self.gap())
             .field("line_gap", &self.line_gap())

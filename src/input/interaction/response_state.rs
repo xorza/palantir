@@ -152,7 +152,7 @@ impl ResponseState {
     /// the frame stops reading as hovered at the same moment, whichever
     /// of the three sources of `disabled` said so.
     #[inline]
-    pub fn hovered(&self) -> bool {
+    pub const fn hovered(&self) -> bool {
         self.pointer_over && !self.disabled
     }
 
@@ -168,7 +168,7 @@ impl ResponseState {
     /// disabled widget's button slices are already empty — see
     /// [`Self::disabled`].
     #[inline]
-    pub fn clicked(&self) -> bool {
+    pub const fn clicked(&self) -> bool {
         self.left.clicked()
     }
 
@@ -201,7 +201,7 @@ impl ResponseState {
     /// the button is a variable (configurable gesture bindings, loops
     /// over every [`PointerButton`]).
     #[inline]
-    pub fn button(&self, button: PointerButton) -> &ButtonState {
+    pub const fn button(&self, button: PointerButton) -> &ButtonState {
         match button {
             PointerButton::Left => &self.left,
             PointerButton::Right => &self.right,
@@ -221,7 +221,7 @@ impl ResponseState {
     /// directions read the same mapping, so the order stops being a
     /// contract anyone has to remember.
     #[inline]
-    pub(crate) fn button_mut(&mut self, button: PointerButton) -> &mut ButtonState {
+    pub(crate) const fn button_mut(&mut self, button: PointerButton) -> &mut ButtonState {
         match button {
             PointerButton::Left => &mut self.left,
             PointerButton::Right => &mut self.right,
@@ -237,7 +237,7 @@ impl ResponseState {
     /// button as — anything else per-button reads its slot directly:
     /// `state.left.drag.delta()`, `state.right.clicked()`.
     #[inline]
-    pub fn pressed(&self) -> bool {
+    pub const fn pressed(&self) -> bool {
         self.left.held() && self.hovered()
     }
 

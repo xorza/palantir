@@ -1,13 +1,10 @@
 //! The bundled widgets: one builder type per widget, each recording a
 //! `Node` and its chrome into the frame.
-//!
-//! `clippy::new_without_default` is allowed module-wide. Every widget
-//! constructor is `#[track_caller]` — the call site is what mints the
-//! widget id — and `#[derive(Default)]` cannot capture one. A hand-written
-//! `Default` could, but it would only be a second name for `new()` on a
-//! builder that is constructed and consumed in one expression. The answer
-//! is the same for every widget, so it is decided once here.
-#![allow(clippy::new_without_default)]
+
+#![expect(
+    clippy::new_without_default,
+    reason = "every widget constructor is `#[track_caller]` to mint the widget id, which a derived `Default` cannot capture, and a hand-written one would only rename `new()`"
+)]
 
 pub(crate) mod arrow;
 pub(crate) mod axis_keys;

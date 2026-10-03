@@ -1,12 +1,14 @@
 use crate::primitives::identity::widget_id::WidgetId;
 use rustc_hash::FxHasher;
+use std::collections;
 use std::hash::Hasher;
+use std::panic;
 
 /// Both calls resolve to the *same* caller location, letting the test
 /// below rebuild the exact hash `auto_stable` must produce.
 #[track_caller]
-fn id_and_loc() -> (WidgetId, &'static std::panic::Location<'static>) {
-    (WidgetId::auto_stable(), std::panic::Location::caller())
+fn id_and_loc() -> (WidgetId, &'static panic::Location<'static>) {
+    (WidgetId::auto_stable(), panic::Location::caller())
 }
 
 #[test]
@@ -73,7 +75,7 @@ fn finalize_avalanches_sequential_ids() {
         ),
     ];
     for (label, ids) in cases {
-        let buckets: std::collections::HashSet<u64> = ids.iter().map(|id| id.0 & MASK).collect();
+        let buckets: collections::HashSet<u64> = ids.iter().map(|id| id.0 & MASK).collect();
         assert!(
             buckets.len() >= FLOOR,
             "{label}: {N} ids landed in {} of {N} low-bit buckets, under \
@@ -104,7 +106,7 @@ fn finalize_is_a_bijection_that_avoids_zero() {
     // recovers another `s` bits).
     fn unxorshift(y: u64, shift: u32) -> u64 {
         let mut x = y;
-        for _ in 0..64 / shift + 1 {
+        for _ in 0..=(64 / shift) {
             x = y ^ (x >> shift);
         }
         x
@@ -117,10 +119,10 @@ fn finalize_is_a_bijection_that_avoids_zero() {
     // Deduplicated first: the three shapes overlap (at `i == 0` all
     // three are zero), and a fixture feeding one input twice would
     // report its own duplicate as a collision.
-    let raws: std::collections::HashSet<u64> = (0..200_000u64)
+    let raws: collections::HashSet<u64> = (0..200_000u64)
         .flat_map(|i| [i, i << 32, i.wrapping_mul(0x9e37_79b9_7f4a_7c15)])
         .collect();
-    let mut images = std::collections::HashSet::with_capacity(raws.len());
+    let mut images = collections::HashSet::with_capacity(raws.len());
     for &raw in &raws {
         let id = WidgetId::finalize(raw);
         assert_ne!(id.0, 0, "finalize must never produce the zero value");

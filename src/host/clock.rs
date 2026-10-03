@@ -10,6 +10,7 @@
 //! choice is an injected dependency rather than a branch inside the
 //! renderer, the same pipeline drives both.
 
+use std::fmt;
 use std::time::{Duration, Instant};
 
 /// Source of the per-frame monotonic timestamp. `now()` is read once per
@@ -19,7 +20,7 @@ use std::time::{Duration, Instant};
 /// `skip` / `deadline` support the on-screen path (occlusion pause, present
 /// scheduling) and default to no-ops so a headless clock only has to
 /// implement `now`.
-pub trait Clock: std::fmt::Debug {
+pub trait Clock: fmt::Debug {
     /// Monotonic time since this clock's origin.
     fn now(&self) -> Duration;
 
@@ -90,7 +91,7 @@ pub struct FixedClock {
 
 impl FixedClock {
     /// A clock parked at `now` until [`Self::advance`] moves it.
-    pub fn new(now: Duration) -> Self {
+    pub const fn new(now: Duration) -> Self {
         Self { now }
     }
 

@@ -26,6 +26,11 @@
 //! Step and scissor counts print once per workload as the secondary
 //! metric; wall time is the decision metric.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::common::span::Span;
 use crate::display::Display;
@@ -82,7 +87,7 @@ impl Workload {
     /// One rect per group. Distinct rects walk down the viewport in
     /// 8px bands (wrapping well inside it); the shared variants hand
     /// every group the same band so consecutive requests match.
-    fn scissor(self, group: usize) -> URect {
+    const fn scissor(self, group: usize) -> URect {
         match self {
             Self::DistinctScissors | Self::QuadsThenImage | Self::TextThenImage => {
                 URect::new(0, (group as u32 * 8) % (VIEWPORT - 8), VIEWPORT, 8)

@@ -36,7 +36,7 @@ impl InputPolicy {
     /// names a cut on one ordered scale rather than selecting between two
     /// separately-tracked booleans.
     #[inline]
-    pub(crate) fn record_threshold(self) -> InputSignal {
+    pub(crate) const fn record_threshold(self) -> InputSignal {
         match self {
             Self::Always => InputSignal::Inert,
             Self::OnDelta => InputSignal::Repaint,

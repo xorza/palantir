@@ -10,15 +10,10 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
-use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::record::ShapeRecord;
 use crate::shape::rect::RectKind;
-use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::tests::*;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 
@@ -106,7 +101,7 @@ fn ed_id() -> WidgetId {
 ///
 /// Taken off the tree rather than off a name the caller passes, so a test that
 /// records its field under some other id needs to say nothing about it.
-fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
+fn block_at(ui: &Ui, field: NodeId) -> Vec2 {
     let tree = ui.tree(Layer::Main);
     let of = |node: NodeId| {
         ui.response_for(tree.records.widget_id()[node.idx()])
@@ -119,8 +114,8 @@ fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
 /// Where the text and the caret start, in the field's own coordinates.
 #[derive(Debug)]
 struct Origins {
-    text: Option<glam::Vec2>,
-    caret: Option<glam::Vec2>,
+    text: Option<Vec2>,
+    caret: Option<Vec2>,
 }
 
 /// [`Origins`] of the field at `node`. The paint
@@ -144,7 +139,7 @@ fn shape_origins(ui: &Ui, node: NodeId) -> Origins {
                 kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
-            }) => caret_origin = Some(glam::Vec2::new(r.min.x, r.min.y) + at),
+            }) => caret_origin = Some(Vec2::new(r.min.x, r.min.y) + at),
             _ => {}
         }
     }
@@ -269,7 +264,7 @@ fn caret_tracks_aligned_text() {
     // the post-click focus state drives a caret render with the
     // resolved align offset.
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    h.click_at(glam::Vec2::new(260.0, 20.0));
+    h.click_at(Vec2::new(260.0, 20.0));
     h.key(Key::End);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
@@ -308,7 +303,7 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
     frame(&mut h, &mut buf, None, None);
-    h.click_at(glam::Vec2::new(50.0, 20.0));
+    h.click_at(Vec2::new(50.0, 20.0));
     frame(&mut h, &mut buf, None, None);
     let node = frame(&mut h, &mut buf, None, None);
     let caret_origin = shape_origins(&h.ui, node).caret;
@@ -344,7 +339,7 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     // buffer's own measure, which would have parked it a whole
     // placeholder further right.
     let stored = h.state::<TextEditState>(ed_id()).view.block_offset;
-    let placed = block_at(&h.ui, node) - glam::Vec2::new(PAD_L, PAD_T);
+    let placed = block_at(&h.ui, node) - Vec2::new(PAD_L, PAD_T);
     assert_eq!(
         stored, placed,
         "stored {stored:?} is not where the block was placed, {placed:?}"
@@ -363,7 +358,7 @@ fn click_compensates_for_right_align() {
     // the click hit-test runs against the right-aligned layout.
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    h.press_at(glam::Vec2::new(254.0, 20.0));
+    h.press_at(Vec2::new(254.0, 20.0));
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.release();
     let id = WidgetId::from_hash("align-ed");
@@ -405,7 +400,7 @@ fn selection_rects_offset_matches_text() {
     let mut buf = String::from("abcd");
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    h.click_at(glam::Vec2::new(260.0, 20.0));
+    h.click_at(Vec2::new(260.0, 20.0));
     h.key(Key::Home);
     h.set_modifiers(Modifiers {
         shift: true,
@@ -481,14 +476,14 @@ fn multiline_default_is_top_left() {
 /// zoom))` drifts text down as the user zooms in.
 #[test]
 fn text_origin_invariant_under_ancestor_transform_zoom() {
-    fn run(scale: f32) -> glam::Vec2 {
+    fn run(scale: f32) -> Vec2 {
         let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("abcd");
         let mut node: Option<NodeId> = None;
         let mut record = |ui: &mut Ui| {
             Panel::canvas()
                 .auto_id()
-                .transform(TranslateScale::new(glam::Vec2::ZERO, scale))
+                .transform(TranslateScale::new(Vec2::ZERO, scale))
                 .show(ui, |ui| {
                     node = Some(
                         TextEdit::new(&mut buf)
@@ -554,7 +549,7 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     let text = Size::new(TEXT_W_4CH, LINE_H);
     // Clear of every edge, so a field that fell back to the surface's own
     // corner is a wrong answer rather than a near miss.
-    let at = glam::Vec2::new(200.0, 40.0);
+    let at = Vec2::new(200.0, 40.0);
     // The theme the field below will be shown with, since it asks for none of
     // its own — so the two cannot be answering about different fields.
     let corner = h.ui.theme().text_edit.corner_centring(text, at);
@@ -588,7 +583,7 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     let origin = shape_origins(&h.ui, node.unwrap())
         .text
         .expect("text shape emitted");
-    let centre = field.min + origin + glam::Vec2::new(text.w, text.h) * 0.5;
+    let centre = field.min + origin + Vec2::new(text.w, text.h) * 0.5;
     assert_eq!(
         centre, at,
         "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}"

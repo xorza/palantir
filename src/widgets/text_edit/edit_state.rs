@@ -5,6 +5,7 @@
 use crate::text::probe::TextProbe;
 use std::collections::VecDeque;
 use std::num::NonZeroU64;
+use std::ops;
 use unicode_segmentation::GraphemeCursor;
 
 /// Semantic state for the host-owned text buffer.
@@ -227,7 +228,7 @@ impl EditState {
         TextProbe::hash_of(text)
     }
 
-    pub(super) fn sel_range(&self) -> Option<std::ops::Range<usize>> {
+    pub(super) fn sel_range(&self) -> Option<ops::Range<usize>> {
         let a = self.selection?;
         Some(a.min(self.caret)..a.max(self.caret))
     }

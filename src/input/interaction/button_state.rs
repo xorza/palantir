@@ -47,7 +47,7 @@ impl ButtonState {
     /// The press is latched on the widget (`Down` or `Held`) —
     /// rect-independent, no travel threshold.
     #[inline]
-    pub fn held(self) -> bool {
+    pub const fn held(self) -> bool {
         matches!(self.phase, ButtonPhase::Down { .. } | ButtonPhase::Held)
     }
 
@@ -56,7 +56,7 @@ impl ButtonState {
     /// dispatch read [`Self::click_count`] (`== 2` is the
     /// double-click).
     #[inline]
-    pub fn clicked(self) -> bool {
+    pub const fn clicked(self) -> bool {
         matches!(self.phase, ButtonPhase::Up { click: Some(_) })
     }
 
@@ -64,14 +64,14 @@ impl ButtonState {
     /// as the release of a latched drag. The frame a value-writing widget
     /// reports `committed` on — a gesture is one edit however it ended.
     #[inline]
-    pub fn released(self) -> bool {
+    pub const fn released(self) -> bool {
         matches!(self.phase, ButtonPhase::Up { .. })
     }
 
     /// This frame's press-run position: `0` off the press edge,
     /// 1/2/3+ on it (`press_count() > 0` is the press-rising edge).
     #[inline]
-    pub fn press_count(self) -> u8 {
+    pub const fn press_count(self) -> u8 {
         match self.phase {
             ButtonPhase::Down { count } => count,
             _ => 0,

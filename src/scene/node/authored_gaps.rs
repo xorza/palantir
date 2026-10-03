@@ -3,6 +3,7 @@
 use crate::primitives::layout::limits::valid_packed_gap;
 use crate::scene::node::gaps::Gaps;
 use half::f16;
+use std::fmt;
 
 /// The authoring half of [`Gaps`]: each lane is either a caller's value
 /// or still untouched, so a widget can lay a themed default under user
@@ -16,8 +17,8 @@ use half::f16;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AuthoredGaps([u16; 2]);
 
-impl std::fmt::Debug for AuthoredGaps {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AuthoredGaps {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AuthoredGaps")
             .field("gap", &self.gap())
             .field("line_gap", &self.line_gap())

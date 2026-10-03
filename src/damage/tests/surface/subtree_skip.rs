@@ -121,7 +121,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
 #[test]
 fn popup_eater_does_not_force_full_repaint() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    let anchor = glam::Vec2::new(40.0, 40.0);
+    let anchor = Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut h, |ui| {
         Popup::new(Anchor::at_point(anchor))

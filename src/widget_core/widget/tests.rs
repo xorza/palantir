@@ -281,13 +281,14 @@ fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
 
 #[test]
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
+    type Case = (&'static str, fn() -> Widget);
+
     let valid = Widget::hstack()
         .gap(MAX_PACKED_GAP)
         .line_gap(MAX_PACKED_GAP);
     assert_eq!(valid.authored_gap(), Some(MAX_PACKED_GAP));
     assert_eq!(valid.authored_line_gap(), Some(MAX_PACKED_GAP));
 
-    type Case = (&'static str, fn() -> Widget);
     let cases: &[Case] = &[
         ("negative gap", || Widget::hstack().gap(-1.0)),
         ("NaN gap", || Widget::hstack().gap(f32::NAN)),

@@ -134,6 +134,13 @@ fn offset_and_colour_stay_independent() {
 /// arrives through.
 #[test]
 fn written_order_does_not_reach_identity() {
+    // The deserializer is the other door onto the same invariant, and it
+    // kept the wire order until it started routing through the sort too.
+    #[derive(Debug, serde::Deserialize)]
+    struct Document {
+        stops: GradientStops,
+    }
+
     // Colours the wire form can also name, since the parsed half below
     // has to land on this exact ramp: a stop serializes as the sRGB hex
     // every other theme colour uses.
@@ -155,12 +162,6 @@ fn written_order_does_not_reach_identity() {
     let offsets: Vec<u8> = shuffled.iter().map(|s| s.offset_u8).collect();
     assert_eq!(offsets, vec![0, 128, 255]);
 
-    // The deserializer is the other door onto the same invariant, and it
-    // kept the wire order until it started routing through the sort too.
-    #[derive(Debug, serde::Deserialize)]
-    struct Document {
-        stops: GradientStops,
-    }
     let parsed = ron::from_str::<Document>(
         "(stops: [\
            (offset: 1.0, color: \"#0000ff\"),\

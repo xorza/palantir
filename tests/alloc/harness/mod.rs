@@ -19,6 +19,12 @@
 //! one fixture's window with another's allocations — no global lock
 //! needed.
 
+#![expect(
+    clippy::print_stderr,
+    clippy::print_stdout,
+    reason = "the allocation suite reports each failing allocation and its backtrace to the terminal"
+)]
+
 mod format;
 mod offscreen;
 
@@ -95,7 +101,7 @@ pub(crate) struct Report {
 }
 
 impl Audit {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Audit {
             text: false,
             warmup: Warmup::Probe,
@@ -113,7 +119,7 @@ impl Audit {
     /// quiet frames come long before the widest bucket of the first
     /// revolution is due; a cost the ring pays once a revolution would
     /// fall outside any shorter window.
-    pub(crate) fn text(mut self) -> Self {
+    pub(crate) const fn text(mut self) -> Self {
         let ring = SHAPED_BUFFER_RING_FRAMES as usize;
         self.text = true;
         self.warmup = Warmup::Fixed(ring);
@@ -123,12 +129,12 @@ impl Audit {
 
     /// A fixed warmup in place of the probe — see [`Warmup::Probe`] for
     /// the scene shape that needs one.
-    pub(crate) fn warmup(mut self, frames: usize) -> Self {
+    pub(crate) const fn warmup(mut self, frames: usize) -> Self {
         self.warmup = Warmup::Fixed(frames);
         self
     }
 
-    pub(crate) fn frames(mut self, frames: usize) -> Self {
+    pub(crate) const fn frames(mut self, frames: usize) -> Self {
         self.frames = frames;
         self
     }
@@ -136,7 +142,7 @@ impl Audit {
     /// What one measured frame may allocate. Zero unless said otherwise;
     /// a non-zero budget pins flatness rather than absence, so it is a
     /// ceiling a cost that grew with the frame count would blow through.
-    pub(crate) fn budget(mut self, allocs: u64) -> Self {
+    pub(crate) const fn budget(mut self, allocs: u64) -> Self {
         self.budget = allocs;
         self
     }
@@ -297,7 +303,7 @@ impl Audit {
         );
         let traced = result.traces.len() as u64;
         for (i, bt) in result.traces.iter_mut().enumerate() {
-            eprintln!("--- alloc #{i} backtrace ---\n{}", format::user_frames(bt));
+            eprintln!("--- alloc #{i} backtrace ---\n{}", user_frames(bt));
         }
         if result.allocs > traced {
             eprintln!(

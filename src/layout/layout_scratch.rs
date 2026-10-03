@@ -14,6 +14,7 @@ use crate::layout::pass::ReplayOrigin;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use glam::Vec2;
+use std::ops;
 
 /// `LayoutScratch::arrange_src` entry for a node whose subtree measure did
 /// not restore from the cache — arrange must run the drivers for it.
@@ -206,7 +207,7 @@ impl LayoutScratch {
     pub(super) fn restore_after_cache_hit(
         &mut self,
         tree: &Tree,
-        subtree: std::ops::Range<usize>,
+        subtree: ops::Range<usize>,
         cached: &CachedSubtree<'_>,
         layer: &mut LayerLayout,
     ) {

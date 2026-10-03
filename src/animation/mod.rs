@@ -60,7 +60,7 @@ impl AnimMap {
         dt: f32,
         frame: u64,
     ) -> TickResult<T> {
-        if self.is_empty() && spec.is_none_or(|s| s.is_instant()) {
+        if self.is_empty() && spec.is_none_or(AnimSpec::is_instant) {
             return TickResult {
                 current: target,
                 settled: true,

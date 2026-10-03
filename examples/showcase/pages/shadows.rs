@@ -72,7 +72,7 @@ fn card_fill(ui: &mut Ui) {
 /// route and the chrome route have to paint the *same* shadow or the
 /// comparison the page makes says nothing, so neither route spells the
 /// parameters itself.
-fn soft_shadow() -> Shadow {
+const fn soft_shadow() -> Shadow {
     Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.20),
         Vec2::new(0.0, 4.0),
@@ -80,7 +80,7 @@ fn soft_shadow() -> Shadow {
     )
 }
 
-fn elevated_shadow() -> Shadow {
+const fn elevated_shadow() -> Shadow {
     Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.28),
         Vec2::new(0.0, 12.0),
@@ -88,7 +88,7 @@ fn elevated_shadow() -> Shadow {
     )
 }
 
-fn inset_shadow() -> Shadow {
+const fn inset_shadow() -> Shadow {
     Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.45),
         Vec2::new(0.0, 3.0),

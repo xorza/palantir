@@ -136,7 +136,7 @@ macro_rules! gated_cell {
 
             #[cfg($gate)]
             #[inline]
-            pub(crate) fn get(&self) -> &T {
+            pub(crate) const fn get(&self) -> &T {
                 &self.value
             }
         }
@@ -151,7 +151,7 @@ macro_rules! gated_cell {
 
             #[cfg($gate)]
             #[inline]
-            pub(crate) fn count(&self) -> u32 {
+            pub(crate) const fn count(&self) -> u32 {
                 *self.get()
             }
         }
@@ -203,6 +203,13 @@ impl<T> TestOnly<Vec<T>> {
 /// a `Cell` so the query need not take `&mut self` for a test's sake.
 impl TestOnly<Cell<u32>> {
     #[inline]
+    #[cfg_attr(
+        not(test),
+        expect(
+            clippy::missing_const_for_fn,
+            reason = "the test build's body calls `Cell::set`, which is not const"
+        )
+    )]
     pub(crate) fn bump_shared(&self) {
         #[cfg(test)]
         self.value.set(self.value.get().saturating_add(1));
@@ -210,7 +217,7 @@ impl TestOnly<Cell<u32>> {
 
     #[cfg(test)]
     #[inline]
-    pub(crate) fn count(&self) -> u32 {
+    pub(crate) const fn count(&self) -> u32 {
         self.value.get()
     }
 }

@@ -174,7 +174,7 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Fill colour for the buffer, overriding the resolved look's.
-    pub fn color(mut self, color: RgbaF32) -> Self {
+    pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(color);
         self
     }
@@ -183,41 +183,41 @@ impl<'a> TextEdit<'a> {
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
-    pub fn font_size(mut self, px: f32) -> Self {
+    pub const fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(px);
         self
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
     /// look's `line_height_mult`. Sets the caret's height with it.
-    pub fn line_height(mut self, mult: f32) -> Self {
+    pub const fn line_height(mut self, mult: f32) -> Self {
         self.overrides.line_height_mult = Some(mult);
         self
     }
 
     /// Family to shape against, overriding the resolved look's — a code
     /// editor asks for [`FontFamily::MONO`] here.
-    pub fn family(mut self, family: FontFamily) -> Self {
+    pub const fn family(mut self, family: FontFamily) -> Self {
         self.overrides.family = Some(family);
         self
     }
 
     /// Weight to shape against, overriding the resolved look's.
     /// [`Self::bold`] is this with [`FontWeight::BOLD`].
-    pub fn weight(mut self, weight: FontWeight) -> Self {
+    pub const fn weight(mut self, weight: FontWeight) -> Self {
         self.overrides.weight = Some(weight);
         self
     }
 
     /// Upright or italic, overriding the resolved look's.
     /// [`Self::italic`] is this with [`FontSlant::Italic`].
-    pub fn slant(mut self, slant: FontSlant) -> Self {
+    pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.overrides.slant = Some(slant);
         self
     }
 
     /// Shape the buffer bold — [`Self::weight`] with [`FontWeight::BOLD`].
-    pub fn bold(mut self) -> Self {
+    pub const fn bold(mut self) -> Self {
         self.overrides.weight = Some(FontWeight::BOLD);
         self
     }
@@ -225,7 +225,7 @@ impl<'a> TextEdit<'a> {
     /// Shape the buffer italic — [`Self::slant`] with
     /// [`FontSlant::Italic`]. The weight axis is untouched, so
     /// `.bold().italic()` is bold italic.
-    pub fn italic(mut self) -> Self {
+    pub const fn italic(mut self) -> Self {
         self.overrides.slant = Some(FontSlant::Italic);
         self
     }
@@ -234,7 +234,7 @@ impl<'a> TextEdit<'a> {
     /// same-frame pointer press — so a value handed to it (via `set_focus`)
     /// is replaced by the first keystroke. Clicking into the field still
     /// places the caret at the hit. Default off.
-    pub fn select_all_on_focus(mut self) -> Self {
+    pub const fn select_all_on_focus(mut self) -> Self {
         self.select_all_on_focus = true;
         self
     }
@@ -251,7 +251,7 @@ impl<'a> TextEdit<'a> {
     /// Off by default, because the other archetype is the common one: an
     /// inline rename or a value editor, where Escape *is* the cancel and
     /// must not reach past the field to close the surface behind it.
-    pub fn escape_falls_through(mut self) -> Self {
+    pub const fn escape_falls_through(mut self) -> Self {
         self.escape_falls_through = true;
         self
     }
@@ -259,7 +259,7 @@ impl<'a> TextEdit<'a> {
     /// Cap the buffer at `n` characters. Insertions are truncated to
     /// what fits; content already longer than `n` is left alone (the
     /// cap only gates growth). `n == 0` rejects every insertion.
-    pub fn max_chars(mut self, n: usize) -> Self {
+    pub const fn max_chars(mut self, n: usize) -> Self {
         self.max_chars = Some(n);
         self
     }
@@ -271,7 +271,7 @@ impl<'a> TextEdit<'a> {
     /// keep working when the text exceeds the inner rect. Distinct
     /// from [`Configure::align`], which positions the *widget* inside
     /// its parent's stack slot.
-    pub fn text_align(mut self, a: Align) -> Self {
+    pub const fn text_align(mut self, a: Align) -> Self {
         self.text_align = Some(a);
         self
     }
@@ -280,7 +280,7 @@ impl<'a> TextEdit<'a> {
     /// blurring), paste / IME-text preserve newlines, text soft-wraps
     /// to the editor's inner width, and click/caret/selection all
     /// route through cosmic-text's 2D layout.
-    pub fn multiline(mut self, on: bool) -> Self {
+    pub const fn multiline(mut self, on: bool) -> Self {
         self.multiline = on;
         self
     }
@@ -289,7 +289,7 @@ impl<'a> TextEdit<'a> {
     ///
     /// Borrowed for the frame, so it need not be `'static` — a prompt from
     /// a locale table goes straight in.
-    pub fn placeholder(mut self, s: &'a str) -> Self {
+    pub const fn placeholder(mut self, s: &'a str) -> Self {
         self.placeholder = s;
         self
     }
@@ -593,7 +593,7 @@ struct EditSignals {
 impl EditSignals {
     /// A pass that left the buffer alone, so the focus roll is all it
     /// has to report.
-    fn focus_only(focus: FocusEdges, state: ResponseState) -> Self {
+    const fn focus_only(focus: FocusEdges, state: ResponseState) -> Self {
         Self {
             changed: false,
             submitted: false,

@@ -24,6 +24,8 @@ use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::TabBadge;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
+use ron::ser;
+use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 enum Tab {
@@ -605,7 +607,7 @@ fn serde_roundtrips_through_ron() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Bottom);
-    let text = ron::ser::to_string(&d).expect("serialize");
+    let text = ser::to_string(&d).expect("serialize");
     let back: DockState<Tab> = ron::from_str(&text).expect("deserialize");
     assert_eq!(back, d);
 }
@@ -615,6 +617,8 @@ fn serde_roundtrips_through_ron() {
 /// later op.
 #[test]
 fn loading_rejects_each_corruption() {
+    type Corrupt = fn(&mut DockState<Tab>);
+
     // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, corrupted
     // one invariant at a time through the gated raw access — no public
     // op can produce these states — then saved and read back.
@@ -626,7 +630,6 @@ fn loading_rejects_each_corruption() {
         d
     };
 
-    type Corrupt = fn(&mut DockState<Tab>);
     let cases: [(&str, Corrupt, &str); 11] = [
         (
             "duplicate group id",
@@ -686,7 +689,7 @@ fn loading_rejects_each_corruption() {
                 let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
                     panic!("the root is a split");
                 };
-                std::mem::swap(&mut s.first, &mut s.second);
+                mem::swap(&mut s.first, &mut s.second);
             },
             "canonical pre-order",
         ),
@@ -743,7 +746,7 @@ fn loading_rejects_each_corruption() {
 
 /// Save `d` and read it back, expecting the read to fail.
 fn load_err(d: &DockState<Tab>) -> String {
-    let text = ron::ser::to_string(d).expect("a corrupt tree still serializes");
+    let text = ser::to_string(d).expect("a corrupt tree still serializes");
     ron::from_str::<DockState<Tab>>(&text)
         .expect_err("a corrupt layout must not load")
         .to_string()
@@ -991,12 +994,6 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
 /// menu would close on a choice that changed nothing.
 #[test]
 fn a_pick_from_the_overflow_menu_activates_its_tab() {
-    let mut d = seeded();
-    d.apply(DockOp::ActivateTab { tab: Tab::Main });
-    let mut tabs = Labels;
-    // Narrow enough that three chips cannot all be shown, which is what
-    // puts the chevron on the strip.
-    let mut h = UiHarness::new(UVec2::new(120, 200));
     fn frame(h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut ops = Vec::new();
@@ -1012,6 +1009,13 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
             }
         });
     }
+
+    let mut d = seeded();
+    d.apply(DockOp::ActivateTab { tab: Tab::Main });
+    let mut tabs = Labels;
+    // Narrow enough that three chips cannot all be shown, which is what
+    // puts the chevron on the strip.
+    let mut h = UiHarness::new(UVec2::new(120, 200));
     for _ in 0..3 {
         frame(&mut h, &mut d, &mut tabs);
     }
@@ -1057,7 +1061,7 @@ fn a_layout_deeper_than_the_default_cap_loads() {
             .expect("the split pane holds the tab")
             .group;
     }
-    let text = ron::ser::to_string(&d).expect("serialize");
+    let text = ser::to_string(&d).expect("serialize");
     let loaded: DockState<Tab> = ron::from_str(&text).expect("a depth-5 layout loads");
     assert_eq!(loaded.groups().count(), 6);
     assert!(

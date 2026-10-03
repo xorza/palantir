@@ -113,14 +113,14 @@ impl ViewportPush {
         }
     }
 
-    pub(super) fn encode(&self) -> [u8; Self::BYTES] {
-        bytemuck::cast(*self)
+    pub(super) fn encode(self) -> [u8; Self::BYTES] {
+        bytemuck::cast(self)
     }
 
     /// Push this viewport into the active pipeline's immediate region.
     /// Caller must ensure a pipeline is already bound — wgpu's
     /// `set_immediates` validation rejects an unbound pipeline.
-    pub(crate) fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(crate) fn push_into(self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_immediates(Self::OFFSET, &self.encode());
     }
 }

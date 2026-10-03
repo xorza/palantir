@@ -57,7 +57,7 @@ impl<'a> Separator<'a> {
     /// wrapper that forwards the `Configure` calls that landed on it —
     /// identity included, which is why this takes the node rather than
     /// building one at *this* call site. [`crate::MenuSeparator`] is one.
-    pub fn from_widget(widget: Widget, axis: Axis) -> Self {
+    pub const fn from_widget(widget: Widget, axis: Axis) -> Self {
         Self {
             widget,
             axis,
@@ -80,14 +80,14 @@ impl<'a> Separator<'a> {
 
     /// Line thickness in logical px, defaulting to
     /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn thickness(mut self, px: f32) -> Self {
+    pub const fn thickness(mut self, px: f32) -> Self {
         self.thickness = Some(px);
         self
     }
 
     /// Line color, defaulting to [`crate::Theme::separator`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn color(mut self, c: RgbaF32) -> Self {
+    pub const fn color(mut self, c: RgbaF32) -> Self {
         self.color = Some(c);
         self
     }

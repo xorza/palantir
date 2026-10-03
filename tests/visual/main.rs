@@ -12,13 +12,20 @@
 //! and `fixtures/` holds the actual UI scenes grouped by topic. Add new
 //! fixtures there.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 mod fixtures;
 mod goldens;
 mod harness;
 /// The showcase's support module, compiled into this suite so a golden can
 /// render a showcase page itself rather than a copy that drifts from it.
-/// Whole, so only the part those pages call is used here.
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "the module is compiled whole, and only the part those pages call is used here"
+)]
 #[path = "../../examples/showcase/support.rs"]
 mod support;
 

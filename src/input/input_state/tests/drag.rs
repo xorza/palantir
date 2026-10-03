@@ -465,7 +465,7 @@ impl Card {
 
     // Runs on every pass, as an app's handler does: pass B sees the
     // edges drained, so it re-anchors nothing and clicks nothing.
-    fn fold(&mut self, r: &Response) {
+    fn fold(&mut self, r: &Response<'_>) {
         if r.left.drag.started() {
             self.anchor = self.pos;
         }

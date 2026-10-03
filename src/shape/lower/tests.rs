@@ -18,6 +18,7 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use std::collections::HashSet;
+use std::panic;
 
 fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
     match brush(store, value) {
@@ -138,7 +139,7 @@ fn background_lowering_keeps_an_authored_field() {
 fn a_nan_background_field_never_reaches_the_row() {
     let mut store = RecordStore::default();
     for (label, authored) in nan_backgrounds() {
-        let Ok(row) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
             background(&mut store, &authored)
         })) else {
             // The gate asserted, which is the loudest form of "did
@@ -157,7 +158,7 @@ fn a_nan_background_field_never_reaches_the_row() {
     // A radius falls back to *no rounding* specifically, not merely
     // to something finite: that is what leaves a `ClipMode::Rounded`
     // stencil readable rather than clipping to a shape nobody chose.
-    if let Ok(row) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    if let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         background(
             &mut store,
             &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),

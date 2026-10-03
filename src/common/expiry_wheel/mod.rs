@@ -68,6 +68,7 @@
 //! with it.
 
 use std::fmt::Debug;
+use std::mem;
 
 /// Names one live ticket, so an owner can tell it from the ones later
 /// filings have supplanted. Minted by [`ExpiryWheel::schedule`].
@@ -266,7 +267,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         }
         // Out and back so the ring stays free to be re-filed below;
         // capacity is retained across the swap.
-        let mut due = std::mem::take(&mut self.scratch);
+        let mut due = mem::take(&mut self.scratch);
 
         // A clock that jumped further than the ring is wide has aliased
         // every bucket, so every bucket is due. Draining a ticket early

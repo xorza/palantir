@@ -95,6 +95,7 @@ impl EncodedRunKey {
     /// the integer-pixel origin — cosmic's subpixel bins absorb the
     /// fractional component into per-glyph `CacheKey`s, so two runs at
     /// different fractional origins live in different cache entries.
+    #[expect(clippy::cast_sign_loss, reason = "a raster scale is positive")]
     pub(super) fn for_row(row: &TextDrawRow, frame_scale: f32) -> Self {
         let scale = frame_scale * row.scale;
         let area_color = row.color.as_u64();

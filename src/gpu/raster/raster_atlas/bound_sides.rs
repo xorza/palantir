@@ -72,18 +72,18 @@ impl BoundSides {
         self.atlas_px = Self::extents(sides);
     }
 
-    pub(super) fn bind_group(&self) -> &wgpu::BindGroup {
+    pub(super) const fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
     }
 
     /// The extents as of the last bind — see the field for the lane order.
-    pub(super) fn atlas_px(&self) -> [u32; 2] {
+    pub(super) const fn atlas_px(&self) -> [u32; 2] {
         self.atlas_px
     }
 
     /// The one place the param order is spelled, so [`Self::new`] and
     /// [`Self::rebind`] cannot disagree about which side comes first.
-    fn extents(sides: &[Side; 2]) -> [u32; 2] {
+    const fn extents(sides: &[Side; 2]) -> [u32; 2] {
         [
             sides[ContentType::Color as usize].size,
             sides[ContentType::Mask as usize].size,

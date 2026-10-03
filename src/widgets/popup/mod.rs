@@ -110,7 +110,7 @@ impl Popup {
     ///
     /// At `show`, when this popup is nested inside a layer that does not sit
     /// strictly below `layer` — the rule [`Ui::layer`] enforces.
-    pub fn layer(mut self, layer: Layer) -> Self {
+    pub const fn layer(mut self, layer: Layer) -> Self {
         self.layer = layer;
         self
     }
@@ -118,7 +118,7 @@ impl Popup {
     /// What a press outside the overlay does. Default
     /// [`ClickOutside::Dismiss`] — see that type for why the choice
     /// matters.
-    pub fn click_outside(mut self, m: ClickOutside) -> Self {
+    pub const fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
         self
     }
@@ -144,7 +144,7 @@ impl Popup {
     /// but doesn't learn where the menu was opened until `show` reads the
     /// state map. The constructors stay the canonical way in; this is for
     /// a wrapper that cannot use them.
-    pub fn anchored(mut self, anchor: Anchor) -> Self {
+    pub const fn anchored(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }
@@ -204,7 +204,7 @@ impl Popup {
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this popup.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 /// changes; a stale path that no longer lands on a split is ignored by
 /// the op it feeds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[must_use]
 pub struct DockPath(u8);
 
 impl DockPath {
@@ -37,12 +38,12 @@ impl DockPath {
             self.0 < 0x80,
             "dock path capacity (7 levels) exceeded — the depth cap should stop far earlier"
         );
-        DockPath((self.0 << 1) | second as u8)
+        DockPath((self.0 << 1) | u8::from(second))
     }
 
     /// Whether the byte carries no sentinel bit — a corrupt address
     /// rather than the root, reachable only through serde.
-    pub(crate) fn is_corrupt(self) -> bool {
+    pub(crate) const fn is_corrupt(self) -> bool {
         self.0 == 0
     }
 

@@ -33,7 +33,7 @@ impl ShapeCtx {
     /// because [`Self::run`] is the only thing that reads them, and a
     /// caller writing them directly could disagree with the `TextLayout`
     /// they came from.
-    pub(super) fn new(
+    pub(super) const fn new(
         font: GlyphFont,
         padding: Spacing,
         wrap_target: Option<f32>,
@@ -58,7 +58,7 @@ impl ShapeCtx {
     /// A non-multiline editor carries no wrap target, so its `Wrap` /
     /// `SingleLine` choice and its `max_width_px` agree either way: both
     /// resolve to an unbounded shape.
-    pub(super) fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
+    pub(super) const fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
         TextRun {
             text,
             font: self.font,

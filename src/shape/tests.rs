@@ -17,6 +17,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
+use std::ptr;
 
 #[test]
 fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
@@ -162,7 +163,7 @@ fn typed_builders_set_the_fields_they_name() {
     let mesh = Mesh::new();
     let tint = SrgbaU8::rgb(10, 20, 30);
     let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
-    assert!(std::ptr::eq(mesh_shape.mesh, &mesh));
+    assert!(ptr::eq(mesh_shape.mesh, &raw const mesh));
     assert_eq!(mesh_shape.local_rect, Some(rect));
     assert_eq!(mesh_shape.tint, tint.into());
 }

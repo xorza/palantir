@@ -47,7 +47,7 @@ impl QuadGeom {
     /// already filtered at the authoring boundary by
     /// `TriangleShape::is_noop`.
     #[inline]
-    fn is_paint_empty(&self) -> bool {
+    const fn is_paint_empty(&self) -> bool {
         match self {
             Self::Rect { rect, .. } => rect.is_paint_empty(),
             Self::Triangle { .. } => false,
@@ -154,7 +154,7 @@ impl DrawQuadPayload {
     /// Drop shadows carry `(0, 0, σ, spread)` in `fill_axis`; inset
     /// shadows carry `(offset.x, offset.y, σ, spread)`. The composer
     /// scales the logical-px lanes to physical px on emit.
-    pub(crate) fn shadow(
+    pub(crate) const fn shadow(
         rect: Rect,
         corners: Corners,
         color: RgbaF16,
@@ -178,7 +178,7 @@ impl DrawQuadPayload {
     /// `origin`. Same quad tier as [`Self::rect`], down to the shared
     /// stroke normalization — only the geometry and the SDF the
     /// `FillKind` selects differ.
-    pub(crate) fn triangle(
+    pub(crate) const fn triangle(
         origin: Vec2,
         points: [Vec2; 3],
         fill: RgbaF16,
@@ -222,7 +222,7 @@ impl DrawQuadPayload {
     /// slipping past that gate would paint a useless transparent quad
     /// whose alpha blend produces nothing visible.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         self.geom.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
     }
 }

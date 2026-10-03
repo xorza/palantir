@@ -53,8 +53,8 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     };
     let c = Vec2::new(40.0, 20.0);
     for (spun, half_extent) in [
-        (Spun::Polyline, (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt()),
-        (Spun::Arc, (20.0_f32 * 20.0 + 10.0 * 10.0).sqrt()),
+        (Spun::Polyline, 30.0_f32.hypot(10.0)),
+        (Spun::Arc, 20.0_f32.hypot(10.0)),
     ] {
         let display = Display::from_physical(UVec2::new(200, 200), 1.0);
         let mut h = UiHarness::new(display.physical);
@@ -120,7 +120,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     // The polyline's far endpoint rotated 90° about c stays inside its
     // square, and outside the owner box.
     let p_rot = c + Vec2::new(-10.0, 30.0);
-    let r = (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt();
+    let r = 30.0_f32.hypot(10.0);
     assert!(Rect::new(c.x - r, c.y - r, 2.0 * r, 2.0 * r).contains(p_rot));
     assert!(!Rect::new(0.0, 0.0, 80.0, 40.0).contains(p_rot));
 }

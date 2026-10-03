@@ -16,6 +16,7 @@ use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
 use crate::widgets::text::Text;
+use std::iter;
 
 const SURFACE: UVec2 = UVec2::new(600, 200);
 
@@ -349,7 +350,7 @@ fn the_insertion_slot_counts_the_centres_passed() {
     assert_eq!(slot(71.0), 2);
     assert_eq!(slot(500.0), 3, "past every centre appends");
     assert_eq!(
-        TabStrip::insertion_slot(std::iter::empty(), 0.0),
+        TabStrip::insertion_slot(iter::empty(), 0.0),
         0,
         "an empty strip has one slot"
     );
@@ -414,6 +415,8 @@ fn a_tabbed_view_panics_on_an_index_it_cannot_show() {
 /// beside the chip is no move, and a release off the strip is no drop.
 #[test]
 fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
+    type Release = fn(&UiHarness, WidgetId) -> Vec2;
+
     let view = WidgetId::from_hash("test.reorder");
     let strip = view.with("strip");
     let record = |ui: &mut Ui, page: &mut usize| {
@@ -428,7 +431,6 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
             })
             .action
     };
-    type Release = fn(&UiHarness, WidgetId) -> Vec2;
     let rows: [(&str, Release, Option<TabsAction>, usize); 3] = [
         (
             "past the last centre: the append",

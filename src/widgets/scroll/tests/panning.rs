@@ -76,7 +76,7 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
             .hide_bars()
             .content_margin(m)
             .show(ui, |ui| {
-                fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
+                fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0);
             });
     };
     h.frame(build_m);
@@ -108,7 +108,7 @@ fn horizontal_scroll_pans_only_x() {
                     .id(WidgetId::from_hash("hscroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("hcontent"), 800.0, 40.0)
+                        fixed_block(ui, WidgetId::from_hash("hcontent"), 800.0, 40.0);
                     });
             });
     };
@@ -132,7 +132,7 @@ fn both_axis_scroll_pans_both_axes() {
                     .id(WidgetId::from_hash("xy"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("xy-content"), 800.0, 800.0)
+                        fixed_block(ui, WidgetId::from_hash("xy-content"), 800.0, 800.0);
                     });
             });
     };
@@ -166,7 +166,7 @@ fn drag_thumb_pans_proportionally() {
                         .id(WidgetId::from_hash("scroll"))
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
+                            fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0);
                         });
                 });
         };
@@ -236,7 +236,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                                                 WidgetId::from_hash("hcontent"),
                                                 800.0,
                                                 40.0,
-                                            )
+                                            );
                                         });
                                 });
                         }
@@ -429,7 +429,7 @@ fn pan_by_composes_with_a_wheel_and_with_itself() {
                     .pan_by(Vec2::new(0.0, 8.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("content"), 200.0, 800.0)
+                        fixed_block(ui, WidgetId::from_hash("content"), 200.0, 800.0);
                     });
             });
     });

@@ -46,7 +46,7 @@ pub enum Drag {
 impl Drag {
     /// Cumulative travel of a live drag (`Started` / `Active`).
     #[inline]
-    pub fn delta(self) -> Option<Vec2> {
+    pub const fn delta(self) -> Option<Vec2> {
         match self {
             Drag::Started { delta } | Drag::Active { delta } => Some(delta),
             Drag::None | Drag::Stopped => None,
@@ -55,19 +55,19 @@ impl Drag {
 
     /// A drag is live (`Started` / `Active`).
     #[inline]
-    pub fn dragging(self) -> bool {
+    pub const fn dragging(self) -> bool {
         matches!(self, Drag::Started { .. } | Drag::Active { .. })
     }
 
     /// One-frame edge: the latch frame.
     #[inline]
-    pub fn started(self) -> bool {
+    pub const fn started(self) -> bool {
         matches!(self, Drag::Started { .. })
     }
 
     /// One-frame edge: the release frame of a latched drag.
     #[inline]
-    pub fn stopped(self) -> bool {
+    pub const fn stopped(self) -> bool {
         matches!(self, Drag::Stopped)
     }
 }

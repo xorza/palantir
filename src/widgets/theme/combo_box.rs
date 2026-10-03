@@ -32,7 +32,7 @@ impl ComboBoxTheme {
     /// [`ButtonTheme`](crate::ButtonTheme) and
     /// [`ContextMenuTheme`](crate::ContextMenuTheme), so the palette goes
     /// unread here.
-    pub fn from_palette(_p: &Palette) -> Self {
+    pub const fn from_palette(_p: &Palette) -> Self {
         Self {
             gap: 12.0,
             arrow_size: Vec2::new(10.0, 6.0),

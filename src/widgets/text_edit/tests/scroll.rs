@@ -1,4 +1,10 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::widgets::text_edit::tests::*;
+use std::fmt::Write;
 
 /// Fixed-size editor: scroll offset stays at zero while text fits, grows
 /// to keep the caret visible once content overflows the inner width, and
@@ -10,7 +16,6 @@ use crate::widgets::text_edit::tests::*;
 /// encoder's clip rect).
 #[test]
 fn scroll_keeps_caret_inside_visible_inner_rect() {
-    let ed_id = WidgetId::from_hash("scroll-ed");
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -19,6 +24,8 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
                 .show(ui);
         });
     }
+
+    let ed_id = WidgetId::from_hash("scroll-ed");
 
     let mut h = UiHarness::new(NARROW);
 
@@ -61,7 +68,6 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 /// 5 px + 1.5 px stroke fold each side.
 #[test]
 fn hug_width_editor_shows_full_text_after_growth() {
-    let ed_id = WidgetId::from_hash("hug-ed");
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -70,6 +76,8 @@ fn hug_width_editor_shows_full_text_after_growth() {
                 .show(ui);
         });
     }
+
+    let ed_id = WidgetId::from_hash("hug-ed");
 
     let mut h = UiHarness::new(WIDE);
 
@@ -102,7 +110,6 @@ fn hug_width_editor_shows_full_text_after_growth() {
 /// hit-test coords.
 #[test]
 fn click_hit_test_compensates_for_scroll() {
-    let ed_id = WidgetId::from_hash("hit-ed");
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -111,6 +118,8 @@ fn click_hit_test_compensates_for_scroll() {
                 .show(ui);
         });
     }
+
+    let ed_id = WidgetId::from_hash("hit-ed");
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = "a".repeat(100);
@@ -155,7 +164,6 @@ fn click_hit_test_compensates_for_scroll() {
 /// height of a 100 px editor.
 #[test]
 fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
-    let ed_id = WidgetId::from_hash("wheel-ed");
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -166,8 +174,13 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
         });
     }
 
+    let ed_id = WidgetId::from_hash("wheel-ed");
+
     let mut h = UiHarness::new(NARROW);
-    let mut buf = (0..100).map(|i| format!("line{i}\n")).collect::<String>();
+    let mut buf = String::new();
+    for i in 0..100 {
+        writeln!(buf, "line{i}").unwrap();
+    }
 
     // Caret at the top, so anything that follows it would pull the view
     // back to zero and the assertions below could not pass by accident.

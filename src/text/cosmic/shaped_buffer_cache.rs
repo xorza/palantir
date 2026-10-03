@@ -162,7 +162,7 @@ impl ShapedBufferCache {
     /// The current reading of the shared frame clock — see
     /// [`Self::frame`]. Every downstream cache stamps and expires
     /// against this rather than counting frames of its own.
-    pub(super) fn frame(&self) -> u64 {
+    pub(super) const fn frame(&self) -> u64 {
         self.frame
     }
 
@@ -247,7 +247,7 @@ impl ShapedBufferCache {
     /// The frame an entry filed into the probation window is first dead.
     /// Read by [`Self::insert`] and by [`Self::supersede`], the two sites
     /// that file one.
-    fn probation_dies_at(&self) -> u64 {
+    const fn probation_dies_at(&self) -> u64 {
         self.frame + PROBATION_KEEP_FRAMES + 1
     }
 

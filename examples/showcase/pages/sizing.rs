@@ -3,6 +3,11 @@
 //! and Visibility. The colored chips are demo content — they visualize
 //! where layout puts each child.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "the showcase casts non-negative sizes, ids and colour channels"
+)]
+
 use crate::support;
 use crate::support::{section, swatch_bg, well_bg};
 use palantir::{

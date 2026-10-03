@@ -33,7 +33,7 @@ pub(crate) struct TextRuns {
 }
 
 impl TextRuns {
-    pub(crate) fn new(span: Span) -> Self {
+    pub(crate) const fn new(span: Span) -> Self {
         Self { span, taken: 0 }
     }
 
@@ -59,7 +59,7 @@ impl TextRuns {
 
     /// Every run the node's span holds was handed out — what the measure
     /// pass stamped and what the walk met are the same count.
-    pub(crate) fn is_drained(&self) -> bool {
+    pub(crate) const fn is_drained(&self) -> bool {
         self.taken == self.span.len
     }
 }

@@ -35,7 +35,7 @@ impl DrawTextPayload {
     /// or fully transparent color. See [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)
     /// for the noop policy.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         self.rect.is_paint_empty() || self.color.is_noop()
     }
 }

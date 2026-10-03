@@ -6,11 +6,13 @@ use crate::primitives::layout::limits::{valid_lower_bound, valid_upper_bound};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::approx;
 use crate::primitives::math::approx::FloatHash;
+use std::hash;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
 /// Star) with optional `[min, max]` clamps. Defaults: `min = 0.0`,
 /// `max = INFINITY` (no clamp).
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[must_use]
 pub struct Track {
     pub(crate) size: Sizing,
     pub(crate) min: f32,
@@ -24,7 +26,7 @@ impl Track {
     /// solve, and the intrinsic aggregator cannot disagree about which
     /// wins.
     #[inline]
-    pub(crate) fn content_floor(&self, min_content: f32) -> f32 {
+    pub(crate) const fn content_floor(&self, min_content: f32) -> f32 {
         min_content.max(self.min).min(self.max)
     }
 
@@ -91,9 +93,9 @@ impl Track {
     /// pairing [`FloatHash`] already gives [`glam::Vec2`], on a value the
     /// grid hashes per track per frame.
     #[inline]
-    fn hash_bits<H: std::hash::Hasher, F: Fn(f32) -> u32 + Copy>(&self, h: &mut H, bits: F) {
+    fn hash_bits<H: hash::Hasher, F: Fn(f32) -> u32 + Copy>(&self, h: &mut H, bits: F) {
         self.size.hash_bits(h, bits);
-        h.write_u64(((bits(self.min) as u64) << 32) | bits(self.max) as u64);
+        h.write_u64((u64::from(bits(self.min)) << 32) | u64::from(bits(self.max)));
     }
 }
 
@@ -105,19 +107,19 @@ impl From<Sizing> for Track {
 
 impl FloatHash for Track {
     #[inline]
-    fn hash_eq<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash_eq<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_bits(h, approx::eq_bits);
     }
 
     #[inline]
-    fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash_visual<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_bits(h, approx::canon_bits);
     }
 }
 
-impl std::hash::Hash for Track {
+impl hash::Hash for Track {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+    fn hash<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_eq(h);
     }
 }
@@ -130,7 +132,7 @@ pub(crate) struct GridDef {
 }
 
 impl GridDef {
-    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, tracks: &[Track], h: &mut H) {
+    pub(crate) fn hash_visual<H: hash::Hasher>(&self, tracks: &[Track], h: &mut H) {
         h.write_u32(self.rows.len);
         for t in &tracks[self.rows.range()] {
             t.hash_visual(h);

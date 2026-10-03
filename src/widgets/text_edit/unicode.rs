@@ -6,6 +6,7 @@
 //! widget does not own, and none of them needs `EditState`.
 
 use std::borrow::Cow;
+use std::ops;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Strip line-break chars from an inbound string so the single-line
@@ -157,9 +158,9 @@ pub(super) fn prev_word_boundary(text: &str, from: usize) -> usize {
 /// selects nothing. A caret sitting on a run's trailing edge selects the
 /// run behind it, which is what makes a double-click at the end of the
 /// last word still take that word.
-pub(super) fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
+pub(super) fn word_range_at(text: &str, byte: usize) -> ops::Range<usize> {
     let byte = byte.min(text.len());
-    let mut prev: Option<std::ops::Range<usize>> = None;
+    let mut prev: Option<ops::Range<usize>> = None;
     let mut segments = text.split_word_bound_indices().peekable();
     while let Some((start, seg)) = segments.next() {
         let kind = SegmentKind::of(seg);

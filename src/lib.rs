@@ -1,12 +1,15 @@
-// The README's showcase recording is a bare GitHub attachment URL, which is
-// the only form GitHub expands into an inline video player — wrapping it for
-// rustdoc's sake would turn it back into a dead link on the repo page.
-#![allow(rustdoc::bare_urls)]
+#![cfg_attr(
+    feature = "winit",
+    expect(
+        rustdoc::bare_urls,
+        reason = "the README's showcase recording is a bare GitHub attachment URL, the only form GitHub expands into an inline player"
+    )
+)]
 // Scoped to the library rather than set in `Cargo.toml`, because a
 // `[lints]` table reaches every target in the package: the bundled
 // examples are minimal teaching code, and a doc comment on each of their
 // throwaway helpers is noise in the one place a reader wants none.
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 // The README's counter example builds a `WinitHost`, so it only compiles as a
 // doctest when that feature is on. Without it the crate docs open at the
 // orientation section below instead.
@@ -18,8 +21,14 @@
 // the feature, so they stay whole and their links go unresolved in that build
 // rather than every one of them carrying a second, link-free copy of itself.
 // The price is that a link broken for any other reason also passes there —
-// the default build is the one that still denies them.
-#![cfg_attr(not(feature = "winit"), allow(rustdoc::broken_intra_doc_links))]
+// the default build is the one that still reports them.
+#![cfg_attr(
+    not(feature = "winit"),
+    expect(
+        rustdoc::broken_intra_doc_links,
+        reason = "the winit-only docs stay whole in this build, so their links go unresolved"
+    )
+)]
 //!
 //! # Where to start
 //!

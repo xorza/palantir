@@ -175,7 +175,7 @@ impl TextShapeKey {
     /// Taking the bound rather than `(width, halign, fit)` is what keeps a
     /// caller that needs the bound for something else — a slot comparison,
     /// say — from quantizing the same width twice.
-    pub(super) fn with_bound(self, bound: WrapBound) -> Self {
+    pub(super) const fn with_bound(self, bound: WrapBound) -> Self {
         Self {
             max_w_q: bound.max_w_q,
             face_q: self.face_q.with_bound(bound.bound_q),
@@ -183,7 +183,7 @@ impl TextShapeKey {
         }
     }
 
-    pub(super) fn unbounded_version(self) -> Self {
+    pub(super) const fn unbounded_version(self) -> Self {
         Self {
             max_w_q: MAX_W_NONE,
             face_q: self
@@ -200,7 +200,7 @@ impl TextShapeKey {
     /// ellipsis is the same glyph at the same face however wide the box
     /// is, which is what lets its memo survive the width churn it exists
     /// for.
-    pub(super) fn face(self) -> QuantizedFace {
+    pub(super) const fn face(self) -> QuantizedFace {
         QuantizedFace {
             size_q: self.size_q,
             family_q: self.family_q,
@@ -208,11 +208,11 @@ impl TextShapeKey {
         }
     }
 
-    pub(super) fn font_size_px(self) -> f32 {
+    pub(super) const fn font_size_px(self) -> f32 {
         dequantize(self.size_q)
     }
 
-    pub(super) fn line_height_px(self) -> f32 {
+    pub(super) const fn line_height_px(self) -> f32 {
         dequantize(self.lh_q)
     }
 
@@ -235,26 +235,26 @@ impl TextShapeKey {
     /// The family this key shapes in. Any index the table has handed out
     /// is valid, and `CosmicMeasure` is what decides whether a face
     /// answers to it — see `font_available`.
-    pub(super) fn family(self) -> FontFamily {
+    pub(super) const fn family(self) -> FontFamily {
         FontFamily::from_raw(self.family_q)
     }
 
-    pub(super) fn weight(self) -> FontWeight {
+    pub(super) const fn weight(self) -> FontWeight {
         self.face_q.weight()
     }
 
-    pub(super) fn slant(self) -> FontSlant {
+    pub(super) const fn slant(self) -> FontSlant {
         self.face_q.slant()
     }
 
     /// `pub(crate)` where its siblings are `pub(super)`: the text-edit
     /// suite asserts on the alignment a rendered buffer was keyed under,
     /// and it lives outside `crate::text`.
-    pub(crate) fn line_align(self) -> LineAlign {
+    pub(crate) const fn line_align(self) -> LineAlign {
         self.face_q.line_align()
     }
 
-    pub(super) fn fit(self) -> LineFit {
+    pub(super) const fn fit(self) -> LineFit {
         self.face_q.fit()
     }
 }
@@ -442,6 +442,10 @@ impl WrapBound {
 /// A length onto the 1/64-px grid every key field is stored on, the
 /// inverse of [`dequantize`]. Any length — a width, a size, a leading —
 /// since what varies between them is the floor, not the grid.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "the value is held at zero or above before the cast"
+)]
 fn quantize(value: f32) -> u32 {
     (value.max(0.0) * 64.0).fast_round() as u32
 }

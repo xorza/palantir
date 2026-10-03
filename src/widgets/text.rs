@@ -92,7 +92,7 @@ impl<'a> Text<'a> {
     }
 
     /// Fill colour for this run, overriding the resolved style's.
-    pub fn color(mut self, color: RgbaF32) -> Self {
+    pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(color);
         self
     }
@@ -101,40 +101,40 @@ impl<'a> Text<'a> {
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
-    pub fn font_size(mut self, px: f32) -> Self {
+    pub const fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(px);
         self
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
     /// style's `line_height_mult`. `1.0` sets the lines solid.
-    pub fn line_height(mut self, mult: f32) -> Self {
+    pub const fn line_height(mut self, mult: f32) -> Self {
         self.overrides.line_height_mult = Some(mult);
         self
     }
 
     /// Family to shape against, overriding the resolved style's.
-    pub fn family(mut self, family: FontFamily) -> Self {
+    pub const fn family(mut self, family: FontFamily) -> Self {
         self.overrides.family = Some(family);
         self
     }
 
     /// Weight to shape against, overriding the resolved style's.
     /// [`Self::bold`] is this with [`FontWeight::BOLD`].
-    pub fn weight(mut self, weight: FontWeight) -> Self {
+    pub const fn weight(mut self, weight: FontWeight) -> Self {
         self.overrides.weight = Some(weight);
         self
     }
 
     /// Upright or italic, overriding the resolved style's.
     /// [`Self::italic`] is this with [`FontSlant::Italic`].
-    pub fn slant(mut self, slant: FontSlant) -> Self {
+    pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.overrides.slant = Some(slant);
         self
     }
 
     /// Shape this run bold — [`Self::weight`] with [`FontWeight::BOLD`].
-    pub fn bold(mut self) -> Self {
+    pub const fn bold(mut self) -> Self {
         self.overrides.weight = Some(FontWeight::BOLD);
         self
     }
@@ -142,7 +142,7 @@ impl<'a> Text<'a> {
     /// Shape this run italic — [`Self::slant`] with
     /// [`FontSlant::Italic`]. The weight axis is untouched, so
     /// `.bold().italic()` is bold italic.
-    pub fn italic(mut self) -> Self {
+    pub const fn italic(mut self) -> Self {
         self.overrides.slant = Some(FontSlant::Italic);
         self
     }
@@ -154,7 +154,7 @@ impl<'a> Text<'a> {
     /// [`TextWrap::Truncate`] to hard-cut to the committed width with no
     /// marker, [`TextWrap::Ellipsis`] to mark the cut with `…`, or
     /// [`TextWrap::WrapWithOverflow`] to reshape onto multiple lines.
-    pub fn text_wrap(mut self, wrap: TextWrap) -> Self {
+    pub const fn text_wrap(mut self, wrap: TextWrap) -> Self {
         self.wrap = wrap;
         self
     }
@@ -165,7 +165,7 @@ impl<'a> Text<'a> {
     /// widget has Fixed size larger than the text's measured size;
     /// otherwise the widget hugs its content and there's no slack to
     /// align in.
-    pub fn text_align(mut self, a: Align) -> Self {
+    pub const fn text_align(mut self, a: Align) -> Self {
         self.align = a;
         self
     }

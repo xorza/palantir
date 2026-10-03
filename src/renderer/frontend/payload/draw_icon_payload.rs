@@ -40,7 +40,7 @@ impl DrawIconPayload {
     /// transparent — the latter covering both icon kinds, since alpha gates
     /// the colour path as much as the mask one.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(crate) const fn is_noop(&self) -> bool {
         self.rect.is_paint_empty() || self.tint.is_noop()
     }
 }

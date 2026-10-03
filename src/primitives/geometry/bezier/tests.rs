@@ -1,4 +1,3 @@
-use crate::primitives::geometry::bezier;
 use crate::primitives::geometry::bezier::*;
 use crate::primitives::math::approx::internals::assert_close;
 
@@ -25,7 +24,7 @@ fn cubic_bbox_is_endpoints_for_monotone_curve() {
     let p1 = Vec2::new(33.0, 0.0);
     let p2 = Vec2::new(66.0, 0.0);
     let p3 = Vec2::new(100.0, 0.0);
-    let bbox = bezier::cubic_bbox(p0, p1, p2, p3);
+    let bbox = cubic_bbox(p0, p1, p2, p3);
     assert_eq!((bbox.min, bbox.max()), (p0, p3));
 }
 
@@ -43,7 +42,7 @@ fn cubic_bbox_tighter_than_control_hull_for_opposing_tangents() {
     let p1 = Vec2::new(33.0, 100.0);
     let p2 = Vec2::new(66.0, -100.0);
     let p3 = Vec2::new(100.0, 0.0);
-    let bbox = bezier::cubic_bbox(p0, p1, p2, p3);
+    let bbox = cubic_bbox(p0, p1, p2, p3);
     let (lo, hi) = (bbox.min, bbox.max());
     let extremum = 50.0 / 3.0f64.sqrt();
     assert_close(
@@ -65,7 +64,7 @@ fn cubic_bbox_contains_sampled_curve() {
     let p1 = Vec2::new(-30.0, 80.0);
     let p2 = Vec2::new(120.0, -40.0);
     let p3 = Vec2::new(90.0, 50.0);
-    let bbox = bezier::cubic_bbox(p0, p1, p2, p3);
+    let bbox = cubic_bbox(p0, p1, p2, p3);
     let (lo, hi) = (bbox.min, bbox.max());
     for i in 0..=100 {
         let t = i as f32 / 100.0;
@@ -115,8 +114,8 @@ fn promoted_quadratics_keep_their_extremum_in_the_bbox() {
     };
     let worked = |p0: f32, c: f32, p2: f32| {
         let (a, z) = (Vec2::new(0.0, p0), Vec2::new(1.0, p2));
-        let ctl = bezier::quadratic_to_cubic(a, Vec2::new(0.5, c), z);
-        bezier::cubic_bbox(a, ctl.c1, ctl.c2, z)
+        let ctl = quadratic_to_cubic(a, Vec2::new(0.5, c), z);
+        cubic_bbox(a, ctl.c1, ctl.c2, z)
     };
     let bbox = worked(7.0, 49.0, 8.0);
     assert_close(

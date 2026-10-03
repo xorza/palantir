@@ -1,16 +1,12 @@
 //! Present-mode classification and the surface configuration the
 //! renderer's contract demands of the adapter's capabilities.
 
-use std::num::NonZeroU32;
-
-use glam::UVec2;
 use wgpu::{
     CompositeAlphaMode, SurfaceCapabilities, SurfaceColorSpaces, SurfaceFormatCapabilities,
     TextureFormat, TextureUsages,
 };
 
 use super::*;
-use crate::window::vsync::Vsync;
 
 /// `WindowSurface::set_vsync` compares in [`Vsync`]'s vocabulary rather than
 /// the driver's, and this is why it can: every mode a surface can resolve to
@@ -102,7 +98,7 @@ fn a_surface_without_the_copy_usage_is_configured_without_it() {
 
     assert_eq!(config.usage, REQUIRED_SURFACE_USAGES);
     assert!(
-        !config.usage.contains(wgpu::TextureUsages::COPY_DST),
+        !config.usage.contains(TextureUsages::COPY_DST),
         "asking for a usage the surface does not have is what failed the window"
     );
 }

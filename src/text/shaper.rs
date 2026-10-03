@@ -97,7 +97,7 @@ pub(super) struct ShaperInner {
 }
 
 impl ShaperInner {
-    fn new(cosmic: CosmicMeasure) -> Self {
+    const fn new(cosmic: CosmicMeasure) -> Self {
         Self {
             cosmic,
             #[cfg(any(test, feature = "internals"))]
@@ -109,7 +109,7 @@ impl ShaperInner {
 
     /// The measurer. Reached from [`TextProbe`] too, which holds this
     /// borrow while it answers geometry queries.
-    pub(super) fn cosmic(&self) -> &CosmicMeasure {
+    pub(super) const fn cosmic(&self) -> &CosmicMeasure {
         &self.cosmic
     }
 
@@ -118,7 +118,7 @@ impl ShaperInner {
     /// compiled there — [`TextProbe::shaped`] and
     /// [`TextShaper::shapes_buffers`] — fold away rather than reading a
     /// field that could never be set.
-    pub(super) fn is_mono(&self) -> bool {
+    pub(super) const fn is_mono(&self) -> bool {
         #[cfg(any(test, feature = "internals"))]
         {
             self.mono
@@ -134,6 +134,10 @@ impl ShaperInner {
     pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         self.tally_dispatch();
         #[cfg(any(test, feature = "internals"))]
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names the path inline instead of a cfg'd import"
+        )]
         if self.mono {
             return crate::text::mono::root(request, floor);
         }
@@ -149,6 +153,10 @@ impl ShaperInner {
     pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         self.tally_dispatch();
         #[cfg(any(test, feature = "internals"))]
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names the path inline instead of a cfg'd import"
+        )]
         if self.mono {
             return crate::text::mono::resolve(request);
         }
@@ -159,7 +167,7 @@ impl ShaperInner {
     /// still hit its shaped-buffer cache, so the counter tracks
     /// dispatches, not reshapes.
     #[inline]
-    fn tally_dispatch(&mut self) {
+    const fn tally_dispatch(&mut self) {
         #[cfg(any(test, feature = "internals"))]
         {
             self.measure_calls += 1;

@@ -331,13 +331,13 @@ fn shape_hashes_column_sized_to_shape_records() {
             .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
-                    glam::Vec2::new(0.0, 0.0),
-                    glam::Vec2::new(10.0, 10.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 10.0),
                     Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
                 ui.add_shape(Shape::line(
-                    glam::Vec2::new(10.0, 10.0),
-                    glam::Vec2::new(20.0, 20.0),
+                    Vec2::new(10.0, 10.0),
+                    Vec2::new(20.0, 20.0),
                     Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
                 ));
             });
@@ -378,8 +378,8 @@ fn shape_hash_stable_across_frames() {
             .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
-                    glam::Vec2::new(0.0, 0.0),
-                    glam::Vec2::new(10.0, 10.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 10.0),
                     Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
             });
@@ -400,29 +400,29 @@ fn shape_hash_stable_across_frames() {
 /// per-shape damage diff's key precondition.
 #[test]
 fn one_shape_change_only_flips_its_own_hash() {
-    let build = |b_endpoint: glam::Vec2, ui: &mut Ui| {
+    let build = |b_endpoint: Vec2, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
-                    glam::Vec2::new(0.0, 0.0),
-                    glam::Vec2::new(10.0, 10.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 10.0),
                     Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
                 ui.add_shape(Shape::line(
-                    glam::Vec2::new(5.0, 5.0),
+                    Vec2::new(5.0, 5.0),
                     b_endpoint,
                     Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
                 ));
             });
     };
     let mut h = UiHarness::new(SURFACE);
-    h.frame(|ui| build(glam::Vec2::new(20.0, 20.0), ui));
+    h.frame(|ui| build(Vec2::new(20.0, 20.0), ui));
     let h0_a = h.ui.tree(Layer::Main).shapes.hashes[0];
     let h0_b = h.ui.tree(Layer::Main).shapes.hashes[1];
-    h.frame(|ui| build(glam::Vec2::new(30.0, 30.0), ui));
+    h.frame(|ui| build(Vec2::new(30.0, 30.0), ui));
     let h1_a = h.ui.tree(Layer::Main).shapes.hashes[0];
     let h1_b = h.ui.tree(Layer::Main).shapes.hashes[1];
     assert_eq!(h0_a, h1_a, "unchanged shape 0 must keep its hash");

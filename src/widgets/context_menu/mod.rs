@@ -210,7 +210,7 @@ impl ContextMenu<'_> {
     /// Unset is the default; the theme fallback in [`Self::show`] fills
     /// it in from the resolved theme's `panel`. Pass
     /// [`Background::NONE`] to suppress the themed menu chrome.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.popup = self.popup.background(bg);
         self
     }

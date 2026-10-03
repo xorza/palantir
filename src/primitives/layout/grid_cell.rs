@@ -3,12 +3,14 @@
 
 use crate::common::span::Span;
 use crate::primitives::layout::axis::Axis;
+use std::hash;
 
 /// Per-child placement inside a `Grid` parent. Inert when the parent is not a
 /// `LayoutMode::Grid`. `(row, col)` is the top-left cell; `(row_span,
 /// col_span)` extends the slot toward the bottom-right (defaults to 1×1).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[must_use]
 pub struct GridCell {
     /// Zero-based row.
     pub row: u16,
@@ -20,12 +22,12 @@ pub struct GridCell {
     pub col_span: u16,
 }
 
-impl std::hash::Hash for GridCell {
+impl hash::Hash for GridCell {
     /// One `write` of the packed 8-byte `[u16; 4]` rather than the
     /// derived four `write_u16`s — folded into every `BoundsExtras`
     /// node hash via `BoundsExtras::hash`.
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
     }
 }
@@ -55,10 +57,10 @@ impl GridCell {
     /// `(row, row_span)` for Y. Bundles the start/length pair the grid
     /// track math slices with, so the two can't be passed swapped.
     #[inline]
-    pub(crate) fn track_span(&self, axis: Axis) -> Span {
+    pub(crate) fn track_span(self, axis: Axis) -> Span {
         match axis {
-            Axis::X => Span::new(self.col as u32, self.col_span as u32),
-            Axis::Y => Span::new(self.row as u32, self.row_span as u32),
+            Axis::X => Span::new(u32::from(self.col), u32::from(self.col_span)),
+            Axis::Y => Span::new(u32::from(self.row), u32::from(self.row_span)),
         }
     }
 

@@ -137,7 +137,7 @@ impl Stencil {
     /// it. Behind an accessor like
     /// [`Backbuffer::view`](super::backbuffer::Backbuffer::view), so a
     /// caller holding a `&Stencil` cannot reach the texture beside it.
-    pub(crate) fn view(&self) -> &wgpu::TextureView {
+    pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
 

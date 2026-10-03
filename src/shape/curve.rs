@@ -13,7 +13,7 @@ use crate::shape::sealed;
 use crate::shape::style::LineCap;
 use glam::Vec2;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum CurveGeometry {
     Line {
         a: Vec2,
@@ -41,7 +41,7 @@ pub(crate) enum CurveGeometry {
 /// The stroke properties every curve geometry carries into lowering. They travel
 /// together from the setters to the lowering entry points, so the geometry is the
 /// only thing that varies between them.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct CurveStyle {
     pub(crate) stroke: Stroke,
     pub(crate) ramp: Option<ColorRamp>,
@@ -51,13 +51,14 @@ pub(crate) struct CurveStyle {
 /// Stroked line, Bézier, or circular arc. The stroke is centred on the
 /// curve, like every path shape's.
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct CurveShape {
     pub(crate) geometry: CurveGeometry,
     pub(crate) style: CurveStyle,
 }
 
 impl CurveShape {
-    pub(super) fn new(geometry: CurveGeometry, stroke: Stroke) -> Self {
+    pub(super) const fn new(geometry: CurveGeometry, stroke: Stroke) -> Self {
         Self {
             geometry,
             style: CurveStyle {

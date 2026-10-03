@@ -22,7 +22,7 @@ enum Tab {
 const OPENABLE: [Tab; 3] = [Tab::Layers, Tab::History, Tab::Console];
 
 impl Tab {
-    fn label(self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
             Tab::Canvas => "canvas",
             Tab::Layers => "layers",
@@ -31,7 +31,7 @@ impl Tab {
         }
     }
 
-    fn blurb(self) -> &'static str {
+    const fn blurb(self) -> &'static str {
         match self {
             Tab::Canvas => "The pinned tab. It refuses to close, so the tree is never empty.",
             Tab::Layers => "Drag this chip onto another pane's edge to split it.",

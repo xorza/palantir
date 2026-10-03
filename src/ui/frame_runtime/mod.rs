@@ -14,6 +14,7 @@ use crate::text::shaper::TextShaper;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
 use crate::ui::frame_stamp::FrameStamp;
+use std::mem;
 use std::time::Duration;
 
 /// What `Ui::frame` should do this frame, decided at entry
@@ -134,7 +135,7 @@ impl FrameRuntime {
     /// tally. Called once per [`crate::Ui::frame`], after the pass count is
     /// known — so the overlay, which records *during* a pass, always reads
     /// both through the previous frame.
-    pub(super) fn note_processing(&mut self, processing: FrameProcessing) {
+    pub(super) const fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
             FrameProcessing::PaintOnly => {}
             FrameProcessing::SingleLayout => self.frame_id += 1,
@@ -184,7 +185,7 @@ impl FrameRuntime {
     /// sites that ask — the plan classifier below, and `FrameCycle::run`,
     /// which gates its warmup pass and its damage assertion on the same
     /// fact.
-    pub(crate) fn is_first_frame(&self) -> bool {
+    pub(crate) const fn is_first_frame(&self) -> bool {
         self.prev_stamp.is_none()
     }
 
@@ -226,7 +227,7 @@ impl FrameRuntime {
         // "someone has asked for a frame", after it is "this frame asked
         // for another". Clearing it separately left both meanings live
         // on one field, told apart only by statement order.
-        let repaint_requested = std::mem::take(&mut self.repaint_requested);
+        let repaint_requested = mem::take(&mut self.repaint_requested);
         let paint_only = !force_full
             && !repaint_requested
             && !input_forces_record

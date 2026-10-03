@@ -70,7 +70,7 @@ impl ScrollGeometry {
     }
 
     /// The bar overlay's definition at `state`'s offset and zoom.
-    fn bars_at(&self, state: &ScrollState) -> ScrollbarsDef {
+    const fn bars_at(&self, state: &ScrollState) -> ScrollbarsDef {
         ScrollbarsDef {
             offset: state.offset,
             zoom: state.zoom,
@@ -297,14 +297,14 @@ impl<'a> Scroll<'a> {
     ///
     /// [`Self::overlay_bars`] and [`Self::hide_bars`] are this with the two
     /// values a caller actually types. The third is the default.
-    pub fn bar_mode(mut self, mode: BarMode) -> Self {
+    pub const fn bar_mode(mut self, mode: BarMode) -> Self {
         self.bar_mode = mode;
         self
     }
 
     /// [`BarMode::Overlay`] — the bar paints over content when it
     /// overflows, and reserves no gutter.
-    pub fn overlay_bars(self) -> Self {
+    pub const fn overlay_bars(self) -> Self {
         self.bar_mode(BarMode::Overlay)
     }
 
@@ -312,7 +312,7 @@ impl<'a> Scroll<'a> {
     /// reservation. Pan / wheel / zoom input still work; the viewport just
     /// paints no indicator. For canvas-style scopes (node graphs, infinite
     /// boards) where the bars would be noise.
-    pub fn hide_bars(self) -> Self {
+    pub const fn hide_bars(self) -> Self {
         self.bar_mode(BarMode::Hidden)
     }
 
@@ -613,7 +613,7 @@ impl Scroll<'_> {
     /// (`Panel`/`Grid`/`Popup`), Scroll does **not** fall back to
     /// `theme.panel_background` when unset: an unstyled scroll surface
     /// paints no background. Pass one explicitly to fill it.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

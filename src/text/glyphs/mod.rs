@@ -46,7 +46,7 @@ pub struct TextGlyphs<'a> {
 }
 
 impl<'a> TextGlyphs<'a> {
-    pub(super) fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
+    pub(super) const fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
         Self { cosmic }
     }
 

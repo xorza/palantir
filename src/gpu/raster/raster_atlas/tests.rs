@@ -3,7 +3,7 @@
 
 use super::*;
 use etagere::AllocId;
-use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
+use glam::{I16Vec2, IVec2, UVec2};
 
 /// The atlas is generic over its key, so its own tests use the cheapest one
 /// that satisfies the bounds rather than either tenant's — nothing here
@@ -28,10 +28,10 @@ fn packed_metadata_checks_every_wire_boundary() {
     );
     assert_eq!(
         packed(
-            u16::MAX as u32,
-            u16::MAX as u32,
-            i16::MIN as i32,
-            i16::MAX as i32,
+            u32::from(u16::MAX),
+            u32::from(u16::MAX),
+            i32::from(i16::MIN),
+            i32::from(i16::MAX),
         )
         .unwrap(),
         PackedMetadata {
@@ -40,7 +40,7 @@ fn packed_metadata_checks_every_wire_boundary() {
         }
     );
     assert_eq!(
-        packed(1, 1, i16::MAX as i32, i16::MIN as i32).unwrap(),
+        packed(1, 1, i32::from(i16::MAX), i32::from(i16::MIN)).unwrap(),
         PackedMetadata {
             size: U16Vec2::new(1, 1),
             bearing: I16Vec2::new(i16::MAX, i16::MIN),
@@ -48,12 +48,12 @@ fn packed_metadata_checks_every_wire_boundary() {
     );
 
     let invalid = [
-        (u16::MAX as u32 + 1, 1, 0, 0, "width above u16"),
-        (1, u16::MAX as u32 + 1, 0, 0, "height above u16"),
-        (1, 1, i16::MIN as i32 - 1, 0, "left below i16"),
-        (1, 1, i16::MAX as i32 + 1, 0, "left above i16"),
-        (1, 1, 0, i16::MIN as i32 - 1, "top below i16"),
-        (1, 1, 0, i16::MAX as i32 + 1, "top above i16"),
+        (u32::from(u16::MAX) + 1, 1, 0, 0, "width above u16"),
+        (1, u32::from(u16::MAX) + 1, 0, 0, "height above u16"),
+        (1, 1, i32::from(i16::MIN) - 1, 0, "left below i16"),
+        (1, 1, i32::from(i16::MAX) + 1, 0, "left above i16"),
+        (1, 1, 0, i32::from(i16::MIN) - 1, "top below i16"),
+        (1, 1, 0, i32::from(i16::MAX) + 1, "top above i16"),
     ];
     for (width, height, left, top, case) in invalid {
         assert!(packed(width, height, left, top).is_none(), "{case}");
@@ -259,8 +259,6 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
 /// real device because growing a side allocates a texture.
 mod gpu {
     use super::*;
-    use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
-    use crate::gpu::raster::raster_program::RasterProgram;
     use crate::gpu::test_gpu::headless_test_gpu;
 
     /// A mask side that starts at 128² and tops out at 256², so one
@@ -389,7 +387,7 @@ mod gpu {
         }
         assert_eq!(
             *atlas.counters.evict_scans.get() - before,
-            placed as u64,
+            u64::from(placed),
             "one rotation over the slab for the first refusal and none \
              for the seven after it — not eight rotations",
         );

@@ -4,10 +4,10 @@
 //! framework-owned target, a private depth buffer recreated on resize,
 //! and continuous repaint driving the animation.
 
-// The `GpuView` escape hatch is raw wgpu by definition, so naming its types is
-// what this page is for. `clippy.toml` keeps them out of the library's own
-// modules, not out of what a consumer writes.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "the `GpuView` escape hatch is raw wgpu by definition, so naming its types is what this page is for"
+)]
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -53,7 +53,7 @@ const INDICES: [u16; 36] = [
     4, 5, 1, 4, 1, 0, // -y
 ];
 
-const SHADER: &str = r#"
+const SHADER: &str = r"
 struct Uniforms { mvp: mat4x4<f32> };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
@@ -74,7 +74,7 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) color: vec3<f32>) -> VsOut {
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color, 1.0);
 }
-"#;
+";
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -103,7 +103,7 @@ pub(crate) struct Cube {
 }
 
 impl Cube {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             gpu: None,
             spin: 0.0,
@@ -174,9 +174,9 @@ impl GpuPaint for Cube {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs"),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64,
+                    array_stride: size_of::<Vertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
                 })],
@@ -184,7 +184,7 @@ impl GpuPaint for Cube {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs"),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: ctx.target_format,
                     blend: None,

@@ -19,7 +19,7 @@ pub enum TextInput<'a> {
 }
 
 impl TextInput<'_> {
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         match self {
             Self::Borrowed(text) => text.is_empty(),
             Self::Owned(text) => text.is_empty(),
@@ -40,13 +40,13 @@ impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for TextInput<'a> {
     }
 }
 
-impl<'a> From<String> for TextInput<'a> {
+impl From<String> for TextInput<'_> {
     fn from(text: String) -> Self {
         Self::Owned(text)
     }
 }
 
-impl<'a> From<InternedStr> for TextInput<'a> {
+impl From<InternedStr> for TextInput<'_> {
     fn from(text: InternedStr) -> Self {
         Self::Interned(text)
     }

@@ -29,6 +29,7 @@ use palantir_anim_derive::Animatable;
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
+#[must_use]
 pub struct Shadow {
     /// Ink colour, alpha included.
     pub color: RgbaF32,

@@ -19,10 +19,6 @@ use crate::text::wrap::TextWrap;
 /// click, or wash a selection, it stops compiling here.
 #[test]
 fn probing_a_run_maps_bytes_and_positions_both_ways() {
-    const EM: f32 = 8.0; // 16 px font, mono half-width advance.
-    let mut harness = UiHarness::arena();
-    let ui = harness.ui();
-
     fn run(text: &str, max_width_px: Option<f32>) -> TextRun<'_> {
         TextRun {
             text,
@@ -38,6 +34,10 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
             max_width_px,
         }
     }
+
+    const EM: f32 = 8.0; // 16 px font, mono half-width advance.
+    let mut harness = UiHarness::arena();
+    let ui = harness.ui();
 
     {
         let probe = ui.probe_text(run("hello", None));

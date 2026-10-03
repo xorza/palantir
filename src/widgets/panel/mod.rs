@@ -31,7 +31,7 @@ pub struct Panel {
 }
 
 impl Panel {
-    fn auto(widget: Widget) -> Self {
+    const fn auto(widget: Widget) -> Self {
         Self {
             widget,
             chrome: None,
@@ -103,7 +103,7 @@ impl Panel {
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this panel.
-    pub fn background(mut self, bg: Background) -> Self {
+    pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

@@ -5,6 +5,8 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use std::cell::OnceCell;
+use std::fmt;
+use std::ops;
 
 /// Lazy handle to a widget's per-frame interaction state. Holds a
 /// `WidgetId` plus a shared borrow of `Ui`; the first deref probes
@@ -65,7 +67,7 @@ impl<'a> Response<'a> {
     /// Text, Block, Panel, Grid). External widget authors reach this
     /// through [`Widget::show`](crate::widget::Widget::show).
     #[inline]
-    pub(crate) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
+    pub(crate) const fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
             id,
             ui,
@@ -106,7 +108,7 @@ impl<'a> Response<'a> {
     }
 }
 
-impl std::ops::Deref for Response<'_> {
+impl ops::Deref for Response<'_> {
     type Target = ResponseState;
     /// The lazy probe: first touch resolves `response_for`, later
     /// touches read the memoized state.
@@ -116,8 +118,8 @@ impl std::ops::Deref for Response<'_> {
     }
 }
 
-impl std::fmt::Debug for Response<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Response<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Response")
             .field("id", &self.id)
             .field("cached", &self.cached.get())
@@ -139,7 +141,7 @@ pub struct ResponseSnapshot {
     pub state: ResponseState,
 }
 
-impl std::ops::Deref for ResponseSnapshot {
+impl ops::Deref for ResponseSnapshot {
     type Target = ResponseState;
     #[inline]
     fn deref(&self) -> &ResponseState {

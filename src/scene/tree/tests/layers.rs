@@ -1,6 +1,11 @@
 //! A side layer gets its own tree, and keeps it independent of the one it
 //! opened from.
 
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::Ui;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -242,7 +247,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
 #[test]
 fn mid_recording_popup_keeps_trees_independent() {
     fn marker(slot: u8) -> RectShape {
-        let w = (slot + 1) as f32;
+        let w = f32::from(slot + 1);
         Shape::rect(Rect::new(0.0, 0.0, w, w)).fill(RgbaF32::srgb(1.0, 0.0, 0.0))
     }
     fn marker_w(s: &ShapeRecord) -> u32 {

@@ -87,7 +87,7 @@ impl GpuGradientAtlas {
         let bgl = texture_binding::layout(device, "palantir.gradient.bgl");
 
         let texture = create_texture(device, cpu.rows());
-        let view = texture.create_view(&Default::default());
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         // Linear inside a row, for smooth gradient interpolation.
         let sampler = texture_binding::sampler(device, "palantir.gradient.sampler");
 
@@ -132,7 +132,7 @@ impl GpuGradientAtlas {
         cpu.flush_with(|rows| {
             if texture.height() != rows.total_rows {
                 *texture = create_texture(ctx.device, rows.total_rows);
-                let view = texture.create_view(&Default::default());
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 *bg = texture_binding::bind_group(
                     ctx.device,
                     bgl,

@@ -38,6 +38,10 @@ impl Hsv {
     }
 
     /// The opaque colour these axes name.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "`rem_euclid` puts the hue in [0, 6), so its sector is non-negative"
+    )]
     pub fn to_color(self) -> RgbaF32 {
         let hue = self.h.rem_euclid(1.0) * 6.0;
         let sat = self.s.clamp(0.0, 1.0);

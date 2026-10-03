@@ -10,7 +10,7 @@ use std::f32::consts::TAU;
 /// The phase itself. A ramp from the range's start to its end, and what
 /// a spinner turns on.
 #[inline]
-pub fn linear(t: f32) -> f32 {
+pub const fn linear(t: f32) -> f32 {
     t
 }
 

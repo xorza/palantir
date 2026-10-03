@@ -48,6 +48,11 @@
 //!
 //! Run with `cargo bench --features bench --bench criterion -- gradient_atlas`.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;

@@ -7,6 +7,7 @@ use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
+use std::hash;
 
 /// Geometry of a conic (sweep) gradient: the parametric axis 0..1 sweeps
 /// around `center` starting at `start_angle` radians, counter-clockwise.
@@ -41,7 +42,7 @@ impl GradientGeometry for ConicGeometry {
         [self.center.x, self.center.y, self.start_angle, 0.0]
     }
 
-    fn hash_geometry<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {
         self.center.hash_visual(state);
         self.start_angle.hash_visual(state);
     }

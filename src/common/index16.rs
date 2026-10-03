@@ -37,7 +37,7 @@ impl Index16 {
     }
 
     #[inline]
-    pub(crate) fn idx(self) -> usize {
+    pub(crate) const fn idx(self) -> usize {
         self.0.get() as usize - 1
     }
 
@@ -79,8 +79,8 @@ mod tests {
         assert_eq!(last.idx(), 65_534);
         assert_eq!(last.to_raw(), u16::MAX);
         assert_eq!(Index16::from_raw(u16::MAX), Some(last));
-        assert_eq!(std::mem::size_of::<Index16>(), 2);
-        assert_eq!(std::mem::size_of::<Option<Index16>>(), 2);
+        assert_eq!(size_of::<Index16>(), 2);
+        assert_eq!(size_of::<Option<Index16>>(), 2);
     }
 
     /// The overflow names the table that filled up: the ceiling is a

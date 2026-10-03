@@ -63,20 +63,20 @@ impl<'a> ColorButton<'a> {
 
     /// Show the alpha bar and the opacity value in the popup. Off by default,
     /// matching [`ColorPicker::alpha`].
-    pub fn alpha(mut self, on: bool) -> Self {
+    pub const fn alpha(mut self, on: bool) -> Self {
         self.alpha = on;
         self
     }
 
     /// Pin the popup's model instead of offering the switch.
-    pub fn model(mut self, model: ColorModel) -> Self {
+    pub const fn model(mut self, model: ColorModel) -> Self {
         self.model = Some(model);
         self
     }
 
     /// Show the picker's own swatch row. On by default: a chip in a panel is
     /// the case with no room for a preset row of its own.
-    pub fn history(mut self, on: bool) -> Self {
+    pub const fn history(mut self, on: bool) -> Self {
         self.history = on;
         self
     }

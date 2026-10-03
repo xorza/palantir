@@ -170,13 +170,13 @@ impl LayerWalk<'_> {
         let same_subtree = prev.subtree_hash == self.tree.rollups.subtree[i];
         let same_cascade = prev.cascade_input == self.cascade.cascade_inputs[i];
         match () {
-            _ if same_parent && same_subtree && same_cascade => Tier::SubtreeUnchanged,
-            _ if same_parent && same_subtree => Tier::SubtreeMoved,
-            _ if same_parent && same_cascade && prev.hash == self.tree.rollups.node[i] => {
+            () if same_parent && same_subtree && same_cascade => Tier::SubtreeUnchanged,
+            () if same_parent && same_subtree => Tier::SubtreeMoved,
+            () if same_parent && same_cascade && prev.hash == self.tree.rollups.node[i] => {
                 Tier::DescendantChanged
             }
-            _ if self.cascade.paint_arena.rows_of(i).is_empty() => Tier::Evicted(prev),
-            _ => Tier::PaintsChanged(prev),
+            () if self.cascade.paint_arena.rows_of(i).is_empty() => Tier::Evicted(prev),
+            () => Tier::PaintsChanged(prev),
         }
     }
 
@@ -318,22 +318,19 @@ impl LayerWalk<'_> {
             // `&mut` up front rather than reading the snapshot and coming back
             // for the same bucket — this runs per moved node, which is every
             // node under a pan.
-            match self.prev.get_mut(&wid) {
-                Some(snap) => {
-                    snap.cascade_input = self.cascade.cascade_inputs[j];
-                    let paint_span = snap.paint_span;
-                    prev_extent =
-                        prev_extent.union(self.paints.slots[paint_span.range()].union_screens());
-                    self.paints.slots[paint_span.range()].copy_from_slice(curr);
+            if let Some(snap) = self.prev.get_mut(&wid) {
+                snap.cascade_input = self.cascade.cascade_inputs[j];
+                let paint_span = snap.paint_span;
+                prev_extent =
+                    prev_extent.union(self.paints.slots[paint_span.range()].union_screens());
+                self.paints.slots[paint_span.range()].copy_from_slice(curr);
+            } else {
+                if !curr.any_on_surface(self.surface) {
+                    continue;
                 }
-                None => {
-                    if !curr.any_on_surface(self.surface) {
-                        continue;
-                    }
-                    let paint_span = self.paints.store(curr);
-                    let snapshot = self.snapshot(j, self.parent_key(j), paint_span);
-                    self.prev.insert(wid, snapshot);
-                }
+                let paint_span = self.paints.store(curr);
+                let snapshot = self.snapshot(j, self.parent_key(j), paint_span);
+                self.prev.insert(wid, snapshot);
             }
             self.counters.mark_dirty(NodeId(j as u32));
         }

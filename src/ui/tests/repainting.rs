@@ -247,8 +247,6 @@ fn request_repaint_after_drains_fired_entries() {
 /// `FrameProcessing::PaintOnly`.
 #[test]
 fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
-    let half = Duration::from_millis(500);
-
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Block::new()
@@ -258,6 +256,8 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
             add_blink_shape(ui, half);
         });
     }
+
+    let half = Duration::from_millis(500);
 
     let mut h = UiHarness::new(SURFACE);
 
@@ -338,8 +338,6 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 /// PaintOnly on frame 1, then re-runs the encoder.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
-    let half = Duration::from_millis(500);
-
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             // Gradient-filled chrome: `lower::background` interns a
@@ -365,6 +363,8 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             add_blink_shape(ui, half);
         });
     }
+
+    let half = Duration::from_millis(500);
 
     let mut h = UiHarness::new(SURFACE);
 
@@ -478,8 +478,6 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 /// `REAL | ANIM` mix, so the classifier picks Full.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
-    let half = Duration::from_millis(500);
-
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Block::new()
@@ -489,6 +487,8 @@ fn paint_only_skipped_when_widget_requested_repaint() {
             add_blink_shape(ui, half);
         });
     }
+
+    let half = Duration::from_millis(500);
 
     let mut h = UiHarness::new(SURFACE);
 
@@ -515,8 +515,6 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    let half = Duration::from_millis(500);
-
     // Body declares an inert Frame *and* an anim shape so the next
     // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
     // entry, so OnDelta sees `requests_repaint = false`.
@@ -531,6 +529,8 @@ fn input_policy_routes_paint_only_gate() {
                 add_blink_shape(ui, half);
             });
     }
+
+    let half = Duration::from_millis(500);
 
     {
         let mut h = UiHarness::new(SURFACE);

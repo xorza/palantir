@@ -30,6 +30,7 @@
 /// where there is no such range — a canvas the user zooms as far as they
 /// like.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[must_use]
 pub struct ZoomFactor(f32);
 
 impl Default for ZoomFactor {
@@ -81,7 +82,7 @@ impl ZoomFactor {
 
     /// The factor as a plain number, for the transform that applies it.
     #[inline]
-    pub fn get(self) -> f32 {
+    pub const fn get(self) -> f32 {
         self.0
     }
 }

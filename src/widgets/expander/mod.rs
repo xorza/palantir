@@ -82,7 +82,7 @@ impl<'a> Expander<'a> {
     /// Whether the section starts open. Read on the first frame only —
     /// after that the widget's own flag answers. Ignored entirely when
     /// [`Self::open`] binds the flag.
-    pub fn start_open(mut self, open: bool) -> Self {
+    pub const fn start_open(mut self, open: bool) -> Self {
         self.start_open = open;
         self
     }
@@ -91,7 +91,7 @@ impl<'a> Expander<'a> {
     /// that persists it or drives it from elsewhere. Wins over
     /// [`Self::start_open`], and the widget writes every toggle back
     /// through it.
-    pub fn open(mut self, open: &'a mut bool) -> Self {
+    pub const fn open(mut self, open: &'a mut bool) -> Self {
         self.open = Some(open);
         self
     }
@@ -104,7 +104,7 @@ impl<'a> Expander<'a> {
     /// cross-frame row of any widget that stops being recorded, so a
     /// skipped body loses everything inside it. Default `false`, because
     /// costing nothing while closed is what the control is for.
-    pub fn keep_body(mut self, keep: bool) -> Self {
+    pub const fn keep_body(mut self, keep: bool) -> Self {
         self.keep_body = keep;
         self
     }

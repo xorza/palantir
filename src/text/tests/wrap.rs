@@ -513,7 +513,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             .key();
         match wrap {
             TextWrap::Wrap => {
-                assert_eq!(Some(raw), painted, "Wrap commits the width it was offered")
+                assert_eq!(Some(raw), painted, "Wrap commits the width it was offered");
             }
             _ => assert_ne!(
                 Some(raw),

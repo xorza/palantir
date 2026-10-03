@@ -33,10 +33,13 @@ pub trait Animatable: Clone + PartialEq + 'static {
     /// A curve may overshoot it, so an implementation must not clamp.
     fn lerp(a: Self, b: Self, t: f32) -> Self;
     /// Componentwise difference — the displacement a spring works on.
+    #[must_use]
     fn sub(self, other: Self) -> Self;
     /// Componentwise sum, the inverse of [`Self::sub`].
+    #[must_use]
     fn add(self, other: Self) -> Self;
     /// Componentwise multiplication by a scalar.
+    #[must_use]
     fn scale(self, k: f32) -> Self;
     /// Squared length, compared against `EPS * EPS` for settle checks.
     /// Squared form avoids a per-frame `sqrt` for the spring termination

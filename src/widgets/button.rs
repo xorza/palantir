@@ -70,7 +70,7 @@ impl<'a> Button<'a> {
     /// reflow onto multiple lines, or [`TextWrap::SingleLine`] to let it run
     /// past the chrome. Only bites on a `Fixed`/`Fill`-width button — a `Hug`
     /// button commits its natural width, so the label always fits.
-    pub fn text_wrap(mut self, wrap: TextWrap) -> Self {
+    pub const fn text_wrap(mut self, wrap: TextWrap) -> Self {
         self.label_wrap = wrap;
         self
     }
@@ -78,7 +78,7 @@ impl<'a> Button<'a> {
     /// Position of the label glyphs inside the button's arranged rect.
     /// Distinct from [`Configure::align`], which positions the *button*
     /// inside its parent's slot. Default: [`Align::CENTER`].
-    pub fn text_align(mut self, a: Align) -> Self {
+    pub const fn text_align(mut self, a: Align) -> Self {
         self.label_align = a;
         self
     }

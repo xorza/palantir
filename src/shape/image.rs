@@ -12,6 +12,7 @@ use crate::shape::sealed;
 
 /// Textured rectangle painted from a registered [`ImageHandle`].
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct ImageShape {
     pub(crate) handle: ImageHandle,
     pub(crate) local_rect: Option<Rect>,

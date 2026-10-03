@@ -63,6 +63,11 @@
 //! Step and draw-list counts print alongside each result. They explain a
 //! result — they don't replace its elapsed time.
 
+#![expect(
+    clippy::print_stderr,
+    reason = "a bench reports what criterion does not measure to the terminal"
+)]
+
 use crate::bench::Run;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::gpu::frame::schedule::internals::Walk;
@@ -87,7 +92,7 @@ use glam::Vec2;
 use std::hint::black_box;
 use std::time::Duration;
 
-const PHYSICAL: glam::UVec2 = glam::UVec2::new(512, 512);
+const PHYSICAL: UVec2 = UVec2::new(512, 512);
 /// Cells per axis. `GRID * GRID` items tile the viewport exactly, with no
 /// gaps — every arm's dirty rects then merge into a region covering well
 /// over `FULL_REPAINT_THRESHOLD`, which is what keeps each frame a single
@@ -201,7 +206,7 @@ fn cell_origin(i: usize) -> Vec2 {
 /// whole viewport is dirty and the frame stays `Full`. Geometry never
 /// changes, which keeps layout and measure fully cached — the record
 /// closure is the only thing that re-runs.
-fn tint(phase: bool) -> RgbaF32 {
+const fn tint(phase: bool) -> RgbaF32 {
     if phase {
         RgbaF32::WHITE
     } else {

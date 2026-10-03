@@ -1,6 +1,7 @@
 //! [`FontFamily`] and the process-wide table of interned family names.
 
 use rustc_hash::FxHashMap;
+use serde::de;
 use std::fmt;
 use std::sync::{LazyLock, RwLock, RwLockReadGuard};
 
@@ -180,14 +181,14 @@ impl<'de> serde::Deserialize<'de> for FontFamily {
 #[derive(Debug)]
 struct NameVisitor;
 
-impl serde::de::Visitor<'_> for NameVisitor {
+impl de::Visitor<'_> for NameVisitor {
     type Value = FontFamily;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("a font family name")
     }
 
-    fn visit_str<E: serde::de::Error>(self, name: &str) -> Result<Self::Value, E> {
+    fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
         FontFamily::try_named(name)
             .ok_or_else(|| E::custom("more than 65536 font families interned"))
     }
@@ -196,6 +197,7 @@ impl serde::de::Visitor<'_> for NameVisitor {
 #[cfg(test)]
 mod tests {
     use crate::text::font_family::{FamilyTable, FontFamily};
+    use ron::ser;
 
     /// The two seeded families are the names `resolved_name` answers and the
     /// indices the key encodes — pinned together because the table's
@@ -245,7 +247,7 @@ mod tests {
     /// name deserializes to the family interning it produces.
     #[test]
     fn serde_carries_the_name() {
-        let encoded = ron::ser::to_string(&FontFamily::MONO).expect("serialize");
+        let encoded = ser::to_string(&FontFamily::MONO).expect("serialize");
         assert_eq!(encoded, "\"JetBrains Mono\"");
         assert_eq!(
             ron::from_str::<FontFamily>(&encoded).expect("parse"),

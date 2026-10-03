@@ -28,6 +28,7 @@ use crate::primitives::math::approx::EPS;
 /// the `f32` from [`Self::get`] and reads it back through [`Self::new`],
 /// so the range check runs on the way in rather than being derived around.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[must_use]
 pub struct UserScale(f32);
 
 impl Default for UserScale {
@@ -115,6 +116,10 @@ impl UserScale {
     }
 
     /// The factor as whole percent, for a menu label — `125` at `1.25`.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "a user scale is a positive factor, so its percent is positive"
+    )]
     pub fn percent(self) -> u32 {
         (self.0 * 100.0).round() as u32
     }

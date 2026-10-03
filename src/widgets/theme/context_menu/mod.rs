@@ -24,6 +24,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// [`crate::ContextMenu::style`] / [`crate::MenuItem::style`] /
 /// [`crate::MenuSeparator::style`].
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[must_use]
 pub struct ContextMenuTheme {
     /// Panel chrome behind the items. Container's `padding` carves the
     /// gutter between chrome and rows.

@@ -1,12 +1,9 @@
 //! The rect a shape reports as painted, where it is not the owner's.
 
-use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
-use glam::Vec2;
 
 #[test]
 fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
