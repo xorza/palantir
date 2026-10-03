@@ -189,7 +189,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                 .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .snapshot();
-            ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+            ContextMenu::on(&trigger).show(ui, |ui, popup| {
                 let item = MenuItem::new("Copy");
                 let item = if hint {
                     item.shortcut_hint(Shortcut::ctrl('C'))
@@ -255,7 +255,7 @@ fn nested(ui: &mut Ui) {
                         .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .snapshot();
-                    ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+                    ContextMenu::on(&trigger).show(ui, |ui, popup| {
                         MenuItem::new("Copy").show(ui, popup);
                     });
                 });

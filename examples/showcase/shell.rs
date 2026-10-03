@@ -569,9 +569,7 @@ fn ui_scale_row(ui: &mut Ui) {
             if clicked {
                 next = scale.stepped_up();
             }
-            Tooltip::on(&up)
-                .label("UI scale — ctrl +/− · ctrl 0 resets")
-                .show(ui);
+            Tooltip::on(&up, "UI scale — ctrl +/− · ctrl 0 resets").show(ui);
         });
     ui.set_user_scale(next);
 }

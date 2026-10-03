@@ -1,7 +1,5 @@
 //! Subtrees the diff can jump over, and the transitions that end that.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::Ui;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
@@ -124,7 +122,7 @@ fn popup_eater_does_not_force_full_repaint() {
     let anchor = Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut h, |ui| {
-        Popup::new(Anchor::at_point(anchor))
+        Popup::at_point(anchor)
             .id(WidgetId::from_hash("p"))
             .background(Background::fill(BLUE))
             .show(ui, |ui, _popup| {

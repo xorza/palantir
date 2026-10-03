@@ -15,6 +15,7 @@ use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::click_outside::ClickOutside;
+use glam::Vec2;
 use std::rc::Rc;
 
 /// A side-layer container placed relative to a screen-space anchor.
@@ -63,7 +64,7 @@ impl Popup {
     /// application holding an anchor already (from
     /// [`LayerScope::anchored`](crate::LayerScope::anchored), or one it
     /// computed) hands it straight over:
-    /// `Popup::new(Anchor::at_point(p).gap(4.0))`.
+    /// `Popup::new(Anchor::at_point(p).with_gap(4.0))`.
     #[track_caller]
     pub fn new(anchor: Anchor) -> Self {
         Self {
@@ -97,6 +98,13 @@ impl Popup {
     #[track_caller]
     pub fn right_of(rect: Rect) -> Self {
         Self::new(Anchor::right_of(rect))
+    }
+
+    /// Placed by [`Anchor::at_point`] — a menu or a picker raised at the
+    /// pointer rather than off a widget's rect.
+    #[track_caller]
+    pub fn at_point(point: Vec2) -> Self {
+        Self::new(Anchor::at_point(point))
     }
 
     /// Record into `layer` rather than [`Layer::Popup`].

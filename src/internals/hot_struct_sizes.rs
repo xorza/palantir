@@ -224,7 +224,7 @@ const PINS: &[Pin] = &[
     pin::<Modal<'static>>("widgets::Modal", 272, 8),
     pin::<Tooltip<'static>>("widgets::Tooltip", 304, 8),
     pin::<GpuView>("widgets::GpuView", 144, 8),
-    pin::<ContextMenu<'static>>("widgets::ContextMenu", 288, 8),
+    pin::<ContextMenu<'static>>("widgets::ContextMenu", 296, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),

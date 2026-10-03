@@ -42,14 +42,14 @@ struct ContextMenuState {
 /// [`Self::open`] and [`Self::close`] are the whole of what it would have
 /// written.
 ///
-/// Typical usage chains [`Self::attach`] off a trigger's `Response`,
+/// Typical usage chains [`Self::on`] off a trigger's `Response`,
 /// which auto-opens at the pointer on a right-click (`right.clicked()`):
 ///
 /// ```
 /// # use palantir::{Button, ContextMenu, Configure, MenuItem, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let trigger = Button::new().label("…").show(ui).snapshot();
-/// ContextMenu::attach(ui, &trigger)
+/// ContextMenu::on(&trigger)
 ///     .max_size((280.0, 400.0))
 ///     .show(ui, |ui, popup| { MenuItem::new("Delete").show(ui, popup); });
 /// # }
@@ -75,6 +75,9 @@ struct ContextMenuState {
 #[must_use = "a widget records nothing until `show`"]
 pub struct ContextMenu<'a> {
     for_id: WidgetId,
+    /// The trigger reported a right-click this frame, so `show` opens the
+    /// menu at the pointer first.
+    open_on_show: bool,
     /// The popup this menu *is*. It owns the body node from the start,
     /// so the caller's [`Configure`] calls land on the node that
     /// actually records — there is no second node to keep in sync or
@@ -97,8 +100,20 @@ impl<'a> ContextMenu<'a> {
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,
-            popup: Popup::new(Anchor::at_point(Vec2::ZERO)).default_id(for_id.with("body")),
+            open_on_show: false,
+            popup: Popup::at_point(Vec2::ZERO).default_id(for_id.with("body")),
             style: None,
+        }
+    }
+
+    /// Attach a menu to the trigger `snapshot` was taken from: the menu
+    /// takes the trigger's id, and [`Self::show`] opens it at the pointer
+    /// on the frame the trigger reports a right-click. Pass via
+    /// `trigger.snapshot()` to detach from the trigger's `&Ui` borrow.
+    pub fn on(snapshot: &ResponseSnapshot) -> Self {
+        Self {
+            open_on_show: snapshot.right.clicked(),
+            ..Self::for_id(snapshot.id)
         }
     }
 
@@ -112,20 +127,6 @@ impl<'a> ContextMenu<'a> {
     pub fn style(mut self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self {
         self.style = s.into();
         self
-    }
-
-    /// Derive `for_id` from a trigger widget's response snapshot, and
-    /// auto-open at the current pointer position if the trigger
-    /// reported a right-click this frame. Pass via
-    /// `trigger.snapshot()` to detach from the trigger's `&Ui`
-    /// borrow before attaching the menu.
-    pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
-        if snapshot.right.clicked()
-            && let Some(p) = ui.pointer_pos()
-        {
-            ContextMenu::open(ui, snapshot.id, p);
-        }
-        ContextMenu::for_id(snapshot.id)
     }
 
     /// Record the menu and return the popup's own per-frame outcome.
@@ -145,6 +146,11 @@ impl<'a> ContextMenu<'a> {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
+        if self.open_on_show
+            && let Some(p) = ui.pointer_pos()
+        {
+            ContextMenu::open(ui, self.for_id, p);
+        }
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled Escape check here.
         //

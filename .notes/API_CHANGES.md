@@ -65,17 +65,6 @@ or reorder, slot `i`'s hover and look animation move to the page that slid into 
 identity one way. Without it, index keys as today, so a static page list needs nothing. A bare
 name, because `TabbedView` is a builder (A47).
 
-## A14. Attach-to-trigger naming
-
-**Findings.** REVIEW "Small widgets design": `Tooltip::on(&snapshot)` and
-`ContextMenu::attach(ui, &snapshot)` name one idea twice, with different argument shapes.
-
-**Decided 2026-10-04.** `on(&snapshot)` for every overlay that attaches to a trigger, with the
-snapshot first and required text second (A51), and no constructor that takes `ui`:
-`Tooltip::on(&snapshot, text)`, `ContextMenu::on(&snapshot)`, and A23's `PopupTrigger::on`.
-`ContextMenu::attach` goes; its auto-open on a right-click moves into `show(ui)`, which has the
-`ui` it needs. `ContextMenu::for_id` stays for a menu that code opens with `ContextMenu::open`.
-
 ## A15. ColorButton parity with ColorPicker
 
 **Findings.** REVIEW "Small widgets design": ColorButton lacks `swatches(&[RgbaF32])` and the
@@ -232,15 +221,6 @@ items, old and new.
 **Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
 stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
 
-## A41. `Popup` mirrors `Anchor` but not all of it
-
-**Findings.** `Popup::below`, `above`, `left_of` and `right_of(rect)` are `Popup::new(Anchor::…)`
-spelled shorter, but `Anchor::at_point` has no `Popup` twin, so the one placement a menu at the
-pointer needs is the one that has to be spelled long.
-
-**Recommendation.** Add `Popup::at_point(point)`, so the shorthand covers every `Anchor`
-constructor.
-
 ## A50. One validation model for every public input
 
 **Findings.** An audit of every public function that takes a number, a range, an index or a value
@@ -384,32 +364,6 @@ selection shows as the last option without being written back (rule 2).
 `ComboBox`, `TabbedView`, `Image`, `IconTable` (with A18, whose two new rejections become this
 `Result`'s variants), `GridCell`, `DockSplit`; the crate docs. Split into one go-ahead
 for the `domain` module plus the rules, and then one per area (layout, paint, widgets, host).
-
-## A51. Where a widget's text goes
-
-**Findings.** Required text goes in the constructor (`Text::new(text)`, `Expander::new(label)`,
-`MenuItem::new(label)`); optional text goes through `.label(..)` (`Button`, `Checkbox`, `Switch`,
-`RadioButton`). `Tooltip` breaks the pattern: its text is required — an empty one records no
-bubble — but it arrives through `Tooltip::on(&snapshot).label(..)`.
-
-**Recommendation.** One rule, written in AGENTS.md: required text in the constructor, optional
-text through `.label`. `Tooltip` takes its text in the constructor:
-`Tooltip::on(&snapshot, text)`, as A14 decided; `Tooltip::label` goes.
-
----
-
-# Implementation plan
-
-Every step below is one go-ahead and one commit. A step:
-
-- follows the rules this file adds to AGENTS.md (step 1.5) and the existing ones (read the
-  neighbours before settling a signature; no shims, no compat aliases);
-- updates every caller in `src/`, `tests/`, `benches/` and the showcase, and the docs that name
-  the old item;
-- adds or extends the tests the item names, with hand-derived expected values;
-- runs the AGENTS.md verification chain, plus the visual suite when it moves pixels or layout, and
-  ends with a look at the showcase when a user can see the change;
-- regenerates `API_SURFACE.md` and deletes the items it closes from this file.
 
 ## Phase 0 — decisions before any code
 

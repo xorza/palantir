@@ -1,7 +1,5 @@
 //! What closes a popup, and how long it takes to settle.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::internals::harness::UiHarness;
@@ -95,7 +93,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if *open {
-                    let r = Popup::new(Anchor::at_point(ANCHOR))
+                    let r = Popup::at_point(ANCHOR)
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _popup| {
@@ -142,7 +140,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
             .size((Sizing::FILL, Sizing::FILL))
             .sense(Sense::CLICK)
             .show(ui, |ui| {
-                open && Popup::new(Anchor::at_point(ANCHOR))
+                open && Popup::at_point(ANCHOR)
                     .id(WidgetId::from_hash("test-popup"))
                     .click_outside(ClickOutside::Dismiss)
                     .show(ui, |ui, _popup| {

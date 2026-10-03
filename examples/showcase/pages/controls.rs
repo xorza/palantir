@@ -280,9 +280,11 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     .label("Delete profile")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&del)
-                    .label("Deletes the profile. No undo — hence the danger theme.")
-                    .show(ui);
+                Tooltip::on(
+                    &del,
+                    "Deletes the profile. No undo — hence the danger theme.",
+                )
+                .show(ui);
             });
 
             let target = if s.syncing { 1.0 } else { 0.0 };

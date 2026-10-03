@@ -5,7 +5,6 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -155,7 +154,7 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
             name: "Popup",
             record: |ui, c| {
                 c.apply(
-                    Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0))).id(own_id()),
+                    Popup::at_point(Vec2::new(20.0, 20.0)).id(own_id()),
                     Popup::background,
                     Popup::default_background,
                 )
@@ -182,7 +181,7 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
             record: |ui, c| {
                 let trigger = hovered_trigger();
                 c.apply(
-                    Tooltip::on(&trigger).label("tip").delay(Duration::ZERO),
+                    Tooltip::on(&trigger, "tip").delay(Duration::ZERO),
                     Tooltip::background,
                     Tooltip::default_background,
                 )
