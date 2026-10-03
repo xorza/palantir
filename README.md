@@ -67,7 +67,7 @@ Measured via `perf stat`, pinned to one core; the per-frame counts are a
 differential between two measurement windows, so process startup cancels
 out.
 
-The build sets `-C target-feature=+f16c` (see [Recommended build flag](#recommended-build-flag)), worth ~6% of the CPU figures above.
+The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the CPU figures above.
 
 ---
 
@@ -173,17 +173,18 @@ and the comparison reports exactly which pixels moved.
 Colour, corner radii, spacing and shadow geometry are stored as f16. Without
 F16C in the target features, each conversion takes a runtime feature check
 into a `#[target_feature]` fn that can't inline into its caller — a spill and
-a call every time.
+a call every time. x86-64-v3 carries F16C, plus AVX2 and FMA:
 
 ```toml
 # .cargo/config.toml
 [target.'cfg(target_arch = "x86_64")']
-rustflags = ["-C", "target-feature=+f16c"]
+rustflags = ["-C", "target-cpu=x86-64-v3"]
 ```
 
-Worth **−5 to −8%** on the `frame` bench. Moves the CPU floor to Ivy Bridge
-(2012), so it's the application's call — palantir keeps the runtime fallback
-either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
+F16C alone is worth **−5 to −8%** on the `frame` bench. Moves the CPU floor to
+Haswell (2013), so it's the application's call — palantir keeps the runtime
+fallback either way. An application that must run on older CPUs can set
+`-C target-feature=+f16c` instead, for an Ivy Bridge (2012) floor.
 
 ## Install
 
