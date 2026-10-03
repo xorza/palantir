@@ -91,8 +91,10 @@ or reorder, slot `i`'s hover and look animation move to the page that slid into 
 
 **Options.** A key function, `TabbedView::keyed(|page: &S| -> u64)`, or a bound `S: Hash`.
 
-**Recommendation.** An optional key function, with index keys as the default when none is given.
-Compare with how `TabItem` and `DockState` key tabs.
+**Decided 2026-10-04.** A builder setter `TabbedView::keyed(|page: &S| key)` whose key is any
+`impl Hash`, hashed the way `DockState::tab_key` hashes a tab, so the two widgets derive chip
+identity one way. Without it, index keys as today, so a static page list needs nothing. A bare
+name, because `TabbedView` is a builder (A47).
 
 ## A13. One way to pick a look
 
@@ -107,8 +109,11 @@ Compare with how `TabItem` and `DockState` key tabs.
 **Findings.** REVIEW "Small widgets design": `Tooltip::on(&snapshot)` and
 `ContextMenu::attach(ui, &snapshot)` name one idea twice, with different argument shapes.
 
-**Recommendation.** One verb and one argument order for both. Read `Popup`'s constructors first;
-whichever of the three reads most like prose wins.
+**Decided 2026-10-04.** `on(&snapshot)` for every overlay that attaches to a trigger, with the
+snapshot first and required text second (A51), and no constructor that takes `ui`:
+`Tooltip::on(&snapshot, text)`, `ContextMenu::on(&snapshot)`, and A23's `PopupTrigger::on`.
+`ContextMenu::attach` goes; its auto-open on a right-click moves into `show(ui)`, which has the
+`ui` it needs. `ContextMenu::for_id` stays for a menu that code opens with `ContextMenu::open`.
 
 ## A15. ColorButton parity with ColorPicker
 
@@ -120,13 +125,18 @@ that half of the REVIEW finding is closed.
 **Recommendation.** Add `swatches` and `texel_size` to `ColorButton` with `ColorPicker`'s
 signatures, after A28.
 
-## A16. Fallible render target conversion
+## A16. A checked render target
 
-**Findings.** REVIEW "Render target colour encoding is not enforced". REDESIGN D6 adds a release
-assert at `OffscreenHost` construction, which needs no API change.
+**Findings.** REVIEW "Render target colour encoding is not enforced". `From<&wgpu::Texture> for
+RenderTarget` accepts any texture, and a wrong format panics on the first frame, inside the
+renderer, far from the line that chose the texture. `From<wgpu::TextureFormat> for TargetFormat` is
+the same gap for a format named before a texture exists.
 
-**Option.** Replace `From<&wgpu::Texture> for RenderTarget` with `TryFrom`, with an error that
-names the format. Only worth it if apps pick target formats at run time.
+**Decided 2026-10-04.** `RenderTarget::new(&texture)` asserts the format (sRGB or float) and the
+usage (`RENDER_ATTACHMENT`, plus `COPY_DST` where the host presents through its backbuffer), with
+`#[track_caller]` and a `# Panics` section, as A50 rule 3 says for a caller contract.
+`TargetFormat::new(format)` asserts the same format rule. Both `From` impls go, because `From` must
+not fail; the entry points take `RenderTarget` itself instead of `impl Into<RenderTarget>`.
 
 ## A17. Cargo features for tests
 
@@ -140,9 +150,11 @@ equals `test`. REVIEW "Support-module docs": `lib.rs:209-212`.
    `required-features` on `[[test]] alloc`.
 2. Add a `gpu-tests` feature that the dev-dependency does not request.
 
-**Recommendation.** 1, unless a GPU-free `cargo test` is a real need on the headless test server.
-Features are part of the published surface, which is why this is here. Then update the AGENTS.md
-test line.
+**Decided 2026-10-04.** Option 1: every test run needs an adapter. A GPU test panics without
+one, so the headless test server needs a software Vulkan driver (Mesa lavapipe, in
+`mesa-vulkan-drivers`) installed once — an install for you to run, not part of this item. Delete
+the seven false "GPU-free" claims, drop the `all(test, internals)` gates that equal `test`, and
+drop `required-features` on `[[test]] alloc`; then update the AGENTS.md test line.
 
 ## A18. Icon set limits and names
 
@@ -222,9 +234,12 @@ flag, toggle on click, close when disabled, show `Popup::below(rect)`, close on 
 back only on a flip. REDESIGN D12 proposed a crate-internal `PopupTrigger`, but AGENTS.md lets a
 widget reach only the public API, so a shared helper has to be public.
 
-**Recommendation.** A public `PopupTrigger` beside `Popup`: `PopupTrigger::new(id, &response)`
-probes and toggles, `open()` answers, `close()` closes, and `finish(ui)` writes back on a flip. Read `Popup`, `OverlayScope` and `ContextMenu::attach` first, and match their argument
-order. Touches `ColorButton`, `ComboBox` and any app that drops its own panel from a button.
+**Recommendation.** A public `PopupTrigger` beside `Popup`, spelled as A14 decided:
+`PopupTrigger::on(&snapshot)` attaches, and `show(ui, ..)` probes the open flag, toggles it on a
+click, closes it when the trigger is disabled, records the `Popup` below the trigger, and writes
+the flag back only on a flip; `open()` answers and `close()` closes. Read `Popup` and
+`ContextMenu` first and match their shape. Touches `ColorButton`, `ComboBox` and any app that
+drops its own panel from a button.
 
 ## A24. `const` on public functions that can take it
 
@@ -434,9 +449,11 @@ forwards `Configure` to it, and finishes it through that widget's public setters
 - `Popup::anchored` stays: it is an ordinary setter a holding wrapper needs, and it already
   mirrors `LayerScope::anchored`.
 - `default_background` stays as the chrome peer of `ThemeDefaults::default_padding`, but on every
-  widget that has `background(bg)`, not on `Popup` alone: `Block`, `Panel`, `Grid`, `Scroll`,
-  `Popup`, `Modal`, `Tooltip` and `ContextMenu` implement one `Chrome` trait with
-  `background(bg)` and `default_background(bg)`, in place of eight copies of `background`.
+  widget that has `background(bg)`, not on `Popup` alone. **Decided 2026-10-04:** an inherent
+  `default_background(bg)` beside the inherent `background(bg)` on `Block`, `Panel`, `Grid`,
+  `Scroll`, `Popup`, `Modal`, `Tooltip` and `ContextMenu` — no trait. Because no trait keeps the
+  eight in step, one table-driven test records each of them with only a default, with only a
+  background, and with both, and asserts the painted fill each time.
 
 ## A40. Remove `MenuItem::separator`
 
@@ -587,19 +604,24 @@ caller bugs that are hidden (`GridCell::span(0, _)`) while others are ordinary d
 2. **Coercion is total and silent, always.** It never asserts and never panics, because the
    context is data: an option list shrinks, a saved ratio comes from an older layout, a range
    comes from a settings file. Its result is documented on the API. Concretely: `ComboBox` and
-   `TabbedView` clamp a stale index (and `TabbedView` with zero pages records only its strip);
+   `TabbedView` show a stale index as the last option, without writing the clamped index back
+   (**decided 2026-10-04**: the bound `usize` changes only when the user picks, and
+   `ValueResponse::changed` stays `false`); with no options, `ComboBox` shows an empty chip and
+   `TabbedView` records its strip with no page;
    reversed ranges are ordered (`Limits`, crate-wide); a fraction is clamped to `0..=1` with NaN
-   as `0`; `GridCell` spans keep their floor at 1 but report it as rule 3 says.
+   as `0`. A zero `GridCell` span is not context but a caller bug, so it is a `count` under
+   rule 3, not a coercion.
 3. **Validation depends on where the value comes from.**
    - *Per-frame authoring* — builder setters and the value constructors a record pass calls
      (`Sizing`, `Track`, `Corners`, `Spacing`, `Stroke`, `TranslateScale`, `AnimSpec`,
-     `Shape::*`): a `debug_assert!` with `#[track_caller]`, whose message names the value's
-     kind and its rule. In release the value maps to its kind's documented *neutral* — the value
-     that does nothing: a length or thickness of `0`, a scale of `1`, an animation of
-     `AnimSpec::SNAP`. Release keeps one branch-free select per value. That is a release cost,
-     but it is the cost the NaN gates already pay, for the same reason: an unmapped NaN does not
-     crash, it empties the frame — quietly wrong, which is worse than a debug panic and a neutral
-     value.
+     `Shape::*`): a release `assert!` with `#[track_caller]`, whose message names the value's
+     kind and its rule, documented under `# Panics`. **Decided 2026-10-04:** a release panic,
+     not a neutral value — never quietly wrong. This is a deliberate exception to the global
+     guide's "`debug_assert!` on hot paths" for one case, public input validation, and AGENTS.md
+     states it. The cost is one comparison per value per frame. The consequence for apps: a
+     value *computed* at run time (a `0 / 0` thickness) must go through a coercing kind or an
+     `is_*` predicate before it reaches a validating setter, or it crashes the app — which is why
+     every validating kind also exports its predicate.
    - *Cold configuration* — host builders, `Theme::scale_text`, dock configuration, icon tables:
      a release `assert!` documented under `# Panics`.
    - *Data from outside the program* — files, persisted settings, decoded images, numbers a user
@@ -617,60 +639,63 @@ caller bugs that are hidden (`GridCell::span(0, _)`) while others are ordinary d
    through the kind functions (what `themed_length` does today, for lengths only).
 
 **The mechanism.** A public `widget::domain` module (A36 merges `widget::approx` and `F32Ext`
-into it), one `const fn` per value kind, each one predicate, one message and one neutral. Public,
-because AGENTS.md lets a widget reach only the public API, and a widget outside the crate validates
-its own setters and reads theme values through the same functions:
+into it). Each validating kind is two `const fn`s — an `is_*` predicate and an asserting
+checker — with one message; each coercing kind is one total `const fn`. Public, because AGENTS.md
+lets a widget reach only the public API, and a widget outside the crate validates its own setters
+and reads theme values through the same functions:
 
 ```rust
-/// A distance: finite and not negative. Neutral `0.0` — takes no space, paints nothing.
+/// A distance: finite and not negative.
+pub const fn is_length(v: f32) -> bool {
+    v.is_finite() && v >= 0.0
+}
+
+/// `v`, which must be a length.
+///
+/// # Panics
+///
+/// Panics unless [`is_length`]`(v)`.
 #[track_caller]
 pub const fn length(v: f32) -> f32 {
-    debug_assert!(v.is_finite() && v >= 0.0, "a length must be finite and not negative");
-    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
+    assert!(is_length(v), "a length must be finite and not negative");
+    v
 }
 ```
 
 Every setter calls its kind: `Spinner::diameter(px)` stores `domain::length(px)`, `gap` stores
 `domain::gap(g)`. The serde validators in `primitives::packed::serde::checked` become thin
-wrappers over the same predicates, so a file and a call site cannot disagree. `#[track_caller]`
-puts the debug panic on the caller's line, and the message stays a constant so the function stays
-`const`.
+wrappers over the same `is_*` predicates, so a file and a call site cannot disagree.
+`#[track_caller]` puts the panic on the caller's line, and the message stays a constant so the
+function stays `const`.
 
-| Kind | Rule | Neutral | Used by |
+| Kind | Rule | On a value outside it | Used by |
 |---|---|---|---|
-| `offset` | finite | `0.0` | margin, position, translation, shadow offset |
-| `length` | finite, ≥ 0 | `0.0` | padding, thickness, diameter, stroke width, radius, font size (`0` shapes nothing, as a sub-epsilon size does today), `Sizing::fixed`, `Sizing::share` |
-| `extent` | ≥ 0, `+inf` allowed | `+inf` | `max_size` |
-| `gap` | length ≤ 65 504 (the f16 lane) | `0.0` | `gap`, `line_gap` |
-| `positive` | finite, > 0 | `1.0` | scales, zoom factors, slider step, drag speed, fill weights |
-| `angle` | finite | `0.0` | gradient angles, arc angles |
-| `color` | every channel finite (HDR values above `1` stay valid: tween outputs reach them) | `TRANSPARENT` | every `RgbaF32` that enters a shape, a look or a widget |
-| `count` | ≥ 1, or a power of two in a range | `1` | paint steps, `texel_size` (A28) |
-| `range` | both ends finite; order *coerced* (`Limits`) | `0.0..=1.0` | `Slider::new`, `DragValue::range`, `ZoomConfig::new` |
-| `fraction` | *coerced* to `0..=1`, NaN → `0` | — | progress, split ratio, `Hsv` / `Okhsv` saturation and value |
-| `turn` | *coerced*: wraps into `0..1`, NaN → `0` | — | `Hsv` / `Okhsv` hue, `ColorCoords` fallback hue |
-| `index` | *coerced* into `0..len`; no index when `len == 0` | — | `ComboBox`, `TabbedView`, `TabStrip::selected` |
+| `offset` | finite | panic | margin, position, translation, shadow offset |
+| `length` | finite, ≥ 0 | panic | padding, thickness, diameter, stroke width, radius, font size (`0` shapes nothing, as a sub-epsilon size does today), `Sizing::fixed`, `Sizing::share` |
+| `extent` | ≥ 0, `+inf` allowed | panic | `max_size` |
+| `gap` | length ≤ 65 504 (the f16 lane) | panic | `gap`, `line_gap` |
+| `positive` | finite, > 0 | panic | scales, zoom factors, slider step, drag speed, fill weights |
+| `angle` | finite | panic | gradient angles, arc angles |
+| `color` | every channel finite (HDR values above `1` stay valid: tween outputs reach them) | panic | every `RgbaF32` that enters a shape, a look or a widget |
+| `count` | ≥ 1, or a power of two in a range | panic | paint steps, `GridCell` spans, `texel_size` (A28) |
+| `range` | both ends finite | panic; the *order* is coerced (`Limits`) | `Slider::new`, `DragValue::range`, `ZoomConfig::new` |
+| `fraction` | `0..=1` | coerced: clamped, NaN → `0` | progress, split ratio, `Hsv` / `Okhsv` saturation and value |
+| `turn` | `0..1` | coerced: wrapped, NaN → `0` | `Hsv` / `Okhsv` hue, `ColorCoords` fallback hue |
+| `index` | `0..len` | coerced for display: clamped, never written back; no index when `len == 0` | `ComboBox`, `TabbedView`, `TabStrip::selected` |
 
-The *coerced* rows never assert (rule 2); every other row is a validation (rule 3). Every
-numeric parameter's doc names its kind ("`px`: a *length*"), and the crate docs carry the table.
-`ImageHandle::update` with a wrong size is the one per-frame case whose neutral is "do nothing" —
-the update is skipped and the old texels stay — rather than a value.
+Every numeric parameter's doc names its kind ("`px`: a *length*"), and the crate docs carry the
+table. `ImageHandle::update` with a wrong size keeps its release panic: it is a `count`-like
+contract on a whole image rather than a scalar, and the rule is the same.
 
 **Tests.** The theme suite's `file_values` walk already proves one property for files: every
 number is rejected on load or safe to render. The same property for code: one table per kind feeds
 `NaN`, `±inf`, `-1`, `0` and the boundary values through every setter of that kind, and asserts
-the debug panic message in a debug build and the neutral in release (`cfg(debug_assertions)`
-rows). One more test records a frame from those values under `cfg(not(debug_assertions))` and
-asserts no NaN reaches layout or paint.
+either the kind's panic message (`panic_probe::assert_panics_with`) or the coerced value. One more
+test records a frame from every coercing input at its worst (NaN fractions, stale indices, reversed
+ranges) and asserts that no NaN reaches layout or paint.
 
-**Decisions this needs from you.**
-
-- Rule 3 maps a per-frame contract violation to a neutral in release instead of panicking. The
-  repository guide asks for exactly this on hot paths, and the posture asks never to be quietly
-  wrong; the debug panic is what reconciles them. If you prefer a release panic on these paths
-  too, rule 3's first bullet becomes `assert!` and the kind functions lose their neutral.
-- The coercion of a stale selection: clamp to the last option (recommended, it keeps a page
-  visible) or show nothing selected.
+**Decided 2026-10-04.** A per-frame contract violation panics in release (rule 3), and a stale
+selection shows as the last option without being written back (rule 2).
 
 **Touches.** Every builder setter and value constructor listed above; `primitives::packed::serde::checked`;
 `ComboBox`, `TabbedView`, `Image`, `IconTable` (with A18, whose two new rejections become this
@@ -685,8 +710,8 @@ for the `domain` module plus the rules, and then one per area (layout, paint, wi
 bubble — but it arrives through `Tooltip::on(&snapshot).label(..)`.
 
 **Recommendation.** One rule, written in AGENTS.md: required text in the constructor, optional
-text through `.label`. `Tooltip` takes its text in the constructor, in the argument order A14
-settles for attaching to a trigger.
+text through `.label`. `Tooltip` takes its text in the constructor:
+`Tooltip::on(&snapshot, text)`, as A14 decided; `Tooltip::label` goes.
 
 ---
 
@@ -705,15 +730,17 @@ Every step below is one go-ahead and one commit. A step:
 
 ## Phase 0 — decisions before any code
 
-| Decision | Item | Recommendation |
-|---|---|---|
-| Release behaviour of a per-frame contract violation | A50 | the kind's neutral, with a debug panic |
-| A stale selection index | A50 | clamp to the last option |
-| The attach-to-trigger verb and argument order | A14, A51, A23 | one verb for `Tooltip` and `ContextMenu`, the snapshot first and the text second |
-| Page identity in `TabbedView` | A12 | an optional key function, index keys by default |
-| Fallible render target conversion | A16 | reject: no application chooses a target format at run time |
-| GPU tests in every `cargo test` | A17 | option 1 |
-| The chrome trait's name | A39 | `Chrome` |
+All seven are decided. Each item named here carries its decision in its own text.
+
+| Decision | Item | Recommendation | Decided (2026-10-04) |
+|---|---|---|---|
+| Release behaviour of a per-frame contract violation | A50 | the kind's neutral, with a debug panic | **a release panic**, with an `is_*` predicate per kind |
+| A stale selection index | A50 | clamp to the last option | **clamp to the last option for display; the bound index is not written back** |
+| The attach-to-trigger verb and argument order | A14, A51, A23 | one verb for `Tooltip` and `ContextMenu`, the snapshot first and the text second | **`on(&snapshot)`**, text second, no `ui` in a constructor |
+| Page identity in `TabbedView` | A12 | an optional key function, index keys by default | **`.keyed(\|page\| impl Hash)`**, index keys by default |
+| Fallible render target conversion | A16 | reject: no application chooses a target format at run time | **a checked `RenderTarget::new` / `TargetFormat::new`**; the `From` impls go |
+| GPU tests in every `cargo test` | A17 | option 1 | **option 1**; the test server needs lavapipe installed |
+| How the chrome setters are shared | A39 | a `Chrome` trait | **no trait**: inherent `default_background` on all eight, kept in step by one test |
 
 ## Phase 1 — foundations the later phases build on
 
@@ -722,14 +749,15 @@ Every step below is one go-ahead and one commit. A step:
    twins where a widget needs both axes. Move every `widget::approx` and `F32Ext` caller onto it
    (about 75 call sites), then remove both. Rewrite `primitives::packed::serde::checked` over the
    same predicates. Tests: a table per kind (`NaN`, `±inf`, `-1`, `0`, the boundary, a valid
-   value) for both the debug panic and the release neutral. Setters do not call it yet, so no
-   behaviour changes.
+   value) for the panic message or the coerced value. Setters do not call it yet, so no behaviour
+   changes.
 2. **`const` sweep** (A24), after step 1 so the setters that will call `domain` stay `const`.
 3. **Flag sets** (A32): `NONE` and `ALL` on every flag type; `empty`, `all`, `bits` and
    `from_bits_truncate` become `pub(crate)`. Before A22 adds bits to `Sense`.
 4. **No strum on public types** (A6): `BatchKind`, `PointerButton`, `Layer`.
 5. **Rules in AGENTS.md**: the chainer rule (A47), the wrapper rule (A39), the text rule (A51),
-   and the validation model (A50 rules 1–4 and the kinds table). Commit the inventory generator
+   and the validation model (A50 rules 1–4, the kinds table, and the decided exception: public
+   input validation panics in release on per-frame paths too). Commit the inventory generator
    (rustdoc JSON on the nightly toolchain) as `scripts/api_surface.py`, so the regeneration every
    step needs is one command.
 
@@ -748,13 +776,16 @@ Each line is one commit; none depends on another inside the phase.
 4. **Argument types.** A31 (`placeholder` and `suffix` take `TextInput`), A33 (`From<Modifiers>`,
    one field order, one constant set) with A9 (`Panel::stack`, `Widget::stack`), A37 (seal
    `GradientGeometry`).
+5. **Test features** (A17): the false claims, the redundant gates and the `alloc`
+   `required-features` go.
 
 ## Phase 3 — structural API
 
 1. **One value response** (A27): `Checkbox`, `Switch`, `RadioButton` and `ComboBox` return
    `ValueResponse`; `SelectResponse` goes; `ExpanderResponse::changed`.
 2. **Wrappers** (A39): `ConfigureWidget::adopt_placement`; `MenuSeparator` holds a `Separator`;
-   the `Chrome` trait on the eight chrome-bearing widgets.
+   `default_background` on the eight chrome-bearing widgets, with the test that keeps them in
+   step.
 3. **Overlays**, in this order: A14 with A51 (the attach verb; `Tooltip` takes its text in the
    constructor), A41 (`Popup::at_point`), then A23 (`PopupTrigger`, in A14's argument order;
    `ColorButton` and `ComboBox` move onto it).
@@ -770,18 +801,20 @@ One area per commit. Each adds its setters to the per-kind input tables of phase
    `TabbedView` (and its zero-page case) and `TabStrip::selected` coerce their index; `Limits`
    orders every range; fractions and turns coerce.
 2. **Layout**: `Sizing`, `Track`, `gap`, `line_gap`, `min_size`, `max_size`, `padding`, `margin`,
-   `position`, `TranslateScale`; `GridCell` gets private fields with `with_span`. The release
-   panics in this area become debug panics with neutrals.
+   `position`, `TranslateScale`; `GridCell` gets private fields with `with_span`. Every check in
+   the area panics with its kind's message; the debug-only ones (`padding`, `margin`) become
+   release asserts, and the unchecked ones (`position`) gain one.
 3. **Paint**: shape constructors, `Stroke`, `Corners`, `Shadow`, colours where they enter a shape
    or a look, `Stop` / `GradientBuilder::stop`, `PaintAnim`, `ImageHandle::update`.
 4. **Widgets**: every remaining widget setter (`Spinner`, `Separator`, `DragValue::speed`,
-   `Slider`, `Scroll::zoom_by`, `ZoomConfig::new`, `texel_size`, text sizes) and `AnimSpec`
-   (neutral `SNAP`). Theme values read through `domain` where they are used.
-5. **Data** (rule 3, third bullet): `Image::from_srgba8` and `IconTable::from_svgs` (with A18)
-   return `Result`; `FontFamily::named` returns `Option`; A21's `FontLoadError::FamilyTableFull`;
-   `DockSplit` gets a private, checked ratio; `Display::from_physical` validates its scale.
-6. **The frame property**: a release-mode test records one frame from every kind's invalid inputs
-   and asserts that no NaN reaches layout or paint.
+   `Slider`, `Scroll::zoom_by`, `ZoomConfig::new`, `texel_size`, text sizes) and `AnimSpec`.
+   Theme values read through `domain` where they are used.
+5. **Data and host**: `Image::from_srgba8` and `IconTable::from_svgs` (with A18) return `Result`;
+   `FontFamily::named` returns `Option`; A21's `FontLoadError::FamilyTableFull`; `DockSplit` gets
+   a private, checked ratio; `Display::from_physical` validates its scale; A16's checked
+   `RenderTarget::new` and `TargetFormat::new`.
+6. **The frame property**: a test records one frame from every coercing input at its worst and
+   asserts that no NaN reaches layout or paint.
 
 ## Phase 5 — goldens
 
@@ -795,7 +828,6 @@ report. Downstream suites change once.
 2. **A20** keyboard on toggles and ranges, after phase 3 step 1.
 3. **A19** IME and focus traversal, each its own design.
 4. **A10** the `meta` modifier, after phase 2 step 4.
-5. **A16** and **A17** as phase 0 decides.
 
 ## Order at a glance
 
