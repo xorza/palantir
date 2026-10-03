@@ -145,7 +145,7 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
 
 /// A 60 px checker, so an image drawn past its node is visible.
 fn picture(h: &mut Harness) -> ImageHandle {
-    let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]);
+    let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
     image.fill_with(|x, y| {
         let on = (x / 10 + y / 10) % 2 == 0;
         palantir::SrgbaU8::new(if on { 230 } else { 40 }, 120, 60, 255)

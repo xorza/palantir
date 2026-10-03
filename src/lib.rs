@@ -419,6 +419,7 @@ pub use primitives::paint::color::color_model::{ColorModel, HueSlice};
 pub use primitives::paint::color::hsv::Hsv;
 pub use primitives::paint::color::okhsv::{Okhsv, OkhsvSlice};
 pub use primitives::paint::color::srgba_u8::SrgbaU8;
+pub use primitives::paint::image::error::ImageDataError;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::paint::shadow::Shadow;
 pub use primitives::text::interned_str::InternedStr;

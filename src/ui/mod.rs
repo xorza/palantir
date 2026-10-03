@@ -838,9 +838,10 @@ impl Ui {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read, and
+    /// [`FontLoadError::Io`] when the file cannot be read,
     /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
-    /// parse.
+    /// parse,
+    /// and [`FontLoadError::FamilyTableFull`] when the family table is full.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)

@@ -150,7 +150,7 @@ fn test_image() -> Image {
             px.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
         }
     }
-    Image::from_srgba8(UVec2::new(N, N), px)
+    Image::from_srgba8(UVec2::new(N, N), px).unwrap()
 }
 
 thread_local! {

@@ -28,7 +28,7 @@ use glam::UVec2;
 #[test]
 fn an_unknown_family_resolves_to_the_bundled_default() {
     let mut c = CosmicMeasure::default();
-    let missing = FontFamily::named("No Such Family Exists");
+    let missing = FontFamily::named("No Such Family Exists").unwrap();
 
     assert!(!c.font_available(missing));
     assert!(c.font_available(FontFamily::SANS));
@@ -340,4 +340,26 @@ fn the_packed_face_word_keeps_every_axis_apart() {
         unbounded,
         "dropping the bound must restore the key the face alone mints",
     );
+}
+
+/// A load reports which way it failed by what the file named: no names is
+/// no face, and names of which none fits the family table is a full
+/// table. The first name that fits is the load's family.
+#[test]
+fn a_load_names_its_family_or_why_it_has_none() {
+    use crate::text::cosmic::first_family;
+    use crate::text::font_family::FontFamily;
+
+    let none = |_: &str| None;
+    assert!(matches!(
+        first_family(&[], none),
+        Err(FontLoadError::NoFaces)
+    ));
+    let names = ["Full".to_owned(), "Also Full".to_owned()];
+    assert!(matches!(
+        first_family(&names, none),
+        Err(FontLoadError::FamilyTableFull)
+    ));
+    let second = |name: &str| (name == "Also Full").then_some(FontFamily::MONO);
+    assert_eq!(first_family(&names, second).ok(), Some(FontFamily::MONO));
 }
