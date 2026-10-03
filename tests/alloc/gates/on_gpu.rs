@@ -161,7 +161,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         RENDER_SURFACE,
     );
 
-    let atlas = Rc::new(IconTable::from_svgs([("chip", RAMP_ICON_SVG)]));
+    let atlas = Rc::new(IconTable::from_svgs([("chip", RAMP_ICON_SVG)]).unwrap());
     let chip = IconId(0);
     let mut held: Option<IconSet> = None;
     let mut state = FrameFixture::default();

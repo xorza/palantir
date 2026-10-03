@@ -5,17 +5,18 @@ use super::*;
 use crate::common::span::Span;
 use crate::icons::icon_table::{IconDef, IconId};
 use glam::Vec2;
+use std::borrow::Cow;
 use std::collections;
 
 const A_ICONS: &[IconDef] = &[IconDef {
-    name: "a",
+    name: Cow::Borrowed("a"),
     view_box: Vec2::splat(24.0),
     svg: Span::new(0, 1),
     tintable: true,
     filtered: false,
 }];
 const B_ICONS: &[IconDef] = &[IconDef {
-    name: "b",
+    name: Cow::Borrowed("b"),
     view_box: Vec2::splat(16.0),
     svg: Span::new(0, 1),
     tintable: false,

@@ -37,7 +37,7 @@ const RIGHT: [u8; 4] = [0x3c, 0x78, 0xe6, 255];
 pub(crate) fn atlas() -> Rc<IconTable> {
     thread_local! {
         static BUILT: Rc<IconTable> =
-            Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]));
+            Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]).unwrap());
     }
     BUILT.with(Rc::clone)
 }

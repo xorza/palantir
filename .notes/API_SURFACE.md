@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `06c8c268`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `ca7aa210`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -975,6 +975,9 @@ struct           GpuFrameCtx
 struct           GpuInitCtx
     fields: device, target_format, text
     traits: Debug
+enum             IconTableError
+    variants: Unreadable, TooMany, DuplicateName
+    traits: Clone, Debug, Display, Eq, Error, PartialEq, StructuralPartialEq
 struct           IconHandle
     const fn view_box(self)
     traits: Clone, Copy, Debug, PartialEq, StructuralPartialEq
@@ -985,7 +988,7 @@ struct           IconSet
     traits: Clone, Debug
 struct           IconDef
     fields: name, view_box, svg, tintable, filtered
-    traits: Clone, Copy, Debug
+    traits: Clone, Debug
 struct           IconId
     traits: Clone, Copy, Debug, Eq, Hash, PartialEq, StructuralPartialEq
 struct           IconTable

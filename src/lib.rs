@@ -441,6 +441,7 @@ pub use glam::UVec2;
 pub use glam::Vec2;
 pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
 pub use gpu::device::gpu_init_ctx::GpuInitCtx;
+pub use icons::error::IconTableError;
 pub use icons::icon_set::{IconHandle, IconSet};
 pub use icons::icon_table::{IconDef, IconId, IconTable};
 pub use primitives::geometry::translate_scale::TranslateScale;
