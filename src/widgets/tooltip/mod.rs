@@ -209,6 +209,7 @@ impl<'a> Tooltip<'a> {
             let anchor = Anchor::below(trigger_rect).gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
+            let text = theme.text.apply(&ui_theme.text);
             // Theme fills in whatever the caller left alone. Identity
             // derives from the trigger, because that is the only thing a
             // tooltip *has* — but a caller-set id wins like any other
@@ -231,7 +232,7 @@ impl<'a> Tooltip<'a> {
             let _ = scope.record(ui, |ui| {
                 bubble.record(ui, Some(chrome), |ui| {
                     Text::new(label)
-                        .style(&theme.text)
+                        .style(&text)
                         .text_wrap(TextWrap::Wrap)
                         .show(ui);
                 });

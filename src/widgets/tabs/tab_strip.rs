@@ -362,7 +362,7 @@ struct StripHits {
 #[derive(Debug)]
 struct ChipCtx<'a> {
     theme: &'a TabsTheme,
-    /// The ambient text style an unset look inherits.
+    /// The ambient text style a look's text overrides fold onto.
     ambient: TextStyle,
     /// The strip every chip id derives from.
     strip: WidgetId,
@@ -535,7 +535,7 @@ impl GlyphButton {
             background: look.background.clone(),
             text: TextStyle {
                 line_height_mult: 1.0,
-                ..look.text.unwrap_or(ambient)
+                ..look.text.apply(&ambient)
             },
             state,
         }

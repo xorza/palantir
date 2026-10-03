@@ -11,8 +11,8 @@ use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
     Align, AnimSpec, App, Background, Block, Button, ButtonTheme, Checkbox, Configure, Corners,
     FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut, Sizing,
-    Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui, UserScale,
-    VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
+    Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides, TextWrap, Theme, Tooltip,
+    Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -582,9 +582,7 @@ fn ui_scale_row(ui: &mut Ui) {
 fn scale_step_style() -> ButtonTheme {
     let mut style = nav_style(false);
     let grow = |look: &mut WidgetLook| {
-        if let Some(text) = &mut look.text {
-            text.font_size_px = 15.0;
-        }
+        look.text.font_size_px = Some(15.0);
     };
     grow(&mut style.looks.normal);
     grow(&mut style.looks.hovered);
@@ -637,7 +635,7 @@ const fn showcase_palette() -> Palette {
 /// Flat rail button: transparent at rest, accent-washed when it's the
 /// open page. Worn by the nav items and by the UI-scale stepper.
 fn nav_style(selected: bool) -> ButtonTheme {
-    let label = |c: RgbaF32| Some(TextStyle::default().with_font_size(12.0).with_color(c));
+    let label = |c: RgbaF32| TextStyleOverrides::NONE.with_font_size(12.0).with_color(c);
     let wash = |alpha: f32, c: RgbaF32| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
     let (rest, hover, press, ink) = if selected {
         (0.16, 0.22, 0.28, support::ACCENT)

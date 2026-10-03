@@ -45,8 +45,8 @@ pub trait ThemeSlot {
     /// The spacing and transition spec the bundle contributes to the node.
     fn defaults(&self) -> SlotDefaults;
 
-    /// Flatten into the owned plan [`LookPlan::apply`] consumes, resolving
-    /// the ambient `text` fallback against the picked look.
+    /// Flatten into the owned plan [`LookPlan::apply`] consumes, folding
+    /// the picked look's text overrides onto the ambient `text`.
     ///
     /// Read under the theme borrow. The result owns everything it carries,
     /// so the borrow ends here and the caller can reborrow the `Ui`

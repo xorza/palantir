@@ -30,7 +30,6 @@ pub(crate) mod tooltip;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
-use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
@@ -48,7 +47,7 @@ use crate::widgets::theme::spinner::SpinnerTheme;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
 
@@ -151,9 +150,10 @@ pub struct Theme {
     pub expander: ExpanderTheme,
     /// Ambient text style — size, colour, family, leading — that every
     /// [`Text`](crate::Text) falls back to when its builder didn't
-    /// override the axis, and that a widget look inherits whole wherever
-    /// its `text` slot is `None`. A state-styled widget overrides it by
-    /// filling that slot, which is all or nothing.
+    /// override the axis. Every other text slot in the theme — each widget
+    /// look, the tooltip's text, the colour picker's captions — is a
+    /// [`TextStyleOverrides`] over this, and inherits each axis it leaves
+    /// unset.
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: RgbaF32,
@@ -170,6 +170,15 @@ pub struct Theme {
     /// rounded-clip mask geometry.
     #[serde(default, skip_serializing_if = "is_clip_none")]
     pub panel_clip: ClipMode,
+}
+
+/// One text-bearing slot of a theme, as [`Theme::for_each_text`] hands it
+/// over: a whole style, or a look's overrides that fold onto
+/// [`Theme::text`].
+#[derive(Debug)]
+pub(crate) enum ThemeText<'a> {
+    Style(&'a mut TextStyle),
+    Overrides(&'a mut TextStyleOverrides),
 }
 
 const TEXT_SCALE_ERROR: &str = "text scale factor must be finite and positive";
@@ -190,7 +199,8 @@ fn text_scale_is_valid(scale: f32) -> bool {
 }
 
 impl Theme {
-    /// Multiply every `TextStyle` in the theme by `factor`.
+    /// Multiply every font size in the theme by `factor` — each
+    /// `TextStyle`, and each widget look that overrides the size.
     ///
     /// **Relative, and it composes**: `scale_text(1.25)` then
     /// `scale_text(1.6)` lands at 2.0×. The theme stores font sizes and
@@ -206,22 +216,37 @@ impl Theme {
     ///
     /// Panics if `factor` is not finite and positive, or if it would drive
     /// any font size or line height outside the range the shaper accepts.
-    /// Both checks run before the first write, so a rejected factor leaves
-    /// the theme untouched.
+    /// A look's overrides are checked as folded onto the scaled
+    /// [`Self::text`], the face the widget would shape. Both checks run
+    /// before the first write, so a rejected factor leaves the theme
+    /// untouched.
     pub fn scale_text(&mut self, factor: f32) {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
+        let scale = |px: f32| px * factor;
+        let ambient = self.text.with_font_size(scale(self.text.font_size_px));
         let mut metrics_valid = true;
-        self.for_each_text(|style| {
-            let font_size_px = style.font_size_px * factor;
-            metrics_valid &=
-                GlyphFont::metrics_are_valid(font_size_px, style.line_height_for(font_size_px));
+        self.for_each_text(|text| {
+            metrics_valid &= match text {
+                ThemeText::Style(style) => style
+                    .with_font_size(scale(style.font_size_px))
+                    .metrics_valid(),
+                ThemeText::Overrides(o) => TextStyleOverrides {
+                    font_size_px: o.font_size_px.map(scale),
+                    ..*o
+                }
+                .apply(&ambient)
+                .metrics_valid(),
+            };
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
-        self.for_each_text(|t| t.font_size_px *= factor);
+        self.for_each_text(|text| match text {
+            ThemeText::Style(style) => style.font_size_px = scale(style.font_size_px),
+            ThemeText::Overrides(o) => o.font_size_px = o.font_size_px.map(scale),
+        });
     }
 
-    /// Visit every `TextStyle` in the theme. [`Self::scale_text`] drives
-    /// the walk; each sub-theme owns its own visit (see each
+    /// Visit every text-bearing slot in the theme. [`Self::scale_text`]
+    /// drives the walk; each sub-theme owns its own visit (see each
     /// `for_each_text`).
     ///
     /// **Every `for_each_text` in this module destructures its whole
@@ -232,10 +257,10 @@ impl Theme {
     /// `tests::text_scale::scale_text_reaches_every_font_size`,
     /// which scales a default theme and asserts over its serialized
     /// form that every `font_size_px` moved. The test can only see
-    /// styles the default theme materializes — an `Option<TextStyle>`
-    /// left `None` by default is invisible to it — which is exactly the
+    /// sizes the default theme materializes — a look's size override
+    /// left unset by default is invisible to it — which is exactly the
     /// gap the destructuring closes.
-    fn for_each_text(&mut self, mut f: impl FnMut(&mut TextStyle)) {
+    fn for_each_text(&mut self, mut f: impl FnMut(ThemeText<'_>)) {
         let Self {
             text,
             button,
@@ -250,7 +275,7 @@ impl Theme {
             dock,
             expander,
             color_picker,
-            // Chrome, geometry, and scalars — no `TextStyle` reachable.
+            // Chrome, geometry, and scalars — no text slot reachable.
             scrollbar: _,
             combo_box: _,
             modal: _,
@@ -264,7 +289,7 @@ impl Theme {
             panel_clip: _,
         } = self;
         let f = &mut f;
-        f(text);
+        f(ThemeText::Style(text));
         button.for_each_text(f);
         checkbox.for_each_text(f);
         radio.for_each_text(f);
@@ -277,14 +302,6 @@ impl Theme {
         dock.for_each_text(f);
         expander.for_each_text(f);
         color_picker.for_each_text(f);
-    }
-
-    /// The text style a look with none of its own inherits, as
-    /// [`Self::from_palette`] builds `text`. Theme recipes that need the
-    /// ambient style before the theme exists read it here, so there is
-    /// one derivation.
-    pub(crate) fn text_from_palette(p: &Palette) -> TextStyle {
-        TextStyle::default().with_color(p.text)
     }
 
     /// Assemble a full theme from a [`Palette`] — every widget recipe
@@ -314,7 +331,7 @@ impl Theme {
             tabs: TabsTheme::from_palette(p),
             dock: DockTheme::from_palette(p),
             expander: ExpanderTheme::from_palette(p),
-            text: Self::text_from_palette(p),
+            text: TextStyle::default().with_color(p.text),
             window_clear: p.window_bg,
             panel_background: None,
             panel_clip: ClipMode::None,

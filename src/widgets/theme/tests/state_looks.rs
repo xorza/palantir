@@ -11,7 +11,7 @@ use crate::widget_core::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 use crate::widgets::theme::toggle::ToggleTheme;
 use std::ptr;
 
@@ -190,7 +190,7 @@ fn animated_look_line_height_px_delegates_to_text_style() {
 /// The picker's channel values keep `DragValueTheme`'s promise: the editor
 /// a value turns into is the chip, look for look and padding for padding,
 /// so a value that becomes editable keeps its box and its text in place.
-/// The picker's text inherits the theme's own ambient style.
+/// The picker's text names its face and size and inherits the rest.
 #[test]
 fn the_picker_value_editor_is_its_chip() {
     use crate::widgets::theme::Theme;
@@ -201,10 +201,55 @@ fn the_picker_value_editor_is_its_chip() {
     assert_eq!(value.editor.looks.hovered, value.chip.looks.hovered);
     assert_eq!(value.editor.looks.disabled, value.chip.looks.disabled);
     assert_eq!(value.editor.defaults.padding, value.chip.defaults.padding);
-    let color = value.chip.looks.normal.text.map(|text| text.color);
     assert_eq!(
-        color,
-        Some(theme.text.color),
-        "the ambient colour is the theme's"
+        value.chip.looks.normal.text,
+        TextStyleOverrides {
+            family: Some(FontFamily::MONO),
+            font_size_px: Some(13.0),
+            ..TextStyleOverrides::NONE
+        },
+        "the face and size are the picker's, every other axis the theme's",
     );
+}
+
+/// Every bundled text slot past `Theme::text` names the colour at most,
+/// so its size, face and leading follow `Theme::text` even when an app
+/// sets that after `from_palette`. The exceptions are by design, in walk
+/// order: the tooltip's 13 px; the picker's mono 13 px values on the value
+/// chip, its editor and the hex field, four states each; and the picker's
+/// mono 10 px captions.
+#[test]
+fn bundled_text_inherits_every_axis_but_colour() {
+    use crate::widgets::theme::{Theme, ThemeText};
+
+    let mono = TextStyleOverrides {
+        family: Some(FontFamily::MONO),
+        ..TextStyleOverrides::NONE
+    };
+    let mut expected = vec![TextStyleOverrides::NONE.with_font_size(13.0)];
+    expected.extend([mono.with_font_size(13.0); 12]);
+    expected.push(mono.with_font_size(10.0));
+
+    let mut theme = Theme::default();
+    let mut named = Vec::new();
+    theme.for_each_text(|text| {
+        if let ThemeText::Overrides(o) = text {
+            let past_colour = TextStyleOverrides { color: None, ..*o };
+            if !past_colour.is_empty() {
+                named.push(past_colour);
+            }
+        }
+    });
+    assert_eq!(named, expected);
+
+    // The reported case: an app at 13 px. An inactive tab names a muted
+    // colour at rest and none when pressed, and both shape at 13 px.
+    theme.text = theme.text.with_font_size(13.0);
+    let p = Palette::DEFAULT;
+    let rest = theme.tabs.inactive.normal.to_animated(theme.text).text;
+    let pressed = theme.tabs.inactive.active.to_animated(theme.text).text;
+    let disabled = theme.text_edit.looks.disabled.to_animated(theme.text).text;
+    assert_eq!(rest, theme.text.with_color(p.text_muted));
+    assert_eq!(pressed, theme.text);
+    assert_eq!(disabled, theme.text.with_color(p.text_disabled));
 }

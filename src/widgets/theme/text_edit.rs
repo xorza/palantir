@@ -11,8 +11,9 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` =
@@ -56,7 +57,7 @@ impl TextEditTheme {
     /// `TextStyle`s — they take their size from the resolved look.
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             looks,
             placeholder: _,
@@ -139,7 +140,7 @@ impl TextEditTheme {
         // that want it.
         let normal = WidgetLook {
             background: normal_bg,
-            text: None,
+            text: TextStyleOverrides::NONE,
         };
         Self {
             looks: StatefulLook {
@@ -147,11 +148,11 @@ impl TextEditTheme {
                 normal,
                 active: WidgetLook {
                     background: focused_bg,
-                    text: None,
+                    text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
                     background: disabled_bg,
-                    text: Some(TextStyle::default().with_color(p.text_disabled)),
+                    text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },
             placeholder: p.text_muted,

@@ -382,7 +382,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         };
         let label = self.tabs.title(ui, tab);
         let ghost = self.theme.ghost.background.clone();
-        let ghost_text = self.theme.ghost.text.unwrap_or(ui.theme().text);
+        let ghost_text = self.theme.ghost.text.apply(&ui.theme().text);
         let padding = self.theme.ghost_padding;
         ui.layer(Layer::Tooltip)
             .fixed_at(p + self.theme.ghost_offset)

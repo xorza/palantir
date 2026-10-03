@@ -11,13 +11,14 @@ use palantir_anim_derive::Animatable;
 ///
 /// `text.color` is the animated color; `text.font_size_px` and
 /// `text.line_height_mult` are snap-carried from the picked
-/// `WidgetLook` (or the fallback) — see `TextStyle`'s
-/// `#[animate(snap)]` markings.
+/// `WidgetLook`'s overrides folded onto the ambient style — see
+/// `TextStyle`'s `#[animate(snap)]` markings.
 // **Not `Copy`** because `Background` isn't.
 #[derive(Clone, Debug, Default, PartialEq, Animatable)]
 pub struct AnimatedLook {
     /// The animated background.
     pub background: Background,
-    /// The animated text style, with the inherit case already resolved.
+    /// The animated text style, with the look's overrides already folded
+    /// onto the ambient style.
     pub text: TextStyle,
 }

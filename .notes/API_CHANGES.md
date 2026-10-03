@@ -54,28 +54,6 @@ item. Split this item into one go-ahead per row of the table.
 **Touches.** `src/widgets/**`, `src/layout/drivers/scrollbars`, `src/primitives/layout/scroll_axes.rs`,
 `src/ui/mod.rs`, `src/renderer/gpu_paint`, `src/primitives/geometry` helpers, `lib.rs` exports.
 
-## A2. Colour-only text override in a widget look
-
-**Findings.** REVIEW "Theme looks freeze `TextStyle::default()` instead of inheriting
-`Theme::text`". `WidgetLook.text: Option<TextStyle>` is all-or-nothing, so a recipe that only
-wants a colour bakes a full 16 px SANS style. An app that sets `theme.text` to 13 px gets 16 px
-disabled fields and tab chips that change size on press.
-
-**Options.**
-
-1. `WidgetLook { background, text: Option<TextStyle>, text_color: Option<RgbaF32> }`, applied
-   over the inherited style.
-2. `text: TextLook` where `TextLook` is `Inherit`, `Color(RgbaF32)` or `Style(TextStyle)`.
-3. Recipes resolve against `Theme::text` when the theme is built. This needs no API, but it goes
-   stale when the app sets `theme.text` after `from_palette`.
-
-**Recommendation.** 2. One field, one meaning, and `Inherit` is the explicit default. Check
-`WidgetLook::resolve` and the `AnimatedLook` lerp, which must lerp the colour of a `Color` arm.
-
-**Touches.** `widget_core/widget_look`, every recipe that bakes `TextStyle::default()`
-(`text_edit.rs:153`, `tabs.rs:149-150`, `button.rs:65`, `toggle.rs:158`, `expander.rs:109`,
-`menu_item.rs:85`), the theme serde format.
-
 ## A3. Split `KeyClass::Motion`
 
 **Findings.** REVIEW "Scopes claim key classes their owners never act on". A focused TextEdit or

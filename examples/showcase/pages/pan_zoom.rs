@@ -19,7 +19,7 @@ use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
     AnimSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Grid,
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
-    Text, TextStyle, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
+    Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
 };
 use std::array;
 
@@ -359,12 +359,12 @@ fn canvas_polylines(ui: &mut Ui) {
 /// The four backgrounds are left to [`recolor_cell`], which is all that
 /// differs between cells.
 fn cell_theme() -> ButtonTheme {
-    let label = TextStyle::default()
+    let label = TextStyleOverrides::NONE
         .with_font_size(11.0)
         .with_color(RgbaF32::hex(0x14161a));
     let look = || WidgetLook {
         background: Background::NONE,
-        text: Some(label),
+        text: label,
     };
     ButtonTheme {
         looks: StatefulLook {
