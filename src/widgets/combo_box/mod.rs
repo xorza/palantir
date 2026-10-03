@@ -5,6 +5,7 @@ use crate::input::sense::Sense;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
@@ -30,12 +31,10 @@ use std::rc::Rc;
 /// lives in the response map keyed off the trigger id, so the caller only
 /// threads the selected index.
 ///
-/// **`*selected` must index `options`.** Showing the current choice is
-/// the trigger's whole contract and there is no placeholder response, so an
-/// out-of-range index — including any index into an empty list — is a
-/// caller bug and panics. A caller whose option list can shrink or be
-/// replaced between frames owns re-deriving the index alongside it;
-/// swallowing it here would render as an ordinary blank control.
+/// `*selected` is an *index* coerced for display: one past the end of
+/// `options` — a list that shrank under it — shows the last option, and an
+/// empty list shows an empty trigger. The bound index is not rewritten; it
+/// moves only when the user picks.
 ///
 /// The trigger chrome reuses [`crate::Theme::button`]; the list reuses
 /// the context-menu panel + [`MenuItem`] rows
@@ -136,14 +135,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
 
         let arrow_color = look.text.color;
         let text_style = look.text;
-        let Some(option) = self.options.get(*self.selected) else {
-            panic!(
-                "ComboBox selection {} is out of range for {} option(s)",
-                self.selected,
-                self.options.len(),
-            )
-        };
-        let chosen = (self.label)(option);
+        let chosen = domain::index(*self.selected, self.options.len())
+            .map_or("", |shown| (self.label)(&self.options[shown]));
         // Intern the selected label into the frame buffer — an option
         // borrows from the caller's collection rather than from `'static`,
         // so it routes through `Ui::intern`.

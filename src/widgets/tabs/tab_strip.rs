@@ -13,6 +13,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::background::Background;
 use crate::shape::Shape;
@@ -152,8 +153,9 @@ impl<'a> TabStrip<'a> {
         }
     }
 
-    /// Which chip wears the selection cap. Out of range, or unset, caps
-    /// nothing.
+    /// Which chip wears the selection cap. Unset caps nothing; an index
+    /// past the end is an *index* coerced for display, so it caps the
+    /// last chip, and an empty strip caps nothing.
     pub fn selected(mut self, selected: impl Into<Option<usize>>) -> Self {
         self.selected = selected.into();
         self
@@ -227,6 +229,7 @@ impl<'a> TabStrip<'a> {
             overflow,
             style: _,
         } = self;
+        let selected = selected.and_then(|i| domain::index(i, items.len()));
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_bg = t.strip.clone();

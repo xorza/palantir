@@ -2,6 +2,7 @@
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
@@ -81,11 +82,10 @@ pub struct TabbedViewResponse<'a> {
 /// # }
 /// ```
 ///
-/// **`*selected` must index `options`.** Showing the current page is the
-/// view's whole contract and there is no empty state, so an out-of-range
-/// index — including any index into an empty list — is a caller bug and
-/// panics. A caller whose option list shrinks between frames owns
-/// re-deriving the index alongside it.
+/// `*selected` is an *index* coerced for display: one past the end of
+/// `options` — a page list that shrank under it — shows the last page, and
+/// an empty list records the strip with no page. The bound index is not
+/// rewritten; it moves only when the user picks or drags.
 ///
 /// Chips are keyed by index unless [`keyed`](Self::keyed) names a key per
 /// page — what a list that closes or reorders pages needs, so a chip's
@@ -191,8 +191,8 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
         self
     }
 
-    /// Record the strip and the page under it. `body` is called once,
-    /// with the visible page's index.
+    /// Record the strip and the page under it. `body` is called once, with
+    /// the visible page's index — or not at all when there are no pages.
     #[track_caller]
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_> {
         let theme = Rc::clone(ui.theme());
@@ -208,12 +208,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             overflow,
             style: _,
         } = self;
-        assert!(
-            *selected < options.len(),
-            "TabbedView selection {} is out of range for {} page(s)",
-            *selected,
-            options.len(),
-        );
+        let mut shown = domain::index(*selected, options.len());
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_id = id.with("strip");
@@ -235,7 +230,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 }
                 let strip = TabStrip::new(&buf.items)
                     .id(strip_id)
-                    .selected(*selected)
+                    .selected(shown)
                     .overflow(overflow)
                     .style(t)
                     .show(ui);
@@ -251,6 +246,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 action = Some(TabsAction::Closed { index });
             } else if let Some(index) = hit.clicked {
                 *selected = index;
+                shown = Some(index);
                 action = Some(TabsAction::Activated { index });
             }
             // The gaps either side of the chip leave the order as it was,
@@ -260,14 +256,20 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 && let Some(to) = dropped_slot(ui, strip_id, options, &key)
                 && to != from
                 && to != from + 1
+                && let Some(page) = shown
             {
-                *selected = moved_index(*selected, from, to);
+                *selected = moved_index(page, from, to);
+                shown = Some(*selected);
                 action = Some(TabsAction::Reordered { from, to });
             }
             Panel::vstack()
                 .id(id.with("content"))
                 .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| body(ui, *selected));
+                .show(ui, |ui| {
+                    if let Some(page) = shown {
+                        body(ui, page);
+                    }
+                });
         });
         TabbedViewResponse {
             response: Response::eager(id, ui, response),

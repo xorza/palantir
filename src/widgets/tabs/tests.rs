@@ -9,6 +9,7 @@ use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -444,17 +445,49 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     );
 }
 
-/// A page index that does not address the option slice is a caller bug,
-/// exactly as it is for `ComboBox` — there is no empty state to fall
-/// back to.
+/// The page index is an index coerced for display: one past the end
+/// shows the last page and leaves the binding alone, and an empty page
+/// list records its strip with no page under it.
 #[test]
-#[should_panic(expected = "out of range")]
-fn a_tabbed_view_panics_on_an_index_it_cannot_show() {
+fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     let mut h = UiHarness::new(SURFACE);
+    let view = WidgetId::from_hash("test.stale");
     let mut page = 7usize;
+    let mut drawn = None;
     h.frame(|ui| {
-        TabbedView::new(&mut page, &PAGES).show(ui, |_, _| {});
+        TabbedView::new(&mut page, &PAGES)
+            .id(view)
+            .show(ui, |_, index| drawn = Some(index));
     });
+    assert_eq!((page, drawn), (7, Some(2)));
+
+    let mut drawn = None;
+    h.frame(|ui| {
+        TabbedView::new(&mut page, &[] as &[&str])
+            .id(view)
+            .show(ui, |_, index| drawn = Some(index));
+    });
+    assert_eq!((page, drawn), (7, None));
+    assert!(
+        h.rect(view.with("strip")).is_some(),
+        "the strip still records"
+    );
+}
+
+/// A strip's selection is coerced the same way: an index past the end caps
+/// the last chip and no other.
+#[test]
+fn a_stale_strip_selection_caps_the_last_chip() {
+    let mut h = UiHarness::new(SURFACE);
+    strip_frame(&mut h, 9, TabBadge::None);
+    let capped = |key: u64| {
+        let node = h
+            .node_of(TabStrip::chip_id(strip_id(), key))
+            .expect("chip")
+            .node;
+        h.ui.tree(Layer::Main).chrome(node).is_some()
+    };
+    assert_eq!([10, 20, 30].map(capped), [false, false, true]);
 }
 
 /// A drag that releases over another slot reports the move rather than
