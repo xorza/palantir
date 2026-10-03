@@ -6,17 +6,17 @@ use crate::primitives::layout::clip_mode::ClipMode;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct NodeFlags {
-    bits: u16,
+    bits: u32,
 }
 
 impl NodeFlags {
-    const SENSE_MASK: u16 = 0b1_1111;
-    const DISABLED: u16 = 1 << 5;
-    const CLIP_SHIFT: u16 = 6;
-    const CLIP_MASK: u16 = 0b11 << Self::CLIP_SHIFT;
-    const FOCUSABLE: u16 = 1 << 8;
-    const SCOPE_SHIFT: u16 = 9;
-    const SCOPE_MASK: u16 = 0b1_1111 << Self::SCOPE_SHIFT;
+    const SENSE_MASK: u32 = 0b1_1111;
+    const DISABLED: u32 = 1 << 5;
+    const CLIP_SHIFT: u32 = 6;
+    const CLIP_MASK: u32 = 0b11 << Self::CLIP_SHIFT;
+    const FOCUSABLE: u32 = 1 << 8;
+    const SCOPE_SHIFT: u32 = 9;
+    const SCOPE_MASK: u32 = 0xff << Self::SCOPE_SHIFT;
 
     /// The whole bitset, for callers that fold it into a hash rather
     /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
@@ -25,7 +25,7 @@ impl NodeFlags {
     /// [`LayoutCore::hash_with_flags`]:
     ///     crate::scene::node::layout_core::LayoutCore::hash_with_flags
     #[inline]
-    pub(super) const fn bits(self) -> u16 {
+    pub(super) const fn bits(self) -> u32 {
         self.bits
     }
 
@@ -65,7 +65,7 @@ impl NodeFlags {
 
     #[inline]
     pub(crate) const fn set_sense(&mut self, s: Sense) {
-        self.bits = (self.bits & !Self::SENSE_MASK) | ((s.bits() as u16) & Self::SENSE_MASK);
+        self.bits = (self.bits & !Self::SENSE_MASK) | ((s.bits() as u32) & Self::SENSE_MASK);
     }
 
     #[inline]
@@ -75,7 +75,7 @@ impl NodeFlags {
 
     #[inline]
     pub(crate) const fn set_clip(&mut self, c: ClipMode) {
-        self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u16) << Self::CLIP_SHIFT);
+        self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u32) << Self::CLIP_SHIFT);
     }
 
     #[inline]
@@ -86,19 +86,19 @@ impl NodeFlags {
     #[inline]
     pub(crate) const fn set_key_filter(&mut self, f: KeyFilter) {
         self.bits = (self.bits & !Self::SCOPE_MASK)
-            | (((f.bits() as u16) << Self::SCOPE_SHIFT) & Self::SCOPE_MASK);
+            | (((f.bits() as u32) << Self::SCOPE_SHIFT) & Self::SCOPE_MASK);
     }
 }
 
 const _: () = assert!(
-    (ClipMode::Rounded as u16) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
+    (ClipMode::Rounded as u32) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
     "ClipMode discriminant exceeds 2 bits",
 );
 const _: () = assert!(
-    Sense::all().bits() as u16 <= NodeFlags::SENSE_MASK,
+    Sense::all().bits() as u32 <= NodeFlags::SENSE_MASK,
     "Sense uses more than 5 bits",
 );
 const _: () = assert!(
-    ((KeyFilter::all().bits() as u16) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
-    "KeyFilter uses more than 5 bits",
+    ((KeyFilter::all().bits() as u32) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
+    "KeyFilter uses more than 8 bits",
 );

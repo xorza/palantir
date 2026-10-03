@@ -135,14 +135,15 @@ impl<'a> TabStrip<'a> {
     pub fn new(items: &'a [TabItem]) -> Self {
         Self {
             // Focusable so a press on a chip lands the keyboard here and
-            // the arrow keys below have somewhere to travel from; the
-            // Motion scope keeps those arrows out of the application
-            // while a chip holds focus, and lets every other class walk
+            // the keys below have somewhere to travel from. The scope
+            // takes exactly the classes `keyboard_travel` acts on — the
+            // arrows, Home and End, and Ctrl+Tab — so bare Tab reaches the
+            // application's focus traversal and every other class walks
             // straight past.
             widget: Widget::vstack()
                 .size((Sizing::FILL, Sizing::HUG))
                 .focusable(true)
-                .input_scope(KeyFilter::MOTION),
+                .input_scope(KeyFilter::CARET | KeyFilter::CYCLE),
             items,
             selected: None,
             focused: true,

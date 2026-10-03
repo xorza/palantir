@@ -2,7 +2,7 @@
 //!
 //! A capture that takes *every* key is the wrong granularity for a text
 //! field: it swallows the application's accelerators along with the
-//! characters. [`KeyClass`] splits a press into one of five kinds, and a
+//! characters. [`KeyClass`] splits a press into one of eight kinds, and a
 //! scope declares which kinds it takes via [`KeyFilter`], so a focused
 //! editor can own `Ctrl+Z` while `Ctrl+S` walks past it to the app.
 
@@ -24,8 +24,24 @@ pub enum KeyClass {
     /// field and a canvas both want it, and deciding between them is what
     /// scopes exist for.
     Edit,
-    /// Caret movement, or canvas nudge: arrows, Home/End, PgUp/PgDn, Tab.
-    Motion,
+    /// Caret movement, or canvas nudge: the arrows, Home and End, under
+    /// any modifiers.
+    Caret,
+    /// PageUp and PageDown. Apart from [`Self::Caret`] because a field
+    /// that moves a caret need not page, and a page key it claimed without
+    /// acting on would never reach the scroll view around it.
+    Page,
+    /// Tab and Shift+Tab: focus traversal. Apart because almost nothing
+    /// that edits wants it, and a focused widget that claimed it would cut
+    /// the application's traversal off at that widget.
+    Focus,
+    /// Tab under a command modifier — Ctrl+Tab, Ctrl+Shift+Tab — which
+    /// cycles a tab strip or the application's documents. Apart from
+    /// [`Self::Focus`] for the reason WPF keeps `ControlTabNavigation`
+    /// apart from `TabNavigation`: the widget that cycles on it has no use
+    /// for bare Tab, and a text field that takes neither lets both reach
+    /// the application.
+    Cycle,
     /// Escape alone. Its own class because cancel is hierarchical — the
     /// innermost thing *that can be cancelled* should be. Which is not
     /// always the innermost scope: a field that filters its container
@@ -97,10 +113,10 @@ impl KeyClass {
             | Key::ArrowUp
             | Key::ArrowDown
             | Key::Home
-            | Key::End
-            | Key::PageUp
-            | Key::PageDown
-            | Key::Tab => Self::Motion,
+            | Key::End => Self::Caret,
+            Key::PageUp | Key::PageDown => Self::Page,
+            Key::Tab if press.mods.any_command() => Self::Cycle,
+            Key::Tab => Self::Focus,
             Key::Backspace | Key::Delete => Self::Edit,
             // A command modifier is what turns a typed key into a chord:
             // bare `z` is Text, Ctrl+Z is Edit. Shift is not a command —
@@ -136,12 +152,18 @@ flag_set! {
         const TEXT   = 1 << 0;
         /// Takes [`KeyClass::Edit`].
         const EDIT   = 1 << 1;
-        /// Takes [`KeyClass::Motion`].
-        const MOTION = 1 << 2;
+        /// Takes [`KeyClass::Caret`].
+        const CARET  = 1 << 2;
+        /// Takes [`KeyClass::Page`].
+        const PAGE   = 1 << 3;
+        /// Takes [`KeyClass::Focus`].
+        const FOCUS  = 1 << 4;
+        /// Takes [`KeyClass::Cycle`].
+        const CYCLE  = 1 << 5;
         /// Takes [`KeyClass::Escape`].
-        const ESCAPE = 1 << 3;
+        const ESCAPE = 1 << 6;
         /// Takes [`KeyClass::Accel`].
-        const ACCEL  = 1 << 4;
+        const ACCEL  = 1 << 7;
     }
 }
 
@@ -156,10 +178,12 @@ impl KeyFilter {
     /// `ACCEL` is **absent**, deliberately: `Ctrl+S` and `Ctrl+R` fall
     /// through to the application while the user is typing. That
     /// omission is the entire reason a scope carries a filter instead of
-    /// simply capturing.
+    /// simply capturing. `PAGE`, `FOCUS` and `CYCLE` are absent because a
+    /// field acts on none of them, so Tab reaches the application's focus
+    /// traversal while a field holds focus.
     pub const TEXT_FIELD: Self = Self::TEXT
         .union(Self::EDIT)
-        .union(Self::MOTION)
+        .union(Self::CARET)
         .union(Self::ESCAPE);
 
     /// Whether this filter takes `class`.
@@ -168,7 +192,10 @@ impl KeyFilter {
         self.contains(match class {
             KeyClass::Text => Self::TEXT,
             KeyClass::Edit => Self::EDIT,
-            KeyClass::Motion => Self::MOTION,
+            KeyClass::Caret => Self::CARET,
+            KeyClass::Page => Self::PAGE,
+            KeyClass::Focus => Self::FOCUS,
+            KeyClass::Cycle => Self::CYCLE,
             KeyClass::Escape => Self::ESCAPE,
             KeyClass::Accel => Self::ACCEL,
         })
@@ -240,5 +267,53 @@ mod tests {
         assert_eq!(field.accepts(save), None);
         let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
         assert_eq!(field.accepts(shifted), Some(shifted));
+    }
+
+    /// The four navigation classes, and which of them a text field takes.
+    /// Tab splits on the command modifier alone: Shift+Tab is still
+    /// traversal, and Ctrl, Alt or the raw macOS Control each make it a
+    /// cycle.
+    #[test]
+    fn navigation_keys_split_four_ways() {
+        let none = Modifiers::NONE;
+        let shift = Modifiers {
+            shift: true,
+            ..none
+        };
+        let ctrl = Modifiers { ctrl: true, ..none };
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ..ctrl
+        };
+        let alt = Modifiers { alt: true, ..none };
+        let mac_ctrl = Modifiers {
+            mac_ctrl: true,
+            ..none
+        };
+        let cases = [
+            (Key::ArrowLeft, none, KeyClass::Caret, true),
+            (Key::ArrowRight, shift, KeyClass::Caret, true),
+            (Key::ArrowUp, ctrl, KeyClass::Caret, true),
+            (Key::ArrowDown, none, KeyClass::Caret, true),
+            (Key::Home, ctrl_shift, KeyClass::Caret, true),
+            (Key::End, none, KeyClass::Caret, true),
+            (Key::PageUp, none, KeyClass::Page, false),
+            (Key::PageDown, shift, KeyClass::Page, false),
+            (Key::Tab, none, KeyClass::Focus, false),
+            (Key::Tab, shift, KeyClass::Focus, false),
+            (Key::Tab, ctrl, KeyClass::Cycle, false),
+            (Key::Tab, ctrl_shift, KeyClass::Cycle, false),
+            (Key::Tab, alt, KeyClass::Cycle, false),
+            (Key::Tab, mac_ctrl, KeyClass::Cycle, false),
+        ];
+        for (key, mods, class, field_takes) in cases {
+            let press = KeyPress::with(key, mods);
+            assert_eq!(KeyClass::of(press), class, "{key:?} under {mods:?}");
+            assert_eq!(
+                KeyFilter::TEXT_FIELD.accepts(press).is_some(),
+                field_takes,
+                "{key:?} under {mods:?}",
+            );
+        }
     }
 }

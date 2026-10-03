@@ -54,27 +54,6 @@ item. Split this item into one go-ahead per row of the table.
 **Touches.** `src/widgets/**`, `src/layout/drivers/scrollbars`, `src/primitives/layout/scroll_axes.rs`,
 `src/ui/mod.rs`, `src/renderer/gpu_paint`, `src/primitives/geometry` helpers, `lib.rs` exports.
 
-## A3. Split `KeyClass::Motion`
-
-**Findings.** REVIEW "Scopes claim key classes their owners never act on". A focused TextEdit or
-TabStrip claims all of `Motion`, which includes Tab and PageUp/PageDown, and then drops the keys
-it does not use. An app that polls Tab for focus traversal never sees it.
-
-**Options.**
-
-1. Split `Motion` into `Caret` (arrows, Home, End), `Page` (PageUp, PageDown) and `Focus` (Tab,
-   Shift+Tab). `KeyFilter` gains the three flags.
-2. Keep the classes and add a "consumed" report after handling, so an unhandled key walks on.
-   This is the WPF `Handled` model, but here the grant is decided before any widget handles the
-   key, so it needs a second dispatch round.
-
-**Recommendation.** 1. The scope model is "declare what you take"; finer classes keep it
-declarative. A multi-line TextEdit takes `Caret | Page`; a single-line one takes `Caret`; a
-TabStrip takes `Caret`.
-
-**Touches.** `input/key_class.rs`, `KeyFilter` presets (`TEXT_FIELD`), TextEdit, TabStrip, every
-test that names `Motion`.
-
 ## A4. Fallible `UserScale` constructor
 
 **Findings.** REVIEW "`UserScale::new` asserts on a persisted `nan`". The doc tells apps to read a
