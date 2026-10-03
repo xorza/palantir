@@ -104,7 +104,7 @@ pub struct DockState<T> {
     /// applies the change after loading.
     #[serde(skip_serializing)]
     max_depth: u32,
-    /// Policy, not document — see [`Self::max_depth`].
+    /// Policy, not document — see [`Self::with_max_depth`].
     #[serde(skip_serializing)]
     allowed_splits: AllowedSplits,
 }
@@ -200,7 +200,7 @@ impl<T: DockTab> DockState<T> {
     /// # Panics
     ///
     /// Panics if `depth` exceeds what a [`DockPath`] can address.
-    pub fn max_depth(mut self, depth: u32) -> Self {
+    pub fn with_max_depth(mut self, depth: u32) -> Self {
         assert!(
             depth <= DockPath::CAPACITY,
             "max_depth {depth} exceeds the {} levels a DockPath addresses",
@@ -212,8 +212,8 @@ impl<T: DockTab> DockState<T> {
 
     /// Which split directions a drag offers. Default
     /// [`AllowedSplits::All`]. On the state for the same reason as
-    /// [`Self::max_depth`].
-    pub const fn allowed_splits(mut self, allowed: AllowedSplits) -> Self {
+    /// [`Self::with_max_depth`].
+    pub const fn with_allowed_splits(mut self, allowed: AllowedSplits) -> Self {
         self.allowed_splits = allowed;
         self
     }

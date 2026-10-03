@@ -391,40 +391,6 @@ title. `OffscreenHostBuilder` has setters only.
 **Recommendation.** Remove `WinitHostConfig` and `WinitHostBuilder::config`, so both builders
 configure the same way. Keep `title` as the documented shorthand for the bootstrap window.
 
-## A44. `ZoomConfig` half fields, half constructor
-
-**Findings.** `ZoomConfig` has `range` and `step` private behind `new(range, step)`, and
-`modifier` and `pivot` as public fields — two configuration styles in one value.
-
-**Recommendation.** All four private, with `with_modifier(m)` and `with_pivot(p)` after `new`,
-as A47's rule names chainers on a value.
-
-## A47. Chainer names on value types
-
-**Findings.** Chaining setters are named two ways with no rule between them. `Background`,
-`Shadow`, `RgbaF32`, `TextStyle`, `TextStyleOverrides`, `Gradient` and `ColorRamp` use `with_*`;
-widgets, shapes and host builders use bare names. Values that use bare names anyway: `Track::min` /
-`max`, `Anchor::align` / `gap`, `GridCell::span`, `PaintAnim::{period, started_at, repeat, steps,
-curve}` (beside its own `with_alpha` / `with_turn`), every `WindowConfig` setter,
-`DockState::{max_depth, allowed_splits}` and `Goldens::tolerance`. And one builder uses `with_*`:
-`GradientBuilder::{with_spread, with_interp}`.
-
-**Recommendation.** One rule, written in AGENTS.md:
-
-- A *builder* exists to be consumed once — by a terminal `show` or `build`, or by
-  `Ui::add_shape` — and its setters are bare: widgets, shapes, `LayerScope`, the host builders,
-  `GradientBuilder`.
-- Every other type is a *value*: it is stored, passed or compared. A setter that takes an argument
-  is `with_*`. A shorthand that takes none keeps its adjective (`TextStyle::bold`, `italic`,
-  `Shadow::inset`).
-
-Renames: `Track::with_min` / `with_max`, `Anchor::with_align` / `with_gap`, `GridCell::with_span`,
-`PaintAnim::{with_period, with_started_at, with_repeat, with_steps, with_curve}`,
-`WindowConfig::{with_inner_size, with_min_inner_size, with_position, with_placement,
-with_maximized, with_icon, with_app_id}`, `DockState::{with_max_depth, with_allowed_splits}`,
-`Goldens::with_tolerance`, A44's `ZoomConfig` setters, and `GradientBuilder::{spread, interp}`.
-`PaintAnim::alpha` / `turn` stay: they are constructors.
-
 ## A48. `Mesh::with_known_bbox` trusts its caller silently
 
 **Findings.** `Mesh::with_known_bbox(bbox)` skips the lazy bounding-box computation, and its doc
@@ -639,8 +605,7 @@ All seven are decided. Each item named here carries its decision in its own text
 Each line is one commit; none depends on another inside the phase.
 
 1. Done: names (A28, A29, A30, A42, A45, A46).
-2. **Chainers** (A47, A44): the `with_*` renames on values, `GradientBuilder::{spread, interp}`,
-   and `ZoomConfig` with private fields.
+2. Done: chainers (A47, A44).
 3. **Removals.** A8 (`WinitHostError::Gpu`), A13 (the five `pick` methods), A34 (`Sums`), A35
    (`Corners` from `Vec2` / `Size`), A38 (`UserEvent`), A40 (`MenuItem::separator`), A43
    (`WinitHostConfig`), A48 (`Mesh::with_known_bbox`), A49 (`Ui::escape_pressed`).

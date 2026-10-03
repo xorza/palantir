@@ -54,7 +54,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                 .show(ui, |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("header"))
-                        .grid_cell(GridCell::at(0, 0).span(span.0, span.1))
+                        .grid_cell(GridCell::at(0, 0).with_span(span.0, span.1))
                         .show(ui);
                     Block::new()
                         .id(WidgetId::from_hash("body"))
@@ -112,7 +112,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                                         .with_line_height_mult(1.0),
                                 )
                                 .text_wrap(TextWrap::WrapWithOverflow)
-                                .grid_cell(GridCell::at(0, 0).span(1, case.span))
+                                .grid_cell(GridCell::at(0, 0).with_span(1, case.span))
                                 .show(ui)
                                 .node(),
                         );
@@ -173,8 +173,8 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                             panel
                                 .auto_id()
                                 .grid_cell(match axis {
-                                    Axis::X => GridCell::at(0, 0).span(1, case.span),
-                                    Axis::Y => GridCell::at(0, 0).span(case.span, 1),
+                                    Axis::X => GridCell::at(0, 0).with_span(1, case.span),
+                                    Axis::Y => GridCell::at(0, 0).with_span(case.span, 1),
                                 })
                                 .show(ui, |ui| {
                                     Block::new()
@@ -247,7 +247,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("big"))
-                    .grid_cell(GridCell::at(0, 0).span(2, 2))
+                    .grid_cell(GridCell::at(0, 0).with_span(2, 2))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("corner"))

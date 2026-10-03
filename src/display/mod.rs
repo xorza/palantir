@@ -156,7 +156,7 @@ impl Display {
     ///
     /// What a size handed back to the platform is read in: winit's
     /// `LogicalSize`, and so
-    /// [`WindowConfig::inner_size`](crate::WindowConfig::inner_size). Equal
+    /// [`WindowConfig::with_inner_size`](crate::WindowConfig::with_inner_size). Equal
     /// to [`Self::logical_size`] only while the user scale is `1.0`, which
     /// is exactly why the two are named apart — a round trip through the
     /// wrong one shrinks the window by the user scale on every launch.

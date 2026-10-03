@@ -74,7 +74,7 @@ fn grid_mixed_tracks_matches_golden() {
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("header")
-                        .grid_cell(GridCell::at(0, 0).span(1, 3))
+                        .grid_cell(GridCell::at(0, 0).with_span(1, 3))
                         .background(Background {
                             fill: RgbaF32::srgb(0.25, 0.30, 0.45).into(),
                             corners: Corners::all(4.0),

@@ -42,14 +42,14 @@ impl<G: GradientGeometry> GradientBuilder<G> {
 
     /// Override how the gradient repeats outside the 0..1
     /// parametric range. Builder-style.
-    pub const fn with_spread(mut self, spread: Spread) -> Self {
+    pub const fn spread(mut self, spread: Spread) -> Self {
         self.spread = spread;
         self
     }
 
     /// Override the colour space interpolation runs in.
     /// Builder-style.
-    pub const fn with_interp(mut self, interp: Interp) -> Self {
+    pub const fn interp(mut self, interp: Interp) -> Self {
         self.interp = interp;
         self
     }

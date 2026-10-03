@@ -118,14 +118,14 @@ pub struct PaintTiming {
 /// # use std::time::Duration;
 /// // Fade in over 240 ms and stay.
 /// let fade = PaintAnim::alpha(0.0, 1.0)
-///     .period(Duration::from_millis(240))
-///     .curve(curves::linear);
+///     .with_period(Duration::from_millis(240))
+///     .with_curve(curves::linear);
 ///
 /// // Breathe, forever.
 /// let pulse = PaintAnim::alpha(0.4, 1.0)
-///     .period(Duration::from_secs(2))
-///     .repeat(PaintRepeat::Forever)
-///     .curve(curves::sine);
+///     .with_period(Duration::from_secs(2))
+///     .with_repeat(PaintRepeat::Forever)
+///     .with_curve(curves::sine);
 /// ```
 ///
 /// No `PartialEq`: two animations agree when their channel and timing do,
@@ -240,20 +240,20 @@ impl PaintAnim {
     }
 
     /// One pass of the curve takes this long. One second by default.
-    pub const fn period(mut self, period: Duration) -> Self {
+    pub const fn with_period(mut self, period: Duration) -> Self {
         self.timing.period = period;
         self
     }
 
     /// Begin at this absolute time rather than the clock's origin.
     /// Before it the animation reads at phase zero.
-    pub const fn started_at(mut self, at: Duration) -> Self {
+    pub const fn with_started_at(mut self, at: Duration) -> Self {
         self.timing.started_at = at;
         self
     }
 
     /// How many passes run. Default one, then hold at the end value.
-    pub const fn repeat(mut self, repeat: PaintRepeat) -> Self {
+    pub const fn with_repeat(mut self, repeat: PaintRepeat) -> Self {
         self.timing.repeat = repeat;
         self
     }
@@ -266,7 +266,7 @@ impl PaintAnim {
     /// Panics on zero steps. It would read as a shape that never
     /// animates, with no other sign that the animation was asked for —
     /// and this is a cold builder, so the check costs a frame nothing.
-    pub const fn steps(mut self, n: u32) -> Self {
+    pub const fn with_steps(mut self, n: u32) -> Self {
         let n = NonZeroU32::new(n).expect("a paint animation cannot have zero steps");
         self.timing.steps = PaintSteps::Steps(n);
         self
@@ -274,7 +274,7 @@ impl PaintAnim {
 
     /// The shape of one pass. Any `fn(f32) -> f32` over `0.0..=1.0`,
     /// including the ones in [`curves`].
-    pub const fn curve(mut self, curve: PaintCurve) -> Self {
+    pub const fn with_curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self
     }

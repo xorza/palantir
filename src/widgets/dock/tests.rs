@@ -529,7 +529,7 @@ fn split_depth_is_capped_without_losing_the_tab() {
 /// would offer a drop `apply` then dropped on the floor.
 #[test]
 fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
-    let mut d = DockState::new("test.dock", Tab::Main).max_depth(1);
+    let mut d = DockState::new("test.dock", Tab::Main).with_max_depth(1);
     let primary = d.primary().id;
     d.find_or_insert(Tab::Prefs, primary);
     d.find_or_insert(viewer(1), primary);
@@ -539,7 +539,7 @@ fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
     split_off(&mut d, viewer(1), target, SplitSide::Right);
     assert_eq!(d, before, "depth 1 refuses the second level");
 
-    let mut d = DockState::new("test.dock", Tab::Main).allowed_splits(AllowedSplits::Row);
+    let mut d = DockState::new("test.dock", Tab::Main).with_allowed_splits(AllowedSplits::Row);
     let primary = d.primary().id;
     d.find_or_insert(Tab::Prefs, primary);
     let before = d.clone();
@@ -1051,7 +1051,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
 /// refuses a further split there.
 #[test]
 fn a_layout_deeper_than_the_default_cap_loads() {
-    let mut d = DockState::new("deep.dock", Tab::Main).max_depth(6);
+    let mut d = DockState::new("deep.dock", Tab::Main).with_max_depth(6);
     let mut group = d.primary().id;
     for n in 1..=5 {
         d.find_or_insert(viewer(n), group);
@@ -1068,5 +1068,5 @@ fn a_layout_deeper_than_the_default_cap_loads() {
         !loaded.can_split(group),
         "the default cap applies to new splits on the loaded state",
     );
-    assert!(loaded.clone().max_depth(6).can_split(group));
+    assert!(loaded.clone().with_max_depth(6).can_split(group));
 }

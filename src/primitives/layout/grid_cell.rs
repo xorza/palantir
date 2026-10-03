@@ -45,7 +45,7 @@ impl GridCell {
 
     /// This cell widened to cover `row_span` rows and `col_span`
     /// columns. Both floor at one — a zero-track span names no cell.
-    pub const fn span(self, row_span: u16, col_span: u16) -> Self {
+    pub const fn with_span(self, row_span: u16, col_span: u16) -> Self {
         Self {
             row_span: if row_span > 1 { row_span } else { 1 },
             col_span: if col_span > 1 { col_span } else { 1 },

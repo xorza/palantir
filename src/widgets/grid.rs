@@ -17,7 +17,7 @@ use std::rc::Rc;
 /// Track sizing maps 1:1 to `Sizing`: `Fixed` = Pixel, `Hug` = Auto,
 /// `Fill(weight)` = Star. Star tracks split the leftover after Fixed and Hug
 /// tracks resolve, weighted, with bounded constraint resolution if any
-/// `Track::min` / `Track::max` clamps fire.
+/// `Track::with_min` / `Track::with_max` clamps fire.
 ///
 /// Arrays remain inline in the builder and borrowed slices remain borrowed.
 /// On `show`, tracks are copied into the current Tree's capacity-retained

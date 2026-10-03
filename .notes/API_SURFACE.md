@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `dc90f337`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `a1555cea`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -21,7 +21,7 @@ struct           golden::DiffReport
     traits: Debug
 struct           golden::Goldens
     fn new(root)
-    const fn tolerance(self, tolerance)
+    const fn with_tolerance(self, tolerance)
     fn assert_matches(self, name, actual)
     fn assert_same(self, name, actual, expected)
     traits: Clone, Debug
@@ -113,11 +113,11 @@ struct           widget::PaintAnim
     fn turn(from, to)
     const fn with_alpha(self, from, to)
     const fn with_turn(self, from, to)
-    const fn period(self, period)
-    const fn started_at(self, at)
-    const fn repeat(self, repeat)
-    const fn steps(self, n)
-    const fn curve(self, curve)
+    const fn with_period(self, period)
+    const fn with_started_at(self, at)
+    const fn with_repeat(self, repeat)
+    const fn with_steps(self, n)
+    const fn with_curve(self, curve)
     traits: Clone, Copy, Debug
 struct           widget::PaintChannel
     fields: alpha, turn
@@ -740,8 +740,8 @@ struct           Anchor
     const fn below(rect)
     const fn left_of(rect)
     const fn right_of(rect)
-    const fn align(self, align)
-    const fn gap(self, px)
+    const fn with_align(self, align)
+    const fn with_gap(self, px)
     traits: Clone, Copy, Debug
 enum             AnchorAlign
     variants: Start, Center, End
@@ -756,7 +756,7 @@ enum             ClipMode
 struct           GridCell
     fields: row, col, row_span, col_span
     const fn at(row, col)
-    const fn span(self, row_span, col_span)
+    const fn with_span(self, row_span, col_span)
     const fn along(axis, main)
     traits: Clone, Copy, Debug, Default, From, Hash, PartialEq, Pod, StructuralPartialEq, Zeroable
 enum             Justify
@@ -784,8 +784,8 @@ struct           Track
     assoc_const FILL
     const fn fixed(v)
     const fn fill(weight)
-    const fn min(self, min)
-    const fn max(self, max)
+    const fn with_min(self, min)
+    const fn with_max(self, max)
     traits: Clone, Copy, Debug, From, Hash, PartialEq, StructuralPartialEq
 enum             Visibility
     variants: Visible, Hidden, Collapsed
@@ -821,8 +821,8 @@ type_alias       ConicGradient
 type_alias       ConicGradientBuilder
 struct           GradientBuilder
     fn stop(self, offset, color)
-    const fn with_spread(self, spread)
-    const fn with_interp(self, interp)
+    const fn spread(self, spread)
+    const fn interp(self, interp)
     fn build(self)
     traits: Clone, Debug, From
 struct           LinearGeometry
@@ -1300,8 +1300,8 @@ struct           DockState
     assoc_const RATIO_MIN
     assoc_const RATIO_MAX
     fn new(seed, pinned)
-    fn max_depth(self, depth)
-    const fn allowed_splits(self, allowed)
+    fn with_max_depth(self, depth)
+    const fn with_allowed_splits(self, allowed)
     const fn pinned(self)
     const fn focused(self)
     fn node(self, idx)
@@ -1458,8 +1458,9 @@ enum             BarMode
     variants: Reserved, Overlay, Hidden
     traits: Clone, Copy, Debug, Default, Eq, PartialEq, StructuralPartialEq
 struct           ZoomConfig
-    fields: modifier, pivot
     fn new(range, step)
+    const fn with_modifier(self, modifier)
+    const fn with_pivot(self, pivot)
     traits: Clone, Debug, Default
 enum             ZoomModifier
     variants: Ctrl, Always, PinchOnly
@@ -1733,13 +1734,13 @@ enum             Vsync
 struct           WindowConfig
     fields: title, inner_size, min_inner_size, placement, icon, app_id
     fn new(title)
-    const fn inner_size(self, size)
-    const fn min_inner_size(self, size)
-    const fn position(self, position)
-    const fn placement(self, placement)
-    const fn maximized(self, maximized)
-    fn icon(self, icon)
-    fn app_id(self, app_id)
+    const fn with_inner_size(self, size)
+    const fn with_min_inner_size(self, size)
+    const fn with_position(self, position)
+    const fn with_placement(self, placement)
+    const fn with_maximized(self, maximized)
+    fn with_icon(self, icon)
+    fn with_app_id(self, app_id)
     traits: Clone, Debug, Default
 struct           WindowGeometry
     fields: inner_size, placement

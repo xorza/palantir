@@ -71,7 +71,7 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     for &(anchor, gap, expected) in cases {
         let rect = placed(|ui| {
             ui.layer(Layer::Popup)
-                .anchored(Anchor::below(anchor).gap(gap))
+                .anchored(Anchor::below(anchor).with_gap(gap))
                 .show(body);
         });
         assert_eq!(rect.min, expected, "anchor {anchor:?} gap {gap}");

@@ -109,7 +109,8 @@ mod tests {
     /// `10 + 6 + 4 = 20`, and `AxisAlign::Start` puts its left at the
     /// rect's 40. Both fit, so neither the flip nor the clamp fires.
     fn anchored() -> Placement {
-        Placement::default().with_anchored(Anchor::below(Rect::new(40.0, 10.0, 20.0, 6.0)).gap(4.0))
+        Placement::default()
+            .with_anchored(Anchor::below(Rect::new(40.0, 10.0, 20.0, 6.0)).with_gap(4.0))
     }
 
     #[test]

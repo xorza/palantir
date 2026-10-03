@@ -117,9 +117,9 @@ impl<'a> Spinner<'a> {
                     // radians-per-second spelling, in the period the
                     // schedule is written in.
                     PaintAnim::turn(0.0, 1.0)
-                        .period(Duration::from_secs_f32(TAU / speed))
-                        .repeat(PaintRepeat::Forever)
-                        .curve(curves::linear),
+                        .with_period(Duration::from_secs_f32(TAU / speed))
+                        .with_repeat(PaintRepeat::Forever)
+                        .with_curve(curves::linear),
                 );
             })
             .response

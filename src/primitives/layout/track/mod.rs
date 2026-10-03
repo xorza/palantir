@@ -64,7 +64,7 @@ impl Track {
     ///
     /// Panics if `min` is negative, non-finite, or greater than the current
     /// maximum.
-    pub const fn min(mut self, min: f32) -> Self {
+    pub const fn with_min(mut self, min: f32) -> Self {
         assert!(
             domain::is_length(min) && min <= self.max,
             "Track minimum must be finite, non-negative, and not exceed its maximum",
@@ -79,7 +79,7 @@ impl Track {
     ///
     /// Panics if `max` is negative, NaN, or less than the current minimum.
     /// Positive infinity is the unbounded sentinel.
-    pub const fn max(mut self, max: f32) -> Self {
+    pub const fn with_max(mut self, max: f32) -> Self {
         assert!(
             domain::is_extent(max) && max >= self.min,
             "Track maximum must be non-negative and not be less than its minimum",

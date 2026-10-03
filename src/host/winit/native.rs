@@ -76,7 +76,7 @@ pub(super) fn create_window(
         .map_err(|source| WinitHostError::CreateWindow { token, source })
 }
 
-/// Apply [`WindowConfig::app_id`] on the platforms that have one.
+/// Apply [`WindowConfig::with_app_id`] on the platforms that have one.
 ///
 /// Wayland's `app_id` and X11's `WM_CLASS` are the *same* winit attribute,
 /// reached through one extension trait per backend, so writing it through

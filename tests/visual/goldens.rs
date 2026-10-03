@@ -44,7 +44,7 @@ pub(crate) fn assert_matches_golden(name: &str, actual: &RgbaImage) {
 /// the derivation beside it.
 pub(crate) fn assert_matches_golden_within(name: &str, actual: &RgbaImage, tolerance: Tolerance) {
     Goldens::new(ROOT)
-        .tolerance(tolerance)
+        .with_tolerance(tolerance)
         .assert_matches(name, actual);
 }
 
@@ -53,7 +53,7 @@ pub(crate) fn assert_matches_golden_within(name: &str, actual: &RgbaImage, toler
 #[track_caller]
 pub(crate) fn assert_same(name: &str, actual: &RgbaImage, expected: &RgbaImage) {
     Goldens::new(ROOT)
-        .tolerance(EXACT)
+        .with_tolerance(EXACT)
         .assert_same(name, actual, expected);
 }
 

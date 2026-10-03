@@ -128,7 +128,7 @@ impl Anchor {
 
     /// Where the body sits across the side it is anchored to —
     /// [`AnchorAlign::Start`] by default.
-    pub const fn align(mut self, align: AnchorAlign) -> Self {
+    pub const fn with_align(mut self, align: AnchorAlign) -> Self {
         self.align = align;
         self
     }
@@ -138,7 +138,7 @@ impl Anchor {
     /// Zero by default, because a dropdown meets the trigger it drops out
     /// of. An overlay that reads as a separate object — a tooltip — sets
     /// its own.
-    pub const fn gap(mut self, px: f32) -> Self {
+    pub const fn with_gap(mut self, px: f32) -> Self {
         self.gap = px;
         self
     }

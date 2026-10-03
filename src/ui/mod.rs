@@ -661,7 +661,7 @@ impl Ui {
     /// A computed view, not stored state: the inner size comes from
     /// [`Self::display`] (the single source of truth for surface size), and
     /// the placement from the host-refreshed window-manager facts. Feed it
-    /// back through [`WindowConfig::placement`](crate::WindowConfig) and
+    /// back through [`WindowConfig::with_placement`](crate::WindowConfig) and
     /// `inner_size` on the next launch to reopen where the user left off.
     /// The placement's position is `None` on platforms that don't report
     /// one (Wayland). All-zero / `None` in headless contexts.
@@ -1008,9 +1008,9 @@ impl Ui {
     /// ui.add_shape_animated(
     ///     Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
     ///     PaintAnim::alpha(0.4, 1.0)
-    ///         .period(Duration::from_secs(2))
-    ///         .repeat(PaintRepeat::Forever)
-    ///         .curve(curves::sine),
+    ///         .with_period(Duration::from_secs(2))
+    ///         .with_repeat(PaintRepeat::Forever)
+    ///         .with_curve(curves::sine),
     /// );
     /// # }
     /// ```

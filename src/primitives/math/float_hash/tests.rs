@@ -93,7 +93,7 @@ fn signed_zeros_hash_alike_for_every_float_hash_type() {
         &SizeSpec::new(Sizing::fixed(-0.0), Sizing::HUG),
     );
     agree(
-        &Track::new(Sizing::fixed(0.0)).min(0.0),
-        &Track::new(Sizing::fixed(-0.0)).min(-0.0),
+        &Track::new(Sizing::fixed(0.0)).with_min(0.0),
+        &Track::new(Sizing::fixed(-0.0)).with_min(-0.0),
     );
 }

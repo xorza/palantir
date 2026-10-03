@@ -33,8 +33,8 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
         ui.add_shape_animated(
             Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
             PaintAnim::alpha(0.0, 1.0)
-                .period(Duration::from_secs(1))
-                .curve(curves::linear),
+                .with_period(Duration::from_secs(1))
+                .with_curve(curves::linear),
         );
     };
 

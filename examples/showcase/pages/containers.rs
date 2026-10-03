@@ -153,7 +153,10 @@ pub(crate) fn build(ui: &mut Ui) {
                     |ui| {
                         Grid::new()
                             .id_salt("clamped")
-                            .cols([Track::fill(1.0).min(110.0).max(160.0), Track::fill(2.0)])
+                            .cols([
+                                Track::fill(1.0).with_min(110.0).with_max(160.0),
+                                Track::fill(2.0),
+                            ])
                             .rows([Track::FILL])
                             .line_gap(8.0)
                             .gap(8.0)
@@ -243,7 +246,7 @@ fn grid_tile(
         .auto_id()
         .padding(5.0)
         .grid_cell(match span {
-            Some((rows, cols)) => GridCell::at(cell.0, cell.1).span(rows, cols),
+            Some((rows, cols)) => GridCell::at(cell.0, cell.1).with_span(rows, cols),
             None => cell.into(),
         })
         .background(swatch_bg(color));

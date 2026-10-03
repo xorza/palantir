@@ -195,7 +195,7 @@ impl Drop for Scratch {
 #[test]
 fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     let dir = Scratch::new("update");
-    let goldens = Goldens::new(&dir.0).tolerance(Tolerance {
+    let goldens = Goldens::new(&dir.0).with_tolerance(Tolerance {
         per_channel: 2,
         max_ratio: 0.0,
     });

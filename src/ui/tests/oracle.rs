@@ -92,10 +92,10 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                         ui.add_shape_animated(
                             line,
                             PaintAnim::turn(0.0, 1.0)
-                                .started_at(Duration::ZERO)
-                                .period(Duration::from_secs(4))
-                                .repeat(PaintRepeat::Forever)
-                                .curve(curves::linear),
+                                .with_started_at(Duration::ZERO)
+                                .with_period(Duration::from_secs(4))
+                                .with_repeat(PaintRepeat::Forever)
+                                .with_curve(curves::linear),
                         );
                     } else {
                         ui.add_shape(line);

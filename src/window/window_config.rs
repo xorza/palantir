@@ -63,21 +63,21 @@ impl WindowConfig {
     }
 
     /// Initial inner size in logical pixels (`.x` = width, `.y` = height).
-    pub const fn inner_size(mut self, size: UVec2) -> Self {
+    pub const fn with_inner_size(mut self, size: UVec2) -> Self {
         self.inner_size = Some(size);
         self
     }
 
     /// Minimum inner size in logical pixels — the window can't shrink below
     /// it.
-    pub const fn min_inner_size(mut self, size: UVec2) -> Self {
+    pub const fn with_min_inner_size(mut self, size: UVec2) -> Self {
         self.min_inner_size = Some(size);
         self
     }
 
     /// Initial outer position in physical pixels (top-left of the frame) —
-    /// half of [`Self::placement`], for a caller that has only this half.
-    pub const fn position(mut self, position: IVec2) -> Self {
+    /// half of [`Self::with_placement`], for a caller that has only this half.
+    pub const fn with_position(mut self, position: IVec2) -> Self {
         self.placement.position = Some(position);
         self
     }
@@ -85,28 +85,28 @@ impl WindowConfig {
     /// Position and maximized state together — the restore door, for a
     /// [`WindowGeometry::placement`](crate::WindowGeometry) read back from
     /// wherever the app persisted it.
-    pub const fn placement(mut self, placement: WindowPlacement) -> Self {
+    pub const fn with_placement(mut self, placement: WindowPlacement) -> Self {
         self.placement = placement;
         self
     }
 
-    /// Start the window maximized (holding [`Self::inner_size`] as the
+    /// Start the window maximized (holding [`Self::with_inner_size`] as the
     /// un-maximize size).
-    pub const fn maximized(mut self, maximized: bool) -> Self {
+    pub const fn with_maximized(mut self, maximized: bool) -> Self {
         self.placement.maximized = maximized;
         self
     }
 
     /// Title-bar / taskbar icon (ignored on macOS).
-    pub fn icon(mut self, icon: Image) -> Self {
+    pub fn with_icon(mut self, icon: Image) -> Self {
         self.icon = Some(icon);
         self
     }
 
     /// Desktop application identity — Wayland `app_id` / X11 `WM_CLASS`. Give
-    /// it the `.desktop` entry's basename; see [`WindowConfig::app_id`] for
+    /// it the `.desktop` entry's basename; see [`WindowConfig::with_app_id`] for
     /// why Wayland in particular needs it.
-    pub fn app_id(mut self, app_id: impl Into<String>) -> Self {
+    pub fn with_app_id(mut self, app_id: impl Into<String>) -> Self {
         self.app_id = Some(app_id.into());
         self
     }
@@ -121,11 +121,11 @@ mod tests {
     #[test]
     fn window_config_builders_populate_public_fields() {
         let config = WindowConfig::new("inspector")
-            .inner_size(UVec2::new(800, 600))
-            .min_inner_size(UVec2::new(320, 240))
-            .position(IVec2::new(-40, 80))
-            .maximized(true)
-            .app_id("org.example.Inspector");
+            .with_inner_size(UVec2::new(800, 600))
+            .with_min_inner_size(UVec2::new(320, 240))
+            .with_position(IVec2::new(-40, 80))
+            .with_maximized(true)
+            .with_app_id("org.example.Inspector");
 
         assert_eq!(config.title, "inspector");
         assert_eq!(config.inner_size, Some(UVec2::new(800, 600)));

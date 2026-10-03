@@ -37,11 +37,11 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
     ui.add_shape_animated(
         Shape::rect(Rect::new(0.0, 0.0, 4.0, 12.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
         PaintAnim::alpha(0.0, 1.0)
-            .started_at(Duration::ZERO)
-            .period(half * 2)
-            .steps(2)
-            .repeat(PaintRepeat::Settle(Duration::MAX))
-            .curve(curves::square),
+            .with_started_at(Duration::ZERO)
+            .with_period(half * 2)
+            .with_steps(2)
+            .with_repeat(PaintRepeat::Settle(Duration::MAX))
+            .with_curve(curves::square),
     );
 }
 

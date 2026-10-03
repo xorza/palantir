@@ -206,7 +206,7 @@ impl<'a> Tooltip<'a> {
         {
             ui.state_or_default::<TooltipGlobal>(global_state_id())
                 .last_visible_at = Some(now);
-            let anchor = Anchor::below(trigger_rect).gap(gap);
+            let anchor = Anchor::below(trigger_rect).with_gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             let text = theme.text.apply(&ui_theme.text);
