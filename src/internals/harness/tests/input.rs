@@ -19,7 +19,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     // asserting on the repaint hint never needs the raw door. A latching
     // drag is exactly the "state the next frame has to show" case.
     assert!(
-        latch.requests_repaint,
+        latch.repaint_requested,
         "the latching move must report a repaint, same as on_input would",
     );
     assert!(
@@ -32,11 +32,13 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     // hover boundary and reports a repaint, while a second move over the
     // same bare surface crosses nothing and reports none.
     assert!(
-        harness.move_to(OUTSIDE).requests_repaint,
+        harness.move_to(OUTSIDE).repaint_requested,
         "leaving the button is a hover crossing",
     );
     assert!(
-        !harness.move_to(OUTSIDE + Vec2::splat(1.0)).requests_repaint,
+        !harness
+            .move_to(OUTSIDE + Vec2::splat(1.0))
+            .repaint_requested,
         "a second move over bare surface crosses nothing",
     );
 
@@ -58,7 +60,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     split.prime(2, button);
     split.move_to(INSIDE);
     assert!(
-        split.press().requests_repaint,
+        split.press().repaint_requested,
         "a press latching on the button is a repaint",
     );
     split.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
@@ -198,7 +200,7 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
     let mut pinched = UiHarness::new(SURFACE);
     pinched.prime(2, zoom_build);
     assert!(
-        pinched.pinch_at(INSIDE, 1.5).requests_repaint,
+        pinched.pinch_at(INSIDE, 1.5).repaint_requested,
         "a pinch that lands on a zoom target wakes the next frame",
     );
     assert_eq!(

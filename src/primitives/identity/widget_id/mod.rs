@@ -73,7 +73,7 @@ pub struct WidgetId(pub(crate) u64);
 
 impl WidgetId {
     /// Stable id for the `Layer::Main` synthetic viewport root.
-    /// Hard-coded (rather than derived from `auto_stable()` at the
+    /// Hard-coded (rather than derived from `auto()` at the
     /// viewport construction site) so refactors to `ui/mod.rs` don't
     /// shift it. Treated like any other parent by
     /// `Widget::resolve` — top-level `id_salt("k")` resolves to
@@ -106,7 +106,7 @@ impl WidgetId {
     /// **Every constructor funnels through here**, which is the point:
     /// the clustering below is a property of `FxHasher`'s output, not of
     /// any one derivation, so fixing it at the shared exit fixes
-    /// `from_hash`, `with` and `auto_stable` together.
+    /// `from_hash`, `with` and `auto` together.
     ///
     /// # Why an avalanche step at all
     ///
@@ -133,7 +133,7 @@ impl WidgetId {
     ///
     /// The mix is a bijection, so it introduces no collision of its own:
     /// every distinctness argument elsewhere (notably
-    /// [`Self::auto_stable`]'s claim that its space cannot alias
+    /// [`Self::auto`]'s claim that its space cannot alias
     /// [`Self::from_hash`]'s) survives unchanged, because distinct inputs
     /// still map to distinct outputs. That is also what keeps the zero
     /// check exact — `0` is the unique preimage of `0`, so testing the
@@ -159,7 +159,7 @@ impl WidgetId {
     /// (min of 12 interleaved rounds, release, ns per id):
     ///
     /// ```text
-    ///                    with()   auto_stable()
+    ///                    with()     auto()
     ///   no finalizer      0.892      2.468
     ///   5 ops (this)      1.200      3.205
     ///   4 ops             1.176      3.079
@@ -203,7 +203,7 @@ impl WidgetId {
     /// [`Configure::id_salt`](crate::widget_core::configure::Configure::id_salt) when call order isn't
     /// stable across frames.
     #[track_caller]
-    pub fn auto_stable() -> Self {
+    pub fn auto() -> Self {
         let l = Location::caller();
         let mut hasher = Hasher::new();
         hasher.write(l.file().as_bytes());

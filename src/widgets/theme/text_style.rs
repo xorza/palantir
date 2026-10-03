@@ -178,6 +178,13 @@ impl TextStyleOverrides {
         self
     }
 
+    /// [`Self::with_font_size`] for the family axis.
+    #[inline]
+    pub const fn with_family(mut self, family: FontFamily) -> Self {
+        self.family = Some(family);
+        self
+    }
+
     /// [`Self::with_font_size`] for the weight axis.
     #[inline]
     pub const fn with_weight(mut self, weight: FontWeight) -> Self {
@@ -280,6 +287,13 @@ impl TextStyle {
     #[inline]
     pub const fn with_line_height_mult(mut self, mult: f32) -> Self {
         self.line_height_mult = mult;
+        self
+    }
+
+    /// [`Self::with_font_size`] for the family axis.
+    #[inline]
+    pub const fn with_family(mut self, family: FontFamily) -> Self {
+        self.family = family;
         self
     }
 

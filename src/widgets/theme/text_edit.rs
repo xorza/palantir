@@ -100,7 +100,7 @@ impl TextEditTheme {
     /// same point — but the caret's room does not: it is reserved at the
     /// trailing edge alone and the run is centred in what is left, so the
     /// glyphs sit half a caret to the leading side of the box's own middle.
-    pub fn corner_centring(&self, text: Size, at: Vec2) -> Vec2 {
+    pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2 {
         let [left, top, ..] = self.defaults.padding.as_array();
         // `Tree::open_node` folds the chrome's border into the padding, so the
         // inner rect a run is laid in sits inside the ring as well — and

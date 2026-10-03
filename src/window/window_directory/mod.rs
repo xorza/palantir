@@ -8,7 +8,7 @@ use std::rc::Rc;
 /// host lifecycle and every recorder.
 ///
 /// The recorder half is why this exists at all: a `Ui` answers
-/// [`Ui::window_open`](crate::Ui::window_open) and cannot see the host's own
+/// [`Ui::is_window_open`](crate::Ui::is_window_open) and cannot see the host's own
 /// window list, which is a winit type. So this is that list projected down
 /// to the one fact a recorder needs.
 ///
@@ -31,7 +31,7 @@ impl WindowDirectory {
     /// # Panics
     ///
     /// Panics on a token already live. Two drivers under one token would
-    /// leave `Ui::window_open` true after the first closed, and the host
+    /// leave `Ui::is_window_open` true after the first closed, and the host
     /// routing an app's commands to whichever it scanned first.
     pub(crate) fn add(&self, token: WindowToken) {
         let mut tokens = self.tokens.borrow_mut();

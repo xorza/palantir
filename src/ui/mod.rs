@@ -263,7 +263,7 @@ impl Ui {
 
     /// Feed an event that arrived at `now`. Returns an [`InputDelta`] the
     /// host reads to decide whether to request a redraw — pointer moves
-    /// over inert surfaces leave `requests_repaint` false so the host can
+    /// over inert surfaces leave `repaint_requested` false so the host can
     /// skip the frame entirely. Animation/tooltip-delay wakes still drive
     /// paints independently via `FrameReport::repaint_after`.
     ///
@@ -471,7 +471,7 @@ impl Ui {
     /// [`Self::set_vsync`] or as the host opened the swapchain with.
     ///
     /// Read it as the source of truth instead of mirroring the setting in
-    /// app code — the same position [`Self::window_open`] takes for window
+    /// app code — the same position [`Self::is_window_open`] takes for window
     /// liveness. A host launched with an explicit backend present mode
     /// reports whichever of the two states that mode paces like.
     #[inline]
@@ -741,12 +741,12 @@ impl Ui {
     /// instead of mirroring the state in app code — a window the user
     /// closed via its titlebar drops out of this set automatically.
     #[inline]
-    pub fn window_open(&self, token: WindowToken) -> bool {
+    pub fn is_window_open(&self, token: WindowToken) -> bool {
         self.resources.windows().contains(token)
     }
 
     /// The app-global live-window set this recorder answers
-    /// [`Self::window_open`] from.
+    /// [`Self::is_window_open`] from.
     ///
     /// For `WindowDriver`'s `Drop`, which retires its own token: the
     /// driver owns this `Ui` and the directory is the only thing it needs

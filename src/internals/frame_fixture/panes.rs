@@ -21,7 +21,7 @@ use crate::widgets::text::Text;
 
 pub(super) fn panes_card(state: &mut FrameFixture, ui: &mut Ui) {
     tokens::card(ui, "panes", "LAYOUT", Sizing::fixed(120.0), |ui| {
-        Splitter::horizontal(&mut state.split)
+        Splitter::row(&mut state.split)
             .id_salt("panes-split")
             .min_pane(80.0)
             .show(ui, |ui, half| {

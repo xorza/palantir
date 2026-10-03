@@ -34,8 +34,8 @@ fn cache_key_discriminates_every_shaping_axis() {
         (
             "weight",
             shape(16.0).weight(FontWeight::BOLD),
-            (|k: TextShapeKey| u32::from(k.weight().value())) as fn(TextShapeKey) -> u32,
-            u32::from(base.weight().value()),
+            (|k: TextShapeKey| u32::from(k.weight().get())) as fn(TextShapeKey) -> u32,
+            u32::from(base.weight().get()),
         ),
         (
             "slant",

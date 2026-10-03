@@ -3,6 +3,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
+use crate::animation::animatable::Animatable;
 use crate::damage::Damage;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -220,7 +221,7 @@ fn sample(texels: &[RgbaF32], size: UVec2, u: f32, v: f32) -> RgbaF32 {
     } = axis(v, size.y);
     let x1 = (x + 1).min(size.x - 1);
     let y1 = (y + 1).min(size.y - 1);
-    let mix = |a: RgbaF32, b: RgbaF32, t: f32| a.lerp(b, t);
+    let mix = |a: RgbaF32, b: RgbaF32, t: f32| Animatable::lerp(a, b, t);
     let top = mix(
         texels[(y * size.x + x) as usize],
         texels[(y * size.x + x1) as usize],
@@ -240,11 +241,11 @@ struct SampleError {
     at: Vec2,
 }
 
-/// The downsample factors [`downsample_four_tracks_the_exact_colour`]
+/// The texel sizes [`texel_size_four_tracks_the_exact_colour`]
 /// compares: exact, the default, and coarse.
-const DOWNSAMPLES: [u32; 3] = [1, 4, 16];
+const TEXEL_SIZES: [u32; 3] = [1, 4, 16];
 
-/// The worst channel error of the field at each of [`DOWNSAMPLES`] for one
+/// The worst channel error of the field at each of [`TEXEL_SIZES`] for one
 /// `hue` slice, drawn at scale 1.5. The exact colour of a pixel is the same
 /// at every factor, so it is converted once and compared three times.
 fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
@@ -253,10 +254,10 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
         (FIELD.x as f32 * SCALE) as u32,
         (FIELD.y as f32 * SCALE) as u32,
     );
-    let fields = DOWNSAMPLES.map(|downsample| {
+    let fields = TEXEL_SIZES.map(|texel_size| {
         let size = UVec2::new(
-            (pixels.x as f32 / downsample as f32).ceil() as u32,
-            (pixels.y as f32 / downsample as f32).ceil() as u32,
+            (pixels.x as f32 / texel_size as f32).ceil() as u32,
+            (pixels.y as f32 / texel_size as f32).ceil() as u32,
         );
         let mut image = Image::blank(size);
         fill(&mut image, model, hue);
@@ -301,9 +302,9 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
 /// The bound is where it is because the worst pixel sits on the top edge,
 /// `v = 1`, where the ramp along the gamut boundary is steepest — Okhsv at
 /// the saturated corner, HSV at the white one. See
-/// [`ColorField::downsample`](crate::ColorField::downsample) for the table.
+/// [`ColorField::texel_size`](crate::ColorField::texel_size) for the table.
 #[test]
-fn downsample_four_tracks_the_exact_colour() {
+fn texel_size_four_tracks_the_exact_colour() {
     // One thread per model and hue slice; each slice's worst is folded in
     // hue order, so a tie keeps the earlier slice's place.
     let errors = thread::scope(|scope| {

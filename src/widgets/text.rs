@@ -35,7 +35,7 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 /// global [`crate::TextStyle`] from [`crate::Theme::text`]. Each axis also
 /// has a setter of its own — [`Self::color`], [`Self::font_size`],
 /// [`Self::family`], [`Self::weight`], [`Self::slant`],
-/// [`Self::line_height`] — which overrides that one axis of whatever the
+/// [`Self::line_height_mult`] — which overrides that one axis of whatever the
 /// bundle resolved to:
 ///
 /// ```
@@ -108,7 +108,7 @@ impl<'a> Text<'a> {
 
     /// Line height as a multiple of the font size, overriding the resolved
     /// style's `line_height_mult`. `1.0` sets the lines solid.
-    pub const fn line_height(mut self, mult: f32) -> Self {
+    pub const fn line_height_mult(mut self, mult: f32) -> Self {
         self.overrides.line_height_mult = Some(mult);
         self
     }

@@ -66,7 +66,7 @@ pub struct ColorPicker<'a> {
     alpha: bool,
     model: Option<ColorModel>,
     swatches: Swatches<'a>,
-    downsample: u32,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -108,7 +108,7 @@ impl<'a> ColorPicker<'a> {
             alpha: false,
             model: None,
             swatches: Swatches::Hidden,
-            downsample: color_surface::DOWNSAMPLE,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
@@ -147,14 +147,14 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    /// How far below the display's resolution the field and bars are built.
-    /// See [`ColorField::downsample`].
+    /// The edge of one texel of the field and the bars, in physical pixels.
+    /// See [`ColorField::texel_size`].
     ///
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = color_surface::checked_downsample(n);
+    pub fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = color_surface::checked_texel_size(n);
         self
     }
 
@@ -187,7 +187,7 @@ impl<'a> ColorPicker<'a> {
         let alpha_on = self.alpha;
         let pinned = self.model;
         let swatches = self.swatches;
-        let downsample = self.downsample;
+        let texel_size = self.texel_size;
 
         let mut edit = Edit::default();
         widget.record(ui, None, |ui| {
@@ -202,7 +202,7 @@ impl<'a> ColorPicker<'a> {
                         alpha_on,
                         pinned,
                         swatches,
-                        downsample,
+                        texel_size,
                     },
                 );
             });
@@ -234,7 +234,7 @@ struct Inputs<'a> {
     alpha_on: bool,
     pinned: Option<ColorModel>,
     swatches: Swatches<'a>,
-    downsample: u32,
+    texel_size: u32,
 }
 
 /// Columns the value grid is built on. Four, so the hex field spans two and
@@ -295,7 +295,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
         alpha_on,
         pinned,
         swatches,
-        downsample,
+        texel_size,
     } = inputs;
     let gap = domain::length_at_least(theme.gap, 0.0);
     let bar = domain::length_at_least(theme.bar_thickness, 1.0);
@@ -318,7 +318,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
     };
 
     let field = ColorField::new(&mut state.coords)
-        .downsample(downsample)
+        .texel_size(texel_size)
         .style(theme)
         .id(id.with("field"))
         .show(ui);
@@ -344,7 +344,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     let hue = ColorStrip::for_hue(&mut state.coords)
-                        .downsample(downsample)
+                        .texel_size(texel_size)
                         .style(theme)
                         .id(id.with("hue"))
                         .size((Sizing::FILL, Sizing::fixed(bar)))
@@ -355,7 +355,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                     if alpha_on {
                         let mut working = preview;
                         let strip = ColorStrip::for_alpha(&mut working)
-                            .downsample(downsample)
+                            .texel_size(texel_size)
                             .style(theme)
                             .id(id.with("alpha"))
                             .size((Sizing::FILL, Sizing::fixed(bar)))

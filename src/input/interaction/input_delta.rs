@@ -8,5 +8,5 @@ pub struct InputDelta {
     /// `true` when the event moved state the next frame has to show —
     /// hover crossing a widget boundary, a press latching, focus moving.
     /// A host that idles between frames wakes on this.
-    pub requests_repaint: bool,
+    pub repaint_requested: bool,
 }

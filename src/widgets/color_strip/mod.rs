@@ -43,7 +43,7 @@ use glam::Vec2;
 pub struct ColorStrip<'a> {
     widget: Widget,
     kind: StripKind<'a>,
-    downsample: u32,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -98,20 +98,21 @@ impl<'a> ColorStrip<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             kind,
-            downsample: color_surface::DOWNSAMPLE,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
 
-    /// How far below the display's resolution the texture is built, as a
-    /// power of two. Default 4. See
-    /// [`ColorField::downsample`](crate::ColorField::downsample).
+    /// The edge of one texture texel, in physical pixels: how far below the
+    /// display's resolution the texture is built, as a power of two.
+    /// Default 4. See
+    /// [`ColorField::texel_size`](crate::ColorField::texel_size).
     ///
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = color_surface::checked_downsample(n);
+    pub fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = color_surface::checked_texel_size(n);
         self
     }
 
@@ -150,7 +151,7 @@ impl<'a> ColorStrip<'a> {
         changed |= keyed;
         let committed = !response.disabled && (response.left.released() || keyed);
 
-        let texels = color_surface::texel_size(size, self.downsample, ui);
+        let texels = color_surface::texture_size(size, self.texel_size, ui);
         let paint = kind.paint();
         let marker = kind.read() * size.w;
 

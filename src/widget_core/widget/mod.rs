@@ -152,7 +152,7 @@ impl Widget {
     #[track_caller]
     fn new(mode: NodeMode) -> Self {
         Self {
-            ident: Ident::Auto(WidgetId::auto_stable()),
+            ident: Ident::Auto(WidgetId::auto()),
             node: Node::new(mode),
         }
     }

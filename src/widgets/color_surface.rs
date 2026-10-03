@@ -41,9 +41,9 @@ struct Built<K> {
 const MIN_TEXELS: u32 = 2;
 
 /// How far below the display's resolution a surface is built, by default.
-/// See [`ColorField::downsample`](crate::ColorField::downsample) for the
+/// See [`ColorField::texel_size`](crate::ColorField::texel_size) for the
 /// measurement behind four.
-pub(crate) const DOWNSAMPLE: u32 = 4;
+pub(crate) const TEXEL_SIZE: u32 = 4;
 
 /// The divisor a builder was handed, once it is known to be one a surface
 /// can use. One assert for the three widgets that take one.
@@ -51,16 +51,16 @@ pub(crate) const DOWNSAMPLE: u32 = 4;
 /// # Panics
 ///
 /// Panics unless `n` is a power of two from 1 to 16.
-pub(crate) fn checked_downsample(n: u32) -> u32 {
+pub(crate) fn checked_texel_size(n: u32) -> u32 {
     assert!(
         n.is_power_of_two() && (1..=16).contains(&n),
-        "colour surface downsample must be a power of two in 1..=16, got {n}",
+        "a colour surface texel size must be a power of two in 1..=16, got {n}",
     );
     n
 }
 
 /// Texel dimensions for a surface covering `size` logical px on the current
-/// display, reduced by `downsample` and held under the device's texture cap.
+/// display, one texel per `texel_size` physical px on each axis, held under the device's texture cap.
 ///
 /// Total over every input: a size that is NaN, negative or absurd lands on
 /// the floor or the cap rather than reaching the registry, and a cap below
@@ -70,12 +70,12 @@ pub(crate) fn checked_downsample(n: u32) -> u32 {
     clippy::cast_sign_loss,
     reason = "the saturating cast is the clamp: a negative or NaN size lands on zero, then on the floor"
 )]
-pub(crate) fn texel_size(size: Size, downsample: u32, ui: &Ui) -> UVec2 {
+pub(crate) fn texture_size(size: Size, texel_size: u32, ui: &Ui) -> UVec2 {
     let scale = ui.display().scale_factor();
     let cap = ui.max_image_dimension().map_or(u32::MAX, NonZeroU32::get);
     let floor = MIN_TEXELS.min(cap);
     let axis = |logical: f32| {
-        let texels = (logical * scale / downsample as f32).ceil();
+        let texels = (logical * scale / texel_size as f32).ceil();
         (texels as u32).clamp(floor, cap)
     };
     UVec2::new(axis(size.w), axis(size.h))

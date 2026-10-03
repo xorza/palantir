@@ -219,7 +219,7 @@ fn expander_mid_reveal_alloc_free() {
 fn splitter_alloc_free() {
     let mut ratio = 0.5;
     Audit::new().run(move |ui| {
-        Splitter::horizontal(&mut ratio)
+        Splitter::row(&mut ratio)
             .id_salt("splitter")
             .min_pane(80.0)
             .show(ui, |_, _| {});
