@@ -106,11 +106,11 @@ impl LayoutDriver for Scrollbars {
     /// Assign each of the four bar leaves its resolved rect, zero-extent for
     /// an axis that shows no bar. Child order is the recording contract from
     /// this module's doc.
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, id: Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, id: Self::Payload, inner: Size) {
         let resolved = pass.tree.scrollbar_defs[usize::from(id)];
         let content = pass.scroll_content(resolved.content);
-        let vertical = axis_rects(&resolved.def, inner.size, content, Axis::Y);
-        let horizontal = axis_rects(&resolved.def, inner.size, content, Axis::X);
+        let vertical = axis_rects(&resolved.def, inner, content, Axis::Y);
+        let horizontal = axis_rects(&resolved.def, inner, content, Axis::X);
 
         let slots = [
             vertical.map(|b| b.track),
@@ -125,14 +125,10 @@ impl LayoutDriver for Scrollbars {
             // row and the child list stays the same shape whether or not
             // content currently overflows. Zero extent paints nothing and
             // cannot be hit, so the origin is as good a place as any.
-            let local = slot.unwrap_or(Rect {
+            let rect = slot.unwrap_or(Rect {
                 min: Vec2::ZERO,
                 size: Size::ZERO,
             });
-            let rect = Rect {
-                min: inner.min + local.min,
-                size: local.size,
-            };
             pass.arrange(child.id, rect);
         }
     }

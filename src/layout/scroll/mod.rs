@@ -15,7 +15,7 @@ use crate::layout::stack::Stack;
 use crate::layout::types::scroll_axes::{ScrollAxes, ScrollChildLayout};
 use crate::layout::zstack::ZStack;
 use crate::primitives::interned_text::InternedText;
-use crate::primitives::rect::Rect;
+
 use crate::primitives::size::Size;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -57,7 +57,7 @@ impl LayoutDriver for Scroll {
         }
     }
 
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axes: Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axes: Self::Payload, inner: Size) {
         match axes.child_layout() {
             ScrollChildLayout::Layered => ZStack::arrange_in(pass, node, inner, axes.pan_mask()),
             ScrollChildLayout::Flow(main) => {

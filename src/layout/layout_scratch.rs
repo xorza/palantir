@@ -7,11 +7,13 @@ use crate::layout::grid::grid_context::GridContext;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::measured::Measured;
+use crate::layout::pass::ReplayOrigin;
 use crate::layout::stack::stack_scratch::StackScratch;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::scene::tree::Tree;
+use glam::Vec2;
 
 /// `LayoutScratch::arrange_src` entry for a node whose subtree measure did
 /// not restore from the cache — arrange must run the drivers for it.
@@ -91,7 +93,10 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 /// `src/layout/cache/tests/frames.rs`.
 ///
 /// `arrange_src` belongs to none of the three: it is frame-local, never
-/// captured or restored. Measure stamps it on every node of a subtree it
+/// captured or restored. Nor do `local` and `replay_origins`, which are
+/// arrange's: `local` is captured beside `LayerLayout::rect` and read back
+/// by a translated replay, and `replay_origins` is drained by every
+/// replay. Measure stamps it on every node of a subtree it
 /// short-circuited, with that node's row in the snapshot arena, and
 /// [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged)
 /// replays a node's subtree rects from there instead of re-running the
@@ -112,6 +117,14 @@ pub(crate) struct LayoutScratch {
     /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from).
     /// Read by no pass after measure; kept per node for the next capture.
     pub(super) stable_from: Vec<Size>,
+    /// Each node's slot origin in its parent's inner box, as `arrange`
+    /// placed it — what `rect` is that origin plus one add of the
+    /// parent's own position. Captured beside `rect` so a translated
+    /// replay rebuilds it with the same adds.
+    pub(super) local: Vec<Vec2>,
+    /// The inner-box origins of the nodes a translated replay is inside,
+    /// innermost last — frame-local, drained by every replay.
+    pub(super) replay_origins: Vec<ReplayOrigin>,
     /// Snapshot arena row of each node whose subtree measure was restored
     /// from the cache this frame — the hit root and every node under it —
     /// or [`NO_ARRANGE_SRC`]. Written at the measure-hit site, read once
@@ -148,6 +161,8 @@ impl LayoutScratch {
             floor,
             stable_from,
             arrange_src,
+            local,
+            replay_origins: _,
             intrinsics,
             available_q,
         } = self;
@@ -164,6 +179,8 @@ impl LayoutScratch {
         );
         arrange_src.clear();
         arrange_src.resize(n, NO_ARRANGE_SRC);
+        local.clear();
+        local.resize(n, Vec2::ZERO);
         intrinsics.clear();
         intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
         available_q.clear();

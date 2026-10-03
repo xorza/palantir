@@ -16,7 +16,7 @@ use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Px;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::size::Size;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
@@ -66,7 +66,7 @@ impl LayoutDriver for Grid {
         result
     }
 
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, idx: Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, idx: Self::Payload, inner: Size) {
         let depth = pass.grid_mut().depth_stack.enter();
         arrange_inner(pass, node, idx, depth, inner);
         pass.grid_mut().depth_stack.exit();

@@ -27,7 +27,7 @@ use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Px;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::size::Size;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
@@ -202,7 +202,7 @@ impl LayoutDriver for WrapStack {
         }
     }
 
-    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Rect) {
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Size) {
         let tree = pass.tree;
         let panel = tree.panel(node);
         let gap = panel.gaps.gap();
@@ -214,8 +214,8 @@ impl LayoutDriver for WrapStack {
         // with the cache; justify hands out the leftover of the rect
         // actually arranged, which is continuous and owes the fraction
         // back to the pixels it fills.
-        let main_avail = axis.main(inner.size);
-        let budget = line_budget(axis, inner.size);
+        let main_avail = axis.main(inner);
+        let budget = line_budget(axis, inner);
 
         // Same packing logic as `measure`. Each row needs lookahead —
         // can't place a child until we know the row's `line_main` (for
@@ -227,7 +227,7 @@ impl LayoutDriver for WrapStack {
         let layouts = tree.records.layout();
         let line_start = pass.wrap_scratch_mut().mark();
         let mut line = LinePack::default();
-        let mut cross_cursor = axis.cross_v(inner.min);
+        let mut cross_cursor = 0.0;
         let mut first_line = true;
 
         let place_line = |pass: &mut LayoutPass<'_>,
@@ -250,7 +250,7 @@ impl LayoutDriver for WrapStack {
                 start: start_offset,
                 gap: eff_gap,
             } = JustifyOffsets::new(justify, leftover, gap, count);
-            let mut main_cursor = axis.main_v(inner.min) + start_offset;
+            let mut main_cursor = start_offset;
             // Iterate by index so we copy each `NodeId` out before
             // calling `layout.arrange`, which needs `&mut layout`.
             // `NodeId` is `Copy`, so no slice borrow into the pool.
@@ -299,7 +299,7 @@ impl LayoutDriver for WrapStack {
                 // Anchor inside this layout's inner rect at the current
                 // cursor. Position is stable; size is zero so there's no
                 // visual or input contribution.
-                pass.zero_subtree(c, axis.compose_point(axis.main_v(inner.min), cross_cursor));
+                pass.zero_subtree(c, axis.compose_point(0.0, cross_cursor));
                 continue;
             }
 
