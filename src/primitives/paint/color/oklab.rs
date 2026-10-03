@@ -2,7 +2,7 @@
 //! space.
 
 /// Linear-RGB → Oklab. Matrix constants from Björn Ottosson's reference
-/// (https://bottosson.github.io/posts/oklab/). Used by the gradient LUT
+/// (<https://bottosson.github.io/posts/oklab/>). Used by the gradient LUT
 /// bake when `Interp::Oklab` is selected — interpolation in Oklab gives
 /// perceptually-uniform transitions without the muddy red↔green
 /// midpoint that linear-RGB lerps produce. Output components are
