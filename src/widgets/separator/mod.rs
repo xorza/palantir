@@ -50,16 +50,8 @@ impl<'a> Separator<'a> {
 
     #[track_caller]
     fn along(axis: Axis) -> Self {
-        Self::from_widget(Widget::leaf(), axis)
-    }
-
-    /// A rule on `axis` over a node the caller already built, for a
-    /// wrapper that forwards the `Configure` calls that landed on it —
-    /// identity included, which is why this takes the node rather than
-    /// building one at *this* call site. [`crate::MenuSeparator`] is one.
-    pub const fn from_widget(widget: Widget, axis: Axis) -> Self {
         Self {
-            widget,
+            widget: Widget::leaf(),
             axis,
             thickness: None,
             color: None,

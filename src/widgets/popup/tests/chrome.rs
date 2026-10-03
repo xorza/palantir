@@ -12,49 +12,31 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::tests::support::{ANCHOR, SURFACE};
 
-/// A builder step a case applies: the popup, the default background and
-/// the explicit one.
-type Step = fn(Popup, &Background, &Background) -> Popup;
+/// A builder step a case applies.
+type Step = fn(Popup) -> Popup;
 
-/// `default_background` fills in only where the caller set no
-/// background, in either order, and the theme's panel background is the
-/// last resort.
+/// The theme's panel background is the popup's last resort: it paints when
+/// the caller set no background, and a default beats it. How the default
+/// and an explicit background resolve is checked for every chrome widget
+/// at once, in `widgets::tests`.
 #[test]
-fn default_background_yields_to_an_explicit_one() {
+fn the_theme_panel_is_the_last_resort() {
     let theme_fill = RgbaF32::srgb(0.1, 0.2, 0.3);
     let default_fill = RgbaF32::srgb(0.9, 0.1, 0.1);
-    let explicit_fill = RgbaF32::srgb(0.1, 0.1, 0.9);
-    let default_bg = Background::fill(default_fill);
-    let explicit_bg = Background::fill(explicit_fill);
     let id = WidgetId::from_hash("chrome-popup");
-    let cases: [(&str, Step, RgbaF32); 4] = [
-        ("neither", |p, _, _| p, theme_fill),
+    let cases: [(&str, Step, RgbaF32); 2] = [
+        ("neither", |p| p, theme_fill),
         (
             "default only",
-            |p, d, _| p.default_background(d),
+            |p| p.default_background(Background::fill(RgbaF32::srgb(0.9, 0.1, 0.1))),
             default_fill,
-        ),
-        (
-            "explicit then default",
-            |p, d, e| p.background(e.clone()).default_background(d),
-            explicit_fill,
-        ),
-        (
-            "default then explicit",
-            |p, d, e| p.default_background(d).background(e.clone()),
-            explicit_fill,
         ),
     ];
     for (label, build, want) in cases {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().panel_background = Some(Background::fill(theme_fill));
         h.frame(|ui| {
-            build(
-                Popup::new(Anchor::at_point(ANCHOR)).id(id),
-                &default_bg,
-                &explicit_bg,
-            )
-            .show(ui, |_, _| {});
+            build(Popup::new(Anchor::at_point(ANCHOR)).id(id)).show(ui, |_, _| {});
         });
         let body = h.node_of(id).expect("popup body recorded");
         assert_eq!(body.layer, Layer::Popup);

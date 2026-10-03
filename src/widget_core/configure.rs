@@ -124,6 +124,13 @@ impl ConfigureWidget<'_> {
         self
     }
 
+    /// Borrowing form of [`Configure::adopt_placement`].
+    #[inline]
+    pub fn adopt_placement(&mut self, from: &Widget) -> &mut Self {
+        self.widget.node.adopt_placement(from.node);
+        self
+    }
+
     /// Borrowing form of [`Configure::gap`].
     #[inline]
     pub fn gap(&mut self, g: f32) -> &mut Self {
@@ -508,6 +515,30 @@ pub trait Configure: Sized {
     #[must_use]
     fn grid_cell(mut self, cell: impl Into<GridCell>) -> Self {
         self.configure().grid_cell(cell);
+        self
+    }
+
+    /// Take over `from`'s placement — where it sits in its parent, and
+    /// nothing about what it contains, how it behaves, or who it is.
+    ///
+    /// For a widget that hands its slot to a second one partway through
+    /// a gesture: [`DragValue`](crate::DragValue) swaps its scrub chip for
+    /// an inline [`TextEdit`](crate::TextEdit) on click, and without this
+    /// the field visibly moves and resizes on the edit frame, because
+    /// margin, alignment, grid placement and canvas position all go with
+    /// the chip. And for a widget that records as two nodes rather than
+    /// one: [`Scroll`](crate::Scroll) splits the caller's widget into an
+    /// outer box and an inner viewport, and the placement is the outer
+    /// one's.
+    ///
+    /// Size, padding and transform are not placement, and stay the
+    /// adopting widget's own. Margin is the one `Option`: `None` there means
+    /// the caller stated no opinion, so the adopting widget keeps its own
+    /// themed default rather than taking a zero.
+    #[inline]
+    #[must_use]
+    fn adopt_placement(mut self, from: &Widget) -> Self {
+        self.configure().adopt_placement(from);
         self
     }
 

@@ -79,6 +79,18 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         self
     }
 
+    /// Paint `bg` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    pub const fn default_background(mut self, bg: Background) -> Self {
+        if self.chrome.is_none() {
+            self.chrome = Some(bg);
+        }
+        self
+    }
+
     /// Record the grid and its `body`. Children name their own slot with
     /// [`Configure::grid_cell`].
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>

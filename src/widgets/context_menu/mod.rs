@@ -170,7 +170,7 @@ impl<'a> ContextMenu<'a> {
             .popup
             .layer(Layer::Menu)
             .anchored(Anchor::at_point(open_at))
-            .default_background(&ctx.panel)
+            .default_background(ctx.panel.clone())
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
@@ -212,6 +212,16 @@ impl ContextMenu<'_> {
     /// [`Background::NONE`] to suppress the themed menu chrome.
     pub const fn background(mut self, bg: Background) -> Self {
         self.popup = self.popup.background(bg);
+        self
+    }
+
+    /// Paint `bg` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    pub const fn default_background(mut self, bg: Background) -> Self {
+        self.popup = self.popup.default_background(bg);
         self
     }
 }

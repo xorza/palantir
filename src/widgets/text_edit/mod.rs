@@ -294,30 +294,6 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Take over the placement half of `from` — where the widget sits in
-    /// its parent, not what it looks like.
-    ///
-    /// For a widget that *becomes* a `TextEdit` partway through a
-    /// gesture: [`crate::DragValue`] swaps its scrub chip for an inline
-    /// editor on click, and without this the field visibly moved and
-    /// resized on the edit frame because margin, alignment, grid
-    /// placement and canvas position all vanished with the chip.
-    ///
-    /// Three fields the caller might expect are deliberately not
-    /// placement, and [`Widget::adopt_placement`] leaves all three alone.
-    /// Sizing is resolved by the caller, which pins the width to the
-    /// chip's last rect so a long value scrolls instead of growing the
-    /// row. Box parity is the *theme's* job — `DragValueTheme::from_chip`
-    /// mirrors the chip's padding onto the editor — and the chip resolves
-    /// its own padding from the theme rather than from this node. And
-    /// `TextEdit` wraps a [`crate::Scroll`], which overwrites `transform`
-    /// with its pan offset, so forwarding one would read as supported
-    /// while doing nothing.
-    pub fn adopt_placement(mut self, from: &Widget) -> Self {
-        self.widget.adopt_placement(from);
-        self
-    }
-
     /// Record the editor and run one frame of editing over the bound
     /// `String`.
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {

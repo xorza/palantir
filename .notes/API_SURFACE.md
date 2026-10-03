@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `1be2f2e7`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `c8dfbd2d`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -249,6 +249,7 @@ struct           widget::ConfigureWidget
     const fn transform(self, t)
     fn position(self, p)
     fn grid_cell(self, cell)
+    fn adopt_placement(self, from)
     fn gap(self, g)
     fn line_gap(self, g)
     const fn justify(self, j)
@@ -310,7 +311,6 @@ struct           widget::Widget
     const fn authored_visibility(self)
     const fn authored_clip(self)
     fn grid_tracks(self, ui, rows, cols)
-    fn adopt_placement(self, from)
     traits: Configure, Debug
 struct           widget::LookPlan
     fn apply(self, ui, widget)
@@ -1140,7 +1140,7 @@ struct           LayerScope
     fn show(self, body)
     traits: Debug
 trait            Configure
-    items: configure, id_salt, id, auto_id, size, min_size, max_size, padding, margin, transform, position, grid_cell, gap, line_gap, justify, align, child_align, sense, add_sense, disabled, focusable, input_scope, visibility, hidden, collapsed, clip, clip_rect, clip_rounded
+    items: configure, id_salt, id, auto_id, size, min_size, max_size, padding, margin, transform, position, grid_cell, adopt_placement, gap, line_gap, justify, align, child_align, sense, add_sense, disabled, focusable, input_scope, visibility, hidden, collapsed, clip, clip_rect, clip_rounded
 struct           OverlayResponse
     fields: dismissed, close_requested, inner
     const fn closed(self)
@@ -1177,6 +1177,7 @@ struct           Block
     fn new()
     fn show(self, ui)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 struct           Button
     fn new()
@@ -1248,6 +1249,7 @@ struct           ContextMenu
     fn close(ui, for_id)
     fn is_open(ui, for_id)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 struct           MenuItem
     fn new(label)
@@ -1381,6 +1383,7 @@ struct           Grid
     fn rows(self, rows)
     fn cols(self, cols)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     fn show(self, ui, body)
     traits: Configure, Debug
 struct           Modal
@@ -1389,6 +1392,7 @@ struct           Modal
     const fn backdrop(self, c)
     fn show(self, ui, body)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 struct           Panel
     fn show(self, ui, body)
@@ -1400,6 +1404,7 @@ struct           Panel
     fn zstack()
     fn canvas()
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 struct           Popup
     fn new(anchor)
@@ -1409,10 +1414,10 @@ struct           Popup
     fn right_of(rect)
     const fn layer(self, layer)
     const fn click_outside(self, m)
-    fn default_background(self, bg)
     const fn anchored(self, anchor)
     fn show(self, ui, body)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 enum             ClickOutside
     variants: Block, Dismiss, PassThrough
@@ -1443,6 +1448,7 @@ struct           Scroll
     fn zoomable_with(self, cfg)
     fn show(self, ui, body)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 enum             BarMode
     variants: Reserved, Overlay, Hidden
@@ -1461,7 +1467,6 @@ enum             ZoomPivot
 struct           Separator
     fn horizontal()
     fn vertical()
-    const fn from_widget(widget, axis)
     fn style(self, s)
     const fn thickness(self, px)
     const fn color(self, c)
@@ -1571,7 +1576,6 @@ struct           TextEdit
     const fn text_align(self, a)
     const fn multiline(self, on)
     const fn placeholder(self, s)
-    fn adopt_placement(self, from)
     fn show(self, ui)
     traits: Configure, Debug
 struct           TextEditResponse
@@ -1706,6 +1710,7 @@ struct           Tooltip
     const fn when_disabled(self, yes)
     fn show(self, ui)
     const fn background(self, bg)
+    const fn default_background(self, bg)
     traits: Configure, Debug
 struct           TooltipResponse
     fields: visible

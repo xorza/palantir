@@ -232,34 +232,6 @@ items, old and new.
 **Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
 stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
 
-## A39. Wrapper hooks on single widgets
-
-**Findings.** Four public methods exist for in-crate wrappers, and the wrapped widgets' peers lack
-them:
-
-| Hook | For |
-|------|-----|
-| `TextEdit::adopt_placement(&Widget)` | `DragValue`'s inline editor; `Widget::adopt_placement` is the same thing one level down |
-| `Separator::from_widget(Widget, Axis)` | `MenuSeparator` |
-| `Popup::default_background(&Background)` | `ContextMenu` and `ComboBox` theming a popup's chrome after the caller's own settings |
-| `Popup::anchored(Anchor)` | `ContextMenu`, which learns its anchor only in `show` |
-
-**Recommendation.** One wrapper rule, written in AGENTS.md: *a wrapper holds the widget it wraps,
-forwards `Configure` to it, and finishes it through that widget's public setters.* Under it:
-
-- `adopt_placement` moves to `ConfigureWidget`, so every widget has it through `configure()`;
-  `TextEdit::adopt_placement` and `Widget::adopt_placement` go.
-- `MenuSeparator` holds a `Separator`, built horizontal in `MenuSeparator::new`;
-  `Separator::from_widget` goes.
-- `Popup::anchored` stays: it is an ordinary setter a holding wrapper needs, and it already
-  mirrors `LayerScope::anchored`.
-- `default_background` stays as the chrome peer of `ThemeDefaults::default_padding`, but on every
-  widget that has `background(bg)`, not on `Popup` alone. **Decided 2026-10-04:** an inherent
-  `default_background(bg)` beside the inherent `background(bg)` on `Block`, `Panel`, `Grid`,
-  `Scroll`, `Popup`, `Modal`, `Tooltip` and `ContextMenu` — no trait. Because no trait keeps the
-  eight in step, one table-driven test records each of them with only a default, with only a
-  background, and with both, and asserts the painted fill each time.
-
 ## A41. `Popup` mirrors `Anchor` but not all of it
 
 **Findings.** `Popup::below`, `above`, `left_of` and `right_of(rect)` are `Popup::new(Anchor::…)`
@@ -475,9 +447,7 @@ Each line is one commit; none depends on another inside the phase.
 ## Phase 3 — structural API
 
 1. Done: one value response (A27).
-2. **Wrappers** (A39): `ConfigureWidget::adopt_placement`; `MenuSeparator` holds a `Separator`;
-   `default_background` on the eight chrome-bearing widgets, with the test that keeps them in
-   step.
+2. Done: wrappers (A39).
 3. **Overlays**, in this order: A14 with A51 (the attach verb; `Tooltip` takes its text in the
    constructor), A41 (`Popup::at_point`), then A23 (`PopupTrigger`, in A14's argument order;
    `ColorButton` and `ComboBox` move onto it).
