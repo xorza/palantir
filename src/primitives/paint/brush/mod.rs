@@ -192,6 +192,14 @@ impl Animatable for Brush {
     }
 
     #[inline]
+    fn settle_distance_squared(self) -> f32 {
+        match self {
+            Brush::Solid(c) => c.settle_distance_squared(),
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => 0.0,
+        }
+    }
+
+    #[inline]
     fn zero() -> Self {
         Brush::Solid(RgbaF32::zero())
     }

@@ -54,22 +54,6 @@ item. Split this item into one go-ahead per row of the table.
 **Touches.** `src/widgets/**`, `src/layout/drivers/scrollbars`, `src/primitives/layout/scroll_axes.rs`,
 `src/ui/mod.rs`, `src/renderer/gpu_paint`, `src/primitives/geometry` helpers, `lib.rs` exports.
 
-## A5. Per-type settle tolerance for `Animatable`
-
-**Findings.** REVIEW "Spring settle floor is in pixels but is applied to colours and mixed
-compounds". REDESIGN D7 adds a unit-free interim.
-
-**Options.**
-
-1. An associated const with a default: `const SETTLE_EPS: f32 = 0.01;`. `RgbaF32` sets about
-   `1.0 / 4096.0` (below one 8-bit sRGB step near black). The derive takes the minimum over
-   fields.
-2. A method `fn settle_distance_squared(self) -> f32` that each type scales into a common unit.
-
-**Recommendation.** 1, with a default, so existing implementations still compile. The derive
-change is in `palantir-anim-derive`. After this lands, remove D7's interim (one absolute `1e-4` floor for
-every spring), which costs about 0.4 s of extra repaint per pixel spring.
-
 ## A6. `BatchKind` without strum in its public derives
 
 **Findings.** REVIEW "Public API leaks third-party crate types"; TEST_REVIEW 2 (hand-listed

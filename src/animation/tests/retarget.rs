@@ -4,6 +4,7 @@ use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{SLOT, duration_motion, linear_100ms, spring_velocity, wid};
+use crate::primitives::math::approx::internals::assert_close;
 
 #[test]
 fn retarget_mid_flight_starts_new_segment_from_current() {
@@ -51,7 +52,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
         let _ = map.step(id, SLOT, 1.0_f32, AnimSpec::SPRING, 0.016);
     }
     let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
-    let segment_start = row.current;
+    let segment_start = row.current();
     let velocity = *spring_velocity(row);
     assert!(
         velocity.abs() > 0.01,
@@ -80,7 +81,18 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let duration_result = map.step(id, SLOT, 1.0, duration, 0.4);
     assert_eq!(duration_result.current, 0.4);
 
+    // The spring takes over at rest from the duration's 0.4, 0.6 short of
+    // the target: the default spring (k = 170, h = 13, ω = 1) is then at
+    // `1 − 0.6·e^(-13t)(cos t + 13 sin t)` after t = 0.016.
     let spring_result = map.step(id, SLOT, 1.0, AnimSpec::SPRING, 0.016);
+    let t = f64::from(0.016_f32);
+    let from_point_four = 1.0 - 0.6 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    assert_close(
+        spring_result.current,
+        from_point_four,
+        1e-7,
+        "the spring starts from the duration's value, to f32 rounding near 0.4",
+    );
     let spring_row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
     assert!(*spring_velocity(spring_row) > 0.0);
 

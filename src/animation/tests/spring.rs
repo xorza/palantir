@@ -13,43 +13,35 @@ use crate::primitives::math::approx::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
 
 /// Accepted springs stay finite and settle on their target under a mixed
-/// frame sequence, on the step the closed form names or within the f32
-/// limits that explain the gap.
-///
-/// Step 0 is the change's frame, which steps nothing, so step `n` spends
-/// `dts[n % 4]`. The stiff spring settles where the closed form does. The
-/// default one needs one step more: 500 px out, the closed form's step 36
-/// leaves 9.85e-5, and f32 rounding next to -100 holds the displacement
-/// at the 1e-4 floor. The minimum-decay spring settles 62 steps before the
-/// closed form's 480, on the no-progress rule: about 1e-3 from -100, its
-/// 4.2 ms step moves less than half an f32 step there.
+/// frame sequence, on the step the closed form names. Step 0 is the
+/// change's frame, which steps nothing, so step `n` spends `dts[n % 4]`.
 #[test]
 fn validated_springs_remain_finite_and_settle() {
-    // (label, spec, closed-form settle step, settle step)
+    // (label, spec, settle step)
     let cases = [
-        ("minimum-decay", AnimSpec::spring(1.0, 2.0), 480, 418),
-        ("default", AnimSpec::SPRING, 36, 37),
-        ("stiff", AnimSpec::spring(1_000_000.0, 100.0), 8, 8),
+        ("minimum-decay", AnimSpec::spring(1.0, 2.0), 488),
+        ("default", AnimSpec::SPRING, 39),
+        ("stiff", AnimSpec::spring(1_000_000.0, 100.0), 9),
     ];
     let dts = [0.1, 1.0 / 60.0, 0.0042, 0.033];
 
-    for (label, spec, closed_form, expected) in cases {
+    for (label, spec, expected) in cases {
         let AnimMotion::Spring { stiffness, damping } = spec.motion else {
             unreachable!("every case is a spring");
         };
         assert_eq!(
-            closed_form_settle_step(f64::from(stiffness), f64::from(damping), 500.0, |n| {
+            closed_form_settle_step(f64::from(stiffness), f64::from(damping), 500.0, 1e-4, |n| {
                 dts[n as usize % dts.len()]
             }),
-            closed_form,
+            expected,
             "{label}: closed form",
         );
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid(label);
         let _ = map.step(id, SLOT, 400.0, spec, dts[0]);
         let mut settled_at = None;
-        for i in 0..4_000 {
-            let result = map.step(id, SLOT, -100.0, spec, dts[i % dts.len()]);
+        for i in 0..4_000_u32 {
+            let result = map.step(id, SLOT, -100.0, spec, dts[i as usize % dts.len()]);
             let row = &map.rows[&(id, SLOT)];
             let velocity = *spring_velocity(row);
             assert!(
@@ -100,10 +92,10 @@ fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
             spring::params_are_valid(stiffness, damping),
             "{label}: fixture must be an accepted spring",
         );
-        let step = spring::step(stiffness, damping, 1.0_f32, 0.0, 0.0, 0.1);
+        let step = spring::step(stiffness, damping, 1.0_f32, 0.0, 0.1);
         assert!(!step.settled, "{label}: a unit displacement is not settled");
         assert_close(
-            step.current,
+            step.offset,
             expect_pos,
             1e-6,
             "f32 transition coefficients against the analytic position",
@@ -131,12 +123,12 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
         let mut current = 300.0_f32;
         let mut velocity = 0.0_f32;
         for _ in 0..steps {
-            let step = spring::step(stiffness, damping, current, velocity, 0.0, dt);
+            let step = spring::step(stiffness, damping, current, velocity, dt);
             assert!(
                 !step.settled,
                 "fixture must stay in flight for the whole 0.1s"
             );
-            current = step.current;
+            current = step.offset;
             velocity = step.velocity;
         }
         current
@@ -166,7 +158,7 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
 #[test]
 fn the_critically_damped_boundary_has_no_seam() {
     let stiffness = 100.0_f32;
-    let at = |damping: f32| spring::step(stiffness, damping, 1.0_f32, 0.0, 0.0, 0.1).current;
+    let at = |damping: f32| spring::step(stiffness, damping, 1.0_f32, 0.0, 0.1).offset;
     let critical = at(20.0);
     for offset in [1e-3, 1e-4, 1e-5] {
         let under = at(20.0 - offset);
@@ -335,17 +327,85 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     );
 }
 
+/// The stiffest spring there is stays finite and settles. Its velocity
+/// reaches `500 · √f32::MAX ≈ 9e21`, whose square would overflow `f32`;
+/// the settle bound scales it by `1/√k` before squaring.
+///
+/// Its oscillation is so fast that each frame lands on an arbitrary
+/// phase, but the settle bound does not depend on the phase: with
+/// `ω ≈ 1.8e19` the energy envelope is `500·e^(-t)` to within `h/ω`.
+/// It first falls under 1e-4 at `t > ln(5e6) = 15.4249 s`, which is
+/// frame 925.49 at 1/60 s — so step 926, at `9.94e-5`, where step 925
+/// still sat at `1.011e-4`. Loop step 0 is the change's frame and steps
+/// nothing, so loop step `n` is step `n`.
+#[test]
+fn the_stiffest_spring_stays_finite_and_settles() {
+    let spec = AnimSpec::spring(f32::MAX, 2.0);
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("stiffest");
+    let _ = map.step(id, SLOT, 400.0, spec, 1.0 / 60.0);
+    let mut settled_at = None;
+    for i in 0..2_000 {
+        let result = map.step(id, SLOT, -100.0, spec, 1.0 / 60.0);
+        let velocity = *spring_velocity(&map.rows[&(id, SLOT)]);
+        assert!(
+            result.current.is_finite() && velocity.is_finite(),
+            "step {i}"
+        );
+        if result.settled {
+            assert_eq!(result.current, -100.0);
+            settled_at = Some(i);
+            break;
+        }
+    }
+    assert_eq!(settled_at, Some(926));
+}
+
+/// The settle bound is the spring's energy, `x² + v²/k`, measured in the
+/// type's own tolerance: no later swing can leave it.
+///
+/// - `f32` settles at 1e-4. A displacement of 0.5e-4 is in; at the target
+///   with speed `√170 · 0.9e-4` the swing still to come is 0.9e-4, in; at
+///   `√170 · 1.1e-4` it is 1.1e-4, out. 0.8e-4 out with a 0.8e-4 swing
+///   is in on each axis but `0.8² + 0.8² = 1.28 > 1` together, out.
+/// - `RgbaF32` settles at 1/4096 ≈ 2.44e-4, so 2e-4 on one channel is in
+///   where the same number on an `f32` is out — the tolerance is the
+///   type's. A bouncy colour spring crossing its target at 0.05/s, which
+///   an absolute 0.1 velocity floor let snap, still swings
+///   `0.05 / √300 ≈ 2.9e-3` — twelve tolerances — and stays out.
+#[test]
+fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
+    let k = 170.0_f32;
+    for (label, x, v, settled) in [
+        ("small offset", 0.5e-4, 0.0, true),
+        ("small swing", 0.0, k.sqrt() * 0.9e-4, true),
+        ("large swing", 0.0, k.sqrt() * 1.1e-4, false),
+        ("both near", 0.8e-4, k.sqrt() * 0.8e-4, false),
+        ("f32 at a colour's tolerance", 2e-4, 0.0, false),
+    ] {
+        assert_eq!(spring::within_settle_eps(x, v, k), settled, "{label}");
+    }
+    let red = |r: f32| RgbaF32::new(r, 0.0, 0.0, 0.0);
+    assert!(
+        spring::within_settle_eps(red(2e-4), red(0.0), k),
+        "a colour at 2e-4"
+    );
+    assert!(
+        !spring::within_settle_eps(red(0.0), red(0.05), 300.0),
+        "a bouncy colour crossing its target",
+    );
+}
+
 /// A spring stepped at the smallest delta the frame runtime spends,
-/// `ANIM_SUBSTEP_DT`, settles exactly on its target — the frame clock's
-/// own test pins that an unthrottled loop reaches the integrator in steps
-/// of that size. At pixel-scale values the last stretch is below what f32
-/// can represent next to the value: near 400 a step of f32 is 3e-5 and
-/// one substep decays the remaining travel by 5 %, so the value stops
-/// moving about 3e-4 short of the target, above the 1e-4 floor, and only
-/// the no-progress rule ends the motion. Released 320 px out, the default
-/// spring is at `320·e^(-13t)(cos t + 13 sin t)`, which first falls under
-/// 3e-4 at substep 304. Loop step 0 is the change's frame and steps
-/// nothing, so the stall the estimate puts at 304 lands on loop step 305.
+/// `ANIM_SUBSTEP_DT`, settles exactly on its target, on the step the
+/// closed form names. At pixel-scale values the last stretch moves less
+/// than f32 can show next to the value: near 400 a step of f32 is 3e-5,
+/// and one substep decays the remaining travel by 5 %, so a spring that
+/// fed the rounded value back stalled about 3e-4 short of the target. The
+/// row steps its offset from the target instead, where the small numbers
+/// keep their precision, so the decay runs on to the tolerance. Loop step
+/// 0 is the change's frame and steps nothing, so loop step `n` is step
+/// `n`.
 #[test]
 fn a_spring_at_the_substep_settles_on_its_target() {
     let mut map = AnimMapTyped::<f32>::default();
@@ -360,7 +420,8 @@ fn a_spring_at_the_substep_settles_on_its_target() {
             break;
         }
     }
-    assert_eq!(settled_at, Some(305));
+    let step = closed_form_settle_step(170.0, 26.0, 320.0, 1e-4, |_| ANIM_SUBSTEP_DT);
+    assert_eq!(settled_at, Some(step));
 }
 
 #[test]
@@ -383,8 +444,8 @@ fn color_spring_converges_to_target() {
     // Loop frame 0 is the change's frame and steps nothing, so frame `i`
     // is step `i`.
     let distance = f64::from(target.sub(start).magnitude_squared()).sqrt();
-    let step = closed_form_settle_step(170.0, 26.0, distance, |_| 0.016);
-    assert_eq!(step, 56);
+    let step = closed_form_settle_step(170.0, 26.0, distance, 1.0 / 4096.0, |_| 0.016);
+    assert_eq!(step, 53);
     assert_eq!(settled_at, Some(step));
     assert_eq!(last, target, "a settled spring snaps to its target");
 }
@@ -422,7 +483,7 @@ fn solid_brush_spring_matches_color_trajectory() {
     // Loop frame 0 is the change's frame and steps nothing, so frame `i`
     // is step `i`.
     let distance = f64::from(target.sub(start).magnitude_squared()).sqrt();
-    let step = closed_form_settle_step(170.0, 26.0, distance, |_| 0.016);
-    assert_eq!(step, 56);
+    let step = closed_form_settle_step(170.0, 26.0, distance, 1.0 / 4096.0, |_| 0.016);
+    assert_eq!(step, 53);
     assert_eq!(settled_at, Some(step), "both settle on the same frame");
 }

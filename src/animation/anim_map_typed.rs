@@ -83,9 +83,8 @@ impl<T: Animatable> AnimMapTyped<T> {
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
                 v.insert(AnimRow {
-                    current: target.clone(),
                     target: target.clone(),
-                    motion: MotionRow::new(spec.motion, &target),
+                    motion: MotionRow::new(spec.motion, &target, &target),
                     touched: true,
                     advanced_at: render_frame_id,
                     settled: true,
@@ -103,33 +102,43 @@ impl<T: Animatable> AnimMapTyped<T> {
 
         // Steady-state fast path. Once a row settles, every subsequent
         // tick with the same target should be a no-op — skip the
-        // `sub` + `magnitude_squared` settle math entirely. Retarget
+        // `sub` + `settle_distance_squared` settle math entirely. Retarget
         // detection still runs (the `target != row.target` compare
         // below) so a caller changing the target unfreezes the row
         // immediately.
         //
-        // Returns the caller's `target` instead of `row.current.clone()`:
-        // every site that sets `settled` also snaps `current = target`,
-        // so the three values are equal here and reusing the
+        // Returns the caller's `target` instead of `row.current()`: every
+        // site that sets `settled` also leaves the motion at rest on the
+        // target, so the three values are equal here and reusing the
         // already-owned `target` skips a per-widget-per-frame clone
         // (~200 B for `AnimatedLook`). debug-only assert — the compare
         // is exactly the cost this path exists to avoid.
         if row.settled && row.target == target {
-            debug_assert!(row.current == target, "settled row must sit at its target");
+            debug_assert!(
+                row.current() == target,
+                "settled row must sit at its target"
+            );
             return TickResult {
                 current: target,
                 settled: true,
             };
         }
 
-        row.motion.conform(spec.motion, &row.current);
-        if let MotionRow::Spring { velocity, .. } = &mut row.motion {
-            row.current.normalize_for_spring(&target, velocity);
+        let retargeted = row.target != target;
+        let mut current = row.current();
+        let switched = row.motion.conform(spec.motion, &current, &row.target);
+        // Only a new target or a new motion can pair the value with a
+        // target it cannot do arithmetic against: between the two, every
+        // value is `target + offset` or a sample of the curve toward it.
+        if retargeted || switched {
+            if let MotionRow::Spring { velocity, .. } = &mut row.motion {
+                current.normalize_for_spring(&target, velocity);
+            }
+            row.motion.retarget(&current, &target);
         }
 
-        if row.target != target {
+        if retargeted {
             let from_rest = row.settled;
-            row.motion.retarget(&row.current, &target);
             row.target = target;
             row.settled = false;
             // Snap-if-close, on the retarget alone: a change too small to
@@ -139,10 +148,9 @@ impl<T: Animatable> AnimMapTyped<T> {
             // target on its way to the overshoot.
             if row
                 .motion
-                .close_enough(row.current.clone().sub(row.target.clone()))
+                .close_enough(current.clone().sub(row.target.clone()))
             {
-                row.current = row.target.clone();
-                row.motion.stop();
+                row.motion.stop(&row.target);
                 row.settled = true;
                 return TickResult {
                     current: row.target.clone(),
@@ -151,7 +159,7 @@ impl<T: Animatable> AnimMapTyped<T> {
             }
             if from_rest {
                 return TickResult {
-                    current: row.current.clone(),
+                    current,
                     settled: false,
                 };
             }
@@ -164,15 +172,12 @@ impl<T: Animatable> AnimMapTyped<T> {
         // double the animation speed on any input frame.
         if already_advanced {
             return TickResult {
-                current: row.current.clone(),
+                current,
                 settled: false,
             };
         }
 
-        let step = row
-            .motion
-            .advance(row.current.clone(), row.target.clone(), dt);
-        row.current = step.current.clone();
+        let step = row.motion.advance(row.target.clone(), dt);
         row.settled = step.settled;
         step
     }

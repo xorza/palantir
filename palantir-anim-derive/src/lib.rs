@@ -3,7 +3,9 @@
 //! fields marked `#[animate(snap)]` are excluded from arithmetic
 //! (lerp returns target's value, sub/add/scale/zero preserve `self`'s
 //! or pick a default, magnitude_squared contributes 0). Dynamic
-//! spring normalization forwards through animated fields only.
+//! spring normalization forwards through animated fields only, and so
+//! does the settle distance, unless the struct names a tolerance of its
+//! own.
 //!
 //! Re-exported as `palantir::widget::Animatable` (the derive shares its name
 //! with the trait, by Rust convention).
@@ -11,7 +13,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Field, Fields, Ident, Type, parse_macro_input};
+use syn::{Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, Type, parse_macro_input};
 
 /// `#[derive(Animatable)]` on a struct with named fields.
 ///
@@ -22,6 +24,11 @@ use syn::{Data, DataStruct, DeriveInput, Field, Fields, Ident, Type, parse_macro
 /// expensive (font sizes invalidating shape caches), aesthetically
 /// off (corner radii morphing across states), or simply not
 /// `Animatable` (`Spacing`, etc.).
+///
+/// Struct attribute `#[animate(settle_eps = EXPR)]` gives the whole value
+/// one settle tolerance, `EXPR`, in its own unit: the settle distance is
+/// then its magnitude over `EXPR²`. Without it, the settle distance is
+/// the sum of the animated fields' own, each in its own unit.
 #[proc_macro_derive(Animatable, attributes(animate))]
 pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -48,6 +55,8 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             ));
         }
     };
+
+    let settle_eps = container_settle_eps(input)?;
 
     let mut anim: Vec<(&Ident, &Type)> = Vec::new();
     let mut snap: Vec<(&Ident, &Type)> = Vec::new();
@@ -98,6 +107,26 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         quote! { 0.0_f32 }
     } else {
         quote! { #(#mag_sq_terms)+* }
+    };
+
+    let settle_distance_squared_body = match &settle_eps {
+        Some(eps) => quote! {
+            let eps: f32 = #eps;
+            ::palantir::widget::Animatable::magnitude_squared(self) / (eps * eps)
+        },
+        None => {
+            let terms: Vec<TokenStream2> = anim
+                .iter()
+                .map(|(f, _)| {
+                    quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
+                })
+                .collect();
+            if terms.is_empty() {
+                quote! { 0.0_f32 }
+            } else {
+                quote! { #(#terms)+* }
+            }
+        }
     };
 
     let zero_anim = anim.iter().map(|(f, ty)| {
@@ -155,6 +184,10 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 #magnitude_squared_body
             }
             #[inline]
+            fn settle_distance_squared(self) -> f32 {
+                #settle_distance_squared_body
+            }
+            #[inline]
             fn zero() -> Self {
                 Self {
                     #(#zero_anim)*
@@ -170,6 +203,30 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     };
 
     Ok(expanded)
+}
+
+/// The struct's own `#[animate(settle_eps = EXPR)]`, if it names one.
+/// Errors on any other option there, as [`classify_field`] does on a
+/// field, and on a second tolerance, which would otherwise win silently.
+fn container_settle_eps(input: &DeriveInput) -> syn::Result<Option<Expr>> {
+    let mut eps = None;
+    for attr in &input.attrs {
+        if !attr.path().is_ident("animate") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("settle_eps") {
+                if eps.is_some() {
+                    return Err(meta.error("`settle_eps` given twice"));
+                }
+                eps = Some(meta.value()?.parse::<Expr>()?);
+                Ok(())
+            } else {
+                Err(meta.error("unknown #[animate(...)] option on a struct; expected `settle_eps`"))
+            }
+        })?;
+    }
+    Ok(eps)
 }
 
 /// Returns `Ok(true)` if `#[animate(snap)]` (or `skip`) is set on the
@@ -207,7 +264,8 @@ mod tests {
     fn refused_inputs_name_the_reason() {
         let shape = "Animatable can only be derived on structs with named fields";
         let option = "unknown #[animate(...)] option; expected `snap` or `skip`";
-        let cases: [(&str, DeriveInput, &str); 4] = [
+        let container = "unknown #[animate(...)] option on a struct; expected `settle_eps`";
+        let cases: [(&str, DeriveInput, &str); 6] = [
             ("enum", parse_quote! { enum E { A } }, shape),
             ("tuple struct", parse_quote! { struct T(f32); }, shape),
             ("unit struct", parse_quote! { struct U; }, shape),
@@ -215,6 +273,16 @@ mod tests {
                 "typo",
                 parse_quote! { struct S { #[animate(snip)] a: f32 } },
                 option,
+            ),
+            (
+                "field option on the struct",
+                parse_quote! { #[animate(snap)] struct S { a: f32 } },
+                container,
+            ),
+            (
+                "two tolerances",
+                parse_quote! { #[animate(settle_eps = 0.5, settle_eps = 0.25)] struct S { a: f32 } },
+                "`settle_eps` given twice",
             ),
         ];
         for (label, input, message) in cases {
