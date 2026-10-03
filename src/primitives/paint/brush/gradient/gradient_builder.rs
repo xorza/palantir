@@ -35,6 +35,7 @@ impl<G: GradientGeometry> GradientBuilder<G> {
     }
 
     /// Add a color stop at `offset`, clamped to the 0..=1 gradient range.
+    #[track_caller]
     pub fn stop(mut self, offset: f32, color: RgbaF32) -> Self {
         self.stops.push(Stop::new(offset, color));
         self

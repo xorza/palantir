@@ -2,6 +2,7 @@
 //! `Spacing` and `RgbaF16` use, with corner names on the lanes.
 
 use crate::primitives::geometry::size::Size;
+use crate::primitives::math::domain;
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
@@ -27,6 +28,18 @@ pub struct Corners(F16x4);
 f16x4_lanes!(Corners, [tl, tr, br, bl]);
 
 impl Corners {
+    /// Panics unless every radius is a [length](domain::length) — the
+    /// check a radius faces where it enters a shape or a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(self) {
+        assert!(
+            !self.0.any_lane_non_finite() && !self.0.any_lane_negative(),
+            "{}",
+            domain::LENGTH_RULE,
+        );
+    }
+
     /// One radius on all four corners.
     #[inline]
     pub fn all(r: f32) -> Self {

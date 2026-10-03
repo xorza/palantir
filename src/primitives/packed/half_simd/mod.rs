@@ -120,6 +120,27 @@ impl F16x4 {
         ((packed & ABS) + bias) & SIGN != 0
     }
 
+    /// True if any lane is infinite or NaN: a magnitude past the largest
+    /// finite f16.
+    #[inline]
+    pub(crate) const fn any_lane_non_finite(self) -> bool {
+        self.any_lane_above(Self::NAN_EXP - 1)
+    }
+
+    /// True if any lane is below zero. `-0.0` is not.
+    #[inline]
+    pub(crate) const fn any_lane_negative(self) -> bool {
+        let mut i = 0;
+        while i < 4 {
+            let lane = self.0[i];
+            if lane & !Self::ABS_MASK != 0 && lane & Self::ABS_MASK != 0 {
+                return true;
+            }
+            i += 1;
+        }
+        false
+    }
+
     /// True if any lane is NaN.
     ///
     /// `0x7C00` is f16 infinity and NaN is the only thing whose

@@ -3,6 +3,7 @@
 
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::record_store::RecordStore;
@@ -38,8 +39,9 @@ impl MeshShape<'_> {
     }
 
     /// Multiplied onto every vertex colour. White leaves the mesh alone.
+    #[track_caller]
     pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
-        self.tint = tint.into();
+        self.tint = domain::color(tint.into());
         self
     }
 }

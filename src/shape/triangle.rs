@@ -2,6 +2,7 @@
 //! `ShapeRecord::Quad(QuadShape::Triangle)`.
 
 use crate::primitives::geometry::rect::aabb::Aabb;
+use crate::primitives::math::domain;
 use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
@@ -40,20 +41,25 @@ impl TriangleShape {
 
 impl TriangleShape {
     /// Interior paint.
+    #[track_caller]
     pub fn fill(mut self, fill: impl Into<RgbaF32>) -> Self {
-        self.fill = fill.into();
+        self.fill = domain::color(fill.into());
         self
     }
 
     /// Edge paint, inside the boundary like every area shape's.
+    #[track_caller]
     pub fn border(mut self, border: impl Into<Stroke>) -> Self {
-        self.border = border.into();
+        let border = border.into();
+        border.validate();
+        self.border = border;
         self
     }
 
     /// Round all three corners by this radius.
+    #[track_caller]
     pub fn radius(mut self, radius: impl Into<f32>) -> Self {
-        self.radius = radius.into();
+        self.radius = domain::length(radius.into());
         self
     }
 }

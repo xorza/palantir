@@ -62,6 +62,17 @@ pub struct Background {
 }
 
 impl Background {
+    /// Panics unless its fill, border, corners and shadow each pass their
+    /// own check — the check a background faces where it enters a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        self.fill.validate();
+        self.border.validate();
+        self.corners.validate();
+        self.shadow.validate();
+    }
+
     /// Canonical background that paints nothing. Use this as an explicit
     /// builder override when a theme supplies chrome that this widget should
     /// suppress.

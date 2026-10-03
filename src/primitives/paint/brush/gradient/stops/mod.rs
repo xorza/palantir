@@ -2,6 +2,7 @@
 //! run a gradient carries them in, and the builder that sorts and
 //! validates one.
 
+use crate::primitives::math::domain;
 use crate::primitives::math::num;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -39,15 +40,20 @@ pub struct Stop {
 }
 
 impl Stop {
-    /// Construct a stop. Finite offsets are clamped to 0..=1 and
-    /// quantized to u8 (round-to-nearest). The colour is encoded to sRGB
-    /// bytes, exactly for a colour built from a hex code.
+    /// Construct a stop. `offset` is a *fraction*, coerced: clamped to
+    /// 0..=1, a non-finite one read as 0, then quantized to u8
+    /// (round-to-nearest). `color` is a *colour*, encoded to sRGB bytes,
+    /// exactly for a colour built from a hex code.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
     #[inline]
+    #[track_caller]
     pub fn new(offset: f32, color: RgbaF32) -> Self {
-        assert!(offset.is_finite(), "gradient stop offset must be finite");
         Self {
-            offset_u8: num::unit_to_u8(offset),
-            color: color.into(),
+            offset_u8: num::unit_to_u8(domain::fraction(offset)),
+            color: domain::color(color).into(),
         }
     }
 
@@ -86,6 +92,9 @@ impl<'de> Deserialize<'de> for Stop {
         let raw = RawStop::deserialize(deserializer)?;
         if !raw.offset.is_finite() {
             return Err(D::Error::custom("gradient stop offset must be finite"));
+        }
+        if !domain::is_color(raw.color) {
+            return Err(D::Error::custom(domain::COLOR_RULE));
         }
         Ok(Stop::new(raw.offset, raw.color))
     }

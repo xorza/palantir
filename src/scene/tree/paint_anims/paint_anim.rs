@@ -2,6 +2,7 @@
 //! written in.
 
 use crate::animation::animatable::Animatable;
+use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_mod::PaintMod;
@@ -266,8 +267,9 @@ impl PaintAnim {
     /// Panics on zero steps. It would read as a shape that never
     /// animates, with no other sign that the animation was asked for —
     /// and this is a cold builder, so the check costs a frame nothing.
+    #[track_caller]
     pub const fn with_steps(mut self, n: u32) -> Self {
-        let n = NonZeroU32::new(n).expect("a paint animation cannot have zero steps");
+        let n = NonZeroU32::new(domain::count(n)).expect("a count is non-zero");
         self.timing.steps = PaintSteps::Steps(n);
         self
     }

@@ -38,8 +38,11 @@ impl ShadowShape {
     }
 
     /// Corner radii of the shape casting the shadow.
+    #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
-        self.corners = corners.into();
+        let corners = corners.into();
+        corners.validate();
+        self.corners = corners;
         self
     }
 }

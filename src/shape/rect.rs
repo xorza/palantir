@@ -44,21 +44,30 @@ impl RectShape {
 
 impl RectShape {
     /// Interior paint.
+    #[track_caller]
     pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
-        self.fill = fill.into();
+        let fill = fill.into();
+        fill.validate();
+        self.fill = fill;
         self
     }
 
     /// Edge paint, inside the boundary: the outer edge of the border is
     /// the rect's edge, like every area shape's.
+    #[track_caller]
     pub fn border(mut self, border: impl Into<Stroke>) -> Self {
-        self.border = border.into();
+        let border = border.into();
+        border.validate();
+        self.border = border;
         self
     }
 
     /// Corner radii. Takes one number for all four, or a [`Corners`].
+    #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
-        self.corners = corners.into();
+        let corners = corners.into();
+        corners.validate();
+        self.corners = corners;
         self
     }
 }

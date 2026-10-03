@@ -1,6 +1,7 @@
 //! One drop or inset shadow: the offset, blur and spread a chrome or a
 //! shape paints behind itself.
 
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
@@ -50,6 +51,19 @@ pub struct Shadow {
 }
 
 impl Shadow {
+    /// Panics unless the colour is a [colour](domain::color), the offset
+    /// and the spread [offsets](domain::offset), and the blur a
+    /// [length](domain::length) — the check a shadow faces where it
+    /// enters a shape or a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        let _ = domain::color(self.color);
+        vec2::offset(self.offset);
+        domain::length(self.blur);
+        domain::offset(self.spread);
+    }
+
     /// Canonical "no shadow" sentinel. Equivalent to
     /// `Shadow::default()` but `const`, so callers can use it in
     /// `const` contexts (theme tables, look defaults). Reports

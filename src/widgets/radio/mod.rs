@@ -108,7 +108,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         };
         let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if selected {
-                let dot_size = pip_size - 2.0 * dot_inset;
+                let dot_size = domain::length_at_least(pip_size - 2.0 * dot_inset, 0.0);
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
                 ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
             }

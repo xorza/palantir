@@ -2,6 +2,7 @@
 //! normalized into the active text arena.
 
 use crate::primitives::layout::align::Align;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
@@ -72,8 +73,9 @@ impl TextShape {
 impl TextShape {
     /// Ink colour. Straight-alpha linear RGB, like every other colour
     /// on the CPU side.
+    #[track_caller]
     pub fn color(mut self, color: impl Into<RgbaF32>) -> Self {
-        self.color = color.into();
+        self.color = domain::color(color.into());
         self
     }
 

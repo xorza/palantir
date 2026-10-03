@@ -216,6 +216,7 @@ impl ContextMenu<'_> {
     /// Unset is the default; the theme fallback in [`Self::show`] fills
     /// it in from the resolved theme's `panel`. Pass
     /// [`Background::NONE`] to suppress the themed menu chrome.
+    #[track_caller]
     pub const fn background(mut self, bg: Background) -> Self {
         self.popup = self.popup.background(bg);
         self
@@ -226,6 +227,7 @@ impl ContextMenu<'_> {
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
     /// setters ran. An explicit [`Self::background`] wins in either order.
+    #[track_caller]
     pub const fn default_background(mut self, bg: Background) -> Self {
         self.popup = self.popup.default_background(bg);
         self

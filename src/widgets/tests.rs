@@ -236,3 +236,41 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
         }
     }
 }
+
+/// A background is checked where it enters a widget, through either
+/// setter: a NaN fill colour, a negative border width, a NaN corner and a
+/// NaN shadow blur each panic with their kind's rule.
+#[test]
+fn chrome_setters_check_the_background() {
+    use crate::internals::panic_probe;
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::math::domain;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::primitives::paint::stroke::Stroke;
+
+    let bad: [(&str, Background); 4] = [
+        (
+            "a color must have finite channels",
+            Background::fill(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
+        ),
+        (
+            domain::LENGTH_RULE,
+            Background::fill(RgbaF32::WHITE).with_border(Stroke::new(RgbaF32::WHITE, -1.0)),
+        ),
+        (
+            domain::LENGTH_RULE,
+            Background::rounded(RgbaF32::WHITE, Corners::all(f32::NAN)),
+        ),
+        (
+            domain::LENGTH_RULE,
+            Background::fill(RgbaF32::WHITE).with_shadow(Shadow {
+                blur: f32::NAN,
+                ..Shadow::default()
+            }),
+        ),
+    ];
+    for (rule, bg) in bad {
+        panic_probe::assert_panics_with(rule, || Panel::vstack().background(bg.clone()));
+        panic_probe::assert_panics_with(rule, || Block::new().default_background(bg.clone()));
+    }
+}

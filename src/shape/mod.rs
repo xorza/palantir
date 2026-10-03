@@ -28,6 +28,7 @@ pub(crate) mod triangle;
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::domain;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -170,19 +171,29 @@ impl Shape {
     }
 
     /// A straight line from `a` to `b` in `stroke` (`Butt` cap).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the stroke's width is a *length* and its colour a
+    /// *colour*. The same holds for every stroked shape below.
+    #[track_caller]
     pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
+        stroke.validate();
         CurveShape::new(CurveGeometry::Line { a, b }, stroke)
     }
 
     /// A polyline through `points` in `stroke` (`Butt` cap, `Miter`
     /// join). Chain [`PolylineShape::per_point`] or
     /// [`PolylineShape::per_segment`] to vary the colour along it.
+    #[track_caller]
     pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_> {
+        stroke.validate();
         PolylineShape::new(points, stroke)
     }
 
     /// A cubic Bézier through control points `p0..=p3` in `stroke`
     /// (`Butt` cap).
+    #[track_caller]
     pub const fn cubic_bezier(
         p0: Vec2,
         p1: Vec2,
@@ -190,18 +201,28 @@ impl Shape {
         p3: Vec2,
         stroke: Stroke,
     ) -> CurveShape {
+        stroke.validate();
         CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, stroke)
     }
 
     /// A quadratic Bézier through `p0`/`p1`/`p2`. See
     /// [`Self::cubic_bezier`].
+    #[track_caller]
     pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
+        stroke.validate();
         CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
     }
 
     /// A circular arc sweeping `sweep` radians from `start_angle` in
     /// `stroke` (`Butt` cap) — chain [`CurveShape::ramp`] /
-    /// [`CurveShape::cap`].
+    /// [`CurveShape::cap`]. `radius`: a *length*; `start_angle` and
+    /// `sweep`: *angles*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless each value holds its kind, as [`Self::line`] says of
+    /// the stroke.
+    #[track_caller]
     pub const fn arc(
         center: Vec2,
         radius: f32,
@@ -209,12 +230,13 @@ impl Shape {
         sweep: f32,
         stroke: Stroke,
     ) -> CurveShape {
+        stroke.validate();
         CurveShape::new(
             CurveGeometry::Arc {
                 center,
-                radius,
-                start_angle,
-                sweep,
+                radius: domain::length(radius),
+                start_angle: domain::angle(start_angle),
+                sweep: domain::angle(sweep),
             },
             stroke,
         )
@@ -222,6 +244,7 @@ impl Shape {
 
     /// A full circle — [`Self::arc`] with a `2π` sweep, which closes
     /// seamlessly under the default `Butt` cap.
+    #[track_caller]
     pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
         Self::arc(center, radius, 0.0, TAU, stroke)
     }
@@ -245,7 +268,14 @@ impl Shape {
     }
 
     /// A `shadow` of the owner's full rect.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the shadow's colour is a *colour*, its offset and
+    /// spread *offsets*, and its blur a *length*.
+    #[track_caller]
     pub const fn shadow(shadow: Shadow) -> ShadowShape {
+        shadow.validate();
         ShadowShape::new(shadow)
     }
 

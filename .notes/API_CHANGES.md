@@ -364,8 +364,7 @@ One area per commit. Each adds its setters to the per-kind input tables of phase
 1. Done: coercion (rule 2). `Limits` already ordered every range.
 2. Done: layout. A `min` above its `max` (a `Track`, a node's bounds) is coerced — the minimum
    wins, as in CSS and WPF — rather than checked.
-3. **Paint**: shape constructors, `Stroke`, `Corners`, `Shadow`, colours where they enter a shape
-   or a look, `Stop` / `GradientBuilder::stop`, `PaintAnim`, `ImageHandle::update`.
+3. Done: paint. Points, rects and mesh vertices (bulk data) stay with the record-time NaN gate.
 4. **Widgets**: every remaining widget setter (`Spinner`, `Separator`, `DragValue::speed`,
    `Slider`, `Scroll::zoom_by`, `ZoomConfig::new`, `texel_size`, text sizes) and `AnimSpec`.
    Theme values read through `domain` where they are used.
