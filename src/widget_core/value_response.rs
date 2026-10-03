@@ -1,16 +1,24 @@
-//! What a value-scrubbing widget reports about the value it writes
-//! through.
+//! What a value-writing widget reports about the value it writes through.
 
 use crate::widget_core::response::Response;
 
-/// What a gesture-driven numeric widget reports about the value it writes
-/// through.
+/// What a widget that writes a bound value reports about it.
 ///
-/// One type for [`Slider`](crate::Slider) and
-/// [`DragValue`](crate::DragValue): both bind a number, both write it
-/// across a drag, and both owe the caller the same two signals — so a
-/// caller that handles one handles the other, and neither can drift into
-/// its own meaning for `changed`.
+/// One type for every such widget — the scrubs ([`Slider`](crate::Slider),
+/// [`DragValue`](crate::DragValue), the [`Splitter`](crate::Splitter) and
+/// the colour widgets) and the discrete picks ([`Checkbox`](crate::Checkbox),
+/// [`Switch`](crate::Switch), [`RadioButton`](crate::RadioButton),
+/// [`ComboBox`](crate::ComboBox)) — so a caller that handles one handles
+/// the rest, and none can drift into its own meaning for `changed`.
+///
+/// A discrete pick has no draft: the click that makes it writes it, so it
+/// commits at once and `committed == changed`.
+///
+/// The [`Response`] is the widget's own, and it answers a different
+/// question than `changed`. A radio latches, so its `clicked()` is true on
+/// the option already selected; a `ComboBox` writes from a row inside its
+/// dropdown, so its `clicked()` reports that the list opened; a click on a
+/// disabled checkbox writes nothing. Read `changed` for the value.
 ///
 /// [`TextEditResponse`](crate::TextEditResponse) stays separate: a text
 /// editor reports focus and submit edges a scrub has no equivalent of.

@@ -9,7 +9,7 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
-use crate::widget_core::select_response::SelectResponse;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -70,12 +70,10 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     /// Record the row and report whether this click moved the group's
     /// selection.
     ///
-    /// A [`SelectResponse`] rather than a bare [`Response`](crate::Response), for the
-    /// reason [`ComboBox`](crate::ComboBox) returns one: a radio latches,
-    /// so `clicked()` is true on the already-selected option and
-    /// `changed` is not. The caller has no other way to tell the two
-    /// apart.
-    pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
+    /// A radio latches, so `response.clicked()` is true on the
+    /// already-selected option and `changed` is not; read `changed` for the
+    /// pick. A pick commits at once, so `committed == changed`.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
 
         // Read ahead of the latch below, which moves `self.value` and so
@@ -115,7 +113,11 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
                 ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
             }
         });
-        SelectResponse { response, changed }
+        ValueResponse {
+            response,
+            changed,
+            committed: changed,
+        }
     }
 }
 
