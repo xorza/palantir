@@ -86,6 +86,7 @@ impl AnimSpec {
     /// # Panics
     ///
     /// Panics unless `secs` is finite and in `0.0..=60.0`.
+    #[track_caller]
     pub const fn duration(secs: f32, ease: Easing) -> Self {
         assert!(duration_is_valid(secs), "{}", DURATION_ERROR);
         Self::duration_from_validated(secs, ease)
@@ -113,6 +114,7 @@ impl AnimSpec {
     /// Panics when either parameter is non-positive or non-finite, when
     /// the slowest decay rate is below 1/s, or when the spring swings at
     /// 30 Hz or faster. Raise `damping` or lower `stiffness` for the last.
+    #[track_caller]
     pub fn spring(stiffness: f32, damping: f32) -> Self {
         assert!(
             spring_params_are_valid(stiffness, damping),

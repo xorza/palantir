@@ -71,22 +71,25 @@ impl<'a> Spinner<'a> {
 
     /// Diameter in logical px, defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    #[track_caller]
     pub const fn diameter(mut self, px: f32) -> Self {
-        self.diameter = Some(px);
+        self.diameter = Some(domain::length(px));
         self
     }
 
     /// Arc color (head of the comet), defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    #[track_caller]
     pub const fn color(mut self, c: RgbaF32) -> Self {
-        self.color = Some(c);
+        self.color = Some(domain::color(c));
         self
     }
 
     /// Stroke width in logical px, defaulting to the theme's
     /// diameter-derived width. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    #[track_caller]
     pub const fn thickness(mut self, px: f32) -> Self {
-        self.thickness = Some(px);
+        self.thickness = Some(domain::length(px));
         self
     }
 

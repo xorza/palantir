@@ -8,6 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -131,8 +132,19 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    /// Value change per logical pixel of horizontal drag. Default `1.0`.
+    /// Value change per logical pixel of horizontal drag, *positive*.
+    /// Default `1.0`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `speed` is finite and above zero.
+    #[track_caller]
     pub const fn speed(mut self, speed: f64) -> Self {
+        assert!(
+            speed.is_finite() && speed > 0.0,
+            "{}",
+            domain::POSITIVE_RULE
+        );
         self.speed = speed;
         self
     }
@@ -141,7 +153,19 @@ impl<'a> DragValue<'a> {
     ///
     /// A builder step here and a constructor argument on
     /// [`Slider::new`](crate::Slider::new), which says why.
+    ///
+    /// An end may be infinite — that is the unbounded default — and a
+    /// reversed range is ordered.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either end is NaN.
+    #[track_caller]
     pub const fn range(mut self, range: RangeInclusive<f64>) -> Self {
+        assert!(
+            !range.start().is_nan() && !range.end().is_nan(),
+            "a drag range's ends must not be NaN",
+        );
         self.min = *range.start();
         self.max = *range.end();
         self
