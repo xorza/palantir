@@ -13,7 +13,7 @@ pub struct RecordApp<F> {
 
 impl<F: FnMut(&mut Ui)> RecordApp<F> {
     /// Wrap a record closure as an [`App`].
-    pub fn new(record: F) -> Self {
+    pub const fn new(record: F) -> Self {
         Self { record }
     }
 }

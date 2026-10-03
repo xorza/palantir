@@ -23,7 +23,7 @@ impl<R> Passes<R> {
     }
 
     /// What the frame reported to its host.
-    pub fn report(&self) -> &FrameReport {
+    pub const fn report(&self) -> &FrameReport {
         &self.report
     }
 
@@ -43,12 +43,12 @@ impl<R> Passes<R> {
     }
 
     /// How many record passes ran, warmup excluded: 0, 1 or 2.
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.values.len()
     }
 
     /// Whether the frame ran no record pass at all.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 

@@ -9,12 +9,11 @@ use soa_rs::Soars;
 
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`](crate::renderer::render_buffer::RenderBuffer::frame_targets)):
-/// the view's stable texture `id`, its used
-/// physical size (`used`), where that sits in the view, the effective
-/// raster scale, and the app
-/// `paint` callback (threaded from `Ui::gpu_views` through the typed image
-/// command, so the backend reaches the renderer without a `Ui`-side registry).
-/// The backend allocates the target to exactly `used` and runs `paint` into it
+/// the view's stable texture `id`, its used physical size (`used`), where
+/// that sits in the view, the effective raster scale, and the app `paint`
+/// callback (threaded from `Ui::gpu_views` through the typed image command,
+/// so the backend reaches the renderer without a `Ui`-side registry). The
+/// backend allocates the target to exactly `used` and runs `paint` into it
 /// before the main pass samples it.
 #[derive(Clone, Debug)]
 pub(crate) struct RenderTargetDraw {

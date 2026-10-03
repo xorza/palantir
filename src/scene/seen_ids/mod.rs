@@ -288,8 +288,8 @@ pub(crate) mod internals {
     use crate::scene::seen_ids::SeenIds;
 
     impl SeenIds {
-        /// The ids the last finished frame recorded — `curr` until
-        /// `rollover`, `prev` after it.
+        /// The ids the last finished frame recorded. Valid between frames:
+        /// `rollover` ends a frame by moving `curr` to `prev`.
         pub(crate) fn last_frame(&self) -> &WidgetIdMap<Endpoint> {
             &self.prev
         }

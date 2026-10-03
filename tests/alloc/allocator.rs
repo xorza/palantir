@@ -175,6 +175,8 @@ mod tests {
     use crate::allocator::{TRACE_CAP, with_audit};
     use std::hint::black_box;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Force one heap alloc that the optimizer can't hoist or elide.
     fn one_alloc() {
@@ -221,8 +223,6 @@ mod tests {
         // would land on the auditing thread inside `with_audit` and pollute
         // the delta. Linux uses futex-based mutexes with no lazy alloc.
         // Atomics never allocate.
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicBool, Ordering};
         let go = Arc::new(AtomicBool::new(false));
         let g2 = Arc::clone(&go);
         let t = std::thread::spawn(move || {

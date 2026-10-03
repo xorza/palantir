@@ -187,7 +187,7 @@ impl Fixture {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
             host: host(gpu),
-            target: gpu.target(PHYSICAL, "palantir.image_pipeline_bench.target"),
+            target: gpu.target("palantir.image_pipeline_bench.target", PHYSICAL),
             handle: None,
             phase: false,
         }

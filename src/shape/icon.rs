@@ -179,7 +179,7 @@ mod tests {
         // A square artwork in a square rect is the same rect under every mode
         // that preserves aspect — the case that would hide an axis mix-up.
         let square = Rect::new(0.0, 0.0, 32.0, 32.0);
-        assert_eq!(IconFit::Contain.resolve(square, Vec2::splat(16.0)), square,);
+        assert_eq!(IconFit::Contain.resolve(square, Vec2::splat(16.0)), square);
 
         // A degenerate viewBox falls through to the base rect rather than
         // dividing by zero — the same fail-safe the image path takes.

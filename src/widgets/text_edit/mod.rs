@@ -181,8 +181,8 @@ impl<'a> TextEdit<'a> {
 
     /// Font size in logical px, overriding the resolved look's.
     ///
-    /// Named apart from [`Configure::size`], which
-    /// is the widget's layout extent.
+    /// Named apart from [`Configure::size`], which is the widget's layout
+    /// extent.
     pub fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(px);
         self

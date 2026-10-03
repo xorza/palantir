@@ -205,7 +205,7 @@ mod tests {
         assert_eq!(table.svg_bytes(IconId(1)), TWO_COLOURS.as_bytes());
     }
 
-    /// One broken source must not take the set with it.
+    /// The smallest source that parses.
     const TINY: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>"#;
 
     #[test]
@@ -229,6 +229,7 @@ mod tests {
         let _ = IconTable::from_svgs(names.iter().map(|&name| (name, TINY)));
     }
 
+    /// One broken source must not take the set with it.
     #[test]
     fn unparseable_sources_are_skipped() {
         let table = IconTable::from_svgs([("good", ONE_COLOUR), ("bad", BROKEN)]);

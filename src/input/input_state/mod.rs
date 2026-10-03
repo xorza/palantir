@@ -515,8 +515,8 @@ impl InputState {
     /// still waiting — so the caller can request it.
     pub(crate) fn next_frame(&mut self, cascade: &Cascade) -> bool {
         self.queue.next_frame();
-        while let Some((event, at)) = self.queue.pop_admitted() {
-            self.apply(event, cascade, at);
+        while let Some(held) = self.queue.pop_admitted() {
+            self.apply(held.event, cascade, held.at);
         }
         self.signal_since_last_frame != InputSignal::None || !self.queue.is_empty()
     }

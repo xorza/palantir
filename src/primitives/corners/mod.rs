@@ -217,7 +217,7 @@ impl LaneCodec for Corners {
         "a corner radius must be finite, not negative, and at most 65504";
 
     fn lane_is_valid(lane: f32) -> bool {
-        lane.is_finite() && (0.0..=65_504.0).contains(&lane)
+        (0.0..=F16x4::MAX_LANE).contains(&lane)
     }
 }
 

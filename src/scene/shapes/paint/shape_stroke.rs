@@ -54,7 +54,7 @@ impl ShapeStroke {
     /// where the value still has a call site; by the time it reaches
     /// here the useful thing to do is fail safe.
     #[inline]
-    pub(crate) fn normalized(self) -> Self {
+    pub(crate) const fn normalized(self) -> Self {
         if self.is_noop() { Self::NONE } else { self }
     }
 }

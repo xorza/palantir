@@ -1,6 +1,7 @@
 //! The categorical accent swatches the two bundled demo surfaces share:
-//! the benchmark fixture ([`FrameFixture`](crate::internals::frame_fixture::FrameFixture)) and the
-//! `showcase` example.
+//! the benchmark fixture
+//! ([`FrameFixture`](crate::internals::frame_fixture::FrameFixture)) and
+//! the `showcase` example.
 //!
 //! **Colours only, and that boundary is load-bearing.** A font size feeds
 //! measurement, so a shared `caption_style` would let a restyle of the

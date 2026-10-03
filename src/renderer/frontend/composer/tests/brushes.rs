@@ -52,7 +52,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         LutRow::FALLBACK,
         "solid quad has no LUT row",
     );
-    assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed",);
+    assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed");
 }
 
 /// A windowed rect must never fold into the pass clear, take the

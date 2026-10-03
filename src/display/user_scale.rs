@@ -173,7 +173,6 @@ mod tests {
     /// past `EPS` above it, a step down lands on it.
     #[test]
     fn stepping_from_between_rungs_lands_on_the_neighbours() {
-        use crate::primitives::approx::EPS;
         for (factor, up, down) in [
             (1.37, 1.5, 1.25),
             (1.0 + EPS * 0.5, 1.1, 0.9),

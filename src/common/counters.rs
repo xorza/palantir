@@ -93,6 +93,8 @@
 //! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
 //! [`CascadeCounters`]: crate::scene::cascade::counters::CascadeCounters
 
+use std::cell::Cell;
+
 /// Declare a gated cell type: `T` when `$gate` holds, zero-sized
 /// otherwise, with unconditional mutators.
 ///
@@ -193,6 +195,23 @@ impl<T> TestOnly<Vec<T>> {
     #[inline]
     pub(crate) fn as_slice(&self) -> &[T] {
         self.get()
+    }
+}
+
+/// A counter behind a shared borrow, for a probe on a query that takes
+/// `&self`: the same saturating count as the `u32` cell's `bump`, kept in
+/// a `Cell` so the query need not take `&mut self` for a test's sake.
+impl TestOnly<Cell<u32>> {
+    #[inline]
+    pub(crate) fn bump_shared(&self) {
+        #[cfg(test)]
+        self.value.set(self.value.get().saturating_add(1));
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn count(&self) -> u32 {
+        self.value.get()
     }
 }
 

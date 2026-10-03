@@ -68,7 +68,7 @@ fn word_range_at_picks_anchor_kind() {
         ("cjk_selects_the_katakana_run", "日本語テキスト", 9, 9..21),
     ];
     for (label, text, byte, want) in cases {
-        assert_eq!(word_range_at(text, *byte), want.clone(), "{label}",);
+        assert_eq!(word_range_at(text, *byte), want.clone(), "{label}");
     }
 }
 

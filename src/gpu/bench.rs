@@ -283,7 +283,7 @@ impl Fixture {
             .collect();
         Self {
             host,
-            target: gpu.target(PHYSICAL, "palantir.record_pass_bench.target"),
+            target: gpu.target("palantir.record_pass_bench.target", PHYSICAL),
             handles,
             workload,
             phase: false,

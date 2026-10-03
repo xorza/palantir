@@ -117,7 +117,7 @@ impl PolylineColors<'_> {
         );
     }
 
-    fn colors(&self) -> &[RgbaF32] {
+    const fn colors(&self) -> &[RgbaF32] {
         match self {
             PolylineColors::Single => &[],
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => colors,

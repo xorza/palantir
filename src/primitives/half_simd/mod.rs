@@ -65,6 +65,10 @@ impl F16x4 {
     /// Every lane `1.0` in f16.
     pub(crate) const ONE: Self = Self([half::f16::ONE.to_bits(); 4]);
 
+    /// The largest finite lane value, 65504. Past it a lane packs to
+    /// infinity.
+    pub(crate) const MAX_LANE: f32 = half::f16::MAX.to_f32_const();
+
     /// One lane's f16 bit pattern — for predicates that test a single
     /// lane (`RgbaF16`'s alpha) without unpacking all four to f32.
     #[inline(always)]

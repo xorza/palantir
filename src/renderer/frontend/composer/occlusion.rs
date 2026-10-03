@@ -2,10 +2,12 @@
 //! covered by a later opaque quad in the same group. Pure prune — no
 //! pipeline or shader changes.
 
+use crate::common::counters::TestOnly;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::composer::rect_grid::TILE_SIZE;
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::{UVec2, Vec2};
+use std::cell::Cell;
 
 /// One opaque occluder in the in-flight group. See [`OcclusionPruner`]
 /// for the cover-rect contract.
@@ -66,8 +68,7 @@ pub(super) struct OcclusionPruner {
     /// [`LARGE_COVER_TILES`] tiles, ascending.
     large_covers: Vec<u32>,
     /// `contains_rect` tests this frame.
-    #[cfg(test)]
-    contains_tests: u64,
+    contains_tests: TestOnly<Cell<u32>>,
 }
 
 /// The largest group the prune scans without an index.
@@ -96,10 +97,7 @@ impl OcclusionPruner {
             viewport.x.div_ceil(TILE_SIZE).max(1) - 1,
             viewport.y.div_ceil(TILE_SIZE).max(1) - 1,
         );
-        #[cfg(test)]
-        {
-            self.contains_tests = 0;
-        }
+        self.contains_tests.reset();
         self.clear();
     }
 
@@ -220,7 +218,7 @@ impl OcclusionPruner {
 
     /// Whether an occluder at position `cursor` or later covers `rect`,
     /// through the index.
-    fn indexed_covers(&mut self, rect: Rect, cursor: usize) -> bool {
+    fn indexed_covers(&self, rect: Rect, cursor: usize) -> bool {
         let tile = u64::from(self.tile_index(self.tile_of(rect.min)));
         let first = self
             .cover_tiles
@@ -240,11 +238,8 @@ impl OcclusionPruner {
         (first..self.large_covers.len()).any(|at| self.covers(self.large_covers[at] as usize, rect))
     }
 
-    fn covers(&mut self, at: usize, rect: Rect) -> bool {
-        #[cfg(test)]
-        {
-            self.contains_tests += 1;
-        }
+    fn covers(&self, at: usize, rect: Rect) -> bool {
+        self.contains_tests.bump_shared();
         self.opaque_in_group[at].cover.contains_rect(rect)
     }
 
@@ -285,8 +280,8 @@ pub(crate) mod internals {
 
     impl OcclusionPruner {
         /// `contains_rect` tests the prune ran this frame.
-        pub(crate) fn contains_tests(&self) -> u64 {
-            self.contains_tests
+        pub(crate) fn contains_tests(&self) -> u32 {
+            self.contains_tests.count()
         }
     }
 }

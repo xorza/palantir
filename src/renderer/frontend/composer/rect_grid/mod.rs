@@ -13,7 +13,7 @@
 //! does bounded by its local density, not tuning knobs.
 //!
 //! **Why a tiled index and not something simpler**, all measured on
-//! `composer/text_grid_realistic` (200 labels, µs per round):
+//! `rect_grid/realistic` (200 labels, µs per round):
 //!
 //! - Union pre-reject + linear scan, i.e. what `higher_kind.rs` does:
 //!   **56.7 vs 7.0**. The pre-reject alone does not carry it; at ~75
@@ -32,14 +32,16 @@
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
+use crate::common::counters::TestOnly;
 use crate::primitives::urect::URect;
 use glam::UVec2;
+use std::cell::Cell;
 
 /// Physical-pixel size of one tile in [`RectGrid`]. Each text rect
 /// is registered into every tile it overlaps; each overlap query walks
 /// the tiles a quad covers and intersects against per-tile rect lists.
 ///
-/// 64 px is a measured optimum, not a guess — `composer/text_grid_realistic`
+/// 64 px is a measured optimum, not a guess — `rect_grid/realistic`
 /// sweeps it (µs per round, 1920×1080):
 ///
 /// | labels | 32 px | 64 px | 128 px | 256 px |
@@ -74,7 +76,7 @@ struct OverflowEntry {
 ///
 /// The headroom over that observed 3 keeps the realistic workload inline:
 /// with a shared overflow list, dropping to `4` bought 3% at 64 labels
-/// and cost **4.2×** at 600 (`composer/text_grid_realistic`: 216.9 µs
+/// and cost **4.2×** at 600 (`rect_grid/realistic`: 216.9 µs
 /// against 51.6 µs).
 pub(super) const TILE_CAP: usize = 8;
 
@@ -126,8 +128,7 @@ pub(super) struct RectGrid {
     /// All rects inserted into the current batch, in insertion order.
     rects: Vec<URect>,
     /// `intersects` tests the queries ran since the last `start_frame`.
-    #[cfg(test)]
-    intersect_tests: std::cell::Cell<u64>,
+    intersect_tests: TestOnly<Cell<u32>>,
     /// Union AABB of every rect in `rects`. O(1) pre-reject for
     /// [`Self::any_overlap`]: a query outside the union can't hit any
     /// rect, so the tile walk (scattered 32-byte bucket loads from a
@@ -160,8 +161,7 @@ impl RectGrid {
         }
         self.cols = cols;
         self.rows = rows;
-        #[cfg(test)]
-        self.intersect_tests.set(0);
+        self.intersect_tests.reset();
         self.clear();
     }
 
@@ -265,8 +265,7 @@ impl RectGrid {
     }
 
     fn hit(&self, rect: u32, q: URect) -> bool {
-        #[cfg(test)]
-        self.intersect_tests.set(self.intersect_tests.get() + 1);
+        self.intersect_tests.bump_shared();
         self.rects[rect as usize].intersects(q)
     }
 }
@@ -278,8 +277,8 @@ pub(crate) mod internals {
     impl RectGrid {
         /// `intersects` tests the queries ran since the last
         /// `start_frame`.
-        pub(crate) fn intersect_tests(&self) -> u64 {
-            self.intersect_tests.get()
+        pub(crate) fn intersect_tests(&self) -> u32 {
+            self.intersect_tests.count()
         }
     }
 }

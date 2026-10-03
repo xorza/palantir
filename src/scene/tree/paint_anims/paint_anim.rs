@@ -141,11 +141,14 @@ pub struct PaintAnim {
 }
 
 impl PaintAnim {
-    /// Feed what this animation paints into `h`: the channel and the
-    /// timing, everything the sampled modifier at a given time depends
-    /// on except the easing curve. A function pointer has no stable
-    /// identity to hash, so a change of curve alone is the one edit this
-    /// misses.
+    /// Feed what this animation paints into `h`: the channel, the timing
+    /// and the curve — everything the sampled modifier at a given time
+    /// depends on.
+    ///
+    /// The curve goes in by address. That is no identity for equality,
+    /// but it is a sound change signal: two curves the linker folds to one
+    /// address have the same code and paint alike, and one curve seen at
+    /// two addresses only repaints a frame it need not have.
     pub(crate) fn hash_static(&self, h: &mut impl std::hash::Hasher) {
         let PaintChannel { alpha, turn } = self.channel;
         for range in [alpha, turn] {
@@ -178,6 +181,7 @@ impl PaintAnim {
             PaintSteps::Continuous => h.write_u32(0),
             PaintSteps::Steps(n) => h.write_u32(n.get()),
         }
+        h.write_usize(self.curve as usize);
     }
 
     /// One pass of [`curves::linear`] over a

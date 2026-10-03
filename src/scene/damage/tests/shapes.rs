@@ -58,7 +58,7 @@ fn unchanged_authoring_produces_no_damage() {
 
     assert!(h.engines.damage.counters.dirty().is_empty());
     assert!(h.damage_region().is_empty());
-    assert_eq!(Damage::new(h.collapsed_damage()), None,);
+    assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
 
 /// Pin: an authoring change on one leaf marks just that leaf

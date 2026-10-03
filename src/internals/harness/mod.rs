@@ -37,9 +37,8 @@
 //! 1. **Warm the recorder.** A bare `Ui` is cold, so frame 1 runs the
 //!    warmup pass; seeding `prev_stamp` skips it. That is the split
 //!    between the test-gated `UiHarness::cold` and every other
-//!    constructor. On a cold
-//!    recorder "the first pass" means the input-blind one, so rules 3–4
-//!    resolve to the wrong pass.
+//!    constructor. On a cold recorder "the first pass" means the
+//!    input-blind one, so rules 3–4 resolve to the wrong pass.
 //! 2. **Prime before reading.** `response_for`'s `rect` / `layout_rect`
 //!    / `hovered` / `disabled` come from *last* frame's cascade. Any
 //!    input assertion needs a prior frame; a stable arranged rect needs
@@ -116,6 +115,13 @@
 //!     both type. A case that needs several characters from one press,
 //!     or a character on an unnamed key, builds the event through
 //!     [`on_input`](UiHarness::on_input).
+//! 15. **Keyboard events are discarded at ingress when nothing is
+//!     focused.** `InputState::on_input` gates `KeyDown` on
+//!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
+//!     and drops what is not observable rather than queueing it. A
+//!     keyboard test must establish focus first — by clicking, or via
+//!     `Ui::set_focus` — or it asserts on a queue that can never
+//!     fill.
 //! 16. **One change of a kind per frame.** A second press or release
 //!     of one button, or a key press after the frame's command key,
 //!     waits for the next frame (`InputQueue`) — so `click_at` is a
@@ -124,21 +130,14 @@
 //!     their own, with the same closure, and answer from the last one:
 //!     `click_at` then `frame_value` reads the click. A test of the
 //!     spread itself steps one frame at a time with [`UiHarness::step`].
-//! 15. **Keyboard events are discarded at ingress when nothing is
-//!     focused.** `InputState::on_input` gates `KeyDown` on
-//!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
-//!     and drops what is not observable rather than queueing it. A
-//!     keyboard test must establish focus first — by clicking, or via
-//!     `Ui::set_focus` — or it asserts on a queue that can never
-//!     fill.
 //!
 //! **Three tiers, one per block.** The whole module is already
 //! `#[cfg(any(test, feature = "internals"))]`; the tiers say *who inside
 //! that* a given method is for.
 //!
 //! 1. `impl UiHarness` (`pub`) — the surface that leaves the crate
-//!    through `palantir::internals::harness`, addressing widgets by [`WidgetId`]
-//!    and nothing else.
+//!    through `palantir::internals::harness`, addressing widgets by
+//!    [`WidgetId`] and nothing else.
 //! 2. `impl UiHarness` (`pub(crate)`) — construction, with
 //!    `from_resources` there because tier 1's constructors call it. The
 //!    two damage reads the **benches** make, `collapsed_damage` and
@@ -156,9 +155,8 @@
 //!
 //! No block here carries a lint allow. This module is `pub` under
 //! `palantir::internals`, so tier 1 is reachable in every build that
-//! compiles it. Being
-//! `pub`, a tier-1 method nobody calls is invisible to `dead_code`, so
-//! one is pruned when its last caller goes.
+//! compiles it. Being `pub`, a tier-1 method nobody calls is invisible
+//! to `dead_code`, so one is pruned when its last caller goes.
 
 use crate::app::App;
 use crate::common::time::MAX_ANIM_DT;
@@ -211,8 +209,7 @@ pub struct UiHarness {
     pub(crate) ui: Ui,
     /// The engines this harness's frames run on. `pub(crate)` for the same
     /// reason [`Self::ui`] is: in-crate damage and layout tests assert on
-    /// engine internals, and reaching them off the harness is the only door
-    /// now that `Ui` no longer holds them.
+    /// engine internals, and `Ui` does not hold the engines.
     pub(crate) engines: FrameEngines,
     /// What every frame stamps with — the harness owns it so no caller
     /// has to rebuild one. `physical` is in physical pixels; pointer
@@ -237,9 +234,7 @@ struct PressOrigin {
     at: Option<Vec2>,
 }
 
-/// Tier 1 — the surface that leaves the crate. See the module doc for
-/// why this block, and only this block, silences the two reachability
-/// lints.
+/// Tier 1 — the surface that leaves the crate.
 impl UiHarness {
     /// `UiResources::isolated_mono` — mono-fallback text: fast,
     /// deterministic, and wrong for width-follows-label assertions.
@@ -778,12 +773,12 @@ impl UiHarness {
             .unwrap_or_else(|| panic!("{id:?} did not arrange last frame"))
     }
 
-    /// Center of `id`'s arranged rect.
+    /// Center of `id`'s visible rect, [`Self::rect`].
     pub fn center_of(&self, id: WidgetId) -> Vec2 {
         self.rect(id)
             .unwrap_or_else(|| {
                 panic!(
-                    "{id:?} has no arranged rect — it did not record, or nothing primed the frame"
+                    "{id:?} has no visible rect — it did not record, or nothing primed the frame"
                 )
             })
             .center()
@@ -830,6 +825,8 @@ impl UiHarness {
         self.ui.cascade().hit_test(pos, Sense::hovers)
     }
 
+    /// The harness clipboard's text.
+    ///
     /// # Panics
     ///
     /// Panics when no clipboard backend answers. The harness runs on the
@@ -867,13 +864,12 @@ impl UiHarness {
 
     /// Escape hatch. Reading `response_for` off this between frames sees
     /// the previous frame's input — prefer [`Self::response_in`].
-    pub fn ui(&mut self) -> &mut Ui {
+    pub const fn ui(&mut self) -> &mut Ui {
         &mut self.ui
     }
 }
 
-/// The in-crate rung: tree, encoder, damage, and the schedule knobs.
-/// None of this leaves the crate when the type is exported.
+/// Tier 2 — construction and the frame entry tier 1 builds on.
 impl UiHarness {
     /// A recorder over `resources` — two over one, for the shared-text-cache
     /// and idle/active-window tests, or one over a shaper of the caller's
@@ -947,9 +943,6 @@ pub(crate) mod internals {
         /// Collapse this frame's accumulated raw rects the way
         /// `DamageEngine::finish_region` does — the rects *and* the coverage
         /// they cover the surface with.
-        ///
-        /// Read by the crate's own damage tests and the `damage` bench; a
-        /// non-test `internals` build has no caller.
         pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
             DamageRegion::collapse_from(
                 &self.engines.damage.raw_rects,
@@ -965,15 +958,8 @@ pub(crate) mod internals {
     }
 }
 
-/// The third tier: everything only the *in-tree* suite calls.
-///
-/// The module as a whole is already `any(test, feature = "internals")`,
-/// and `pub(crate)` already stops any of this leaving the crate. This
-/// narrower `cfg(test)` says something the other two cannot — that the
-/// benches, which compile under `internals` alone, do not use it. Keeping
-/// it as one gated `mod` rather than attributes sprinkled through the
-/// rung above means the tier is visible at a glance, its imports live
-/// with it, and nothing needs a `dead_code` allow.
+/// Tier 3 — everything only the *in-tree* suite calls. One gated `mod`
+/// rather than attributes on single methods, so its imports live with it.
 #[cfg(test)]
 mod unit {
     use crate::animation::animatable::Animatable;

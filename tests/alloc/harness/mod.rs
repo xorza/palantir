@@ -150,7 +150,7 @@ impl Audit {
     /// first. A scene that has one and still wants its record measured
     /// calls `Ui::request_repaint` each frame, as an app that redraws
     /// continuously does.
-    pub(crate) fn paint_only(mut self) -> Self {
+    pub(crate) const fn paint_only(mut self) -> Self {
         self.paint_only = true;
         self
     }

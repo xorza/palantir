@@ -209,7 +209,7 @@ fn drag_stopped_edge_fires_once_on_release() {
     let r = h.response_in(id(), build_draggable);
     assert!(!r.middle.drag.dragging(), "release destroys the drag state");
     assert!(r.middle.drag.stopped());
-    assert!(!r.left.drag.stopped(), "edge is button-filtered",);
+    assert!(!r.left.drag.stopped(), "edge is button-filtered");
 
     // One-frame edge: gone the next frame.
     let r = h.response_in(id(), build_draggable);
@@ -374,7 +374,7 @@ fn releasing_priority_button_promotes_lower_priority() {
     assert!(!r.left.drag.dragging());
     // Middle's anchor is the middle press position (same frame as
     // left's, so (20, 20)); delta = current (80, 60) - press (20, 20).
-    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)),);
+    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
 }
 
 #[test]
@@ -415,7 +415,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     h.frame(build);
     h.press_at(Vec2::new(200.0, 200.0));
     h.drag_to(Vec2::new(250.0, 220.0));
-    assert_eq!(h.response_in(id(), build).left.drag.delta(), None,);
+    assert_eq!(h.response_in(id(), build).left.drag.delta(), None);
 }
 
 // Drag-on-canvas composition, driven through the widget-facing

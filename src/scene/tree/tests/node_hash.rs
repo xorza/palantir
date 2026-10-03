@@ -90,7 +90,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         baseline,
         record(|ui| build(ui, &noisy_points, color_a)).node,
     );
-    assert_eq!(baseline, record(|ui| build(ui, &base_points, color_b)).node,);
+    assert_eq!(baseline, record(|ui| build(ui, &base_points, color_b)).node);
     // The same comparison does see a move and a colour change it can show.
     let moved = [Vec2::ZERO, Vec2::new(11.0, 0.0)];
     assert_ne!(baseline, record(|ui| build(ui, &moved, color_a)).node);

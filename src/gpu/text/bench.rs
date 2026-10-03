@@ -449,7 +449,7 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let g = gpu();
-    let target = BenchGpu::shared(Timing::Bare).target(PHYSICAL, "palantir.text_atlas.target");
+    let target = BenchGpu::shared(Timing::Bare).target("palantir.text_atlas.target", PHYSICAL);
     let view = target.view();
 
     let mut group = run.group(c);

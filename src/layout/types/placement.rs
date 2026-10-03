@@ -25,11 +25,11 @@ pub(crate) enum Origin {
 ///
 /// The *storage* form, not the authoring one: it hangs off the root slot,
 /// the layout engine reads [`Self::available`] and [`Self::origin`] off it
-/// two passes after the record that set it, and the measure cache folds it
-/// into a fingerprint. [`LayerScope`](crate::LayerScope) is its public
-/// face — `fixed_at` and `anchored` write [`Self::origin`], `max_size`
-/// writes the other field — which is why nothing publishes this type as
-/// a value. [`Anchor`] is one of the two origin rules it holds, and the
+/// two passes after the record that set it, and the measure cache keys the
+/// root on the available size it derives. [`LayerScope`](crate::LayerScope)
+/// is its public face — `fixed_at` and `anchored` write [`Self::origin`],
+/// `max_size` writes the other field — which is why nothing publishes this
+/// type as a value. [`Anchor`] is one of the two origin rules it holds, and the
 /// only one with enough parameters to need a name of its own.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Placement {

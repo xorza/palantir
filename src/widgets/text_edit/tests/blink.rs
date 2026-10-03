@@ -79,7 +79,7 @@ fn caret_blinks_on_and_off_while_focused() {
     h.at(Duration::from_secs_f32(0.0)).frame(|ui| {
         body(ui, &mut buf);
     });
-    assert!(caret_painted(&h.ui, leaf), "freshly focused: caret visible",);
+    assert!(caret_painted(&h.ui, leaf), "freshly focused: caret visible");
 
     // Still inside the first half-period.
     h.at(Duration::from_secs_f32(0.3)).frame(|ui| {
