@@ -64,7 +64,7 @@ fn scale_makes_the_surface_physical_and_positions_logical() {
 fn user_scale_multiplies_onto_the_dpr() {
     let mut harness = UiHarness::new(SURFACE)
         .scale(2.0)
-        .user_scale(UserScale::new(1.25));
+        .user_scale(UserScale::new(1.25).unwrap());
     let display = harness.ui.display();
 
     assert_eq!(display.scale_factor(), 2.5);
@@ -73,17 +73,17 @@ fn user_scale_multiplies_onto_the_dpr() {
 
     // The setting is the one home: a change made inside a frame stamps
     // the next frame, as the window driver derives it.
-    harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5)));
+    harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5).unwrap()));
     harness.frame(button);
     assert_eq!(harness.ui.display().scale_factor(), 3.0);
 
     // And a display swapped in carries its scale onto the setting.
     let swapped = Display {
-        user_scale: UserScale::new(2.0),
+        user_scale: UserScale::new(2.0).unwrap(),
         ..harness.ui.display()
     };
     harness.set_display(swapped);
-    assert_eq!(harness.ui.user_scale(), UserScale::new(2.0));
+    assert_eq!(harness.ui.user_scale(), UserScale::new(2.0).unwrap());
     assert_eq!(harness.ui.display().scale_factor(), 4.0);
 }
 
@@ -96,7 +96,7 @@ fn a_user_scale_move_repaints_in_full() {
     assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
 
     let zoomed = Display {
-        user_scale: UserScale::new(1.5),
+        user_scale: UserScale::new(1.5).unwrap(),
         ..harness.ui.display()
     };
     assert_eq!(

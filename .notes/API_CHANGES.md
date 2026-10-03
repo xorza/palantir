@@ -54,17 +54,6 @@ item. Split this item into one go-ahead per row of the table.
 **Touches.** `src/widgets/**`, `src/layout/drivers/scrollbars`, `src/primitives/layout/scroll_axes.rs`,
 `src/ui/mod.rs`, `src/renderer/gpu_paint`, `src/primitives/geometry` helpers, `lib.rs` exports.
 
-## A4. Fallible `UserScale` constructor
-
-**Findings.** REVIEW "`UserScale::new` asserts on a persisted `nan`". The doc tells apps to read a
-saved preference back through `new`, which asserts.
-
-**Options.** `UserScale::try_new(f32) -> Option<UserScale>`, or `from_persisted(f32) -> UserScale`
-that falls back to `ONE` for a non-finite or out-of-range value.
-
-**Recommendation.** `try_new` returning `Option`, beside `new`. Check the other constructors in
-`display/` for an established fallible name first. Change the doc to point at it.
-
 ## A5. Per-type settle tolerance for `Animatable`
 
 **Findings.** REVIEW "Spring settle floor is in pixels but is applied to colours and mixed

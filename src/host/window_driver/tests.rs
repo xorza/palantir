@@ -727,10 +727,10 @@ mod display_tests {
         assert_eq!(plain.scale_factor(), 2.0);
         assert!(!plain.pixel_snap, "the snap comes from the host, not here");
 
-        driver.ui.set_user_scale(UserScale::new(1.25));
+        driver.ui.set_user_scale(UserScale::new(1.25).unwrap());
         let zoomed = driver.display(UVec2::new(800, 600), 2.0, None);
         assert_eq!(zoomed.system_scale, 2.0, "the platform's half is untouched");
-        assert_eq!(zoomed.user_scale, UserScale::new(1.25));
+        assert_eq!(zoomed.user_scale, UserScale::new(1.25).unwrap());
         assert_eq!(zoomed.scale_factor(), 2.5);
         assert_eq!(zoomed.logical_size(), Size::new(320.0, 240.0));
         assert_eq!(zoomed.system_logical_size(), Size::new(400.0, 300.0));
@@ -744,9 +744,9 @@ mod display_tests {
         let mut first = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
 
-        first.ui.set_user_scale(UserScale::new(1.5));
+        first.ui.set_user_scale(UserScale::new(1.5).unwrap());
 
-        assert_eq!(second.ui.user_scale(), UserScale::new(1.5));
+        assert_eq!(second.ui.user_scale(), UserScale::new(1.5).unwrap());
         assert_eq!(
             second
                 .display(UVec2::new(400, 400), 1.0, None)

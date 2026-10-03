@@ -57,7 +57,7 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     let mut h = Harness::new();
 
     let system = h.size(SURFACE).scale(2.0).frame(block).image;
-    h.host.ui().set_user_scale(UserScale::new(2.0));
+    h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
     let user = h.scale(1.0).frame(block).image;
 
     assert_same("user_scale_halves", &user, &system);
@@ -80,7 +80,7 @@ fn a_larger_user_scale_paints_a_larger_block() {
     let plain = h.size(SURFACE).frame(block).image;
     assert_eq!(painted_extent(&plain, background), UVec2::new(40, 24));
 
-    h.host.ui().set_user_scale(UserScale::new(2.0));
+    h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
     let doubled = h.size(SURFACE).frame(block).image;
     assert_eq!(painted_extent(&doubled, background), UVec2::new(80, 48));
 }

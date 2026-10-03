@@ -81,7 +81,7 @@ fn display_logical_rect_scales() {
     assert_eq!(d.logical_rect(), Rect::new(0.0, 0.0, 400.0, 300.0));
 
     let zoomed = Display {
-        user_scale: UserScale::new(2.0),
+        user_scale: UserScale::new(2.0).unwrap(),
         ..d
     };
     assert_eq!(zoomed.logical_rect(), Rect::new(0.0, 0.0, 200.0, 150.0));
