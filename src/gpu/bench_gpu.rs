@@ -149,7 +149,7 @@ pub(crate) struct BenchTarget(wgpu::Texture);
 
 impl BenchTarget {
     pub(crate) fn as_target(&self) -> RenderTarget<'_> {
-        RenderTarget::from(&self.0)
+        RenderTarget::new(&self.0)
     }
 
     /// A colour-attachment view, for a driver that opens its own pass

@@ -47,7 +47,7 @@ impl WindowSurface {
     }
 
     pub(crate) fn format(&self) -> TargetFormat {
-        TargetFormat::from(self.config.format)
+        TargetFormat::new(self.config.format)
     }
 
     /// Which of [`Vsync`]'s two states this swapchain paces like.
@@ -134,7 +134,7 @@ pub(crate) struct SurfaceFrame(wgpu::SurfaceTexture);
 
 impl SurfaceFrame {
     pub(crate) fn target(&self) -> RenderTarget<'_> {
-        RenderTarget::from(&self.0.texture)
+        RenderTarget::new(&self.0.texture)
     }
 
     pub(crate) fn present(self, gpu: &Gpu) {

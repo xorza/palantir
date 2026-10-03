@@ -16,7 +16,7 @@ use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
+use crate::widgets::dock::dock_node::{DockNode, NodeIdx};
 use crate::widgets::dock::dock_op::DockOp;
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_state::DockState;
@@ -425,12 +425,8 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         match state.node(idx) {
             DockNode::Group(group) => self.group(ui, group),
             DockNode::Split(split) => {
-                let DockSplit {
-                    dir,
-                    ratio,
-                    first,
-                    second,
-                } = *split;
+                let (dir, ratio, first, second) =
+                    (split.dir(), split.ratio(), split.first(), split.second());
                 let mut live = ratio;
                 let splitter = match dir {
                     SplitDir::Row => Splitter::row(&mut live),

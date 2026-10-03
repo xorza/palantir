@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `5bbaed85`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `06c8c268`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -413,9 +413,11 @@ enum             UnmetRequirements
     variants: Features, Limit
     traits: Clone, Debug, Display, Eq, Error, PartialEq, StructuralPartialEq
 struct           RenderTarget
-    traits: Clone, Copy, Debug, From
+    fn new(texture)
+    traits: Clone, Copy, Debug
 struct           TargetFormat
-    traits: Clone, Copy, Debug, Eq, From, Hash, PartialEq, StructuralPartialEq
+    fn new(format)
+    traits: Clone, Copy, Debug, Eq, Hash, PartialEq, StructuralPartialEq
 trait            Clock
     items: now, skip, deadline
 struct           FixedClock
@@ -1280,7 +1282,10 @@ enum             DockNode
     variants: Split, Group
     traits: Clone, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 struct           DockSplit
-    fields: dir, ratio, first, second
+    const fn dir(self)
+    const fn ratio(self)
+    const fn first(self)
+    const fn second(self)
     traits: Clone, Copy, Debug, Deserialize, PartialEq, Serialize, StructuralPartialEq
 struct           NodeIdx
     traits: Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize, StructuralPartialEq

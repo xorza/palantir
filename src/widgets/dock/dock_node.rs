@@ -30,15 +30,36 @@ pub enum DockNode<T> {
 }
 
 /// A division of one rect between two child nodes.
+///
+/// Read-only outside the crate: a [`DockState`](crate::DockState) keeps its
+/// ratio inside the split clamp, and only its ops change one.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DockSplit {
+    pub(crate) dir: SplitDir,
+    pub(crate) ratio: f32,
+    pub(crate) first: NodeIdx,
+    pub(crate) second: NodeIdx,
+}
+
+impl DockSplit {
     /// How the two children are arranged.
-    pub dir: SplitDir,
-    /// The first child's share of the free space.
-    pub ratio: f32,
+    pub const fn dir(self) -> SplitDir {
+        self.dir
+    }
+
+    /// The first child's share of the free space, inside the split clamp.
+    pub const fn ratio(self) -> f32 {
+        self.ratio
+    }
+
     /// The leading child — left in a [`SplitDir::Row`], top in a
     /// [`SplitDir::Column`].
-    pub first: NodeIdx,
+    pub const fn first(self) -> NodeIdx {
+        self.first
+    }
+
     /// The trailing child.
-    pub second: NodeIdx,
+    pub const fn second(self) -> NodeIdx {
+        self.second
+    }
 }

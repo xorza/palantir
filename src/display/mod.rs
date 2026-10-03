@@ -20,6 +20,7 @@ pub(crate) mod user_scale;
 use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
 use glam::{UVec2, Vec2};
 
@@ -123,10 +124,18 @@ impl Display {
     /// a `Display` built here would silently take these defaults instead —
     /// so both hosts mint theirs through the `WindowDriver` that owns both,
     /// and that is the only place either reaches a frame.
+    ///
+    /// `system_scale`: *positive*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `system_scale` is
+    /// [positive](crate::widget::domain::positive).
+    #[track_caller]
     pub const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
         Self {
             physical,
-            system_scale,
+            system_scale: domain::positive(system_scale),
             user_scale: UserScale::ONE,
             pixel_snap: true,
             refresh_millihertz: None,
