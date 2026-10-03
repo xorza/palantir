@@ -111,11 +111,11 @@ pub(crate) struct LayoutScratch {
     pub(super) stack: StackScratch,
     pub(super) desired: Vec<Size>,
     /// Each node's measured floor, margin-inclusive — see
-    /// [`Measured`](crate::layout::measured::Measured). Arrange reads it
+    /// [`Measured`]. Arrange reads it
     /// beside `desired`: what a node is placed at when its slot is
     /// smaller than what it wants.
     pub(super) floor: Vec<Size>,
-    /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from).
+    /// Each node's [`Measured::stable_from`].
     /// Read by no pass after measure; kept per node for the next capture.
     pub(super) stable_from: Vec<Size>,
     /// Each node's slot origin in its parent's inner box, as `arrange`

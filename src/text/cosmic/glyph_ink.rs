@@ -17,7 +17,7 @@ use swash::scale::outline::Outline;
 /// The measured block spans the glyphs' advances, and a glyph's ink is
 /// not bound to its advance: an italic's overhang, a negative left side
 /// bearing, a mark above the line box all reach past it. What reaches
-/// past is what [`Self::outsets`] answers, so damage and the text scissor
+/// past is what [`Self::extent`] answers, so damage and the text scissor
 /// can cover it.
 ///
 /// **In ems, from the unhinted outline.** Every glyph rasterizes unhinted
