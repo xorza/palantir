@@ -147,7 +147,7 @@ flag_set! {
     /// A press walks the active scope path deepest-first and is granted
     /// to the first scope whose filter contains its [`KeyClass`]; scopes
     /// further out never see it.
-    pub struct KeyFilter {
+    pub struct KeyFilter: packed {
         /// Takes [`KeyClass::Text`].
         const TEXT   = 1 << 0;
         /// Takes [`KeyClass::Edit`].
@@ -168,11 +168,6 @@ flag_set! {
 }
 
 impl KeyFilter {
-    /// Every class — an overlay that owns the keyboard outright. What
-    /// `Popup` and `Modal` declare: a whole-stream claim, expressed as a
-    /// filter rather than as a separate capture mechanism.
-    pub const ALL: Self = Self::all();
-
     /// A focused text field.
     ///
     /// `ACCEL` is **absent**, deliberately: `Ctrl+S` and `Ctrl+R` fall
@@ -218,7 +213,7 @@ impl KeyFilter {
         self.takes(KeyClass::of(press)).then_some(press)
     }
 
-    /// A scope declaring nothing is not a scope: [`Self::empty`] is how
+    /// A scope declaring nothing is not a scope: [`Self::NONE`] is how
     /// "this node is not a scope" is stored, which is what lets the
     /// filter live in spare [`crate::scene::node::node_flags::NodeFlags`]
     /// bits without a separate presence flag.

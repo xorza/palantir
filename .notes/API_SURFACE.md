@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `129db05a`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `8dadcdc8`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -533,19 +533,16 @@ struct           KeyFilter
     assoc_const CYCLE
     assoc_const ESCAPE
     assoc_const ACCEL
-    const fn empty()
-    const fn all()
-    const fn bits(self)
-    const fn from_bits_truncate(bits)
+    assoc_const NONE
+    assoc_const ALL
     const fn is_empty(self)
     const fn contains(self, other)
     const fn intersects(self, other)
     const fn union(self, other)
     const fn difference(self, other)
-    fn insert(self, other)
-    fn remove(self, other)
-    fn set(self, other, on)
-    assoc_const ALL
+    const fn insert(self, other)
+    const fn remove(self, other)
+    const fn set(self, other, on)
     assoc_const TEXT_FIELD
     const fn takes(self, class)
     fn accepts(self, press)
@@ -587,19 +584,16 @@ struct           Sense
     assoc_const DRAG
     assoc_const SCROLL
     assoc_const PINCH
-    const fn empty()
-    const fn all()
-    const fn bits(self)
-    const fn from_bits_truncate(bits)
+    assoc_const NONE
+    assoc_const ALL
     const fn is_empty(self)
     const fn contains(self, other)
     const fn intersects(self, other)
     const fn union(self, other)
     const fn difference(self, other)
-    fn insert(self, other)
-    fn remove(self, other)
-    fn set(self, other, on)
-    assoc_const NONE
+    const fn insert(self, other)
+    const fn remove(self, other)
+    const fn set(self, other, on)
     assoc_const ABSORB_POINTER
     traits: BitOr, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
 struct           Shortcut
@@ -622,38 +616,32 @@ struct           ShortcutMods
 struct           KeyboardWake
     assoc_const KEY
     assoc_const MODIFIER
-    const fn empty()
-    const fn all()
-    const fn bits(self)
-    const fn from_bits_truncate(bits)
+    assoc_const NONE
+    assoc_const ALL
     const fn is_empty(self)
     const fn contains(self, other)
     const fn intersects(self, other)
     const fn union(self, other)
     const fn difference(self, other)
-    fn insert(self, other)
-    fn remove(self, other)
-    fn set(self, other, on)
-    assoc_const NONE
+    const fn insert(self, other)
+    const fn remove(self, other)
+    const fn set(self, other, on)
     traits: BitOr, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
 struct           PointerWake
     assoc_const BUTTONS
     assoc_const MOVE
     assoc_const SCROLL
     assoc_const PINCH
-    const fn empty()
-    const fn all()
-    const fn bits(self)
-    const fn from_bits_truncate(bits)
+    assoc_const NONE
+    assoc_const ALL
     const fn is_empty(self)
     const fn contains(self, other)
     const fn intersects(self, other)
     const fn union(self, other)
     const fn difference(self, other)
-    fn insert(self, other)
-    fn remove(self, other)
-    fn set(self, other, on)
-    assoc_const NONE
+    const fn insert(self, other)
+    const fn remove(self, other)
+    const fn set(self, other, on)
     traits: BitOr, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
 struct           ZoomFactor
     assoc_const ONE
@@ -1079,8 +1067,8 @@ enum             TextWrap
 struct           Ui
     const fn theme(self)
     fn set_theme(self, theme)
-    fn watch_pointer(self, flags)
-    fn watch_keyboard(self, flags)
+    const fn watch_pointer(self, flags)
+    const fn watch_keyboard(self, flags)
     fn watch_key(self, sc)
     fn pointer_events(self)
     fn keyboard_events(self)
@@ -1133,9 +1121,9 @@ struct           Ui
     fn pointer_actions(self)
     const fn set_focus(self, id)
     const fn clear_focus(self)
-    fn pointer_pos(self)
+    const fn pointer_pos(self)
     fn pointer_local(self, id)
-    fn modifiers(self)
+    const fn modifiers(self)
     const fn peek_pointer_pos(self)
     fn peek_pointer_local(self, id)
     const fn peek_modifiers(self)

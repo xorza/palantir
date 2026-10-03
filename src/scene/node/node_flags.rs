@@ -55,7 +55,7 @@ impl NodeFlags {
     }
 
     /// The key classes this node's input scope takes, or
-    /// [`KeyFilter::empty`] when it declares no scope — the empty filter
+    /// [`KeyFilter::NONE`] when it declares no scope — the empty filter
     /// doubles as "not a scope", which is what lets this ride spare bits
     /// instead of costing a presence flag of its own.
     #[inline]
@@ -95,10 +95,10 @@ const _: () = assert!(
     "ClipMode discriminant exceeds 2 bits",
 );
 const _: () = assert!(
-    Sense::all().bits() as u32 <= NodeFlags::SENSE_MASK,
+    Sense::ALL.bits() as u32 <= NodeFlags::SENSE_MASK,
     "Sense uses more than 5 bits",
 );
 const _: () = assert!(
-    ((KeyFilter::all().bits() as u32) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
+    ((KeyFilter::ALL.bits() as u32) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
     "KeyFilter uses more than 8 bits",
 );

@@ -12,7 +12,7 @@ flag_set! {
     /// `CLICK` set is hoverable regardless of whether `HOVER` is set.
     /// Convention matches egui: containers default to `NONE`, leaf-
     /// interactive widgets pick `CLICK`, draggables add `DRAG`.
-    pub struct Sense {
+    pub struct Sense: packed {
         /// Visible to hover hit-test. Implied by CLICK / DRAG via
         /// `Sense::hovers`; set explicitly for hover-only widgets
         /// (tooltip triggers, row highlights) that shouldn't capture
@@ -42,9 +42,6 @@ flag_set! {
 }
 
 impl Sense {
-    /// Ergonomic alias for [`Self::empty`] — the default "inert" sense.
-    pub const NONE: Self = Self::empty();
-
     /// Every pointer interaction, so none reaches widgets underneath.
     ///
     /// The overlay scrim sense: `Popup`'s click-eater and `Modal`'s

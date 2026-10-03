@@ -311,7 +311,7 @@ impl Ui {
 
     /// Declare interest in off-target pointer events of `flags`.
     #[inline]
-    pub fn watch_pointer(&mut self, flags: PointerWake) {
+    pub const fn watch_pointer(&mut self, flags: PointerWake) {
         self.input.watch_pointer(flags);
     }
 
@@ -319,7 +319,7 @@ impl Ui {
     /// recorders, accel-underline UIs, command palettes that record
     /// before focus. Specific chords use [`Self::watch_key`].
     #[inline]
-    pub fn watch_keyboard(&mut self, flags: KeyboardWake) {
+    pub const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.input.watch_keyboard(flags);
     }
 
@@ -1486,7 +1486,7 @@ impl Ui {
     /// routes through the hit index and is therefore occlusion- and
     /// overlay-aware.
     #[inline]
-    pub fn pointer_pos(&mut self) -> Option<Vec2> {
+    pub const fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos()
     }
@@ -1515,7 +1515,7 @@ impl Ui {
     /// common `if response.clicked() { … }` — use
     /// [`Self::peek_modifiers`] and don't pay for the wake.
     #[inline]
-    pub fn modifiers(&mut self) -> Modifiers {
+    pub const fn modifiers(&mut self) -> Modifiers {
         self.watch_keyboard(KeyboardWake::MODIFIER);
         self.input.modifiers()
     }
