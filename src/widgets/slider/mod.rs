@@ -55,10 +55,7 @@ impl<'a> Slider<'a> {
         // A track maps its fraction onto the range, and an infinite end
         // maps every fraction past zero to infinity or NaN: a click would
         // store `+inf` in the bound value.
-        assert!(
-            range.start().is_finite() && range.end().is_finite(),
-            "slider range must be finite, got {range:?}",
-        );
+        assert!(domain::is_range(&range), "{}", domain::RANGE_RULE);
         Self {
             widget: Widget::hstack().sense(Sense::CLICK | Sense::DRAG),
             value: value.into(),
@@ -80,10 +77,7 @@ impl<'a> Slider<'a> {
     /// spelling of "off".
     #[track_caller]
     pub const fn step(mut self, step: f64) -> Self {
-        assert!(
-            step.is_finite() && step > 0.0,
-            "slider step must be finite and greater than zero",
-        );
+        assert!(step.is_finite() && step > 0.0, "{}", domain::POSITIVE_RULE);
         self.step = Some(step);
         self
     }

@@ -45,19 +45,8 @@ const MIN_TEXELS: u32 = 2;
 /// measurement behind four.
 pub(crate) const TEXEL_SIZE: u32 = 4;
 
-/// The divisor a builder was handed, once it is known to be one a surface
-/// can use. One assert for the three widgets that take one.
-///
-/// # Panics
-///
-/// Panics unless `n` is a power of two from 1 to 16.
-pub(crate) fn checked_texel_size(n: u32) -> u32 {
-    assert!(
-        n.is_power_of_two() && (1..=16).contains(&n),
-        "a colour surface texel size must be a power of two in 1..=16, got {n}",
-    );
-    n
-}
+/// The largest texel size a colour widget takes.
+pub(crate) const MAX_TEXEL_SIZE: u32 = 16;
 
 /// Texel dimensions for a surface covering `size` logical px on the current
 /// display, one texel per `texel_size` physical px on each axis, held under the device's texture cap.

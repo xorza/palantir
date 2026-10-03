@@ -365,9 +365,8 @@ One area per commit. Each adds its setters to the per-kind input tables of phase
 2. Done: layout. A `min` above its `max` (a `Track`, a node's bounds) is coerced — the minimum
    wins, as in CSS and WPF — rather than checked.
 3. Done: paint. Points, rects and mesh vertices (bulk data) stay with the record-time NaN gate.
-4. **Widgets**: every remaining widget setter (`Spinner`, `Separator`, `DragValue::speed`,
-   `Slider`, `Scroll::zoom_by`, `ZoomConfig::new`, `texel_size`, text sizes) and `AnimSpec`.
-   Theme values read through `domain` where they are used.
+4. Done: widgets. `DragValue::range` refuses only NaN ends: an infinite end is its unbounded
+   default, so the finite *range* kind would remove a supported use.
 5. **Data and host**: `Image::from_srgba8` and `IconTable::from_svgs` (with A18) return `Result`;
    `FontFamily::named` returns `Option`; A21's `FontLoadError::FamilyTableFull`; `DockSplit` gets
    a private, checked ratio; `Display::from_physical` validates its scale; A16's checked

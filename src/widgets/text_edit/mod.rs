@@ -30,6 +30,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -174,8 +175,9 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Fill colour for the buffer, overriding the resolved look's.
+    #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
-        self.overrides.color = Some(color);
+        self.overrides.color = Some(domain::color(color));
         self
     }
 
@@ -183,8 +185,9 @@ impl<'a> TextEdit<'a> {
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
+    #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size_px = Some(px);
+        self.overrides.font_size_px = Some(domain::length(px));
         self
     }
 

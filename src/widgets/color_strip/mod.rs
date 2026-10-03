@@ -111,8 +111,9 @@ impl<'a> ColorStrip<'a> {
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn texel_size(mut self, n: u32) -> Self {
-        self.texel_size = color_surface::checked_texel_size(n);
+    #[track_caller]
+    pub const fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
         self
     }
 

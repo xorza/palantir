@@ -72,15 +72,17 @@ impl<'a> Separator<'a> {
 
     /// Line thickness in logical px, defaulting to
     /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    #[track_caller]
     pub const fn thickness(mut self, px: f32) -> Self {
-        self.thickness = Some(px);
+        self.thickness = Some(domain::length(px));
         self
     }
 
     /// Line color, defaulting to [`crate::Theme::separator`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    #[track_caller]
     pub const fn color(mut self, c: RgbaF32) -> Self {
-        self.color = Some(c);
+        self.color = Some(domain::color(c));
         self
     }
 

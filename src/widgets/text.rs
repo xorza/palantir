@@ -2,6 +2,7 @@
 //! measured like any other content.
 
 use crate::primitives::layout::align::Align;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -92,8 +93,9 @@ impl<'a> Text<'a> {
     }
 
     /// Fill colour for this run, overriding the resolved style's.
+    #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
-        self.overrides.color = Some(color);
+        self.overrides.color = Some(domain::color(color));
         self
     }
 
@@ -101,8 +103,9 @@ impl<'a> Text<'a> {
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
+    #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size_px = Some(px);
+        self.overrides.font_size_px = Some(domain::length(px));
         self
     }
 

@@ -293,7 +293,7 @@ fn snap_to_step_rounds_to_grid() {
 #[test]
 fn step_rejects_a_value_that_cannot_snap() {
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        panic_probe::assert_panics_with("slider step must be finite and greater than zero", || {
+        panic_probe::assert_panics_with("a positive value must be finite and above zero", || {
             let mut v = 0.5_f64;
             let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
         });
@@ -310,7 +310,7 @@ fn new_rejects_an_infinite_range() {
         (f64::NEG_INFINITY, 1.0),
         (f64::NAN, 1.0),
     ] {
-        panic_probe::assert_panics_with("slider range must be finite", || {
+        panic_probe::assert_panics_with("a range must have finite ends", || {
             let mut v = 0.5_f64;
             let _ = Slider::new(&mut v, lo..=hi);
         });

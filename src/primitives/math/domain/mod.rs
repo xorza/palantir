@@ -77,8 +77,9 @@ pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
 pub(crate) const COLOR_RULE: &str = "a color must have finite channels";
 pub(crate) const COUNT_RULE: &str = "a count must be at least 1";
-const POWER_OF_TWO_RULE: &str = "the value must be a power of two no larger than its maximum";
-const RANGE_RULE: &str = "a range must have finite ends";
+pub(crate) const POWER_OF_TWO_RULE: &str =
+    "the value must be a power of two no larger than its maximum";
+pub(crate) const RANGE_RULE: &str = "a range must have finite ends";
 
 /// True if `v` is within [`EPS`] of zero.
 #[inline]

@@ -461,7 +461,7 @@ fn zoom_by_composes_across_calls() {
 #[test]
 fn zoom_by_rejects_a_factor_that_cannot_scale() {
     for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        panic_probe::assert_panics_with("a zoom factor must be finite and above zero", || {
+        panic_probe::assert_panics_with("a positive value must be finite and above zero", || {
             let _ = Scroll::both().zoom_by(bad);
         });
     }

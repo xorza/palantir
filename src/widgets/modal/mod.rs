@@ -4,6 +4,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -62,8 +63,9 @@ impl<'a> Modal<'a> {
 
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    #[track_caller]
     pub const fn backdrop(mut self, c: RgbaF32) -> Self {
-        self.backdrop = Some(c);
+        self.backdrop = Some(domain::color(c));
         self
     }
 

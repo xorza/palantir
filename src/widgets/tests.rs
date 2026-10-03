@@ -274,3 +274,65 @@ fn chrome_setters_check_the_background() {
         panic_probe::assert_panics_with(rule, || Block::new().default_background(bg.clone()));
     }
 }
+
+/// Every widget setter this crate checks panics with its kind's rule on a
+/// value outside it, and takes the boundary value.
+#[test]
+fn widget_setters_check_their_kinds() {
+    use crate::internals::panic_probe;
+    use crate::primitives::math::domain;
+    use crate::primitives::paint::color::color_coords::ColorCoords;
+    use crate::widgets::color_field::ColorField;
+    use crate::widgets::drag_value::DragValue;
+    use crate::widgets::separator::Separator;
+    use crate::widgets::spinner::Spinner;
+    use crate::widgets::text::Text;
+
+    const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
+    let length_cases: [fn(f32); 4] = [
+        |v| drop(Spinner::new().diameter(v)),
+        |v| drop(Spinner::new().thickness(v)),
+        |v| drop(Separator::horizontal().thickness(v)),
+        |v| drop(Text::new("t").font_size(v)),
+    ];
+    for set in length_cases {
+        set(0.0);
+        for bad in [f32::NAN, f32::INFINITY, -1.0] {
+            panic_probe::assert_panics_with(domain::LENGTH_RULE, || set(bad));
+        }
+    }
+    let color_cases: [fn(RgbaF32); 4] = [
+        |c| drop(Spinner::new().color(c)),
+        |c| drop(Separator::horizontal().color(c)),
+        |c| drop(Text::new("t").color(c)),
+        |c| drop(Modal::new().backdrop(c)),
+    ];
+    for set in color_cases {
+        set(RgbaF32::new(2.0, 0.0, 0.0, 1.0));
+        panic_probe::assert_panics_with("a color must have finite channels", || set(NAN_RED));
+    }
+
+    let mut coords = ColorCoords::default();
+    let _ = ColorField::new(&mut coords).texel_size(16);
+    for bad in [0, 3, 32] {
+        panic_probe::assert_panics_with(domain::POWER_OF_TWO_RULE, || {
+            let mut coords = ColorCoords::default();
+            drop(ColorField::new(&mut coords).texel_size(bad));
+        });
+    }
+
+    let mut value = 0.0_f64;
+    let _ = DragValue::new(&mut value)
+        .speed(f64::MIN_POSITIVE)
+        .range(f64::NEG_INFINITY..=0.0);
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
+            let mut value = 0.0_f64;
+            drop(DragValue::new(&mut value).speed(bad));
+        });
+    }
+    panic_probe::assert_panics_with("a drag range's ends must not be NaN", || {
+        let mut value = 0.0_f64;
+        drop(DragValue::new(&mut value).range(f64::NAN..=1.0));
+    });
+}

@@ -275,12 +275,13 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is finite and greater than zero. A zoom
-    /// cannot invert or annihilate, and a non-finite factor poisons
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    /// A zoom cannot invert or annihilate, and a non-finite factor poisons
     /// every product it enters.
+    #[track_caller]
     pub fn zoom_by(mut self, factor: f32) -> Self {
-        let factor = ZoomFactor::new(factor)
-            .unwrap_or_else(|| panic!("a zoom factor must be finite and above zero, got {factor}"));
+        let factor =
+            ZoomFactor::new(domain::positive(factor)).expect("a positive value is a zoom factor");
         self.zoom_request = self.zoom_request.combine(factor);
         self
     }

@@ -3,7 +3,7 @@
 //! [`ZoomModifier`] and [`ZoomPivot`] are [`ZoomConfig`]'s own axes —
 //! neither means anything without it — so all three share a file.
 
-use crate::input::zoom_factor::ZoomFactor;
+use crate::primitives::math::domain;
 use std::ops::RangeInclusive;
 
 /// What kind of input triggers a zoom step. See [`ZoomConfig::with_modifier`].
@@ -41,28 +41,22 @@ pub struct ZoomConfig {
     pub(super) pivot: ZoomPivot,
 }
 
-const ZOOM_RANGE_ERROR: &str = "zoom range must satisfy 0 < min <= max with finite bounds";
-const ZOOM_STEP_ERROR: &str = "zoom step must be finite and positive";
-
 impl ZoomConfig {
     /// Configure the inclusive zoom range and multiplicative wheel factor.
+    /// Both range ends and `step` are *positive*; a reversed range is
+    /// ordered.
     ///
     /// # Panics
     ///
-    /// Panics unless both range bounds are finite, `0 < min <= max`, and
-    /// `step` is finite and positive.
+    /// Panics unless both range ends and `step` are
+    /// [positive](crate::widget::domain::positive).
     #[track_caller]
-    pub fn new(range: RangeInclusive<f32>, step: f32) -> Self {
-        let min = *range.start();
-        let max = *range.end();
-        assert!(
-            ZoomFactor::new(min).is_some() && ZoomFactor::new(max).is_some() && min <= max,
-            "{ZOOM_RANGE_ERROR}"
-        );
-        assert!(ZoomFactor::new(step).is_some(), "{ZOOM_STEP_ERROR}");
+    pub const fn new(range: RangeInclusive<f32>, step: f32) -> Self {
+        let a = domain::positive(*range.start());
+        let b = domain::positive(*range.end());
         Self {
-            range,
-            step,
+            range: a.min(b)..=a.max(b),
+            step: domain::positive(step),
             modifier: ZoomModifier::Ctrl,
             pivot: ZoomPivot::Pointer,
         }

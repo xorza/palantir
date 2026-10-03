@@ -1,4 +1,5 @@
 use crate::internals::panic_probe;
+use crate::primitives::math::domain;
 use crate::widgets::scroll::{ZoomConfig, ZoomModifier, ZoomPivot};
 use std::ops::RangeInclusive;
 
@@ -61,11 +62,6 @@ fn zoom_config_rejects_every_invalid_boundary() {
             range: 0.1..=f32::NEG_INFINITY,
             step: 1.03,
         },
-        // reversed range
-        InvalidConfig {
-            range: 2.0..=1.0,
-            step: 1.03,
-        },
         // zero step
         InvalidConfig {
             range: 0.1..=10.0,
@@ -94,16 +90,13 @@ fn zoom_config_rejects_every_invalid_boundary() {
     ];
 
     for case in cases {
-        let step_valid = case.step.is_finite() && case.step > 0.0;
-        let expected = if step_valid {
-            "zoom range must satisfy 0 < min <= max with finite bounds"
-        } else {
-            "zoom step must be finite and positive"
-        };
-        panic_probe::assert_panics_with(expected, || {
+        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
             ZoomConfig::new(case.range.clone(), case.step)
         });
     }
+
+    // A reversed range is coerced into order rather than refused.
+    assert_eq!(ZoomConfig::new(2.0..=1.0, 1.03).range, 1.0..=2.0);
 }
 
 #[test]
