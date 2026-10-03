@@ -22,9 +22,9 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::layout::limits;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::math::domain;
 use crate::scene::node::authored_gaps::AuthoredGaps;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
@@ -112,45 +112,70 @@ impl Node {
     /// cannot move it through a builder. A field written past them is a
     /// field whose bound or NaN screen did not run.
     ///
+    /// The order against the maximum is coerced: the minimum wins, as in
+    /// CSS and WPF, so a maximum already set below it is raised to it.
+    ///
     /// # Panics
     ///
-    /// Panics if the bound is negative, non-finite, or above a maximum
-    /// already set on this node.
+    /// Panics unless both axes are *lengths*.
     #[inline]
-    pub(crate) fn set_min_size(&mut self, value: Size) {
-        limits::assert_valid_bounds(value, self.max_size.unwrap_or(Size::INF));
+    #[track_caller]
+    pub(crate) const fn set_min_size(&mut self, value: Size) {
+        domain::length(value.w);
+        domain::length(value.h);
         self.min_size = Some(value);
+        if let Some(max) = self.max_size {
+            self.max_size = Some(Size::new(max.w.max(value.w), max.h.max(value.h)));
+        }
     }
 
-    /// Set the upper size bound, checking it against the lower one.
+    /// Set the upper size bound. A bound below a minimum already set is
+    /// raised to it.
     ///
     /// # Panics
     ///
-    /// Panics if the bound is negative, NaN, or below a minimum already
-    /// set on this node. Positive infinity is the unbounded maximum.
+    /// Panics unless both axes are *extents*; positive infinity is the
+    /// unbounded maximum.
     #[inline]
+    #[track_caller]
     pub(crate) fn set_max_size(&mut self, value: Size) {
-        limits::assert_valid_bounds(self.min_size.unwrap_or(Size::ZERO), value);
-        self.max_size = Some(value);
+        domain::extent(value.w);
+        domain::extent(value.h);
+        let min = self.min_size.unwrap_or(Size::ZERO);
+        self.max_size = Some(Size::new(value.w.max(min.w), value.h.max(min.h)));
     }
 
-    /// Set the padding, screening NaN.
+    /// Set the padding: every edge a *length*.
     ///
-    /// A NaN edge does not fail on its own — it poisons every extent
-    /// derived from it and surfaces frames later as a widget that
-    /// measured to nothing, with no way back to the call that set it.
-    /// `Corners` is screened at shape lowering for the same reason; this
-    /// is the equivalent gate for the two spacings, which reach layout
-    /// instead of the record.
+    /// Checked in release: a NaN edge does not fail on its own — it
+    /// poisons every extent derived from it and surfaces frames later as
+    /// a widget that measured to nothing, with no way back to the call
+    /// that set it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is a length.
     #[inline]
+    #[track_caller]
     pub(crate) fn set_padding(&mut self, value: Spacing) {
-        debug_assert!(!value.has_nan(), "NaN in padding: {value:?}");
+        for edge in value.as_array() {
+            domain::length(edge);
+        }
         self.padding = Some(value);
     }
 
+    /// Set the margin: every edge an *offset*, so a negative margin pulls a
+    /// sibling in.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is an offset.
     #[inline]
+    #[track_caller]
     pub(crate) fn set_margin(&mut self, value: Spacing) {
-        debug_assert!(!value.has_nan(), "NaN in margin: {value:?}");
+        for edge in value.as_array() {
+            domain::offset(edge);
+        }
         self.margin = Some(value);
     }
 
@@ -172,7 +197,8 @@ impl Node {
     /// contradict what the caller did say. Two authored bounds that
     /// conflict still panic in [`Self::set_min_size`].
     #[inline]
-    pub(crate) fn fill_min_size(&mut self, value: Size) {
+    #[track_caller]
+    pub(crate) const fn fill_min_size(&mut self, value: Size) {
         if self.min_size.is_none() {
             let value = match self.max_size {
                 Some(max) => Size::new(at_most(value.w, max.w), at_most(value.h, max.h)),
@@ -185,6 +211,7 @@ impl Node {
     /// The mirror of [`Self::fill_min_size`]: a themed maximum below an
     /// authored minimum is raised to it.
     #[inline]
+    #[track_caller]
     pub(crate) fn fill_max_size(&mut self, value: Size) {
         if self.max_size.is_none() {
             let value = match self.min_size {
@@ -196,6 +223,7 @@ impl Node {
     }
 
     #[inline]
+    #[track_caller]
     pub(crate) fn fill_padding(&mut self, value: Spacing) {
         if self.padding.is_none() {
             self.set_padding(value);
@@ -203,6 +231,7 @@ impl Node {
     }
 
     #[inline]
+    #[track_caller]
     pub(crate) fn fill_margin(&mut self, value: Spacing) {
         if self.margin.is_none() {
             self.set_margin(value);
@@ -210,6 +239,7 @@ impl Node {
     }
 
     #[inline]
+    #[track_caller]
     pub(crate) fn fill_gap(&mut self, gap: f32) {
         if self.gaps.gap().is_none() {
             self.gaps.set_gap(gap);

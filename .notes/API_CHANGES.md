@@ -362,10 +362,8 @@ Each line is one commit; none depends on another inside the phase.
 One area per commit. Each adds its setters to the per-kind input tables of phase 1 step 1.
 
 1. Done: coercion (rule 2). `Limits` already ordered every range.
-2. **Layout**: `Sizing`, `Track`, `gap`, `line_gap`, `min_size`, `max_size`, `padding`, `margin`,
-   `position`, `TranslateScale`; `GridCell` gets private fields with `with_span`. Every check in
-   the area panics with its kind's message; the debug-only ones (`padding`, `margin`) become
-   release asserts, and the unchecked ones (`position`) gain one.
+2. Done: layout. A `min` above its `max` (a `Track`, a node's bounds) is coerced — the minimum
+   wins, as in CSS and WPF — rather than checked.
 3. **Paint**: shape constructors, `Stroke`, `Corners`, `Shadow`, colours where they enter a shape
    or a look, `Stop` / `GradientBuilder::stop`, `PaintAnim`, `ImageHandle::update`.
 4. **Widgets**: every remaining widget setter (`Spinner`, `Separator`, `DragValue::speed`,

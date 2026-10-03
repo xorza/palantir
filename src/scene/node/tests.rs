@@ -236,8 +236,9 @@ fn an_authored_value_wins_over_the_theme_default() {
 /// A themed default never contradicts what the caller authored: a default
 /// minimum above an authored maximum is clamped to it, a default maximum
 /// below an authored minimum is raised to it, per axis. Two authored
-/// bounds that conflict still panic, and a NaN default still reaches the
-/// check rather than being clamped away.
+/// bounds that conflict resolve as CSS resolves them — the minimum wins —
+/// and a NaN default still reaches the check rather than being clamped
+/// away.
 #[test]
 fn themed_bounds_yield_to_authored_ones() {
     let leaf = || Node::new(NodeMode::Resolved(LayoutMode::Leaf));
@@ -260,12 +261,16 @@ fn themed_bounds_yield_to_authored_ones() {
     node.fill_min_size(Size::new(280.0, 10.0));
     assert_eq!(node.min_size, Some(Size::new(280.0, 10.0)));
 
-    panic_probe::assert_panics_with("node minimums must be finite", || {
-        let mut node = leaf();
-        node.set_max_size(Size::new(240.0, 400.0));
-        node.set_min_size(Size::new(280.0, 0.0));
-    });
-    panic_probe::assert_panics_with("node minimums must be finite", || {
+    let mut node = leaf();
+    node.set_max_size(Size::new(240.0, 400.0));
+    node.set_min_size(Size::new(280.0, 0.0));
+    assert_eq!(
+        node.max_size,
+        Some(Size::new(280.0, 400.0)),
+        "the minimum wins"
+    );
+
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
         let mut node = leaf();
         node.set_max_size(Size::new(240.0, 400.0));
         node.fill_min_size(Size::new(f32::NAN, 0.0));

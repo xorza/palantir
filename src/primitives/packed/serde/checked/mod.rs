@@ -9,6 +9,7 @@
 //! [`domain`] predicate of its kind, and reports the kind's rule, so a
 //! file and a call site cannot disagree about a value.
 
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::domain::{self, vec2};
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer};
@@ -68,6 +69,30 @@ pub(crate) fn length2<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec2
 /// A 2-D [offset](vec2::offset).
 pub(crate) fn offset2<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec2, D::Error> {
     read(deserializer, vec2::is_offset, domain::OFFSET_RULE)
+}
+
+/// Spacing every edge of which passes `valid`, or the first edge that
+/// fails, reported under `rule`.
+fn spacing<'de, D: Deserializer<'de>>(
+    deserializer: D,
+    valid: fn(f32) -> bool,
+    rule: &str,
+) -> Result<Spacing, D::Error> {
+    let spacing = Spacing::deserialize(deserializer)?;
+    match spacing.as_array().into_iter().find(|&edge| !valid(edge)) {
+        Some(bad) => Err(D::Error::custom(format_args!("{rule}, got {bad}"))),
+        None => Ok(spacing),
+    }
+}
+
+/// A padding: every edge a [length](domain::length).
+pub(crate) fn padding<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Spacing, D::Error> {
+    spacing(deserializer, domain::is_length, domain::LENGTH_RULE)
+}
+
+/// A margin: every edge an [offset](domain::offset).
+pub(crate) fn margin<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Spacing, D::Error> {
+    spacing(deserializer, domain::is_offset, domain::OFFSET_RULE)
 }
 
 /// Three points in some unit space — a polyline like a checkmark: every

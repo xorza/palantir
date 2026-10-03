@@ -66,46 +66,38 @@ impl Sizing {
     /// weight you'd almost always pass.
     pub const FILL: Self = Self::fill(1.0);
 
-    /// An exact pixel extent.
+    /// An exact pixel extent. `value`: a *length*.
     ///
     /// # Panics
     ///
-    /// Panics if `value` is negative or non-finite.
+    /// Panics unless `value` is a [length](crate::widget::domain::length).
     #[inline]
+    #[track_caller]
     pub const fn fixed(value: f32) -> Self {
-        assert!(
-            value.is_finite() && value >= 0.0,
-            "fixed sizing must be finite and non-negative",
-        );
-        Self(SizingValue::Fixed(value))
+        Self(SizingValue::Fixed(domain::length(value)))
     }
 
-    /// A positive relative share of remaining space.
+    /// A positive relative share of remaining space. `weight`: *positive*.
     ///
     /// # Panics
     ///
-    /// Panics if `weight` is zero, negative, or non-finite.
+    /// Panics unless `weight` is [positive](crate::widget::domain::positive).
     #[inline]
+    #[track_caller]
     pub const fn fill(weight: f32) -> Self {
-        assert!(
-            weight.is_finite() && weight > 0.0,
-            "fill weight must be finite and positive",
-        );
-        Self(SizingValue::Fill(weight))
+        Self(SizingValue::Fill(domain::positive(weight)))
     }
 
     /// A relative share that may be zero. Zero becomes `fixed(0.0)`;
-    /// positive values become [`Self::fill`].
+    /// positive values become [`Self::fill`]. `weight`: a *length*.
     ///
     /// # Panics
     ///
-    /// Panics if `weight` is negative or non-finite.
+    /// Panics unless `weight` is a [length](crate::widget::domain::length).
     #[inline]
+    #[track_caller]
     pub const fn share(weight: f32) -> Self {
-        assert!(
-            weight.is_finite() && weight >= 0.0,
-            "share weight must be finite and non-negative",
-        );
+        let weight = domain::length(weight);
         if weight == 0.0 {
             Self(SizingValue::Fixed(0.0))
         } else {
@@ -338,6 +330,7 @@ impl From<Size> for SizeSpec {
 mod tests {
     use crate::internals::panic_probe;
     use crate::primitives::layout::sizing::{SizeSpec, Sizing};
+    use crate::primitives::math::domain;
 
     /// The two shares always partition 1.0, so the first lands at exactly
     /// `fraction` of the parent — and an out-of-range input clamps rather
@@ -417,9 +410,9 @@ mod tests {
 
     #[test]
     fn constructors_accept_only_finite_valid_payloads() {
-        const FIXED: &str = "fixed sizing must be finite and non-negative";
-        const FILL: &str = "fill weight must be finite and positive";
-        const SHARE: &str = "share weight must be finite and non-negative";
+        const FIXED: &str = domain::LENGTH_RULE;
+        const FILL: &str = domain::POSITIVE_RULE;
+        const SHARE: &str = domain::LENGTH_RULE;
         type Case = (&'static str, fn() -> Sizing);
 
         assert_eq!(Sizing::fixed(f32::MAX).fixed_value(), Some(f32::MAX));

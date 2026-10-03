@@ -3,7 +3,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::domain::approx_zero;
+use crate::primitives::math::domain::{self, approx_zero, vec2};
 use glam::Vec2;
 
 /// A 2D transform with uniform scale and translation — same shape as
@@ -59,22 +59,20 @@ impl TranslateScale {
             && approx_zero(self.scale - 1.0)
     }
 
-    /// Construct a validated transform.
+    /// Construct a validated transform. `translation`: an *offset* on each
+    /// axis; `scale`: *positive*.
     ///
     /// # Panics
     ///
-    /// Panics when either translation component is non-finite or `scale` is
-    /// non-positive or non-finite.
+    /// Panics unless both translation axes are
+    /// [offsets](crate::widget::domain::offset) and `scale` is
+    /// [positive](crate::widget::domain::positive).
+    #[track_caller]
     pub const fn new(translation: Vec2, scale: f32) -> Self {
-        assert!(
-            translation.x.is_finite() && translation.y.is_finite(),
-            "TranslateScale translation must be finite"
-        );
-        assert!(
-            scale.is_finite() && scale > 0.0,
-            "TranslateScale scale must be positive and finite"
-        );
-        Self { translation, scale }
+        Self {
+            translation: vec2::offset(translation),
+            scale: domain::positive(scale),
+        }
     }
 
     /// Build from parts that are already known good.
@@ -95,14 +93,8 @@ impl TranslateScale {
     /// cannot. Overflow is how a derived one breaks: two finite scales
     /// multiply to `inf`.
     const fn from_parts(translation: Vec2, scale: f32) -> Self {
-        debug_assert!(
-            translation.x.is_finite() && translation.y.is_finite(),
-            "TranslateScale translation must be finite"
-        );
-        debug_assert!(
-            scale.is_finite() && scale > 0.0,
-            "TranslateScale scale must be positive and finite"
-        );
+        debug_assert!(vec2::is_offset(translation), "{}", domain::OFFSET_RULE);
+        debug_assert!(domain::is_positive(scale), "{}", domain::POSITIVE_RULE);
         Self { translation, scale }
     }
 
@@ -295,16 +287,15 @@ mod tests {
             Vec2::new(0.0, f32::NEG_INFINITY),
         ];
         for translation in invalid_translations {
-            panic_probe::assert_panics_with("TranslateScale translation must be finite", || {
+            panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
                 TranslateScale::new(translation, 1.0)
             });
         }
 
         for scale in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            panic_probe::assert_panics_with(
-                "TranslateScale scale must be positive and finite",
-                || TranslateScale::new(Vec2::ZERO, scale),
-            );
+            panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
+                TranslateScale::new(Vec2::ZERO, scale)
+            });
         }
     }
 
@@ -317,8 +308,8 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn derived_transforms_reject_the_overflow_their_arithmetic_produces() {
-        const TRANSLATION: &str = "TranslateScale translation must be finite";
-        const SCALE: &str = "TranslateScale scale must be positive and finite";
+        const TRANSLATION: &str = domain::OFFSET_RULE;
+        const SCALE: &str = domain::POSITIVE_RULE;
         // Pivot arithmetic that overflows translation.
         panic_probe::assert_panics_with(TRANSLATION, || {
             TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)

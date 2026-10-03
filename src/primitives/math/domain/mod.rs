@@ -51,7 +51,7 @@
 //! trait method cannot be `const` and the setters that call these are.
 //! [`vec2`] holds the per-axis twins a two-axis widget needs.
 
-use crate::primitives::layout::limits::MAX_PACKED_GAP;
+use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 use std::ops::RangeInclusive;
 
@@ -64,6 +64,10 @@ pub mod vec2;
 /// than this are invisible to the user.
 pub const EPS: f32 = 1.0e-4;
 
+/// The largest [`gap`]: 65504, the largest finite f16, because a container
+/// packs its gaps into half-precision lanes.
+pub const MAX_GAP: f32 = F16x4::MAX_LANE;
+
 pub(crate) const OFFSET_RULE: &str = "an offset must be finite";
 pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
@@ -72,7 +76,7 @@ pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and abov
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
 const COLOR_RULE: &str = "a color must have finite channels";
-const COUNT_RULE: &str = "a count must be at least 1";
+pub(crate) const COUNT_RULE: &str = "a count must be at least 1";
 const POWER_OF_TWO_RULE: &str = "the value must be a power of two no larger than its maximum";
 const RANGE_RULE: &str = "a range must have finite ends";
 
@@ -202,7 +206,7 @@ pub const fn extent(v: f32) -> f32 {
 /// True if `v` is a [`gap`]: a length that fits one f16 lane.
 #[inline]
 pub const fn is_gap(v: f32) -> bool {
-    is_length(v) && v <= MAX_PACKED_GAP
+    is_length(v) && v <= MAX_GAP
 }
 
 /// `v`, which must be a *gap*: a length of at most 65504, the largest f16,

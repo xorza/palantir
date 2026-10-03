@@ -119,7 +119,7 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 #[cfg(test)]
 mod tests {
     use super::Grid;
-    use crate::primitives::layout::limits::MAX_PACKED_GAP;
+    use crate::primitives::math::domain::MAX_GAP;
     use crate::widget_core::configure::Configure;
 
     /// A grid's spacing is the node column every other container uses,
@@ -131,8 +131,8 @@ mod tests {
         assert_eq!(configured.widget.authored_line_gap(), Some(3.0));
         assert_eq!(configured.widget.authored_gap(), Some(5.0));
 
-        let edge = Grid::new().line_gap(MAX_PACKED_GAP).gap(0.0);
-        assert_eq!(edge.widget.authored_line_gap(), Some(MAX_PACKED_GAP));
+        let edge = Grid::new().line_gap(MAX_GAP).gap(0.0);
+        assert_eq!(edge.widget.authored_line_gap(), Some(MAX_GAP));
         assert_eq!(edge.widget.authored_gap(), Some(0.0));
     }
 }

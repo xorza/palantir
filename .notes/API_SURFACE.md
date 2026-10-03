@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `3ec0a41a`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `1c64971b`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -62,6 +62,7 @@ function         widget::domain::vec2::offset(v)
 function         widget::domain::vec2::is_length(v)
 function         widget::domain::vec2::length(v)
 constant         widget::domain::EPS
+constant         widget::domain::MAX_GAP
 function         widget::domain::approx_zero(v)
 function         widget::domain::approx_eq(a, b)
 function         widget::domain::paints_nothing(v)
@@ -748,9 +749,12 @@ enum             ClipMode
     const fn is_clip(self)
     traits: Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, StructuralPartialEq
 struct           GridCell
-    fields: row, col, row_span, col_span
     const fn at(row, col)
     const fn with_span(self, row_span, col_span)
+    const fn row(self)
+    const fn col(self)
+    const fn row_span(self)
+    const fn col_span(self)
     const fn along(axis, main)
     traits: Clone, Copy, Debug, Default, From, Hash, PartialEq, Pod, StructuralPartialEq, Zeroable
 enum             Justify

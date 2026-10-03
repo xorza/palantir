@@ -46,6 +46,7 @@ pub struct TabsTheme {
     /// a fact about that application's surfaces, not about tabs.
     pub strip: Background,
     /// Inset between the band's edges and the chips.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub strip_padding: Spacing,
     /// Gutter between two chips.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
@@ -65,6 +66,7 @@ pub struct TabsTheme {
     /// [`SlotDefaults::padding`], which this bundle flattens: that one
     /// is the box default the strip node takes, this one is the chip's
     /// own inner inset.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub chip_padding: Spacing,
     /// Trailing inset a chip takes in place of [`Self::chip_padding`]'s
     /// right one whenever something sits after the label — a badge, a

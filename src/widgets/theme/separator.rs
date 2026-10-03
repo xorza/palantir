@@ -29,6 +29,7 @@ pub struct SeparatorTheme {
     /// vertical gutter instead — horizontal inset would leave a menu
     /// rule visibly short of the labels it divides, since it already
     /// spans only the panel's padded width.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
     pub margin: Spacing,
 }
 
