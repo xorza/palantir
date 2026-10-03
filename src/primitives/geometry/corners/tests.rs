@@ -1,5 +1,5 @@
 use crate::primitives::geometry::corners::*;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 
 #[test]

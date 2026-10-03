@@ -20,7 +20,7 @@ pub(crate) mod user_scale;
 use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use glam::{UVec2, Vec2};
 
 #[inline]
@@ -72,7 +72,7 @@ pub struct Display {
     /// to `wgpu::SurfaceConfiguration { width, height, .. }`.
     pub physical: UVec2,
     /// The device pixel ratio the platform reported (e.g. `2.0` on a 2×
-    /// retina display). Must be finite and at least `approx::EPS`; host
+    /// retina display). Must be finite and at least `domain::EPS`; host
     /// boundaries validate external values and `Ui::frame` checks the
     /// invariant on the product.
     ///

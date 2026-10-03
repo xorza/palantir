@@ -2,7 +2,7 @@
 //! corner radii and a shadow, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::shadow::Shadow;

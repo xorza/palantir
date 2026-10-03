@@ -20,7 +20,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -380,7 +380,7 @@ impl<'a> Scroll<'a> {
         let pan_raw = scroll.pan(line_px);
         // A theme with no line metric behind it contributes no notches,
         // rather than the enormous ones a floored divisor would report.
-        let notches_per_px = approx::share_of(1.0, line_px);
+        let notches_per_px = domain::share_of(1.0, line_px);
         let notches = scroll.lines + scroll.pixels * notches_per_px;
         // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
         // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
@@ -405,7 +405,7 @@ impl<'a> Scroll<'a> {
         let centre = response
             .layout_rect
             .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
-        let zoom_changed = !approx::approx_zero(zoom_delta.get() - 1.0);
+        let zoom_changed = !domain::approx_zero(zoom_delta.get() - 1.0);
         let pivot = zoom_changed
             .then(
                 || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {

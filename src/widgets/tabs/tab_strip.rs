@@ -13,7 +13,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::background::Background;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;

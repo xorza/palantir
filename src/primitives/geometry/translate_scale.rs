@@ -3,7 +3,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::approx::approx_zero;
+use crate::primitives::math::domain::approx_zero;
 use glam::Vec2;
 
 /// A 2D transform with uniform scale and translation — same shape as
@@ -250,7 +250,7 @@ impl Default for TranslateScale {
 mod tests {
     use super::*;
     use crate::internals::panic_probe;
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     /// A transform is the identity when its bits are, or when each part
     /// is within `EPS` of it. `-0.0` has other bits than `0.0`, so it

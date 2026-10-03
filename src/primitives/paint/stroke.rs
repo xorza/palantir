@@ -1,6 +1,6 @@
 //! A line's colour and width, as a border or as a path's stroke.
 
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_anim_derive::Animatable;

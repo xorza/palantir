@@ -2,7 +2,7 @@
 //! `ShapeRecord::Quad(QuadShape::Triangle)`.
 
 use crate::primitives::geometry::rect::aabb::Aabb;
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;

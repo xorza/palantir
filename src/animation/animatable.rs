@@ -6,7 +6,7 @@
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
 //! `palantir-anim-derive` and the type-erased `AnimMap` storage.
 
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use glam::Vec2;
 
 /// Math-only trait. Storage is decoupled (type-erased `AnimMap`

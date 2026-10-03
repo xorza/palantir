@@ -1,5 +1,5 @@
 use crate::primitives::geometry::arc;
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain::internals::assert_close;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 

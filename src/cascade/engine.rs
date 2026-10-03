@@ -21,8 +21,7 @@ use crate::layout::Layout;
 use crate::layout::layer_layout::LayerLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
@@ -554,9 +553,9 @@ pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
         | (u32::from(parent.invisible) << 2);
     let packed = CascadePrefixBits {
         transform: [
-            approx::canon_bits(parent.transform.translation.x),
-            approx::canon_bits(parent.transform.translation.y),
-            approx::canon_bits(parent.transform.scale - 1.0),
+            float_hash::canon_bits(parent.transform.translation.x),
+            float_hash::canon_bits(parent.transform.translation.y),
+            float_hash::canon_bits(parent.transform.scale - 1.0),
             flags,
         ],
         clip,

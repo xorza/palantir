@@ -3,7 +3,7 @@
 use crate::Ui;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;

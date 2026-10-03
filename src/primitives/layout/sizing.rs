@@ -2,9 +2,9 @@
 //! left, or whatever its content needs.
 
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
-use crate::primitives::math::num::{F32Ext, Num};
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::{self, FloatHash};
+use crate::primitives::math::num::Num;
 use glam::BVec2;
 use std::fmt;
 use std::hash;
@@ -121,13 +121,13 @@ impl Sizing {
     /// weights and arrange resolves it against whatever width lands.
     ///
     /// **Total over every `f32`** — see [`Sizing`]'s own doc for why this
-    /// one is. `fraction` goes through `F32Ext::unit_fraction_or`, so an
+    /// one is. `fraction` goes through `domain::fraction`, so an
     /// endpoint collapses one share to a zero-extent `Fixed` rather than
     /// tripping [`Self::share`]'s non-negative assert, and a fraction that
     /// names no share — a `0 / 0` progress ratio, an unseeded slider
     /// value — reads as empty instead of reaching that assert with a NaN.
     pub fn split(fraction: f32) -> [Self; 2] {
-        let f = fraction.unit_fraction_or(0.0);
+        let f = domain::fraction(fraction);
         [Self::share(f), Self::share(1.0 - f)]
     }
 
@@ -175,12 +175,12 @@ impl Sizing {
 impl FloatHash for Sizing {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, h: &mut H) {
-        self.hash_bits(h, approx::eq_bits);
+        self.hash_bits(h, float_hash::eq_bits);
     }
 
     #[inline]
     fn hash_visual<H: hash::Hasher>(&self, h: &mut H) {
-        self.hash_bits(h, approx::canon_bits);
+        self.hash_bits(h, float_hash::canon_bits);
     }
 }
 
@@ -233,7 +233,7 @@ const HUG_BITS: u32 = f32::INFINITY.to_bits();
 #[inline]
 const fn encode_sizing(s: Sizing) -> u32 {
     match s.0 {
-        SizingValue::Fixed(value) => approx::eq_bits(value),
+        SizingValue::Fixed(value) => float_hash::eq_bits(value),
         SizingValue::Hug => HUG_BITS,
         SizingValue::Fill(weight) => (-weight).to_bits(),
     }

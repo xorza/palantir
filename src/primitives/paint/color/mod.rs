@@ -19,8 +19,8 @@ pub(crate) mod rgba_f16;
 mod srgb_transfer;
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -141,7 +141,7 @@ impl RgbaF32 {
         // Alpha decides visibility; the colour channels are screened
         // for NaN only. See `RgbaF16::is_noop` for why a NaN in a
         // non-alpha lane has to count as invisible.
-        approx::paints_nothing(self.a) || self.has_nan()
+        domain::paints_nothing(self.a) || self.has_nan()
     }
 
     /// True if any channel is NaN. `const`, so [`Self::is_noop`] can

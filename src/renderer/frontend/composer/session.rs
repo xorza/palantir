@@ -8,7 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::math::approx::{EPS, paints_nothing};
+use crate::primitives::math::domain::{EPS, paints_nothing};
 use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;

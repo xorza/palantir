@@ -67,7 +67,7 @@ pub trait GradientGeometry {
 
     /// Fold the geometry into a cache key.
     ///
-    /// f32 fields go through `approx::canon_bits`, so `-0.0` / `+0.0` and
+    /// f32 fields go through `float_hash::canon_bits`, so `-0.0` / `+0.0` and
     /// NaN bit patterns don't fragment command-buffer dedup.
     fn hash_geometry<H: hash::Hasher>(&self, state: &mut H);
 

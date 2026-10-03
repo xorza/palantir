@@ -1,12 +1,11 @@
 # Public API surface
 
 Every item the crate exports with the default features plus `golden`, from rustdoc JSON
-(`cargo +nightly rustdoc --lib --features golden,winit -- -Z unstable-options --output-format json`).
-Each type lists its public inherent methods and associated constants, and the traits it implements.
-`internals` and `bench` are left out: they exist for this crate's own tests and benches.
+(`python3 scripts/api_surface.py`). Each type lists its public inherent methods and
+associated constants, and the traits it implements. `internals` and `bench` are left out:
+they exist for this crate's own tests and benches.
 
-A snapshot of `59b93e30`. Findings and
-recommendations are in `API_CHANGES.md`.
+Generated on top of `96e65669`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -56,14 +55,48 @@ struct           widget::MeshVertex
 struct           widget::Sums
     fields: horizontal, vertical
     traits: Clone, Copy, Debug
-module           widget::approx
-constant         widget::approx::EPS
-function         widget::approx::approx_zero
-function         widget::approx::paints_nothing
-function         widget::approx::share_of
-function         widget::approx::vec2_approx_eq
-trait            widget::F32Ext
-    items: band_fraction, unit_fraction_or, themed_length
+module           widget::domain
+module           widget::domain::vec2
+function         widget::domain::vec2::approx_eq(a, b)
+function         widget::domain::vec2::band_fraction(pos, extent, band)
+function         widget::domain::vec2::fraction_or(v, fallback)
+function         widget::domain::vec2::length_at_least(v, min)
+function         widget::domain::vec2::is_offset(v)
+function         widget::domain::vec2::offset(v)
+function         widget::domain::vec2::is_length(v)
+function         widget::domain::vec2::length(v)
+constant         widget::domain::EPS
+function         widget::domain::approx_zero(v)
+function         widget::domain::approx_eq(a, b)
+function         widget::domain::paints_nothing(v)
+function         widget::domain::share_of(n, d)
+function         widget::domain::band_fraction(pos, extent, band)
+function         widget::domain::is_offset(v)
+function         widget::domain::offset(v)
+function         widget::domain::is_length(v)
+function         widget::domain::length(v)
+function         widget::domain::is_extent(v)
+function         widget::domain::extent(v)
+function         widget::domain::is_gap(v)
+function         widget::domain::gap(v)
+function         widget::domain::is_positive(v)
+function         widget::domain::positive(v)
+function         widget::domain::is_angle(v)
+function         widget::domain::angle(v)
+function         widget::domain::is_color(c)
+function         widget::domain::color(c)
+function         widget::domain::is_count(n)
+function         widget::domain::count(n)
+function         widget::domain::is_power_of_two_in(n, max)
+function         widget::domain::power_of_two_in(n, max)
+function         widget::domain::is_range(r)
+function         widget::domain::range(r)
+function         widget::domain::is_fraction(v)
+function         widget::domain::fraction(v)
+function         widget::domain::fraction_or(v, fallback)
+function         widget::domain::turn(v)
+function         widget::domain::index(i, len)
+function         widget::domain::length_at_least(v, min)
 enum             widget::ContentType
     variants: Mask, Color
     traits: Clone, Copy, Debug, Eq, PartialEq, StructuralPartialEq
@@ -71,9 +104,9 @@ struct           widget::RasterImage
     fields: content, size, bearing, data
     traits: Clone, Copy, Debug
 module           widget::curves
-function         widget::curves::linear
-function         widget::curves::square
-function         widget::curves::sine
+function         widget::curves::linear(t)
+function         widget::curves::square(t)
+function         widget::curves::sine(t)
 struct           widget::PaintAnim
     fields: channel, timing, curve
     fn alpha(from, to)

@@ -2,7 +2,7 @@
 //! on either half reports.
 
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -83,9 +83,9 @@ impl<'a> Checkbox<'a> {
 
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.checkbox);
-        let box_size = slot.box_size.themed_length(1.0);
+        let box_size = domain::length_at_least(slot.box_size, 1.0);
         let indicator = slot.indicator;
-        let indicator_stroke = slot.indicator_stroke.themed_length(0.0);
+        let indicator_stroke = domain::length_at_least(slot.indicator_stroke, 0.0);
         let check = slot.check_polyline();
         let chrome = ToggleChrome {
             plan: slot.plan(&response, checked, theme.text),

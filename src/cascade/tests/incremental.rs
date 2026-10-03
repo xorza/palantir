@@ -28,7 +28,7 @@ use glam::Vec2;
 
 #[test]
 fn cascade_input_hash_collapses_visual_zero_noise() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     assert_eq!(size_of::<CascadePrefixBits>(), 32);
     let hash = |transform, rect| {

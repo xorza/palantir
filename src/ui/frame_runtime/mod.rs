@@ -9,7 +9,7 @@ pub(crate) mod wake;
 use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::text::shaper::TextShaper;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};

@@ -4,7 +4,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -126,10 +126,10 @@ impl<'a> ColorStrip<'a> {
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let themed = Size::new(
-            theme.field_width.themed_length(1.0),
-            theme.bar_thickness.themed_length(1.0),
+            domain::length_at_least(theme.field_width, 1.0),
+            domain::length_at_least(theme.bar_thickness, 1.0),
         );
-        let handle_width = theme.handle_width.themed_length(0.0);
+        let handle_width = domain::length_at_least(theme.handle_width, 0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
         let checker = Checkerboard::new(theme);

@@ -277,7 +277,7 @@ fn arrows_home_and_end_travel_and_wrap() {
 /// inside the band's clip — the band's rect deflated by its padding.
 #[test]
 fn a_keyboard_move_pans_the_band_to_the_chip() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     let record = |h: &mut UiHarness, selected: usize| {
         h.frame_value(|ui| {

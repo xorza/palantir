@@ -1,7 +1,7 @@
 use crate::common::span::Span;
 use crate::internals::panic_probe;
 use crate::primitives::layout::track::{GridDef, Track};
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 

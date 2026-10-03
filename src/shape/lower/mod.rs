@@ -23,8 +23,7 @@ use crate::primitives::geometry::bezier;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -302,7 +301,7 @@ pub(crate) fn polyline(
         point.hash_visual(&mut h);
     }
     h.pod_slice(lowered_colors);
-    let style = u64::from(approx::canon_bits(stroke.width)) << 24
+    let style = u64::from(float_hash::canon_bits(stroke.width)) << 24
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
         | (join as u64);

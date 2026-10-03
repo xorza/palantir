@@ -3,7 +3,7 @@
 
 use crate::common::hash;
 use crate::primitives::layout::align::HAlign;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::text::RENDERED_RUN_KEEP_SPREAD_MASK;
 use crate::text::font_family::FontFamily;

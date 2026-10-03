@@ -3,7 +3,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
-use crate::primitives::math::num::{F32Ext, F32Px, Vec2Ext, unit_to_u8};
+use crate::primitives::math::num::{F32Px, Vec2Ext, unit_to_u8};
 use glam::Vec2;
 
 #[test]
@@ -180,74 +180,5 @@ fn unit_to_u8_saturates_instead_of_wrapping() {
 fn unit_to_u8_round_trips_every_byte() {
     for b in 0..=u8::MAX {
         assert_eq!(unit_to_u8(f32::from(b) / 255.0), b, "byte {b}");
-    }
-}
-
-/// A 20 px band on a 120 px track leaves 100 px of travel, offset by
-/// 10 px at each end: 10 → 0.0, 60 → 0.5, 110 → 1.0. Outside the track
-/// the share runs past 0..1, which is the caller's to pin.
-#[test]
-fn band_fraction_offsets_by_half_the_band() {
-    let cases: &[(f32, f32)] = &[
-        (10.0, 0.0),
-        (35.0, 0.25),
-        (60.0, 0.5),
-        (110.0, 1.0),
-        (0.0, -0.1),
-        (120.0, 1.1),
-    ];
-    for &(pos, want) in cases {
-        let got = pos.band_fraction(120.0, 20.0);
-        assert_eq!(got, want, "band_fraction({pos}) = {got}, want {want}");
-    }
-    // Per component on a point: each axis is the scalar answer over its
-    // own extent and band, so a 60 on the 120 track beside a 20 on a 40
-    // track with a 10 band (30 px of travel from 5) reads (0.5, 0.5).
-    let point = Vec2::new(60.0, 20.0).band_fraction(Vec2::new(120.0, 40.0), Vec2::new(20.0, 10.0));
-    assert_eq!(point, Vec2::splat(0.5), "{point}");
-}
-
-/// A band at least as wide as its track leaves no travel, so there is no
-/// share to report.
-#[test]
-fn band_fraction_reports_zero_without_travel() {
-    assert_eq!(15.0_f32.band_fraction(20.0, 20.0), 0.0);
-    assert_eq!(15.0_f32.band_fraction(10.0, 20.0), 0.0);
-}
-
-/// The screen every caller-supplied share passes: in-range values are
-/// untouched, out-of-range ones clamp to the end they overshot, and a
-/// value that names no share at all takes the caller's neutral rather
-/// than an end.
-///
-/// The infinities matter as much as NaN — `f32::clamp` maps them to an
-/// end, which states a share the caller never meant.
-#[test]
-fn unit_fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
-    let cases: &[(f32, f32, f32)] = &[
-        (0.0, 0.5, 0.0),
-        (0.25, 0.5, 0.25),
-        (1.0, 0.5, 1.0),
-        (-0.3, 0.5, 0.0),
-        (1.7, 0.5, 1.0),
-        (f32::NAN, 0.5, 0.5),
-        (f32::INFINITY, 0.5, 0.5),
-        (f32::NEG_INFINITY, 0.5, 0.5),
-        // The neutral is the caller's: the same non-finite input reads
-        // as empty for a progress bar and as centred for a splitter.
-        (f32::NAN, 0.0, 0.0),
-        (f32::INFINITY, 1.0, 1.0),
-    ];
-    assert_eq!(
-        Vec2::new(1.7, f32::NAN).unit_fraction_or(Vec2::new(0.5, 0.25)),
-        Vec2::new(1.0, 0.25),
-        "each component clamps or falls back on its own",
-    );
-    for &(value, fallback, want) in cases {
-        assert_eq!(
-            value.unit_fraction_or(fallback),
-            want,
-            "unit_fraction_or({value}, {fallback})",
-        );
     }
 }

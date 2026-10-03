@@ -3,8 +3,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::text::text_input::TextInput;
 use crate::ui::Ui;
@@ -77,8 +76,8 @@ impl<'a> Switch<'a> {
 
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.switch);
-        let track_h = slot.box_size.themed_length(1.0);
-        let inset = slot.indicator_inset.themed_length(0.0);
+        let track_h = domain::length_at_least(slot.box_size, 1.0);
+        let inset = domain::length_at_least(slot.indicator_inset, 0.0);
         let aspect = slot.track_aspect;
         let knob_color = slot.indicator;
         let anim = slot.defaults.anim;
@@ -106,7 +105,7 @@ impl<'a> Switch<'a> {
             // theme: the border animates between the on and off looks,
             // and a mid-transition knob has to track it.
             let border = track.border.width;
-            let border_inset = if approx::paints_nothing(border) {
+            let border_inset = if domain::paints_nothing(border) {
                 0.0
             } else {
                 border

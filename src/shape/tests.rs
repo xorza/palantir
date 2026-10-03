@@ -170,7 +170,7 @@ fn typed_builders_set_the_fields_they_name() {
 
 #[test]
 fn text_noop_rejects_invalid_metrics() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     let mut store = RecordStore::default();
     let cases = [

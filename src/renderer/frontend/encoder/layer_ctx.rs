@@ -12,7 +12,7 @@ use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;

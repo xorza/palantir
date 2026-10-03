@@ -48,7 +48,7 @@ use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;

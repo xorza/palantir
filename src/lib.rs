@@ -294,8 +294,7 @@ pub mod widget {
     pub use crate::common::span::Span;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     pub use crate::primitives::geometry::spacing::Sums;
-    pub use crate::primitives::math::approx;
-    pub use crate::primitives::math::num::F32Ext;
+    pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
     /// The paint-time animation curves the crate ships. A caller's own curve

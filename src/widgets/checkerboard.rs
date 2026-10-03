@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
@@ -31,12 +31,15 @@ pub(crate) struct Checkerboard {
 }
 
 impl Checkerboard {
-    pub(crate) fn new(theme: &ColorPickerTheme) -> Self {
+    pub(crate) const fn new(theme: &ColorPickerTheme) -> Self {
         Self {
             light: theme.checker_light,
             dark: theme.checker_dark,
-            cell: theme.checker_cell.themed_length(1.0),
-            border: Stroke::new(theme.border, theme.border_width.themed_length(0.0)),
+            cell: domain::length_at_least(theme.checker_cell, 1.0),
+            border: Stroke::new(
+                theme.border,
+                domain::length_at_least(theme.border_width, 0.0),
+            ),
         }
     }
 

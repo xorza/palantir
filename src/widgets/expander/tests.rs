@@ -9,7 +9,7 @@ use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain::internals::assert_close;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget_look::theme_slot::SlotDefaults;

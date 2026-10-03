@@ -8,7 +8,7 @@ use crate::animation::tests::support::{AnimUi, SLOT, linear_100ms, setup_anim_ui
 use crate::common::time::MAX_ANIM_DT;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;

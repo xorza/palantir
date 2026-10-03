@@ -1,6 +1,6 @@
 //! A lowered shape's stroke.
 
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::paints_nothing;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;

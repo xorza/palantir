@@ -120,7 +120,7 @@ fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
 #[test]
 fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
     use crate::primitives::geometry::size::Size;
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     let cases = [
         ("zero font", 0.0, 16.0),
@@ -163,7 +163,7 @@ fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
 
 #[test]
 fn identity_cache_rejects_invalid_metrics_before_dispatch() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
     let mut text = TextSystem::cosmic();
     let widget_id = WidgetId::from_hash("invalid metrics");
     let calls = text.shaper().measure_calls();
@@ -230,7 +230,7 @@ fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
 
 #[test]
 fn above_epsilon_metrics_survive_cache_key_canonicalization() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     let mut cosmic = CosmicMeasure::default();
     let key = cosmic.measure("x", shape(EPS * 2.0)).buffer_key();

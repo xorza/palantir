@@ -9,8 +9,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::math::approx;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -126,8 +125,8 @@ impl<'a> Splitter<'a> {
         let input = *self.ratio;
 
         let theme = self.style.unwrap_or(&ui.theme().splitter);
-        let grab_thickness = theme.grab_thickness.themed_length(1.0);
-        let rule_thickness = theme.rule_thickness.themed_length(0.0);
+        let grab_thickness = domain::length_at_least(theme.grab_thickness, 1.0);
+        let rule_thickness = domain::length_at_least(theme.rule_thickness, 0.0);
         let rule_color = theme.rule;
         let hovered_color = theme.hovered;
         let active_color = theme.active;
@@ -175,7 +174,7 @@ impl<'a> Splitter<'a> {
         *self.ratio = ratio;
         // Approximate, because a ratio re-derived from arranged extents
         // carries last-bit noise an exact compare would report every frame.
-        let changed = !approx::approx_zero(ratio - input);
+        let changed = !domain::approx_zero(ratio - input);
         let synced = synced_ratio.is_some();
         let committed =
             !response.disabled && (divider.left.drag.stopped() || (state.commit_on_sync && synced));
@@ -281,15 +280,15 @@ fn arranged_pane_ratio(
     let first_extent = axis.main(first.size);
     let second_extent = axis.main(second.size);
     let span = first_extent + second_extent;
-    (!approx::paints_nothing(span)).then(|| sanitize_ratio(first_extent / span))
+    (!domain::paints_nothing(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
 /// A caller-supplied ratio, made safe to use as a `Fill` weight. The
 /// same screen `Sizing::split` applies, under this widget's own neutral:
 /// a splitter with no ratio to honour opens centred, where a progress
 /// bar with none reads empty.
-fn sanitize_ratio(r: f32) -> f32 {
-    r.unit_fraction_or(0.5)
+const fn sanitize_ratio(r: f32) -> f32 {
+    domain::fraction_or(r, 0.5)
 }
 
 /// Map a container-local pointer coordinate on the split axis to the
@@ -300,14 +299,13 @@ fn sanitize_ratio(r: f32) -> f32 {
 /// extents pin to `0.5`.
 fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
     let span = extent - reserved;
-    if approx::paints_nothing(span) {
+    if domain::paints_nothing(span) {
         return 0.5;
     }
     // `floor <= 0.5` by construction, so the clamp can't invert even
     // when `2 * min_pane > span` — it collapses to the centre instead.
     let floor = (min_pane / span).min(0.5);
-    pos.band_fraction(extent, reserved)
-        .clamp(floor, 1.0 - floor)
+    domain::band_fraction(pos, extent, reserved).clamp(floor, 1.0 - floor)
 }
 
 #[cfg(test)]

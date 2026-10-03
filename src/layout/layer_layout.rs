@@ -54,7 +54,7 @@ impl LayerLayout {
     /// (`CascadeKey::new`): a cascade built against other rects is
     /// neither skipped nor repaired in place.
     ///
-    /// Hashed as raw bytes rather than through `approx`'s visual
+    /// Hashed as raw bytes rather than through `FloatHash`'s visual
     /// quantisation on purpose: this gates a *cache-validity* decision,
     /// so it must be at least as strict as the exact element-wise
     /// comparison it replaces. Quantising would let a sub-quantum

@@ -3,7 +3,7 @@
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
@@ -95,7 +95,7 @@ impl<'a> Separator<'a> {
     /// Record the rule. It senses nothing.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().separator);
-        let t = self.thickness.unwrap_or(theme.thickness).themed_length(0.0);
+        let t = domain::length_at_least(self.thickness.unwrap_or(theme.thickness), 0.0);
         let (default_size, stretch) = match self.axis {
             Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
             Axis::Y => ((Sizing::fixed(t), Sizing::HUG), Align::v(VAlign::Stretch)),
