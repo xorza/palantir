@@ -158,21 +158,6 @@ delta only when no row under the pointer pans y. Touches `Sense`, `Scroll`, `Tex
 a `Scroll::vertical()` scrolls the page; an overflowing tab strip pans on wheel x and Shift+wheel y
 (Linux) and passes wheel y to the page; a lone field with overflowing text pans on wheel y.
 
-## A23. A shared popup trigger
-
-**Findings.** REVIEW "Small widgets design": `ColorButton`'s `ChipState` and `ComboBox`'s
-`ComboState` are the same `{open}` row, and the block around them is the same in both: probe the
-flag, toggle on click, close when disabled, show `Popup::below(rect)`, close on `closed()`, write
-back only on a flip. REDESIGN D12 proposed a crate-internal `PopupTrigger`, but AGENTS.md lets a
-widget reach only the public API, so a shared helper has to be public.
-
-**Recommendation.** A public `PopupTrigger` beside `Popup`, spelled as A14 decided:
-`PopupTrigger::on(&snapshot)` attaches, and `show(ui, ..)` probes the open flag, toggles it on a
-click, closes it when the trigger is disabled, records the `Popup` below the trigger, and writes
-the flag back only on a flip; `open()` answers and `close()` closes. Read `Popup` and
-`ContextMenu` first and match their shape. Touches `ColorButton`, `ComboBox` and any app that
-drops its own panel from a button.
-
 ## A25. Golden tolerance that bounds how far a pixel may differ
 
 **Findings.** TEST_REVIEW "The visual suite's tolerance and capture lose information":
@@ -402,9 +387,7 @@ Each line is one commit; none depends on another inside the phase.
 
 1. Done: one value response (A27).
 2. Done: wrappers (A39).
-3. **Overlays**, in this order: A14 with A51 (the attach verb; `Tooltip` takes its text in the
-   constructor), A41 (`Popup::at_point`), then A23 (`PopupTrigger`, in A14's argument order;
-   `ColorButton` and `ComboBox` move onto it).
+3. Done: overlays (A14 with A51, A41, A23).
 4. **Dock and tabs**: A11 (model and view split, ids move to `DockView`), then A12 (`TabbedView`
    keys).
 5. **Colour button** (A15), after phase 2 step 1 renamed `downsample`.

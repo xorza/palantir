@@ -501,6 +501,7 @@ pub use widgets::modal::Modal;
 pub use widgets::panel::Panel;
 pub use widgets::popup::Popup;
 pub use widgets::popup::click_outside::ClickOutside;
+pub use widgets::popup::popup_trigger::PopupTrigger;
 pub use widgets::progress_bar::ProgressBar;
 pub use widgets::radio::RadioButton;
 pub use widgets::scroll::Scroll;

@@ -1,6 +1,7 @@
 //! The anchored floating body: the widget and the press-outside policy.
 
 pub(crate) mod click_outside;
+pub(crate) mod popup_trigger;
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;

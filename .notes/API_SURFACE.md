@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `1cbf22e1`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `6e29a633`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -1423,6 +1423,15 @@ struct           Popup
 enum             ClickOutside
     variants: Block, Dismiss, PassThrough
     traits: Clone, Copy, Debug, Eq, PartialEq, StructuralPartialEq
+struct           PopupTrigger
+    fn on(snapshot)
+    const fn background(self, bg)
+    const fn default_background(self, bg)
+    fn show(self, ui, body)
+    fn open(ui, for_id)
+    fn close(ui, for_id)
+    fn is_open(ui, for_id)
+    traits: Configure, Debug
 struct           ProgressBar
     fn new(fraction)
     fn style(self, s)

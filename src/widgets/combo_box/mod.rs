@@ -12,22 +12,16 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
+use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::popup::Popup;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use std::rc::Rc;
-
-/// Open/closed flag for one combo site, keyed off the trigger id.
-#[derive(Default, Clone, Copy, Debug)]
-struct ComboState {
-    open: bool,
-}
 
 /// A dropdown selector: a button-styled trigger showing the current
 /// choice, which opens a [`crate::widgets::popup::Popup`] list of the
@@ -175,42 +169,26 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             });
         });
 
-        let trigger_rect = response.rect;
-        // Probed, not inserted: a combo box spends nearly every frame closed,
-        // and a closed one is the default — so an unopened trigger keeps no
-        // row at all, and the write-back below happens only on a real flip.
-        let was_open = ui.state::<ComboState>(id).is_some_and(|state| state.open);
-        let mut open = was_open;
-        let mut changed = false;
-        if response.clicked() {
-            open = !open;
-        }
-        // A disabled trigger closes its popup, as a native one does: the
-        // popup is a tree of its own, and would go on taking picks for a
-        // control that refuses them.
-        if response.disabled {
-            open = false;
-        }
-        // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
-        // separate Escape check here.
-
-        if open && let Some(rect) = trigger_rect {
-            let ctx = &theme.context_menu;
-            let options = self.options;
-            let label = self.label;
-            let selected = self.selected;
-            // The same menu theme `ContextMenu` fills its popup in from,
-            // so the two read as one control with two triggers. The one
-            // deliberate difference is the minimum: a dropdown is at
-            // least as wide as the trigger it drops from, which is an
-            // explicit set and so outranks `ContextMenuTheme::min_width`.
-            let popup = Popup::below(rect)
-                .id(id.with("list"))
-                .min_size((rect.size.w, 0.0))
-                .default_background(ctx.panel.clone())
-                .default_padding(ctx.padding)
-                .default_gap(ctx.gap);
-            let resp = popup.show(ui, |ui, popup| {
+        let ctx = &theme.context_menu;
+        let options = self.options;
+        let label = self.label;
+        let selected = self.selected;
+        let trigger = ResponseSnapshot {
+            id,
+            state: response,
+        };
+        // The same menu theme `ContextMenu` fills its popup in from, so the
+        // two read as one control with two triggers. The one deliberate
+        // difference is the minimum: a dropdown is at least as wide as the
+        // trigger it drops from, which is an explicit set and so outranks
+        // `ContextMenuTheme::min_width`. Esc closes through the popup.
+        let resp = PopupTrigger::on(&trigger)
+            .id(id.with("list"))
+            .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
+            .default_background(ctx.panel.clone())
+            .default_padding(ctx.padding)
+            .default_gap(ctx.gap)
+            .show(ui, |ui, popup| {
                 let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));
@@ -221,14 +199,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 }
                 picked
             });
-            changed = resp.inner;
-            if resp.closed() {
-                open = false;
-            }
-        }
-        if open != was_open {
-            ui.state_or_default::<ComboState>(id).open = open;
-        }
+        let changed = resp.inner.unwrap_or(false);
 
         ValueResponse {
             response: Response::eager(id, ui, response),
