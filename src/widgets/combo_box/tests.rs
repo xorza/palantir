@@ -9,8 +9,9 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
-use crate::widgets::combo_box::{ComboBox, ComboState};
+use crate::widgets::combo_box::ComboBox;
 use crate::widgets::panel::Panel;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
@@ -129,7 +130,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             });
     };
     h.frame(|ui| build(ui, &mut selected));
-    h.ui.state_or_default::<ComboState>(id).open = true;
+    PopupTrigger::open(&mut h.ui, id);
 
     assert_eq!(
         h.frame(|ui| build(ui, &mut selected)).processing,
@@ -292,7 +293,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
                 });
         };
         h.frame(|ui| build(ui, &mut selected));
-        h.ui.state_or_default::<ComboState>(id).open = true;
+        PopupTrigger::open(&mut h.ui, id);
         h.frame(|ui| build(ui, &mut selected));
         h.rect(id.with("list")).expect("combo list arranged").size.h
     };

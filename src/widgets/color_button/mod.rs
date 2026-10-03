@@ -11,12 +11,12 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
+use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::popup::Popup;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use std::rc::Rc;
 
@@ -39,12 +39,6 @@ pub struct ColorButton<'a> {
     model: Option<ColorModel>,
     history: bool,
     style: Option<&'a ColorPickerTheme>,
-}
-
-/// Open/closed flag for one trigger site, keyed off the trigger id.
-#[derive(Default, Clone, Copy, Debug)]
-struct ChipState {
-    open: bool,
 }
 
 impl<'a> ColorButton<'a> {
@@ -109,32 +103,19 @@ impl<'a> ColorButton<'a> {
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, shown, size));
 
-        // Probed, not inserted: a chip spends nearly every frame closed, and
-        // closed is the default — so an unopened trigger keeps no row at all.
-        let was_open = ui.state::<ChipState>(id).is_some_and(|state| state.open);
-        let mut open = was_open;
-        if response.clicked() {
-            open = !open;
-        }
-        // A disabled trigger closes its popup, as a native one does: the
-        // popup is a tree of its own, and would go on taking picks for a
-        // control that refuses them.
-        if response.disabled {
-            open = false;
-        }
-
-        let mut changed = false;
-        let mut committed = false;
-        if open && let Some(rect) = response.rect {
-            let alpha = self.alpha;
-            let model = self.model;
-            let history = self.history;
-            let style = self.style;
-            let popup = Popup::below(rect)
-                .id(id.with("panel"))
-                .background(slot.popup.clone())
-                .padding(slot.popup_padding);
-            let opened = popup.show(ui, |ui, _| {
+        let alpha = self.alpha;
+        let model = self.model;
+        let history = self.history;
+        let style = self.style;
+        let trigger = ResponseSnapshot {
+            id,
+            state: response,
+        };
+        let opened = PopupTrigger::on(&trigger)
+            .id(id.with("panel"))
+            .background(slot.popup.clone())
+            .padding(slot.popup_padding)
+            .show(ui, |ui, _| {
                 let mut picker = ColorPicker::new(color)
                     .alpha(alpha)
                     .history(history)
@@ -145,14 +126,7 @@ impl<'a> ColorButton<'a> {
                 let r = picker.id(id.with("picker")).show(ui);
                 (r.changed, r.committed)
             });
-            (changed, committed) = opened.inner;
-            if opened.closed() {
-                open = false;
-            }
-        }
-        if open != was_open {
-            ui.state_or_default::<ChipState>(id).open = open;
-        }
+        let (changed, committed) = opened.inner.unwrap_or_default();
 
         ValueResponse {
             response: Response::eager(id, ui, response),
