@@ -3,6 +3,7 @@ use crate::display::Display;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::composer::Composer;
@@ -237,6 +238,7 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw_text(
         DrawTextPayload {
             rect,
+            ink: Spacing::ZERO,
             color: RgbaF32::WHITE.into(),
             text: ShapedTextRef {
                 key: TextShapeKey::fixture(),

@@ -70,7 +70,9 @@ fn measure_truncated_width(
     width: f32,
 ) -> ShapedText {
     let request = UI_FACE.unbounded_request(text);
-    text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
+    text_system
+        .measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
+        .shaped
 }
 
 /// [`measure_truncated_width`] at a caller-chosen face, for the arm that
@@ -91,7 +93,9 @@ fn measure_truncated_face(
     shape.font.line_height_px = font_size_px * LEADING_RATIO;
     shape.font.weight = weight;
     let request = shape.unbounded_request(text);
-    text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
+    text_system
+        .measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
+        .shaped
 }
 
 /// One frame boundary as `FrameCycle::run` drives it: the reuse-row
@@ -359,7 +363,7 @@ fn bench_resize_drag(c: &mut Criterion, run: Run<'_>) {
         b.iter(|| {
             let measured = drag_frame(&mut text, &shaper, slot, step);
             step = step.wrapping_add(1);
-            black_box(measured.measured)
+            black_box(measured.extent.size)
         });
     });
     group.finish();
@@ -421,7 +425,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
             step = step.wrapping_add(1);
             let measured = measure_truncated_width(&mut text, slot, TEXT, width);
             frame_end(&mut text, &shaper);
-            black_box(measured.measured)
+            black_box(measured.extent.size)
         });
     });
 
@@ -454,7 +458,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
                 FontWeight::BOLD,
             );
             frame_end(&mut text, &shaper);
-            black_box((body.measured, head.measured))
+            black_box((body.extent.size, head.extent.size))
         });
     });
     group.finish();

@@ -816,20 +816,22 @@ impl PaintSink for ComposeSession<'_> {
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
         let phys_rect = world.scaled_by(scale, self.out.display.pixel_snap);
-        // What the glyphs can reach: the block from the origin they are
+        // What the glyphs can reach: their ink from the origin they are
         // placed at, at its true size — pixel snapping moves the origin,
         // never the glyphs' extent — padded by the scale-step fraction a
         // snapped text scale can add, the same pad the run's damage rect
-        // carries (`text_paint_bbox_local`). Covered, never rounded in, so
+        // carries (`inflate_text_damage`). Covered, never rounded in, so
         // the last column of antialiasing is not cut.
         let unclipped = {
-            let size = Vec2::new(world.size.w, world.size.h) * scale;
+            let inked = self
+                .composer
+                .transform
+                .apply_rect(t.rect.inflated_by(t.ink));
+            let lead = (world.min - inked.min) * scale;
+            let size = Vec2::new(inked.size.w, inked.size.h) * scale;
             let pad = size * (TEXT_SCALE_STEP * 0.5);
-            geometry::urect_from_phys(
-                phys_rect.min - pad,
-                phys_rect.min + size + pad,
-                self.out.display.physical,
-            )
+            let min = phys_rect.min - lead;
+            geometry::urect_from_phys(min - pad, min + size + pad, self.out.display.physical)
         };
         // `bounds` feeds the batch GPU scissor (union of the
         // batch's runs — see the strict-bounds rule below) and

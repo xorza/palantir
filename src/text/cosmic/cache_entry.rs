@@ -6,7 +6,7 @@
 //! which is where its module doc says why they belong together.
 
 use crate::common::expiry_wheel::TicketSeq;
-use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
 
@@ -61,7 +61,7 @@ pub(super) struct CacheEntry {
 /// apart is what stops a reader taking one for the other. An **unbounded**
 /// buffer is a run's [`TextRoot`]: an extent plus the wrapping floor and
 /// the single-line flag every wrap policy reasons from. A **bounded** one
-/// answers an extent and nothing else — it never scanned for a floor, and
+/// answers an extent and its ink, and nothing else — it never scanned for a floor, and
 /// its line count describes the resolve rather than the run. Storing the
 /// distinction rather than a `TextRoot` with two inert fields is what lets
 /// every reader take what it needs without knowing by convention which
@@ -73,15 +73,15 @@ pub(super) struct CacheEntry {
 #[derive(Clone, Copy, Debug)]
 pub(super) enum CachedExtent {
     Root(TextRoot),
-    Bounded(Size),
+    Bounded(TextExtent),
 }
 
 impl CachedExtent {
-    /// Extent of the shaped block — the one answer both kinds have.
-    pub(super) fn size(self) -> Size {
+    /// The shaped block and its ink — the one answer both kinds have.
+    pub(super) const fn extent(self) -> TextExtent {
         match self {
-            Self::Root(root) => root.size,
-            Self::Bounded(size) => size,
+            Self::Root(root) => root.extent,
+            Self::Bounded(extent) => extent,
         }
     }
 

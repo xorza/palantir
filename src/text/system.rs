@@ -31,10 +31,11 @@
 //! which is not a shape the engine produces; read it as an upper bound
 //! on dispatch cost, not as the layer's value.
 
+use crate::layout::measured::Measured;
 use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::align::HAlign;
-use crate::primitives::size::Size;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use crate::text::extent::TextExtent;
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
@@ -234,7 +235,7 @@ impl TextSystem {
         wrap_policy: TextWrap,
         halign: HAlign,
         available_width_px: Option<f32>,
-    ) -> ShapedText {
+    ) -> RunMeasure {
         debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
         if let Some(width) = available_width_px {
             debug_assert!(width.is_finite());
@@ -251,29 +252,54 @@ impl TextSystem {
         let shapes_buffers = *shapes_buffers;
         let entry = Self::refresh(entries, shaper, slot, request, wrap_policy.floor_scan());
 
-        let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
+        let Some(fit) = wrap_policy.line_fit() else {
             entry.release_bound(shaper);
-            return shaped(shapes_buffers, request.key, entry.root.size);
+            return RunMeasure {
+                shaped: shaped(shapes_buffers, request.key, entry.root.extent),
+                stable_from_w: 0.0,
+            };
+        };
+        let Some(width) = available_width_px else {
+            // Unbounded, a truncating fit keeps the root, as it would under
+            // every width the root fits; anything else would bind to one.
+            entry.release_bound(shaper);
+            let stable_from_w = if fit.resolves_to_unbounded(&entry.root, f32::INFINITY) {
+                entry.root.extent.size.w
+            } else {
+                Measured::AT_OFFER_ONLY
+            };
+            return RunMeasure {
+                shaped: shaped(shapes_buffers, request.key, entry.root.extent),
+                stable_from_w,
+            };
         };
         // The same decision the probe path makes, from the same function
         // — the root is already refreshed above, so the thunk is a read.
         let bound = match wrap_policy.commit(width, halign, fit, || entry.root) {
-            WrapCommit::Unbounded { size } => {
+            WrapCommit::Unbounded { extent } => {
                 entry.release_bound(shaper);
-                return shaped(shapes_buffers, request.key, size);
+                // The fit test is monotone in the width: it passes at every
+                // width past this one, and at every width past the root's.
+                return RunMeasure {
+                    shaped: shaped(shapes_buffers, request.key, extent),
+                    stable_from_w: extent.size.w.min(width),
+                };
             }
             WrapCommit::Bound(bound) => bound,
         };
-        let size = match entry.wrap.filter(|slot| slot.bound == bound) {
-            Some(slot) => slot.size,
+        let extent = match entry.wrap.filter(|slot| slot.bound == bound) {
+            Some(slot) => slot.extent,
             None => {
-                let size = shaper.resolve(request.with_bound(bound));
+                let extent = shaper.resolve(request.with_bound(bound));
                 entry.release_bound(shaper);
-                entry.wrap = Some(WrapSlot { bound, size });
-                size
+                entry.wrap = Some(WrapSlot { bound, extent });
+                extent
             }
         };
-        shaped(shapes_buffers, request.key.with_bound(bound), size)
+        RunMeasure {
+            shaped: shaped(shapes_buffers, request.key.with_bound(bound), extent),
+            stable_from_w: Measured::AT_OFFER_ONLY,
+        }
     }
 
     /// Reuse row for `slot`, reshaped if it answers a different run.
@@ -321,11 +347,24 @@ impl TextSystem {
 /// mid-way through a split borrow of [`TextSystem`] and holds the flag by
 /// value already.
 #[inline]
-fn shaped(shapes_buffers: bool, key: TextShapeKey, measured: Size) -> ShapedText {
+fn shaped(shapes_buffers: bool, key: TextShapeKey, extent: TextExtent) -> ShapedText {
     ShapedText {
-        measured,
+        extent,
         key: shapes_buffers.then_some(key),
     }
+}
+
+/// What [`TextSystem::measure`] answers: the run, and the committed
+/// widths it answers the same under.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RunMeasure {
+    pub(crate) shaped: ShapedText,
+    /// The least finite width from which `shaped` is the answer — zero for
+    /// a policy that never binds to a width, the root's width (or the
+    /// offer, if less) for a truncating fit its text fits, and
+    /// [`Measured::AT_OFFER_ONLY`] for a run bound to its width, whose
+    /// shape is keyed on it even where its lines fit.
+    pub(crate) stable_from_w: f32,
 }
 
 /// Cached natural shape plus the most recent width-bounded resolve.
@@ -377,7 +416,7 @@ impl TextReuseEntry {
 #[derive(Clone, Copy, Debug)]
 struct WrapSlot {
     bound: WrapBound,
-    size: Size,
+    extent: TextExtent,
 }
 
 #[cfg(test)]
@@ -421,8 +460,8 @@ pub(crate) mod internals {
             let root = self.root(slot, request, wrap_policy);
             let shaped = self.measure(slot, request, wrap_policy, shape.halign, shape.max_width_px);
             TestMeasure {
-                size: shaped.measured,
-                key: shaped.key,
+                size: shaped.shaped.extent.size,
+                key: shaped.shaped.key,
                 intrinsic_min: root.intrinsic_min,
             }
         }

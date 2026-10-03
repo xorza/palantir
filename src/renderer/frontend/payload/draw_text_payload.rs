@@ -2,11 +2,16 @@
 
 use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
+use crate::primitives::spacing::Spacing;
 use crate::text::shaped_ref::ShapedTextRef;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawTextPayload {
+    /// The measured block, which places the glyphs.
     pub(crate) rect: Rect,
+    /// How far the glyphs' ink reaches past `rect`, in its units — what
+    /// the run's scissor covers beyond it.
+    pub(crate) ink: Spacing,
     pub(crate) color: RgbaF16,
     pub(crate) text: ShapedTextRef,
 }

@@ -225,12 +225,13 @@ impl LayerCtx<'_, '_> {
                     *align,
                     self.tree.records.layout()[id.idx()].padding,
                     owner_rect.size,
-                    shaped.measured,
+                    shaped.extent.size,
                 );
                 let rect = geometry::resolve_local_rect(owner_rect, Some(local));
                 out.draw_text(
                     DrawTextPayload {
                         rect,
+                        ink: shaped.extent.ink,
                         color: *color,
                         text: ShapedTextRef::new(key, text),
                     },

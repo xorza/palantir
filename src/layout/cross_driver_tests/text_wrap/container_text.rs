@@ -37,7 +37,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let span = layout.text_spans[scene.container.idx()];
     assert_eq!(span.len, 1, "container owns one direct text run");
     let shaped = layout.text_shapes[span.start as usize];
-    assert_eq!(shaped.measured, Size::new(73.0, 80.0));
+    assert_eq!(shaped.extent.size, Size::new(73.0, 80.0));
 
     let draw_keys: Vec<_> = h
         .encode_paint()
@@ -86,7 +86,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     let span = visible_layout.text_spans[visible_node.idx()];
     assert_eq!(span.len, 1);
     assert_eq!(
-        visible_layout.text_shapes[span.start as usize].measured,
+        visible_layout.text_shapes[span.start as usize].extent.size,
         Size::new(73.0, 80.0),
     );
 

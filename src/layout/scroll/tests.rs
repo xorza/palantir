@@ -232,30 +232,59 @@ fn hug_scroll_clamps_viewport_to_content() {
 /// A `Hug` scroll under a fixed 100 px parent takes the parent's bound
 /// as its viewport, while its 8 × 50 = 400 of content keeps its natural
 /// extent and overflows.
+///
+/// One Hug stack further in, below a fixed 30 px header, the stack
+/// shrinks too: a scroll's floor on its panned axis is zero, so the Hug
+/// stack around it takes the parent's 100 rather than the 30 + 400 its
+/// content wants.
 #[test]
 fn hug_scroll_viewport_follows_parent_cap() {
+    let scroll = |ui: &mut Ui| {
+        Scroll::vertical()
+            .id(WidgetId::from_hash("parent-capped-scroll"))
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                for i in 0..8u32 {
+                    Block::new()
+                        .id(WidgetId::from_hash(("parent-capped-row", i)))
+                        .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
+                        .show(ui);
+                }
+            });
+    };
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("parent-capped-scroll"))
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        for i in 0..8u32 {
-                            Block::new()
-                                .id(WidgetId::from_hash(("parent-capped-row", i)))
-                                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
-                                .show(ui);
-                        }
-                    });
-            });
+            .show(ui, scroll);
     });
     let st = layout_for(&h.ui, "parent-capped-scroll");
     assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
     assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
+
+    h.frame(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("hug-around-scroll"))
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Block::new()
+                            .auto_id()
+                            .size((Sizing::fixed(120.0), Sizing::fixed(30.0)))
+                            .show(ui);
+                        scroll(ui);
+                    });
+            });
+    });
+    assert_eq!(
+        h.arranged(WidgetId::from_hash("hug-around-scroll")).size.h,
+        100.0,
+        "the Hug stack shrinks to the parent cap",
+    );
 }
 
 /// Counterpart guard: a `Fill` scroll keeps the content-independent

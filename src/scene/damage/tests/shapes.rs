@@ -806,6 +806,71 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     );
 }
 
+/// A run's damage covers its glyphs' ink, not only the block that places
+/// them: an italic `f` reaches past its advance on both sides, and that
+/// coverage has to be repainted when the run changes. The row is the
+/// block grown by the ink the shaper measured, then padded by the
+/// composer's scale-step fraction of that inked extent, as
+/// `inflate_text_damage` pads it. The run's draw carries the same ink,
+/// which is what its scissor covers.
+#[test]
+fn a_text_run_damages_its_ink_past_the_block() {
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_slant::FontSlant;
+    use crate::text::wrap::TextWrap;
+    use crate::widgets::widget::Widget;
+
+    let mut h = UiHarness::with_text(DISPLAY.physical);
+    const FONT: f32 = 64.0;
+    const ORIGIN: Vec2 = Vec2::new(20.0, 10.0);
+    let leaf_id = WidgetId::from_hash("text-host");
+    frame(&mut h, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                Widget::leaf().id(leaf_id).record(ui, None, |ui| {
+                    let text = ui.intern("f");
+                    ui.add_shape(
+                        Shape::text(
+                            text,
+                            GlyphFont {
+                                line_height_px: FONT,
+                                slant: FontSlant::Italic,
+                                ..GlyphFont::new(FONT)
+                            },
+                        )
+                        .at_origin(ORIGIN)
+                        .color(RgbaF32::WHITE)
+                        .wrap(TextWrap::SingleLine)
+                        .family(FontFamily::SANS),
+                    );
+                });
+            });
+    });
+
+    let shaped = h.ui.layout(Layer::Main).text_shapes[0];
+    let [left, top, right, bottom] = shaped.extent.ink.as_array();
+    assert!(
+        left > 0.0 && right > 0.0,
+        "the italic f reaches past both sides: {shaped:?}"
+    );
+    let inked = Size::new(
+        shaped.extent.size.w + left + right,
+        shaped.extent.size.h + top + bottom,
+    );
+    let pad = Vec2::new(inked.w, inked.h) * (TEXT_SCALE_STEP * 0.5);
+    assert_eq!(
+        h.engines.damage.prev_paint_rows(leaf_id)[0].screen,
+        Rect {
+            min: ORIGIN - Vec2::new(left, top) - pad,
+            size: Size::new(inked.w + 2.0 * pad.x, inked.h + 2.0 * pad.y),
+        },
+    );
+    let paint = h.encode_paint();
+    assert_eq!(paint.calls[0].as_text().unwrap().ink, shaped.extent.ink);
+}
+
 /// Pin: a visibility flip landing on the SAME frame as a paint-row
 /// change must still damage the exact-matched rows. The union push for
 /// a `cascade_input` change used to be gated on "every row matched",

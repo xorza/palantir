@@ -28,6 +28,7 @@ use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::layout_scratch::NO_ARRANGE_SRC;
+use crate::layout::measured::Measured;
 use crate::layout::stack::StackScratch;
 use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
@@ -40,7 +41,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use crate::text::system::TextRunSlot;
+use crate::text::system::{RunMeasure, TextRunSlot};
 use glam::Vec2;
 
 /// One layer's measure/arrange walk: the engine it mutates, the tree it
@@ -105,18 +106,29 @@ impl<'a> LayoutPass<'a> {
         node: NodeId,
         inner_avail: Size,
         mut offset: impl FnMut(&Tree, NodeId) -> Vec2,
-    ) -> Size {
+    ) -> Measured {
         let tree = self.tree;
         let hug = tree.records.layout()[node.idx()].size.hug_mask();
-        let mut max = Size::ZERO;
+        // The child holds while the room past its position stays past its
+        // range, so the range moves out by the position too.
+        let room_from = |from: f32, offset: f32| if from > 0.0 { from + offset } else { 0.0 };
+        let mut max = Measured::ZERO;
         for c in tree.active_children(node) {
             let at = offset(tree, c);
             // Both kinds of axis offer the room past the child's position;
             // a hug axis then grows to cover where the child was put, and a
-            // bounded one reports the child's extent alone.
-            let d = self.measure(c, inner_avail.room_past(at));
-            let past = Size::new(at.x + d.w, at.y + d.h);
-            max = max.max(past.select(hug, d));
+            // bounded one reports the child's extent alone. The floor
+            // follows the extent.
+            let child = self.measure(c, inner_avail.room_past(at));
+            let covered = |d: Size| Size::new(at.x + d.w, at.y + d.h).select(hug, d);
+            max = Measured {
+                size: max.size.max(covered(child.size)),
+                floor: max.floor.max(covered(child.floor)),
+                stable_from: max.stable_from.max(Size::new(
+                    room_from(child.stable_from.w, at.x),
+                    room_from(child.stable_from.h, at.y),
+                )),
+            };
         }
         max
     }
@@ -242,8 +254,9 @@ impl LayoutPass<'_> {
 impl LayoutPass<'_> {
     /// Bottom-up measure dispatcher. Drivers call back here to recurse.
     /// Stores the resolved size for each visited node, which `arrange`
-    /// then reads through [`Self::desired`].
-    pub(super) fn measure(&mut self, node: NodeId, available: Size) -> Size {
+    /// then reads through [`Self::desired`], and its floor, which the
+    /// cache keeps for the subtree's next hit.
+    pub(super) fn measure(&mut self, node: NodeId, available: Size) -> Measured {
         let tree = self.tree;
         let layout = tree.records.layout()[node.idx()];
         let available_q = MeasureCache::available_key(available);
@@ -255,24 +268,26 @@ impl LayoutPass<'_> {
         // `LayoutEngine::run`, whose runs are paint-only.
         if layout.meta.visibility().is_collapsed() {
             self.engine.scratch.desired[node.idx()] = Size::ZERO;
-            return Size::ZERO;
+            self.engine.scratch.floor[node.idx()] = Size::ZERO;
+            self.engine.scratch.stable_from[node.idx()] = Size::ZERO;
+            return Measured::ZERO;
         }
 
         // Phase-2 measure-cache short-circuit: any non-leaf node. Same
-        // `WidgetId`, same rolled subtree hash, same quantized
-        // `available` → restore the *whole subtree*'s `desired` and
-        // text shapes from last frame's snapshot and skip recursion
-        // entirely. The subtree-hash rollup guarantees structural and
-        // authoring equivalence; `available_q` guards against parent
-        // resize since outer-leaf measure is `available`-dependent
-        // for `Hug` / `Fill` axes.
+        // `WidgetId`, same rolled subtree hash, and an `available` the
+        // last measure holds under → restore the *whole subtree*'s
+        // `desired` and text shapes from last frame's snapshot and skip
+        // recursion entirely. The subtree-hash rollup guarantees
+        // structural and authoring equivalence; the offer check guards
+        // against a parent resize, since a `Hug` or `Fill` axis can read
+        // its offer.
         if LayoutMode::from(layout.meta) != LayoutMode::Leaf {
             let cache_wid = tree.records.widget_id()[node.idx()];
             let cache_hash = tree.rollups.layout_subtree[node.idx()];
-            if let Some(hit) = self
-                .engine
-                .cache
-                .try_lookup(cache_wid, cache_hash, available_q)
+            if let Some(hit) =
+                self.engine
+                    .cache
+                    .try_lookup(cache_wid, cache_hash, available, available_q)
             {
                 self.engine.scratch.counters.cache_hit(cache_wid);
                 let curr_start = node.idx();
@@ -297,6 +312,11 @@ impl LayoutPass<'_> {
                     &hit,
                     self.out,
                 );
+                // The root is recorded under this offer, which its measure
+                // holds at, rather than the one restored with its subtree:
+                // a root slot keyed on a stale offer fails
+                // `MeasureCache::matches_forest` and rebuilds every frame.
+                self.engine.scratch.available_q[curr_start] = available_q;
                 return hit.root;
             }
         }
@@ -310,10 +330,11 @@ impl LayoutPass<'_> {
         );
 
         // Derive `inner_avail`, dispatch to the driver, fold its raw
-        // content into a margin-inclusive `desired`. `AxisSlot::resolve_node`
-        // contains the rationale for each step (intrinsic_min floor,
-        // outer clamp to `[min, max]`, single-dispatch monotonicity).
-        let desired = AxisSlot::resolve_node(
+        // content and floor into a margin-inclusive `desired` and floor.
+        // `AxisSlot::resolve_node` contains the rationale for each step
+        // (the floors, outer clamp to `[min, max]`, single-dispatch
+        // monotonicity).
+        let measured = AxisSlot::resolve_node(
             layout,
             available,
             intrinsic_min,
@@ -322,14 +343,16 @@ impl LayoutPass<'_> {
             |inner_avail| self.measure_dispatch(node, layout, inner_avail),
         );
 
-        self.engine.scratch.desired[node.idx()] = desired;
+        self.engine.scratch.desired[node.idx()] = measured.size;
+        self.engine.scratch.floor[node.idx()] = measured.floor;
+        self.engine.scratch.stable_from[node.idx()] = measured.stable_from;
 
-        desired
+        measured
     }
 
     /// Dispatch one driver measure for `node` against the
     /// already-derived `inner_avail`; returns the driver's raw content
-    /// size. Called exactly once per `measure` (single dispatch — see
+    /// size and floor. Called exactly once per `measure` (single dispatch — see
     /// `AxisSlot::resolve_node` for why no re-measure is needed when a Fill
     /// axis grows past `available`); the caller folds content into a
     /// margin-inclusive `desired` via `AxisSlot::resolve`.
@@ -337,7 +360,12 @@ impl LayoutPass<'_> {
     /// The contract every driver answers to is [`LayoutDriver`]; the
     /// match that picks one is `DriverOp::dispatch`, shared with
     /// [`Self::arrange`] and `IntrinsicQuery::walk`.
-    fn measure_dispatch(&mut self, node: NodeId, layout: LayoutCore, inner_avail: Size) -> Size {
+    fn measure_dispatch(
+        &mut self,
+        node: NodeId,
+        layout: LayoutCore,
+        inner_avail: Size,
+    ) -> Measured {
         MeasureOp {
             pass: self,
             node,
@@ -445,20 +473,25 @@ impl LayoutPass<'_> {
     }
 
     /// Shape every text run `runs` yields for `node`, append them to the
-    /// frame's flat buffer, and stamp the covering span. Returns the
-    /// largest run's content size — a leaf's text contribution.
+    /// frame's flat buffer, and stamp the covering span. Returns the runs'
+    /// contribution to a leaf: the largest run's content size, its height
+    /// as the floor — the lines the text wrapped to at this width do not
+    /// shrink — and the widths every run answers the same under. No
+    /// offer of height reaches text.
     pub(super) fn shape_text_runs<'t>(
         &mut self,
         node: NodeId,
         available_w: f32,
         runs: impl Iterator<Item = TextShapeInput<'t>>,
-    ) -> Size {
+    ) -> Measured {
         let wid = self.tree.records.widget_id()[node.idx()];
         let span_start = self.out.text_shapes.len() as u32;
-        let mut s = Size::ZERO;
+        let mut size = Size::ZERO;
+        let mut stable_from_w = 0.0f32;
         for ts in runs {
-            let m = self.shape_text(wid, &ts, available_w);
-            s = s.max(m);
+            let run = self.shape_text(wid, &ts, available_w);
+            size = size.max(ts.wrap.content_size(run.shaped.extent.size));
+            stable_from_w = stable_from_w.max(run.stable_from_w);
         }
         let span_len = self.out.text_shapes.len() as u32 - span_start;
         self.out.text_spans[node.idx()] = Span {
@@ -472,25 +505,33 @@ impl LayoutPass<'_> {
         if let Ok(count) = u16::try_from(span_len) {
             self.engine.text.trim_rows(wid, count);
         }
-        s
+        Measured {
+            size,
+            floor: Size::new(0.0, size.h),
+            stable_from: Size::new(stable_from_w, 0.0),
+        }
     }
 
-    fn shape_text(&mut self, wid: WidgetId, ts: &TextShapeInput<'_>, available_w: f32) -> Size {
+    fn shape_text(
+        &mut self,
+        wid: WidgetId,
+        ts: &TextShapeInput<'_>,
+        available_w: f32,
+    ) -> RunMeasure {
         let slot = TextRunSlot {
             widget_id: wid,
             ordinal: ts.ordinal,
         };
 
-        let shaped = self.engine.text.measure(
+        let run = self.engine.text.measure(
             slot,
             ts.shape_request(),
             ts.wrap,
             ts.halign,
             available_w.is_finite().then_some(available_w),
         );
-
-        self.out.text_shapes.push(shaped);
-        ts.wrap.content_size(shaped.measured)
+        self.out.text_shapes.push(run.shaped);
+        run
     }
 }
 
@@ -502,15 +543,16 @@ struct MeasureOp<'op, 'pass> {
 }
 
 impl DriverOp for MeasureOp<'_, '_> {
-    type Output = Size;
+    type Output = Measured;
 
-    fn run<D: LayoutDriver>(self, payload: D::Payload) -> Size {
+    fn run<D: LayoutDriver>(self, payload: D::Payload) -> Measured {
         D::measure(self.pass, self.node, payload, self.inner_avail)
     }
 
-    /// A leaf's content size is its shaped text, wrapped against the
-    /// width it was offered.
-    fn leaf(self) -> Size {
+    /// A leaf's content is its shaped text, wrapped against the width it
+    /// was offered. Its floor across is the intrinsic minimum the caller
+    /// already holds.
+    fn leaf(self) -> Measured {
         let Self {
             pass,
             node,

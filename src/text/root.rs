@@ -1,6 +1,6 @@
 //! The unbounded shape every wrap policy reasons from.
 
-use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 
 /// A run's *unbounded* shape — the root every wrap policy reasons from.
 ///
@@ -12,7 +12,9 @@ use crate::primitives::size::Size;
 /// from the request that produced it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TextRoot {
-    pub(super) size: Size,
+    /// The block and ink this shape measured to — what a run answers
+    /// where its root stands in.
+    pub(super) extent: TextExtent,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
@@ -54,6 +56,7 @@ const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape:
 #[cfg(test)]
 pub(crate) mod internals {
     use super::*;
+    use crate::primitives::size::Size;
     use crate::text::key::TextShapeKey;
 
     /// Shaping result as the in-tree tests read it: the measurement plus
@@ -97,7 +100,7 @@ pub(crate) mod internals {
 
         pub(crate) fn new(root: TextRoot, key: TextShapeKey) -> Self {
             Self {
-                size: root.size,
+                size: root.extent.size,
                 key: Some(key),
                 intrinsic_min: root.intrinsic_min,
             }

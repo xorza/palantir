@@ -80,7 +80,7 @@ pub(crate) enum ShapeRecord {
     /// narrower width than the natural unbroken line" (`Wrap`). `align`
     /// positions the glyph bbox inside the owner node's arranged rect (or
     /// `local_rect` if set) — the encoder reads it together with the
-    /// shaped run's `measured` to shift the emitted `DrawText` rect.
+    /// shaped run's `extent` to shift the emitted `DrawText` rect.
     /// `HAlign::Auto`/`Stretch` and `VAlign::Auto`/`Stretch` collapse to
     /// top-left for text (glyphs don't stretch).
     ///

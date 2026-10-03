@@ -14,8 +14,10 @@ use glam::BVec2;
 ///
 /// The floor under Hug and Fill is the node's *intrinsic minimum* — the
 /// largest non-shrinkable thing on that axis (a fixed descendant, an
-/// explicit `min_size`, the longest unbreakable word), and the ceiling is
-/// its `max_size`. Fill participants whose weighted share falls outside
+/// explicit `min_size`, the longest unbreakable word) — and a Hug axis
+/// is also floored at what its content takes at the size it is laid out
+/// at, such as the height of a paragraph wrapped to its width. The
+/// ceiling is its `max_size`. Fill participants whose weighted share falls outside
 /// that interval take the bound they violated and the rest re-divide,
 /// CSS-Flexbox style. One solver answers that for every container, so
 /// `Fill` means the same thing in a `Panel` and in a `Grid`. A parent
@@ -47,7 +49,10 @@ enum SizingValue {
 
 impl Sizing {
     /// Shrink-wrap the content: `min(content, available)`, floored at the
-    /// intrinsic minimum. The default.
+    /// smallest extent the content takes at the size it is laid out at —
+    /// its wrapped text, its fixed and minimum sizes. Content that can
+    /// give way, such as a scroll on its panned axis, still shrinks. The
+    /// default.
     pub const HUG: Self = Self(SizingValue::Hug);
     /// Take the leftover space at weight `1.0` — [`Self::fill`] with the
     /// weight you'd almost always pass.

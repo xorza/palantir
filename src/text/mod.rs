@@ -63,6 +63,7 @@ pub(crate) mod bench;
 // `cosmic` needs, since `pub(super)` there stops at `cosmic` itself.
 mod cosmic;
 pub(crate) mod error;
+pub(crate) mod extent;
 pub(crate) mod font_family;
 // Gated with its only consumer, the winit host: a build with no windowed
 // host has nothing to overlap a font scan with, and `-W dead_code` says so.

@@ -25,7 +25,9 @@ use glam::UVec2;
 /// that fell back to max-content would shape it as one long line.
 fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
     assert_eq!(
-        support::shaped_text(ui.layout(Layer::Main), node).measured,
+        support::shaped_text(ui.layout(Layer::Main), node)
+            .extent
+            .size,
         Size::new(93.0, support::lines_h(4, 16.0)),
     );
 }
@@ -128,7 +130,8 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 });
         });
         support::shaped_text(h.ui.layout(Layer::Main), value_node.unwrap())
-            .measured
+            .extent
+            .size
             .h
     }
 
@@ -173,14 +176,14 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     });
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), value_node.unwrap());
     assert!(
-        shaped.measured.h > 32.0,
+        shaped.extent.size.h > 32.0,
         "Fill grid + Fill col should wrap text under constrained width; got h={}",
-        shaped.measured.h,
+        shaped.extent.size.h,
     );
     assert!(
-        shaped.measured.w <= 200.0,
+        shaped.extent.size.w <= 200.0,
         "wrapped text width should fit inside surface; got w={}",
-        shaped.measured.w,
+        shaped.extent.size.w,
     );
 }
 

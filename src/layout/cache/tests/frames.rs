@@ -21,7 +21,9 @@ use crate::primitives::{
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::widgets::configure::Configure;
-use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{
+    block::Block, button::Button, grid::Grid, panel::Panel, scroll::Scroll, text::Text,
+};
 use glam::UVec2;
 
 /// Run `record` twice at `size` (cold then warm-from-cache) and assert
@@ -462,14 +464,40 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     assert_same_capture(&cold, &warm);
 }
 
-/// Stress test: alternating surface widths force the cache through
+/// Stress test: surface resizes on both axes force the cache through
 /// repeated hit/replace transitions. At each step, the warm cache's
 /// rects must equal what a cold remeasure produces — clearing the
 /// measure cache is the ground-truth oracle.
+///
+/// Each child of the root is offered the whole surface, and each is a
+/// shape whose range the cache must get right: Hug content that holds
+/// past its offer, a Hug scroll whose cap binds below 400 px of rows, a
+/// wrap stack that breaks below 900 px, a Fill share, text bound to its
+/// width, a Fill canvas whose child's range moves out by its position —
+/// 400 px of rows 30 px down hold from 430, so 420 must miss, and the
+/// canvas's own Fill axis does not cover that for it — a grid whose text
+/// wraps at the narrow widths alone, a truncating label 700 px long that
+/// is cut below 700 and holds from 700 above it — Fill across, so its
+/// own axis does not cover that for it — and a Hug grid whose two
+/// 350 px Hug columns are squeezed below 700 and hold from 700 above it.
+/// The sizes step both ways across each of those thresholds. Labels that
+/// fit — the Hug stack of buttons — hold under every surface, as fixed
+/// blocks do.
 #[test]
-fn cache_rects_match_cold_oracle_across_width_changes() {
-    let record = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
-        capture.clear();
+fn cache_rects_match_cold_oracle_across_resizes() {
+    // 100 cells of the mono metric's 7 px at 14 px: 700 px on one line.
+    const LONG_LABEL: &str = "0123456789012345678901234567890123456789\
+                              0123456789012345678901234567890123456789\
+                              01234567890123456789";
+    let rows = |ui: &mut Ui, salt: &'static str| {
+        for i in 0..8u32 {
+            Block::new()
+                .id_salt((salt, i))
+                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
+                .show(ui);
+        }
+    };
+    let record = |ui: &mut Ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -485,57 +513,162 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                             .cols([Track::HUG, Track::FILL])
                             .rows([Track::HUG])
                             .show(ui, |ui| {
-                                capture.push(
-                                    Text::new("Title:")
-                                        .auto_id()
-                                        .font_size(14.0)
-                                        .grid_cell((0, 0))
-                                        .show(ui)
-                                        .node(),
-                                );
-                                capture.push(
-                                    Text::new(
-                                        "Lorem ipsum dolor sit amet, consectetur \
-                                         adipiscing elit, sed do eiusmod tempor.",
-                                    )
+                                Text::new("Title:")
                                     .auto_id()
                                     .font_size(14.0)
-                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                    .grid_cell((0, 1))
-                                    .show(ui)
-                                    .node(),
-                                );
+                                    .grid_cell((0, 0))
+                                    .show(ui);
+                                Text::new(
+                                    "Lorem ipsum dolor sit amet, consectetur \
+                                     adipiscing elit, sed do eiusmod tempor \
+                                     incididunt ut labore et dolore magna \
+                                     aliqua. Ut enim ad minim veniam.",
+                                )
+                                .auto_id()
+                                .font_size(14.0)
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .grid_cell((0, 1))
+                                .show(ui);
+                            });
+                    });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("blocks"))
+                    .padding(4.0)
+                    .show(ui, |ui| {
+                        for i in 0..3u32 {
+                            Block::new()
+                                .id_salt(("block", i))
+                                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                                .show(ui);
+                        }
+                    });
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .show(ui, |ui| rows(ui, "scroll-row"));
+                Panel::wrap_hstack()
+                    .id(WidgetId::from_hash("wrap"))
+                    .show(ui, |ui| {
+                        for i in 0..6u32 {
+                            Block::new()
+                                .id_salt(("wrap-item", i))
+                                .size((Sizing::fixed(150.0), Sizing::fixed(20.0)))
+                                .show(ui);
+                        }
+                    });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("fill"))
+                    .show(ui, |ui| {
+                        Block::new()
+                            .id_salt("fill-share")
+                            .size((Sizing::fixed(80.0), Sizing::FILL))
+                            .show(ui);
+                        Block::new()
+                            .id_salt("fill-fixed")
+                            .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
+                            .show(ui);
+                    });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("paragraph"))
+                    .show(ui, |ui| {
+                        Text::new(
+                            "Sed ut perspiciatis unde omnis iste natus error sit \
+                             voluptatem accusantium doloremque laudantium.",
+                        )
+                        .auto_id()
+                        .font_size(14.0)
+                        .text_wrap(TextWrap::Wrap)
+                        .show(ui);
+                    });
+                Panel::hstack()
+                    .id(WidgetId::from_hash("buttons"))
+                    .show(ui, |ui| {
+                        Button::new().id_salt("ok").label("OK").show(ui);
+                        Button::new().id_salt("cancel").label("Cancel").show(ui);
+                    });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("label"))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Text::new(LONG_LABEL)
+                            .auto_id()
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .font_size(14.0)
+                            .text_wrap(TextWrap::Truncate)
+                            .show(ui);
+                    });
+                Grid::new()
+                    .id(WidgetId::from_hash("hug-grid"))
+                    .cols([Track::HUG, Track::HUG])
+                    .rows([Track::HUG])
+                    .show(ui, |ui| {
+                        for col in 0..2u16 {
+                            Text::new(&LONG_LABEL[..50])
+                                .id_salt(("hug-grid-cell", col))
+                                .font_size(14.0)
+                                .text_wrap(TextWrap::Truncate)
+                                .grid_cell((0, col))
+                                .show(ui);
+                        }
+                    });
+                Panel::zstack()
+                    .id(WidgetId::from_hash("canvas-wrap"))
+                    .show(ui, |ui| {
+                        Panel::canvas()
+                            .id(WidgetId::from_hash("canvas"))
+                            .size((Sizing::HUG, Sizing::FILL))
+                            .show(ui, |ui| {
+                                Scroll::vertical()
+                                    .id(WidgetId::from_hash("canvas-scroll"))
+                                    .position((20.0, 30.0))
+                                    .show(ui, |ui| rows(ui, "canvas-row"));
                             });
                     });
             });
     };
+    let rects = |h: &UiHarness| -> Vec<_> {
+        (0..h.ui.tree(Layer::Main).records.len() as u32)
+            .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
+            .collect()
+    };
 
-    let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
-    let mut h = UiHarness::new(UVec2::new(widths[0], 600));
-    for (i, &w) in widths.iter().enumerate() {
-        h.resize(UVec2::new(w, 600));
-        let mut warm_nodes = Vec::new();
-        h.frame(|ui| {
-            record(ui, &mut warm_nodes);
-        });
-        let warm_rects: Vec<_> = warm_nodes
-            .iter()
-            .map(|&n| h.ui.arranged_rect(Layer::Main, n))
-            .collect();
+    let sizes = [
+        (800, 600),
+        (800, 700),
+        (800, 500),
+        (600, 600),
+        (1000, 350),
+        (700, 450),
+        (1000, 650),
+        (800, 420),
+        (800, 600),
+        (600, 380),
+        (900, 900),
+    ];
+    let mut h = UiHarness::new(UVec2::new(sizes[0].0, sizes[0].1));
+    for (i, &(w, ht)) in sizes.iter().enumerate() {
+        h.resize(UVec2::new(w, ht));
+        h.frame(record);
+        let warm = rects(&h);
+        if i > 0 {
+            for held in ["blocks", "buttons"] {
+                assert!(
+                    h.engines
+                        .layout
+                        .scratch
+                        .counters
+                        .cache_hits()
+                        .contains(&WidgetId::from_hash(held)),
+                    "step {i}: `{held}` holds under any surface past its content",
+                );
+            }
+        }
 
         h.engines.layout.cache.forget_all();
-        let mut cold_nodes = Vec::new();
-        h.frame(|ui| {
-            record(ui, &mut cold_nodes);
-        });
-        let cold_rects: Vec<_> = cold_nodes
-            .iter()
-            .map(|&n| h.ui.arranged_rect(Layer::Main, n))
-            .collect();
-
+        h.frame(record);
         assert_eq!(
-            warm_rects, cold_rects,
-            "step {i}: warm-cache rects diverged from cold remeasure at width={w}",
+            warm,
+            rects(&h),
+            "step {i}: warm-cache rects diverged from cold remeasure at {w}x{ht}",
         );
     }
 }
@@ -636,6 +769,63 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
          computes (heavy={HEAVY}, cold={cold}); the cache-hit intrinsic restore \
          should bound this to the changed ancestor chain",
+    );
+}
+
+/// A measure-cache hit hands its subtree root's floor back to the parent
+/// that re-measures around it, as a cold measure would.
+///
+/// Shape: a Hug zstack under a 50 px bound holds a wrapped paragraph
+/// panel, the hit, and a label that changes each frame, which forces the
+/// zstack to re-measure. The paragraph wraps to three 14 px lines in 344
+/// px, 51 px tall (`cross_driver_tests::support::lines_h(3, 14.0)`), so the zstack is floored at 51 rather than capped at
+/// the 50 its parent offers. Read from a hit that dropped the floor, it
+/// would take the 50.
+#[test]
+fn measure_cache_hit_restores_the_floor_its_parent_reads() {
+    let build = |ui: &mut Ui, tick: u32| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(360.0), Sizing::fixed(50.0)))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("mid"))
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("paragraph"))
+                            .size((Sizing::fixed(344.0), Sizing::HUG))
+                            .show(ui, |ui| {
+                                Text::new(
+                                    "The quick brown fox jumps over the lazy dog. \
+                                     Pack my box with five dozen liquor jugs. \
+                                     How vexingly quick daft zebras jump!",
+                                )
+                                .auto_id()
+                                .font_size(14.0)
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .show(ui);
+                            });
+                        let label = ui.fmt(format_args!("tick {tick}"));
+                        Text::new(label).id_salt("label").show(ui);
+                    });
+            });
+    };
+
+    let mut h = UiHarness::with_text(UVec2::new(800, 600));
+    for tick in 0..2 {
+        h.frame(|ui| build(ui, tick));
+        assert_eq!(
+            h.arranged(WidgetId::from_hash("mid")).size.h,
+            51.0,
+            "tick {tick}"
+        );
+    }
+    let hits = h.engines.layout.scratch.counters.cache_hits();
+    assert!(
+        hits.contains(&WidgetId::from_hash("paragraph"))
+            && !hits.contains(&WidgetId::from_hash("mid")),
+        "the paragraph hits and its parent re-measures: {hits:?}",
     );
 }
 

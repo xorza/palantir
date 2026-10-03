@@ -133,7 +133,7 @@ impl<'a> TextGlyphs<'a> {
         // The measuring half of the same edge [`Self::line`] answers: a run
         // with nothing to shape reaches to nothing.
         TextShapeRequest::unbounded(text, font).map_or(Size::ZERO, |request| {
-            self.cosmic.root(request, WrapFloor::Skip).size
+            self.cosmic.root(request, WrapFloor::Skip).extent.size
         })
     }
 

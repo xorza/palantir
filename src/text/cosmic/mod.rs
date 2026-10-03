@@ -23,15 +23,16 @@
 use crate::primitives::content_type::ContentType;
 use crate::primitives::num::F32Px;
 use crate::primitives::raster_image::RasterImage;
-use crate::primitives::size::Size;
 use crate::text::cosmic::cache_entry::CachedExtent;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{
-    SegmentScratch, ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
+    SegmentScratch, first_line_right, intrinsic_min_width, shaped_geometry,
 };
+use crate::text::cosmic::glyph_ink::GlyphInk;
 use crate::text::cosmic::shaped_buffer_cache::{ShapedBufferCache, ShapedRun};
 use crate::text::error::FontLoadError;
+use crate::text::extent::TextExtent;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
 use crate::text::font_slant::FontSlant;
@@ -58,6 +59,7 @@ pub(super) mod cluster_glyph;
 pub(super) mod counters;
 pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
+pub(super) mod glyph_ink;
 pub(super) mod shaped_buffer_cache;
 
 /// Faces [`CosmicMeasure::ellipsis`] remembers the "…" advance for.
@@ -199,25 +201,32 @@ const GLYPH_SOURCES: [Source; 3] = [
 /// instances of one file rather than files of their own.
 const WGHT_AXIS: swash::Tag = u32::from_be_bytes(*b"wght");
 
-/// The scaler `key` rasterizes through: its face at its size, hinted
-/// unless the key says otherwise, and instanced on [`WGHT_AXIS`] where
-/// the face is variable.
+/// The angle a synthetic italic leans its glyphs by, rasterized and
+/// measured alike — cosmic's own.
+const FAKE_ITALIC_SKEW_DEGREES: f32 = 14.0;
+
+/// The scaler a glyph of `font` is read through: at `size` pixels per em
+/// (zero reads font units), hinted or not, and instanced on [`WGHT_AXIS`]
+/// at `weight` where the face is variable.
 ///
 /// **`normalized_coords` rather than `variations`.** The latter resizes
 /// the context's coordinate vector in place and leaves stale entries
 /// behind, so a bold glyph rendered before a regular one bleeds its
 /// weight into it — the context is retained across every glyph, which is
 /// exactly the case that exposes it.
-fn glyph_scaler<'a>(context: &'a mut ScaleContext, font: &'a Font, key: CacheKey) -> Scaler<'a> {
+fn glyph_scaler<'a>(
+    context: &'a mut ScaleContext,
+    font: &'a Font,
+    size: f32,
+    hint: bool,
+    weight: fontdb::Weight,
+) -> Scaler<'a> {
     let face = font.as_swash();
-    let mut builder = context
-        .builder(face)
-        .size(f32::from_bits(key.font_size_bits))
-        .hint(!key.flags.contains(CacheKeyFlags::DISABLE_HINTING));
+    let mut builder = context.builder(face).size(size).hint(hint);
     if let Some(axis) = face.variations().find_by_tag(WGHT_AXIS) {
         builder = builder.normalized_coords(face.variations().normalized_coords([(
             WGHT_AXIS,
-            f32::from(key.font_weight.0).clamp(axis.min_value(), axis.max_value()),
+            f32::from(weight.0).clamp(axis.min_value(), axis.max_value()),
         )]));
     }
     builder.build()
@@ -303,6 +312,9 @@ pub(super) struct CosmicMeasure {
     /// Retained scratch for the unbounded shape's segment scan, so it
     /// allocates nothing per miss.
     break_scratch: SegmentScratch,
+    /// Every shaped glyph's ink, which each shape folds into the extent
+    /// it caches.
+    glyph_ink: GlyphInk,
     /// Retained snapshot of the truncation probe's first layout run, in
     /// the run's own visual order — [`ClusterGlyph::fitting_prefix`] is what sorts it
     /// logically, in place. Copied out of the cache once per miss so the
@@ -332,6 +344,7 @@ impl CosmicMeasure {
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
             break_scratch: SegmentScratch::default(),
+            glyph_ink: GlyphInk::default(),
             cut_glyphs: Vec::new(),
         }
     }
@@ -532,29 +545,29 @@ impl CosmicMeasure {
     /// The extent this run resolves to at the width its key commits,
     /// routed to the wrapping or truncating path by the key's fit.
     ///
-    /// An extent and nothing else, because that is all a bounded shape
-    /// has: it never scanned for a wrapping floor, and its line count
-    /// describes the resolve rather than the run.
-    pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> Size {
+    /// An extent and its ink and nothing else, because that is all a
+    /// bounded shape has: it never scanned for a wrapping floor, and its
+    /// line count describes the resolve rather than the run.
+    pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         let key = request.key;
         debug_assert!(
             key.max_width_px().is_some(),
             "an unbounded request commits no width to resolve against",
         );
         if let Some(entry) = self.cache.hit(key) {
-            return entry.extent.size();
+            return entry.extent.extent();
         }
         match key.fit() {
             LineFit::Clip | LineFit::Ellipsis => self.shape_truncated(request),
-            LineFit::Wrap => self.shape_wrapped(request, WrapFloor::Skip).size,
+            LineFit::Wrap => self.shape_wrapped(request, WrapFloor::Skip).extent(),
         }
     }
 
     /// Shape `request` into a fresh buffer, file it under its key, and
     /// hand back what the buffer laid out to. The one wrapping shape
     /// path; [`Self::root`] and [`Self::resolve`] each check the cache
-    /// first and lift the result into their own kind.
-    fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> ShapedGeometry {
+    /// first and take their own kind out of the result.
+    fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> CachedExtent {
         let key = request.key;
         let mut buffer = self.acquire_buffer(metrics_of(key), key.max_width_px());
         // Per-line alignment travels through cosmic's `set_text`
@@ -574,14 +587,17 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
+        let extent = self
+            .glyph_ink
+            .extent(&buffer, &mut self.font_system, &geometry);
         // Which kind the entry is follows from the key: a committed width
         // means a bounded resolve, and nothing else can name that entry.
         let extent = match key.max_width_px() {
-            None => CachedExtent::Root(geometry.root()),
-            Some(_) => CachedExtent::Bounded(geometry.size),
+            None => CachedExtent::Root(geometry.root(extent)),
+            Some(_) => CachedExtent::Bounded(extent),
         };
         self.cache.insert(key, buffer, extent, geometry.left);
-        geometry
+        extent
     }
 
     /// Restore a missing shaped buffer from the retained source text and
@@ -715,7 +731,13 @@ impl CosmicMeasure {
         let font = self
             .font_system
             .get_font(cache_key.font_id, cache_key.font_weight)?;
-        let mut scaler = glyph_scaler(&mut self.scale_context, &font, cache_key);
+        let mut scaler = glyph_scaler(
+            &mut self.scale_context,
+            &font,
+            f32::from_bits(cache_key.font_size_bits),
+            !cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING),
+            cache_key.font_weight,
+        );
         // Cleared rather than overwritten: `render_into` resizes the data
         // buffer and zero-fills only what the resize added, so a glyph
         // smaller than the last one would read the last one's coverage in
@@ -728,7 +750,12 @@ impl CosmicMeasure {
                 cache_key
                     .flags
                     .contains(CacheKeyFlags::FAKE_ITALIC)
-                    .then(|| Transform::skew(Angle::from_degrees(14.0), Angle::from_degrees(0.0))),
+                    .then(|| {
+                        Transform::skew(
+                            Angle::from_degrees(FAKE_ITALIC_SKEW_DEGREES),
+                            Angle::from_degrees(0.0),
+                        )
+                    }),
             )
             .render_into(&mut scaler, cache_key.glyph_id, &mut self.glyph_image);
         if !rendered {
@@ -790,7 +817,7 @@ impl CosmicMeasure {
     /// re-lays-out without re-shaping), but one buffer holds one layout
     /// and the cache is keyed per width, so it needs a different
     /// buffer/key model rather than a different call.
-    fn shape_truncated(&mut self, request: TextShapeRequest<'_>) -> Size {
+    fn shape_truncated(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         let key = request.key;
         let fit = key.fit();
         let width = key
@@ -877,13 +904,12 @@ impl CosmicMeasure {
             }
         };
 
-        self.cache.insert(
-            key,
-            buffer,
-            CachedExtent::Bounded(geometry.size),
-            geometry.left,
-        );
-        geometry.size
+        let extent = self
+            .glyph_ink
+            .extent(&buffer, &mut self.font_system, &geometry);
+        self.cache
+            .insert(key, buffer, CachedExtent::Bounded(extent), geometry.left);
+        extent
     }
 
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
@@ -970,7 +996,7 @@ pub(crate) mod internals {
             let key = request.key;
             match key.max_width_px() {
                 Some(_) => TestMeasure {
-                    size: self.resolve(request),
+                    size: self.resolve(request).size,
                     key: Some(key),
                     intrinsic_min: None,
                 },
@@ -1005,6 +1031,12 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) fn pending_tickets(&self) -> usize {
             self.cache.pending_tickets()
+        }
+
+        /// What the buffer filed under `key` measured to, if one is.
+        #[cfg(test)]
+        pub(crate) fn cached_extent(&self, key: TextShapeKey) -> Option<TextExtent> {
+            self.cache.extent(key)
         }
 
         /// A measurer over an empty database, so a case can watch a

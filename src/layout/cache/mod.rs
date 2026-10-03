@@ -10,6 +10,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
 use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
+use crate::layout::measured::Measured;
 use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::num::F32Px;
@@ -44,11 +45,13 @@ pub(super) struct RootSnapshotKey {
 
 #[derive(Debug)]
 pub(super) struct CachedSubtree<'a> {
-    pub(super) root: Size,
+    pub(super) root: Measured,
     /// Arena index this subtree's columns start at. `arrange` stores it
     /// per node so it can re-slice `rect` without a second map probe.
     pub(super) nodes_base: u32,
     pub(super) desired: &'a [Size],
+    pub(super) floor: &'a [Size],
+    pub(super) stable_from: &'a [Size],
     pub(super) scroll_content: &'a [Size],
     pub(super) text_spans: &'a [Span],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
@@ -61,6 +64,8 @@ pub(super) struct CachedSubtree<'a> {
 #[derive(Debug)]
 pub(super) struct CaptureTreeInput<'a> {
     pub(super) desired: &'a [Size],
+    pub(super) floor: &'a [Size],
+    pub(super) stable_from: &'a [Size],
     pub(super) rect: &'a [Rect],
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
@@ -85,6 +90,8 @@ fn union_spans(a: Span, b: Span) -> Span {
 #[derive(Debug, Default)]
 pub(crate) struct NodeArenas {
     desired: Vec<Size>,
+    floor: Vec<Size>,
+    stable_from: Vec<Size>,
     /// Arranged rect per node, captured after `arrange` wrote it. The
     /// only column produced by the *second* half of the layout pass;
     /// `LayoutPass::arrange` replays it instead of re-running the
@@ -104,6 +111,8 @@ impl NodeArenas {
     fn clear(&mut self) {
         let Self {
             desired,
+            floor,
+            stable_from,
             rect,
             scroll_content,
             text_spans,
@@ -111,6 +120,8 @@ impl NodeArenas {
             available_q,
         } = self;
         desired.clear();
+        floor.clear();
+        stable_from.clear();
         rect.clear();
         scroll_content.clear();
         text_spans.clear();
@@ -174,9 +185,9 @@ impl MeasureSnapshot {
     ///
     /// Sequence equality is *approximated* by `descriptor_identity`; a
     /// collision would hand `try_lookup` a map pointing at another
-    /// widget's descriptor. That is survivable — the `subtree_hash` and
-    /// `available_q` checks there reject a mismatched descriptor, so the
-    /// worst case is a missed hit — but it would be silent, so
+    /// widget's descriptor. That is survivable — the `subtree_hash` check
+    /// there rejects a mismatched descriptor, so the worst case is a
+    /// missed hit — but it would be silent, so
     /// [`Self::snapshots_match_descriptors`] proves the approximation in
     /// debug builds instead of leaving it argued.
     /// Returns whether it rebuilt, which is the only thing distinguishing
@@ -288,23 +299,51 @@ impl MeasureCache {
         &self.previous.nodes.rect[base..base + len]
     }
 
+    /// Last frame's measure of `wid`'s subtree, if its authoring is
+    /// unchanged and it holds under `available` — the offer it was
+    /// measured at, to the key's grid, or any finite offer past its
+    /// [`Measured::stable_from`], per axis.
     #[inline]
     pub(super) fn try_lookup(
         &self,
         wid: WidgetId,
         curr_hash: ContentHash,
-        curr_avail: AvailableKey,
+        available: Size,
+        available_q: AvailableKey,
     ) -> Option<CachedSubtree<'_>> {
         let descriptor = *self.previous.snapshots.get(&wid)? as usize;
         let snap = &self.previous.descriptors[descriptor];
-        if snap.subtree_hash != curr_hash || snap.available_q != curr_avail {
+        if snap.subtree_hash != curr_hash {
             return None;
         }
         let nodes = snap.nodes.range();
+        let stable_from = self.previous.nodes.stable_from[nodes.start];
+        let holds = |measured_at: i32, key: i32, offer: f32, from: f32| {
+            measured_at == key || (offer.is_finite() && offer >= from)
+        };
+        if !(holds(
+            snap.available_q.x,
+            available_q.x,
+            available.w,
+            stable_from.w,
+        ) && holds(
+            snap.available_q.y,
+            available_q.y,
+            available.h,
+            stable_from.h,
+        )) {
+            return None;
+        }
         Some(CachedSubtree {
-            root: self.previous.nodes.desired[nodes.start],
+            root: Measured {
+                size: self.previous.nodes.desired[nodes.start],
+                floor: self.previous.nodes.floor[nodes.start],
+                stable_from,
+            },
             nodes_base: snap.nodes.start,
             desired: &self.previous.nodes.desired[nodes.clone()],
+            floor: &self.previous.nodes.floor[nodes.clone()],
+            stable_from: &self.previous.nodes.stable_from[nodes.clone()],
             scroll_content: &self.previous.nodes.scroll_content[nodes.clone()],
             text_spans: &self.previous.nodes.text_spans[nodes.clone()],
             intrinsics: &self.previous.nodes.intrinsics[nodes.clone()],
@@ -334,6 +373,8 @@ impl MeasureCache {
     pub(super) fn capture_tree(&mut self, tree: &Tree, input: CaptureTreeInput<'_>) {
         let CaptureTreeInput {
             desired,
+            floor,
+            stable_from,
             rect,
             scroll_content,
             intrinsics,
@@ -346,6 +387,8 @@ impl MeasureCache {
         // Column-length agreement is an engine invariant, not input
         // validation, and this runs once per layer per frame — debug only.
         debug_assert_eq!(desired.len(), node_count);
+        debug_assert_eq!(floor.len(), node_count);
+        debug_assert_eq!(stable_from.len(), node_count);
         debug_assert_eq!(rect.len(), node_count);
         debug_assert_eq!(scroll_content.len(), node_count);
         debug_assert_eq!(intrinsics.len(), node_count);
@@ -472,6 +515,11 @@ impl MeasureCache {
         // columns empty until the next `resize_for`, while the
         // container-text pass still runs.
         self.current.nodes.desired.extend_from_slice(desired);
+        self.current.nodes.floor.extend_from_slice(floor);
+        self.current
+            .nodes
+            .stable_from
+            .extend_from_slice(stable_from);
         self.current
             .nodes
             .available_q
@@ -538,34 +586,53 @@ pub(crate) mod internals {
             .show(ui, |ui| build_deep_level(ui, depth + 1));
     }
 
+    /// What a variant of the broad tree changes in its first leaf. Both
+    /// are layout authoring: a colour would be paint, which the measure
+    /// cache does not key on, and the whole tree would hit at the root.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum BroadChange {
+        /// The leaf's fill weight, which an only child's geometry ignores.
+        FillWeight,
+        /// The leaf's height, which moves the minimum of every panel
+        /// above it — and with it what each offers its children, once the
+        /// tree is taller than its surface.
+        LeafHeight,
+    }
+
     pub(crate) fn build_broad(ui: &mut Ui) {
-        build_broad_variant(ui, false);
+        build_broad_variant(ui, None);
     }
 
-    pub(crate) fn build_broad_variant(ui: &mut Ui, changed: bool) {
-        build_broad_level(ui, 0, 0, changed);
+    pub(crate) fn build_broad_variant(ui: &mut Ui, change: Option<BroadChange>) {
+        build_broad_level(ui, 0, 0, change);
     }
 
-    fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
+    fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, change: Option<BroadChange>) {
         Panel::vstack()
             .id_salt(("broad", depth, key))
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 if depth == BROAD_DEPTH {
-                    // The change is to layout authoring — one leaf's fill
-                    // weight, which an only child's geometry ignores. A colour
-                    // would be paint, which the measure cache does not key on,
-                    // and the whole tree would hit at the root.
-                    let weight = if changed && key == 0 { 2.0 } else { 1.0 };
+                    let changed = |to| key == 0 && change == Some(to);
+                    let weight = if changed(BroadChange::FillWeight) {
+                        2.0
+                    } else {
+                        1.0
+                    };
+                    let height = if changed(BroadChange::LeafHeight) {
+                        2.0
+                    } else {
+                        1.0
+                    };
                     Block::new()
                         .id_salt(("broad-leaf", key))
-                        .size((Sizing::fill(weight), Sizing::fixed(1.0)))
+                        .size((Sizing::fill(weight), Sizing::fixed(height)))
                         .show(ui);
                     return;
                 }
 
                 for child in 0..BROAD_FANOUT {
-                    build_broad_level(ui, depth + 1, key * BROAD_FANOUT + child, changed);
+                    build_broad_level(ui, depth + 1, key * BROAD_FANOUT + child, change);
                 }
             });
     }

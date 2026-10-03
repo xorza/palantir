@@ -9,6 +9,7 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Px;
 use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 use crate::text::key::WrapBound;
 use crate::text::root::TextRoot;
 
@@ -94,7 +95,7 @@ impl LineFit {
     pub(super) const fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
         matches!(self, LineFit::Clip | LineFit::Ellipsis)
             && unbounded.single_line
-            && unbounded.size.w <= width_px
+            && unbounded.extent.size.w <= width_px
     }
 }
 
@@ -160,13 +161,15 @@ impl TextWrap {
     /// resolve, whose height already reflects wrapping.
     pub(crate) const fn min_content(self, unbounded: &TextRoot) -> Size {
         match self {
-            TextWrap::SingleLine => unbounded.size,
+            TextWrap::SingleLine => unbounded.extent.size,
             // Scroll owns clipping and panning; truncating and wrapping
             // runs can shrink to nothing.
             TextWrap::Scroll | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Wrap => {
-                Size::new(0.0, unbounded.size.h)
+                Size::new(0.0, unbounded.extent.size.h)
             }
-            TextWrap::WrapWithOverflow => Size::new(unbounded.wrap_floor(), unbounded.size.h),
+            TextWrap::WrapWithOverflow => {
+                Size::new(unbounded.wrap_floor(), unbounded.extent.size.h)
+            }
         }
     }
 
@@ -174,12 +177,12 @@ impl TextWrap {
     pub(crate) const fn max_content(self, unbounded: &TextRoot) -> Size {
         match self {
             // Scroll's full run creates no width demand.
-            TextWrap::Scroll => Size::new(0.0, unbounded.size.h),
+            TextWrap::Scroll => Size::new(0.0, unbounded.extent.size.h),
             TextWrap::SingleLine
             | TextWrap::Truncate
             | TextWrap::Ellipsis
             | TextWrap::Wrap
-            | TextWrap::WrapWithOverflow => unbounded.size,
+            | TextWrap::WrapWithOverflow => unbounded.extent.size,
         }
     }
 
@@ -229,7 +232,9 @@ impl TextWrap {
         let committed = if self.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
             let root = root();
             if fit.resolves_to_unbounded(&root, available) {
-                return WrapCommit::Unbounded { size: root.size };
+                return WrapCommit::Unbounded {
+                    extent: root.extent,
+                };
             }
             // Not canonical again: the wrap floor is a measured extent,
             // so `WrapBound::new` still quantizes what comes back.
@@ -259,7 +264,7 @@ pub(super) enum WrapCommit {
     /// The root's own unbounded shape stands — a truncating fit whose
     /// text already fits. Binding would mint a second buffer nobody asks
     /// for, so the size travels out with the decision.
-    Unbounded { size: Size },
+    Unbounded { extent: TextExtent },
     /// Resolve at this bound.
     Bound(WrapBound),
 }

@@ -246,7 +246,7 @@ impl LayoutEngine {
                     let measure_span = PhaseSpan::start();
                     let desired = {
                         tracy::zone!("Layout::measure");
-                        pass.measure(root, available)
+                        pass.measure(root, available).size
                     };
                     pass.note_measure(measure_span);
                     let root_layout = tree.records.layout()[root.idx()];
@@ -277,6 +277,8 @@ impl LayoutEngine {
                     tree,
                     CaptureTreeInput {
                         desired: &self.scratch.desired,
+                        floor: &self.scratch.floor,
+                        stable_from: &self.scratch.stable_from,
                         rect: &layer_out.rect,
                         scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,

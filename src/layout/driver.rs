@@ -15,6 +15,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::grid::Grid;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::layout::scroll::Scroll;
 use crate::layout::scrollbars::Scrollbars;
@@ -70,8 +71,10 @@ pub(super) trait LayoutDriver {
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool;
 
     /// Bottom-up. Recurses into children through `pass.measure(..)` and
-    /// returns the driver's content size — before padding, margin and
-    /// clamping, which [`LayoutPass::measure`] folds in.
+    /// returns the driver's content size and its floor — before padding,
+    /// margin and clamping, which [`LayoutPass::measure`] folds in. The
+    /// floor composes from the children's the way the content composes
+    /// from their extents; see [`Measured`] for what it promises.
     ///
     /// Called exactly once per measure. A `Fill` axis that grows past
     /// `inner_avail` needs no re-measure; `AxisSlot::resolve_node` carries
@@ -81,7 +84,7 @@ pub(super) trait LayoutDriver {
         node: NodeId,
         payload: Self::Payload,
         inner_avail: Size,
-    ) -> Size;
+    ) -> Measured;
 
     /// Top-down. Assigns each child a final rect and recurses through
     /// `pass.arrange(..)`.

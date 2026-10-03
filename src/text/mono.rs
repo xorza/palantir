@@ -14,6 +14,7 @@
 //! [`probe`]: crate::text::probe
 
 use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, LineFit, WrapFloor};
@@ -62,10 +63,11 @@ pub(super) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usiz
 pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
     let glyph_w = glyph_width(request.key.font_size_px());
     TextRoot {
-        size: Size::new(
+        // Mono reads no outlines: a cell holds its glyph.
+        extent: TextExtent::inked_within(Size::new(
             request.text.chars().count() as f32 * glyph_w,
             request.key.line_height_px(),
-        ),
+        )),
         intrinsic_min: (floor == WrapFloor::Scan)
             .then(|| intrinsic_min_width(request.text, glyph_w)),
         // Mono breaks no lines of its own: an unbounded run is one line
@@ -77,7 +79,7 @@ pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot 
 /// The extent this run resolves to at its key's committed width — the
 /// twin of [`CosmicMeasure::resolve`](crate::text::cosmic::CosmicMeasure),
 /// routed by the same [`LineFit`] to the same two answers.
-pub(super) fn resolve(request: TextShapeRequest<'_>) -> Size {
+pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     let key = request.key;
     let glyph_w = glyph_width(key.font_size_px());
     let line_h = key.line_height_px();
@@ -86,7 +88,7 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> Size {
         .expect("a bounded resolve commits a width");
     let chars = request.text.chars().count() as f32;
     let unbroken_w = chars * glyph_w;
-    match key.fit() {
+    TextExtent::inked_within(match key.fit() {
         // One line capped at the width, which is what the cosmic side's
         // cut measures to once it has retired the clusters that overrun.
         LineFit::Clip | LineFit::Ellipsis => Size::new(unbroken_w.min(max), line_h),
@@ -97,7 +99,7 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> Size {
             let lines = (chars / per_line).ceil().max(1.0);
             Size::new((per_line * glyph_w).min(unbroken_w), lines * line_h)
         }
-    }
+    })
 }
 
 /// Widest unbreakable segment of `text` under a uniform `glyph_w` — the

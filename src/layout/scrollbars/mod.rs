@@ -24,6 +24,7 @@ use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::layout_mode::ScrollbarsDefId;
@@ -88,14 +89,18 @@ impl LayoutDriver for Scrollbars {
         node: NodeId,
         _id: Self::Payload,
         inner_avail: Size,
-    ) -> Size {
+    ) -> Measured {
         // `tree` is a shared reborrow independent of `pass`, so the child
         // walk and the `&mut pass` recursion coexist without buffering.
         let tree = pass.tree;
+        let mut stable_from = Size::ZERO;
         for child in tree.children(node) {
-            pass.measure(child.id, inner_avail);
+            stable_from = stable_from.max(pass.measure(child.id, inner_avail).stable_from);
         }
-        Size::ZERO
+        Measured {
+            stable_from,
+            ..Measured::ZERO
+        }
     }
 
     /// Assign each of the four bar leaves its resolved rect, zero-extent for

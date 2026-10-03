@@ -143,7 +143,11 @@ fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
             let shaped = shaper.measure("hi", params);
-            assert_eq!(shaped.measured, Size::ZERO, "{label}: must measure nothing");
+            assert_eq!(
+                shaped.extent.size,
+                Size::ZERO,
+                "{label}: must measure nothing"
+            );
             assert!(
                 shaped.key.is_none(),
                 "{label}: an unshaped run carries no buffer key",
@@ -220,7 +224,7 @@ fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
             unbounded,
             "{label}: must stay unbounded"
         );
-        assert_eq!(bound.measured, natural.measured, "{label}");
+        assert_eq!(bound.extent.size, natural.extent.size, "{label}");
     }
 }
 

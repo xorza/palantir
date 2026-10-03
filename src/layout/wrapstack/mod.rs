@@ -23,6 +23,7 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::JustifyOffsets;
+use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Px;
@@ -140,7 +141,7 @@ impl LayoutDriver for WrapStack {
         node: NodeId,
         axis: Self::Payload,
         inner_avail: Size,
-    ) -> Size {
+    ) -> Measured {
         let tree = pass.tree;
         let panel = tree.panel(node);
         let gap = panel.gaps.gap();
@@ -161,18 +162,52 @@ impl LayoutDriver for WrapStack {
             total_cross += line_cross;
             line_count += 1;
         };
+        // The floor keeps the lines as packed: the widest child's floor
+        // along them, and across, each line's tallest floor.
+        let mut floor_main = 0.0f32;
+        let mut floor_cross = 0.0f32;
+        let mut line_floor_cross = 0.0f32;
+        // Every child is offered an unbounded main, so only the cross
+        // carries their ranges.
+        let mut stable_cross = 0.0f32;
         for c in tree.active_children(node) {
             let d = pass.measure(c, axis.compose_size(f32::INFINITY, cross_avail));
-            let pack = child_pack(axis, d);
-            pack_child(&mut line, gap, budget, pack, &mut complete_line);
+            stable_cross = stable_cross.max(axis.cross(d.stable_from));
+            pack_child(
+                &mut line,
+                gap,
+                budget,
+                child_pack(axis, d.size),
+                |line_main, line_cross| {
+                    complete_line(line_main, line_cross);
+                    floor_cross += line_floor_cross;
+                    line_floor_cross = 0.0;
+                },
+            );
+            line_floor_cross = line_floor_cross.max(axis.cross(d.floor));
+            floor_main = floor_main.max(axis.main(d.floor));
         }
         // Flush last line.
         if line.occupied {
             complete_line(line.main, line.cross);
+            floor_cross += line_floor_cross;
         }
-        total_cross += line_gap.gaps_between(line_count);
+        let line_gaps = line_gap.gaps_between(line_count);
+        total_cross += line_gaps;
+        // One line stays one line under every budget past its length, and
+        // under every budget past this one, which already held it. A
+        // break was taken at this budget and moves with it.
+        let stable_main = if line_count <= 1 {
+            max_line_main.min(axis.main(inner_avail))
+        } else {
+            Measured::AT_OFFER_ONLY
+        };
 
-        axis.compose_size(max_line_main, total_cross)
+        Measured {
+            size: axis.compose_size(max_line_main, total_cross),
+            floor: axis.compose_size(floor_main, floor_cross + line_gaps),
+            stable_from: axis.compose_size(stable_main, stable_cross),
+        }
     }
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Rect) {

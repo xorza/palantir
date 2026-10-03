@@ -13,8 +13,12 @@
 //!   scratch.
 //! - `resizing`: rotates four viewport widths so `available_q` misses
 //!   at the root while unchanged branches remain eligible for reuse.
-//! - `localized`: broad-tree only; toggles one leaf's paint hash while
-//!   keeping layout stable so unchanged sibling-subtree hits stay visible.
+//! - `localized`: broad-tree only; toggles one leaf's fill weight, which
+//!   leaves its geometry alone, so unchanged sibling-subtree hits stay
+//!   visible.
+//! - `localized_height`: broad-tree only; toggles one leaf's height on a
+//!   surface the tree overflows, so every panel above it offers its
+//!   children a new minimum and sibling subtrees hit across offers.
 //! - `grid/intrinsic`: a 128-row real-text property grid that isolates
 //!   paired min/max-content recursion on Hug columns.
 //!
@@ -30,7 +34,7 @@
 
 use crate::bench::Run;
 use crate::internals::harness::UiHarness;
-use crate::layout::cache::internals::{build_broad, build_broad_variant, build_deep};
+use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::layout::counters::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -346,29 +350,29 @@ fn bench_cache_workload(
     });
 }
 
-fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str) {
+fn bench_broad_localized(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    name: &str,
+    harness: impl Fn() -> UiHarness,
+    change: BroadChange,
+) {
+    let toggled = |changed: bool| changed.then_some(change);
     {
-        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
+        let mut h = harness();
         let mut changed = false;
-        report_phases(&format!("{name}/localized"), || {
+        report_phases(name, || {
             changed = !changed;
-            let _ = h.frame(|ui| {
-                build_broad_variant(ui, changed);
-            });
+            let _ = h.frame(|ui| build_broad_variant(ui, toggled(changed)));
             h.engines.layout.scratch.counters.phase_timings()
         });
     }
-    group.bench_function(format!("{name}/localized"), |b| {
-        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
-        let _ = h.frame(|ui| {
-            build_broad_variant(ui, false);
-        });
+    group.bench_function(name, |b| {
+        let mut h = harness();
+        let _ = h.frame(|ui| build_broad_variant(ui, None));
         let mut changed = false;
         b.iter(|| {
             changed = !changed;
-            black_box(h.frame(|ui| {
-                build_broad_variant(ui, changed);
-            }));
+            black_box(h.frame(|ui| build_broad_variant(ui, toggled(changed))));
         });
     });
 }
@@ -469,7 +473,18 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0),
         build_broad,
     );
-    bench_broad_localized(&mut group, "broad/measure");
+    bench_broad_localized(
+        &mut group,
+        "broad/measure/localized",
+        || UiHarness::new(glam::UVec2::new(1280, 800)),
+        BroadChange::FillWeight,
+    );
+    bench_broad_localized(
+        &mut group,
+        "broad/measure/localized_height",
+        || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0),
+        BroadChange::LeafHeight,
+    );
     bench_virtual_scroll(&mut group);
     bench_cache_workload(
         &mut group,

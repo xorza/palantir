@@ -73,7 +73,7 @@ fn a_single_line_caret_is_halign_independent() {
     // nowhere near the 300 px wrap target. The block is that extent
     // ceiled to whole pixels.
     assert_eq!(xs[0], 9.4609375 + 3.875);
-    assert_eq!(measured.measured.w, xs[0].ceil());
+    assert_eq!(measured.extent.size.w, xs[0].ceil());
 }
 
 /// Halign *does* move a line that is narrower than the widest one:
@@ -90,7 +90,8 @@ fn a_narrow_line_shifts_within_the_block() {
         .ui
         .shaper()
         .measure(text, shape(wrap, HAlign::Right))
-        .measured
+        .extent
+        .size
         .w;
     let caret = |halign| {
         ui.ui
@@ -125,7 +126,7 @@ fn measured_width_is_the_content_extent_not_the_wrap_target() {
     let wrap = 290.0_f32;
     let widths: Vec<f32> = ALL
         .iter()
-        .map(|&halign| c.measure("hi\nyo", shape(wrap, halign)).measured.w)
+        .map(|&halign| c.measure("hi\nyo", shape(wrap, halign)).extent.size.w)
         .collect();
     for (halign, w) in ALL.iter().zip(&widths) {
         assert_eq!(
@@ -441,7 +442,8 @@ fn multiline_widget_right_aligns_each_line() {
     let block =
         h.ui.shaper()
             .measure(&buf, shape(wrap, HAlign::Right))
-            .measured
+            .extent
+            .size
             .w;
     let caret_short =
         h.ui.shaper()

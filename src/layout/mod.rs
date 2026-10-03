@@ -25,6 +25,7 @@ pub(crate) mod intrinsic;
 mod justify_offsets;
 pub(crate) mod layer_layout;
 pub(crate) mod layout_scratch;
+pub(crate) mod measured;
 pub(crate) mod pass;
 pub(crate) mod scroll;
 pub(crate) mod scrollbars;

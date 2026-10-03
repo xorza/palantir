@@ -4,6 +4,7 @@
 use crate::display::Display;
 use crate::icons::icon_set::IconRef;
 use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::RgbaF32, color::rgba_f16::RgbaF16, corners::Corners, rect::Rect};
@@ -67,9 +68,15 @@ pub(super) fn survivor_calls(buf: &RenderBuffer) -> Vec<u32> {
 }
 
 pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
+    inked_text(buf, r, Spacing::ZERO);
+}
+
+/// A [`text`] run whose glyphs' ink reaches `ink` past `r`.
+pub(super) fn inked_text(buf: &mut PaintCapture, r: Rect, ink: Spacing) {
     buf.draw_text(
         DrawTextPayload {
             rect: r,
+            ink,
             color: RgbaF32::WHITE.into(),
             text: ShapedTextRef {
                 key: TextShapeKey::fixture(),

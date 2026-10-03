@@ -1,13 +1,13 @@
 //! The layout-side result of shaping one text run.
 
-use crate::primitives::size::Size;
+use crate::text::extent::TextExtent;
 use crate::text::key::TextShapeKey;
 
 /// Result of shaping one `ShapeRecord::Text` during the measure pass. `Tree`
 /// records only the authoring inputs; this is the layout-side derived state.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedText {
-    pub(crate) measured: Size,
+    pub(crate) extent: TextExtent,
     /// The buffer the renderer replays, or `None` where the run shaped
     /// none — which in production is nothing, and under the gated mono
     /// metric is every run. As wide as a bare key: see
