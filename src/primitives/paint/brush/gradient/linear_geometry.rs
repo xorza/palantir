@@ -3,8 +3,9 @@
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interp};
 use crate::primitives::paint::color::RgbaF32;
 use std::hash;
 
@@ -23,7 +24,7 @@ pub type LinearGradient = Gradient<LinearGeometry>;
 /// Authoring builder for a [`LinearGradient`].
 pub type LinearGradientBuilder = GradientBuilder<LinearGeometry>;
 
-impl GradientGeometry for LinearGeometry {
+impl Geometry for LinearGeometry {
     const DEFAULT_INTERP: Interp = Interp::Oklab;
 
     /// `dir = (cos(angle), sin(angle))`; the shader projects each

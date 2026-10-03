@@ -3,8 +3,9 @@
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interp};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
@@ -28,7 +29,7 @@ pub type ConicGradient = Gradient<ConicGeometry>;
 /// Authoring builder for a [`ConicGradient`].
 pub type ConicGradientBuilder = GradientBuilder<ConicGeometry>;
 
-impl GradientGeometry for ConicGeometry {
+impl Geometry for ConicGeometry {
     /// Conic gradients commonly implement colour-wheel / hue-rotation
     /// visuals where straight linear-RGB interpolation gives the most
     /// predictable hue sweep; Oklab can shift the perceived hue at the

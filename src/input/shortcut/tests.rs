@@ -10,17 +10,11 @@ fn kp(mods: Modifiers, key: Key) -> KeyPress {
 /// → ctrl on macOS), so tests construct it directly with no
 /// platform branch.
 fn primary_mod() -> Modifiers {
-    Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    }
+    Modifiers::CTRL
 }
 
 fn primary_shift_mod() -> Modifiers {
-    Modifiers {
-        shift: true,
-        ..primary_mod()
-    }
+    Modifiers::CTRL_SHIFT
 }
 
 #[test]
@@ -86,10 +80,7 @@ fn non_latin_fallback_requires_a_command_modifier() {
 fn alt_alone_does_not_match_ctrl() {
     let cut = Shortcut::ctrl('X');
     // A non-command modifier must not satisfy a ctrl shortcut.
-    let alt = Modifiers {
-        alt: true,
-        ..Modifiers::NONE
-    };
+    let alt = Modifiers::ALT;
     assert!(!cut.matches(kp(alt, Key::Char('x'))));
 }
 
@@ -98,7 +89,7 @@ fn extra_modifier_rejects_match() {
     let cut = Shortcut::ctrl('A');
     // Ctrl+Shift+A must not match plain Ctrl+A.
     let mods = primary_shift_mod();
-    assert_eq!(ShortcutMods::from_event(mods), ShortcutMods::CTRL_SHIFT);
+    assert_eq!(ShortcutMods::from(mods), ShortcutMods::CTRL_SHIFT);
     assert!(!cut.matches(kp(mods, Key::Char('A'))));
     assert_eq!(cut.mods, ShortcutMods::CTRL);
     // macOS Control plus a bare key is a chord, so a bare-key shortcut
@@ -168,4 +159,25 @@ fn modifier_order_is_canonical() {
         _ => "Ctrl+Shift+Alt+K",
     };
     assert_eq!(s.to_string(), expected);
+}
+
+/// The two modifier types name the same sets, and each event-state set
+/// converts to its shortcut twin. The raw macOS Control has no twin, so it
+/// drops out: Control+Shift held reads as a bare Shift chord.
+#[test]
+fn named_modifier_sets_convert_to_their_twins() {
+    for (held, declared) in [
+        (Modifiers::NONE, ShortcutMods::NONE),
+        (Modifiers::SHIFT, ShortcutMods::SHIFT),
+        (Modifiers::CTRL, ShortcutMods::CTRL),
+        (Modifiers::ALT, ShortcutMods::ALT),
+        (Modifiers::CTRL_SHIFT, ShortcutMods::CTRL_SHIFT),
+    ] {
+        assert_eq!(ShortcutMods::from(held), declared, "{held:?}");
+    }
+    let mac_control = Modifiers {
+        mac_ctrl: true,
+        ..Modifiers::SHIFT
+    };
+    assert_eq!(ShortcutMods::from(mac_control), ShortcutMods::SHIFT);
 }

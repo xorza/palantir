@@ -271,16 +271,10 @@ mod tests {
     #[test]
     fn navigation_keys_split_four_ways() {
         let none = Modifiers::NONE;
-        let shift = Modifiers {
-            shift: true,
-            ..none
-        };
-        let ctrl = Modifiers { ctrl: true, ..none };
-        let ctrl_shift = Modifiers {
-            shift: true,
-            ..ctrl
-        };
-        let alt = Modifiers { alt: true, ..none };
+        let shift = Modifiers::SHIFT;
+        let ctrl = Modifiers::CTRL;
+        let ctrl_shift = Modifiers::CTRL_SHIFT;
+        let alt = Modifiers::ALT;
         let mac_ctrl = Modifiers {
             mac_ctrl: true,
             ..none

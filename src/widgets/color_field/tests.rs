@@ -119,10 +119,7 @@ fn keys_walk_both_axes() {
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::modifiers::Modifiers;
 
-    let shift = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
+    let shift = Modifiers::SHIFT;
     let cases = [
         (Modifiers::NONE, Key::ArrowRight, 0.5 + 0.005, 0.5),
         (shift, Key::ArrowLeft, 0.5 - 0.005 * 10.0, 0.5),

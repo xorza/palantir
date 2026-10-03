@@ -3,27 +3,9 @@ use crate::input::keyboard::modifiers::Modifiers;
 
 #[test]
 fn any_command_excludes_shift() {
-    assert!(
-        !Modifiers {
-            shift: true,
-            ..Modifiers::NONE
-        }
-        .any_command()
-    );
-    assert!(
-        Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        }
-        .any_command()
-    );
-    assert!(
-        Modifiers {
-            alt: true,
-            ..Modifiers::NONE
-        }
-        .any_command()
-    );
+    assert!(!Modifiers::SHIFT.any_command());
+    assert!(Modifiers::CTRL.any_command());
+    assert!(Modifiers::ALT.any_command());
 }
 
 /// Every modifier combination on every platform, hand-derived from the
@@ -47,8 +29,8 @@ fn compose_text_follows_each_platforms_rule() {
     ];
     for ((shift, ctrl, alt, mac_ctrl), expected) in rows {
         let mods = Modifiers {
-            shift,
             ctrl,
+            shift,
             alt,
             mac_ctrl,
         };

@@ -4,8 +4,9 @@
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interp};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
@@ -30,7 +31,7 @@ pub type RadialGradient = Gradient<RadialGeometry>;
 /// Authoring builder for a [`RadialGradient`].
 pub type RadialGradientBuilder = GradientBuilder<RadialGeometry>;
 
-impl GradientGeometry for RadialGeometry {
+impl Geometry for RadialGeometry {
     /// Radial fills are usually soft glows, where perceptual smoothness
     /// matters most.
     const DEFAULT_INTERP: Interp = Interp::Oklab;

@@ -99,13 +99,7 @@ fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
 }
 
 fn shift(key: Key) -> KeyPress {
-    KeyPress::with(
-        key,
-        Modifiers {
-            shift: true,
-            ..Modifiers::NONE
-        },
-    )
+    KeyPress::with(key, Modifiers::SHIFT)
 }
 
 /// Primary-modifier + key — the chord under which shortcuts like
@@ -113,13 +107,7 @@ fn shift(key: Key) -> KeyPress {
 /// platform-normalized command bit (Cmd on macOS, Ctrl elsewhere), so
 /// tests just set `ctrl`.
 fn ctrl_press(key: Key) -> KeyPress {
-    KeyPress::with(
-        key,
-        Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        },
-    )
+    KeyPress::with(key, Modifiers::CTRL)
 }
 
 fn ctrl_shift_press(key: Key) -> KeyPress {

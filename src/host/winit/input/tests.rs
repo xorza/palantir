@@ -104,24 +104,9 @@ fn modifier_normalization_translates_each_bit() {
     let none = Modifiers::NONE;
     let rows: [(ModifiersState, Platform, Modifiers); 8] = [
         (ModifiersState::empty(), Platform::Mac, none),
-        (
-            ModifiersState::SHIFT,
-            Platform::Linux,
-            Modifiers {
-                shift: true,
-                ..none
-            },
-        ),
-        (
-            ModifiersState::ALT,
-            Platform::Mac,
-            Modifiers { alt: true, ..none },
-        ),
-        (
-            ModifiersState::SUPER,
-            Platform::Mac,
-            Modifiers { ctrl: true, ..none },
-        ),
+        (ModifiersState::SHIFT, Platform::Linux, Modifiers::SHIFT),
+        (ModifiersState::ALT, Platform::Mac, Modifiers::ALT),
+        (ModifiersState::SUPER, Platform::Mac, Modifiers::CTRL),
         (
             ModifiersState::CONTROL,
             Platform::Mac,
@@ -130,20 +115,12 @@ fn modifier_normalization_translates_each_bit() {
                 ..none
             },
         ),
-        (
-            ModifiersState::CONTROL,
-            Platform::Win,
-            Modifiers { ctrl: true, ..none },
-        ),
+        (ModifiersState::CONTROL, Platform::Win, Modifiers::CTRL),
         (ModifiersState::SUPER, Platform::Linux, none),
         (
             ModifiersState::SHIFT | ModifiersState::CONTROL,
             Platform::Linux,
-            Modifiers {
-                shift: true,
-                ctrl: true,
-                ..none
-            },
+            Modifiers::CTRL_SHIFT,
         ),
     ];
     for (state, platform, expected) in rows {

@@ -30,15 +30,6 @@ far a pixel may differ, and `render*` drops the `FrameReport`.
 - The tolerance is A25 and the adapter sidecar and orphan report are A26; the three items land
   together (phase 5 of the plan).
 
-## A9. Test-driven additions
-
-**Findings.** TEST_REVIEW 10 (50 `Modifiers { ctrl: true, ..Modifiers::NONE }` literals) and 15
-(9 `stack(axis)` matches).
-
-**Recommendation.** `Panel::stack(axis: Axis)` beside `Panel::hstack` / `vstack` (`Axis` is
-public already), and `Widget::stack(axis)` beside `Widget::hstack` / `vstack` to match. The
-`Modifiers` constants moved to A33, which owns both modifier types.
-
 ## A10. Super modifier
 
 **Findings.** REVIEW "Platform key events": `Modifiers` has no super bit, so Super+L arrives as
@@ -264,6 +255,8 @@ once, so `RadioButton`, `ComboBox`, `Checkbox` and `Switch` set `committed == ch
 
 ## A31. Text arguments take one type
 
+**Blocked** on `QUESTIONS.md` Q1.
+
 **Findings.** Every widget label and caption takes `impl Into<TextInput<'a>>`, so a caller passes
 `&str`, `String`, an interned string or `fmt!` output alike. (Window titles take
 `impl Into<String>`, correctly: they outlive the frame.) `TextEdit::placeholder(&str)` and
@@ -271,30 +264,6 @@ once, so `RadioButton`, `ComboBox`, `Checkbox` and `Switch` set `committed == ch
 
 **Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
 stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
-
-## A33. Two modifier types that do not convert
-
-**Findings.** `Modifiers { shift, ctrl, alt, mac_ctrl }` is event state; `ShortcutMods { ctrl,
-shift, alt }` is binding vocabulary. The field order differs, and the conversion is
-`ShortcutMods::from_event(m)` rather than `From<Modifiers>`. A9 adds `Modifiers` constants.
-
-**Findings, continued.** TEST_REVIEW 10 (moved here from A9): 50 test literals spell
-`Modifiers { ctrl: true, ..Modifiers::NONE }` because `Modifiers` has only `NONE`, while
-`ShortcutMods` has `NONE`, `SHIFT`, `CTRL` and `CTRL_SHIFT`.
-
-**Recommendation.** `impl From<Modifiers> for ShortcutMods` in place of `from_event`. Both types
-order their fields `ctrl, shift, alt` (then `mac_ctrl` on `Modifiers`, and A10's `meta` on both),
-and both carry the same constants: `NONE`, `SHIFT`, `CTRL`, `ALT`, `CTRL_SHIFT`.
-
-## A37. Seal `GradientGeometry`
-
-**Findings.** `GradientGeometry` is a public, implementable trait whose items are renderer
-internals: `DEFAULT_INTERP`, `axis_lanes` (the four shader lanes), `hash_geometry` (a cache key)
-and `has_nan`. The renderer draws exactly three kinds, so an outside implementation cannot work,
-and the four items are not something a user calls.
-
-**Recommendation.** Seal it the way `widget::Lower` is sealed: the items move to a private
-supertrait, and the public trait stays only as the bound on `Gradient<G>`.
 
 ## A39. Wrapper hooks on single widgets
 
@@ -533,9 +502,7 @@ Each line is one commit; none depends on another inside the phase.
 1. Done: names (A28, A29, A30, A42, A45, A46).
 2. Done: chainers (A47, A44).
 3. Done: removals (A8, A13, A34, A35, A38, A40, A43, A48, A49).
-4. **Argument types.** A31 (`placeholder` and `suffix` take `TextInput`), A33 (`From<Modifiers>`,
-   one field order, one constant set) with A9 (`Panel::stack`, `Widget::stack`), A37 (seal
-   `GradientGeometry`).
+4. Done: argument types (A33 with A9, A37). A31 waits on `QUESTIONS.md` Q1.
 5. **Test features** (A17): the false claims, the redundant gates and the `alloc`
    `required-features` go.
 

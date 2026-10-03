@@ -38,10 +38,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     let mut state = InputState::default();
     state.set_focus(Some(forged_focus()));
 
-    state.feed(InputEvent::ModifiersChanged(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    }));
+    state.feed(InputEvent::ModifiersChanged(Modifiers::CTRL));
     state.feed(InputEvent::key_down(Key::Char('a')));
     state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
     state.feed(InputEvent::KeyDown {
@@ -492,10 +489,7 @@ fn post_record_clears_keys_but_preserves_modifiers() {
     let mut state = InputState::default();
     let cascade = Cascade::default();
     state.set_focus(Some(forged_focus()));
-    state.feed(InputEvent::ModifiersChanged(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    }));
+    state.feed(InputEvent::ModifiersChanged(Modifiers::SHIFT));
     state.feed(InputEvent::key_down(Key::ArrowLeft));
     let buf_cap_before = state.frame_keyboard_events.capacity();
 

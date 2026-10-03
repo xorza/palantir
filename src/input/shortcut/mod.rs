@@ -26,7 +26,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use std::fmt;
 
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command
-/// key — Cmd on macOS, Ctrl on Win/Linux (see [`ShortcutMods::from_event`]);
+/// key — Cmd on macOS, Ctrl on Win/Linux (see its `From<Modifiers>`);
 /// `shift` and `alt` are literal.
 ///
 /// Distinct from event-state [`Modifiers`] on purpose: that type also
@@ -45,8 +45,8 @@ pub struct ShortcutMods {
     pub alt: bool,
 }
 
-/// The named sets are the ones the crate's own constructors reach for;
-/// any other combination is a struct literal, which is all `ShortcutMods` is.
+/// The named sets are the ones [`Modifiers`] names too; any other
+/// combination is a struct literal, which is all `ShortcutMods` is.
 impl ShortcutMods {
     /// True if this chord declares any command modifier — the same
     /// question [`Modifiers::any_command`](crate::Modifiers::any_command)
@@ -78,19 +78,26 @@ impl ShortcutMods {
         shift: false,
         alt: false,
     };
+    /// Alt / Option alone.
+    pub const ALT: Self = Self {
+        ctrl: false,
+        shift: false,
+        alt: true,
+    };
     /// Primary command key plus Shift.
     pub const CTRL_SHIFT: Self = Self {
         ctrl: true,
         shift: true,
         alt: false,
     };
+}
 
-    /// Project event-state [`Modifiers`] into shortcut vocabulary. A
-    /// 1:1 copy — `Modifiers::ctrl` is already the platform-normalized
-    /// primary command bit (Cmd on macOS, Ctrl elsewhere), folded in at
-    /// the platform input boundary, so there's nothing
-    /// to disambiguate here.
-    pub const fn from_event(m: Modifiers) -> Self {
+/// Event-state [`Modifiers`] in shortcut vocabulary. A 1:1 copy —
+/// `Modifiers::ctrl` is already the platform-normalized primary command bit
+/// (Cmd on macOS, Ctrl elsewhere), folded in at the platform input
+/// boundary, so there's nothing to disambiguate here.
+impl From<Modifiers> for ShortcutMods {
+    fn from(m: Modifiers) -> Self {
         // Destructured exhaustively so a modifier added to `Modifiers`
         // is a compile error here rather than one that silently never
         // reaches shortcut matching. `mac_ctrl` is dropped on purpose —
@@ -177,7 +184,7 @@ impl Shortcut {
     /// external callers go through [`Self::matches`] so they get the
     /// layout-correct path rather than this logical-only one.
     fn matches_key(self, key: Key, mods: Modifiers) -> bool {
-        if ShortcutMods::from_event(mods) != self.mods {
+        if ShortcutMods::from(mods) != self.mods {
             return false;
         }
         match (self.key, key) {

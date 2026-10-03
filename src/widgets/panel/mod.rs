@@ -1,6 +1,7 @@
 //! The container widget — every stack, wrap and canvas layout an app
 //! reaches for, over the one node the layout drivers dispatch on.
 
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -58,6 +59,14 @@ impl Panel {
     #[track_caller]
     pub fn vstack() -> Self {
         Self::auto(Widget::vstack())
+    }
+
+    /// Children in one line along `axis`: [`Self::hstack`] for
+    /// [`Axis::X`], [`Self::vstack`] for [`Axis::Y`]. For code that picks
+    /// the direction at run time.
+    #[track_caller]
+    pub fn stack(axis: Axis) -> Self {
+        Self::auto(Widget::stack(axis))
     }
 
     /// HStack with overflow wrap: children flow left-to-right; when the
@@ -122,14 +131,6 @@ pub(crate) mod internals {
     use crate::widgets::panel::Panel;
 
     impl Panel {
-        /// [`Panel::hstack`] or [`Panel::vstack`], stacking along `axis`.
-        pub(crate) fn stack_on(axis: Axis) -> Self {
-            match axis {
-                Axis::X => Self::hstack(),
-                Axis::Y => Self::vstack(),
-            }
-        }
-
         /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing
         /// along `axis`.
         pub(crate) fn wrap_stack_on(axis: Axis) -> Self {

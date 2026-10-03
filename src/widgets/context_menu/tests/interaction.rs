@@ -104,10 +104,7 @@ fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
 
         // The primary command modifier + 'C' — `Modifiers::ctrl` is
         // platform-normalized (Cmd on macOS, Ctrl elsewhere).
-        h.set_modifiers(Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        });
+        h.set_modifiers(Modifiers::CTRL);
         h.key(Key::Char('C'));
         let row = h.frame_value(|ui| build_copy(ui, hint));
         assert_eq!(row.clicked, !hint, "hint {hint}: the press clicks the row");

@@ -20,12 +20,12 @@ use crate::common::platform::Platform;
 /// `ctrl` and `mac_ctrl` stays `false`. Most code should ignore it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Modifiers {
-    /// Either Shift key is held.
-    pub shift: bool,
     /// The **primary command modifier** is held — Cmd (⌘) on macOS, Ctrl
     /// on Windows and Linux. Normalized at the input boundary, so
     /// consumers never branch on platform.
     pub ctrl: bool,
+    /// Either Shift key is held.
+    pub shift: bool,
     /// Either Alt / Option key is held.
     pub alt: bool,
     /// The raw macOS Control key is held. Always `false` off macOS, where
@@ -37,10 +37,31 @@ pub struct Modifiers {
 impl Modifiers {
     /// Nothing held.
     pub const NONE: Self = Self {
-        shift: false,
         ctrl: false,
+        shift: false,
         alt: false,
         mac_ctrl: false,
+    };
+    /// Shift alone.
+    pub const SHIFT: Self = Self {
+        shift: true,
+        ..Self::NONE
+    };
+    /// The primary command key alone.
+    pub const CTRL: Self = Self {
+        ctrl: true,
+        ..Self::NONE
+    };
+    /// Alt / Option alone.
+    pub const ALT: Self = Self {
+        alt: true,
+        ..Self::NONE
+    };
+    /// The primary command key plus Shift.
+    pub const CTRL_SHIFT: Self = Self {
+        ctrl: true,
+        shift: true,
+        ..Self::NONE
     };
 
     /// True if any command modifier (primary ctrl, alt, or raw macOS
