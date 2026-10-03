@@ -16,6 +16,7 @@ use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::color_surface;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use std::rc::Rc;
@@ -38,6 +39,8 @@ pub struct ColorButton<'a> {
     alpha: bool,
     model: Option<ColorModel>,
     history: bool,
+    swatches: Option<&'a [RgbaF32]>,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -51,6 +54,8 @@ impl<'a> ColorButton<'a> {
             alpha: false,
             model: None,
             history: true,
+            swatches: None,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
@@ -72,6 +77,24 @@ impl<'a> ColorButton<'a> {
     /// the case with no room for a preset row of its own.
     pub const fn history(mut self, on: bool) -> Self {
         self.history = on;
+        self
+    }
+
+    /// Show a swatch row the app owns in the popup, as
+    /// [`ColorPicker::swatches`] does. Replaces [`history`](Self::history).
+    pub const fn swatches(mut self, colors: &'a [RgbaF32]) -> Self {
+        self.swatches = Some(colors);
+        self
+    }
+
+    /// The edge of one texel of the popup's field and bars, in physical
+    /// pixels. See [`ColorField::texel_size`](crate::ColorField::texel_size).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `n` is a power of two from 1 to 16.
+    pub fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = color_surface::checked_texel_size(n);
         self
     }
 
@@ -106,6 +129,8 @@ impl<'a> ColorButton<'a> {
         let alpha = self.alpha;
         let model = self.model;
         let history = self.history;
+        let swatches = self.swatches;
+        let texel_size = self.texel_size;
         let style = self.style;
         let trigger = ResponseSnapshot {
             id,
@@ -118,8 +143,12 @@ impl<'a> ColorButton<'a> {
             .show(ui, |ui, _| {
                 let mut picker = ColorPicker::new(color)
                     .alpha(alpha)
-                    .history(history)
+                    .texel_size(texel_size)
                     .style(style);
+                picker = match swatches {
+                    Some(colors) => picker.swatches(colors),
+                    None => picker.history(history),
+                };
                 if let Some(model) = model {
                     picker = picker.model(model);
                 }

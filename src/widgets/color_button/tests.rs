@@ -1,3 +1,8 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -54,35 +59,53 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
 }
 
-/// The panel's picker shows its swatch row by default — a chip has no
-/// room for a preset row of its own — and `history(false)` hides it.
+/// The popup's picker takes the chip's settings. Its swatch row shows by
+/// default — a chip has no room for a preset row of its own — and
+/// `history(false)` hides it, unless `swatches` hands it a row of the
+/// app's own. `texel_size` reaches the field's texture: one texel per
+/// `n` px, rounded up, so the 4 default builds a quarter of the 1 one on
+/// each axis.
 #[test]
-fn history_reaches_the_picker_in_the_panel() {
-    let id = WidgetId::from_hash("color-button-history");
-    for (history, shown) in [(None, true), (Some(false), false)] {
+fn panel_settings_reach_the_picker() {
+    use crate::primitives::paint::color::color_model::ColorModel;
+    use crate::widgets::color_surface::ColorSurface;
+
+    type Settings = fn(ColorButton<'_>) -> ColorButton<'_>;
+    const OWN: [RgbaF32; 2] = [RgbaF32::WHITE, RgbaF32::BLACK];
+    let id = WidgetId::from_hash("color-button-settings");
+    let picker = id.with("picker");
+    let rows: [(&str, Settings, bool, u32); 4] = [
+        ("default", |c| c, true, 4),
+        ("history off", |c| c.history(false), false, 4),
+        ("own swatches", |c| c.history(false).swatches(&OWN), true, 4),
+        ("texel size 1", |c| c.texel_size(1), true, 1),
+    ];
+    for (label, settings, swatch_row, texel) in rows {
         let mut h = harness();
         let mut color = RgbaF32::hex(0x4cd3ff);
         let mut frame = |h: &mut UiHarness| {
             h.frame(|ui| {
-                let chip = ColorButton::new(&mut color).id(id);
-                match history {
-                    Some(on) => chip.history(on),
-                    None => chip,
-                }
-                .show(ui);
+                settings(ColorButton::new(&mut color).id(id)).show(ui);
             });
         };
         frame(&mut h);
         click_chip(&mut h, &mut frame);
-        assert!(
-            h.rect(id.with("panel")).is_some(),
-            "premise: the panel opened"
-        );
+        assert!(h.rect(id.with("panel")).is_some(), "{label}: premise");
         assert_eq!(
-            h.node_of(id.with("picker").with("swatches")).is_some(),
-            shown,
-            "history {history:?}",
+            h.node_of(picker.with("swatches")).is_some(),
+            swatch_row,
+            "{label}: the swatch row",
         );
+        let field = h.rect(picker.with("field")).expect("the field").size;
+        let built =
+            h.ui.state::<ColorSurface<(ColorModel, f32)>>(picker.with("field").with("surface"))
+                .and_then(ColorSurface::built_size)
+                .expect("the field built its texture");
+        let want = UVec2::new(
+            (field.w / texel as f32).ceil() as u32,
+            (field.h / texel as f32).ceil() as u32,
+        );
+        assert_eq!(built, want, "{label}: field {field:?}");
     }
 }
 

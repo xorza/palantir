@@ -41,16 +41,6 @@ W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key
 Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
 display gets the platform glyph. Low priority.
 
-## A15. ColorButton parity with ColorPicker
-
-**Findings.** REVIEW "Small widgets design": ColorButton lacks `swatches(&[RgbaF32])` and the
-resolution setter (`downsample(n)` today, `texel_size(n)` after A28). Both take
-`history(on: bool)`; the defaults differ on purpose (on for the button, whose doc says why), so
-that half of the REVIEW finding is closed.
-
-**Recommendation.** Add `swatches` and `texel_size` to `ColorButton` with `ColorPicker`'s
-signatures.
-
 ## A16. A checked render target
 
 **Findings.** REVIEW "Render target colour encoding is not enforced". `From<&wgpu::Texture> for
@@ -365,7 +355,7 @@ Each line is one commit; none depends on another inside the phase.
 2. Done: wrappers (A39).
 3. Done: overlays (A14 with A51, A41, A23).
 4. Done: dock and tabs (A11, A12).
-5. **Colour button** (A15), after phase 2 step 1 renamed `downsample`.
+5. Done: colour button (A15).
 
 ## Phase 4 — the validation rollout (A50 rules 2–4)
 
