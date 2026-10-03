@@ -75,28 +75,31 @@ impl ColorCoords {
         Self::new(model, self.to_color(), self.hue())
     }
 
-    /// Hue, `0..1`.
+    /// Hue, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
+    /// the model holds as non-finite.
     pub const fn hue(self) -> f32 {
-        match self {
+        domain::fraction(match self {
             Self::Okhsv(c) => c.h,
             Self::Hsv(c) => c.h,
-        }
+        })
     }
 
-    /// Saturation, `0..1`.
+    /// Saturation, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
+    /// the model holds as non-finite.
     pub const fn sat(self) -> f32 {
-        match self {
+        domain::fraction(match self {
             Self::Okhsv(c) => c.s,
             Self::Hsv(c) => c.s,
-        }
+        })
     }
 
-    /// Value, `0..1`.
+    /// Value, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
+    /// the model holds as non-finite.
     pub const fn val(self) -> f32 {
-        match self {
+        domain::fraction(match self {
             Self::Okhsv(c) => c.v,
             Self::Hsv(c) => c.v,
-        }
+        })
     }
 
     /// Set the hue, as a *fraction* — clamped to `0..=1`, and `0` when it is

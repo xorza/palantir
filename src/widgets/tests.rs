@@ -336,3 +336,106 @@ fn widget_setters_check_their_kinds() {
         drop(DragValue::new(&mut value).range(f64::NAN..=1.0));
     });
 }
+
+/// The frame property behind every coercing input: at its worst — NaN and
+/// infinite fractions, stale and out-of-range indices, empty lists,
+/// reversed ranges, a minimum above its maximum — each one still lays out
+/// and paints, and no NaN reaches an arranged rect or a paint call.
+///
+/// The paint side reads the capture's `Debug` text, because it is the one
+/// view that walks every payload of every call: a NaN prints as `NaN`
+/// whatever field or lane it sits in.
+#[test]
+fn coercing_inputs_at_their_worst_paint_no_nan() {
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::layout::track::Track;
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::stops::Stop;
+    use crate::primitives::paint::color::color_coords::ColorCoords;
+    use crate::primitives::paint::color::okhsv::Okhsv;
+    use crate::scene::layer::Layer;
+    use crate::shape::Shape;
+    use crate::widgets::color_field::ColorField;
+    use crate::widgets::combo_box::ComboBox;
+    use crate::widgets::drag_value::DragValue;
+    use crate::widgets::progress_bar::ProgressBar;
+    use crate::widgets::slider::Slider;
+    use crate::widgets::splitter::Splitter;
+    use crate::widgets::tabs::tab_item::TabItem;
+    use crate::widgets::tabs::tab_strip::TabStrip;
+    use crate::widgets::tabs::tabbed_view::TabbedView;
+    use crate::widgets::text::Text;
+
+    const OPTIONS: [&str; 2] = ["a", "b"];
+    let mut h = UiHarness::new(UVec2::new(800, 1200));
+    let mut ratio = f32::NAN;
+    let (mut stale, mut empty, mut page, mut no_page) = (9_usize, 3_usize, 9_usize, 0_usize);
+    let mut slid = f64::NAN;
+    let mut dragged = f64::NAN;
+    let mut coords = ColorCoords::Okhsv(Okhsv::new(f32::NAN, f32::INFINITY, f32::NAN));
+    let gradient = LinearGradient::new(
+        0.0,
+        [
+            Stop::new(f32::NAN, RgbaF32::WHITE),
+            Stop::new(f32::INFINITY, RgbaF32::BLACK),
+        ],
+    );
+    let mut scene = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("worst"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ProgressBar::new(f32::NAN).show(ui);
+                ProgressBar::new(f32::INFINITY).show(ui);
+                Splitter::row(&mut ratio)
+                    .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
+                    .show(ui, |_, _| {});
+                ComboBox::new(&mut stale, &OPTIONS).show(ui);
+                ComboBox::new(&mut empty, &[] as &[&str]).show(ui);
+                TabbedView::new(&mut page, &OPTIONS)
+                    .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
+                    .show(ui, |ui, i| {
+                        Text::new(OPTIONS[i]).show(ui);
+                    });
+                TabbedView::new(&mut no_page, &[] as &[&str])
+                    .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
+                    .show(ui, |_, _| {});
+                let items = [TabItem::new(1, ui.intern("one"))];
+                TabStrip::new(&items).selected(5).show(ui);
+                Slider::new(&mut slid, 10.0..=0.0).show(ui);
+                DragValue::new(&mut dragged).range(5.0..=-5.0).show(ui);
+                ColorField::new(&mut coords).show(ui);
+                Grid::new()
+                    .cols([Track::fixed(10.0).with_min(30.0).with_max(20.0)])
+                    .rows([Track::HUG])
+                    .show(ui, |ui| {
+                        Block::new()
+                            .min_size((50.0, 10.0))
+                            .max_size((20.0, 5.0))
+                            .show(ui);
+                    });
+                Block::new()
+                    .size((Sizing::fixed(40.0), Sizing::fixed(10.0)))
+                    .show(ui);
+                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 40.0, 10.0)).fill(gradient.clone()));
+            });
+    };
+    h.frame(&mut scene);
+    h.frame(&mut scene);
+
+    for layer in Layer::PAINT_ORDER {
+        for rect in &h.ui.layout(layer).rect {
+            assert!(
+                rect.min.is_finite() && rect.size.w.is_finite() && rect.size.h.is_finite(),
+                "{layer:?}: {rect:?}",
+            );
+        }
+    }
+    let paint = format!("{:?}", h.encode_paint());
+    assert!(!paint.contains("NaN"), "a NaN reached paint");
+    assert_eq!(
+        (stale, empty, page, no_page),
+        (9, 3, 9, 0),
+        "no index was written back"
+    );
+}
