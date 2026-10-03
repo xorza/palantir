@@ -16,51 +16,18 @@ Line numbers are against `50b34a49`.
 
 ---
 
-## A1. Widget-authoring surface (largest item)
-
-**Findings.** REVIEW "Big widgets reach `pub(crate)` internals" and "Small widgets reach
-non-public API". Shipped widgets use items that an outside crate cannot reach, which breaks
-"widgets use only the public API".
-
-| Item | Used by |
-|------|---------|
-| `Widget::scroll`, `Widget::scrollbars`, `Widget::scrollbar_def`, `ScrollAxes`, `ScrollbarsDef`, `BarGeometry`, `Ui::scroll_content` | Scroll, TextEdit, TabStrip |
-| `ScrollState`, `ScrollBounds` (`apply_wheel_pan`, `clamp_to_natural`, `transform`) | TextEdit |
-| `OverlayScope`, `Backdrop` | Popup, Modal, Tooltip, ContextMenu |
-| `Ui::gpu_view`, `GpuPaintRef` | GpuView |
-| `DragNum::{read, commit_drag, commit_value, parse_from, edit_string}`, `Num`, `Limits` | Slider, DragValue |
-| `Response::lazy` | DragValue |
-| `Axis::{main, main_v, rows_cols, compose_spacing}`, `CursorIcon::resize_along` | Splitter, Scroll |
-| `Arrow`, `check_polyline`, `chevron_pts`, `arrow_angle` | Checkbox, ComboBox, Expander |
-| `ToggleChrome`, `checkerboard`, `ColorSurface` (`texel_size`, `checked_downsample`, `DOWNSAMPLE`), `axis_keys` | Checkbox, Radio, Switch, colour widgets |
-| `TextStyle::metrics_valid`, `Background::border_inset`, `Align::place_in` | TextEdit |
-| `TabStrip::insertion_slot`, `TabItemBuf`, `DockState::drag`, `DockState::drop_target` | TabbedView, DockView |
-
-**Options.**
-
-1. Make each item `pub` where it stands, with docs a stranger needs.
-2. Group the scaffolding into one public `authoring` module (scroll viewport, overlay scope, numeric
-   drag, toggle chrome, colour surface, glyph helpers), and keep the widgets' own types where
-   they are.
-3. Rewrite the widgets so they need less (for example, TextEdit stops using `ScrollState`, see
-   REVIEW "`ViewState.scroll` carries `zoom` and `drag_anchor`").
-
-**Recommendation.** Do 3 first where it removes the need: TextEdit gets a text-viewport state of
-its own (offset and natural size only), and `TabStrip::insertion_slot` becomes a method on a
-public type both callers already hold. Then 1 for the rest, item by item, in the module where each
-item lives today. A new `authoring` module would be a second place to look for the same kind of
-item. Split this item into one go-ahead per row of the table.
-
-**Touches.** `src/widgets/**`, `src/layout/drivers/scrollbars`, `src/primitives/layout/scroll_axes.rs`,
-`src/ui/mod.rs`, `src/renderer/gpu_paint`, `src/primitives/geometry` helpers, `lib.rs` exports.
-
 ## A6. `BatchKind` without strum in its public derives
 
 **Findings.** REVIEW "Public API leaks third-party crate types"; TEST_REVIEW 2 (hand-listed
 "exhaustive" tests missed `BatchKind::Icon`).
 
-**Recommendation.** Inherent `BatchKind::iter()` and `BatchKind::COUNT`, as `PointerButton` does.
-Remove the strum `EnumIter` / `EnumCount` derives from the public type.
+**Recommendation.** Inherent `iter()` and `COUNT` on each public enum that needs them, and no
+strum derive on any public type. Three types leak strum today, not one: `BatchKind`
+(`EnumIter`, `EnumCount`), `PointerButton` (`IntoEnumIterator`, `EnumCount`) and `Layer`
+(`VariantArray`, `EnumCount`). `Layer::PAINT_ORDER` already copies `VARIANTS` into a crate
+constant, but a derive implements a public trait on a public type, so it cannot be hidden: `Layer`
+loses the derive, and `PAINT_ORDER` becomes a written-out array with a `const` assertion that
+entry `i` has discriminant `i`.
 
 ## A7. `golden` module surface
 
@@ -71,9 +38,10 @@ far a pixel may differ, and `render*` drops the `FrameReport`.
 **Recommendation.**
 
 - `pub use image` from `golden` (the same reason `lib.rs:225-238` re-exports `wgpu`).
-- `Tolerance { max_delta: u8, max_pixels: u32 }` (the WPT reftest fuzzy model), default exact.
-- `Goldens::assert_matches` writes an adapter sidecar and reports orphans (TEST_REVIEW 7);
-  those parts are behaviour, but they belong with this change.
+- The `render*` functions return the `FrameReport` beside the image, so a suite can assert on
+  repaint and paint mode without a second frame.
+- The tolerance is A25 and the adapter sidecar and orphan report are A26; the three items land
+  together (phase 5 of the plan).
 
 ## A8. Remove `WinitHostError::Gpu`
 
@@ -89,20 +57,20 @@ far a pixel may differ, and `render*` drops the `FrameReport`.
 **Findings.** TEST_REVIEW 10 (50 `Modifiers { ctrl: true, ..Modifiers::NONE }` literals) and 15
 (9 `stack(axis)` matches).
 
-**Recommendation.**
-
-- `Modifiers::CTRL`, `Modifiers::SHIFT`, `Modifiers::ALT`, beside `Modifiers::NONE`.
-- `Panel::stack(axis: Axis)` beside `Panel::hstack` / `vstack`. `Axis` is `pub(crate)` today, so
-  this also needs `Axis` public, which overlaps A1. If `Axis` stays private, keep a test-support
-  helper instead and drop this half.
+**Recommendation.** `Panel::stack(axis: Axis)` beside `Panel::hstack` / `vstack` (`Axis` is
+public already), and `Widget::stack(axis)` beside `Widget::hstack` / `vstack` to match. The
+`Modifiers` constants moved to A33, which owns both modifier types.
 
 ## A10. Super modifier
 
 **Findings.** REVIEW "Platform key events": `Modifiers` has no super bit, so Super+L arrives as
 bare `l`. REDESIGN D2 clears the text in the host, which fixes the typing without this item.
 
-**Recommendation.** Add `Modifiers::sup` (or `meta`; check what `Shortcut` and `ShortcutMods`
-call it) so apps can bind Super chords. Low priority.
+**Recommendation.** Add a `meta` field to `Modifiers` and `ShortcutMods` alike, after A33 has made
+the two types convert, so apps can bind Super chords. `super` is a keyword, so the field takes the
+W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key()`. On macOS
+Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
+display gets the platform glyph. Low priority.
 
 ## A11. Dock model and view split
 
@@ -111,7 +79,10 @@ call it) so apps can bind Super chords. Low priority.
 `Option<Vec2>` where `Size` exists.
 
 **Recommendation.** Move `scan` and `content_size` to `DockView` (the private ones follow);
-`content_size` returns `Option<Size>`. Check `dock_tabs.rs:200` for the same `Vec2`.
+`content_size` returns `Option<Size>`. Check `dock_tabs.rs:200` for the same `Vec2`. The id
+derivations (`dock_id`, `pane_id`, `content_id`, `strip_id`, `splitter_id` and the static
+`tab_key`) are view facts too, and go with them — `TabStrip::chip_id` / `close_id` already live on
+the view.
 
 ## A12. TabbedView page identity
 
@@ -141,11 +112,13 @@ whichever of the three reads most like prose wins.
 
 ## A15. ColorButton parity with ColorPicker
 
-**Findings.** REVIEW "Small widgets design": ColorButton lacks `swatches(&[RgbaF32])` and
-`downsample(n)`, and its `history` default and type differ from ColorPicker's.
+**Findings.** REVIEW "Small widgets design": ColorButton lacks `swatches(&[RgbaF32])` and the
+resolution setter (`downsample(n)` today, `texel_size(n)` after A28). Both take
+`history(on: bool)`; the defaults differ on purpose (on for the button, whose doc says why), so
+that half of the REVIEW finding is closed.
 
-**Recommendation.** Add the two setters with ColorPicker's signatures, and make `history` take the
-same type with the same default.
+**Recommendation.** Add `swatches` and `texel_size` to `ColorButton` with `ColorPicker`'s
+signatures, after A28.
 
 ## A16. Fallible render target conversion
 
@@ -179,8 +152,9 @@ test line.
 **Recommendation.**
 
 - `IconDef::name` becomes an owned or interned string, so a set built from files does not leak.
-- `from_svgs` rejects more than `u16::MAX` icons and duplicate names. If it already returns a
-  `Result`, add the two errors; if not, REDESIGN phase 10 adds release asserts as the interim.
+- `from_svgs` returns `Result<Self, IconTableError>` (A50 rule 3: icon files are data), with
+  three variants: an SVG it cannot read (today it drops it silently), more than `u16::MAX`
+  icons, and a duplicate name.
 
 ## A19. Features the docs imply: IME and focus traversal
 
@@ -188,8 +162,8 @@ test line.
 or translated, and there is no Tab focus traversal. REDESIGN D16 fixes the docs.
 
 **Recommendation.** Treat each as a feature with its own design: IME needs `InputEvent` variants
-for preedit and commit; focus traversal needs a focus order and a `Focus` key class (A3). Out of
-scope for the defect work.
+for preedit and commit; focus traversal needs a focus order (the `KeyClass::Focus` class it reads
+exists since the key-class split). Out of scope for the defect work.
 
 ## A20. Keyboard support on the toggle and range widgets
 
@@ -260,7 +234,12 @@ duplication": `Rect::deflated`, `Display::from_physical` and `Display::scale_fac
 crate-internal ones are done.
 
 **Recommendation.** Make it `const`, and sweep the rest of the public surface for the same in
-one pass.
+one pass. Candidates the surface review found: `Corners::{all, new, top, bottom, left, right,
+top_bottom, diag_main, diag_anti, scaled_by, as_array, from_array}`, `Spacing::{all, xy, new,
+as_array, from_array, horizontal_sum, vertical_sum}`, `Background::{fill, rounded, is_noop}`,
+`Slider::step`, `ButtonState::{click_count, double_clicked}`, `ResponseState::{double_clicked,
+any_clicked}`, `ZoomFactor::new`, `Sizing::split`, `TextStyle::line_height_for`. Check each
+against the guide's exception (a `const` that costs run time).
 
 ## A25. Golden tolerance that bounds how far a pixel may differ
 
@@ -287,3 +266,539 @@ suite; and nothing reports a golden no test compares against any more.
 fails a comparison against a sidecar from another adapter with that reason instead of a pixel
 diff; `Goldens::orphans(names)` lists golden files not among `names`, for a suite to assert empty
 from one test that names them all. Touches `golden::Goldens`.
+
+---
+
+# Surface review (2026-10-04)
+
+The items below come from a review of the whole exported surface, listed in `API_SURFACE.md`
+(rustdoc JSON of `59b93e30`). Each item names what reads inconsistent, asymmetric, or
+non-canonical, and what to do about it. Where a finding extends an earlier item, the earlier item
+took it: A6, A7, A9, A10, A11, A15, A18, A19 and A24. The plan at the end of the file orders all
+items, old and new.
+
+## A27. One response type for a value a widget writes
+
+**Findings.** Widgets that write a bound value report it three ways. `Slider`, `DragValue`,
+`Splitter`, `ColorButton`, `ColorField`, `ColorPicker` and `ColorStrip` return `ValueResponse
+{ changed, committed }`. `RadioButton` and `ComboBox` return `SelectResponse { changed }`.
+`Checkbox` and `Switch` toggle a `&mut bool` and return a plain `Response`, so a caller cannot
+tell a toggle from a click on a disabled box without comparing the bool itself. `ExpanderResponse`
+names the same flag `toggled`.
+
+**Recommendation.** Every value-writing widget returns `ValueResponse`. A discrete pick commits at
+once, so `RadioButton`, `ComboBox`, `Checkbox` and `Switch` set `committed == changed`. Remove
+`SelectResponse`. Rename `ExpanderResponse::toggled` to `changed`.
+
+**Touches.** `Checkbox`, `Switch`, `RadioButton`, `ComboBox`, `Expander`, `SelectResponse`, prelude.
+
+## A28. `downsample` means two things
+
+**Findings.** `ImageShape::downsample(ImageDownsample)` picks a minification filter.
+`ColorField`, `ColorStrip` and `ColorPicker::downsample(n: u32)` set a power-of-two divisor for the
+resolution a texture is built at. One name, two unrelated settings.
+
+**Recommendation.** Rename the colour widgets' setter to `texel_size(n)`, the name their surface
+already uses internally (`ColorSurface::texel_size`). `ImageShape::downsample` keeps its name.
+
+## A29. One vocabulary for a split
+
+**Findings.** `Separator::horizontal()` is a horizontal *line*. `Splitter::horizontal(ratio)` is
+side-by-side panes with a *vertical* bar, so the same word names opposite orientations on two
+neighbouring widgets. The dock already says it without ambiguity: `SplitDir::{Row, Column}` and
+`AllowedSplits::{Row, Column}`.
+
+**Recommendation.** `Splitter::row(&mut ratio)` and `Splitter::column(&mut ratio)`, matching
+`SplitDir`. `Separator` keeps `horizontal` / `vertical` (it names the line, as other toolkits do),
+and so does `Scroll` (it names the scroll direction).
+
+## A30. Text setter names that disagree with `TextStyle`
+
+**Findings.** `Text::line_height(mult)` and `TextEdit::line_height(mult)` take a multiplier, but
+the name reads as pixels; the field is `TextStyle::line_height_mult` and its chainer
+`with_line_height_mult`. `Text`, `TextEdit` and `TextShape` have `family(..)`, while `TextStyle` and
+`TextStyleOverrides` have every other axis as `with_*` but no `with_family`.
+
+**Recommendation.** Rename the two widget setters to `line_height_mult`. Add `with_family` to
+`TextStyle` and `TextStyleOverrides`.
+
+## A31. Text arguments take one type
+
+**Findings.** Every widget label and caption takes `impl Into<TextInput<'a>>`, so a caller passes
+`&str`, `String`, an interned string or `fmt!` output alike. (Window titles take
+`impl Into<String>`, correctly: they outlive the frame.) `TextEdit::placeholder(&str)` and
+`DragValue::suffix(&str)` take only `&str`.
+
+**Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
+stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
+
+## A32. Flag sets expose two spellings and their bits
+
+**Findings.** The `flag_set!` types (`Sense`, `KeyFilter`, `KeyboardWake`, `PointerWake`) export
+both the macro's `empty()` / `all()` and hand-written `NONE` / `ALL`, so "no flags" has two names.
+They also export `bits()` and `from_bits_truncate()`, which only the crate's own packing
+(`NodeFlags`) uses: the bit layout becomes public by accident. Elsewhere in the crate, "nothing" is
+a `NONE` constant (`Modifiers`, `ShortcutMods`, `Background`, `Shadow`, `TextStyleOverrides`).
+
+**Recommendation.** Each flag type exports `NONE` and `ALL` constants, the named flags, the set
+operations and `BitOr`. `empty()`, `all()`, `bits()` and `from_bits_truncate()` become
+`pub(crate)`.
+
+## A33. Two modifier types that do not convert
+
+**Findings.** `Modifiers { shift, ctrl, alt, mac_ctrl }` is event state; `ShortcutMods { ctrl,
+shift, alt }` is binding vocabulary. The field order differs, and the conversion is
+`ShortcutMods::from_event(m)` rather than `From<Modifiers>`. A9 adds `Modifiers` constants.
+
+**Findings, continued.** TEST_REVIEW 10 (moved here from A9): 50 test literals spell
+`Modifiers { ctrl: true, ..Modifiers::NONE }` because `Modifiers` has only `NONE`, while
+`ShortcutMods` has `NONE`, `SHIFT`, `CTRL` and `CTRL_SHIFT`.
+
+**Recommendation.** `impl From<Modifiers> for ShortcutMods` in place of `from_event`. Both types
+order their fields `ctrl, shift, alt` (then `mac_ctrl` on `Modifiers`, and A10's `meta` on both),
+and both carry the same constants: `NONE`, `SHIFT`, `CTRL`, `ALT`, `CTRL_SHIFT`.
+
+## A34. Remove `Sums`
+
+**Findings.** `Spacing::sums()` returns `widget::Sums { horizontal, vertical }`, which is a `Size`
+under other names, beside `horizontal_sum()` and `vertical_sum()` that answer the same thing. Two
+call sites use `sums()`.
+
+**Recommendation.** Remove `Sums` and `Spacing::sums()`; the two call sites read the two methods.
+
+## A35. Remove `From<Vec2>` and `From<Size>` for `Corners`
+
+**Findings.** `Corners: From<Vec2>` reads `x` as both top radii and `y` as both bottom radii, and
+`From<Size>` reads `w` and `h` the same way. Neither type means "top and bottom" anywhere else, so
+the conversion is a guess a reader cannot make. `From<(top, bottom)>` and `Corners::top_bottom`
+already state the pairing.
+
+**Recommendation.** Remove both impls.
+
+## A36. One public home for scalar rules
+
+**Findings.** `widget::approx` re-exports a crate module wholesale: `EPS` and four free functions
+(`approx_zero`, `paints_nothing`, `share_of`, `vec2_approx_eq`). `widget::F32Ext` already exists to
+put exactly this kind of scalar rule on `f32` and `Vec2` as methods, and the style guide prefers
+methods to exported free functions.
+
+**Findings, continued.** A50's kind functions are a third set of scalar rules, and they must be
+public too: AGENTS.md lets a widget reach only the public API, so a widget outside the crate has to
+validate and read theme values the way a bundled one does.
+
+**Recommendation.** One public home for every scalar rule: the `widget::domain` module of A50.
+It holds `EPS`, the predicates (`approx_zero`, `paints_nothing`, `approx_eq`), `share_of`,
+`band_fraction`, and the kind functions, which absorb `themed_length` (`length_at_least(v, min)`)
+and `unit_fraction_or` (`fraction_or(v, fallback)`). They are `const fn`s on `f32`; the `Vec2`
+forms a two-axis widget needs have the same names in `domain::vec2`. Free functions rather than
+`F32Ext` methods, against the guide's preference for methods, because a trait method cannot be
+`const` on stable and the setters that call these are. `widget::approx` and `F32Ext` are removed.
+
+## A37. Seal `GradientGeometry`
+
+**Findings.** `GradientGeometry` is a public, implementable trait whose items are renderer
+internals: `DEFAULT_INTERP`, `axis_lanes` (the four shader lanes), `hash_geometry` (a cache key)
+and `has_nan`. The renderer draws exactly three kinds, so an outside implementation cannot work,
+and the four items are not something a user calls.
+
+**Recommendation.** Seal it the way `widget::Lower` is sealed: the items move to a private
+supertrait, and the public trait stays only as the bound on `Gradient<G>`.
+
+## A38. Hide `UserEvent`
+
+**Findings.** `UserEvent` is exported, and its doc says it is public only as the type parameter of
+`EventLoopProxy`. But the proxy is a `pub(super)` field of `HostHandle`, so no public signature
+names `UserEvent`, and a user can do nothing with it.
+
+**Recommendation.** `pub(crate)`, and remove it from `lib.rs`.
+
+## A39. Wrapper hooks on single widgets
+
+**Findings.** Four public methods exist for in-crate wrappers, and the wrapped widgets' peers lack
+them:
+
+| Hook | For |
+|------|-----|
+| `TextEdit::adopt_placement(&Widget)` | `DragValue`'s inline editor; `Widget::adopt_placement` is the same thing one level down |
+| `Separator::from_widget(Widget, Axis)` | `MenuSeparator` |
+| `Popup::default_background(&Background)` | `ContextMenu` and `ComboBox` theming a popup's chrome after the caller's own settings |
+| `Popup::anchored(Anchor)` | `ContextMenu`, which learns its anchor only in `show` |
+
+**Recommendation.** One wrapper rule, written in AGENTS.md: *a wrapper holds the widget it wraps,
+forwards `Configure` to it, and finishes it through that widget's public setters.* Under it:
+
+- `adopt_placement` moves to `ConfigureWidget`, so every widget has it through `configure()`;
+  `TextEdit::adopt_placement` and `Widget::adopt_placement` go.
+- `MenuSeparator` holds a `Separator`, built horizontal in `MenuSeparator::new`;
+  `Separator::from_widget` goes.
+- `Popup::anchored` stays: it is an ordinary setter a holding wrapper needs, and it already
+  mirrors `LayerScope::anchored`.
+- `default_background` stays as the chrome peer of `ThemeDefaults::default_padding`, but on every
+  widget that has `background(bg)`, not on `Popup` alone: `Block`, `Panel`, `Grid`, `Scroll`,
+  `Popup`, `Modal`, `Tooltip` and `ContextMenu` implement one `Chrome` trait with
+  `background(bg)` and `default_background(bg)`, in place of eight copies of `background`.
+
+## A40. Remove `MenuItem::separator`
+
+**Findings.** `MenuItem::separator()` returns a `MenuSeparator`, which `MenuSeparator::new()`
+already builds.
+
+**Recommendation.** Remove `MenuItem::separator`.
+
+## A41. `Popup` mirrors `Anchor` but not all of it
+
+**Findings.** `Popup::below`, `above`, `left_of` and `right_of(rect)` are `Popup::new(Anchor::…)`
+spelled shorter, but `Anchor::at_point` has no `Popup` twin, so the one placement a menu at the
+pointer needs is the one that has to be spelled long.
+
+**Recommendation.** Add `Popup::at_point(point)`, so the shorthand covers every `Anchor`
+constructor.
+
+## A42. `Ui::window_open` reads as an action
+
+**Findings.** `Ui::window_open(token)` is a query, but it sits beside `open_window` and
+`close_window`, which are actions, and reads like one of them.
+
+**Recommendation.** `is_window_open(token)`.
+
+## A43. One way to configure the windowed host
+
+**Findings.** `WinitHostBuilder` has a setter per setting, a `config(WinitHostConfig)` that takes
+the same settings as one struct, and `title` beside `window(WindowConfig)`, which also carries the
+title. `OffscreenHostBuilder` has setters only.
+
+**Recommendation.** Remove `WinitHostConfig` and `WinitHostBuilder::config`, so both builders
+configure the same way. Keep `title` as the documented shorthand for the bootstrap window.
+
+## A44. `ZoomConfig` half fields, half constructor
+
+**Findings.** `ZoomConfig` has `range` and `step` private behind `new(range, step)`, and
+`modifier` and `pivot` as public fields — two configuration styles in one value.
+
+**Recommendation.** All four private, with `with_modifier(m)` and `with_pivot(p)` after `new`,
+as A47's rule names chainers on a value.
+
+## A45. One name for "a repaint is owed"
+
+**Findings.** `InputDelta::requests_repaint` and `FrameReport::repaint_requested` carry the same
+fact with two word orders.
+
+**Recommendation.** `InputDelta::repaint_requested`.
+
+## A46. Identifier spelling and twin names
+
+**Findings.**
+
+- `TextEditTheme::corner_centring` is the one British spelling among identifiers; everything else
+  is `center` and `color`.
+- `WidgetId::auto_stable()` and `Configure::auto_id()` name the same call-site identity two ways.
+- `RgbaF32::lerp(self, other, t)` duplicates `Animatable::lerp(a, b, t)` with a different shape.
+- A single-value newtype unwraps through `get()` (`UserScale`, `ZoomFactor`, as `NonZeroU32` and
+  `Cell` do), except `FontWeight::value()`.
+
+**Recommendation.** `corner_centering`; `WidgetId::auto()`; remove the inherent `RgbaF32::lerp`;
+`FontWeight::get()`.
+
+## A47. Chainer names on value types
+
+**Findings.** Chaining setters are named two ways with no rule between them. `Background`,
+`Shadow`, `RgbaF32`, `TextStyle`, `TextStyleOverrides`, `Gradient` and `ColorRamp` use `with_*`;
+widgets, shapes and host builders use bare names. Values that use bare names anyway: `Track::min` /
+`max`, `Anchor::align` / `gap`, `GridCell::span`, `PaintAnim::{period, started_at, repeat, steps,
+curve}` (beside its own `with_alpha` / `with_turn`), every `WindowConfig` setter,
+`DockState::{max_depth, allowed_splits}` and `Goldens::tolerance`. And one builder uses `with_*`:
+`GradientBuilder::{with_spread, with_interp}`.
+
+**Recommendation.** One rule, written in AGENTS.md:
+
+- A *builder* exists to be consumed once — by a terminal `show` or `build`, or by
+  `Ui::add_shape` — and its setters are bare: widgets, shapes, `LayerScope`, the host builders,
+  `GradientBuilder`.
+- Every other type is a *value*: it is stored, passed or compared. A setter that takes an argument
+  is `with_*`. A shorthand that takes none keeps its adjective (`TextStyle::bold`, `italic`,
+  `Shadow::inset`).
+
+Renames: `Track::with_min` / `with_max`, `Anchor::with_align` / `with_gap`, `GridCell::with_span`,
+`PaintAnim::{with_period, with_started_at, with_repeat, with_steps, with_curve}`,
+`WindowConfig::{with_inner_size, with_min_inner_size, with_position, with_placement,
+with_maximized, with_icon, with_app_id}`, `DockState::{with_max_depth, with_allowed_splits}`,
+`Goldens::with_tolerance`, A44's `ZoomConfig` setters, and `GradientBuilder::{spread, interp}`.
+`PaintAnim::alpha` / `turn` stay: they are constructors.
+
+## A48. `Mesh::with_known_bbox` trusts its caller silently
+
+**Findings.** `Mesh::with_known_bbox(bbox)` skips the lazy bounding-box computation, and its doc
+says a wrong box "silently breaks scissor culling". It is the one public setter in the crate that
+can make paint wrong without a check, and it saves only the lazy computation the mesh does anyway.
+
+**Recommendation.** Remove it. If a measured workload needs it, keep it with a `debug_assert!` that
+every vertex lies inside the box.
+
+## A49. `Ui::escape_pressed`
+
+**Findings.** `Ui::escape_pressed()` is `key_pressed(Shortcut::key(Key::Escape))` and nothing more,
+the only key with its own method.
+
+**Recommendation.** Remove it; `Modal` and the other callers spell the shortcut. Low priority.
+
+## A50. One validation model for every public input
+
+**Findings.** An audit of every public function that takes a number, a range, an index or a value
+type (about 260, from the rustdoc JSON of `59b93e30`) finds seven different behaviours for an
+invalid input. The same kind of value gets different ones: a negative length panics in
+`Sizing::fixed`, is a debug-only check in `padding`, is silently clamped in `Splitter::min_pane`,
+paints nothing as a `Stroke::width`, and is a deserialization error in a theme file.
+
+| Behaviour today | Examples |
+|---|---|
+| Release panic on a per-frame authoring call (the guide allows release asserts only on cold paths) | `Sizing::{fixed, fill, share}`, `Track::{min, max}`, `gap` / `line_gap`, `min_size` / `max_size` bounds, `TranslateScale::new` and `from_*`, `Slider::new` (finite range), `Slider::step`, `Stop::new` / `GradientBuilder::stop`, `Scroll::zoom_by`, `PaintAnim::steps`, `ColorField` / `ColorStrip` / `ColorPicker::downsample`, `FontWeight::new`, `AnimSpec::{duration, spring}`, `ImageHandle::update` (wrong size) |
+| Release panic on *data* (the guide: untrusted data is never an assert) | `ComboBox` and `TabbedView` panic when the bound index is out of range — a stale index after the app removed an option, and every `TabbedView` with zero pages; `Image::from_srgba8` asserts the byte length of pixels that usually come from a decoder; `FontFamily::named` panics when the family table is full, for a name that usually comes from configuration (the fallible `try_named` is crate-only) |
+| Debug-only check, nothing in release | `padding` / `margin` (`debug_assert!` on NaN, so a release NaN enters layout), `Rect::from_min_max` |
+| No check (one of them corrupts the bound value) | `DragValue::speed(NaN)`: the first drag stores `-inf` in an unbounded `f64` (NaN offset → the clamp's `max(-inf)`); `Configure::position` NaN; negative `padding`; `Display::from_physical` with a zero or NaN scale; `Hsv::new` / `Okhsv::new` out of range |
+| Silent coercion, no report in debug either | `GridCell::span(0, _)` → 1; `Splitter::min_pane` and `DockView::min_pane` clamp; `Spinner::diameter`, `Separator::thickness` and every theme length through `themed_length`; reversed `DragValue` ranges ordered by `Limits`; `IconTable::from_svgs` drops an SVG it cannot read, so a malformed icon file vanishes without an error |
+| Fallible | `UserScale::new`, `ZoomFactor::new` (`Option`); `Ui::load_image`, `Ui::load_font` (`Result`); theme files through `checked::*`, `TextStyle` / `TextStyleOverrides` `try_from`, `AnimSpec` and `DockState` deserializers |
+| Public fields that skip every constructor check | `Rect`, `Size`, `RgbaF32`, `Stroke`, `Shadow`, `GridCell`, `TextStyle`, `Display`, `DockSplit`, `TabItem`, `WindowConfig`, every `Theme` field (a theme file is checked; a theme built in code is not) |
+
+No rule says which behaviour a new setter gets, so each author picked one, and some cases are
+caller bugs that are hidden (`GridCell::span(0, _)`) while others are ordinary data that crashes
+(`ComboBox` with a stale index).
+
+**Established practice.**
+
+- WPF, whose layout contract this crate follows, asks two separate questions of every property
+  value: a `ValidateValueCallback` (is the value valid at all — `Width` must not be negative; an
+  invalid value throws) and a `CoerceValueCallback` (does a valid value fit its context —
+  `Slider.Value` is pulled into `[Minimum, Maximum]` silently).
+- Rust API Guidelines C-VALIDATE: prefer static enforcement through types; otherwise document a
+  `# Panics` section or return `Result`; use `debug_assert!` where a check is too costly for
+  release.
+- Flutter checks constructor arguments with debug-only asserts, because widgets are built every
+  frame.
+- This repository's guide: `debug_assert!` on per-frame paths, release `assert!` only for public
+  misuse outside hot paths and for cold configuration, `Result` for untrusted data, never an
+  assert on data.
+
+**Recommendation.** One model, in four rules, and one mechanism that implements it.
+
+1. **Two questions, as WPF asks them.** *Validation* is about the value alone: finite,
+   not negative, a power of two. *Coercion* is about the value against its context: inside a
+   range, an index that exists, a `min` below its `max`. Each input names which question each of
+   its rules belongs to.
+2. **Coercion is total and silent, always.** It never asserts and never panics, because the
+   context is data: an option list shrinks, a saved ratio comes from an older layout, a range
+   comes from a settings file. Its result is documented on the API. Concretely: `ComboBox` and
+   `TabbedView` clamp a stale index (and `TabbedView` with zero pages records only its strip);
+   reversed ranges are ordered (`Limits`, crate-wide); a fraction is clamped to `0..=1` with NaN
+   as `0`; `GridCell` spans keep their floor at 1 but report it as rule 3 says.
+3. **Validation depends on where the value comes from.**
+   - *Per-frame authoring* — builder setters and the value constructors a record pass calls
+     (`Sizing`, `Track`, `Corners`, `Spacing`, `Stroke`, `TranslateScale`, `AnimSpec`,
+     `Shape::*`): a `debug_assert!` with `#[track_caller]`, whose message names the value's
+     kind and its rule. In release the value maps to its kind's documented *neutral* — the value
+     that does nothing: a length or thickness of `0`, a scale of `1`, an animation of
+     `AnimSpec::SNAP`. Release keeps one branch-free select per value. That is a release cost,
+     but it is the cost the NaN gates already pay, for the same reason: an unmapped NaN does not
+     crash, it empties the frame — quietly wrong, which is worse than a debug panic and a neutral
+     value.
+   - *Cold configuration* — host builders, `Theme::scale_text`, dock configuration, icon tables:
+     a release `assert!` documented under `# Panics`.
+   - *Data from outside the program* — files, persisted settings, decoded images, numbers a user
+     typed: fallible. `Option` when one rule can fail (`UserScale::new`), `Result` with an error
+     enum when several can (`Image::from_srgba8` and `IconTable::from_svgs` become `Result`).
+     `FontFamily::named` returns `Option`, the public form of today's `try_named`. Serde goes through
+     the same predicates.
+4. **Plain data stays plain.** `Rect`, `Size`, `RgbaF32`, `Stroke`, `Shadow` and `Spacing` keep
+   public fields: arithmetic passes through invalid intermediate values (a negative width out of
+   a subtraction) on its way to a valid one. They are checked where they *enter* a widget, a
+   shape or a node, by the same kind functions. Types whose consumers rely on an invariant keep
+   or get private fields with a checked constructor — today's `Sizing`, `Track`,
+   `TranslateScale`, `UserScale`, `ZoomFactor`, `FontWeight`; and also `GridCell` (spans) and
+   `DockSplit` (ratio), which have public fields now. Theme fields stay public and are read
+   through the kind functions (what `themed_length` does today, for lengths only).
+
+**The mechanism.** A public `widget::domain` module (A36 merges `widget::approx` and `F32Ext`
+into it), one `const fn` per value kind, each one predicate, one message and one neutral. Public,
+because AGENTS.md lets a widget reach only the public API, and a widget outside the crate validates
+its own setters and reads theme values through the same functions:
+
+```rust
+/// A distance: finite and not negative. Neutral `0.0` — takes no space, paints nothing.
+#[track_caller]
+pub const fn length(v: f32) -> f32 {
+    debug_assert!(v.is_finite() && v >= 0.0, "a length must be finite and not negative");
+    if v.is_finite() && v >= 0.0 { v } else { 0.0 }
+}
+```
+
+Every setter calls its kind: `Spinner::diameter(px)` stores `domain::length(px)`, `gap` stores
+`domain::gap(g)`. The serde validators in `primitives::packed::serde::checked` become thin
+wrappers over the same predicates, so a file and a call site cannot disagree. `#[track_caller]`
+puts the debug panic on the caller's line, and the message stays a constant so the function stays
+`const`.
+
+| Kind | Rule | Neutral | Used by |
+|---|---|---|---|
+| `offset` | finite | `0.0` | margin, position, translation, shadow offset |
+| `length` | finite, ≥ 0 | `0.0` | padding, thickness, diameter, stroke width, radius, font size (`0` shapes nothing, as a sub-epsilon size does today), `Sizing::fixed`, `Sizing::share` |
+| `extent` | ≥ 0, `+inf` allowed | `+inf` | `max_size` |
+| `gap` | length ≤ 65 504 (the f16 lane) | `0.0` | `gap`, `line_gap` |
+| `positive` | finite, > 0 | `1.0` | scales, zoom factors, slider step, drag speed, fill weights |
+| `angle` | finite | `0.0` | gradient angles, arc angles |
+| `color` | every channel finite (HDR values above `1` stay valid: tween outputs reach them) | `TRANSPARENT` | every `RgbaF32` that enters a shape, a look or a widget |
+| `count` | ≥ 1, or a power of two in a range | `1` | paint steps, `texel_size` (A28) |
+| `range` | both ends finite; order *coerced* (`Limits`) | `0.0..=1.0` | `Slider::new`, `DragValue::range`, `ZoomConfig::new` |
+| `fraction` | *coerced* to `0..=1`, NaN → `0` | — | progress, split ratio, `Hsv` / `Okhsv` saturation and value |
+| `turn` | *coerced*: wraps into `0..1`, NaN → `0` | — | `Hsv` / `Okhsv` hue, `ColorCoords` fallback hue |
+| `index` | *coerced* into `0..len`; no index when `len == 0` | — | `ComboBox`, `TabbedView`, `TabStrip::selected` |
+
+The *coerced* rows never assert (rule 2); every other row is a validation (rule 3). Every
+numeric parameter's doc names its kind ("`px`: a *length*"), and the crate docs carry the table.
+`ImageHandle::update` with a wrong size is the one per-frame case whose neutral is "do nothing" —
+the update is skipped and the old texels stay — rather than a value.
+
+**Tests.** The theme suite's `file_values` walk already proves one property for files: every
+number is rejected on load or safe to render. The same property for code: one table per kind feeds
+`NaN`, `±inf`, `-1`, `0` and the boundary values through every setter of that kind, and asserts
+the debug panic message in a debug build and the neutral in release (`cfg(debug_assertions)`
+rows). One more test records a frame from those values under `cfg(not(debug_assertions))` and
+asserts no NaN reaches layout or paint.
+
+**Decisions this needs from you.**
+
+- Rule 3 maps a per-frame contract violation to a neutral in release instead of panicking. The
+  repository guide asks for exactly this on hot paths, and the posture asks never to be quietly
+  wrong; the debug panic is what reconciles them. If you prefer a release panic on these paths
+  too, rule 3's first bullet becomes `assert!` and the kind functions lose their neutral.
+- The coercion of a stale selection: clamp to the last option (recommended, it keeps a page
+  visible) or show nothing selected.
+
+**Touches.** Every builder setter and value constructor listed above; `primitives::packed::serde::checked`;
+`ComboBox`, `TabbedView`, `Image`, `IconTable` (with A18, whose two new rejections become this
+`Result`'s variants), `GridCell`, `DockSplit`; the crate docs. Split into one go-ahead
+for the `domain` module plus the rules, and then one per area (layout, paint, widgets, host).
+
+## A51. Where a widget's text goes
+
+**Findings.** Required text goes in the constructor (`Text::new(text)`, `Expander::new(label)`,
+`MenuItem::new(label)`); optional text goes through `.label(..)` (`Button`, `Checkbox`, `Switch`,
+`RadioButton`). `Tooltip` breaks the pattern: its text is required — an empty one records no
+bubble — but it arrives through `Tooltip::on(&snapshot).label(..)`.
+
+**Recommendation.** One rule, written in AGENTS.md: required text in the constructor, optional
+text through `.label`. `Tooltip` takes its text in the constructor, in the argument order A14
+settles for attaching to a trigger.
+
+---
+
+# Implementation plan
+
+Every step below is one go-ahead and one commit. A step:
+
+- follows the rules this file adds to AGENTS.md (step 1.5) and the existing ones (read the
+  neighbours before settling a signature; no shims, no compat aliases);
+- updates every caller in `src/`, `tests/`, `benches/` and the showcase, and the docs that name
+  the old item;
+- adds or extends the tests the item names, with hand-derived expected values;
+- runs the AGENTS.md verification chain, plus the visual suite when it moves pixels or layout, and
+  ends with a look at the showcase when a user can see the change;
+- regenerates `API_SURFACE.md` and deletes the items it closes from this file.
+
+## Phase 0 — decisions before any code
+
+| Decision | Item | Recommendation |
+|---|---|---|
+| Release behaviour of a per-frame contract violation | A50 | the kind's neutral, with a debug panic |
+| A stale selection index | A50 | clamp to the last option |
+| The attach-to-trigger verb and argument order | A14, A51, A23 | one verb for `Tooltip` and `ContextMenu`, the snapshot first and the text second |
+| Page identity in `TabbedView` | A12 | an optional key function, index keys by default |
+| Fallible render target conversion | A16 | reject: no application chooses a target format at run time |
+| GPU tests in every `cargo test` | A17 | option 1 |
+| The chrome trait's name | A39 | `Chrome` |
+
+## Phase 1 — foundations the later phases build on
+
+1. **The `domain` module** (A50 mechanism, A36). Add `widget::domain`: `EPS`, the predicates,
+   `share_of`, `band_fraction`, and one `const fn` per kind in A50's table, with `domain::vec2`
+   twins where a widget needs both axes. Move every `widget::approx` and `F32Ext` caller onto it
+   (about 75 call sites), then remove both. Rewrite `primitives::packed::serde::checked` over the
+   same predicates. Tests: a table per kind (`NaN`, `±inf`, `-1`, `0`, the boundary, a valid
+   value) for both the debug panic and the release neutral. Setters do not call it yet, so no
+   behaviour changes.
+2. **`const` sweep** (A24), after step 1 so the setters that will call `domain` stay `const`.
+3. **Flag sets** (A32): `NONE` and `ALL` on every flag type; `empty`, `all`, `bits` and
+   `from_bits_truncate` become `pub(crate)`. Before A22 adds bits to `Sense`.
+4. **No strum on public types** (A6): `BatchKind`, `PointerButton`, `Layer`.
+5. **Rules in AGENTS.md**: the chainer rule (A47), the wrapper rule (A39), the text rule (A51),
+   and the validation model (A50 rules 1–4 and the kinds table). Commit the inventory generator
+   (rustdoc JSON on the nightly toolchain) as `scripts/api_surface.py`, so the regeneration every
+   step needs is one command.
+
+## Phase 2 — renames and removals
+
+Each line is one commit; none depends on another inside the phase.
+
+1. **Names.** A28 (`texel_size`), A29 (`Splitter::row` / `column`), A30 (`line_height_mult`,
+   `with_family`), A42 (`is_window_open`), A45 (`repaint_requested`), A46 (`corner_centering`,
+   `WidgetId::auto`, `FontWeight::get`, no inherent `RgbaF32::lerp`).
+2. **Chainers** (A47, A44): the `with_*` renames on values, `GradientBuilder::{spread, interp}`,
+   and `ZoomConfig` with private fields.
+3. **Removals.** A8 (`WinitHostError::Gpu`), A13 (the five `pick` methods), A34 (`Sums`), A35
+   (`Corners` from `Vec2` / `Size`), A38 (`UserEvent`), A40 (`MenuItem::separator`), A43
+   (`WinitHostConfig`), A48 (`Mesh::with_known_bbox`), A49 (`Ui::escape_pressed`).
+4. **Argument types.** A31 (`placeholder` and `suffix` take `TextInput`), A33 (`From<Modifiers>`,
+   one field order, one constant set) with A9 (`Panel::stack`, `Widget::stack`), A37 (seal
+   `GradientGeometry`).
+
+## Phase 3 — structural API
+
+1. **One value response** (A27): `Checkbox`, `Switch`, `RadioButton` and `ComboBox` return
+   `ValueResponse`; `SelectResponse` goes; `ExpanderResponse::changed`.
+2. **Wrappers** (A39): `ConfigureWidget::adopt_placement`; `MenuSeparator` holds a `Separator`;
+   the `Chrome` trait on the eight chrome-bearing widgets.
+3. **Overlays**, in this order: A14 with A51 (the attach verb; `Tooltip` takes its text in the
+   constructor), A41 (`Popup::at_point`), then A23 (`PopupTrigger`, in A14's argument order;
+   `ColorButton` and `ComboBox` move onto it).
+4. **Dock and tabs**: A11 (model and view split, ids move to `DockView`), then A12 (`TabbedView`
+   keys).
+5. **Colour button** (A15), after phase 2 step 1 renamed `downsample`.
+
+## Phase 4 — the validation rollout (A50 rules 2–4)
+
+One area per commit. Each adds its setters to the per-kind input tables of phase 1 step 1.
+
+1. **Coercion** (rule 2), first, because it removes release panics on data: `ComboBox`,
+   `TabbedView` (and its zero-page case) and `TabStrip::selected` coerce their index; `Limits`
+   orders every range; fractions and turns coerce.
+2. **Layout**: `Sizing`, `Track`, `gap`, `line_gap`, `min_size`, `max_size`, `padding`, `margin`,
+   `position`, `TranslateScale`; `GridCell` gets private fields with `with_span`. The release
+   panics in this area become debug panics with neutrals.
+3. **Paint**: shape constructors, `Stroke`, `Corners`, `Shadow`, colours where they enter a shape
+   or a look, `Stop` / `GradientBuilder::stop`, `PaintAnim`, `ImageHandle::update`.
+4. **Widgets**: every remaining widget setter (`Spinner`, `Separator`, `DragValue::speed`,
+   `Slider`, `Scroll::zoom_by`, `ZoomConfig::new`, `texel_size`, text sizes) and `AnimSpec`
+   (neutral `SNAP`). Theme values read through `domain` where they are used.
+5. **Data** (rule 3, third bullet): `Image::from_srgba8` and `IconTable::from_svgs` (with A18)
+   return `Result`; `FontFamily::named` returns `Option`; A21's `FontLoadError::FamilyTableFull`;
+   `DockSplit` gets a private, checked ratio; `Display::from_physical` validates its scale.
+6. **The frame property**: a release-mode test records one frame from every kind's invalid inputs
+   and asserts that no NaN reaches layout or paint.
+
+## Phase 5 — goldens
+
+A7, A25 and A26 together: `golden` re-exports `image`, `render*` returns the `FrameReport`,
+`Tolerance { max_delta, max_pixels }` with `EXACT` as default, the adapter sidecar and the orphan
+report. Downstream suites change once.
+
+## Phase 6 — features
+
+1. **A22** wheel sense per axis, after phase 1 step 3.
+2. **A20** keyboard on toggles and ranges, after phase 3 step 1.
+3. **A19** IME and focus traversal, each its own design.
+4. **A10** the `meta` modifier, after phase 2 step 4.
+5. **A16** and **A17** as phase 0 decides.
+
+## Order at a glance
+
+Phase 0 decides; phase 1 must land first; phases 2 and 3 may interleave, except where a step names
+a predecessor; phase 4 needs phase 1 step 1 and phase 3 step 1 (the index coercion touches
+`ComboBox`, which A27 changes); phase 5 and phase 6 are independent of each other.
