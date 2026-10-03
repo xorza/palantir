@@ -32,7 +32,6 @@ use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::mem;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: TranslateScale) -> Vec2 {
     let surface_origin = transform.apply_point(layout_origin);
@@ -348,7 +347,7 @@ impl InputState {
     /// frame, so a release and a new press never share one. Nothing is
     /// allocated — the slots are an array.
     pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
-        PointerButton::all().flat_map(move |button| {
+        PointerButton::ALL.into_iter().flat_map(move |button| {
             let cap = self.capture(button);
             // Each edge is built where its target is already in hand, rather
             // than recovered afterwards from which variant it turned out to be:
@@ -1021,7 +1020,7 @@ impl InputState {
         // Drag exclusivity: only the priority-first latched button
         // owns the widget's drag, so at most one slot goes live.
         let mut drag_owned = false;
-        for btn in PointerButton::all() {
+        for btn in PointerButton::ALL {
             let cap = self.capture(btn);
             let phase = match &cap.press {
                 Some(press) if press.target == id => {

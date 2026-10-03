@@ -23,7 +23,6 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::UVec2;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 impl InputState {
     /// Feed `event` at time zero against an empty cascade — the input
