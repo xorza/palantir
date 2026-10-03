@@ -41,18 +41,6 @@ W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key
 Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
 display gets the platform glyph. Low priority.
 
-## A18. Icon set limits and names
-
-**Findings.** REVIEW "`IconId` is u16 but icon sets are unbounded" and "`IconDef::name:
-&'static str` forces `Box::leak`".
-
-**Recommendation.**
-
-- `IconDef::name` becomes an owned or interned string, so a set built from files does not leak.
-- `from_svgs` returns `Result<Self, IconTableError>` (A50 rule 3: icon files are data), with
-  three variants: an SVG it cannot read (today it drops it silently), more than `u16::MAX`
-  icons, and a duplicate name.
-
 ## A19. Features the docs imply: IME and focus traversal
 
 **Findings.** REVIEW "Stale input docs": docs mention IME text, but winit `Ime` is never enabled
@@ -343,10 +331,7 @@ One area per commit. Each adds its setters to the per-kind input tables of phase
 3. Done: paint. Points, rects and mesh vertices (bulk data) stay with the record-time NaN gate.
 4. Done: widgets. `DragValue::range` refuses only NaN ends: an infinite end is its unbounded
    default, so the finite *range* kind would remove a supported use.
-5. **Data and host**: `Image::from_srgba8` and `IconTable::from_svgs` (with A18) return `Result`;
-   `FontFamily::named` returns `Option`; A21's `FontLoadError::FamilyTableFull`; `DockSplit` gets
-   a private, checked ratio; `Display::from_physical` validates its scale; A16's checked
-   `RenderTarget::new` and `TargetFormat::new`.
+5. Done: data and host (with A16, A18, A21).
 6. **The frame property**: a test records one frame from every coercing input at its worst and
    asserts that no NaN reaches layout or paint.
 

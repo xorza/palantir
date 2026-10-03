@@ -165,7 +165,7 @@ fn mesh_static_alloc_free() {
 #[test]
 fn many_icons_compose_alloc_free() {
     const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
-    let atlas = Rc::new(IconTable::from_svgs([("chip", SVG)]));
+    let atlas = Rc::new(IconTable::from_svgs([("chip", SVG)]).unwrap());
     let chip = IconId(0);
     let mut held: Option<IconSet> = None;
 

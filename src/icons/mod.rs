@@ -17,6 +17,7 @@
 //! kept alive by the [`IconSet`](crate::IconSet) the app holds, and unloaded
 //! when the last clone of that goes.
 
+pub(crate) mod error;
 pub(crate) mod icon_raster_key;
 pub(crate) mod icon_rasterizer;
 pub(crate) mod icon_registry;
