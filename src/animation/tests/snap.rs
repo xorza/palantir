@@ -4,8 +4,9 @@
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{
-    AnimUi, SLOT, next_frame, setup_anim_ui, spring_velocity, wid,
+    AnimUi, SLOT, closed_form_settle_step, setup_anim_ui, spring_velocity, wid,
 };
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::block::Block;
@@ -33,23 +34,20 @@ fn spring_snap_fields_carry_target_immediately() {
     };
     // First touch: snaps current = start, returns settled. No motion
     // started yet.
-    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = map.step(id, SLOT, start.clone(), AnimSpec::SPRING, 0.016);
 
-    // Retarget to a new fill (animated) and a new radius (snap).
+    // Retarget to a new fill (animated) and a new radius (snap). From
+    // rest, the change's own frame steps nothing and shows the start,
+    // snap field included.
     let target = Background {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
         border: Stroke::ZERO,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
-    let r = map.tick(
-        id,
-        SLOT,
-        target.clone(),
-        AnimSpec::SPRING,
-        0.016,
-        next_frame(),
-    );
+    let r = map.step(id, SLOT, target.clone(), AnimSpec::SPRING, 0.016);
+    assert_eq!(r.current, start, "the change's frame shows the start");
+    let r = map.step(id, SLOT, target.clone(), AnimSpec::SPRING, 0.016);
     assert!(
         !r.settled,
         "spring with a real fill diff must remain in flight after one step",
@@ -88,16 +86,9 @@ fn gradient_snap_clears_only_its_background_velocity() {
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = map.step(id, SLOT, start, AnimSpec::SPRING, 0.0);
     for _ in 0..3 {
-        let _ = map.tick(
-            id,
-            SLOT,
-            moving.clone(),
-            AnimSpec::SPRING,
-            0.016,
-            next_frame(),
-        );
+        let _ = map.step(id, SLOT, moving.clone(), AnimSpec::SPRING, 0.016);
     }
     let stroke_velocity = spring_velocity(&map.rows[&(id, SLOT)]).border.width;
     assert!(
@@ -116,7 +107,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let result = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.0, next_frame());
+    let result = map.step(id, SLOT, target, AnimSpec::SPRING, 0.0);
     let row = &map.rows[&(id, SLOT)];
     let velocity = spring_velocity(row);
     assert_eq!(result.current.fill, gradient);
@@ -147,55 +138,49 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
-    let first = h.frame(|ui| {
-        let current = ui.animate(id, SLOT, start.clone(), Some(AnimSpec::SPRING));
-        assert_eq!(current, start);
-        Block::new()
-            .id(WidgetId::from_hash("gradient-look-settle"))
-            .show(ui);
-    });
-    assert!(!first.repaint_requested);
-
-    let mut now = Duration::from_millis(16);
-    let retarget = h.at(now).frame(|ui| {
-        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
-        assert_eq!(current.background.fill, gradient);
-        assert_ne!(current.text.color, target.text.color);
-        Block::new()
-            .id(WidgetId::from_hash("gradient-look-settle"))
-            .show(ui);
-    });
-    assert!(retarget.repaint_requested);
-
-    let mut settled_at = None;
-    for frame in 0..600 {
-        now += Duration::from_millis(16);
-        let mut current = target.clone();
-        let output = h.at(now).frame(|ui| {
-            current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
-            assert_eq!(current.background.fill, gradient);
+    // Pass A's look, with the frame's report: the repaint request is
+    // what says whether the spring is still moving.
+    let frame = |h: &mut UiHarness, look: &AnimatedLook| {
+        h.frame_passes(|ui| {
+            let current = ui.animate(id, SLOT, look.clone(), Some(AnimSpec::SPRING));
             Block::new()
                 .id(WidgetId::from_hash("gradient-look-settle"))
                 .show(ui);
-        });
-        if !output.repaint_requested {
-            assert_eq!(current, target);
-            settled_at = Some(frame);
-            break;
-        }
-    }
-    assert!(settled_at.is_some(), "the look's color spring must settle");
+            current
+        })
+    };
 
-    now += Duration::from_millis(16);
-    let after_settle = h.at(now).frame(|ui| {
+    let first = frame(&mut h, &start);
+    assert_eq!(*first.a(), start);
+    assert!(!first.report().repaint_requested);
+
+    let tick = Duration::from_millis(16);
+    let retarget = frame(h.advance(tick), &target);
+    assert_eq!(retarget.a().background.fill, gradient);
+    assert_ne!(retarget.a().text.color, target.text.color);
+    assert!(retarget.report().repaint_requested);
+
+    // The gradient snaps and holds through every frame of the fade.
+    let mut last = None;
+    let frames = h.frames_until_idle(600, tick, |ui| {
         let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
-        assert_eq!(current, target);
+        assert_eq!(current.background.fill, gradient);
         Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))
             .show(ui);
+        last = Some(current);
     });
+    // The text colour moves black → white, √3 in linear RGB. The retarget
+    // frame stepped nothing, so frame `n` after it is step `n`.
+    let step = closed_form_settle_step(170.0, 26.0, 3.0f64.sqrt(), |_| 0.016);
+    assert_eq!(step, 59);
+    assert_eq!(frames, Some(step), "the look's color spring settles");
+    assert_eq!(last, Some(target.clone()));
+
+    let after_settle = frame(h.advance(tick), &target);
+    assert_eq!(*after_settle.a(), target);
     assert!(
-        !after_settle.repaint_requested,
+        !after_settle.report().repaint_requested,
         "a settled look must not request a surplus repaint",
     );
 }

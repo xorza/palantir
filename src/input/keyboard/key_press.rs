@@ -1,6 +1,7 @@
 //! One key-down as the input queue carries it: which key, which
 //! modifiers, and whether it repeated.
 
+use crate::common::platform::PLATFORM;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -53,5 +54,36 @@ impl KeyPress {
     /// what `Ctrl+Z` is.
     pub(crate) fn layout_retry(self) -> Option<Key> {
         matches!(self.key, Key::Char(c) if !c.is_ascii()).then_some(self.physical)
+    }
+
+    /// Whether this press typed its [`Self::text`] — the one rule the
+    /// key classifier and a text field both read, so they cannot disagree
+    /// about what a press wrote.
+    pub(crate) fn types_text(self) -> bool {
+        !self.text.is_empty() && self.mods.compose_text(PLATFORM)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_press::KeyPress;
+    use crate::input::keyboard::key_text::KeyText;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    impl KeyPress {
+        /// A first press of `key` under `mods`, typing what the key types
+        /// on a plain layout. `physical` is [`Key::Other`]: only a
+        /// non-ASCII `Char` under a command modifier consults it, and a
+        /// case that needs a real position spells the press out.
+        pub(crate) fn with(key: Key, mods: Modifiers) -> Self {
+            Self {
+                key,
+                mods,
+                repeat: false,
+                physical: Key::Other,
+                text: KeyText::of_key(key),
+            }
+        }
     }
 }

@@ -37,3 +37,25 @@ pub struct ValueResponse<'a> {
     /// is dropped instead.
     pub committed: bool,
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::widgets::value_response::ValueResponse;
+
+    /// A [`ValueResponse`]'s two signals, copied out of the record pass
+    /// whose `ui` borrow the response holds.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) struct ValueEdges {
+        pub(crate) changed: bool,
+        pub(crate) committed: bool,
+    }
+
+    impl ValueResponse<'_> {
+        pub(crate) const fn edges(&self) -> ValueEdges {
+            ValueEdges {
+                changed: self.changed,
+                committed: self.committed,
+            }
+        }
+    }
+}

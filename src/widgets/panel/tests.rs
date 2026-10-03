@@ -1,4 +1,5 @@
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
@@ -8,7 +9,6 @@ use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -36,10 +36,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("paint-only"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {})
                 .response
                 .node();
@@ -60,10 +57,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("clipped"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rect()
                 .show(ui, |_| {})
                 .response
@@ -88,10 +82,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
@@ -116,22 +107,19 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = UiHarness::new(UVec2::new(200, 120));
     h.ui.theme_mut().panel_background = Some(Background::fill(RgbaF32::WHITE));
     h.ui.theme_mut().panel_clip = ClipMode::Rect;
-    let (mut explicit, mut inherited) = (None, None);
-    h.frame(|ui| {
-        explicit = Some(
+    let [explicit, inherited] = h.frame_value(|ui| {
+        [
             Panel::vstack()
                 .background(Background::NONE)
                 .clip(ClipMode::None)
                 .show(ui, |_| {})
                 .response
                 .node(),
-        );
-        inherited = Some(Panel::vstack().show(ui, |_| {}).response.node());
+            Panel::vstack().show(ui, |_| {}).response.node(),
+        ]
     });
 
     let tree = h.ui.tree(Layer::Main);
-    let explicit = explicit.unwrap();
-    let inherited = inherited.unwrap();
     assert_eq!(
         tree.records.attrs()[explicit.idx()].clip_mode(),
         ClipMode::None,
@@ -217,10 +205,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                         Block::new()
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                             .show(ui)
                             .node()
                     })
@@ -265,40 +250,43 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     );
 }
 
+/// The enabled row is the control: the same click on the same button
+/// lands there, so the disabled row cannot pass because the click missed.
 #[test]
 fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
 
-    let surface = UVec2::new(400, 200);
-    let mut h = UiHarness::new(surface);
-    let body = |ui: &mut Ui, captured: Option<&mut bool>| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Panel::zstack()
-                .id(WidgetId::from_hash("locked"))
-                .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
-                .padding(20.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    ..Default::default()
-                })
-                .disabled(true)
-                .show(ui, |ui| {
-                    let r = Button::new()
-                        .id(WidgetId::from_hash("inside"))
-                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                        .show(ui);
-                    if let Some(c) = captured {
-                        *c = r.left.clicked();
-                    }
-                });
+    for (disabled, clicks) in [(true, false), (false, true)] {
+        let mut h = UiHarness::new(UVec2::new(400, 200));
+        let body = |ui: &mut Ui| {
+            let mut clicked = false;
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("locked"))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
+                    .padding(20.0)
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                    .disabled(disabled)
+                    .show(ui, |ui| {
+                        clicked = Button::new()
+                            .id(WidgetId::from_hash("inside"))
+                            .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                            .show(ui)
+                            .left
+                            .clicked();
+                    });
+            });
+            clicked
+        };
+        h.frame(|ui| {
+            body(ui);
         });
-    };
-    h.frame(|ui| body(ui, None));
-    h.click_at(Vec2::new(40.0, 40.0));
+        h.click_at(Vec2::new(40.0, 40.0));
 
-    let mut clicked = false;
-    h.frame(|ui| body(ui, Some(&mut clicked)));
-    assert!(!clicked, "button inside disabled panel should not click");
+        let passes = h.frame_passes(body);
+        assert_eq!(*passes.a(), clicks, "disabled = {disabled}");
+        assert_eq!(passes.count_where(|clicked| *clicked), usize::from(clicks));
+    }
 }
 
 #[test]
@@ -357,10 +345,7 @@ fn zstack_layers_children_without_painting_background() {
                             Block::new()
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
-                                .background(Background {
-                                    fill: RgbaF32::srgb(0.1, 0.1, 0.2).into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(RgbaF32::srgb(0.1, 0.1, 0.2)))
                                 .show(ui)
                                 .node(),
                             Button::new()
@@ -415,10 +400,7 @@ fn zstack_aligns_child_per_axis() {
                                 .id(WidgetId::from_hash("c"))
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)
-                                .background(Background {
-                                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                                 .show(ui)
                                 .node()
                         })

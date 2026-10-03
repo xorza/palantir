@@ -5,25 +5,26 @@
 //! everything from there down to the emitted paint commands is the recursion
 //! below.
 
-use crate::layout::LayerLayout;
+use crate::layout::layer_layout::LayerLayout;
 use crate::layout::text_runs::TextRuns;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::paints_nothing;
-use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::corners::Corners;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
-use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
-use crate::renderer::frontend::encoder::GradientResolver;
+use crate::renderer::frontend::encoder::GradientPass;
 use crate::renderer::frontend::encoder::geometry;
-use crate::renderer::frontend::encoder::geometry::Resolved;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
@@ -32,40 +33,37 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED,
 };
-use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::cascade_input_hash::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::{
-    CurveRamp, ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush,
-};
+use crate::scene::shapes::paint::image_source::ImageSource;
+use crate::scene::shapes::paint::lowered_shadow::LoweredShadow;
+use crate::scene::shapes::paint::lowered_shadow::ShadowGeom;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
+use crate::scene::shapes::paint::shape_brush::CurveRamp;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
-use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
-use glam::UVec2;
 use std::time::Duration;
 
 /// Per-layer encode context: the fixed inputs one layer's walk reads,
 /// bundled so [`Self::encode_node`]'s recursion carries one `&mut self`
 /// instead of a long argument list.
 #[derive(Debug)]
-pub(super) struct LayerCtx<'a> {
+pub(super) struct LayerCtx<'a, 'g> {
     pub(super) tree: &'a Tree,
     pub(super) layout: &'a LayerLayout,
     pub(super) cascade_inputs: &'a [CascadeInputHash],
     pub(super) subtree_paint_rects: &'a [Rect],
-    pub(super) gradients: &'a [RecordedGradient],
-    pub(super) gradient_atlas: &'a SharedGradientAtlas,
-    pub(super) gradient_resolver: &'a mut GradientResolver,
+    pub(super) gradients: &'a mut GradientPass<'g>,
     pub(super) paint_anim_cursor: PaintAnimCursor<'a>,
     /// Live `GpuView`s by `WidgetId`, one map across every layer. An
     /// `ImageSource::GpuView` carries only its epoch; the arm looks the
@@ -82,18 +80,15 @@ pub(super) struct LayerCtx<'a> {
     pub(super) now: Duration,
 }
 
-impl LayerCtx<'_> {
+impl LayerCtx<'_, '_> {
     #[inline]
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
-        self.gradient_resolver
-            .source(self.gradients, self.gradient_atlas, brush)
+        self.gradients.source(brush)
     }
 
     /// The atlas row an interned ramp resolved to this pass.
     fn gradient_row(&mut self, id: GradientId) -> LutRow {
-        self.gradient_resolver
-            .resolve(self.gradients, self.gradient_atlas, id)
-            .lut_row
+        self.gradients.resolve(id).lut_row
     }
 
     /// Emit one of a node's shapes. Pulled out of `encode_node` so the
@@ -163,15 +158,10 @@ impl LayerCtx<'_> {
                 } => {
                     let r = geometry::resolve_local_rect(owner_rect, *local_rect);
                     let src = self.brush_source(*fill);
-                    match kind {
-                        RectKind::Rounded => {
-                            out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *border), alpha)
-                        }
-                        RectKind::Windowed => out.draw_quad(
-                            DrawQuadPayload::rect_window(r, *corners, src, *border),
-                            alpha,
-                        ),
-                    }
+                    out.draw_quad(
+                        DrawQuadPayload::rect_of_kind(*kind, r, *corners, src, *border),
+                        alpha,
+                    );
                 }
                 QuadShape::Shadow {
                     local_rect,
@@ -340,7 +330,7 @@ impl LayerCtx<'_> {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
                 out.draw_icon(
                     DrawIconPayload {
-                        rect: geometry::resolve_icon_fit(base, handle.view_box(), *fit),
+                        rect: fit.resolve(base, handle.view_box()),
                         icon: handle.icon,
                         tint: *tint,
                         desaturate: *desaturate,
@@ -359,29 +349,30 @@ impl LayerCtx<'_> {
             } => {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
                 // The one thing the two sources don't share: where the
-                // texture comes from. A registered image carries its id +
-                // intrinsic dims inline (no registry borrow); a `GpuView`
-                // looks its stable target up in `Ui::gpu_views` by the owner
-                // node's `WidgetId` and hands back the app paint callback,
-                // which rides alongside the payload so the sink can list the
-                // off-screen target in `frame_targets`. A view reports an
-                // all-zero intrinsic size, which makes `resolve_fit` fall
-                // through to the base rect + full UV — the full-rect,
-                // untinted composite a view has always emitted.
-                // `epoch` only affects the shape hash (damage), not the draw.
-                let (handle, size, paint) = match source {
-                    ImageSource::Texture { id, size, .. } => (*id, *size, None),
-                    ImageSource::GpuView { epoch: _ } => {
+                // texture comes from. A registered image carries its id
+                // inline (no registry borrow); a `GpuView` looks its stable
+                // target up in `Ui::gpu_views` by the owner node's
+                // `WidgetId` and hands back the app paint callback, which
+                // rides alongside the payload so the sink can list the
+                // off-screen target in `frame_targets`, with the epoch that
+                // tells the backend whether the target's pixels are current.
+                let (handle, view) = match source {
+                    ImageSource::Texture { id, .. } => (*id, None),
+                    ImageSource::GpuView { epoch } => {
                         let wid = self.tree.records.widget_id()[id.idx()];
                         let view = self.gpu_views.view(wid);
-                        (view.texture_id, UVec2::ZERO, Some(&view.paint))
+                        let paint = ViewPaint {
+                            paint: &view.paint,
+                            epoch: *epoch,
+                        };
+                        (view.texture_id, Some(paint))
                     }
                 };
-                let Resolved {
+                let FitRect {
                     rect,
                     uv_min,
                     uv_size,
-                } = geometry::resolve_fit(base, size.as_vec2(), *fit);
+                } = fit.resolve(base, source.intrinsic());
                 let mut flags = 0;
                 if matches!(*fit, ImageFit::Tile { .. }) {
                     flags |= IMG_FLAG_TILED;
@@ -408,7 +399,7 @@ impl LayerCtx<'_> {
                             handle,
                             flags,
                         },
-                        paint,
+                        view,
                     },
                     alpha,
                 );

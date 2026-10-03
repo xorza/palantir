@@ -1,5 +1,5 @@
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::FramePaint;
 use crate::widgets::text_edit::tests::*;
 use std::time::Duration;
 
@@ -11,7 +11,7 @@ use std::time::Duration;
 /// "rect present AND its anim (if any) samples to visible at the
 /// current time".
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
-    use crate::scene::shapes::paint::QuadShape;
+    use crate::scene::shapes::paint::quad_shape::QuadShape;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::iter::TreeItem;
     use crate::shape::rect::RectKind;
@@ -39,36 +39,36 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         })
 }
 
-fn record_at_secs(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) -> FrameReport {
-    h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui))
-}
-
 /// Caret blink: visible for the first half-period, hidden for the
 /// second, repeats. Reset to "visible" by any caret / selection /
 /// text change. Off entirely when the editor isn't focused.
 #[test]
 fn caret_blinks_on_and_off_while_focused() {
-    fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            *leaf = Some(
+    fn body(ui: &mut Ui, buf: &mut String) -> NodeId {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("blink-ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     }
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
-    let mut leaf = None;
 
-    // Frame 1: record editor unfocused.
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf, &mut leaf));
+    // Frame 1: record editor unfocused. The tree records the same shape
+    // every frame, so the editor's node is the same on each; a
+    // paint-only frame records none.
+    let leaf = h
+        .at(Duration::from_secs_f32(0.0))
+        .frame_value(|ui| body(ui, &mut buf));
     assert!(
-        !caret_painted(&h.ui, leaf.unwrap()),
+        !caret_painted(&h.ui, leaf),
         "unfocused editor paints no caret",
     );
 
@@ -76,43 +76,52 @@ fn caret_blinks_on_and_off_while_focused() {
     // frame at t=0 so the input pass drains the click. caret_changed =
     // true → last_caret_change = 0; elapsed = 0; phase 0; visible.
     h.click_at(Vec2::new(20.0, 20.0));
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf, &mut leaf));
-    assert!(
-        caret_painted(&h.ui, leaf.unwrap()),
-        "freshly focused: caret visible",
-    );
+    h.at(Duration::from_secs_f32(0.0)).frame(|ui| {
+        body(ui, &mut buf);
+    });
+    assert!(caret_painted(&h.ui, leaf), "freshly focused: caret visible");
 
     // Still inside the first half-period.
-    record_at_secs(&mut h, 0.3, |ui| body(ui, &mut buf, &mut leaf));
+    h.at(Duration::from_secs_f32(0.3)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        caret_painted(&h.ui, leaf.unwrap()),
+        caret_painted(&h.ui, leaf),
         "first half of blink cycle: caret visible",
     );
 
     // Crossed into the hidden half.
-    record_at_secs(&mut h, 0.7, |ui| body(ui, &mut buf, &mut leaf));
+    h.at(Duration::from_secs_f32(0.7)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        !caret_painted(&h.ui, leaf.unwrap()),
+        !caret_painted(&h.ui, leaf),
         "second half of blink cycle: caret hidden",
     );
 
     // One full period later: visible again.
-    record_at_secs(&mut h, 1.2, |ui| body(ui, &mut buf, &mut leaf));
+    h.at(Duration::from_secs_f32(1.2)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        caret_painted(&h.ui, leaf.unwrap()),
+        caret_painted(&h.ui, leaf),
         "after a full period: caret visible again",
     );
 
     // Typing during a hidden phase must snap the caret back on.
-    record_at_secs(&mut h, 1.7, |ui| body(ui, &mut buf, &mut leaf));
+    h.at(Duration::from_secs_f32(1.7)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        !caret_painted(&h.ui, leaf.unwrap()),
+        !caret_painted(&h.ui, leaf),
         "precondition: hidden phase before keystroke",
     );
     h.key(Key::Char('a'));
-    record_at_secs(&mut h, 1.75, |ui| body(ui, &mut buf, &mut leaf));
+    h.at(Duration::from_secs_f32(1.75)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        caret_painted(&h.ui, leaf.unwrap()),
+        caret_painted(&h.ui, leaf),
         "keystroke resets blink: caret immediately visible",
     );
 
@@ -121,9 +130,11 @@ fn caret_blinks_on_and_off_while_focused() {
     // at 2 Hz forever. 98.25s past the last change is far beyond
     // `BLINK_STOP_AFTER_IDLE`, and lands on an *odd* half-period —
     // parity says hidden, the settle overrides it.
-    let report = record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf, &mut leaf));
+    let report = h.at(Duration::from_secs_f32(100.0)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        caret_painted(&h.ui, leaf.unwrap()),
+        caret_painted(&h.ui, leaf),
         "long-idle blink stops on the visible phase",
     );
     assert_eq!(
@@ -140,32 +151,38 @@ fn caret_blinks_on_and_off_while_focused() {
 /// assertion is phase-sensitive to exactly that.
 #[test]
 fn caret_motion_alone_resets_blink() {
-    fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            *leaf = Some(
+    fn body(ui: &mut Ui, buf: &mut String) -> NodeId {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("caret-move-blink"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     }
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     // Long enough that a click near the left edge lands well short of
     // the end, so `End` is guaranteed to move the caret.
     let mut buf = String::from("abcdefghij");
-    let mut leaf = None;
 
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf, &mut leaf));
+    // The tree records the same shape every frame, so the editor's node
+    // is the same on each; a paint-only frame records none.
+    let leaf = h
+        .at(Duration::from_secs_f32(0.0))
+        .frame_value(|ui| body(ui, &mut buf));
     h.click_at(Vec2::new(20.0, 20.0));
-    record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf, &mut leaf));
-    let caret_at_click =
-        h.ui.state_or_default::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
-            .edit
-            .caret;
+    h.at(Duration::from_secs_f32(0.0)).frame(|ui| {
+        body(ui, &mut buf);
+    });
+    let caret_at_click = h
+        .state::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
+        .edit
+        .caret;
     assert!(
         caret_at_click < buf.len(),
         "click must land short of the end for `End` to move the caret",
@@ -173,21 +190,25 @@ fn caret_motion_alone_resets_blink() {
 
     // 0.7s past the focus reset — one full half-period in, so the
     // blink is in its hidden phase.
-    record_at_secs(&mut h, 0.7, |ui| body(ui, &mut buf, &mut leaf));
+    h.at(Duration::from_secs_f32(0.7)).frame(|ui| {
+        body(ui, &mut buf);
+    });
     assert!(
-        !caret_painted(&h.ui, leaf.unwrap()),
+        !caret_painted(&h.ui, leaf),
         "precondition: hidden phase before the caret moves",
     );
 
     h.key(Key::End);
-    record_at_secs(&mut h, 0.75, |ui| body(ui, &mut buf, &mut leaf));
-    let state =
-        h.ui.state_or_default::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
-            .clone();
+    h.at(Duration::from_secs_f32(0.75)).frame(|ui| {
+        body(ui, &mut buf);
+    });
+    let state = h
+        .state::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
+        .clone();
     assert_eq!(buf, "abcdefghij", "`End` must not edit the buffer");
     assert_eq!(state.edit.caret, buf.len(), "`End` moves caret to the end");
     assert!(
-        caret_painted(&h.ui, leaf.unwrap()),
+        caret_painted(&h.ui, leaf),
         "caret movement alone resets blink: caret immediately visible",
     );
 }
@@ -199,7 +220,7 @@ fn caret_motion_alone_resets_blink() {
 /// `entry.anim.next_wake(prev_now) <= now`.
 #[test]
 fn caret_anim_does_not_damage_between_quantum_boundaries() {
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
 
     // Single recording site keeps `track_caller` happy — every
@@ -216,32 +237,39 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     }
 
     // Frame 1: warm up so the editor's WidgetId is recorded.
-    record_at_secs(&mut h, 0.0, |ui| record(ui, &mut buf));
+    h.at(Duration::from_secs_f32(0.0))
+        .frame(|ui| record(ui, &mut buf));
 
     // Frame 2 (focus): click lands; caret anim registers with
     // started_at=0. First post-focus frame is structurally dirty
     // (chrome/state change) — we don't assert on it.
     h.click_at(Vec2::new(20.0, 20.0));
-    record_at_secs(&mut h, 0.0, |ui| record(ui, &mut buf));
+    h.at(Duration::from_secs_f32(0.0))
+        .frame(|ui| record(ui, &mut buf));
 
     // Frame 3 mid-half-period (t=0.2 of a 0.5s half-period). Caret
     // quantum unchanged since prev frame (t=0); `next_wake(0) = 0.5`
     // which isn't `<= 0.2` → anim contributes no damage. No other
     // source of damage either → report damage is `None`.
-    let report = record_at_secs(&mut h, 0.2, |ui| record(ui, &mut buf));
-    assert!(
-        report.plan.is_none(),
-        "mid-phase frame should not damage the caret rect (got {:?})",
-        report.plan,
+    let report = h
+        .at(Duration::from_secs_f32(0.2))
+        .frame(|ui| record(ui, &mut buf));
+    assert_eq!(
+        report.paint(),
+        FramePaint::Skip,
+        "mid-phase frame should not damage the caret rect",
     );
 
     // Frame 4 across the half-period boundary (t=0.6). prev_now=0.2;
     // `next_wake(0.2) = 0.5` which IS `<= 0.6` → quantum flipped
     // → caret rect joins damage.
-    let report = record_at_secs(&mut h, 0.6, |ui| record(ui, &mut buf));
-    assert!(
-        report.plan.is_some(),
-        "crossing a phase boundary must damage the caret rect",
+    let report = h
+        .at(Duration::from_secs_f32(0.6))
+        .frame(|ui| record(ui, &mut buf));
+    assert_eq!(
+        report.paint(),
+        FramePaint::Partial,
+        "crossing a phase boundary damages the caret rect, and only it",
     );
 }
 
@@ -253,7 +281,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
 /// the "caret doesn't blink unless I move the mouse" bug.
 #[test]
 fn focus_gain_resets_blink_even_without_caret_change() {
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
 
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -266,18 +294,23 @@ fn focus_gain_resets_blink_even_without_caret_change() {
     }
     // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any
     // stale `last_caret_change=0` would put the blink past its cliff.
-    record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf));
+    h.at(Duration::from_secs_f32(100.0))
+        .frame(|ui| body(ui, &mut buf));
 
     // Click to focus on the empty buffer at t=100s. Caret lands at
     // byte 0 (unchanged from default), selection unchanged, text
     // unchanged — only the focus edge fires.
     h.click_at(Vec2::new(20.0, 20.0));
-    let r = record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf));
+    let r = h
+        .at(Duration::from_secs_f32(100.0))
+        .frame(|ui| body(ui, &mut buf));
 
     // Focus rising edge must reset blink: anim registered → wake
     // scheduled at the next half-period boundary.
-    assert!(
-        r.repaint_after.is_some(),
+    // Restarted at the focus, so the next flip is half a 0.5 s period in.
+    assert_eq!(
+        r.repaint_after,
+        Some(Duration::from_secs_f32(100.5)),
         "focus gain must restart blink scheduling regardless of caret movement",
     );
 }
@@ -287,7 +320,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
 /// last frame landed on.
 #[test]
 fn focused_text_edit_schedules_blink_wake() {
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
 
     // Unfocused: no blink schedule.
@@ -309,8 +342,9 @@ fn focused_text_edit_schedules_blink_wake() {
     // request a wake at the next phase boundary.
     h.click_at(Vec2::new(20.0, 20.0));
     let report = h.frame(&mut scene);
-    assert!(
-        report.repaint_after.is_some(),
-        "focused editor schedules a blink wake",
+    assert_eq!(
+        report.repaint_after,
+        Some(Duration::from_millis(500)),
+        "focused editor schedules a blink wake at the first half-period flip",
     );
 }

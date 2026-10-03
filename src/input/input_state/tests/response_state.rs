@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::input::capture::{Press, PressDrag, Release, ReleaseKind};
 use crate::input::input_state::InputState;
+use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::input::pointer::PointerButton;
 use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::button_state::ButtonState;
@@ -9,14 +10,13 @@ use crate::input::response::response_state::ResponseState;
 use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::zoom_factor::ZoomFactor;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
-use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -63,8 +63,7 @@ fn disabled_reflects_cascaded_ancestor_flag() {
                     .show(ui);
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
 
     let parent_state = h.ui.response_for(WidgetId::from_hash("parent"));
     let child_state = h.ui.response_for(WidgetId::from_hash("child"));
@@ -151,8 +150,7 @@ fn disabled_false_when_chain_clean() {
                     .show(ui);
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert!(!h.ui.response_for(WidgetId::from_hash("child")).disabled);
 }
 
@@ -247,40 +245,27 @@ fn frame_quiescent_predicate() {
     );
 }
 
-fn button_surface() -> UVec2 {
-    UVec2::new(200, 80)
-}
-
-fn build_button(id: WidgetId) -> impl FnMut(&mut Ui) {
-    move |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new()
-                .id(id)
-                .label("hi")
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    }
-}
-
 /// On a quiescent frame (no pointer ever fed) `response_for` takes the
 /// geometry-only fast path: the arranged rect survives but every
 /// interaction field reads its default.
 #[test]
 fn quiescent_frame_keeps_geometry_defaults_interaction() {
-    let mut h = UiHarness::new(button_surface());
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
     // No pointer is ever fed → the frame is quiescent, so the snapshot
     // taken at record-pass start stays valid for this post-frame read.
     h.frame(build_button(id));
 
     let r = h.ui.response_for(id);
-    let rect = r
-        .rect
-        .expect("arranged rect present on the quiescent fast path");
-    assert_eq!(rect.size.w, 100.0);
-    assert_eq!(rect.size.h, 40.0);
-    assert!(r.layout_rect.is_some());
+    // The hstack sits at the origin and its only child is a fixed 100 × 40,
+    // untransformed, so the layout rect and the screen rect agree.
+    let placed = Rect::new(0.0, 0.0, 100.0, 40.0);
+    assert_eq!(
+        r.rect,
+        Some(placed),
+        "the quiescent fast path keeps geometry"
+    );
+    assert_eq!(r.layout_rect, Some(placed));
 
     assert!(!r.hovered());
     assert!(!r.pressed());
@@ -300,7 +285,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 /// pre-transform widget-local pointer.
 #[test]
 fn non_quiescent_frame_computes_interaction() {
-    let mut h = UiHarness::new(button_surface());
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
     h.frame(build_button(id));
 
@@ -337,10 +322,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
                 .transform(TranslateScale::from_scale(scale))
                 .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
                 .show(ui, |ui| {
-                    Button::new()
-                        .id(id)
-                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                        .show(ui);
+                    fixed_button(id).show(ui);
                 });
         };
         h.frame(build);
@@ -371,7 +353,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
 
 #[test]
 fn pointer_local_uses_unclipped_widget_origin() {
-    let mut h = UiHarness::new(button_surface());
+    let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("clipped-child");
     let build = |ui: &mut Ui| {
         Panel::canvas()
@@ -439,9 +421,11 @@ fn quiescent_and_full_paths_agree_on_geometry() {
     assert_eq!(quiet.transform, full.transform);
     assert_eq!(quiet.disabled, full.disabled);
     assert_eq!(quiet.focused, full.focused);
-    assert!(
-        quiet.rect.is_some(),
-        "fixture must actually arrange, or the comparison is vacuous",
+    assert_eq!(
+        quiet.rect,
+        Some(Rect::new(0.0, 0.0, 50.0, 50.0)),
+        "the fixed 50 × 50 root arranges at the origin, or the comparison \
+         is vacuous",
     );
     assert!(quiet.focused, "focus must survive the quiescent path");
 }

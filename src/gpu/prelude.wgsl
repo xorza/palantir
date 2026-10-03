@@ -1,4 +1,4 @@
-// Shared WGSL prelude. `shader_template::specialize` concatenates it
+// Shared WGSL prelude. `ShaderBody::specialize` concatenates it
 // ahead of every shader in this backend, so everything here has to
 // compile in front of every one of them — nothing may declare a
 // binding, which is the one thing they disagree about.
@@ -8,7 +8,7 @@
 // writes valid after a switch to another:
 //   offset 0: viewport size, written once per pass by the backend.
 //   offset 8: atlas sizes (color, mask), written per text batch by
-//   `TextBackend::render_batch` and read by the raster-atlas shader alone.
+//   `RasterAtlas::draw_span` and read by the raster-atlas shader alone.
 //
 // **Flat members, no nested structs.** HLSL constant-buffer rules start a
 // *struct* member on the next 16-byte register, so a nested
@@ -51,6 +51,23 @@ fn clip_from_px(px: vec2<f32>) -> vec4<f32> {
 // `PREMULTIPLIED_ALPHA_BLENDING`. See AGENTS.md "Colour pipeline".
 fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
     return vec4<f32>(rgb * alpha, alpha);
+}
+
+// A ramp parameter `t` in 0..1 as the texture coordinate of a LUT row
+// `width` texels wide. The bake puts texel `i` at `t = i / (width - 1)`,
+// so `t = 0` and `t = 1` must land on the first and last texel centres
+// and everything between on the matching point between two centres.
+// Sampling at `u = t` instead read each texel half a texel late.
+fn lut_u(t: f32, width: f32) -> f32 {
+    return (t * (width - 1.0) + 0.5) / width;
+}
+
+// Premultiplied in, straight out — for a colour that was interpolated
+// premultiplied (a gradient texel, a vertex colour) and must meet a
+// straight-alpha multiply. A fully transparent colour has no hue; it
+// comes back black.
+fn unpremultiply(c: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(select(vec3<f32>(0.0), c.rgb / c.a, c.a > 0.0), c.a);
 }
 
 // sRGB-encoded channels → linear light: the exact piecewise transfer

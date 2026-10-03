@@ -1,11 +1,11 @@
 //! The `Ui` a test drives, and the frames it records into.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
@@ -13,10 +13,6 @@ use glam::UVec2;
 use std::time::Duration;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
-
-pub(super) fn measure_calls(ui: &Ui) -> u64 {
-    ui.resources.text().measure_calls()
-}
 
 pub(super) fn ui_with_shared(shared: &UiResources) -> UiHarness {
     UiHarness::from_resources(shared.clone(), SURFACE)
@@ -26,10 +22,7 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(salt))
         .size(50.0)
-        .background(Background {
-            fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-            ..Default::default()
-        })
+        .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
         .show(ui)
         .node()
 }
@@ -51,12 +44,7 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
     );
 }
 
-pub(super) const COLD: UVec2 = UVec2::new(200, 200);
-
+/// A harness whose first frame runs the warmup pass, on [`SURFACE`].
 pub(super) fn cold_ui() -> UiHarness {
-    UiHarness::cold(COLD)
-}
-
-pub(super) fn cold_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
-    let _ = h.frame(record);
+    UiHarness::cold(SURFACE)
 }

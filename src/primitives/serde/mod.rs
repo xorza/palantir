@@ -8,6 +8,8 @@
 //! the `Serialize` / `Deserialize` impls that drive it live there too.
 //! What stays here is the machinery neither type owns.
 
+pub(crate) mod checked;
+
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -37,6 +39,22 @@ pub(super) trait LaneCodec: Sized {
 
     /// Expand a parsed 2-node array back to four lanes.
     fn expand_two(pair: [f32; 2]) -> [f32; 4];
+
+    /// Whether one parsed lane is a value this type can hold. A file is
+    /// untrusted, so a lane that fails is a deserialization error rather
+    /// than a value that reaches a NaN screen or an f16 overflow later.
+    fn lane_is_valid(lane: f32) -> bool;
+
+    /// What [`Self::lane_is_valid`] demands, for the error message.
+    const LANE_RULE: &'static str;
+}
+
+/// Build `T` from parsed lanes, refusing any lane `T` cannot hold.
+fn checked_lanes<T: LaneCodec, E: de::Error>(lanes: [f32; 4]) -> Result<T, E> {
+    match lanes.into_iter().find(|lane| !T::lane_is_valid(*lane)) {
+        Some(bad) => Err(E::custom(format_args!("{}, got {bad}", T::LANE_RULE))),
+        None => Ok(T::from_lane_array(lanes)),
+    }
 }
 
 pub(super) fn serialize_lanes<T: LaneCodec, S: Serializer>(v: &T, s: S) -> Result<S::Ok, S::Error> {
@@ -79,13 +97,13 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
     }
 
     fn visit_f64<E: de::Error>(self, v: f64) -> Result<T, E> {
-        Ok(T::from_lane_array([v as f32; 4]))
+        checked_lanes([v as f32; 4])
     }
     fn visit_i64<E: de::Error>(self, v: i64) -> Result<T, E> {
-        Ok(T::from_lane_array([v as f32; 4]))
+        checked_lanes([v as f32; 4])
     }
     fn visit_u64<E: de::Error>(self, v: u64) -> Result<T, E> {
-        Ok(T::from_lane_array([v as f32; 4]))
+        checked_lanes([v as f32; 4])
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<T, A::Error> {
@@ -93,10 +111,10 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
             .next_element()?
             .ok_or_else(|| de::Error::invalid_length(0, &self))?;
         let Some(v1) = a.next_element::<f32>()? else {
-            return Ok(T::from_lane_array([v0; 4]));
+            return checked_lanes([v0; 4]);
         };
         let Some(v2) = a.next_element::<f32>()? else {
-            return Ok(T::from_lane_array(T::expand_two([v0, v1])));
+            return checked_lanes(T::expand_two([v0, v1]));
         };
         let v3: f32 = a
             .next_element()?
@@ -104,7 +122,7 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
         if a.next_element::<IgnoredAny>()?.is_some() {
             return Err(de::Error::invalid_length(5, &self));
         }
-        Ok(T::from_lane_array([v0, v1, v2, v3]))
+        checked_lanes([v0, v1, v2, v3])
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<T, A::Error> {
@@ -123,7 +141,23 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
         if lanes.iter().all(Option::is_none) {
             return Err(de::Error::invalid_length(0, &self));
         }
-        Ok(T::from_lane_array(lanes.map(|o| o.unwrap_or(0.0))))
+        checked_lanes(lanes.map(|o| o.unwrap_or(0.0)))
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+
+    /// `value` in RON, as a theme file spells it.
+    pub(crate) fn ron_text<T: Serialize>(value: &T) -> String {
+        ron::ser::to_string(value).expect("serialize")
+    }
+
+    /// `text` read as RON into a `T`.
+    pub(crate) fn from_ron<T: DeserializeOwned>(text: &str) -> T {
+        ron::from_str(text).expect("parse")
     }
 }
 

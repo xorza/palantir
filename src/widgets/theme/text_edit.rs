@@ -41,6 +41,7 @@ pub struct TextEditTheme {
     /// Width of the caret rect in logical px. The caret is painted as
     /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
     /// a hairline, two as a chunkier i-beam. Default 1.5 px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub caret_width: f32,
     /// Selection highlight fill, painted as a wash behind the selected
     /// glyphs (see `TextEdit::show`).

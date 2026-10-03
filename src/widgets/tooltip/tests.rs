@@ -4,8 +4,10 @@
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
 use crate::layout::types::anchor::Anchor;
+use crate::ui::frame_report::FrameProcessing;
 
 use crate::input::response::response_state::ResponseState;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
@@ -13,9 +15,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -67,15 +67,17 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     };
     let bubble_id = trigger_id.with("bubble");
     let frame = |h: &mut UiHarness, text: &str| {
-        let mut passes = 0;
-        h.frame(|ui| {
-            passes += 1;
+        let report = h.frame(|ui| {
             Tooltip::on(&snapshot)
                 .label(text)
                 .delay(Duration::ZERO)
                 .show(ui);
         });
-        assert_eq!(passes, 1, "tooltip placement must be single-pass");
+        assert_eq!(
+            report.processing,
+            FrameProcessing::SingleLayout,
+            "tooltip placement must be single-pass"
+        );
         h.rect(bubble_id).expect("tooltip bubble arranged")
     };
 
@@ -86,10 +88,12 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
 
     assert_eq!(small.max().y, above_edge);
     assert_eq!(large.max().y, above_edge);
-    assert!(
-        large.size.w > small.size.w || large.size.h > small.size.h,
-        "long content must change the measured bubble size",
-    );
+    // Mono at the tooltip's 13 px: 6.5 px a char, 15.59375 px a line
+    // (15.6 snapped to 1/64), inside 6 + 6 by 4 + 4 padding and a 1 px
+    // border. "tip" is one 19.5 px line; the long text wraps at
+    // 280 − 14 = 266, which holds 40 chars, onto two lines.
+    assert_eq!(small.size, Size::new(19.5 + 14.0, 15.59375 + 10.0));
+    assert_eq!(large.size, Size::new(260.0 + 14.0, 2.0 * 15.59375 + 10.0));
     assert_eq!(large.max().x, SURFACE.x as f32);
     assert_eq!(
         shrunk, small,
@@ -104,29 +108,23 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         "averylongtooltiptokenwithoutanybreakpointsaverylongtooltiptoken",
     );
     let bubble_id = WidgetId::from_hash("edge-trigger").with("bubble");
-    let bubble = ui.ui.response_for(bubble_id).rect.expect("tooltip bubble");
+    let bubble = ui.rect(bubble_id).expect("tooltip bubble");
     let shaped = ui
         .ui
         .layout(Layer::Tooltip)
         .text_shapes
         .first()
         .expect("tooltip text shaped");
+    // Forty 6.5 px chars a line, broken mid-token, inside the 14 px of
+    // padding and border.
+    assert_eq!(shaped.measured, Size::new(260.0, 2.0 * 15.59375));
+    assert_eq!(bubble.size.w, 260.0 + 14.0);
     assert!(
         shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
         "text width {} must fit inside bubble width {}",
         shaped.measured.w,
         bubble.size.w,
     );
-}
-
-/// Record index of the bubble node carrying `id`, or `None` when no
-/// node in the tooltip layer has it.
-fn bubble_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
-    h.ui.tree(Layer::Tooltip)
-        .records
-        .widget_id()
-        .iter()
-        .position(|recorded| *recorded == id)
 }
 
 /// The bubble takes its box from [`Configure`] like any other widget —
@@ -163,11 +161,13 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     });
 
     let derived = trigger_id.with("bubble");
-    let index = bubble_node(&h, derived).expect("tooltip bubble node");
+    let bubble = h.node_of(derived).expect("tooltip bubble node");
+    assert_eq!(bubble.layer, Layer::Tooltip);
     let tree = h.ui.tree(Layer::Tooltip);
+    let index = bubble.node.idx();
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(7.0));
-    assert_eq!(tree.bounds(NodeId(index as u32)).max_size, Size::INF);
+    assert_eq!(tree.bounds(bubble.node).max_size, Size::INF);
 
     // Same trigger, caller-set id: the derived one must not appear.
     let explicit = WidgetId::from_hash("my-own-bubble");
@@ -179,12 +179,14 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
             .delay(Duration::ZERO)
             .show(ui);
     });
-    assert!(
-        bubble_node(&h, explicit).is_some(),
+    assert_eq!(
+        h.node_of(explicit).map(|at| at.layer),
+        Some(Layer::Tooltip),
         "an explicit id must reach the recorded bubble",
     );
-    assert!(
-        bubble_node(&h, derived).is_none(),
+    assert_eq!(
+        h.node_of(derived),
+        None,
         "the trigger-derived id must not also be recorded",
     );
 }
@@ -200,25 +202,18 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
             ..ResponseState::default()
         },
     };
-    let mut passes = 0;
-    h.frame(|ui| {
-        passes += 1;
-        Tooltip::on(&snapshot)
-            .label(text)
-            .delay(Duration::ZERO)
-            .show(ui);
-    });
-
-    assert_eq!(passes, 1, "measured placement resolves in the layout pass");
-    passes = 0;
-    h.frame(|ui| {
-        passes += 1;
-        Tooltip::on(&snapshot)
-            .label(text)
-            .delay(Duration::ZERO)
-            .show(ui);
-    });
-    assert_eq!(passes, 1, "a measured tooltip stays single-pass");
+    for why in [
+        "measured placement resolves in the layout pass",
+        "a measured tooltip stays single-pass",
+    ] {
+        let report = h.frame(|ui| {
+            Tooltip::on(&snapshot)
+                .label(text)
+                .delay(Duration::ZERO)
+                .show(ui);
+        });
+        assert_eq!(report.processing, FrameProcessing::SingleLayout, "{why}");
+    }
     h
 }
 
@@ -234,16 +229,21 @@ fn empty_label_records_no_bubble() {
         !empty
             .ui
             .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
-            .copied()
-            .unwrap_or_default()
-            .visible,
+            .is_some_and(|state| state.visible),
         "an empty tooltip must never become visible",
     );
 
     let shown = visible_tooltip_at(20.0, "tip");
     assert!(
-        shown.ui.tree(Layer::Tooltip).records.len() > baseline,
-        "the same fixture with text records more than the empty one \
+        shown
+            .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
+            .visible,
+        "control: the same fixture with text turns its row visible",
+    );
+    assert_eq!(
+        shown.ui.tree(Layer::Tooltip).records.len(),
+        baseline + 2,
+        "the same fixture with text records the bubble and its label beyond the empty one \
          ({baseline} records)",
     );
 }
@@ -370,39 +370,41 @@ fn delay_gates_visibility() {
     record_at_secs(&mut h, 0.05, &mut captured);
     h.move_onto(trigger_id);
     record_at_secs(&mut h, 0.1, &mut captured);
-    let early =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let early = *h.state::<TooltipState>(trigger_id);
     assert!(
         !early.visible,
-        "tooltip must stay hidden before delay elapses (started_at={:?})",
-        early.hover_started_at
+        "tooltip must stay hidden before delay elapses"
+    );
+    assert_eq!(
+        early.hover_started_at,
+        Some(Duration::from_secs_f32(0.05)),
+        "the hover begins on the frame the pointer first reached the trigger",
     );
 
-    // Tick well past the delay. The cascade lag is one frame, so we
-    // pad with extra ticks; each one hovers the trigger and advances
-    // time by 0.1 s.
+    // Tick past the delay, hovering the trigger and advancing 0.1 s a
+    // frame from 0.2 s. The delay ends at 0.05 + 0.3 = 0.35 s: the 0.3 s
+    // frame is 250 ms in and stays hidden, the 0.4 s frame — tick 2 — is
+    // 350 ms in and is the first to show.
     let mut t = 0.1_f32;
-    for _ in 0..20 {
+    let mut first_visible = None;
+    for tick in 0..20 {
         t += 0.1;
         h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
+        if first_visible.is_none() && h.state::<TooltipState>(trigger_id).visible {
+            first_visible = Some(tick);
+        }
     }
-
-    let late =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
-    assert!(
-        late.visible,
-        "tooltip must become visible after delay (started_at={:?})",
-        late.hover_started_at
+    assert_eq!(
+        first_visible,
+        Some(2),
+        "the first visible frame is the 0.4 s one"
     );
-    let tooltip_tree = h.ui.tree(Layer::Tooltip);
-    assert!(
-        tooltip_tree.records.len() > 1,
-        "Tooltip layer must contain at least one recorded node",
+    assert!(h.state::<TooltipState>(trigger_id).visible);
+    assert_eq!(
+        h.ui.tree(Layer::Tooltip).records.len(),
+        2,
+        "the Tooltip layer holds the bubble and its label",
     );
 
     h.ui.theme_mut().tooltip.warmup = Duration::ZERO;
@@ -456,10 +458,7 @@ fn hover_clears_after_tooltip_visible() {
         h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
     }
-    let state =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let state = *h.state::<TooltipState>(trigger_id);
     assert!(
         state.visible,
         "precondition: tooltip visible while hovering"
@@ -471,12 +470,12 @@ fn hover_clears_after_tooltip_visible() {
     t += 0.1;
     record_at_secs(&mut h, t, &mut captured);
 
-    let pointer_over = h.ui.response_for(trigger_id).pointer_over;
-    let state =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
-    assert!(!pointer_over, "the pointer left the trigger");
+    let state = *h.state::<TooltipState>(trigger_id);
+    assert_ne!(
+        h.hit_at(away),
+        Some(trigger_id),
+        "the pointer left the trigger"
+    );
     assert!(!state.visible, "tooltip must hide after move-away");
 }
 
@@ -487,7 +486,8 @@ fn hover_clears_after_tooltip_visible() {
 /// darkroom's new-node menu.
 #[test]
 fn tooltip_inside_popup_records_without_panic() {
-    use crate::widgets::popup::{ClickOutside, Popup};
+    use crate::widgets::popup::Popup;
+    use crate::widgets::popup::click_outside::ClickOutside;
 
     let mut h = UiHarness::new(SURFACE);
 
@@ -533,10 +533,7 @@ fn tooltip_inside_popup_records_without_panic() {
         record_at_secs(&mut h, t, &mut captured);
     }
 
-    let state =
-        h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default();
+    let state = *h.state::<TooltipState>(trigger_id);
     assert!(
         state.visible,
         "tooltip on a popup-nested trigger must become visible after the delay (started_at={:?})",
@@ -545,10 +542,10 @@ fn tooltip_inside_popup_records_without_panic() {
 
     // The bubble records into the Tooltip layer — a root distinct from
     // the Popup layer it was raised inside.
-    let tooltip_tree = h.ui.tree(Layer::Tooltip);
-    assert!(
-        tooltip_tree.records.len() > 1,
-        "Tooltip layer must contain the bubble recorded from inside the popup",
+    assert_eq!(
+        h.ui.tree(Layer::Tooltip).records.len(),
+        2,
+        "the Tooltip layer holds the bubble raised inside the popup, and its label",
     );
 }
 
@@ -579,7 +576,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
         let mut h = UiHarness::new(SURFACE);
         let trigger_id = WidgetId::from_hash("disabled-trigger");
         let record = |h: &mut UiHarness, secs: f32| {
-            h.at(Duration::from_secs_f32(secs)).frame(|ui| {
+            h.at(Duration::from_secs_f32(secs)).frame_value(|ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("root"))
                     .size((Sizing::FILL, Sizing::FILL))
@@ -590,27 +587,29 @@ fn when_disabled_reaches_a_disabled_trigger() {
                             .disabled(true)
                             .show(ui)
                             .snapshot();
-                        assert!(r.state.disabled, "fixture: the trigger is disabled");
                         Tooltip::on(&r)
                             .label("nothing to save yet")
                             .when_disabled(allow)
                             .delay(Duration::from_millis(300))
                             .show(ui);
-                    });
-            });
+                        r.state.disabled
+                    })
+                    .inner
+            })
         };
 
-        record(&mut h, 0.0);
+        assert!(record(&mut h, 0.0), "fixture: the trigger is disabled");
         let mut t = 0.0_f32;
         for _ in 0..10 {
             t += 0.1;
             h.move_onto(trigger_id);
             record(&mut h, t);
         }
+        // No row is the off answer: a tooltip that never activates
+        // stores nothing. The `true` row is the control that the id is
+        // the one a visible tooltip writes.
         h.ui.state::<TooltipState>(trigger_id)
-            .copied()
-            .unwrap_or_default()
-            .visible
+            .is_some_and(|state| state.visible)
     };
 
     assert!(
@@ -621,4 +620,28 @@ fn when_disabled_reaches_a_disabled_trigger() {
         !visible_after_hover(false),
         "and off by default it does not"
     );
+}
+
+/// The stock tooltip `max_size` (280 wide) is a default, so an authored
+/// `min_size` above it raises the bound instead of panicking.
+#[test]
+fn an_authored_min_above_the_themed_max_width_wins() {
+    let mut h = UiHarness::new(SURFACE);
+    let trigger_id = WidgetId::from_hash("wide-tip-trigger");
+    let snapshot = ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(Rect::new(20.0, 40.0, 40.0, 24.0)),
+            pointer_over: true,
+            ..ResponseState::default()
+        },
+    };
+    h.prime(2, |ui| {
+        Tooltip::on(&snapshot)
+            .label("wide")
+            .delay(Duration::ZERO)
+            .min_size((300.0, 0.0))
+            .show(ui);
+    });
+    assert!(h.state::<TooltipState>(trigger_id).visible);
 }

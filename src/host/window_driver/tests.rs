@@ -101,11 +101,17 @@ mod present_mode_tests {
     fn direct_adaptive_promote_threshold_is_strict() {
         // Coverage at-or-below 0.4 stays on the backbuffer path (`>`, not `>=`);
         // just over promotes. 63×63 = 3_969 (0.3969) vs 64×64 = 4_096 (0.4096) —
-        // straddling the 0.4 line.
-        assert!(matches!(
-            present_path(partial(63.0, 63.0), DirectAdaptive, true),
-            ViaBackbuffer(_)
-        ));
+        // straddling the 0.4 line — and 40×100 = 4_000 sits on it exactly,
+        // as `0.4f32`, which only a strict compare keeps on the backbuffer.
+        for (w, h) in [(63.0, 63.0), (40.0, 100.0)] {
+            assert!(
+                matches!(
+                    present_path(partial(w, h), DirectAdaptive, true),
+                    ViaBackbuffer(_)
+                ),
+                "{w}×{h}",
+            );
+        }
         assert_eq!(
             present_path(partial(64.0, 64.0), DirectAdaptive, true),
             DIRECT_FULL
@@ -116,19 +122,20 @@ mod present_mode_tests {
 mod output_validity_tests {
     use glam::UVec2;
 
-    use crate::common::clipboard::Clipboard;
     use crate::gpu::render_target::TargetFormat;
     use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::renderer::texture_limit::TextureLimit;
+
     use crate::scene::damage::Damage;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::ui::resources::UiResources;
     use crate::window::cursor_icon::CursorIcon;
     use crate::window::vsync::Vsync;
+    use crate::window::window_commands::WindowCommands;
     use crate::window::window_config::WindowConfig;
     use crate::window::window_token::WindowToken;
 
@@ -142,11 +149,7 @@ mod output_validity_tests {
     /// output it is allowed to leave inert.
     #[test]
     fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut quiet = driver(WindowToken(1), &shared);
         quiet.ui.keep_open();
         quiet.ui.set_vsync(Vsync::Off);
@@ -169,11 +172,7 @@ mod output_validity_tests {
     #[test]
     #[should_panic(expected = "Ui::open_window(WindowToken(9))")]
     fn deny_window_commands_rejects_an_open() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut opener = driver(WindowToken(1), &shared);
         opener
             .ui
@@ -185,15 +184,103 @@ mod output_validity_tests {
     #[test]
     #[should_panic(expected = "Ui::close_window(WindowToken(4))")]
     fn deny_window_commands_rejects_a_close() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut closer = driver(WindowToken(1), &shared);
         closer.ui.close_window(WindowToken(4));
 
         closer.deny_window_commands();
+    }
+
+    /// A close request reaches the recorder only from the winit host, so
+    /// the veto half needs its write door.
+    #[cfg(feature = "winit")]
+    #[test]
+    fn frame_drain_collects_commands_and_applies_close_veto() {
+        let shared = UiResources::isolated_mono();
+        let token = WindowToken(17);
+        let mut driver = driver(token, &shared);
+        let opened = WindowToken(18);
+        let mut commands = WindowCommands::default();
+
+        driver
+            .ui
+            .open_window(opened, WindowConfig::new("inspector"));
+        driver.ui.set_cursor(CursorIcon::Pointer);
+        driver.ui.window_frame_mut().close_requested = true;
+
+        let output = driver.drain_window_output(&mut commands);
+        assert_eq!(output.cursor, CursorIcon::Pointer);
+        assert_eq!(
+            output.vsync,
+            Vsync::On,
+            "a frame that asked for nothing reports the standing level"
+        );
+        assert_eq!(commands.opens.len(), 1);
+        assert_eq!(commands.opens[0].token, opened);
+        assert_eq!(
+            commands.closes,
+            [token],
+            "an un-vetoed close becomes this window's own close command"
+        );
+        assert!(driver.ui.window_requests().commands.opens.is_empty());
+        assert!(driver.ui.window_requests().commands.closes.is_empty());
+        // Drained by `append`, not `mem::take`, so the recorder keeps its
+        // buffers for the next frame instead of reallocating per window
+        // command.
+        let open_capacity = driver.ui.window_requests().commands.opens.capacity();
+        let close_capacity = driver.ui.window_requests().commands.closes.capacity();
+        assert!(open_capacity > 0 && close_capacity > 0);
+
+        driver.ui.window_frame_mut().close_requested = true;
+        driver.ui.keep_open();
+        let mut vetoed = WindowCommands::default();
+        driver.drain_window_output(&mut vetoed);
+        assert!(vetoed.closes.is_empty());
+
+        // A second drain after the veto must not resurrect the request: the
+        // frame state was consumed, so nothing is pending.
+        let mut settled = WindowCommands::default();
+        driver.drain_window_output(&mut settled);
+        assert!(settled.closes.is_empty());
+        assert!(!driver.ui.window_requests().close_vetoed);
+        assert_eq!(
+            driver.ui.window_requests().commands.opens.capacity(),
+            open_capacity,
+            "draining must not hand away the recorder's buffer"
+        );
+        assert_eq!(
+            driver.ui.window_requests().commands.closes.capacity(),
+            close_capacity
+        );
+    }
+
+    /// Vsync is a level like the cursor, not a one-shot request: the drain
+    /// copies it, it survives the drain that delivered it, and it reads back
+    /// through `Ui::vsync` so an app never mirrors it. Collapsing a repeated
+    /// level into no swapchain work is the host's job, not the recorder's —
+    /// see `Window::set_vsync`.
+    #[test]
+    fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
+        let shared = UiResources::isolated_mono();
+        let mut driver = driver(WindowToken(3), &shared);
+        let mut commands = WindowCommands::default();
+
+        assert_eq!(driver.ui.vsync(), Vsync::On, "vsync is on unless asked off");
+        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::On);
+
+        driver.ui.set_vsync(Vsync::Off);
+        assert_eq!(driver.ui.vsync(), Vsync::Off, "the setter reads back");
+        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
+        assert_eq!(
+            driver.drain_window_output(&mut commands).vsync,
+            Vsync::Off,
+            "the level survives the drain that delivered it",
+        );
+
+        // Within one pass the last writer wins, matching `set_cursor`.
+        driver.ui.set_vsync(Vsync::On);
+        driver.ui.set_vsync(Vsync::Off);
+        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
     }
 
     fn report(plan: Option<RenderPlan>) -> FrameReport {
@@ -215,11 +302,7 @@ mod output_validity_tests {
     /// leave the swapchain on the old mode forever.
     #[test]
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
@@ -320,12 +403,8 @@ mod output_validity_tests {
 
     #[test]
     fn output_validity_tracks_pending_and_completion() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         assert!(!driver.output_valid, "first frame has no presented output");
 
@@ -343,8 +422,10 @@ mod output_validity_tests {
             "paint stays pending until acquire and submit complete"
         );
 
+        // The GPU half completes the paint — `offscreen::tests` runs it on
+        // a device. A driver without one has no submit, so the SkipNoop
+        // precondition is set here directly.
         driver.output_valid = true;
-        assert!(driver.output_valid, "successful submit restores validity");
 
         let skip = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(matches!(skip.mode, PresentPath::SkipNoop));
@@ -360,18 +441,13 @@ mod output_validity_tests {
             !driver.output_valid,
             "SkipCopy stays pending until the copy is submitted"
         );
-        driver.output_valid = true;
-        assert!(driver.output_valid, "successful copy restores validity");
     }
 }
 
 /// What a driver owns for as long as it exists: its place in the
 /// app-global window directory, and a render-owner id no sibling shares.
 mod lifecycle_tests {
-    use crate::common::clipboard::Clipboard;
     use crate::host::window_driver::WindowDriver;
-    use crate::renderer::texture_limit::TextureLimit;
-    use crate::text::shaper::TextShaper;
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
@@ -385,11 +461,7 @@ mod lifecycle_tests {
     /// have to be remembered on two different close paths.
     #[test]
     fn a_driver_owns_its_directory_entry_from_build_to_drop() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let token = WindowToken(11);
 
         let builder = WindowDriver::builder(token, &shared, true);
@@ -410,11 +482,7 @@ mod lifecycle_tests {
 
     #[test]
     fn window_drivers_have_distinct_render_owners() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
 
@@ -428,18 +496,20 @@ mod record_store_tests {
     use glam::{UVec2, Vec2};
 
     use crate::app::App;
-    use crate::app::internals::RecordApp;
-    use crate::common::clipboard::Clipboard;
+    use crate::internals::record_app::RecordApp;
+
     use crate::host::clock::FixedClock;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::primitives::color::{RgbaF16, RgbaF32};
+    use crate::primitives::color::RgbaF32;
+    use crate::primitives::color::rgba_f16::RgbaF16;
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::stroke::Stroke;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::texture_limit::TextureLimit;
+    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+
     use crate::shape::Shape;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
@@ -513,12 +583,8 @@ mod record_store_tests {
 
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let token = WindowToken(17);
         let mut window = WindowDriver::builder(token, &shared, false)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
@@ -546,12 +612,8 @@ mod record_store_tests {
     /// another window's animation-only frame.
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut window_a = WindowDriver::builder(WindowToken(1), &shared, true)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
@@ -640,12 +702,10 @@ mod record_store_tests {
 mod display_tests {
     use glam::UVec2;
 
-    use crate::common::clipboard::Clipboard;
     use crate::display::user_scale::UserScale;
     use crate::host::window_driver::WindowDriver;
     use crate::primitives::size::Size;
-    use crate::renderer::texture_limit::TextureLimit;
-    use crate::text::shaper::TextShaper;
+
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
@@ -655,11 +715,7 @@ mod display_tests {
     /// `pixel_snap` rides the same call and is checked beside it.
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, false).build();
 
         let plain = driver.display(UVec2::new(800, 600), 2.0, None);
@@ -681,11 +737,7 @@ mod display_tests {
     /// the same one however the write reached it.
     #[test]
     fn two_windows_mint_the_one_scale() {
-        let shared = UiResources::new(
-            TextShaper::test_mono(),
-            Clipboard::memory(),
-            TextureLimit::default(),
-        );
+        let shared = UiResources::isolated_mono();
         let mut first = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
 

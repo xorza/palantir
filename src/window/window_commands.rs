@@ -35,11 +35,13 @@ impl WindowCommands {
         }
     }
 
-    /// Enqueue a close for `token`. Not deduplicated: closing a window
-    /// twice is what a host already ignores, and the second close of a
-    /// re-opened token is a different window.
+    /// Enqueue a close for `token`, once. A frame's replayed passes —
+    /// warmup, pass A, pass B — each record the same close, and one drain
+    /// applies every close in it to the window the token names then.
     pub(crate) fn close(&mut self, token: WindowToken) {
-        self.closes.push(token);
+        if !self.closes.contains(&token) {
+            self.closes.push(token);
+        }
     }
 
     /// Move every command out of `source` onto the end of `self`, leaving
@@ -47,5 +49,22 @@ impl WindowCommands {
     pub(crate) fn append(&mut self, source: &mut Self) {
         self.opens.append(&mut source.opens);
         self.closes.append(&mut source.closes);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::window::window_commands::WindowCommands;
+    use crate::window::window_token::WindowToken;
+
+    /// A close recorded by each replayed pass of a frame is one close.
+    #[test]
+    fn a_close_enqueues_once_per_token() {
+        let mut commands = WindowCommands::default();
+        for _ in 0..3 {
+            commands.close(WindowToken(7));
+        }
+        commands.close(WindowToken(8));
+        assert_eq!(commands.closes, [WindowToken(7), WindowToken(8)]);
     }
 }

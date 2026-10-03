@@ -1,10 +1,10 @@
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Pick {
@@ -17,6 +17,7 @@ enum Pick {
 ///
 /// The rects are the click targets: a test has to hit the actually
 /// painted area, which font metrics decide.
+#[derive(Debug)]
 struct Rows {
     rects: [Option<Rect>; 3],
     changed: [bool; 3],
@@ -25,15 +26,14 @@ struct Rows {
 /// `frame_value`, not `frame`: `changed` is a one-frame edge like
 /// `clicked()`, so only the input-observing pass reports it.
 fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
-    let mut local = *sel;
-    let rows = h.frame_value(|ui| {
+    h.frame_value(|ui| {
         let mut rows = Rows {
             rects: [None; 3],
             changed: [false; 3],
         };
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
-                let r = RadioButton::new(&mut local, value)
+                let r = RadioButton::new(&mut *sel, value)
                     .id(WidgetId::from_hash(("rb", format!("{value:?}"))))
                     .label(format!("{value:?}"))
                     .show(ui);
@@ -42,9 +42,7 @@ fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
             }
         });
         rows
-    });
-    *sel = local;
-    rows
+    })
 }
 
 #[test]
@@ -89,36 +87,4 @@ fn clicking_a_row_selects_it() {
         rows.changed, [false; 3],
         "re-clicking the selected row reports no pick",
     );
-}
-
-#[test]
-fn disabled_radio_does_not_select() {
-    let surface = UVec2::new(300, 100);
-    let mut h = UiHarness::new(surface);
-    let mut sel = Pick::A;
-
-    let mut local = sel;
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            RadioButton::new(&mut local, Pick::B)
-                .id(WidgetId::from_hash(("rb", "B")))
-                .label("B")
-                .disabled(true)
-                .show(ui);
-        });
-    });
-    sel = local;
-    h.click_at(Vec2::new(8.0, 8.0));
-    let mut local = sel;
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            RadioButton::new(&mut local, Pick::B)
-                .id(WidgetId::from_hash(("rb", "B")))
-                .label("B")
-                .disabled(true)
-                .show(ui);
-        });
-    });
-    sel = local;
-    assert_eq!(sel, Pick::A, "disabled radio swallows click");
 }

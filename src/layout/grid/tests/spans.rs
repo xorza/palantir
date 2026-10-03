@@ -3,13 +3,13 @@
 
 use crate::layout::axis::Axis;
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid};
@@ -167,10 +167,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                     .gap(if axis == Axis::X { case.gap } else { 0.0 })
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
-                        let panel = match axis {
-                            Axis::X => Panel::wrap_hstack(),
-                            Axis::Y => Panel::wrap_vstack(),
-                        };
+                        let panel = Panel::wrap_stack_on(axis);
                         panel_node = Some(
                             panel
                                 .auto_id()

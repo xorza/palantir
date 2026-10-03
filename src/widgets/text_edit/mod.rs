@@ -30,6 +30,7 @@ use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::widget_id::WidgetId;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -83,7 +84,7 @@ pub struct TextEdit<'a> {
     style: Option<&'a TextEditTheme>,
     overrides: TextStyleOverrides,
     placeholder: &'a str,
-    /// When `true`, Enter inserts `\n`, paste/IME preserve newlines,
+    /// When `true`, Enter inserts `\n`, paste preserves newlines,
     /// click hit-test + caret + selection render in 2D, and text
     /// soft-wraps to the editor's inner width via cosmic-text. v1
     /// single-line behaviour is the default — flip via [`Self::multiline`].
@@ -96,7 +97,7 @@ pub struct TextEdit<'a> {
     text_align: Option<Align>,
     /// Max characters (Unicode scalar values) the buffer may hold.
     /// `None` = unbounded. Enforced at every insertion path (typing,
-    /// IME/text, paste, newline): input that would overflow is dropped.
+    /// paste, newline): input that would overflow is dropped.
     max_chars: Option<usize>,
     /// Select the whole buffer when the field gains focus without a
     /// same-frame press (e.g. focus handed off programmatically, as
@@ -180,8 +181,8 @@ impl<'a> TextEdit<'a> {
 
     /// Font size in logical px, overriding the resolved look's.
     ///
-    /// Named apart from [`Configure::size`](crate::Configure::size), which
-    /// is the widget's layout extent.
+    /// Named apart from [`Configure::size`], which is the widget's layout
+    /// extent.
     pub fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(px);
         self
@@ -268,7 +269,7 @@ impl<'a> TextEdit<'a> {
     /// single-line, `Align::TOP_LEFT` for multi-line. Overflow clamps
     /// the offset to zero on each axis so caret + horizontal scroll
     /// keep working when the text exceeds the inner rect. Distinct
-    /// from [`Configure::align`](crate::Configure::align), which positions the *widget* inside
+    /// from [`Configure::align`], which positions the *widget* inside
     /// its parent's stack slot.
     pub fn text_align(mut self, a: Align) -> Self {
         self.text_align = Some(a);
@@ -329,7 +330,7 @@ impl<'a> TextEdit<'a> {
         // buffers move with it), which collapses the seven per-stage
         // lookups into one and makes the write-back unconditional however
         // [`Self::pass`] returns.
-        let signals = ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state));
+        let signals = ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state, id));
 
         TextEditResponse {
             // The pass already probed this id and tracked the one field that
@@ -347,8 +348,7 @@ impl<'a> TextEdit<'a> {
     /// One record pass over a state row the caller owns — see
     /// [`Self::show`] for why it is passed in rather than looked up.
     /// Returns the borrow-free half of [`TextEditResponse`].
-    fn pass(mut self, ui: &mut Ui, state: &mut TextEditState) -> EditSignals {
-        let id = self.widget.resolve(ui);
+    fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> EditSignals {
         let mut is_focused = ui.focused_id() == Some(id);
         // The pass's one probe, and what `show` hands back at the end.
         // Nothing below can move a cascade or layout answer — both are frozen
@@ -631,6 +631,32 @@ pub struct TextEditResponse<'a> {
     /// The editor lost focus this frame (clicked away, another widget focused,
     /// or Escape) — the conventional "commit on blur" signal.
     pub lost_focus: bool,
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::widgets::text_edit::TextEditResponse;
+
+    /// A [`TextEditResponse`]'s edges, copied out of the record pass
+    /// whose `ui` borrow the response holds.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) struct EditEdges {
+        pub(crate) changed: bool,
+        pub(crate) submitted: bool,
+        pub(crate) gained_focus: bool,
+        pub(crate) lost_focus: bool,
+    }
+
+    impl TextEditResponse<'_> {
+        pub(crate) const fn edges(&self) -> EditEdges {
+            EditEdges {
+                changed: self.changed,
+                submitted: self.submitted,
+                gained_focus: self.gained_focus,
+                lost_focus: self.lost_focus,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

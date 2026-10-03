@@ -11,9 +11,10 @@ use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::endpoint::Endpoint;
-use crate::scene::layer::{Layer, PerLayer};
+use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
+use crate::scene::per_layer::PerLayer;
 use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, SeenIds};
 use crate::scene::tree::ChromeInput;
@@ -41,7 +42,7 @@ pub(crate) struct Forest {
     /// can't reach transient state; cleared by `pre_record`, drained
     /// at each top-level `close_node`. Disjoint from `trees` so
     /// `open_node` can borrow both via field access.
-    pub(crate) scratch: PerLayer<RecordingScratch>,
+    scratch: PerLayer<RecordingScratch>,
     /// Per-frame `WidgetId` tracker. Mutated by `open_node` (collision
     /// detection + auto-id disambiguation), reset by `pre_record`, and
     /// rolled over by `FrameCycle::finalize_frame` (which fans `ids.removed`
@@ -308,7 +309,7 @@ impl Forest {
     /// Append a `GpuView` shape (a
     /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
     /// sourced from an
-    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView))
+    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::image_source::ImageSource::GpuView))
     /// to the active node. Only the redraw `epoch` rides the shape — the
     /// view's `id` + app `paint` live in `Ui::gpu_views` keyed by the
     /// owner's `WidgetId`; this is assembled by `Ui::add_gpu_view`, not lowered
@@ -333,6 +334,7 @@ impl Forest {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;
             };
+            tree.shapes.fold_paint_anim(shape_idx, &anim);
             // The row is charged either way — an invisible pass still
             // authors the shape — so only the animation row is skipped.
             if frame.effectively_visible {
@@ -404,12 +406,14 @@ impl Forest {
             "Ui::layer({layer:?}) must rank above the current scope ({active:?}) \
              in Layer::PAINT_ORDER — a nested layer painting under its parent is a bug",
         );
+        let owner_disabled = self.scratch[active].ancestor_disabled();
         let scratch = &mut self.scratch[layer];
         debug_assert!(
             scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
         scratch.pending_placement = Some(placement);
+        scratch.owner_disabled = owner_disabled;
         self.layer_stack.push(layer);
     }
 
@@ -426,6 +430,7 @@ impl Forest {
             layer,
         );
         scratch.pending_placement = None;
+        scratch.owner_disabled = false;
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one
@@ -437,11 +442,18 @@ impl Forest {
     }
 
     /// Recording-only scratch for the active layer. Read by
-    /// [`Self::current_parent_id`] and the disabled cascade at record
-    /// time.
+    /// [`Self::current_parent_id`] and [`Self::ancestor_disabled`].
     #[inline]
-    pub(crate) fn current_scratch(&self) -> &RecordingScratch {
+    fn current_scratch(&self) -> &RecordingScratch {
         &self.scratch[self.current_layer()]
+    }
+
+    /// Whether an ancestor of the node being recorded in the active layer
+    /// is disabled — this frame's half of the disabled cascade, which the
+    /// cascade itself reports a frame late.
+    #[inline]
+    pub(crate) fn ancestor_disabled(&self) -> bool {
+        self.current_scratch().ancestor_disabled()
     }
 
     /// `WidgetId` of the innermost open node in the active layer — the
@@ -458,7 +470,7 @@ impl Forest {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::forest::Forest;
     use crate::scene::layer::Layer;

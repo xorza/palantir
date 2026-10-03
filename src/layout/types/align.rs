@@ -103,7 +103,7 @@ impl Align {
     /// Rebuild from the raw packed byte (lower 3 bits HAlign, next 3
     /// VAlign). Used when `Align` is stored inside a larger packed
     /// `u16`/`u32` field (e.g.
-    /// [`PackedLayoutMeta`](crate::layout::types::layout_mode::PackedLayoutMeta))
+    /// [`PackedLayoutMeta`](crate::layout::types::packed_layout_meta::PackedLayoutMeta))
     /// — the caller masks the
     /// slot and hands the 6 valid bits straight back here, no
     /// `HAlign`/`VAlign` round-trip required.
@@ -265,5 +265,39 @@ impl VAlign {
         } else {
             self
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A content box placed inside a 200×40 leaf at (10, 20): 80×16 of
+    /// content leaves 120 × 24 of slack, so centring adds 60 and 12, the
+    /// default keeps the top-left, and right-bottom adds all of it.
+    /// Content past the leaf clamps to its top-left, so it never clips on
+    /// the wrong side.
+    #[test]
+    fn place_in_splits_the_slack_by_alignment() {
+        let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
+        let measured = Size::new(80.0, 16.0);
+        for (align, min) in [
+            (Align::CENTER, (70.0, 32.0)),
+            (Align::default(), (10.0, 20.0)),
+            (Align::new(HAlign::Right, VAlign::Bottom), (130.0, 44.0)),
+        ] {
+            assert_eq!(
+                align.place_in(leaf, measured),
+                Rect::new(min.0, min.1, 80.0, 16.0),
+                "{align:?}"
+            );
+        }
+
+        let small = Rect::new(0.0, 0.0, 50.0, 10.0);
+        assert_eq!(
+            Align::CENTER.place_in(small, measured),
+            Rect::new(0.0, 0.0, 80.0, 16.0),
+            "oversize content clamps to the top-left"
+        );
     }
 }

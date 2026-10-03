@@ -83,7 +83,11 @@ fn ramp(ui: &mut Ui) {
 
 #[test]
 fn a_dark_ramp_reads_back_as_authored() {
-    let img = Harness::new().render(SURFACE, 1.0, RgbaF32::BLACK, ramp);
+    let img = Harness::new()
+        .size(SURFACE)
+        .clear(RgbaF32::BLACK)
+        .frame(ramp)
+        .image;
     for (i, v) in RAMP.into_iter().enumerate() {
         let x = i as u32 * COLUMN as u32;
         let want = [v, v, v, 255];

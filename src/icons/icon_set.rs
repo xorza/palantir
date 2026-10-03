@@ -111,11 +111,13 @@ impl IconSet {
     ///
     /// # Panics
     ///
-    /// Panics if `icon` is not from this set.
+    /// Panics if `icon` lies past this set's end. An [`IconId`] carries no
+    /// set of its own, so an id from another set that is in range is not
+    /// caught: it names this set's icon at that index.
     pub fn handle(&self, icon: IconId) -> IconHandle {
-        // Resolved now rather than at draw time, so an id that crossed
-        // between sets fails at the call site that mixed them — and so the
-        // encoder never has to consult the registry for an aspect ratio.
+        // Resolved now rather than at draw time, so an id past this set's
+        // end fails at the call site that passed it — and so the encoder
+        // never has to consult the registry for an aspect ratio.
         IconHandle {
             icon: IconRef {
                 set: self.inner.id(),
@@ -146,8 +148,27 @@ impl IconSet {
     ///
     /// # Panics
     ///
-    /// Panics if `icon` is not from this set.
+    /// Panics if `icon` lies past this set's end. An [`IconId`] carries no
+    /// set of its own, so an id from another set that is in range is not
+    /// caught: it names this set's icon at that index.
     pub fn shape(&self, icon: IconId) -> IconShape {
         Shape::icon(self.handle(icon))
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::icons::icon_registry::IconSetId;
+    use crate::icons::icon_set::IconRef;
+    use crate::icons::icon_table::IconId;
+
+    impl IconRef {
+        /// Icon `icon` of the first generation of set slot `set`.
+        pub(crate) const fn fixture(set: u16, icon: u16) -> Self {
+            Self {
+                set: IconSetId::new(set, 0),
+                icon: IconId(icon),
+            }
+        }
     }
 }

@@ -80,6 +80,14 @@ pub(crate) fn cubic_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
 /// Real roots of `a·t² + b·t + c = 0`. Returns `[NaN, NaN]` when there
 /// are no real roots; the caller filters by `t ∈ (0, 1)` so NaNs drop
 /// out naturally (NaN comparisons are false).
+///
+/// The cancellation-free form (Numerical Recipes §5.6): with
+/// `q = -½·(b + sign(b)·√disc)` the roots are `q/a` and `c/q`. The
+/// textbook `(-b ± √disc)/2a` subtracts two nearly equal numbers for the
+/// small root when `|a|` is small against `|b|` — which every quadratic
+/// promoted to a cubic is, its `a` being the rounding residue of the
+/// `2/3` blend — and the lost root then leaves the curve's extremum
+/// outside its bounding box.
 fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
     /// Below this a coefficient carries no root worth recovering.
     ///
@@ -102,8 +110,11 @@ fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
     if disc < 0.0 {
         return [f32::NAN, f32::NAN];
     }
-    let s = disc.sqrt();
-    [(-b + s) / (2.0 * a), (-b - s) / (2.0 * a)]
+    let q = -0.5 * (b + disc.sqrt().copysign(b));
+    // `q` is zero only when `b` and `disc` both are, which with `a` above
+    // the floor means `c` is too: the double root at 0, which `q/a`
+    // gives and `c/q` reports as NaN.
+    [q / a, c / q]
 }
 
 #[cfg(test)]

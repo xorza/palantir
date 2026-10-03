@@ -7,9 +7,7 @@ use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::srgba_u8::SrgbaU8;
-use crate::renderer::gradient_atlas::tests::support::{
-    assert_real_row, distinct_grad, register_for,
-};
+use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::*;
 use crate::renderer::texture_limit::TextureLimit;
 use glam::Vec2;
@@ -28,24 +26,12 @@ fn row_zero_reserved_as_magenta_fallback() {
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
 
-/// First real `register` goes through the probe path. The atlas
-/// is already dirty from magenta init; registering should keep it
-/// dirty so the GPU upload includes the new row.
-#[test]
-fn register_returns_nonzero_row_and_marks_dirty() {
-    let mut atlas = CpuGradientAtlas::default();
-    let g = distinct_grad(0.1);
-    let row = atlas.register(&g.ramp);
-    assert_real_row(&atlas, row);
-    assert!(atlas.dirty.is_some(), "register must mark atlas dirty");
-}
-
 /// Same gradient registered twice returns the same row and does
 /// not re-mark dirty after a flush.
 #[test]
 fn register_same_gradient_twice_reuses_row() {
     let mut atlas = CpuGradientAtlas::default();
-    let g = distinct_grad(0.5);
+    let g = distinct_grad(50);
     let r1 = atlas.register(&g.ramp);
     // Flush so subsequent registrations of the same content can
     // be detected as no-ops.
@@ -86,28 +72,16 @@ fn near_identical_keys_never_share_a_row() {
     assert_ne!(first, second);
 }
 
-/// Distinct gradients get distinct rows; both leave the atlas
-/// dirty for upload.
-#[test]
-fn register_distinct_gradients_get_distinct_rows() {
-    let mut atlas = CpuGradientAtlas::default();
-    let _ = atlas.flush();
-    let ra = register_for(&mut atlas, distinct_grad(0.1));
-    let rb = register_for(&mut atlas, distinct_grad(0.2));
-    assert_ne!(ra, rb);
-    assert!(atlas.dirty.is_some());
-}
-
 /// Filling the atlas one distinct gradient at a time hands out every
 /// real row exactly once — no key aliases another's row, and no row is
-/// skipped, so the whole table is reachable.
+/// skipped, so the whole table is reachable. Each registration marks
+/// its row dirty, and the magenta row 0 still waits from construction,
+/// so the dirty span runs from row 0 to the last row.
 #[test]
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let mut seen = HashSet::new();
-    for i in 0..(INITIAL_ATLAS_ROWS - 1) {
-        let g = distinct_grad(i as f32 * 0.01);
-        let row = atlas.register(&g.ramp);
+    for row in fill_rows(&mut atlas, INITIAL_ATLAS_ROWS - 1) {
         assert!(
             seen.insert(row),
             "row {} reused across distinct gradients",
@@ -116,6 +90,10 @@ fn register_many_distinct_gradients_all_unique_rows() {
         assert_real_row(&atlas, row);
     }
     assert_eq!(seen.len(), INITIAL_ATLAS_ROWS as usize - 1);
+    assert_eq!(
+        atlas.dirty.map(|d| (d.first, d.last)),
+        Some((0, INITIAL_ATLAS_ROWS - 1)),
+    );
 }
 
 /// The atlas keys on the ramp alone, so a linear gradient, a radial

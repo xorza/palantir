@@ -36,7 +36,7 @@ impl AxisAlignPair {
     /// on one axis at a time — a stack reads only its cross axis, and
     /// resolving the pair there threw half of it away per child per
     /// frame.
-    pub(super) fn resolve_axis(
+    pub(super) const fn resolve_axis(
         axis: Axis,
         child: &LayoutCore,
         parent_child_align: Align,

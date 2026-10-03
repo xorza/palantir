@@ -3,11 +3,14 @@
 
 use super::*;
 use crate::Ui;
+use crate::common::clipboard::Clipboard;
+use crate::internals::harness::UiHarness;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::text::error::FontLoadError;
-use crate::text::font_scope::test_support::{INTER, MONO};
+use crate::text::font_scope::internals::{INTER, MONO};
 use crate::text::font_slant::FontSlant;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::UiHarness;
+use crate::ui::resources::UiResources;
 use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
@@ -114,7 +117,7 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
 /// rect from the cascade and the arranged rect from `Layout`, on the
 /// stated ground that the cascade is rebuilt whenever an arranged rect
 /// moves — so a load that moves one while the authored tree stands
-/// still has to reach the cascade fingerprint, or the frame answers two
+/// still has to reach the cascade key, or the frame answers two
 /// different arrangements to the same question. And the pixels owe the
 /// same: a glyph redrawn in a new face inside an unmoved rect is a
 /// change no per-widget diff can see, so the frame that carries the
@@ -122,7 +125,10 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
 #[test]
 fn a_load_reaches_the_cascade_and_the_screen() {
     let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
-    let mut h = UiHarness::over_shaper(shaper, UVec2::new(400, 300));
+    let mut h = UiHarness::from_resources(
+        UiResources::new(shaper, Clipboard::memory(), TextureLimit::default()),
+        UVec2::new(400, 300),
+    );
     h.ui.load_font(INTER).expect("the bundled Inter loads");
     // `i` is where a proportional face and a fixed-advance one disagree
     // most, and monospace is a family this database answers with Inter
@@ -137,8 +143,7 @@ fn a_load_reaches_the_cascade_and_the_screen() {
             })
             .show(ui);
     };
-    h.frame(record);
-    h.frame(record);
+    h.prime(2, record);
     let fallback = h.rect(id).expect("the label arranged");
     assert_eq!(
         h.layout_rect(id),

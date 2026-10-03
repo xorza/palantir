@@ -1,8 +1,9 @@
 //! What every widget's `style` setter is: the `Option`-taking setter, and the one
 //! naming of a widget's theme slot that resolves it.
 
-use crate::primitives::color::RgbaF16;
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -10,7 +11,6 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;
@@ -186,6 +186,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
 }
 
 /// What one `Shape::Text` was recorded with.
+#[derive(Debug)]
 struct RecordedFace {
     font: GlyphFont,
     color: RgbaF16,

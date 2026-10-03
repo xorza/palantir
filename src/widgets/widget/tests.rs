@@ -1,4 +1,5 @@
 use crate::input::sense::Sense;
+use crate::internals::panic_probe;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
@@ -273,11 +274,8 @@ fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
         }),
     ];
 
-    for &(label, build) in cases {
-        assert!(
-            std::panic::catch_unwind(build).is_err(),
-            "case `{label}` must panic",
-        );
+    for &(_label, build) in cases {
+        panic_probe::assert_panics_with("node minimums must be finite", build);
     }
 }
 
@@ -315,11 +313,8 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
         }),
     ];
 
-    for &(label, build) in cases {
-        assert!(
-            std::panic::catch_unwind(build).is_err(),
-            "case `{label}` must panic",
-        );
+    for &(_label, build) in cases {
+        panic_probe::assert_panics_with("gap must be finite, non-negative", build);
     }
 }
 

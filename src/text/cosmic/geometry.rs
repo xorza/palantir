@@ -61,7 +61,7 @@ impl ShapedGeometry {
 pub(super) fn shaped_geometry(
     buffer: &Buffer,
     floor: WrapFloor,
-    breaks: &mut Vec<u32>,
+    scratch: &mut SegmentScratch,
 ) -> ShapedGeometry {
     let mut left = f32::INFINITY;
     let mut right = f32::NEG_INFINITY;
@@ -84,10 +84,18 @@ pub(super) fn shaped_geometry(
     };
     ShapedGeometry {
         size: Size::new(width.ceil(), total_h.ceil()),
-        intrinsic_min: (floor == WrapFloor::Scan).then(|| intrinsic_min_width(buffer, breaks)),
+        intrinsic_min: (floor == WrapFloor::Scan).then(|| intrinsic_min_width(buffer, scratch)),
         single_line: runs <= 1,
         left,
     }
+}
+
+/// Retained scratch for [`intrinsic_min_width`]: a run's break offsets,
+/// and its glyph indices in logical order.
+#[derive(Debug, Default)]
+pub(super) struct SegmentScratch {
+    breaks: Vec<u32>,
+    order: Vec<u32>,
 }
 
 /// Width of the widest segment no line break can split — the min-content
@@ -103,17 +111,28 @@ pub(super) fn shaped_geometry(
 /// keep whole — in the min-content case layout commits, where the
 /// policy's promise matters most. Rounding *up* is the only direction
 /// that keeps the segment fitting at the width finally asked for.
-pub(super) fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
+///
+/// **Scanned in logical order.** Glyphs arrive in visual order, and a
+/// segment's logical first glyph — the one a break offset names — is the
+/// last of it visited in a right-to-left run, so a visual scan reset each
+/// segment one glyph late and merged two words, and the space between
+/// them, into one. Sorting the glyph indices by `start` reads every line,
+/// mixed-direction ones included, the way the break offsets do.
+pub(super) fn intrinsic_min_width(buffer: &Buffer, scratch: &mut SegmentScratch) -> f32 {
+    let SegmentScratch { breaks, order } = scratch;
     let mut intrinsic_min = 0.0_f32;
     for run in buffer.layout_runs() {
         breaks.clear();
         breaks.extend(wrap::break_offsets(run.text));
+        order.clear();
+        order.extend(0..run.glyphs.len() as u32);
+        // The index breaks ties, so glyphs sharing a cluster start keep
+        // their order without the buffer a stable sort allocates.
+        order.sort_unstable_by_key(|&index| (run.glyphs[index as usize].start, index));
         let mut segment_w = 0.0_f32;
         let mut trailing_ws_w = 0.0_f32;
-        for g in run.glyphs {
-            // Glyphs arrive in visual order, but a segment's glyphs stay
-            // contiguous within a level run, so entering a new segment
-            // closes the previous one whichever way the run reads.
+        for &index in order.iter() {
+            let g = &run.glyphs[index as usize];
             if breaks.binary_search(&(g.start as u32)).is_ok() {
                 intrinsic_min = intrinsic_min.max(segment_w);
                 segment_w = 0.0;

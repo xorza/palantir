@@ -80,13 +80,13 @@ pub(super) const DRIVERS: &[Driver] = &[
     driver("input", input::bench::bench),
     driver("paint_anims", scene::tree::paint_anims::bench::bench),
     gpu_driver("record_pass", gpu::bench::bench),
+    driver(
+        "rect_grid",
+        renderer::frontend::composer::rect_grid::bench::bench,
+    ),
     driver("schedule", gpu::schedule::bench::bench),
     gpu_driver("text_atlas", gpu::text::bench::bench),
     driver("text_edit", widgets::text_edit::bench::bench),
-    driver(
-        "text_grid",
-        renderer::frontend::composer::text_grid::bench::bench,
-    ),
     driver("text_shape", text::bench::bench),
 ];
 

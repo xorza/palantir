@@ -9,7 +9,7 @@
 use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::texture_binding;
 use crate::gpu::texture_region::TextureRegion;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use glam::UVec2;

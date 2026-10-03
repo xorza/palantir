@@ -5,8 +5,9 @@
 //! up, how many frames to measure, and what each of those frames may
 //! spend. [`Audit::run`] raises a `UiHarness` and drives the scene
 //! through it; anything that renders frames its own way drives
-//! [`Audit::run_frames`] instead, which is what the gates and the
-//! renderer fixtures do through [`OffscreenTarget`].
+//! [`Audit::run_frames`] instead — the renderer fixtures and the
+//! full-tree gate through a `FrontendHarness`, the device gates through
+//! [`OffscreenTarget`].
 //!
 //! Both terminals are `#[track_caller]`, so the call site names itself
 //! and cargo prints the failing test's own name above whatever it
@@ -28,19 +29,16 @@ use std::panic::Location;
 
 use glam::UVec2;
 use palantir::Ui;
-use palantir::internals::{PROBATION_KEEP_FRAMES, UiHarness};
+use palantir::internals::harness::UiHarness;
+use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES};
 
 use crate::allocator::{AuditResult, with_audit};
 
 /// Logical display every fixture renders at: `UiHarness`'s own defaults
-/// (scale 1.0, pixel-snapped, no refresh rate) at 800×600.
-///
-/// Reached two ways. A `UiHarness` fixture takes it through
-/// [`Audit::run`] unless [`Audit::surface`] says otherwise; a fixture
-/// that needs a device hands it to [`OffscreenTarget::new`] itself. One
-/// number either way, so a fixture moved between the two keeps its
-/// scene the size it was written for.
-pub(crate) const SURFACE: UVec2 = UVec2::new(800, 600);
+/// (scale 1.0, pixel-snapped, no refresh rate) at 800×600. One number
+/// for [`Audit::run`] and [`new_ui`] alike, so a fixture moved between
+/// the two keeps its scene the size it was written for.
+const SURFACE: UVec2 = UVec2::new(800, 600);
 
 /// Mono-fallback harness for the alloc audits: private arena, fresh
 /// caches, no font loading — exactly what these GPU-less tests want.
@@ -75,50 +73,51 @@ enum Warmup {
 /// whole call for most of them.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Audit {
-    surface: UVec2,
-    dpr: Option<f32>,
     text: bool,
     warmup: Warmup,
     frames: usize,
     budget: u64,
+    paint_only: bool,
 }
 
 /// What an audit observed.
 ///
-/// The worst frame is the number that matters: it says how much slack a
-/// budget has, and the harness printing it is what keeps a fixture from
-/// carrying a hand-recorded measurement nothing rechecks.
+/// The worst frame is the number that matters to a budget: it says how
+/// much slack one has, and the harness printing it is what keeps a
+/// fixture from carrying a hand-recorded measurement nothing rechecks.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Report {
     pub(crate) worst: u64,
+    /// The count most measured frames read, the smaller on a tie. A
+    /// driver's floor is flat but for a rare frame the pool it draws on
+    /// missed, and the mode is the flat value those frames leave alone.
+    pub(crate) mode: u64,
 }
 
 impl Audit {
     pub(crate) fn new() -> Self {
         Audit {
-            surface: SURFACE,
-            dpr: None,
             text: false,
             warmup: Warmup::Probe,
             frames: 64,
             budget: 0,
+            paint_only: false,
         }
     }
 
     /// Real cosmic shaping instead of the mono fallback, for a fixture
-    /// that has to exercise it.
+    /// that has to exercise it — warmed and measured in one revolution
+    /// of the shaped-buffer expiry ring each.
+    ///
+    /// A bucket's first drain grows the wheel's scratch, and the probe's
+    /// quiet frames come long before the widest bucket of the first
+    /// revolution is due; a cost the ring pays once a revolution would
+    /// fall outside any shorter window.
     pub(crate) fn text(mut self) -> Self {
+        let ring = SHAPED_BUFFER_RING_FRAMES as usize;
         self.text = true;
-        self
-    }
-
-    pub(crate) fn surface(mut self, size: UVec2) -> Self {
-        self.surface = size;
-        self
-    }
-
-    pub(crate) fn dpr(mut self, dpr: f32) -> Self {
-        self.dpr = Some(dpr);
+        self.warmup = Warmup::Fixed(ring);
+        self.frames = ring;
         self
     }
 
@@ -142,34 +141,59 @@ impl Audit {
         self
     }
 
+    /// Measure the frames that repaint from the retained tree without
+    /// running the scene — an idle animation's steady state.
+    ///
+    /// Without this, every measured frame must run the scene: a frame
+    /// that skips it measures nothing the fixture wrote, and a paint-only
+    /// animation anywhere in the scene skips it on every frame after the
+    /// first. A scene that has one and still wants its record measured
+    /// calls `Ui::request_repaint` each frame, as an app that redraws
+    /// continuously does.
+    pub(crate) const fn paint_only(mut self) -> Self {
+        self.paint_only = true;
+        self
+    }
+
     /// Drive `scene` through a `UiHarness` raised from [`Self::text`],
-    /// [`Self::surface`] and [`Self::dpr`].
+    /// every measured frame checked against [`Self::paint_only`].
     #[track_caller]
     pub(crate) fn run(self, mut scene: impl FnMut(&mut Ui)) -> Report {
         let mut ui = if self.text {
-            UiHarness::with_text(self.surface)
+            UiHarness::with_text(SURFACE)
         } else {
-            UiHarness::new(self.surface)
+            UiHarness::new(SURFACE)
         };
-        // Only when asked: `scale` re-syncs the display and marks the
-        // harness warm, which the default path has no reason to do.
-        if let Some(dpr) = self.dpr {
-            ui = ui.scale(dpr);
-        }
+        let mut recorded = false;
         self.measure(Location::caller(), || {
-            let _ = ui.frame(&mut scene);
+            recorded = false;
+            let _ = ui.frame(|ui| {
+                recorded = true;
+                scene(ui);
+            });
+            recorded
         })
     }
 
     /// The same measured loop over a frame the caller renders itself.
-    /// [`Self::text`], [`Self::surface`] and [`Self::dpr`] describe the
-    /// harness [`Self::run`] raises, so they say nothing here.
+    /// [`Self::text`] describes the harness [`Self::run`] raises, so it
+    /// says nothing here beyond its window, and the caller asserts what its
+    /// own frames ran.
     #[track_caller]
-    pub(crate) fn run_frames(self, frame: impl FnMut()) -> Report {
-        self.measure(Location::caller(), frame)
+    pub(crate) fn run_frames(self, mut frame: impl FnMut()) -> Report {
+        assert!(
+            !self.paint_only,
+            "paint_only reads the scene's record passes, which run_frames never sees",
+        );
+        self.measure(Location::caller(), || {
+            frame();
+            true
+        })
     }
 
-    fn measure(self, at: &'static Location<'static>, mut frame: impl FnMut()) -> Report {
+    /// `frame` returns whether it ran the scene, which only the measured
+    /// window checks: a paint-only scene still records while it warms.
+    fn measure(self, at: &'static Location<'static>, mut frame: impl FnMut() -> bool) -> Report {
         assert!(self.frames > 0, "an audit must measure at least one frame");
 
         let warmup = match self.warmup {
@@ -182,28 +206,51 @@ impl Audit {
             Warmup::Probe => self.probe(&mut frame),
         };
 
-        let mut worst = 0;
-        let mut total = 0;
+        let mut counts = Vec::with_capacity(self.frames);
         for i in 0..self.frames {
-            let result = with_audit(&mut frame);
+            let mut recorded = false;
+            let result = with_audit(|| recorded = frame());
+            if recorded == self.paint_only {
+                let what = if recorded {
+                    "ran the scene, but the audit is paint_only"
+                } else {
+                    "skipped the scene, so the audit measured none of it — see Audit::paint_only"
+                };
+                panic!(
+                    "alloc-audit {at}: frame {i}/{} (after {warmup} warmup) {what}",
+                    self.frames,
+                );
+            }
             if result.allocs > self.budget {
                 self.fail(at, i, warmup, result);
             }
-            worst = worst.max(result.allocs);
-            total += result.allocs;
+            counts.push(result.allocs);
         }
+        counts.sort_unstable();
+        let worst = *counts.last().expect("at least one frame");
+        let total: u64 = counts.iter().sum();
+        let mode = counts
+            .chunk_by(|a, b| a == b)
+            .fold((0, 0), |(best, run), chunk| {
+                if chunk.len() > run {
+                    (chunk[0], chunk.len())
+                } else {
+                    (best, run)
+                }
+            })
+            .0;
 
         println!(
-            "alloc-audit {at}: worst {worst}, mean {:.2}, budget {} — over {} frames \
-             after {warmup} warmup",
+            "alloc-audit {at}: worst {worst}, mode {mode}, mean {:.2}, budget {} — over {} \
+             frames after {warmup} warmup",
             total as f64 / self.frames as f64,
             self.budget,
             self.frames,
         );
-        Report { worst }
+        Report { worst, mode }
     }
 
-    fn probe(self, frame: &mut impl FnMut()) -> usize {
+    fn probe(self, frame: &mut impl FnMut() -> bool) -> usize {
         const MAX_WARMUP: usize = 8;
         const STABLE_RUN: usize = 2;
         // Real shaping defers one allocation past any run of quiet frames:
@@ -220,7 +267,9 @@ impl Audit {
         let mut warmup = 0;
         let mut stable = 0;
         while warmup < MAX_WARMUP {
-            let result = with_audit(&mut *frame);
+            let result = with_audit(|| {
+                frame();
+            });
             warmup += 1;
             stable = if result.allocs <= self.budget {
                 stable + 1
@@ -265,3 +314,6 @@ impl Audit {
         );
     }
 }
+
+#[cfg(test)]
+mod tests;

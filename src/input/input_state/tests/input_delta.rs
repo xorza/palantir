@@ -3,10 +3,11 @@
 
 use crate::Ui;
 use crate::input::input_event::InputEvent;
+use crate::input::input_state::tests::forged_focus;
 use crate::input::sense::Sense;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -129,7 +130,6 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
 fn modifiers_wake_only_for_a_watcher() {
     use crate::input::keyboard::modifiers::Modifiers;
     use crate::input::watch::KeyboardWake;
-    use crate::primitives::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
 
@@ -140,7 +140,7 @@ fn modifiers_wake_only_for_a_watcher() {
     );
 
     // Focus alone still does not.
-    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
+    h.set_focus(forged_focus());
     assert!(
         !h.on_input(InputEvent::ModifiersChanged(Modifiers {
             shift: true,
@@ -148,7 +148,7 @@ fn modifiers_wake_only_for_a_watcher() {
         }))
         .requests_repaint,
     );
-    h.ui.input_mut().focused = None;
+    h.clear_focus();
 
     // The watcher does.
     h.frame(|ui| {
@@ -169,7 +169,6 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     use crate::input::keyboard::key::Key;
     use crate::input::shortcut::Shortcut;
     use crate::input::watch::PointerWake;
-    use crate::primitives::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
 
@@ -182,13 +181,13 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     );
 
     // With focus held → wake.
-    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
+    h.set_focus(forged_focus());
     let delta = h.key(Key::Enter);
     assert!(delta.requests_repaint);
 
     // No focus, but chord watcher → wake. Watches are
     // cleared pre-record, so re-record with the sub re-asserted.
-    h.ui.input_mut().focused = None;
+    h.clear_focus();
     h.frame(|ui| {
         build_hover_target(ui);
         ui.watch_key(Shortcut::key(Key::Escape));
@@ -230,16 +229,41 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
 /// clickable.
 #[test]
 fn press_on_inert_clears_focus_and_requests_repaint() {
-    use crate::primitives::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Forge a focused widget — emulating a prior TextEdit interaction.
-    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
+    h.set_focus(forged_focus());
     h.move_to(Vec2::new(200.0, 200.0));
     let delta = h.press();
     assert!(
         delta.requests_repaint,
         "press on inert with prior focus → focus clear → repaint",
     );
-    assert!(h.ui.input().focused.is_none(), "focus must be cleared");
+    assert_eq!(h.focused_id(), None, "focus must be cleared");
+}
+
+/// A bare modifier press — `Key::Other` with no text, which is how a
+/// host reports Shift or Ctrl going down — is nothing a focused widget
+/// acts on: modifier state reaches it through `ModifiersChanged`. So it
+/// neither wakes a frame nor settles one. A typed key, the control row,
+/// does both.
+#[test]
+fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
+    use crate::input::keyboard::key::Key;
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_hover_target);
+    h.set_focus(WidgetId::from_hash("hot"));
+    h.frame(build_hover_target);
+
+    let modifier = h.key(Key::Other);
+    assert!(!modifier.requests_repaint, "a bare modifier wakes nothing");
+    assert!(!h.ui.input_mut().take_action_flag(), "and settles nothing");
+
+    let typed = h.key(Key::Char('c'));
+    assert!(
+        typed.requests_repaint,
+        "control: a typed key reaches the focus"
+    );
+    assert!(h.ui.input_mut().take_action_flag(), "and settles");
 }

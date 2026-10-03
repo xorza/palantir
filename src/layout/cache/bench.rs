@@ -29,6 +29,8 @@
 //! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
 use crate::bench::Run;
+use crate::internals::harness::UiHarness;
+use crate::layout::cache::internals::{build_broad, build_broad_variant, build_deep};
 use crate::layout::counters::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -39,7 +41,6 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::grid::Grid;
@@ -56,9 +57,6 @@ const ROWS_PER_GROUP: usize = 10;
 const HEAVY_GROUPS: usize = 50;
 const HEAVY_ROWS_PER_GROUP: usize = 8;
 
-const DEEP_DEPTH: usize = 192;
-const BROAD_FANOUT: usize = 8;
-const BROAD_DEPTH: usize = 3;
 const GRID_ROWS: usize = 128;
 
 /// Frames each arm runs before and during its measure/arrange split
@@ -254,60 +252,6 @@ fn build_heavy(ui: &mut Ui) {
                                 });
                         }
                     });
-            }
-        });
-}
-
-fn build_deep(ui: &mut Ui) {
-    build_deep_level(ui, 0);
-}
-
-fn build_deep_level(ui: &mut Ui, depth: usize) {
-    if depth == DEEP_DEPTH {
-        Block::new()
-            .id_salt("deep-leaf")
-            .size((Sizing::FILL, Sizing::fixed(1.0)))
-            .show(ui);
-        return;
-    }
-
-    Panel::vstack()
-        .id_salt(("deep", depth))
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, |ui| build_deep_level(ui, depth + 1));
-}
-
-fn build_broad(ui: &mut Ui) {
-    build_broad_variant(ui, false);
-}
-
-fn build_broad_variant(ui: &mut Ui, changed: bool) {
-    build_broad_level(ui, 0, 0, changed);
-}
-
-fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
-    Panel::vstack()
-        .id_salt(("broad", depth, key))
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, |ui| {
-            if depth == BROAD_DEPTH {
-                Block::new()
-                    .id_salt(("broad-leaf", key))
-                    .size((Sizing::FILL, Sizing::fixed(1.0)))
-                    .background(Background {
-                        fill: if changed && key == 0 {
-                            RgbaF32::srgb(0.5, 0.25, 0.75).into()
-                        } else {
-                            RgbaF32::TRANSPARENT.into()
-                        },
-                        ..Default::default()
-                    })
-                    .show(ui);
-                return;
-            }
-
-            for child in 0..BROAD_FANOUT {
-                build_broad_level(ui, depth + 1, key * BROAD_FANOUT + child, changed);
             }
         });
 }
@@ -535,70 +479,4 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     );
 
     group.finish();
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::scene::layer::Layer;
-    use crate::ui::Ui;
-    use crate::ui::harness::UiHarness;
-
-    use crate::layout::cache::bench::{
-        BROAD_DEPTH, BROAD_FANOUT, DEEP_DEPTH, build_broad, build_broad_variant, build_deep,
-    };
-
-    fn cold_frame(build: fn(&mut Ui)) -> UiHarness {
-        let mut h = UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
-        let _ = h.frame(build);
-        h
-    }
-
-    #[test]
-    fn adversarial_workloads_retain_one_row_per_node() {
-        let deep = cold_frame(build_deep);
-        let deep_nodes = DEEP_DEPTH + 2;
-        assert_eq!(
-            deep.ui.tree(Layer::Main).records.len(),
-            deep_nodes,
-            "viewport + {DEEP_DEPTH} nested panels + leaf",
-        );
-        assert_eq!(
-            deep.engines.layout.cache.captured_desired().len(),
-            deep_nodes,
-            "deep trees retain one row per node",
-        );
-
-        let broad = cold_frame(build_broad);
-        let panel_count = (0..=BROAD_DEPTH)
-            .map(|depth| BROAD_FANOUT.pow(depth as u32))
-            .sum::<usize>();
-        let leaf_count = BROAD_FANOUT.pow(BROAD_DEPTH as u32);
-        assert_eq!(
-            broad.ui.tree(Layer::Main).records.len(),
-            1 + panel_count + leaf_count,
-            "viewport + balanced panels + one leaf per terminal panel",
-        );
-        let broad_nodes = 1 + panel_count + leaf_count;
-        assert_eq!(
-            broad.engines.layout.cache.captured_desired().len(),
-            broad_nodes,
-            "balanced trees retain one row per node",
-        );
-    }
-
-    #[test]
-    fn localized_change_hits_unchanged_sibling_subtrees() {
-        let mut h = UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
-        let _ = h.frame(|ui| {
-            build_broad_variant(ui, false);
-        });
-        let _ = h.frame(|ui| {
-            build_broad_variant(ui, true);
-        });
-        assert_eq!(
-            h.engines.layout.scratch.counters.cache_hits().len(),
-            21,
-            "seven unchanged siblings hit at each of the three branch levels",
-        );
-    }
 }

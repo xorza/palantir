@@ -42,7 +42,7 @@ impl PointerButton {
     }
 
     #[inline]
-    pub(super) fn idx(self) -> usize {
+    pub(crate) const fn idx(self) -> usize {
         self as usize
     }
 }

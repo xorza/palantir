@@ -1,4 +1,4 @@
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -16,7 +16,7 @@ fn multiline_enter_inserts_newline() {
     h.key(Key::Enter);
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
@@ -41,13 +41,12 @@ fn single_line_enter_does_not_insert_newline() {
 fn single_line_widget_normalizes_host_newlines() {
     let mut h = UiHarness::with_text(UVec2::new(300, 80));
     let mut text = String::from("first\r\nsecond\nthird");
-    let mut changed = false;
-    h.frame(|ui| {
-        changed |= TextEdit::new(&mut text)
+    let changed = h.frame_value(|ui| {
+        TextEdit::new(&mut text)
             .id(WidgetId::from_hash("single-line"))
             .size((Sizing::fixed(240.0), Sizing::fixed(40.0)))
             .show(ui)
-            .changed;
+            .changed
     });
     assert_eq!(text, "first second third");
     assert!(changed, "normalizing host content is an observable edit");
@@ -70,7 +69,7 @@ fn multiline_paste_keeps_newlines() {
     h.key(Key::Char('v'));
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, buf.len());
 }
 
@@ -95,7 +94,7 @@ fn multiline_selection_crosses_newline() {
     });
     h.key(Key::ArrowDown);
     h.frame(multiline_editor(&mut buf));
-    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).clone();
     assert!(
         st.edit.selection.is_some(),
         "shift+down across newline establishes a selection",

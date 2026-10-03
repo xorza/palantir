@@ -19,6 +19,7 @@
 
 use crate::Ui;
 use crate::common::counters::CounterSet;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -27,7 +28,6 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 
@@ -37,10 +37,7 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
     Panel::hstack()
         .id(WidgetId::from_hash(id))
         .size((Sizing::fixed(180.0), Sizing::fixed(90.0)))
-        .background(Background {
-            fill: BLUE.into(),
-            ..Default::default()
-        })
+        .background(Background::fill(BLUE))
         .show(ui, |ui| {
             for s in 0..shapes {
                 ui.add_shape(

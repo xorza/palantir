@@ -1,4 +1,4 @@
-use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 use crate::{scene::tree::node_id::NodeId, widgets::text_edit::tests::*};
@@ -10,34 +10,32 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
+    let mut h = UiHarness::new(UVec2::new(600, 200));
     h.ui.theme_mut().text.font_size_px = 22.0;
     h.ui.theme_mut().text_edit.looks.normal.text = Some(TextStyle::default().with_font_size(24.0));
     let mut buf = String::from("hi");
 
-    let mut btn_node = None;
-    let mut txt_node = None;
-    let mut ed_node = None;
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            btn_node = Some(
-                Button::new()
-                    .id(WidgetId::from_hash("btn"))
-                    .label("hi")
-                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .node(),
-            );
-            txt_node = Some(Text::new("hi").auto_id().show(ui).node());
-            ed_node = Some(
-                TextEdit::new(&mut buf)
-                    .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .response
-                    .node(),
-            );
-        });
+    let [btn_node, txt_node, ed_node] = h.frame_value(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .show(ui, |ui| {
+                [
+                    Button::new()
+                        .id(WidgetId::from_hash("btn"))
+                        .label("hi")
+                        .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .node(),
+                    Text::new("hi").auto_id().show(ui).node(),
+                    TextEdit::new(&mut buf)
+                        .id(WidgetId::from_hash("ed"))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .response
+                        .node(),
+                ]
+            })
+            .inner
     });
     let read_fs = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
@@ -48,17 +46,13 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
             .unwrap()
     };
     assert_eq!(
-        read_fs(btn_node.unwrap()),
+        read_fs(btn_node),
         22.0,
         "Button label falls back to theme.text"
     );
+    assert_eq!(read_fs(txt_node), 22.0, "Text widget reads theme.text");
     assert_eq!(
-        read_fs(txt_node.unwrap()),
-        22.0,
-        "Text widget reads theme.text"
-    );
-    assert_eq!(
-        read_fs(ed_node.unwrap()),
+        read_fs(ed_node),
         24.0,
         "TextEdit per-state override wins over theme.text"
     );
@@ -70,16 +64,16 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     h.ui.theme_mut().text.color = RgbaF32::srgb(1.0, 0.0, 0.0);
 
-    let mut node = None;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            node = Some(Text::new("hi").auto_id().show(ui).node());
-        });
+    let node = h.frame_value(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| Text::new("hi").auto_id().show(ui).node())
+            .inner
     });
-    let color = painted_shapes(&h.ui, node.unwrap())
+    let color = painted_shapes(&h.ui, node)
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
@@ -95,22 +89,22 @@ fn text_widget_color_override_wins_over_theme() {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     h.ui.theme_mut().text.color = RgbaF32::srgb(1.0, 0.0, 0.0);
 
-    let mut node = None;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            node = Some(
+    let node = h.frame_value(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 Text::new("hi")
                     .auto_id()
                     .style(&TextStyle::default().with_color(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .show(ui)
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     });
-    let color = painted_shapes(&h.ui, node.unwrap())
+    let color = painted_shapes(&h.ui, node)
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
@@ -126,35 +120,33 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
-    let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
+    let mut h = UiHarness::new(UVec2::new(600, 200));
     h.ui.theme_mut().text.line_height_mult = 2.0;
     h.ui.theme_mut().text_edit.looks.normal.text =
         Some(TextStyle::default().with_line_height_mult(3.0));
     let mut buf = String::from("hi");
 
-    let mut btn_node = None;
-    let mut txt_node = None;
-    let mut ed_node = None;
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            btn_node = Some(
-                Button::new()
-                    .id(WidgetId::from_hash("btn"))
-                    .label("hi")
-                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .node(),
-            );
-            txt_node = Some(Text::new("hi").auto_id().show(ui).node());
-            ed_node = Some(
-                TextEdit::new(&mut buf)
-                    .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .response
-                    .node(),
-            );
-        });
+    let [btn_node, txt_node, ed_node] = h.frame_value(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .show(ui, |ui| {
+                [
+                    Button::new()
+                        .id(WidgetId::from_hash("btn"))
+                        .label("hi")
+                        .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .node(),
+                    Text::new("hi").auto_id().show(ui).node(),
+                    TextEdit::new(&mut buf)
+                        .id(WidgetId::from_hash("ed"))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .response
+                        .node(),
+                ]
+            })
+            .inner
     });
     let read_lh = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
@@ -165,17 +157,13 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
             .unwrap()
     };
     assert_eq!(
-        read_lh(btn_node.unwrap()),
+        read_lh(btn_node),
         16.0 * 2.0,
         "Button label falls back to theme.text"
     );
+    assert_eq!(read_lh(txt_node), 16.0 * 2.0, "Text reads theme.text");
     assert_eq!(
-        read_lh(txt_node.unwrap()),
-        16.0 * 2.0,
-        "Text reads theme.text"
-    );
-    assert_eq!(
-        read_lh(ed_node.unwrap()),
+        read_lh(ed_node),
         16.0 * 3.0,
         "TextEdit per-state override wins over theme.text"
     );
@@ -211,7 +199,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             ..TextStyle::default()
         };
         let editor_id = WidgetId::from_hash("invalid editor");
-        let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
+        let mut h = UiHarness::new(UVec2::new(600, 200));
         let mut buf = String::from("editable");
 
         // One renderable frame first, so the unrenderable one below has
@@ -231,25 +219,26 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         }
 
         h.ui.theme_mut().text_edit.looks.normal.text = Some(style);
-        let mut text_node = None;
-        let mut editor_node = None;
         let calls = h.ui.shaper().measure_calls();
 
-        h.frame(|ui| {
-            Panel::vstack().auto_id().show(ui, |ui| {
-                text_node = Some(Text::new("label").style(&style).show(ui).node());
-                editor_node = Some(
-                    TextEdit::new(&mut buf)
-                        .id(editor_id)
-                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                        .show(ui)
-                        .response
-                        .node(),
-                );
-            });
+        let nodes = h.frame_value(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    [
+                        Text::new("label").style(&style).show(ui).node(),
+                        TextEdit::new(&mut buf)
+                            .id(editor_id)
+                            .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                            .show(ui)
+                            .response
+                            .node(),
+                    ]
+                })
+                .inner
         });
 
-        for node in [text_node.unwrap(), editor_node.unwrap()] {
+        for node in nodes {
             assert!(
                 painted_shapes(&h.ui, node).all(|shape| !matches!(shape, ShapeRecord::Text { .. })),
                 "{label}: invalid text entered the recorded shape stream",
@@ -266,7 +255,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         // hand the row back as `Default` — silently resetting the caret
         // and dropping the undo stack the moment a theme made the text
         // unrenderable.
-        let st = h.ui.state_or_default::<TextEditState>(editor_id);
+        let st = h.state::<TextEditState>(editor_id);
         assert_eq!(st.edit.caret, 4, "{label}: caret lost on the early return");
         assert_eq!(
             st.edit.selection,
@@ -288,7 +277,7 @@ fn textedit_style_override_replaces_default_theme() {
         ("mult_3x_override", 3.0_f32, 48.0_f32),
         ("mult_2x_override", 2.0_f32, 32.0_f32),
     ] {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::from("hi");
         let style = TextEditTheme {
             looks: StatefulLook {
@@ -300,21 +289,21 @@ fn textedit_style_override_replaces_default_theme() {
             },
             ..TextEditTheme::default()
         };
-        let mut leaf = None;
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                leaf = Some(
+        let leaf = h.frame_value(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
                     TextEdit::new(&mut buf)
                         .id(WidgetId::from_hash("ed"))
                         .style(&style)
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .response
-                        .node(),
-                );
-            });
+                        .node()
+                })
+                .inner
         });
-        let lh = painted_shapes(&h.ui, leaf.unwrap())
+        let lh = painted_shapes(&h.ui, leaf)
             .find_map(|s| match s {
                 ShapeRecord::Text { font, .. } => Some(font.line_height_px),
                 _ => None,
@@ -327,31 +316,35 @@ fn textedit_style_override_replaces_default_theme() {
 #[test]
 fn pushed_shape_carries_default_line_height_from_theme() {
     use crate::scene::shapes::record::ShapeRecord;
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hi");
-    let mut leaf_node = None;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            leaf_node = Some(
+    let leaf_node = h.frame_value(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     });
-    let text_shape = painted_shapes(&h.ui, leaf_node.unwrap()).find_map(|s| match s {
+    let text_shape = painted_shapes(&h.ui, leaf_node).find_map(|s| match s {
         ShapeRecord::Text { font, .. } => Some((font.size_px, font.line_height_px)),
         _ => None,
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
     assert_eq!(fs, 16.0);
-    assert!(
-        (lh - 16.0 * LINE_HEIGHT_MULT).abs() < 1e-5,
-        "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}",
+    // 16 × 1.2 = 19.2, on the shaper's 1/64-px grid: 1228.8 64ths round
+    // to 1229.
+    assert_eq!(
+        lh,
+        (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0,
+        "default line_height_px is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
     );
+    assert_eq!(lh, 19.203125);
 }
 
 #[test]
@@ -360,26 +353,28 @@ fn no_selection_paints_no_highlight_rect() {
     // rounded rect (the caret). No selection wash.
     use crate::scene::shapes::record::ShapeRecord;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
-    let mut leaf = None;
-    let body = |ui: &mut Ui, leaf: &mut Option<NodeId>, buf: &mut String| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            *leaf = Some(
+    let body = |ui: &mut Ui, buf: &mut String| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     };
-    h.frame(|ui| body(ui, &mut leaf, &mut buf));
+    h.frame(|ui| {
+        body(ui, &mut buf);
+    });
     h.click_at(Vec2::new(20.0, 20.0));
-    h.frame(|ui| body(ui, &mut leaf, &mut buf));
+    let leaf = h.frame_value(|ui| body(ui, &mut buf));
 
-    let rects: usize = painted_shapes(&h.ui, leaf.unwrap())
+    let rects: usize = painted_shapes(&h.ui, leaf)
         .filter(|s| {
             matches!(
                 s,
@@ -399,33 +394,37 @@ fn shift_end_paints_selection_highlight() {
     // the selection wash, painted *before* the caret rect.
     use crate::scene::shapes::record::ShapeRecord;
 
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
-    let mut leaf = None;
-    let body = |ui: &mut Ui, leaf: &mut Option<NodeId>, buf: &mut String| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            *leaf = Some(
+    let body = |ui: &mut Ui, buf: &mut String| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     };
-    h.frame(|ui| body(ui, &mut leaf, &mut buf));
+    h.frame(|ui| {
+        body(ui, &mut buf);
+    });
     h.click_at(Vec2::new(20.0, 20.0));
     h.key(Key::Home);
-    h.frame(|ui| body(ui, &mut leaf, &mut buf));
+    h.frame(|ui| {
+        body(ui, &mut buf);
+    });
     h.set_modifiers(Modifiers {
         shift: true,
         ..Modifiers::NONE
     });
     h.key(Key::End);
-    h.frame(|ui| body(ui, &mut leaf, &mut buf));
+    let leaf = h.frame_value(|ui| body(ui, &mut buf));
 
-    let rects: Vec<_> = painted_shapes(&h.ui, leaf.unwrap())
+    let rects: Vec<_> = painted_shapes(&h.ui, leaf)
         .filter_map(|s| match s {
             ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
@@ -450,7 +449,7 @@ fn drag_select_extends_selection() {
     // Press at offset 1, drag to offset 4 → selection covers [1..4].
     // Mono fallback: 8 px/char, theme pad-left = 8 px → byte offset N
     // sits at x = 8 + 8N.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(editor_at(&mut buf, None));
@@ -480,7 +479,7 @@ fn click_without_drag_clears_prior_selection() {
     // the input layer counts *every* press toward a multi-press run
     // (frames don't have to observe them), so a same-spot follow-up
     // would legitimately read as a double-click word-select.
-    let mut h = ui_at_no_cosmic(NARROW);
+    let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(editor_at(&mut buf, None));
@@ -517,27 +516,28 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
-        let mut h = ui_at_no_cosmic(NARROW);
+        let mut h = UiHarness::new(NARROW);
         let mut buf = String::new();
-        let mut leaf = None;
-        let body = |ui: &mut Ui,
-                    leaf: &mut Option<NodeId>,
-                    buf: &mut String,
-                    style: &Option<TextEditTheme>| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                let mut e = TextEdit::new(buf)
-                    .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)));
-                if let Some(s) = style {
-                    e = e.style(s);
-                }
-                *leaf = Some(e.show(ui).response.node());
-            });
+        let body = |ui: &mut Ui, buf: &mut String, style: &Option<TextEditTheme>| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    let mut e = TextEdit::new(buf)
+                        .id(WidgetId::from_hash("ed"))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)));
+                    if let Some(s) = style {
+                        e = e.style(s);
+                    }
+                    e.show(ui).response.node()
+                })
+                .inner
         };
-        h.frame(|ui| body(ui, &mut leaf, &mut buf, &style));
+        h.frame(|ui| {
+            body(ui, &mut buf, &style);
+        });
         h.click_at(Vec2::new(20.0, 20.0));
-        h.frame(|ui| body(ui, &mut leaf, &mut buf, &style));
-        painted_shapes(&h.ui, leaf.unwrap())
+        let leaf = h.frame_value(|ui| body(ui, &mut buf, &style));
+        painted_shapes(&h.ui, leaf)
             .find_map(|s| match s {
                 ShapeRecord::Quad(QuadShape::Rect {
                     kind: RectKind::Rounded,
@@ -561,12 +561,12 @@ fn line_height_override_changes_caret_rect_height() {
         ..TextEditTheme::default()
     }));
     let canonical_default: f32 = (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0;
-    assert!(
-        (default - canonical_default).abs() < 1e-5,
-        "default caret height = canonical font_size * LINE_HEIGHT_MULT, got {default}",
+    assert_eq!(
+        default, canonical_default,
+        "default caret height = canonical font_size * LINE_HEIGHT_MULT, got {default}"
     );
-    assert!(
-        (doubled - 32.0).abs() < 1e-5,
-        "2.0 multiplier yields 32 px caret, got {doubled}",
+    assert_eq!(
+        doubled, 32.0,
+        "2.0 multiplier yields 32 px caret, got {doubled}"
     );
 }

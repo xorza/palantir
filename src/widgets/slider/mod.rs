@@ -46,8 +46,19 @@ impl<'a> Slider<'a> {
     /// onto its bounds, so it has no meaning without them — where an
     /// unbounded scrub is the drag value's default, and so
     /// [`DragValue::range`](crate::DragValue::range) is a builder step.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both ends of `range` are finite.
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self {
+        // A track maps its fraction onto the range, and an infinite end
+        // maps every fraction past zero to infinity or NaN: a click would
+        // store `+inf` in the bound value.
+        assert!(
+            range.start().is_finite() && range.end().is_finite(),
+            "slider range must be finite, got {range:?}",
+        );
         Self {
             widget: Widget::hstack().sense(Sense::CLICK | Sense::DRAG),
             value: value.into(),

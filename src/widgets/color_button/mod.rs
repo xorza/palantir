@@ -116,6 +116,12 @@ impl<'a> ColorButton<'a> {
         if response.clicked() {
             open = !open;
         }
+        // A disabled trigger closes its popup, as a native one does: the
+        // popup is a tree of its own, and would go on taking picks for a
+        // control that refuses them.
+        if response.disabled {
+            open = false;
+        }
 
         let mut changed = false;
         let mut committed = false;

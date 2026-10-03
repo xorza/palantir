@@ -185,6 +185,12 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         if response.clicked() {
             open = !open;
         }
+        // A disabled trigger closes its popup, as a native one does: the
+        // popup is a tree of its own, and would go on taking picks for a
+        // control that refuses them.
+        if response.disabled {
+            open = false;
+        }
         // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
         // separate `escape_pressed` here.
 

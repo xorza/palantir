@@ -83,7 +83,7 @@ impl FontScope {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     /// The bundled Inter as the crate actually ships it, so a load case
     /// registers those bytes rather than a second `include_bytes!` of the
     /// same 875 KB file.
@@ -96,4 +96,14 @@ pub(crate) mod test_support {
     /// shape the fallback against, and a second one still missing. One
     /// file alone can only be absent or present.
     pub(crate) const MONO: &[u8] = super::BUNDLED[2];
+
+    /// Noto Sans Hebrew, for the right-to-left cases no bundled face
+    /// covers. A test asset rather than the machine's fonts, so the cases
+    /// shape the same glyphs on a host with no Hebrew face at all.
+    pub(crate) const HEBREW: &[u8] =
+        include_bytes!("../../assets/fonts/test/NotoSansHebrew-Regular.ttf");
+
+    /// Noto Sans Arabic, beside [`HEBREW`] for the same reason.
+    pub(crate) const ARABIC: &[u8] =
+        include_bytes!("../../assets/fonts/test/NotoSansArabic-Regular.ttf");
 }

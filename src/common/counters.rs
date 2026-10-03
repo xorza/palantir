@@ -20,9 +20,9 @@
 //!
 //! [`TestOnly`] is `cfg(test)`: for counters nothing benches, and for
 //! anything that allocates. A probe that pushes to a `Vec` must not be
-//! live in an `internals` build — the `record-only` alloc step asserts
-//! steady-state frames allocate nothing and would measure the probe
-//! instead of the frame.
+//! live in an `internals` build — the allocation suite (`tests/alloc`)
+//! asserts steady-state frames allocate nothing and would measure the
+//! probe instead of the frame.
 //!
 //! [`BenchOnly`] is `cfg(any(test, feature = "bench"))`: for the
 //! counters a benchmark reads. Widening one costs a build's worth of
@@ -92,6 +92,8 @@
 //! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
 //! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
 //! [`CascadeCounters`]: crate::scene::cascade::counters::CascadeCounters
+
+use std::cell::Cell;
 
 /// Declare a gated cell type: `T` when `$gate` holds, zero-sized
 /// otherwise, with unconditional mutators.
@@ -196,6 +198,23 @@ impl<T> TestOnly<Vec<T>> {
     }
 }
 
+/// A counter behind a shared borrow, for a probe on a query that takes
+/// `&self`: the same saturating count as the `u32` cell's `bump`, kept in
+/// a `Cell` so the query need not take `&mut self` for a test's sake.
+impl TestOnly<Cell<u32>> {
+    #[inline]
+    pub(crate) fn bump_shared(&self) {
+        #[cfg(test)]
+        self.value.set(self.value.get().saturating_add(1));
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn count(&self) -> u32 {
+        self.value.get()
+    }
+}
+
 /// A counter set and the reading its readers subtract.
 ///
 /// [`counter_snapshot!`] generates the snapshot type beside the cells, so
@@ -227,7 +246,7 @@ pub(crate) trait CounterSet {
 /// forces three separate lists to grow together, and the omission reads as
 /// a counter that never fires.
 ///
-/// The set reaches its snapshot through [`CounterSet`], which is the one
+/// The set reaches its snapshot through `CounterSet`, which is the one
 /// declaration a reader has to follow — the snapshot's own name is written
 /// here and nowhere else.
 ///
@@ -236,9 +255,9 @@ pub(crate) trait CounterSet {
 ///
 /// - `cells` picks [`TestOnly`] or [`BenchOnly`] — which builds retain the
 ///   values at all. The rule for choosing is in this module's doc.
-/// - `reads` is the `cfg` the snapshot and the [`CounterSet`] impl are
+/// - `reads` is the `cfg` the snapshot and the `CounterSet` impl are
 ///   compiled under, and it must name **exactly** the builds that call
-///   [`CounterSet::counts`].
+///   `CounterSet::counts`.
 ///   Wider and the accessor is dead in some build combination, which is
 ///   how a set ends up carrying a blanket `allow(dead_code)`; narrower and
 ///   it does not compile. It must also imply `cells`, since `counts()`

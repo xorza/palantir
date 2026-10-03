@@ -183,5 +183,27 @@ fn animated_look_line_height_px_delegates_to_text_style() {
             slant: FontSlant::Normal,
         },
     };
-    assert!((look.text.font().line_height_px - 24.0).abs() < 1e-6);
+    assert_eq!(look.text.font().line_height_px, 24.0);
+}
+
+/// The picker's channel values keep `DragValueTheme`'s promise: the editor
+/// a value turns into is the chip, look for look and padding for padding,
+/// so a value that becomes editable keeps its box and its text in place.
+/// The picker's text inherits the theme's own ambient style.
+#[test]
+fn the_picker_value_editor_is_its_chip() {
+    use crate::widgets::theme::Theme;
+
+    let theme = Theme::from_palette(&Palette::DEFAULT);
+    let value = &theme.color_picker.value;
+    assert_eq!(value.editor.looks.normal, value.chip.looks.normal);
+    assert_eq!(value.editor.looks.hovered, value.chip.looks.hovered);
+    assert_eq!(value.editor.looks.disabled, value.chip.looks.disabled);
+    assert_eq!(value.editor.defaults.padding, value.chip.defaults.padding);
+    let color = value.chip.looks.normal.text.map(|text| text.color);
+    assert_eq!(
+        color,
+        Some(theme.text.color),
+        "the ambient colour is the theme's"
+    );
 }

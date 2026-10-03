@@ -31,10 +31,12 @@ pub struct ContextMenuTheme {
     /// Padding inside the container, around the column of items.
     pub padding: Spacing,
     /// Floor for the menu's container width.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub min_width: f32,
     /// Vertical gutter between rows. `0.0` (the default) stacks them
     /// flush, so a hovered row's chip meets its neighbour's — the look
     /// every native menu has. Raise it for a spaced, card-like list.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
     pub gap: f32,
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,
@@ -85,7 +87,7 @@ impl ContextMenuTheme {
     }
 
     /// The popup panel, holding a [`MenuItemTheme`] and the menu spelling of
-    /// [`SeparatorTheme`](crate::SeparatorTheme).
+    /// [`SeparatorTheme`].
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             panel: p.popup_panel(),

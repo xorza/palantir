@@ -124,7 +124,7 @@ pub(super) fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
 /// hand — which is one spelling too many for a number every one of them
 /// multiplies a stroke width or a radius by.
 #[inline]
-pub(super) fn phys_scale(xform: TranslateScale, display_scale: f32) -> f32 {
+pub(super) const fn phys_scale(xform: TranslateScale, display_scale: f32) -> f32 {
     xform.scale * display_scale
 }
 

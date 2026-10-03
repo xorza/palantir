@@ -5,6 +5,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::spacing::Spacing;
 use crate::text::font_family::FontFamily;
+use crate::widgets::theme::Theme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -25,18 +26,25 @@ use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px. Also the width of the
     /// bars and of the panel's rows.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub field_width: f32,
     /// Saturation/value field height in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub field_height: f32,
     /// Hue and alpha bar height in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub bar_thickness: f32,
     /// Side of the preview chip beside the bars, in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub chip_size: f32,
     /// Side of one swatch in the preset row, in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub swatch_size: f32,
     /// Radius of the ring marking the field's position, in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub handle_radius: f32,
     /// Stroke width of each of the handle's two rings, in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub handle_width: f32,
     /// Outer ring of every handle. Dark, and **not** a palette colour: a
     /// handle sits on top of every colour the field can show, so one taken
@@ -49,13 +57,16 @@ pub struct ColorPickerTheme {
     /// Dark square of the same checker.
     pub checker_dark: RgbaF32,
     /// Side of one checker square in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::positive")]
     pub checker_cell: f32,
     /// Hairline around the chip and each swatch, so a white colour still
     /// reads as a shape against a light panel.
     pub border: RgbaF32,
     /// Width of that hairline in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub border_width: f32,
     /// Gap between the panel's rows and between swatches, in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
     pub gap: f32,
     /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
     /// [`Palette::popup_panel`], the same as a menu's and a combo list's, so a
@@ -121,10 +132,10 @@ fn mono_states(looks: &mut StatefulLook, ambient: TextStyle) {
     }
 }
 
-/// The style a look without one of its own inherits — what
-/// `Theme::from_palette` builds as its `text`.
+/// The style a look without one of its own inherits: the theme's own
+/// `text`, from the one place `Theme::from_palette` builds it.
 fn ambient(p: &Palette) -> TextStyle {
-    TextStyle::default().with_color(p.text)
+    Theme::text_from_palette(p)
 }
 
 fn mono_edit(p: &Palette) -> TextEditTheme {
@@ -188,12 +199,14 @@ impl ColorPickerTheme {
             gap: 6.0,
             popup: p.popup_panel(),
             popup_padding: Spacing::all(8.0),
+            // The editor derives from the chip, as `DragValueTheme`
+            // promises, so a value that becomes editable keeps its box and
+            // its text exactly where they were.
             value: {
-                let mut value = DragValueTheme::from_palette(p);
-                mono_states(&mut value.chip.looks, ambient(p));
-                value.chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
-                value.editor = mono_edit(p);
-                value
+                let mut chip = DragValueTheme::from_palette(p).chip;
+                mono_states(&mut chip.looks, ambient(p));
+                chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
+                DragValueTheme::from_chip(chip, &TextEditTheme::from_palette(p))
             },
             hex: mono_edit(p),
             label: TextStyle {

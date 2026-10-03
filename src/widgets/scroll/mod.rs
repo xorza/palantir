@@ -13,7 +13,8 @@ use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::scrollbars_def::{BarGeometry, ScrollbarsDef};
+use crate::layout::scrollbars::bar_geometry::BarGeometry;
+use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx;
@@ -75,6 +76,20 @@ impl ScrollGeometry {
             zoom: state.zoom,
             ..self.bars
         }
+    }
+
+    /// Where the content starts inside the viewport node: past its
+    /// leading padding.
+    fn content_inset(&self) -> Vec2 {
+        let [left, top, _, _] = self.bars.padding.as_array();
+        Vec2::new(left, top)
+    }
+
+    /// Where the content starts inside the outer box: past the leading
+    /// gutter as well. The origin a widget-local pivot is measured from.
+    fn content_origin(&self) -> Vec2 {
+        let [left, top, _, _] = self.bars.reserve.as_array();
+        self.content_inset() + Vec2::new(left, top)
     }
 
     /// The bar on `axis` at `state`'s offset and zoom — the same answer
@@ -167,6 +182,12 @@ impl ScrollWrappers {
 /// previous frame's clamp. The scrollbar's relationship to the
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
+///
+/// **In a stack, a scroll that should take the space its siblings leave
+/// is `Sizing::FILL` on the stack's main axis.** A stack shares what is
+/// left only among its `Fill` children; a `Hug` scroll is measured against
+/// the stack's whole extent, as every other child is, and runs past the
+/// stack by as much as its siblings take.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Scroll<'a> {
@@ -448,7 +469,7 @@ impl<'a> Scroll<'a> {
             state.apply_zoom(
                 *cfg.range.start(),
                 *cfg.range.end(),
-                pivot,
+                pivot - geom.content_origin(),
                 input.zoom_delta,
             );
         }
@@ -505,7 +526,7 @@ impl<'a> Scroll<'a> {
             .margin(geom.bars.reserve)
             // Raw pan/zoom, from the one place a viewport's transform is
             // derived — `TextEdit`'s text block reads the same method.
-            .transform(state.transform());
+            .transform(state.transform(geom.content_inset()));
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
         // can replace it with rounded clipping or no clipping. Nothing can
         // unset it, so the `None` arm never runs.

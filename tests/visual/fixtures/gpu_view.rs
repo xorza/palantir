@@ -11,10 +11,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use glam::UVec2;
-use image::Rgba;
 use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 
-use crate::fixtures::DARK_BG;
+use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
 
 /// Clears the off-screen target to opaque red via the app's own render
@@ -58,22 +57,23 @@ fn gpu_view_clear_red_reaches_screen() {
     let size = UVec2::new(64, 64);
     let paint = Rc::new(RefCell::new(RedClear));
     let p = Rc::clone(&paint);
-    let img = h.render(size, 1.0, DARK_BG, |ui| {
-        // Default sizing fills the surface; the whole frame is the view.
-        GpuView::new(&p).show(ui);
-    });
+    let img = h
+        .size(size)
+        .frame(|ui| {
+            // Default sizing fills the surface; the whole frame is the view.
+            GpuView::new(&p).show(ui);
+        })
+        .image;
 
-    let expected = Rgba([255u8, 0, 0, 255]);
     // Interior samples (skip the 1px edge to dodge boundary AA).
     for y in [16u32, 32, 48] {
         for x in [16u32, 32, 48] {
-            let px = img.get_pixel(x, y);
-            for c in 0..4 {
-                assert!(
-                    px.0[c].abs_diff(expected.0[c]) <= 2,
-                    "pixel ({x},{y}) = {px:?} not red — GpuView content didn't composite",
-                );
-            }
+            assert_px(
+                img.get_pixel(x, y).0,
+                [255, 0, 0, 255],
+                SRGB_ROUND_TRIP,
+                format_args!("pixel ({x},{y}) is the GpuView's red"),
+            );
         }
     }
 }
@@ -236,21 +236,22 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
         last_raster_scale: 0.0,
     }));
     let p = Rc::clone(&paint);
-    let img = h.render(size, 1.0, DARK_BG, |ui| {
-        GpuView::new(&p).show(ui);
-    });
-    let green = Rgba([0u8, 255, 0, 255]);
+    let img = h
+        .size(size)
+        .frame(|ui| {
+            GpuView::new(&p).show(ui);
+        })
+        .image;
     // (63,63) is the discriminating pixel: with the correct `used/capacity`
     // crop it samples inside the green sub-rect; with a full-[0,1] UV it
     // would sample the blue slack at texel ≈66.
     for &(x, y) in &[(32u32, 32u32), (63, 63), (0, 63), (63, 0)] {
-        let px = img.get_pixel(x, y);
-        for c in 0..4 {
-            assert!(
-                px.0[c].abs_diff(green.0[c]) <= 2,
-                "pixel ({x},{y}) = {px:?} not green — capacity slack leaked into the composite",
-            );
-        }
+        assert_px(
+            img.get_pixel(x, y).0,
+            [0, 255, 0, 255],
+            SRGB_ROUND_TRIP,
+            format_args!("pixel ({x},{y}) is green, not the capacity slack"),
+        );
     }
 }
 
@@ -268,29 +269,30 @@ fn gpu_view_callback_receives_composed_raster_scale() {
         last_raster_scale: 0.0,
     }));
     let p = Rc::clone(&paint);
-    let img = h.render(size, 2.0, DARK_BG, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
-            .transform(TranslateScale::from_scale(1.5))
-            .show(ui, |ui| {
-                GpuView::new(&p).show(ui);
-            });
-    });
+    let img = h
+        .size(size)
+        .scale(2.0)
+        .frame(|ui| {
+            Panel::zstack()
+                .auto_id()
+                .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
+                .transform(TranslateScale::from_scale(1.5))
+                .show(ui, |ui| {
+                    GpuView::new(&p).show(ui);
+                });
+        })
+        .image;
 
     assert_eq!(paint.borrow().last_size, UVec2::new(96, 96));
     assert_eq!(paint.borrow().last_display_scale, 2.0);
     assert_eq!(paint.borrow().last_raster_scale, 3.0);
 
-    let green = Rgba([0u8, 255, 0, 255]);
-    let blue = Rgba([0u8, 0, 255, 255]);
-    for &(x, y, expected) in &[(36, 36, green), (60, 60, blue)] {
-        let px = img.get_pixel(x, y);
-        for c in 0..4 {
-            assert!(
-                px.0[c].abs_diff(expected.0[c]) <= 2,
-                "pixel ({x},{y}) = {px:?}, expected {expected:?}",
-            );
-        }
+    for &(x, y, expected) in &[(36, 36, [0, 255, 0, 255]), (60, 60, [0, 0, 255, 255])] {
+        assert_px(
+            img.get_pixel(x, y).0,
+            expected,
+            SRGB_ROUND_TRIP,
+            format_args!("pixel ({x},{y})"),
+        );
     }
 }

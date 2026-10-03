@@ -2,6 +2,7 @@
 //! thumb keeps.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::scroll_axes::ScrollAxes;
@@ -10,13 +11,13 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
+use crate::widgets::scroll::tests::support::fixed_block;
 use glam::UVec2;
 use glam::Vec2;
 
@@ -162,13 +163,10 @@ fn thumb_size_and_offset_cases() {
                 assert_eq!(g.track, *viewport, "case: {label} track");
                 assert_eq!(g.max_offset, content - viewport, "case: {label} max_offset");
                 if let Some(s) = want.thumb_size {
-                    assert!((g.thumb_size - s).abs() < 1e-3, "case: {label} thumb_size");
+                    assert_eq!(g.thumb_size, s, "case: {label} thumb_size");
                 }
                 if let Some(o) = want.thumb_offset {
-                    assert!(
-                        (g.thumb_offset - o).abs() < 1e-3,
-                        "case: {label} thumb_offset"
-                    );
+                    assert_eq!(g.thumb_offset, o, "case: {label} thumb_offset");
                 }
             }
             (want, got) => panic!(
@@ -255,8 +253,7 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
     };
     let surface = UVec2::new(400, 300);
     let mut h = UiHarness::new(surface);
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
 
     // What the compositor actually rasterizes, per `Rect::scaled_by`.
     let snapped = |r: Rect, scale: f32| (r.max().y * scale).round() - (r.min.y * scale).round();
@@ -296,17 +293,13 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     };
     let surface = UVec2::new(400, 600);
     let mut h = UiHarness::new(surface);
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     let before = thumb_rects(&h.ui, "scroll");
     assert_eq!(before.len(), 1, "one vertical thumb");
 
@@ -320,10 +313,10 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
         seen.push((now[0].min.y, now[0].size.h));
     }
     for (offset, height) in &seen {
-        assert!(
-            (height - before[0].size.h).abs() < 1e-3,
+        assert_eq!(
+            *height, before[0].size.h,
             "thumb resized while scrolling: {} -> {height} (offsets so far {seen:?})",
-            before[0].size.h,
+            before[0].size.h
         );
         let _ = offset;
     }
@@ -348,15 +341,11 @@ fn zoomed_content_shrinks_thumb_proportionally() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 400.0, 400.0)
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     let scroll_id = WidgetId::from_hash("scroll");
     let z1_thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
@@ -368,8 +357,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .h;
 
     h.ui.state_or_default::<ScrollState>(scroll_id).zoom = 2.0;
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     let z2_thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
     let v2 = z2_thumbs

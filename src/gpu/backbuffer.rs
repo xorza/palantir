@@ -1,6 +1,9 @@
 //! The off-screen colour target the backbuffer-copy path renders into.
 
+use crate::gpu::WgpuBackend;
 use crate::gpu::render_target::{self, TargetFormat};
+use glam::UVec2;
+
 /// Persistent off-screen *color* target for the backbuffer-copy path: the
 /// frontend renders into it, then [`WgpuBackend::submit`](crate::gpu::WgpuBackend::submit) copies it onto the
 /// caller's surface. Keeping last frame's pixels in a texture *we* own is what
@@ -11,9 +14,6 @@ use crate::gpu::render_target::{self, TargetFormat};
 /// Sized to match the surface texture; recreated on resize or format change.
 /// Owned per-window by `WindowDriver`; the backend is otherwise
 /// window-agnostic.
-use glam::UVec2;
-
-use crate::gpu::WgpuBackend;
 #[derive(Debug)]
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,

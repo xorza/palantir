@@ -50,6 +50,12 @@ impl IconRasterKey {
         self.size
     }
 
+    /// Whether this raster is exactly the box it was sized from, rounded to
+    /// whole pixels — the band where an icon is drawn texel for texel.
+    pub(crate) fn is_exact(self) -> bool {
+        u32::from(self.size.max_element()) <= EXACT_MAX_PX
+    }
+
     /// The key for drawing `icon` into a physical-pixel box of `box_px`.
     ///
     /// Snaps through the two-part ladder above, preserving the box's aspect
@@ -94,7 +100,7 @@ const fn snap_px(px: u32) -> u32 {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_set::IconRef;
     use glam::U16Vec2;

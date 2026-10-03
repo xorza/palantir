@@ -3,11 +3,11 @@
 use crate::Ui;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
@@ -20,22 +20,27 @@ pub(super) const DISPLAY: Display = Display {
     refresh_millihertz: None,
 };
 
-/// Drive one frame through the real `Ui::record` path, simulate a
-/// successful `WgpuBackend::submit` so the next frame's auto-rewind
-/// doesn't fire, and return the damage decision for the just-completed
-/// frame. Test sites that care about the damage shape bind the return;
-/// the rest ignore it.
+/// Run one frame of `f` and return its damage, or `None` when the frame
+/// skips. The frame is told its previous output is valid, as a host
+/// tells it after a present, so the damage is incremental against it.
 pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
     h.frame(f).plan.map(|plan| plan.damage)
 }
 
-/// The standard "root with one 50×50 frame" tree used by most damage
-/// tests. RgbaF32 flips between frames to drive minimal authoring
-/// changes.
+/// [`frame`] told its previous output is lost, as after a failed
+/// present: the damage starts over from nothing.
+pub(super) fn frame_without_baseline(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
+    h.frame_without_baseline(f).plan.map(|plan| plan.damage)
+}
+
+/// The two fills [`one_frame`] flips between to drive a minimal authoring
+/// change.
 pub(super) const BLUE: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
 
 pub(super) const RED: RgbaF32 = RgbaF32::srgb(0.9, 0.4, 0.8);
 
+/// The standard "root with one 50×50 frame" tree most damage tests use,
+/// its frame filled with `color`.
 pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
     Panel::hstack()
         .id(WidgetId::from_hash("root"))
@@ -43,12 +48,12 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background {
-                    fill: color.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(color))
                 .show(ui);
         });
 }
 
+/// A surface for the region-arithmetic tests that build rects by hand
+/// rather than through a frame, and so do not draw on [`DISPLAY`]. A
+/// frame test clamps to `DISPLAY.logical_rect()` instead.
 pub(super) const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);

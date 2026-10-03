@@ -7,19 +7,24 @@
 //! What differs between the passes is only which atlas they bind and where
 //! their pixels came from.
 
-use crate::gpu::shader_template::{self, ShaderConstant};
+use crate::gpu::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::viewport::ViewportPush;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::content_type::ContentType;
 
-/// One per-instance vertex record. 24 bytes, `Pod`.
+/// One per-instance vertex record. 28 bytes, `Pod`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RasterQuad {
     /// Top-left in physical px.
     pub(crate) pos: [i32; 2],
-    /// Extents, packed by [`Self::dim`].
+    /// The raster's extents in atlas texels, packed by [`Self::dim`].
     pub(crate) dim: u32,
+    /// The extents the quad is drawn at in physical px, packed the same
+    /// way. Equal to `dim` for every glyph and for an icon in the exact
+    /// band, which the shader samples texel for texel; any other icon is
+    /// resampled to its box.
+    pub(crate) size: u32,
     /// Atlas origin plus content type, packed by [`Self::pack_uv`].
     pub(crate) uv_and_kind: u32,
     /// Straight-alpha linear RGBA; the shader premultiplies at output.
@@ -79,17 +84,14 @@ impl RasterQuad {
     /// on an unsubstituted one). The flags arrive already shifted down by
     /// [`U_BITS`], which is how the shader reads them.
     pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
-        let wgsl = shader_template::specialize(
-            shader_template::RASTER_ATLAS_WGSL,
-            &[
-                ShaderConstant::uint("U_BITS", U_BITS),
-                ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),
-                ShaderConstant::uint(
-                    "FLAG_COLOR",
-                    (ContentType::Color as u32) << (KIND_SHIFT - U_BITS),
-                ),
-            ],
-        );
+        let wgsl = ShaderBody::RasterAtlas.specialize(&[
+            ShaderConstant::uint("U_BITS", U_BITS),
+            ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),
+            ShaderConstant::uint(
+                "FLAG_COLOR",
+                (ContentType::Color as u32) << (KIND_SHIFT - U_BITS),
+            ),
+        ]);
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(label),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
@@ -128,11 +130,12 @@ const _: () = {
     assert!(KIND_SHIFT < 16);
 };
 
-const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Sint32x2,
     1 => Uint32,
     2 => Uint32,
-    3 => Float16x4,
+    3 => Uint32,
+    4 => Float16x4,
 ];
 
 // Compile-time guard: attribute offsets must match the struct fields they
@@ -143,8 +146,9 @@ const _: () = {
     use std::mem::offset_of;
     assert!(RASTER_QUAD_ATTRS[0].offset == offset_of!(RasterQuad, pos) as u64);
     assert!(RASTER_QUAD_ATTRS[1].offset == offset_of!(RasterQuad, dim) as u64);
-    assert!(RASTER_QUAD_ATTRS[2].offset == offset_of!(RasterQuad, uv_and_kind) as u64);
-    assert!(RASTER_QUAD_ATTRS[3].offset == offset_of!(RasterQuad, color) as u64);
+    assert!(RASTER_QUAD_ATTRS[2].offset == offset_of!(RasterQuad, size) as u64);
+    assert!(RASTER_QUAD_ATTRS[3].offset == offset_of!(RasterQuad, uv_and_kind) as u64);
+    assert!(RASTER_QUAD_ATTRS[4].offset == offset_of!(RasterQuad, color) as u64);
 };
 
 #[cfg(test)]
@@ -156,13 +160,14 @@ mod tests {
     /// The GPU wire format. Pinned here rather than in either pass, because
     /// both draw through it and neither owns it.
     #[test]
-    fn raster_quad_is_24_bytes() {
-        assert_eq!(size_of::<RasterQuad>(), 24);
+    fn raster_quad_is_28_bytes() {
+        assert_eq!(size_of::<RasterQuad>(), 28);
         assert_eq!(align_of::<RasterQuad>(), 4);
         assert_eq!(offset_of!(RasterQuad, pos), 0);
         assert_eq!(offset_of!(RasterQuad, dim), 8);
-        assert_eq!(offset_of!(RasterQuad, uv_and_kind), 12);
-        assert_eq!(offset_of!(RasterQuad, color), 16);
+        assert_eq!(offset_of!(RasterQuad, size), 12);
+        assert_eq!(offset_of!(RasterQuad, uv_and_kind), 16);
+        assert_eq!(offset_of!(RasterQuad, color), 20);
     }
 
     /// The viewport and the atlas sizes share one immediate region, and the

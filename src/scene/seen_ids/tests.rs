@@ -1,3 +1,4 @@
+use crate::internals::panic_probe;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;
@@ -119,31 +120,38 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
     let x = WidgetId::from_hash("x");
     ids.record_endpoint(x, ep(1));
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ids.record_endpoint(x, ep(2));
-    }));
-
-    assert!(result.is_err());
+    panic_probe::assert_panics_with("record_endpoint called twice", || {
+        ids.record_endpoint(x, ep(2))
+    });
     assert_eq!(ids.curr[&x], ep(1));
 }
 
+/// Two widgets resolve the same raw auto id before either records — the
+/// `.state(ui)` then `.show()` shape. The second is disambiguated against
+/// the first's reservation, and both open in either order.
 #[test]
-#[should_panic(expected = "recording order violated")]
-fn record_endpoint_panics_if_first_endpoint_missing() {
-    // Manually queue a pending collision whose first raw id was
-    // never recorded — bypasses the production resolve+record
-    // pairing to simulate the contract violation. The expect in
-    // `record_endpoint` must fire — the alternative is a silent
-    // miss that hides a recording-order bug from the magenta
-    // collision overlay.
+fn resolving_twice_before_recording_disambiguates() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    let second = x.with(1);
-    ids.pending.push(PendingExplicitCollision {
-        first_raw_id: x,
-        second_final_id: second,
-    });
-    ids.record_endpoint(second, ep(2));
+    let first = ids.resolve(x, false);
+    let second = ids.resolve(x, false);
+    assert_eq!(first, x);
+    assert_eq!(second, x.with(1));
+    assert!(ids.record_endpoint(second, ep(2)).is_none());
+    assert!(ids.record_endpoint(first, ep(1)).is_none());
+
+    // An explicit id that is only reserved is its owner claiming it —
+    // a widget recording a wrapper under the id it resolved.
+    let mut ids = SeenIds::default();
+    assert_eq!(ids.resolve(x, false), x);
+    assert_eq!(ids.resolve(x, true), x, "the reservation's owner claims it");
+    assert!(ids.record_endpoint(x, ep(1)).is_none());
+    // Once recorded, an explicit repeat is a collision as ever.
+    assert_eq!(ids.resolve(x, true), x.with(1));
+
+    // A reservation lasts one pass.
+    ids.pre_record();
+    assert_eq!(ids.resolve(x, false), x);
 }
 
 #[test]

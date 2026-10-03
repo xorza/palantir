@@ -7,9 +7,9 @@
 //! See `text_edit::mod.rs::show` ("Text or placeholder…" block) and
 //! `AxisPlacement::arrange` for the two invariants this test guards.
 
+use crate::internals::harness::UiHarness;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 const SIZE: UVec2 = UVec2::new(400, 80);
@@ -64,9 +64,9 @@ fn empty_editor_width_is_stable_across_focus() {
         w_unfocused > 0.0,
         "unfocused empty editor with a placeholder should have positive width, got {w_unfocused}",
     );
-    assert!(
-        (w_focused - w_unfocused).abs() < 1e-3,
-        "focus must not change desired width; unfocused={w_unfocused} focused={w_focused}",
+    assert_eq!(
+        w_focused, w_unfocused,
+        "focus must not change desired width; unfocused={w_unfocused} focused={w_focused}"
     );
 }
 
@@ -92,8 +92,7 @@ fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w:
                 );
             });
     };
-    h.frame(&mut record);
-    h.frame(&mut record);
+    h.prime(2, &mut record);
     node.unwrap()
 }
 
@@ -127,9 +126,9 @@ fn fill_width_editor_shrinks_below_text_content() {
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
     let fill_w = h.ui.arranged_rect(Layer::Main, fill).size.w;
-    assert!(
-        (fill_w - NARROW_W).abs() < 0.5,
-        "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}",
+    assert_eq!(
+        fill_w, NARROW_W,
+        "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}"
     );
     assert!(
         fill_w < text_w,
@@ -151,8 +150,7 @@ fn stable_editor_uses_one_direct_layout_probe() {
                 .size((Sizing::fixed(240.0), Sizing::fixed(60.0)))
                 .show(ui);
         };
-        h.frame(&mut record);
-        h.frame(&mut record);
+        h.prime(2, &mut record);
         if selected {
             h.set_focus(id);
             let state = h.ui.state_or_default::<TextEditState>(id);

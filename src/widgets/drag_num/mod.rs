@@ -104,6 +104,24 @@ impl DragNum<'_> {
         self.commit_drag(Num::F64(value), 0.0, decimals, min, max)
     }
 
+    /// Write back `value` exactly, as read by [`Self::read`] before an edit
+    /// that is now cancelled. Returns whether the stored value changed.
+    pub(crate) fn restore(&mut self, value: Num) -> bool {
+        match (self, value) {
+            (DragNum::I64(v), Num::I64(n)) => {
+                let changed = **v != n;
+                **v = n;
+                changed
+            }
+            (DragNum::F64(v), Num::F64(n)) => {
+                let changed = v.to_bits() != n.to_bits();
+                **v = n;
+                changed
+            }
+            (_, value) => unreachable!("{value:?} restored into a binding of the other type"),
+        }
+    }
+
     /// Exact, full-precision text for the edit buffer — `{:?}` on the float
     /// keeps a trailing `.0` so a whole value still reads as a float.
     pub(crate) fn edit_string(&self) -> String {
@@ -143,10 +161,14 @@ impl DragNum<'_> {
 ///
 /// The integer half of the one write every path through [`DragNum`] ends
 /// in — a scrub commit and a typed edit alike. The bounds arrive as `f64`
-/// and cast: an infinite bound becomes `i64::MIN`/`MAX`, so an unbounded
-/// clamp is a no-op.
+/// and close in to the integers inside them: `0.5..=10.0` stores no 0, and
+/// `-10.0..=-0.5` stores no 0 either, where a cast truncating toward zero
+/// let both through. An infinite bound casts to `i64::MIN`/`MAX`, so an
+/// unbounded clamp is a no-op; a range holding no integer at all clamps
+/// to the two either side of it.
 fn store_i64(slot: &mut i64, next: i64, limits: Limits<f64>) -> bool {
-    let next = next.clamp(limits.lo as i64, limits.hi as i64);
+    let (lo, hi) = (limits.lo.ceil() as i64, limits.hi.floor() as i64);
+    let next = next.clamp(lo.min(hi), hi.max(lo));
     let changed = *slot != next;
     *slot = next;
     changed

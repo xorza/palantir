@@ -2,8 +2,8 @@
 
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
+use crate::internals::harness::UiHarness;
 use crate::primitives::color::RgbaF32;
-use crate::primitives::widget_id::WidgetId;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use std::time::Duration;
@@ -18,7 +18,7 @@ fn animate_drives_repaint_until_settle() {
     let repaint = h
         .frame(|ui| {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-            Block::new().id(WidgetId::from_hash("anim-test")).show(ui);
+            Block::new().id(id).show(ui);
         })
         .repaint_requested;
     assert!(
@@ -30,31 +30,18 @@ fn animate_drives_repaint_until_settle() {
         .at(Duration::from_millis(16))
         .frame(|ui| {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-            Block::new().id(WidgetId::from_hash("anim-test")).show(ui);
+            Block::new().id(id).show(ui);
         })
         .repaint_requested;
     assert!(repaint, "in-flight animation must request repaint");
 
-    let mut now = Duration::from_millis(16);
-    let mut settled_at = None;
-    for i in 0..100 {
-        now += Duration::from_millis(16);
-        let repaint = h
-            .at(now)
-            .frame(|ui| {
-                let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-                Block::new().id(WidgetId::from_hash("anim-test")).show(ui);
-            })
-            .repaint_requested;
-        if !repaint {
-            settled_at = Some(i);
-            break;
-        }
-    }
-    assert!(
-        settled_at.is_some(),
-        "animation must settle and stop requesting repaints",
-    );
+    // FAST is 120 ms. The retarget frame spent nothing, so frame `n`
+    // after it has spent n × 16 ms: 112 ms at 7, 128 ms at 8.
+    let frames = h.frames_until_idle(100, Duration::from_millis(16), |ui| {
+        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+        Block::new().id(id).show(ui);
+    });
+    assert_eq!(frames, Some(8), "the 8th 16 ms frame passes 120 ms");
 }
 
 /// `Ui::animate(..., None)` must: return `target` unchanged, never
@@ -68,19 +55,20 @@ fn animate_drives_repaint_until_settle() {
 fn animate_with_none_spec_snaps_and_skips_repaint() {
     for (label, spec) in [("none", None), ("snap", Some(AnimSpec::SNAP))] {
         let AnimUi { mut h, id } = setup_anim_ui("anim-none");
-        let repaint = h
-            .at(Duration::from_millis(16))
-            .frame(|ui| {
-                let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
-                let v2 = ui.animate(id, SLOT, 9.0_f32, spec);
-                assert_eq!(v1, 7.0, "{label}");
-                assert_eq!(v2, 9.0, "{label}");
-                Block::new().id(WidgetId::from_hash("anim-none")).show(ui);
-            })
-            .repaint_requested;
-        assert!(!repaint, "{label} spec must never request a repaint");
+        let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
+            let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
+            let v2 = ui.animate(id, SLOT, 9.0_f32, spec);
+            Block::new().id(id).show(ui);
+            [v1, v2]
+        });
+        assert_eq!(*passes.a(), [7.0, 9.0], "{label}");
         assert!(
-            h.anim_row_count::<f32>() == 0,
+            !passes.report().repaint_requested,
+            "{label} spec must never request a repaint"
+        );
+        assert_eq!(
+            h.anim_row_count::<f32>(),
+            0,
             "{label} spec must not allocate a row",
         );
     }
@@ -95,24 +83,26 @@ fn animate_some_then_none_drops_stale_row() {
     // Frame A: animate to 1.0 with FAST (in flight).
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-        Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
+        Block::new().id(id).show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-        Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
+        Block::new().id(id).show(ui);
     });
-    assert!(
-        h.anim_row_count::<f32>() > 0,
+    assert_eq!(
+        h.anim_row_count::<f32>(),
+        1,
         "Some(FAST) must allocate a row mid-flight",
     );
 
     // Frame B: switch to None — the stale row should drop.
     let _ = h.at(Duration::from_millis(60)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
-        Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
+        Block::new().id(id).show(ui);
     });
-    assert!(
-        h.anim_row_count::<f32>() == 0,
+    assert_eq!(
+        h.anim_row_count::<f32>(),
+        0,
         "None spec must drop the stale row inserted by a prior Some()",
     );
 }
@@ -152,7 +142,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
         let target = look.to_animated(fallback);
         captured.set(Some(ui.animate(id, WidgetLook::SLOT_LOOK, target, None)));
-        Block::new().id(WidgetId::from_hash("look-test")).show(ui);
+        Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
     assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
@@ -188,10 +178,11 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
         let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimSpec::FAST));
-        Block::new().id(WidgetId::from_hash("look-test")).show(ui);
+        Block::new().id(id).show(ui);
     });
-    assert!(
-        h.anim_row_count::<AnimatedLook>() > 0,
+    assert_eq!(
+        h.anim_row_count::<AnimatedLook>(),
+        1,
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
 
@@ -223,7 +214,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
             target,
             None,
         )));
-        Block::new().id(WidgetId::from_hash("look-test")).show(ui);
+        Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
     assert_eq!(
@@ -233,4 +224,31 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     );
     assert_eq!(snap.text.color, own_text.color);
     assert_eq!(snap.text.line_height_mult, own_text.line_height_mult);
+}
+
+/// `AnimSpec::FAST` from rest after a second of idle: the frame of the
+/// change shows the start value, though the clamp would have handed it
+/// 0.1 s — 83 % of a 120 ms curve, 99.5 % eased. The next frame, 16 ms
+/// later, shows `OutCubic(16 / 120)`.
+#[test]
+fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
+    use crate::animation::easing::Easing;
+    let AnimUi { mut h, id } = setup_anim_ui("from-rest");
+    let record = |h: &mut UiHarness, at: Duration, target: f32| {
+        let value = std::cell::Cell::new(f32::NAN);
+        h.at(at).frame(|ui| {
+            value.set(ui.animate(id, SLOT, target, Some(AnimSpec::FAST)));
+            Block::new().id(id).show(ui);
+        });
+        value.get()
+    };
+    assert_eq!(record(&mut h, Duration::ZERO, 0.0), 0.0);
+    let idle = Duration::from_secs(1);
+    assert_eq!(
+        record(&mut h, idle, 1.0),
+        0.0,
+        "the change's frame shows the start"
+    );
+    let next = record(&mut h, idle + Duration::from_millis(16), 1.0);
+    assert_eq!(next, Easing::OutCubic.apply(0.016 / 0.12));
 }

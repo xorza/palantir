@@ -28,7 +28,7 @@
 
 use crate::bench::Run;
 use crate::display::Display;
-use crate::gpu::schedule::test_support::Walk;
+use crate::gpu::schedule::internals::Walk;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;

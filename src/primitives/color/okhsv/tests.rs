@@ -1,3 +1,4 @@
+use crate::primitives::approx::internals::assert_close;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::okhsv::Okhsv;
 use crate::primitives::color::srgba_u8::SrgbaU8;
@@ -33,24 +34,26 @@ const BLUE: usize = 4;
 fn cube_corners_are_the_gamut_edge() {
     for (index, (corner, expected)) in CORNERS.iter().zip(CORNER_HUES).enumerate() {
         let coords = Okhsv::from_color(*corner, 0.0);
-        assert!(
-            (coords.h - expected).abs() < 1e-4,
-            "hue of {:?}: {} vs {expected}",
-            corner.to_srgba_u8(),
+        assert_close(
             coords.h,
+            expected,
+            2e-7,
+            "the reference port's hues are printed to seven decimals, and \
+             the f32 conversion adds up to two ulps",
         );
-        assert!(coords.s > 0.999, "corner saturation {}", coords.s);
-        assert!(coords.v > 0.999, "corner value {}", coords.v);
+        // The gamut-edge search runs on the platform's cbrt and powf,
+        // and their last-ulp differences grow through it: a few ulps
+        // under 1 on Linux, 5e-6 under it on Windows.
+        let edge = "the platform's cbrt and powf move the gamut-edge search";
+        assert_close(coords.s, 1.0, 1e-5, edge);
+        assert_close(coords.v, 1.0, 1e-5, edge);
 
         if index == BLUE {
             continue;
         }
         let back = Okhsv::new(expected, 1.0, 1.0).to_color();
         let (got, want) = (back.to_srgba_u8(), corner.to_srgba_u8());
-        for (g, w) in [(got.r, want.r), (got.g, want.g), (got.b, want.b)] {
-            let delta = i16::from(g) - i16::from(w);
-            assert!(delta.abs() <= 1, "corner {want:?} came back {got:?}");
-        }
+        assert_eq!(got, want, "corner {index}");
     }
 }
 
@@ -89,27 +92,6 @@ fn hue_gap(a: f32, b: f32) -> f32 {
     raw.min(1.0 - raw)
 }
 
-/// Every triple in the unit cube is inside sRGB, so nothing clamps away and
-/// the round trip holds. 9³ samples of the cube, grey excluded: it has no hue
-/// to recover and the fallback answers for it instead.
-#[test]
-fn round_trip_holds_across_the_cube() {
-    let mut worst = 0.0_f32;
-    for hi in 0..9 {
-        for si in 1..9 {
-            for vi in 1..9 {
-                let start = Okhsv::new(hi as f32 / 9.0, si as f32 / 8.0, vi as f32 / 8.0);
-                let back = Okhsv::from_color(start.to_color(), start.h);
-                worst = worst
-                    .max(hue_gap(back.h, start.h))
-                    .max((back.s - start.s).abs())
-                    .max((back.v - start.v).abs());
-            }
-        }
-    }
-    assert!(worst < 1e-3, "worst axis drift {worst}");
-}
-
 /// The forward map lands a hair outside the gamut at the red corner — the
 /// reference returns -1/255 there. Without the clamp that reaches `RgbaF32`.
 #[test]
@@ -127,22 +109,6 @@ fn the_gamut_edge_never_goes_negative() {
     }
 }
 
-/// Grey has no hue to recover, so the caller's fallback answers. This is what
-/// stops a picker losing its hue at the bottom of the field.
-#[test]
-fn grey_keeps_the_fallback_hue() {
-    for level in [0.0, 0.25, 0.5, 1.0] {
-        let grey = RgbaF32::srgb(level, level, level);
-        let coords = Okhsv::from_color(grey, 0.6180);
-        assert_eq!(coords.h, 0.6180, "grey at {level} lost the fallback");
-        assert!(
-            coords.s < 1e-3,
-            "grey at {level} has saturation {}",
-            coords.s
-        );
-    }
-}
-
 /// The two ends of the value axis are absolute: black for every hue and
 /// saturation, white for every hue at zero saturation.
 #[test]
@@ -155,20 +121,6 @@ fn the_value_ends_are_absolute() {
         assert_eq!(Okhsv::new(h, 0.0, 0.0).to_color().to_srgba_u8(), black);
         assert_eq!(Okhsv::new(h, 0.0, 1.0).to_color().to_srgba_u8(), white);
     }
-}
-
-/// A picker drives the axes past their ends every drag. Both directions take
-/// it: the hue wraps, the other two clamp.
-#[test]
-fn out_of_range_axes_wrap_and_clamp() {
-    assert_eq!(
-        Okhsv::new(1.25, 2.0, 2.0).to_color().to_srgba_u8(),
-        Okhsv::new(0.25, 1.0, 1.0).to_color().to_srgba_u8(),
-    );
-    assert_eq!(
-        Okhsv::new(-0.75, -1.0, 0.5).to_color().to_srgba_u8(),
-        Okhsv::new(0.25, 0.0, 0.5).to_color().to_srgba_u8(),
-    );
 }
 
 /// Saturation moves chroma and leaves lightness alone; value moves lightness

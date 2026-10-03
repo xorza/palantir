@@ -1,15 +1,14 @@
 //! The rollup: what a subtree hash covers, and where its span ends.
 
 use crate::Ui;
-use crate::common::content_hash::ContentHash;
+use crate::internals::harness::UiHarness;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
-use crate::ui::harness::UiHarness;
+use crate::scene::tree::tests::support::{SURFACE, record};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 
@@ -22,24 +21,18 @@ fn subtree_hash_stable_across_frames() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(30.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.9, 0.1, 0.1).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.9, 0.1, 0.1)))
                     .show(ui);
             })
             .response
             .node()
     };
-    assert_eq!(record_subtree_hash(build), record_subtree_hash(build));
+    assert_eq!(record(build).subtree, record(build).subtree);
 }
 
 #[test]
@@ -51,17 +44,14 @@ fn subtree_hash_changes_when_descendant_changes() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background {
-                        fill: fill.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(fill))
                     .show(ui);
             })
             .response
             .node()
     }
-    let h1 = record_subtree_hash(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h2 = record_subtree_hash(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    let h1 = record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).subtree;
+    let h2 = record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).subtree;
     assert_ne!(h1, h2, "leaf change must invalidate every ancestor");
 }
 
@@ -72,20 +62,14 @@ fn subtree_hash_changes_on_sibling_reorder() {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         };
         let b = |ui: &mut Ui| {
             Block::new()
                 .id(WidgetId::from_hash("b"))
                 .size(30.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.9, 0.1, 0.1).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.9, 0.1, 0.1)))
                 .show(ui);
         };
         Panel::hstack()
@@ -102,8 +86,8 @@ fn subtree_hash_changes_on_sibling_reorder() {
             .response
             .node()
     }
-    let h_ab = record_subtree_hash(|ui| build(ui, false));
-    let h_ba = record_subtree_hash(|ui| build(ui, true));
+    let h_ab = record(|ui| build(ui, false)).subtree;
+    let h_ba = record(|ui| build(ui, true)).subtree;
     assert_ne!(h_ab, h_ba);
 }
 
@@ -131,23 +115,22 @@ fn self_transform_change_flips_node_hash() {
     // be measuring the wrong distinction.
     let t_a = TranslateScale::from_translation(Vec2::new(1.0, 0.0));
     let t_b = TranslateScale::from_translation(Vec2::new(10.0, 0.0));
-    let h_node_a = record_hash(|ui| build(ui, t_a));
-    let h_node_b = record_hash(|ui| build(ui, t_b));
-    assert_ne!(h_node_a, h_node_b, "self transform MUST change node hash");
-    let h_sub_a = record_subtree_hash(|ui| build(ui, t_a));
-    let h_sub_b = record_subtree_hash(|ui| build(ui, t_b));
-    assert_ne!(h_sub_a, h_sub_b, "self transform MUST change subtree hash");
+    let (a, b) = (record(|ui| build(ui, t_a)), record(|ui| build(ui, t_b)));
+    assert_ne!(a.node, b.node, "self transform MUST change node hash");
     assert_ne!(
-        record_cascade_static(|ui| build(ui, t_a)),
-        record_cascade_static(|ui| build(ui, t_b)),
+        a.subtree, b.subtree,
+        "self transform MUST change subtree hash"
+    );
+    assert_ne!(
+        a.cascade_static, b.cascade_static,
         "self transform MUST change cascade-static hash"
     );
 
     let identity = TranslateScale::IDENTITY;
     let visual_noop = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
     assert_eq!(
-        record_hash(|ui| build(ui, identity)),
-        record_hash(|ui| build(ui, visual_noop)),
+        record(|ui| build(ui, identity)).node,
+        record(|ui| build(ui, visual_noop)).node,
     );
 }
 
@@ -300,10 +283,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
                 Block::new()
                     .id(WidgetId::from_hash("a-leaf"))
                     .size(50.0)
-                    .background(Background {
-                        fill: root_a_color.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(root_a_color))
                     .show(ui);
             });
         let b_first = ui.tree(Layer::Main).records.len() as u32;
@@ -332,10 +312,4 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
     let h_b2 = ui2.ui.tree(Layer::Main).rollups.subtree[b_first2 as usize];
     assert_eq!(b_first1, b_first2);
     assert_eq!(h_b1, h_b2, "root B's subtree_hash must not fold root A");
-}
-
-fn record_subtree_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
-    let mut h = UiHarness::new(SURFACE);
-    let target = h.frame_value(|ui| f(ui));
-    h.ui.tree(Layer::Main).rollups.subtree[target.idx()]
 }

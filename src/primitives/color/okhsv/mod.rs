@@ -1,6 +1,7 @@
 //! Okhsv — the picker's default axes, and the sRGB gamut solve behind them.
 
-use crate::primitives::color::{RgbaF32, linear_to_oklab, oklab_to_linear};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::oklab;
 use std::f32::consts::TAU;
 
 /// Hue, saturation and value in Björn Ottosson's Okhsv space.
@@ -95,7 +96,7 @@ impl Okhsv {
     /// `fallback_hue` answers grey, which has no hue to recover — without it
     /// a picker would lose the hue every time the value reached zero.
     pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
-        let lab = linear_to_oklab(color.r, color.g, color.b);
+        let lab = oklab::from_linear(color.r, color.g, color.b);
         let lightness = lab[0];
         let chroma = lab[1].hypot(lab[2]);
         if chroma < GREY_CHROMA || lightness <= 0.0 {
@@ -181,7 +182,7 @@ impl OkhsvSlice {
         };
         let scale = self.top_scale(l_v, c_v);
 
-        let rgb = oklab_to_linear([
+        let rgb = oklab::to_linear([
             toed * scale,
             chroma * scale * self.cos,
             chroma * scale * self.sin,
@@ -308,7 +309,7 @@ fn max_saturation(a: f32, b: f32) -> f32 {
 /// exactly one: what pins a slice's cusp, and its curved top, onto the real
 /// gamut.
 fn peak_scale(lab: [f32; 3]) -> f32 {
-    let rgb = oklab_to_linear(lab);
+    let rgb = oklab::to_linear(lab);
     let peak = rgb[0].max(rgb[1]).max(rgb[2]);
     debug_assert!(peak > 0.0, "a hue slice always has a positive peak");
     (1.0 / peak).cbrt()

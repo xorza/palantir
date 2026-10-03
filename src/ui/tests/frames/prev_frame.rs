@@ -1,12 +1,12 @@
 //! The snapshot a frame leaves for the next one to diff against.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{SURFACE, blue_frame};
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -106,10 +106,7 @@ fn prev_frame_updates_on_authoring_change() {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background {
-                    fill: fill.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(fill))
                 .show(ui);
         }
     };
@@ -119,4 +116,26 @@ fn prev_frame_updates_on_authoring_change() {
     h.frame(paint(RgbaF32::srgb(0.9, 0.4, 0.8)));
     let h2 = h.engines.damage.prev[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
+}
+
+/// The scale a host divides an event's position by is the one the
+/// current cascade was laid out at: a user-scale write moves it only when
+/// a frame lays out at the new scale. Before any frame there is no
+/// layout, and nothing to report.
+#[test]
+fn the_laid_out_scale_moves_with_the_frame_not_the_write() {
+    use crate::display::user_scale::UserScale;
+    let mut h = UiHarness::cold(glam::UVec2::new(200, 100));
+    assert_eq!(h.ui().laid_out_scale(), None, "nothing laid out yet");
+    let mut h = UiHarness::new(glam::UVec2::new(200, 100)).scale(2.0);
+    h.frame(|_| {});
+    assert_eq!(h.ui().laid_out_scale(), Some(2.0));
+
+    let bigger = UserScale::ONE.stepped_up();
+    h.ui().set_user_scale(bigger);
+    assert_eq!(
+        h.ui().laid_out_scale(),
+        Some(2.0),
+        "a write between frames does not move the cascade's scale",
+    );
 }

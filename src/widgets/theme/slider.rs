@@ -16,9 +16,11 @@ pub struct SliderTheme {
     /// Knob (handle) color.
     pub knob: RgbaF32,
     /// Knob diameter in logical px — also the widget's height.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub knob_size: f32,
     /// Track thickness in logical px. Pill radius is
     /// `track_thickness / 2`.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub track_thickness: f32,
 }
 

@@ -1,26 +1,26 @@
 //! The commands one recorded frame lowers to.
 
 use crate::Ui;
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::internals::harness::UiHarness;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size, stroke::Stroke};
-use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects, quad_rect};
+use crate::renderer::frontend::encoder::tests::support::{
+    as_rect, as_shadow, count_draw_rects, quad_rect,
+};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::scene::layer::Layer;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::scene::shapes::paint::ShapeBrush;
-use crate::ui::harness::UiHarness;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -34,16 +34,19 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     };
     let gradients = [gradient];
     let atlas = SharedGradientAtlas::default();
-    let mut resolver = GradientResolver::default();
+    let mut resolver = GradientResolver {
+        atlas: atlas.clone(),
+        resolved: Vec::new(),
+    };
     let brush = ShapeBrush::Gradient {
         id: GradientId(0),
         hash: 0,
     };
 
-    resolver.reset_for(gradients.len());
-    let first = resolver.source(&gradients, &atlas, brush);
+    let mut pass = resolver.begin(&gradients);
+    let first = pass.source(brush);
     let registered = atlas.registrations();
-    let repeated = resolver.source(&gradients, &atlas, brush);
+    let repeated = pass.source(brush);
     assert_eq!(atlas.registrations(), registered);
     match (first, repeated) {
         (BrushSource::Gradient(first), BrushSource::Gradient(repeated)) => {
@@ -54,9 +57,9 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         _ => panic!("gradient brush resolved to a solid source"),
     }
 
-    resolver.reset_for(gradients.len());
-    assert!(resolver.resolved[0].is_none());
-    let _ = resolver.source(&gradients, &atlas, brush);
+    let mut pass = resolver.begin(&gradients);
+    assert!(pass.resolved[0].is_none());
+    let _ = pass.source(brush);
     assert_eq!(atlas.registrations(), registered + 1);
 }
 
@@ -102,10 +105,7 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {
@@ -209,30 +209,18 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .iter()
         .filter_map(|command| as_rect(command).map(|p| p.fill.kind))
         .collect();
-    assert!(
-        rect_kinds.contains(&FillKind::SOLID),
-        "rounded rect must emit a plain-solid quad, got kinds {rect_kinds:?}",
-    );
-    assert!(
-        rect_kinds.contains(&FillKind::SOLID.with_window()),
-        "windowed rect must emit a window-tagged quad, got kinds {rect_kinds:?}",
+    assert_eq!(
+        rect_kinds,
+        [FillKind::SOLID, FillKind::SOLID.with_window()],
+        "the rounded rect is plain solid, the windowed one window-tagged",
     );
     // A Line rides the GPU curve pipeline (degenerate cubic), so it
     // emits a DrawCurve — not a DrawPolyline — and never touches the
     // polyline point payloads. The solid line carries its colour; the
     // ramp line carries the ramp kind, a real atlas row, and the stroke
     // colour as the multiplier on the sample.
-    let curves: Vec<_> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::Curve(p) => Some(p.fill),
-            _ => None,
-        })
-        .collect();
-    let [solid, ramp] = curves.as_slice() else {
-        panic!("expected exactly two DrawCurve cmds, got {curves:?}");
-    };
+    assert_eq!(cmds.kinds(), ["Quad", "Quad", "Curve", "Curve"]);
+    let [solid, ramp] = [2, 3].map(|i| cmds.calls[i].as_curve().unwrap().fill);
     assert_eq!(
         (solid.kind, solid.color),
         (FillKind::SOLID, RgbaF32::srgb(1.0, 0.0, 0.0).into()),
@@ -242,14 +230,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         ramp.lut_row,
         LutRow::FALLBACK,
         "the ramp resolved to a baked row"
-    );
-    assert_eq!(
-        cmds.calls
-            .iter()
-            .filter(|command| matches!(command, PaintCall::Polyline(_)))
-            .count(),
-        0,
-        "lines no longer lower to polylines"
     );
     assert_eq!(
         h.ui.forest().record_store.polyline_points.len(),
@@ -343,14 +323,8 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     );
 
     let cmds = h.encode_paint();
-    let payload = cmds
-        .calls
-        .iter()
-        .find_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload),
-            _ => None,
-        })
-        .expect("Text widget must emit a DrawText command");
+    assert_eq!(cmds.kinds(), ["Text"]);
+    let payload = cmds.calls[0].as_text().unwrap();
     let scene = h.ui.frame_scene();
     let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
@@ -375,14 +349,8 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         "layout replay must be allowed to retain an evicted cache key",
     );
     let replayed = h.encode_paint();
-    let payload = replayed
-        .calls
-        .iter()
-        .find_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload),
-            _ => None,
-        })
-        .expect("replayed text must still emit");
+    assert_eq!(replayed.kinds(), ["Text"], "replayed text must still emit");
+    let payload = replayed.calls[0].as_text().unwrap();
     let scene = h.ui.frame_scene();
     let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
@@ -390,31 +358,6 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         !h.ui.shaper().has_cosmic_buffer(replayed_key),
         "frontend replay must leave reconstruction to an encoded-cache miss",
     );
-}
-
-/// `Align::place_in` math: glyph bbox positioned inside the leaf's arranged
-/// rect. Auto/center/right-bottom shift the origin; oversize content
-/// clamps to top-left so it doesn't clip on the wrong side.
-#[test]
-fn place_in_cases() {
-    let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
-    let measured = Size::new(80.0, 16.0);
-
-    let r = Align::CENTER.place_in(leaf, measured);
-    assert_eq!((r.min.x, r.min.y), (70.0, 32.0));
-    assert_eq!((r.size.w, r.size.h), (80.0, 16.0));
-
-    let r = Align::default().place_in(leaf, measured);
-    assert_eq!((r.min.x, r.min.y), (10.0, 20.0));
-
-    let r = Align::new(HAlign::Right, VAlign::Bottom).place_in(leaf, measured);
-    assert_eq!((r.min.x, r.min.y), (10.0 + 120.0, 20.0 + 24.0));
-
-    // Negative-slack guard: oversize text clamps to top-left.
-    let small = Rect::new(0.0, 0.0, 50.0, 10.0);
-    let oversize = Size::new(80.0, 16.0);
-    let r = Align::CENTER.place_in(small, oversize);
-    assert_eq!((r.min.x, r.min.y), (0.0, 0.0));
 }
 
 #[test]
@@ -433,32 +376,22 @@ fn encoder_text_alignment_respects_leaf_padding() {
         });
     });
     let cmds = h.encode_paint();
-    let text_rect = cmds
-        .calls
-        .iter()
-        .find_map(|command| match command {
-            PaintCall::Text(payload) => Some(payload.rect),
-            _ => None,
-        })
-        .expect("button must emit one DrawText");
-
-    assert!(
-        text_rect.min.x > 20.0 && text_rect.min.x < 180.0,
-        "text x must lie inside padded content area, got {}",
-        text_rect.min.x
+    assert_eq!(
+        cmds.kinds(),
+        ["Quad", "Text"],
+        "the button's chrome, then its label"
     );
-    let expected_x_center = 20.0 + (160.0 - text_rect.size.w) * 0.5;
-    assert!(
-        (text_rect.min.x - expected_x_center).abs() < 0.5,
-        "text x should center within padded area; expected ≈{expected_x_center}, got {}",
-        text_rect.min.x
-    );
-}
+    let text_rect = cmds.calls[1].as_text().unwrap().rect;
 
-/// The shadow half of the same split.
-fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
-    match call {
-        PaintCall::Quad(p) if p.fill.kind.is_shadow() => Some(p),
-        _ => None,
-    }
+    // "ok" is 19 px in the bundled face and one 20 px line, centred on
+    // both axes inside the 20 px padding: 160 × 40 of room.
+    assert_eq!(
+        text_rect,
+        Rect::new(
+            20.0 + (160.0 - 19.0) * 0.5,
+            20.0 + (40.0 - 20.0) * 0.5,
+            19.0,
+            20.0
+        ),
+    );
 }

@@ -1,55 +1,48 @@
 //! Zero extents, empty dimensions, and a track list long enough to test the
 //! inline cap.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel};
 use glam::UVec2;
 
 /// Pin: empty grid (zero rows or zero cols) measures + arranges to zero
-/// without panicking; child rects are zeroed at parent anchor.
+/// without panicking; child rects are zeroed at parent anchor. The other
+/// dimension's one 50 px track does not survive: a grid with no cells in
+/// one direction has none at all.
 #[test]
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut grid_node = None;
-    let empty: [Track; 0] = [];
-    h.frame(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                grid_node = Some(
+    let empty: &[Track] = &[];
+    let one: &[Track] = &[Track::fixed(50.0)];
+    for (label, cols, rows) in [("no rows", one, empty), ("no cols", empty, one)] {
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        h.frame(|ui| {
+            Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
                     Grid::new()
                         .id(WidgetId::from_hash("empty-grid"))
-                        .cols([Track::fixed(50.0)])
-                        .rows(empty)
+                        .cols(cols)
+                        .rows(rows)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
                             Block::new()
                                 .id(WidgetId::from_hash("ghost"))
                                 .size((20.0, 20.0))
                                 .show(ui);
-                        })
-                        .response
-                        .node(),
-                );
-            });
-    });
-    let r = h
-        .layout_rect(WidgetId::from_hash("empty-grid"))
-        .expect("arranged");
-    assert_eq!(r.size.w, 0.0);
-    assert_eq!(r.size.h, 0.0);
-
-    let ghost = h
-        .layout_rect(WidgetId::from_hash("ghost"))
-        .expect("arranged");
-    assert_eq!(ghost.size.w, 0.0);
-    assert_eq!(ghost.size.h, 0.0);
+                        });
+                });
+        });
+        let grid = h.arranged(WidgetId::from_hash("empty-grid"));
+        assert_eq!(grid.size, Size::ZERO, "{label}: the grid");
+        let ghost = h.arranged(WidgetId::from_hash("ghost"));
+        assert_eq!(ghost.size, Size::ZERO, "{label}: its child");
+    }
 }
 
 /// Pin: a grid whose own slot resolves to zero extent still gives its
@@ -85,15 +78,9 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
     let mut frames = Vec::new();
     for _ in 0..2 {
         h.frame(build);
-        let grid = h
-            .layout_rect(WidgetId::from_hash("zero-grid"))
-            .expect("arranged");
-        let fixed = h
-            .layout_rect(WidgetId::from_hash("fixed-cell"))
-            .expect("arranged");
-        let fill = h
-            .layout_rect(WidgetId::from_hash("fill-cell"))
-            .expect("arranged");
+        let grid = h.arranged(WidgetId::from_hash("zero-grid"));
+        let fixed = h.arranged(WidgetId::from_hash("fixed-cell"));
+        let fill = h.arranged(WidgetId::from_hash("fill-cell"));
 
         assert_eq!((grid.size.w, grid.size.h), (0.0, 0.0));
         // Phase 1 commits Fixed tracks before any leftover is shared out,
@@ -118,36 +105,27 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     const COLS: usize = 64;
     let cols: [Track; COLS] = std::array::from_fn(|i| Track::fixed((i + 1) as f32));
     let mut h = UiHarness::new(UVec2::new(3_000, 100));
-    let mut grid_node = None;
     h.frame(|ui| {
-        grid_node = Some(
-            Grid::new()
-                .id(WidgetId::from_hash("large-grid"))
-                .rows([Track::fixed(10.0)])
-                .cols(cols)
-                .line_gap(0.0)
-                .gap(2.0)
-                .show(ui, |ui| {
-                    Block::new()
-                        .id(WidgetId::from_hash("last-cell"))
-                        .grid_cell((0, (COLS - 1) as u16))
-                        .show(ui);
-                })
-                .response
-                .node(),
-        );
+        Grid::new()
+            .id(WidgetId::from_hash("large-grid"))
+            .rows([Track::fixed(10.0)])
+            .cols(cols)
+            .line_gap(0.0)
+            .gap(2.0)
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("last-cell"))
+                    .grid_cell((0, (COLS - 1) as u16))
+                    .show(ui);
+            });
     });
 
     // Sum 1..=64 = 2,080; 63 gaps × 2 = 126.
-    let grid = h
-        .layout_rect(WidgetId::from_hash("large-grid"))
-        .expect("arranged");
+    let grid = h.arranged(WidgetId::from_hash("large-grid"));
     assert_eq!(grid.size, Size::new(2_206.0, 10.0));
 
     // Sum 1..=63 = 2,016; 63 preceding gaps × 2 = 126.
-    let last = h
-        .layout_rect(WidgetId::from_hash("last-cell"))
-        .expect("arranged");
+    let last = h.arranged(WidgetId::from_hash("last-cell"));
     assert_eq!(last.min, glam::Vec2::new(2_142.0, 0.0));
     assert_eq!(last.size, Size::new(64.0, 10.0));
 }

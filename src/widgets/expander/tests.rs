@@ -5,10 +5,12 @@ use glam::{UVec2, Vec2};
 
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::keyboard::key::Key;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx::internals::assert_close;
+use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::arrow::Arrow;
 use crate::widgets::configure::Configure;
 use crate::widgets::expander::{Expander, ExpanderState};
@@ -72,13 +74,18 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     });
     let body_rect = h.rect(body()).expect("an open section records its body");
     let header_rect = h.rect(header()).expect("the header");
-    assert!(
-        body_rect.min.y >= header_rect.max().y - 1.0,
-        "the body sits under the header: {body_rect:?} against {header_rect:?}",
-    );
-    assert!(
-        body_rect.min.x > header_rect.min.x,
-        "and is indented from its leading edge: {body_rect:?} in {header_rect:?}",
+    // The body sits right under the header, indented by the theme's
+    // 17 px from its leading edge and running to the header's far edge.
+    let indent = h.ui().theme().expander.indent;
+    assert_eq!(indent, 17.0);
+    assert_eq!(
+        body_rect,
+        Rect::new(
+            header_rect.min.x + indent,
+            header_rect.max().y,
+            header_rect.size.w - indent,
+            body_rect.size.h,
+        ),
     );
     assert!(h.rect(label()).is_some(), "the body's own content records");
 }
@@ -96,8 +103,7 @@ fn an_untouched_section_mints_no_state_row() {
     );
 
     // Opening it is what mints one, and it survives the next frame.
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     frame(&mut h, false);
     let row = h
         .ui()
@@ -116,8 +122,7 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
     frame(&mut h, false);
     assert!(h.rect(body()).is_none());
 
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     let open = h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
@@ -132,14 +137,36 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
         "the body recorded on the frame the click landed",
     );
 
-    h.advance_past_double_click(|ui| {
+    h.advance_past_double_click();
+    h.frame(|ui| {
         Expander::new("section").id(root()).show(ui, |_| {});
     });
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     frame(&mut h, false);
     frame(&mut h, false);
     assert!(h.rect(body()).is_none(), "a second click closed it again");
+}
+
+/// An Expander disabled on the frame a click lands does not toggle: the
+/// header reads its owner's flag that frame, not through the cascade a
+/// frame late.
+#[test]
+fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
+    let mut h = UiHarness::new(SURFACE);
+    frame(&mut h, false);
+    frame(&mut h, false);
+    h.click_on(header());
+    let open = h.frame_value(|ui| {
+        Expander::new("section")
+            .id(root())
+            .disabled(true)
+            .show(ui, |ui| {
+                Text::new("body").id(label()).show(ui);
+            })
+            .openness
+    });
+    assert_eq!(open, 0.0, "the disabled header ignored the click");
+    assert!(h.rect(body()).is_none());
 }
 
 /// `keep_body` trades a record per frame for the state inside it. The
@@ -163,7 +190,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     };
     h.prime(2, |ui| record(ui, &mut text, false));
 
-    let body_rect = h.layout_rect(body()).expect("a kept body still records");
+    let body_rect = h.arranged(body());
     assert_eq!(
         body_rect.size.h, 0.0,
         "a collapsed body takes no space: {body_rect:?}",
@@ -199,15 +226,13 @@ fn a_bound_flag_is_read_and_written() {
         "the binding won over start_open(false)",
     );
 
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     h.frame(|ui| record(ui, &mut open));
     assert!(!open, "the toggle was written back through the binding");
 
     // The caller's own write is read on the next frame.
     open = true;
-    h.frame(|ui| record(ui, &mut open));
-    h.frame(|ui| record(ui, &mut open));
+    h.prime(2, |ui| record(ui, &mut open));
     assert!(h.rect(body()).is_some(), "the caller reopened it");
 }
 
@@ -238,8 +263,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         record(ui);
     });
 
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     assert_eq!(
         h.frame_value(&mut record),
         1.0,
@@ -250,20 +274,19 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         record(ui);
     });
 
-    h.advance_past_double_click(|ui| {
+    h.advance_past_double_click();
+    h.frame(|ui| {
         record(ui);
     });
-    let at = h.center_of(header());
-    h.click_at(at);
+    h.click_on(header());
     // The click frame carries the new target but no elapsed time, so the
     // tween has not moved yet; the frame after it is the one that shows.
     assert_eq!(h.frame_value(&mut record), 1.0);
     h.advance(std::time::Duration::from_millis(16));
-    let closing = h.frame_value(&mut record);
-    assert!(
-        closing > 0.0 && closing < 1.0,
-        "the close tweened against the remembered height, got {closing}",
-    );
+    // `MEDIUM` is 200 ms of ease-out cubic, so 16 ms in the reveal has
+    // (1 − 16/200)³ = 0.92³ = 0.778688 left: the close tweened rather
+    // than snapping.
+    assert_eq!(h.frame_value(&mut record), 0.778688);
 }
 
 /// Space and Enter toggle a focused header, and nothing else does. The
@@ -316,11 +339,12 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         Vec2::new(8.0, 4.0),
         Vec2::new(0.0, 0.0),
     ];
+    // f32 `cos(π/2)` is -4.4e-8, not 0, so a turned point carries a
+    // residue of that times its 4 px lever, a few ulps of 8.
+    let residue = "f32 cos(π/2) is not 0";
     for (got, want) in turned.into_iter().zip(expected) {
-        assert!(
-            (got - want).length() < 1e-4,
-            "a quarter turn about the centre: got {turned:?}, want {expected:?}",
-        );
+        assert_close(got.x, want.x, 1e-6, residue);
+        assert_close(got.y, want.y, 1e-6, residue);
     }
 
     // Rounded by 1: the same turn on a 6 px arrow one px in from every
@@ -332,10 +356,8 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         Vec2::new(1.0, 1.0),
     ];
     for (got, want) in rounded.into_iter().zip(expected) {
-        assert!(
-            (got - want).length() < 1e-4,
-            "vertices one radius in: got {rounded:?}, want {expected:?}",
-        );
+        assert_close(got.x, want.x, 1e-6, residue);
+        assert_close(got.y, want.y, 1e-6, residue);
     }
     assert_eq!(
         c.rounded(0.0, 0.0),
@@ -347,5 +369,75 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
     let t = ExpanderTheme::default();
     assert_eq!(t.arrow_angle(0.0), t.arrow_closed_angle);
     assert_eq!(t.arrow_angle(1.0), t.arrow_open_angle);
-    assert!(t.arrow_angle(2.0).abs() <= t.arrow_closed_angle.abs());
+    assert_eq!(
+        t.arrow_angle(2.0),
+        t.arrow_open_angle,
+        "openness past 1 clamps to open"
+    );
+}
+
+/// The height a reveal clips against is the body's whole height, on the
+/// frame the tween settles too. A settled tween asks for no further frame,
+/// so a height read off a clipped body there is the one the next collapse
+/// clips against, and the body jumps.
+#[test]
+fn a_settling_reveal_stores_the_whole_height() {
+    let base = ExpanderTheme::default();
+    let theme = ExpanderTheme {
+        defaults: SlotDefaults {
+            anim: Some(AnimSpec::MEDIUM),
+            ..base.defaults
+        },
+        ..base
+    };
+    let mut h = UiHarness::new(SURFACE);
+    let mut record = |ui: &mut Ui| {
+        Expander::new("section")
+            .id(root())
+            .style(&theme)
+            .show(ui, |ui| {
+                Text::new("body").id(label()).show(ui);
+            })
+            .openness
+    };
+    h.prime(2, |ui| {
+        record(ui);
+    });
+    let tick = std::time::Duration::from_millis(16);
+    let toggle = |h: &mut UiHarness, record: &mut dyn FnMut(&mut Ui) -> f32| {
+        h.advance_past_double_click();
+        h.frame(|ui| {
+            record(ui);
+        });
+        h.click_on(header());
+        h.frame_value(&mut *record);
+    };
+
+    toggle(&mut h, &mut record);
+    h.advance_frames(2, tick, |ui| {
+        record(ui);
+    });
+    // One mono line, 19.2 snapped to 19.203125, under 4 + 4 padding.
+    let whole = h.arranged(body()).size.h;
+    assert_eq!(whole, 19.203125 + 8.0);
+    toggle(&mut h, &mut record);
+    while h.frame_value(&mut record) > 0.0 {
+        h.advance(tick);
+    }
+
+    toggle(&mut h, &mut record);
+    let mut openness = 0.0;
+    while openness < 1.0 {
+        h.advance(tick);
+        openness = h.frame_value(&mut record);
+        if openness < 1.0 {
+            assert_eq!(
+                h.arranged(body()).size.h,
+                whole,
+                "the body lays out whole under the clip at {openness}",
+            );
+        }
+    }
+    let row = h.ui().state::<ExpanderState>(header()).copied().unwrap();
+    assert_eq!(row.height, Some(whole), "the settle frame stored {row:?}");
 }

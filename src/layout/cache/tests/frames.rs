@@ -5,22 +5,21 @@
 //! hit.
 
 use crate::primitives::widget_id::WidgetId;
-use crate::text::font_scope::test_support::INTER;
-use crate::text::shaper::TextShaper;
+use crate::text::font_scope::internals::INTER;
 use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::internals::assert_same_capture;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::RgbaF32, corners::Corners, stroke::Stroke, translate_scale::TranslateScale,
 };
-use crate::renderer::frontend::capture::assert_same_capture;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -35,15 +34,21 @@ fn assert_warm_rects_match_cold(
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     h.resize(size);
-    let mut cold_nodes = Vec::new();
-    h.frame(|ui| record(ui, &mut cold_nodes));
+    let cold_nodes = h.frame_value(|ui| {
+        let mut nodes = Vec::new();
+        record(ui, &mut nodes);
+        nodes
+    });
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|&n| h.ui.arranged_rect(Layer::Main, n))
         .collect();
 
-    let mut warm_nodes = Vec::new();
-    h.frame(|ui| record(ui, &mut warm_nodes));
+    let warm_nodes = h.frame_value(|ui| {
+        let mut nodes = Vec::new();
+        record(ui, &mut nodes);
+        nodes
+    });
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|&n| h.ui.arranged_rect(Layer::Main, n))
@@ -87,7 +92,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("Title:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -95,7 +100,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("value column")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 1))
                                     .show(ui)
@@ -118,7 +123,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("outer-L")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -168,7 +173,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("L1:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -176,7 +181,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("v1")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node(),
@@ -191,7 +196,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("Description:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -199,7 +204,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("end")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 2))
                                     .show(ui)
                                     .node(),
@@ -264,7 +269,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("cell", i)))
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .show(ui)
                                     .node(),
                             );
@@ -295,7 +300,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("fill", i)))
                                     .size((Sizing::fill(1.0), Sizing::HUG))
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .show(ui)
                                     .node(),
                             );
@@ -318,7 +323,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("tag", i)))
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .show(ui)
                                     .node(),
                             );
@@ -336,7 +341,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("layer", i)))
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .show(ui)
                                     .node(),
                             );
@@ -358,7 +363,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                 Text::new(label)
                                     .id(WidgetId::from_hash(("pin", i)))
                                     .position(pos)
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .show(ui)
                                     .node(),
                             );
@@ -414,7 +419,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             .show(ui, |ui| {
                                 Text::new("Title:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((0, 0))
                                     .show(ui);
                                 Text::new(
@@ -422,18 +427,18 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                      Pack my box with five dozen liquor jugs.",
                                 )
                                 .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
+                                .font_size(14.0)
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .grid_cell((0, 1))
                                 .show(ui);
                                 Text::new("Tag:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .grid_cell((1, 0))
                                     .show(ui);
                                 Text::new("layout, grid, intrinsic, wrapping")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((1, 1))
                                     .show(ui);
@@ -442,10 +447,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Block::new()
                     .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.4, 0.4, 0.5).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.4, 0.4, 0.5)))
                     .show(ui);
             });
     };
@@ -486,7 +488,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                 capture.push(
                                     Text::new("Title:")
                                         .auto_id()
-                                        .style(&TextStyle::default().with_font_size(14.0))
+                                        .font_size(14.0)
                                         .grid_cell((0, 0))
                                         .show(ui)
                                         .node(),
@@ -497,7 +499,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                          adipiscing elit, sed do eiusmod tempor.",
                                     )
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
+                                    .font_size(14.0)
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 1))
                                     .show(ui)
@@ -555,9 +557,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
 /// unchanged run reaches neither `TextSystem` nor the shaper.
 #[test]
 fn registering_a_font_forces_the_next_frame_to_remeasure() {
-    // A shaper of this case's own: a load moves the font epoch and drops
-    // every shaped buffer, which the shared one must not suffer.
-    let mut h = UiHarness::over_shaper(TextShaper::new(), UVec2::new(400, 300));
+    let mut h = UiHarness::with_text(UVec2::new(400, 300));
     let record = |ui: &mut Ui| {
         Text::new("a label that sizes to its own text")
             .auto_id()
@@ -565,8 +565,7 @@ fn registering_a_font_forces_the_next_frame_to_remeasure() {
     };
     let dispatches = |h: &UiHarness| h.engines.layout.text.shaper().measure_calls();
 
-    h.frame(record);
-    h.frame(record);
+    h.prime(2, record);
     let warm = dispatches(&h);
     h.frame(record);
     assert_eq!(
@@ -738,5 +737,89 @@ fn moved_subtree_replays_translated_rects() {
         after,
         rects(&h.ui, &cold_nodes),
         "translated replay diverged from a cold remeasure",
+    );
+}
+
+/// A hit subtree whose root is arranged at a new size still replays the
+/// descendants that keep theirs. The `stable` panel fills a Hug ZStack
+/// whose width follows a sibling: measured against the ZStack's constant
+/// offer, it hits the cache, but it is arranged at the grown width, so its
+/// own driver runs. Its rows are a fixed 60×20 at the top-left of it and
+/// arranged unchanged, so each replays its cached rects instead of
+/// dispatching.
+#[test]
+fn a_resized_hit_root_replays_its_unchanged_descendants() {
+    const ROWS: usize = 3;
+    let record = |ui: &mut Ui, grower_w: f32, capture: &mut Vec<NodeId>| {
+        capture.clear();
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("host"))
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Panel::zstack()
+                            .id(WidgetId::from_hash("grower"))
+                            .size((Sizing::fixed(grower_w), Sizing::fixed(80.0)))
+                            .show(ui, |_ui| {});
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("stable"))
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                for row in 0..ROWS {
+                                    let outer = Panel::hstack()
+                                        .id(WidgetId::from_hash(("row", row)))
+                                        .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
+                                        .show(ui, |ui| {
+                                            capture.push(
+                                                Panel::zstack()
+                                                    .id(WidgetId::from_hash(("cell", row)))
+                                                    .size((Sizing::fixed(30.0), Sizing::FILL))
+                                                    .show(ui, |_ui| {})
+                                                    .response
+                                                    .node(),
+                                            );
+                                        });
+                                    capture.push(outer.response.node());
+                                }
+                            });
+                    });
+            });
+    };
+    let rects = |ui: &Ui, nodes: &[NodeId]| -> Vec<_> {
+        nodes
+            .iter()
+            .map(|&n| ui.arranged_rect(Layer::Main, n))
+            .collect()
+    };
+
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut nodes = Vec::new();
+    h.frame(|ui| record(ui, 100.0, &mut nodes));
+    h.frame(|ui| record(ui, 150.0, &mut nodes));
+    assert!(
+        h.engines
+            .layout
+            .scratch
+            .counters
+            .cache_hits()
+            .contains(&WidgetId::from_hash("stable")),
+        "premise: the stable panel's measure hits the cache",
+    );
+    assert_eq!(
+        h.engines.layout.scratch.counters.arrange_replays().copied,
+        ROWS as u32,
+        "each row, arranged where it was, replays",
+    );
+    let warm = rects(&h.ui, &nodes);
+
+    h.engines.layout.cache.forget_all();
+    h.frame(|ui| record(ui, 150.0, &mut nodes));
+    assert_eq!(
+        warm,
+        rects(&h.ui, &nodes),
+        "replay diverged from a cold remeasure"
     );
 }

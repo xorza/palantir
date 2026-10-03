@@ -75,6 +75,10 @@ const RECYCLE_POOL_CAP: usize = 128;
 /// the other half of the idea. The two wins are mutually exclusive.
 pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 
+/// The longest a rendered run waits to be retired: its keep plus the
+/// spread that staggers retirements.
+const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
+
 /// A resident shaped buffer paired with the x its glyph block starts at,
 /// so every reader normalizes the same way off one lookup.
 #[derive(Clone, Copy, Debug)]
@@ -142,9 +146,7 @@ impl Default for ShapedBufferCache {
         Self {
             entries: FxHashMap::default(),
             frame: 0,
-            expiry: ExpiryWheel::with_keep(
-                RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK,
-            ),
+            expiry: ExpiryWheel::with_keep(KEEP_FRAMES),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             counters: CacheCounters::default(),
         }
@@ -370,12 +372,18 @@ fn recycle_into(pool: &mut Vec<Buffer>, buffer: Buffer) {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod test_support {
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
     use super::*;
+    #[cfg(test)]
     use crate::common::counters::CounterSet;
+    #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
 
+    /// Frames one revolution of the expiry ring takes.
+    pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
+
+    #[cfg(test)]
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) struct RecyclePoolStats {
         pub(crate) len: usize,
@@ -383,6 +391,7 @@ pub(crate) mod test_support {
         pub(crate) limit: usize,
     }
 
+    #[cfg(test)]
     impl ShapedBufferCache {
         /// Outstanding expiry tickets. The number that says whether
         /// [`ShapedBufferCache::supersede`] is holding up its end of the

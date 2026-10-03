@@ -1,19 +1,19 @@
 //! What a record pass puts in the arena, and in what order.
 
+use crate::internals::harness::UiHarness;
+use crate::internals::paint_capture::PaintCall;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
-use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
 use crate::shape::rect::{RectKind, RectShape};
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 
@@ -61,19 +61,13 @@ fn interleaved_shapes_record_correct_order() {
                 ui.add_shape(pos_rect(0));
                 Block::new()
                     .id(WidgetId::from_hash("c0"))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(1));
                 Block::new()
                     .id(WidgetId::from_hash("c1"))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(2));
@@ -142,10 +136,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                     child_id = Some(
                         Block::new()
                             .id(WidgetId::from_hash("only-child"))
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                             .show(ui)
                             .node(),

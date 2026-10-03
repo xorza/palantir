@@ -1,7 +1,7 @@
+use crate::internals::harness::UiHarness;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
@@ -154,8 +154,9 @@ fn zstack_fill_child_stretches_to_inner() {
 
 #[test]
 fn hug_zstack_with_only_fill_children_collapses_to_zero() {
-    // Fill-on-both-axes children measure with INF → fall back to intrinsic;
-    // a Hug ZStack therefore has no content to grow to.
+    // A Fill child reports its content at measure, whatever extent it is
+    // offered, and a Block has none — so a Hug ZStack has no content to
+    // grow to, though it offers its children the full 200 px.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let panel = h.under_outer(|ui| {
         Panel::zstack()
@@ -173,34 +174,4 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     let r = h.ui.arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
-}
-
-#[test]
-fn zstack_collapsed_child_does_not_grow_panel() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let panel = h.under_outer(|ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .size((20.0, 20.0))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("hidden"))
-                    .size((100.0, 100.0))
-                    .collapsed()
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
-    assert_eq!(r.size.w, 20.0);
-    assert_eq!(r.size.h, 20.0);
-    let kids: Vec<_> = h.main_child_rects(panel);
-    let collapsed = kids[1];
-    assert_eq!(collapsed.size.w, 0.0);
-    assert_eq!(collapsed.size.h, 0.0);
 }

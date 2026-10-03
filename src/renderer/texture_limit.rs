@@ -25,13 +25,13 @@ pub(crate) struct TextureLimit(Option<NonZeroU32>);
 impl TextureLimit {
     /// The ceiling a device granted at creation — see
     /// `Gpu::max_texture_dim`.
-    pub(crate) fn from_device(max_dimension: NonZeroU32) -> Self {
+    pub(crate) const fn from_device(max_dimension: NonZeroU32) -> Self {
         Self(Some(max_dimension))
     }
 
     /// The largest width or height this limit accepts, or `None` where
     /// there is no device and so no ceiling.
-    pub(crate) fn max_dimension(self) -> Option<NonZeroU32> {
+    pub(crate) const fn max_dimension(self) -> Option<NonZeroU32> {
         self.0
     }
 

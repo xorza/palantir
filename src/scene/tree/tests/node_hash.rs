@@ -2,17 +2,18 @@
 
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
+use crate::scene::tree::tests::support::{SURFACE, record};
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
@@ -36,16 +37,33 @@ fn same_authoring_produces_same_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             })
             .response
             .node()
     };
-    assert_eq!(record_hash(build), record_hash(build));
+    assert_eq!(record(build).node, record(build).node);
+    // The hash is the root's own, so the change is to the root.
+    let padded = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .padding(4.0)
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(50.0)
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .show(ui);
+            })
+            .response
+            .node()
+    };
+    assert_ne!(
+        record(build).node,
+        record(padded).node,
+        "other authoring, other hash"
+    );
 }
 
 #[test]
@@ -67,12 +85,20 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
     assert_ne!(color_a, color_b);
     assert_eq!(RgbaF16::from(color_a), RgbaF16::from(color_b));
 
-    let baseline = record_hash(|ui| build(ui, &base_points, color_a));
+    let baseline = record(|ui| build(ui, &base_points, color_a)).node;
     assert_eq!(
         baseline,
-        record_hash(|ui| build(ui, &noisy_points, color_a)),
+        record(|ui| build(ui, &noisy_points, color_a)).node,
     );
-    assert_eq!(baseline, record_hash(|ui| build(ui, &base_points, color_b)),);
+    assert_eq!(baseline, record(|ui| build(ui, &base_points, color_b)).node);
+    // The same comparison does see a move and a colour change it can show.
+    let moved = [Vec2::ZERO, Vec2::new(11.0, 0.0)];
+    assert_ne!(baseline, record(|ui| build(ui, &moved, color_a)).node);
+    let recoloured = RgbaF32::new(0.6, 0.25, 0.75, 1.0);
+    assert_ne!(
+        baseline,
+        record(|ui| build(ui, &base_points, recoloured)).node
+    );
 }
 
 #[test]
@@ -86,61 +112,37 @@ fn changing_fill_color_changes_hash() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .background(Background {
-                            fill: fill.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(fill))
                         .show(ui)
                         .node(),
                 );
             });
         child.unwrap()
     }
-    let h1 = record_hash(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h2 = record_hash(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
-    assert_ne!(h1, h2);
-    let static_1 = record_cascade_static(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let static_2 = record_cascade_static(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    let blue = record(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
+    let red = record(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    assert_ne!(blue.node, red.node);
     assert_eq!(
-        static_1, static_2,
+        blue.cascade_static, red.cascade_static,
         "paint-only changes must remain eligible for incremental cascade"
     );
 }
 
 #[test]
 fn widget_id_only_affects_cascade_static_hash() {
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("a"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("b"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
-    assert_eq!(h1, h2);
-
-    let static_1 = record_cascade_static(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("a"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
-    let static_2 = record_cascade_static(|ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("b"))
-            .show(ui, |_| {})
-            .response
-            .node()
-    });
+    let build = |id: &'static str| {
+        record(move |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash(id))
+                .show(ui, |_| {})
+                .response
+                .node()
+        })
+    };
+    let (a, b) = (build("a"), build("b"));
+    assert_eq!(a.node, b.node);
     assert_ne!(
-        static_1, static_2,
+        a.cascade_static, b.cascade_static,
         "identity changes must rebuild cascade hit IDs and its by-id snapshot",
     );
 }
@@ -266,13 +268,10 @@ fn changing_layout_property_changes_hash() {
         ),
     ];
     for (label, a, b) in cases {
-        let h1 = record_hash(*a);
-        let h2 = record_hash(*b);
-        assert_ne!(h1, h2, "case: {label}");
-        let static_1 = record_cascade_static(*a);
-        let static_2 = record_cascade_static(*b);
+        let (a, b) = (record(*a), record(*b));
+        assert_ne!(a.node, b.node, "case: {label}");
         assert_ne!(
-            static_1, static_2,
+            a.cascade_static, b.cascade_static,
             "cascade-static hash missed layout case: {label}"
         );
     }
@@ -293,8 +292,8 @@ fn changing_text_content_changes_hash() {
         });
         n.unwrap()
     }
-    let h1 = record_hash(|ui| build(ui, "Hello"));
-    let h2 = record_hash(|ui| build(ui, "World"));
+    let h1 = record(|ui| build(ui, "Hello")).node;
+    let h2 = record(|ui| build(ui, "World")).node;
     assert_ne!(h1, h2);
 }
 
@@ -307,17 +306,14 @@ fn child_hash_does_not_affect_parent_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(50.0)
-                    .background(Background {
-                        fill: fill.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(fill))
                     .show(ui);
             })
             .response
             .node()
     }
-    let h1 = record_hash(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h2 = record_hash(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
+    let h1 = record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).node;
+    let h2 = record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).node;
     assert_eq!(h1, h2, "parent hash captures only its own fields");
 }
 
@@ -331,10 +327,7 @@ fn shape_hashes_column_sized_to_shape_records() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background {
-                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     glam::Vec2::new(0.0, 0.0),
@@ -381,10 +374,7 @@ fn shape_hash_stable_across_frames() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background {
-                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     glam::Vec2::new(0.0, 0.0),
@@ -413,10 +403,7 @@ fn one_shape_change_only_flips_its_own_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background {
-                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     glam::Vec2::new(0.0, 0.0),
@@ -466,7 +453,7 @@ fn nesting_alone_changes_cascade_static() {
             .node()
     };
 
-    let siblings = record_cascade_static(|ui| {
+    let siblings = record(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -475,8 +462,9 @@ fn nesting_alone_changes_cascade_static() {
             })
             .response
             .node()
-    });
-    let nested = record_cascade_static(|ui| {
+    })
+    .cascade_static;
+    let nested = record(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -486,11 +474,127 @@ fn nesting_alone_changes_cascade_static() {
             })
             .response
             .node()
-    });
+    })
+    .cascade_static;
 
     assert_ne!(
         siblings, nested,
         "re-parenting must invalidate the retained cascade; without \
          `subtree_end` in the fold these two hash the same",
     );
+}
+
+/// A paint animation is part of what a shape paints, so it moves the
+/// node hash: adding one, dropping one, and changing what it animates
+/// each read as a change, and the same animation twice reads the same.
+#[test]
+fn a_paint_animation_moves_the_node_hash() {
+    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use std::time::Duration;
+
+    fn build(ui: &mut Ui, anim: Option<PaintAnim>) -> NodeId {
+        Panel::canvas()
+            .id(WidgetId::from_hash("spinner"))
+            .show(ui, |ui| {
+                let line = Shape::line(
+                    Vec2::new(0.0, 10.0),
+                    Vec2::new(40.0, 10.0),
+                    Stroke::new(RgbaF32::WHITE, 2.0),
+                );
+                match anim {
+                    Some(anim) => ui.add_shape_animated(line, anim),
+                    None => ui.add_shape(line),
+                }
+            })
+            .response
+            .node()
+    }
+    let turn = PaintAnim::turn(0.0, 1.0).period(Duration::from_secs(2));
+    let still = record(|ui| build(ui, None)).node;
+    let spun = record(|ui| build(ui, Some(turn))).node;
+    let spun_again = record(|ui| build(ui, Some(turn))).node;
+    let faster = record(|ui| build(ui, Some(turn.period(Duration::from_secs(1))))).node;
+    let fading = record(|ui| build(ui, Some(PaintAnim::alpha(1.0, 0.0)))).node;
+    assert_ne!(still, spun, "adding an animation");
+    assert_eq!(spun, spun_again, "the same animation");
+    assert_ne!(spun, faster, "a different period");
+    assert_ne!(spun, fading, "a different channel");
+}
+
+/// Which half of the rollup each kind of edit moves. Paint-only edits
+/// move the full subtree hash and leave the layout half, which the
+/// measure cache keys on; layout edits move both, the full hash being
+/// built from the layout half. A child's text is a layout input of the
+/// child, so it reaches both of the parent's rollups through the child.
+#[test]
+fn each_edit_moves_the_half_it_belongs_to() {
+    use crate::widgets::text::Text;
+
+    #[derive(Clone, Copy, Debug)]
+    struct Edit {
+        fill: RgbaF32,
+        label: &'static str,
+        padding: f32,
+    }
+    let base = Edit {
+        fill: RgbaF32::srgb(0.2, 0.4, 0.8),
+        label: "hello",
+        padding: 4.0,
+    };
+    let hashes = |edit: Edit| {
+        let mut h = UiHarness::new(SURFACE);
+        let node = h.frame_value(|ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .padding(edit.padding)
+                .background(Background::fill(edit.fill))
+                .show(ui, |ui| {
+                    Text::new(edit.label)
+                        .id(WidgetId::from_hash("label"))
+                        .show(ui);
+                })
+                .response
+                .node()
+        });
+        let rollups = &h.ui.tree(Layer::Main).rollups;
+        (
+            rollups.subtree[node.idx()],
+            rollups.layout_subtree[node.idx()],
+        )
+    };
+    let (full, layout) = hashes(base);
+    let rows: [(&str, Edit, bool, bool); 3] = [
+        (
+            "recolour",
+            Edit {
+                fill: RgbaF32::srgb(0.9, 0.1, 0.1),
+                ..base
+            },
+            true,
+            false,
+        ),
+        (
+            "padding",
+            Edit {
+                padding: 8.0,
+                ..base
+            },
+            true,
+            true,
+        ),
+        (
+            "child text",
+            Edit {
+                label: "goodbye",
+                ..base
+            },
+            true,
+            true,
+        ),
+    ];
+    for (label, edit, full_moves, layout_moves) in rows {
+        let (f, l) = hashes(edit);
+        assert_eq!(f != full, full_moves, "{label}: full subtree hash");
+        assert_eq!(l != layout, layout_moves, "{label}: layout subtree hash");
+    }
 }

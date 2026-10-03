@@ -1,13 +1,13 @@
 //! What a scroll records while it lives, and what is swept when it goes.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -49,16 +49,11 @@ fn explicit_no_clip_overrides_scroll_default() {
             .show(ui, |_| {});
     });
 
-    let tree = h.ui.tree(Layer::Main);
     let clip_for = |id: WidgetId| {
-        let viewport_id = id.with("viewport");
-        let index = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|recorded| *recorded == viewport_id)
+        let viewport = h
+            .node_of(id.with("viewport"))
             .expect("scroll viewport node");
-        tree.records.attrs()[index].clip_mode()
+        h.ui.tree(viewport.layer).records.attrs()[viewport.node.idx()].clip_mode()
     };
     assert_eq!(clip_for(unclipped_id), ClipMode::None);
     assert_eq!(clip_for(clipped_id), ClipMode::Rect);
@@ -300,13 +295,13 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        h.ui.frame_runtime().cascade_ran(),
+        h.engines.cascade.counters.ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        !h.ui.frame_runtime().cascade_ran(),
+        !h.engines.cascade.counters.ran(),
         "unchanged scroll frame skips the cascade"
     );
 
@@ -316,8 +311,8 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
     assert!(
-        h.ui.frame_runtime().cascade_ran(),
-        "scroll offset change must re-run the cascade (offset is in the fingerprint)",
+        h.engines.cascade.counters.ran(),
+        "scroll offset change must re-run the cascade (it moves the arranged rects)",
     );
 }
 

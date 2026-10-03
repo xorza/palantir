@@ -3,13 +3,13 @@ use crate::layout::intrinsic::*;
 use crate::scene::tree::node_id::NodeId;
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
@@ -25,9 +25,8 @@ use glam::UVec2;
 #[test]
 fn intrinsic_cache_populated_after_run() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -38,7 +37,7 @@ fn intrinsic_cache_populated_after_run() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let child =
@@ -48,9 +47,10 @@ fn intrinsic_cache_populated_after_run() {
             .next()
             .expect("hstack has child");
     let slot = LenReq::MinContent.slot(Axis::X);
-    let cached = h.engines.layout.scratch.intrinsics[child.idx()][slot];
-    assert!(
-        !cached.is_nan(),
+    // Mono's 8 px a char: the widest unbreakable word is five chars, 40.
+    assert_eq!(
+        h.engines.layout.scratch.intrinsics[child.idx()][slot],
+        40.0,
         "MinContent X for the Fill+wrap child must be cached after run"
     );
 }
@@ -61,9 +61,8 @@ fn intrinsic_cache_populated_after_run() {
 #[test]
 fn intrinsic_query_short_circuits_on_cache_hit() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -74,7 +73,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let child =
@@ -88,30 +87,18 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     const SENTINEL: f32 = 1234.5;
     h.engines.layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-    let store = h.ui.record_store();
-    let interned_text = store.interned_text();
-    let v = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        child,
-        Axis::X,
-        LenReq::MinContent,
-        &interned_text,
-    );
+    let v = h.intrinsic(child, Axis::X, LenReq::MinContent);
     assert_eq!(
         v, SENTINEL,
         "cache hit must return the stored value verbatim, not recompute"
     );
 
-    let expected_max = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        child,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let expected_max = h.intrinsic(child, Axis::X, LenReq::MaxContent);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
     h.engines.layout.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
     h.engines.layout.scratch.counters.reset_intrinsic_computes();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     let range =
         h.engines
             .layout
@@ -139,12 +126,11 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 #[test]
 fn parent_intrinsic_query_populates_descendant_cache() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
     // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
     // Then clear *just the queried slot* on every node so we can
     // observe which nodes the parent query repopulates.
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
@@ -152,7 +138,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
                 Text::new("defgh").id_salt("b").show(ui);
             })
             .response
-            .node();
+            .node()
     });
     // Drop the measure-cache snapshots so `engine.intrinsic` can't
     // answer the root query from last frame's cached intrinsic — this
@@ -164,27 +150,21 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         entry[slot] = f32::NAN;
     }
 
-    let store = h.ui.record_store();
-    let interned_text = store.interned_text();
-    let _ = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        root,
-        Axis::X,
-        LenReq::MaxContent,
-        &interned_text,
-    );
+    let _ = h.intrinsic(root, Axis::X, LenReq::MaxContent);
 
-    assert!(
-        !h.engines.layout.scratch.intrinsics[root.idx()][slot].is_nan(),
-        "root slot must be cached"
+    // Mono's 8 px a char: "abc" is 24, "defgh" 40, side by side 64.
+    let cached = |node: NodeId| h.engines.layout.scratch.intrinsics[node.idx()][slot];
+    assert_eq!(cached(root), 64.0, "root slot must be cached");
+    let children: Vec<_> =
+        h.ui.tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .collect();
+    assert_eq!(
+        children.iter().map(|&c| cached(c)).collect::<Vec<_>>(),
+        [24.0, 40.0],
+        "each child slot must be cached after the parent query",
     );
-    for c in h.ui.tree(Layer::Main).children(root).map(|c| c.id) {
-        assert!(
-            !h.engines.layout.scratch.intrinsics[c.idx()][slot].is_nan(),
-            "child {} slot must be cached after parent query",
-            c.idx()
-        );
-    }
 }
 
 #[test]
@@ -279,12 +259,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
         for axis in [Axis::X, Axis::Y] {
-            h.engines
-                .layout
-                .scratch
-                .intrinsics
-                .fill([f32::NAN; SLOT_COUNT]);
-            h.engines.layout.scratch.counters.reset_intrinsic_computes();
+            h.engines.layout.forget_intrinsics();
             let min =
                 h.engines
                     .layout
@@ -295,12 +270,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                     .intrinsic(tree, node, axis, LenReq::MaxContent, &interned_text);
             let separate_computes = h.engines.layout.scratch.counters.intrinsic_computes();
 
-            h.engines
-                .layout
-                .scratch
-                .intrinsics
-                .fill([f32::NAN; SLOT_COUNT]);
-            h.engines.layout.scratch.counters.reset_intrinsic_computes();
+            h.engines.layout.forget_intrinsics();
             let range = h
                 .engines
                 .layout
@@ -339,9 +309,8 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
     const EXPECT_Y: f32 = 30.0;
 
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut root = NodeId(0);
-    h.frame(|ui| {
-        root = Panel::hstack()
+    let root = h.frame_value(|ui| {
+        Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
@@ -359,7 +328,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
                     .show(ui);
             })
             .response
-            .node();
+            .node()
     });
 
     let leaf =
@@ -368,22 +337,9 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
             .map(|c| c.id)
             .next()
             .expect("hstack has child");
-    let store = h.ui.record_store();
-    let interned_text = store.interned_text();
 
-    h.engines
-        .layout
-        .scratch
-        .intrinsics
-        .fill([f32::NAN; SLOT_COUNT]);
-    h.engines.layout.scratch.counters.reset_intrinsic_computes();
-    let x = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        leaf,
-        Axis::X,
-        LenReq::MinContent,
-        &interned_text,
-    );
+    h.engines.layout.forget_intrinsics();
+    let x = h.intrinsic(leaf, Axis::X, LenReq::MinContent);
     assert_eq!(
         x, EXPECT_X,
         "min-content X is the longest word plus the box"
@@ -400,13 +356,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
         "a min-content query may record only the half it asked for",
     );
 
-    let y = h.engines.layout.intrinsic(
-        h.ui.tree(Layer::Main),
-        leaf,
-        Axis::Y,
-        LenReq::MinContent,
-        &interned_text,
-    );
+    let y = h.intrinsic(leaf, Axis::Y, LenReq::MinContent);
     assert_eq!(y, EXPECT_Y, "the recorded lane is Y's own min-content");
     assert_eq!(
         h.engines.layout.scratch.counters.intrinsic_computes(),

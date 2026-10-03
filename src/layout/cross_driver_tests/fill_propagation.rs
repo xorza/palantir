@@ -2,36 +2,31 @@
 //! propagation must not silently switch to `INFINITY` when the
 //! parent has a finite slot — that would make any nested grid fall
 //! back to max-content and break wrapping under constrained widths.
+use crate::layout::cross_driver_tests::support::PARAGRAPH;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::TextStyle;
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
-const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
-
-fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
-    let shaped = support::shaped_text(ui.layout(Layer::Main), node);
-    assert!(
-        shaped.measured.h > 32.0,
-        "expected multi-line wrapped height, got h={}",
-        shaped.measured.h,
-    );
-    assert!(
-        shaped.measured.w <= surface_w,
-        "wrapped text must fit inside surface ({surface_w}); got w={}",
-        shaped.measured.w,
+/// The paragraph wrapped at a 200 px surface: four 16 px lines in the 93
+/// px the bundled faces break it to, the same on every machine. A grid
+/// that fell back to max-content would shape it as one long line.
+fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
+    assert_eq!(
+        support::shaped_text(ui.layout(Layer::Main), node).measured,
+        Size::new(93.0, support::lines_h(4, 16.0)),
     );
 }
 
@@ -51,7 +46,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_within_surface(&h.ui, node.unwrap(), 200.0);
+    assert_wrapped_at_200(&h.ui, node.unwrap());
 }
 
 /// Regression: same as above but for Canvas — also a "child-positioner"
@@ -68,7 +63,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_within_surface(&h.ui, node.unwrap(), 200.0);
+    assert_wrapped_at_200(&h.ui, node.unwrap());
 }
 
 /// Pin: a `Hug` ZStack containing a `Fill` child must NOT recursively
@@ -85,10 +80,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                     Block::new()
                         .id(WidgetId::from_hash("fill-child"))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                     Block::new()
                         .id(WidgetId::from_hash("fixed-child"))
@@ -97,9 +89,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                 });
         });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("hug-z"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("hug-z"));
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -123,13 +113,13 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 .show(ui, |ui| {
                     Text::new("Label:")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .grid_cell((0, 0))
                         .show(ui);
                     value_node = Some(
-                        Text::new("the quick brown fox jumps over the lazy dog")
+                        Text::new(PARAGRAPH)
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 1))
                             .show(ui)
@@ -142,21 +132,10 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
             .h
     }
 
-    let h_wide = measure(2000);
-    let h_narrow = measure(200);
-    assert!(
-        h_wide < 24.0,
-        "wide-window value should be single-line in Hug grid, got h={h_wide}"
-    );
-    assert!(
-        h_narrow < 24.0,
-        "narrow-window value should also be single-line (Fill col gets INF avail in Hug grid), got h={h_narrow}"
-    );
-    assert!(
-        (h_wide - h_narrow).abs() < 0.5,
-        "row height must not change with horizontal resize in Hug grid + Fill col; \
-         wide={h_wide}, narrow={h_narrow}",
-    );
+    // One 14 px line at both widths: the Fill column of a Hug grid gets
+    // INF, so the window's width never reaches the text.
+    let one_line = support::lines_h(1, 14.0);
+    assert_eq!([measure(2000), measure(200)], [one_line, one_line]);
 }
 
 /// Pin: a `Fill` grid with a `Fill` column DOES wrap text in the Fill
@@ -177,13 +156,13 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                 .show(ui, |ui| {
                     Text::new("Label:")
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .font_size(14.0)
                         .grid_cell((0, 0))
                         .show(ui);
                     value_node = Some(
-                        Text::new("the quick brown fox jumps over the lazy dog")
+                        Text::new(PARAGRAPH)
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .font_size(14.0)
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 1))
                             .show(ui)
@@ -211,56 +190,47 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 #[test]
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     let mut h = UiHarness::with_text(UVec2::new(400, 600));
-    let mut grid_node = None;
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                grid_node = Some(
-                    Grid::new()
-                        .id(WidgetId::from_hash("pg"))
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::HUG, Track::FILL])
-                        .rows([Track::HUG, Track::HUG])
-                        .show(ui, |ui| {
-                            Text::new("Title:")
-                                .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
-                                .grid_cell((0, 0))
-                                .show(ui);
-                            Text::new(
-                                "the quick brown fox jumps over the lazy dog \
+                Grid::new()
+                    .id(WidgetId::from_hash("pg"))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .cols([Track::HUG, Track::FILL])
+                    .rows([Track::HUG, Track::HUG])
+                    .show(ui, |ui| {
+                        Text::new("Title:")
+                            .auto_id()
+                            .font_size(14.0)
+                            .grid_cell((0, 0))
+                            .show(ui);
+                        Text::new(
+                            "the quick brown fox jumps over the lazy dog \
                                  pack my box with five dozen liquor jugs how \
                                  vexingly quick daft zebras jump",
-                            )
+                        )
+                        .auto_id()
+                        .font_size(14.0)
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .grid_cell((0, 1))
+                        .show(ui);
+                        Text::new("Tags:")
                             .auto_id()
-                            .style(&TextStyle::default().with_font_size(14.0))
-                            .text_wrap(TextWrap::WrapWithOverflow)
-                            .grid_cell((0, 1))
+                            .font_size(14.0)
+                            .grid_cell((1, 0))
                             .show(ui);
-                            Text::new("Tags:")
-                                .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
-                                .grid_cell((1, 0))
-                                .show(ui);
-                            Text::new("layout, grid, intrinsic, wrapping, css")
-                                .auto_id()
-                                .style(&TextStyle::default().with_font_size(14.0))
-                                .text_wrap(TextWrap::WrapWithOverflow)
-                                .grid_cell((1, 1))
-                                .show(ui);
-                        })
-                        .response
-                        .node(),
-                );
+                        Text::new("layout, grid, intrinsic, wrapping, css")
+                            .auto_id()
+                            .font_size(14.0)
+                            .text_wrap(TextWrap::WrapWithOverflow)
+                            .grid_cell((1, 1))
+                            .show(ui);
+                    });
             });
     });
-    let h = h
-        .layout_rect(WidgetId::from_hash("pg"))
-        .expect("arranged")
-        .size
-        .h;
+    let h = h.arranged(WidgetId::from_hash("pg")).size.h;
     assert!(
         h > 50.0,
         "grid must size to wrapped row heights, not single-line × 2; got h={h}"
@@ -273,7 +243,6 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 #[test]
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     let mut h = UiHarness::with_text(UVec2::new(400, 600));
-    let mut grid_node = None;
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
@@ -283,39 +252,31 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     .id(WidgetId::from_hash("hug-z"))
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
-                        grid_node = Some(
-                            Grid::new()
-                                .id(WidgetId::from_hash("nested-grid"))
-                                .size((Sizing::FILL, Sizing::HUG))
-                                .cols([Track::HUG, Track::FILL])
-                                .rows([Track::HUG])
-                                .show(ui, |ui| {
-                                    Text::new("Label:")
-                                        .auto_id()
-                                        .style(&TextStyle::default().with_font_size(14.0))
-                                        .grid_cell((0, 0))
-                                        .show(ui);
-                                    Text::new(
-                                        "the quick brown fox jumps over the lazy dog \
-                                         pack my box with five dozen liquor jugs",
-                                    )
+                        Grid::new()
+                            .id(WidgetId::from_hash("nested-grid"))
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .cols([Track::HUG, Track::FILL])
+                            .rows([Track::HUG])
+                            .show(ui, |ui| {
+                                Text::new("Label:")
                                     .auto_id()
-                                    .style(&TextStyle::default().with_font_size(14.0))
-                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                    .grid_cell((0, 1))
+                                    .font_size(14.0)
+                                    .grid_cell((0, 0))
                                     .show(ui);
-                                })
-                                .response
-                                .node(),
-                        );
+                                Text::new(
+                                    "the quick brown fox jumps over the lazy dog \
+                                         pack my box with five dozen liquor jugs",
+                                )
+                                .auto_id()
+                                .font_size(14.0)
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .grid_cell((0, 1))
+                                .show(ui);
+                            });
                     });
             });
     });
-    let h = h
-        .layout_rect(WidgetId::from_hash("nested-grid"))
-        .expect("arranged")
-        .size
-        .h;
+    let h = h.arranged(WidgetId::from_hash("nested-grid")).size.h;
     assert!(
         h > 30.0,
         "ZStack must pass `INF` on Hug axes so nested grid measures \

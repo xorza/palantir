@@ -1,21 +1,20 @@
-//! Regression: `LayoutPass::measure`'s second-pass convergence path
-//! used to assert `final_desired <= new_available`. That assumption
-//! breaks when a descendant subtree contains non-monotonic measure —
+//! `LayoutPass::measure`'s second-pass convergence path must not assume
+//! `final_desired <= new_available`. That assumption breaks when a descendant subtree contains non-monotonic measure —
 //! e.g. a `wrap_hstack` whose row-pack changes shape under different
 //! available widths, combined with sibling `Fill` cells that hug to
 //! padded content. Specific trigger from the showcase: a vstack root
 //! with a 18-button toolbar `wrap_hstack` plus a central zstack
 //! holding `panels::build`'s 4-cell hstack. At certain window widths
 //! the second-pass measure produces a desired ~10 px wider than the
-//! grown `new_available`, which used to panic.
+//! grown `new_available`.
 //!
-//! Sweeps a width range and asserts the frame doesn't panic.
+//! Sweeps a width range: no frame panics, and every toolbar button stays
+//! inside the toolbar it wrapped in.
 use crate::primitives::widget_id::WidgetId;
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
@@ -43,9 +42,8 @@ use glam::UVec2;
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
         let mut h = UiHarness::new(UVec2::new(outer_w, 400));
-        let mut row_node = NodeId(0);
-        h.frame(|ui| {
-            row_node = Panel::hstack()
+        let row_node = h.frame_value(|ui| {
+            Panel::hstack()
                 .auto_id()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
@@ -85,16 +83,12 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                         });
                 })
                 .response
-                .node();
+                .node()
         });
 
         let row = h.ui.arranged_rect(Layer::Main, row_node);
-        let left = h
-            .layout_rect(WidgetId::from_hash("left"))
-            .expect("arranged");
-        let right = h
-            .layout_rect(WidgetId::from_hash("right"))
-            .expect("arranged");
+        let left = h.arranged(WidgetId::from_hash("left"));
+        let right = h.arranged(WidgetId::from_hash("right"));
 
         // The right cell's intrinsic_min along X is the Fixed
         // descendant's 180 + the cell's 24 padding = 204. When the
@@ -104,15 +98,13 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         // cell absorb the squeeze instead. This is CSS Flexbox's
         // default "items at min-content stop shrinking, others
         // continue."
-        if outer_w >= 260 {
-            assert!(
-                right.size.w >= 204.0 - 0.5,
-                "outer_w={outer_w}: right cell shrunk below its 204 min-content floor; \
-                 left.w={} right.w={}",
-                left.size.w,
-                right.size.w,
-            );
-        }
+        assert!(
+            right.size.w >= 204.0 - 0.5,
+            "outer_w={outer_w}: right cell shrunk below its 204 min-content floor; \
+             left.w={} right.w={}",
+            left.size.w,
+            right.size.w,
+        );
         // And in all cases the row's children should be contained: no
         // sibling reaches past the HStack's right edge.
         let row_right_edge = row.min.x + row.size.w;
@@ -151,7 +143,8 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // direction shows up. Step 1 px to guarantee we hit whatever
     // discrete width tips the toolbar's wrap count past a threshold.
     //
-    // Reuse one `Ui` across sweep — recreating it would re-load fonts (~120 ms each).
+    // One harness across the sweep: each step is a resize, the path under
+    // test, rather than a fresh recorder that starts cold.
     let mut h = UiHarness::new(UVec2::new(480, 600));
     for w in (480u32..=900).step_by(1) {
         h.resize(UVec2::new(w, 600));
@@ -168,7 +161,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                     // produce different row counts (non-monotonic
                     // height-vs-width).
                     Panel::wrap_hstack()
-                        .auto_id()
+                        .id(WidgetId::from_hash("toolbar"))
                         .gap(6.0)
                         .line_gap(6.0)
                         .size((Sizing::FILL, Sizing::HUG))
@@ -217,5 +210,17 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                         });
                 });
         });
+        // Every button sits inside the toolbar it wrapped in, at every
+        // width — what a converged second pass promises. The toolbar
+        // itself can be wider than the window: the cells below it have a
+        // rigid floor of 536 px, and the root contains its content.
+        let toolbar = h.arranged(WidgetId::from_hash("toolbar"));
+        for label in LABELS {
+            let button = h.arranged(WidgetId::from_hash(*label));
+            assert!(
+                toolbar.contains_rect(button),
+                "w={w}: {label} at {button:?} leaves the toolbar at {toolbar:?}",
+            );
+        }
     }
 }

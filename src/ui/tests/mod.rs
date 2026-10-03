@@ -2,6 +2,7 @@
 
 mod frames;
 mod ids;
+mod oracle;
 mod overlay_placement;
 mod paint_anim;
 mod repainting;

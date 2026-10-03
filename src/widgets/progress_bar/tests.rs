@@ -1,9 +1,9 @@
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::size_trio::SizeTrio;
+use crate::primitives::size::Size;
 
 use crate::layout::types::sizing::Sizing;
-use crate::scene::layer::Layer;
 use crate::widgets::configure::Configure;
-use crate::widgets::panel::Panel;
 use crate::widgets::progress_bar::ProgressBar;
 use glam::UVec2;
 
@@ -12,33 +12,21 @@ use glam::UVec2;
 /// column → 400 × theme thickness 6).
 #[test]
 fn explicit_size_overrides_fill_default() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
-    let (mut sized, mut hug, mut default) = (None, None, None);
-    h.frame(|ui| {
-        let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
-        col.show(ui, |ui| {
-            sized = Some(
-                ProgressBar::new(0.3)
-                    .size((Sizing::fixed(80.0), Sizing::fixed(10.0)))
-                    .show(ui)
-                    .node(),
-            );
-            hug = Some(
-                ProgressBar::new(0.3)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui)
-                    .node(),
-            );
-            default = Some(ProgressBar::new(0.3).show(ui).node());
-        });
+    let trio = SizeTrio::of((Sizing::fixed(80.0), Sizing::fixed(10.0)), |ui, size| {
+        let mut bar = ProgressBar::new(0.3);
+        if let Some(size) = size {
+            bar = bar.size(size);
+        }
+        bar.show(ui).node()
     });
-    let rects = &h.ui.layout(Layer::Main).rect;
-    let s = rects[sized.unwrap().idx()];
-    assert_eq!((s.size.w, s.size.h), (80.0, 10.0), "explicit size");
-    let h = rects[hug.unwrap().idx()];
-    assert_eq!((h.size.w, h.size.h), (0.0, 0.0), "explicit hug");
-    let d = rects[default.unwrap().idx()];
-    assert_eq!((d.size.w, d.size.h), (400.0, 6.0), "untouched default");
+    assert_eq!(
+        trio,
+        SizeTrio {
+            sized: Size::new(80.0, 10.0),
+            hug: Size::ZERO,
+            default: Size::new(400.0, 6.0),
+        }
+    );
 }
 
 /// Both endpoints collapse one segment to a zero-extent `Fixed` rather

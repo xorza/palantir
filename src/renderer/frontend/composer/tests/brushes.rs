@@ -1,6 +1,7 @@
 //! Fills, images and raster targets: what each emits and what rides with it.
 
-use crate::primitives::brush::gradient::FillAxis;
+use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::fill_axis::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::span::Span;
@@ -9,10 +10,10 @@ use crate::primitives::{
     color::RgbaF32, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     translate_scale::TranslateScale,
 };
-use crate::renderer::frontend::capture::PaintCapture;
+use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    composer, curve, draw, gpu_paint, gpu_view_payload, image, params, rect, render_buffer, run,
-    run_with_texture_cap,
+    curve, draw, gpu_view, image, params, run, run_with_texture_cap,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -21,9 +22,8 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::RecordStore;
+use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
-use std::time::Duration;
 
 /// Solid `Brush::Solid` panel: composer emits a Quad with
 /// `fill_kind = BRUSH_KIND_SOLID = 0`, `fill_lut_row = 0` (sentinel
@@ -32,28 +32,14 @@ use std::time::Duration;
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     let mut buffer = PaintCapture::default();
-    buffer.draw_quad(
-        DrawQuadPayload::rect(
-            rect(0.0, 0.0, 100.0, 100.0),
-            Corners::default(),
-            BrushSource::Solid(RgbaF32::srgb(0.5, 0.5, 0.5).into()),
-            Stroke::ZERO.into(),
-        ),
-        1.0,
-    );
-    let mut composer = composer();
-    let mut out = render_buffer();
+    QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+        .solid(RgbaF32::srgb(0.5, 0.5, 0.5))
+        .draw(&mut buffer);
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     // 200×200 viewport: an opaque solid sharp quad covering the whole
     // viewport would fold into the clear instead of emitting a quad.
-    composer
-        .begin(
-            params(1.0, UVec2::new(200, 200)),
-            Duration::ZERO,
-            &RecordStore::default(),
-            &mut out,
-        )
-        .replay_from(&buffer);
-    let q = &out.quads[0];
+    rig.compose(&buffer);
+    let q = &rig.out.quads[0];
     assert_eq!(
         q.fill_kind,
         // Sharp + stroke-less + pixel-aligned, so the solid kind also
@@ -66,7 +52,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         LutRow::FALLBACK,
         "solid quad has no LUT row",
     );
-    assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed",);
+    assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed");
 }
 
 /// A windowed rect must never fold into the pass clear, take the
@@ -81,10 +67,11 @@ fn windowed_rect_is_not_an_opaque_cover() {
     use crate::primitives::fill_kind::FillKind;
     let buf = run(
         |b, _| {
-            draw(b, rect(10.0, 10.0, 50.0, 50.0));
+            draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
             b.draw_quad(
-                DrawQuadPayload::rect_window(
-                    rect(0.0, 0.0, 200.0, 200.0),
+                DrawQuadPayload::rect_of_kind(
+                    RectKind::Windowed,
+                    Rect::new(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                     Stroke::ZERO.into(),
@@ -129,28 +116,18 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         kind: FillKind::linear(g.spread),
     };
     let mut buffer = PaintCapture::default();
-    buffer.draw_quad(
-        DrawQuadPayload::rect(
-            rect(0.0, 0.0, 100.0, 100.0),
-            Corners::default(),
-            BrushSource::Gradient(lowered),
-            Stroke::ZERO.into(),
-        ),
-        1.0,
-    );
-    let mut composer = composer();
-    let mut out = render_buffer();
-    composer
-        .begin(
-            params(1.0, UVec2::new(100, 100)),
-            Duration::ZERO,
-            &RecordStore::default(),
-            &mut out,
-        )
-        .replay_from(&buffer);
-    let q = &out.quads[0];
+    QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
+        .brush(BrushSource::Gradient(lowered))
+        .draw(&mut buffer);
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(100, 100)));
+    rig.compose(&buffer);
+    let q = &rig.out.quads[0];
     assert_eq!(q.fill_kind, FillKind::linear(Spread::Reflect));
-    assert!(q.fill_lut_row.0 >= 1, "linear quad must get a real row");
+    assert_eq!(
+        q.fill_lut_row,
+        LutRow(1),
+        "row 0 is the fallback, so the first gradient bakes into row 1"
+    );
     assert_eq!(q.fill_axis, expected_axis);
 }
 
@@ -171,27 +148,13 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     };
     let mut buffer = PaintCapture::default();
     for _ in 0..3 {
-        buffer.draw_quad(
-            DrawQuadPayload::rect(
-                rect(0.0, 0.0, 10.0, 10.0),
-                Corners::default(),
-                BrushSource::Gradient(lowered),
-                Stroke::ZERO.into(),
-            ),
-            1.0,
-        );
+        QuadBuilder::new(Rect::new(0.0, 0.0, 10.0, 10.0))
+            .brush(BrushSource::Gradient(lowered))
+            .draw(&mut buffer);
     }
-    let mut composer = composer();
-    let mut out = render_buffer();
-    composer
-        .begin(
-            params(1.0, UVec2::new(100, 100)),
-            Duration::ZERO,
-            &RecordStore::default(),
-            &mut out,
-        )
-        .replay_from(&buffer);
-    let rows: Vec<_> = out.quads.iter().map(|q| q.fill_lut_row).collect();
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(100, 100)));
+    rig.compose(&buffer);
+    let rows: Vec<_> = rig.out.quads.iter().map(|q| q.fill_lut_row).collect();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0], rows[1]);
     assert_eq!(rows[1], rows[2]);
@@ -207,14 +170,14 @@ fn compose_emits_image_batch_for_drawimage() {
             b.draw_image(
                 ImageDraw {
                     payload: DrawImagePayload {
-                        rect: rect(10.0, 20.0, 30.0, 40.0),
+                        rect: Rect::new(10.0, 20.0, 30.0, 40.0),
                         uv_min: glam::Vec2::ZERO,
                         uv_size: glam::Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(0xc0ffee),
                         flags: 0,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -227,7 +190,10 @@ fn compose_emits_image_batch_for_drawimage() {
     assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     // Physical-px rect = logical * scale (no snap in `params`).
-    assert_eq!(buf.images.instance()[0].rect, rect(20.0, 40.0, 60.0, 80.0));
+    assert_eq!(
+        buf.images.instance()[0].rect,
+        Rect::new(20.0, 40.0, 60.0, 80.0)
+    );
     // Composer must forward the encoder's UV crop verbatim — a Zero
     // UV size means "sample one texel forever" and silently paints
     // every image as a uniform color (regression hunt: 2026-05).
@@ -262,13 +228,7 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
             |b, _arena| {
                 b.push_transform(TranslateScale::from_scale(2.0));
                 b.push_transform(TranslateScale::from_scale(1.5));
-                b.draw_image(
-                    ImageDraw {
-                        payload: gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
-                        paint: Some(&gpu_paint()),
-                    },
-                    1.0,
-                );
+                gpu_view(b, Rect::new(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee));
                 b.pop_transform();
                 b.pop_transform();
             },
@@ -278,7 +238,7 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
         assert_eq!(buf.frame_targets.len(), 1, "{case:?}");
         let target = &buf.frame_targets[0];
         assert_eq!(target.used, case.expected_size, "{case:?}");
-        assert_eq!(target.display_scale, case.dpr, "{case:?}");
+        assert_eq!(buf.frame_views().display_scale, case.dpr, "{case:?}");
         assert_eq!(target.raster_scale, case.expected_raster_scale, "{case:?}");
         assert_eq!(
             buf.images.instance()[0].rect.size,
@@ -305,13 +265,7 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
     // Twice as wide as the 100px surface, and a third taller.
     let buf = run(
         |b, _arena| {
-            b.draw_image(
-                ImageDraw {
-                    payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
-                },
-                1.0,
-            );
+            gpu_view(b, Rect::new(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee));
         },
         &params(1.0, UVec2::new(100, 90)),
     );
@@ -335,7 +289,7 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
     // And the composite covers exactly what the target holds.
     assert_eq!(
         buf.images.instance()[0].rect,
-        rect(0.0, 0.0, 100.0, 90.0),
+        Rect::new(0.0, 0.0, 100.0, 90.0),
         "the visible target was stretched over the whole rect"
     );
 }
@@ -350,14 +304,8 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
 fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(PushClipPayload::rect(rect(30.0, 20.0, 40.0, 25.0)));
-            b.draw_image(
-                ImageDraw {
-                    payload: gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
-                },
-                1.0,
-            );
+            b.push_clip(PushClipPayload::rect(Rect::new(30.0, 20.0, 40.0, 25.0)));
+            gpu_view(b, Rect::new(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -370,7 +318,10 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     assert_eq!(target.used, UVec2::new(40, 25));
     assert_eq!(target.full, UVec2::new(100, 60));
     assert_eq!(target.offset, UVec2::new(20, 10));
-    assert_eq!(buf.images.instance()[0].rect, rect(30.0, 20.0, 40.0, 25.0));
+    assert_eq!(
+        buf.images.instance()[0].rect,
+        Rect::new(30.0, 20.0, 40.0, 25.0)
+    );
 }
 
 /// A view nothing cuts is left exactly as it was.
@@ -382,13 +333,7 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
 fn compose_gpu_view_whole_when_nothing_clips_it() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(
-                ImageDraw {
-                    payload: gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
-                },
-                1.0,
-            );
+            gpu_view(b, Rect::new(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -397,7 +342,10 @@ fn compose_gpu_view_whole_when_nothing_clips_it() {
     assert_eq!(target.used, UVec2::new(80, 40));
     assert_eq!(target.full, target.used, "a whole view is its own whole");
     assert_eq!(target.offset, UVec2::ZERO);
-    assert_eq!(buf.images.instance()[0].rect, rect(10.0, 20.0, 80.0, 40.0));
+    assert_eq!(
+        buf.images.instance()[0].rect,
+        Rect::new(10.0, 20.0, 80.0, 40.0)
+    );
 }
 
 #[test]
@@ -422,18 +370,13 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     for case in cases {
         let buf = run_with_texture_cap(
             |b, _arena| {
-                b.draw_image(
-                    ImageDraw {
-                        payload: gpu_view_payload(
-                            Rect {
-                                min: Vec2::ZERO,
-                                size: case.logical_size,
-                            },
-                            TextureId(0xc0ffee),
-                        ),
-                        paint: Some(&gpu_paint()),
+                gpu_view(
+                    b,
+                    Rect {
+                        min: Vec2::ZERO,
+                        size: case.logical_size,
                     },
-                    1.0,
+                    TextureId(0xc0ffee),
                 );
             },
             &params(1.0, UVec2::new(400, 400)),
@@ -443,7 +386,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
         assert_eq!(buf.frame_targets.len(), 1, "{case:?}");
         let target = &buf.frame_targets[0];
         assert_eq!(target.used, case.expected_target, "{case:?}");
-        assert_eq!(target.display_scale, 1.0, "{case:?}");
+        assert_eq!(buf.frame_views().display_scale, 1.0, "{case:?}");
         assert_eq!(target.raster_scale, 0.5, "{case:?}");
         assert_eq!(
             buf.images.instance()[0].rect.size,
@@ -470,14 +413,8 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     // passing on exact arithmetic.
     let buf = run_with_texture_cap(
         |b, _arena| {
-            b.push_clip(PushClipPayload::rect(rect(45.0, 45.0, 155.0, 155.0)));
-            b.draw_image(
-                ImageDraw {
-                    payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
-                },
-                1.0,
-            );
+            b.push_clip(PushClipPayload::rect(Rect::new(45.0, 45.0, 155.0, 155.0)));
+            gpu_view(b, Rect::new(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -485,14 +422,11 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     );
     let target = &buf.frame_targets[0];
     assert_eq!(target.full, UVec2::new(100, 100), "the whole view, halved");
-    assert!(
-        target.used.cmple(target.full).all(),
-        "a window larger than the view it is a window onto: {target:?}"
-    );
-    assert!(
-        (target.offset + target.used).cmple(target.full).all(),
-        "a window reaching past the view: {target:?}"
-    );
+    // The clip leaves 45..200 of the view; at the cap's 0.5 that is
+    // 22.5..100, so the window starts on the floor, 22, and ends at the
+    // view's edge, 100 — never wider than the view, never past it.
+    assert_eq!(target.offset, UVec2::splat(22));
+    assert_eq!(target.used, UVec2::splat(100 - 22));
 }
 
 #[test]
@@ -502,14 +436,14 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
             b.draw_image(
                 ImageDraw {
                     payload: DrawImagePayload {
-                        rect: rect(0.0, 0.0, 100.0, 100.0),
+                        rect: Rect::new(0.0, 0.0, 100.0, 100.0),
                         uv_min: glam::Vec2::new(0.25, 0.0),
                         uv_size: glam::Vec2::new(0.5, 1.0),
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(1),
                         flags: 0,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -533,14 +467,14 @@ fn compose_forwards_flags_and_repeat_uv() {
             b.draw_image(
                 ImageDraw {
                     payload: DrawImagePayload {
-                        rect: rect(0.0, 0.0, 50.0, 50.0),
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         uv_min: glam::Vec2::ZERO,
                         uv_size: glam::Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(1),
                         flags: 0,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -548,14 +482,14 @@ fn compose_forwards_flags_and_repeat_uv() {
             b.draw_image(
                 ImageDraw {
                     payload: DrawImagePayload {
-                        rect: rect(0.0, 0.0, 50.0, 50.0),
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         uv_min: glam::Vec2::ZERO,
                         uv_size: glam::Vec2::new(3.0, 2.0),
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(2),
                         flags: IMG_FLAG_TILED,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -563,14 +497,14 @@ fn compose_forwards_flags_and_repeat_uv() {
             b.draw_image(
                 ImageDraw {
                     payload: DrawImagePayload {
-                        rect: rect(0.0, 0.0, 50.0, 50.0),
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         uv_min: glam::Vec2::ZERO,
                         uv_size: glam::Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(3),
                         flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
                     },
-                    paint: None,
+                    view: None,
                 },
                 1.0,
             );
@@ -590,8 +524,8 @@ fn compose_forwards_flags_and_repeat_uv() {
 fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
     let buf = run(
         |b, _| {
-            image(b, rect(10.0, 10.0, 30.0, 30.0));
-            curve(b, rect(0.0, 0.0, 100.0, 100.0));
+            image(b, Rect::new(10.0, 10.0, 30.0, 30.0));
+            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -601,8 +535,8 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
 
     let buf = run(
         |b, _| {
-            curve(b, rect(0.0, 0.0, 100.0, 100.0));
-            image(b, rect(10.0, 10.0, 30.0, 30.0));
+            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            image(b, Rect::new(10.0, 10.0, 30.0, 30.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -616,8 +550,8 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
 
     let buf = run(
         |b, _| {
-            curve(b, rect(0.0, 50.0, 100.0, 0.0));
-            curve(b, rect(0.0, 50.0, 100.0, 0.0));
+            curve(b, Rect::new(0.0, 50.0, 100.0, 0.0));
+            curve(b, Rect::new(0.0, 50.0, 100.0, 0.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );

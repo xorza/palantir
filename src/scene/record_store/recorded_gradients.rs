@@ -157,7 +157,7 @@ impl GradientIndex {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::scene::record_store::recorded_gradients::RecordedGradients;
 
     impl RecordedGradients {

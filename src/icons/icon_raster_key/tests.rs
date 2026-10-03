@@ -1,14 +1,10 @@
 use crate::icons::icon_raster_key::{IconRasterKey, MAX_RASTER_PX};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::{IconHandle, IconRef};
-use crate::icons::icon_table::IconId;
 use glam::{U16Vec2, Vec2};
 
 fn icon() -> IconRef {
-    IconRef {
-        set: IconSetId::new(0, 0),
-        icon: IconId(0),
-    }
+    IconRef::fixture(0, 0)
 }
 
 fn size(w: f32, h: f32) -> U16Vec2 {

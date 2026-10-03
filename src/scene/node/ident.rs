@@ -59,8 +59,10 @@ impl Ident {
     /// produce the raw id `SeenIds` disambiguates into the recorded one.
     /// [`Ident::Auto`] and [`Ident::Hash`] both consult `parent` (so a
     /// widget's identity tracks its position in the tree, not its
-    /// global record order); [`Ident::Verbatim`] passes through, and so
-    /// does [`Ident::Resolved`], which is past this step.
+    /// global record order); [`Ident::Verbatim`] passes through.
+    /// [`Ident::Resolved`] never reaches here: `Widget::resolve` answers it
+    /// without asking the forest, and one fed back would be disambiguated
+    /// a second time.
     /// `parent == None` covers the "no open node at all" case (the
     /// root of a side layer). `Layer::Main`'s synthetic viewport
     /// counts as a parent with a frame-stable id, so top-level widgets
@@ -69,7 +71,8 @@ impl Ident {
     #[inline]
     pub(crate) fn raw_id(self, parent: Option<WidgetId>) -> WidgetId {
         match self {
-            Ident::Verbatim(id) | Ident::Resolved(id) => id,
+            Ident::Verbatim(id) => id,
+            Ident::Resolved(id) => unreachable!("resolved id {id:?} fed back to the forest"),
             Ident::Auto(id) | Ident::Hash(id) => match parent {
                 Some(p) => p.with(id.0),
                 None => id,

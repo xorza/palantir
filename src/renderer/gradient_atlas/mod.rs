@@ -5,13 +5,13 @@
 //!
 //! ## Bake output convention
 //!
-//! Each baked row is 256 [`RgbaF16`] texels = 2048 bytes, **straight
-//! (non-premultiplied) linear-RGB** f16. The backend uploads these into
-//! an `Rgba16Float` texture (no auto-decode); the shader samples and
-//! gets the stored linear value directly as f16-decoded floats.
-//! Premultiply happens in the shader on the sampled value — same
-//! convention as the rest of the pipeline (see "Colour pipeline" in
-//! `AGENTS.md`).
+//! Each baked row is 256 [`RgbaF16`] texels = 2048 bytes, **premultiplied
+//! linear-RGB** f16. The backend uploads these into an `Rgba16Float`
+//! texture (no auto-decode); the shader samples and gets the stored linear
+//! value directly as f16-decoded floats. Premultiplied, so the sampler's
+//! filter between two texels blends the way the stops do (see
+//! [`crate::primitives::brush`]); the shader makes the sample straight
+//! before it multiplies by the fill colour.
 //!
 //! f16, not u8: a dark stop linearises to a tiny value (`#1a1a2e`'s red
 //! is linear ≈ 0.010 ≈ 3/255), so an 8-bit *linear* row crushes the
@@ -29,16 +29,16 @@
 //! before the 256-texel loop, so the inner loop never runs the transfer
 //! function.
 //!
-//! - [`Interp::Linear`]: physically correct linear blend. Shows the
-//!   classic midpoint dip on saturated complementary pairs (red↔green
-//!   muddy brown).
-//! - [`Interp::Oklab`]: pre-converts each stop's linear RGB to Oklab
-//!   `L/a/b` triplets once at bake time; the texel loop lerps the
-//!   triplet and runs only `oklab_to_linear` per texel. Perceptually
-//!   uniform; the CSS Color 4 default.
+//! - [`Interp::Linear`](crate::primitives::brush::gradient::Interp::Linear):
+//!   physically correct linear blend. Shows the classic midpoint dip on
+//!   saturated complementary pairs (red↔green muddy brown).
+//! - [`Interp::Oklab`](crate::primitives::brush::gradient::Interp::Oklab):
+//!   pre-converts each stop's linear RGB to Oklab `L/a/b` triplets once at bake
+//!   time; the texel loop lerps the triplet and runs only `oklab::to_linear` per
+//!   texel. Perceptually uniform; the CSS Color 4 default.
 
 use crate::primitives::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
@@ -442,7 +442,7 @@ impl CpuGradientAtlas {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
 
     impl CpuGradientAtlas {

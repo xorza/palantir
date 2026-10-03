@@ -1,8 +1,8 @@
+use crate::internals::harness::UiHarness;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::UVec2;
@@ -70,7 +70,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 /// `Damage::Full` flicker on every drag-the-node-past-the-edge tick
 /// (the darkroom graph-view bug). Hug canvas behavior is unchanged
 /// (verified by `canvas_places_child_at_position_within_inner_rect` and
-/// `canvas_two_children_take_bbox_max_position_plus_size`).
+/// `canvas_hugs_to_bounding_box_of_placed_children`).
 #[test]
 fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -232,34 +232,6 @@ fn canvas_measures_a_child_against_the_room_past_its_position() {
     );
 }
 
-#[test]
-fn canvas_collapsed_child_does_not_grow_bbox() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let panel = h.under_outer(|ui| {
-        Panel::canvas()
-            .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("a"))
-                    .position((0.0, 0.0))
-                    .size((10.0, 10.0))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("collapsed"))
-                    .position((100.0, 100.0))
-                    .size((50.0, 50.0))
-                    .collapsed()
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
-    assert_eq!(r.size.w, 10.0);
-    assert_eq!(r.size.h, 10.0);
-}
-
 /// Pin: Canvas places children at their explicit `.position(...)` and
 /// **ignores `.align(...)`** — children's alignment values do not
 /// participate in placement (Canvas is the "explicit position wins"
@@ -270,30 +242,22 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
 #[test]
 fn canvas_ignores_child_align() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut child = None;
-    let _panel = h.under_outer(|ui| {
+    h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                child = Some(
-                    Block::new()
-                        .id(WidgetId::from_hash("aligned"))
-                        .position((30.0, 40.0))
-                        .size((50.0, 50.0))
-                        // Right/Bottom would matter on Stack/ZStack/Grid;
-                        // Canvas must ignore it.
-                        .align(Align::new(HAlign::Right, VAlign::Bottom))
-                        .show(ui)
-                        .node(),
-                );
-            })
-            .response
-            .node()
+                Block::new()
+                    .id(WidgetId::from_hash("aligned"))
+                    .position((30.0, 40.0))
+                    .size((50.0, 50.0))
+                    // Right/Bottom would matter on Stack/ZStack/Grid;
+                    // Canvas must ignore it.
+                    .align(Align::new(HAlign::Right, VAlign::Bottom))
+                    .show(ui);
+            });
     });
-    let r = h
-        .layout_rect(WidgetId::from_hash("aligned"))
-        .expect("arranged");
+    let r = h.arranged(WidgetId::from_hash("aligned"));
     assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }

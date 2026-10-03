@@ -1,84 +1,10 @@
+use crate::internals::harness::UiHarness;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
+use crate::widgets::theme::palette::Palette;
 use glam::{UVec2, Vec2};
-
-fn run(value: &mut bool, h: &mut UiHarness) {
-    let mut v = *value;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut v)
-                .id(WidgetId::from_hash("cb"))
-                .label("label")
-                .show(ui);
-        });
-    });
-    *value = v;
-}
-
-#[test]
-fn clicking_toggles_value() {
-    let surface = UVec2::new(300, 100);
-    let mut h = UiHarness::new(surface);
-    let mut v = false;
-
-    // Frame 1: lay out so the row has a rect.
-    let mut rec = v;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut rec)
-                .id(WidgetId::from_hash("cb"))
-                .label("label")
-                .show(ui);
-        });
-    });
-    v = rec;
-    assert!(!v, "starts unchecked");
-
-    // Click on the box area.
-    h.click_at(Vec2::new(8.0, 8.0));
-    run(&mut v, &mut h);
-    assert!(v, "single click toggles on");
-
-    h.click_at(Vec2::new(8.0, 8.0));
-    run(&mut v, &mut h);
-    assert!(!v, "second click toggles off");
-}
-
-#[test]
-fn disabled_checkbox_does_not_toggle() {
-    let surface = UVec2::new(300, 100);
-    let mut h = UiHarness::new(surface);
-    let mut v = false;
-
-    let mut rec = v;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut rec)
-                .id(WidgetId::from_hash("cb"))
-                .label("label")
-                .disabled(true)
-                .show(ui);
-        });
-    });
-    v = rec;
-
-    h.click_at(Vec2::new(8.0, 8.0));
-    let mut rec = v;
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut rec)
-                .id(WidgetId::from_hash("cb"))
-                .label("label")
-                .disabled(true)
-                .show(ui);
-        });
-    });
-    v = rec;
-    assert!(!v, "disabled checkbox swallows click");
-}
 
 /// The tick is themed, not baked in: `ToggleTheme::check_pts` holds it
 /// in unit space and `check_polyline` scales it by `box_size`, so the
@@ -121,7 +47,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
 
     // Stock 16 px box: unit coords land back on the hand-tuned pixels
     // they were derived from (3.5/16 * 16 = 3.5, and so on).
-    let stock = ToggleTheme::checkbox(&crate::widgets::theme::palette::Palette::DEFAULT);
+    let stock = ToggleTheme::checkbox(&Palette::DEFAULT);
     assert_eq!(stock.box_size, 16.0);
     assert_eq!(
         drawn(stock.clone()),

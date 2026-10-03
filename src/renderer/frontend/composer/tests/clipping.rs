@@ -1,31 +1,26 @@
 //! What a clip keeps, what it culls, and what a rounded one costs.
 
+use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::{corners::Corners, size::Size, urect::URect};
-use crate::renderer::frontend::capture::PaintCapture;
-use crate::renderer::frontend::composer::Composer;
+use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, composer, curve, draw, image, mesh, params, push_distinct_rounded_clips,
-    rect, render_buffer, run, text,
+    clip, clip_rounded, curve, draw, draw_marked, image, mesh, params, push_distinct_rounded_clips,
+    run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
-
-#[test]
-#[should_panic(expected = "composer texture dimension limit must be positive")]
-fn composer_rejects_zero_texture_limit() {
-    let _ = Composer::new(0);
-}
 
 #[test]
 fn compose_with_no_clip_emits_one_unscissored_group() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(0.0, 0.0, 10.0, 10.0));
-            draw(b, rect(20.0, 0.0, 10.0, 10.0));
+            draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
+            draw(b, Rect::new(20.0, 0.0, 10.0, 10.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -42,15 +37,14 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
 /// neither.
 #[test]
 fn dropping_a_session_emits_the_trailing_group_and_batch() {
-    let display = params(1.0, UVec2::new(200, 200));
-    let store = RecordStore::default();
-    let mut composer = composer();
-    let mut out = render_buffer();
+    let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     {
-        let mut session = composer.begin(display, Duration::ZERO, &store, &mut out);
+        let mut session = rig
+            .composer
+            .begin(rig.display, Duration::ZERO, &rig.store, &mut rig.out);
         let mut recorded = PaintCapture::default();
-        draw(&mut recorded, rect(0.0, 0.0, 10.0, 10.0));
-        text(&mut recorded, rect(0.0, 20.0, 10.0, 10.0));
+        draw(&mut recorded, Rect::new(0.0, 0.0, 10.0, 10.0));
+        text(&mut recorded, Rect::new(0.0, 20.0, 10.0, 10.0));
         recorded.replay(&mut session);
         // The rows themselves are already in the buffer; only the
         // group and batch that schedule them are still pending.
@@ -59,6 +53,7 @@ fn dropping_a_session_emits_the_trailing_group_and_batch() {
         assert!(session.out.groups.is_empty());
         assert!(session.out.text_batches.is_empty());
     }
+    let out = &rig.out;
     assert_eq!(out.quads.len(), 1);
     assert_eq!(out.texts.len(), 1);
     assert_eq!(out.groups.len(), 1, "trailing group emitted on drop");
@@ -72,12 +67,12 @@ fn dropping_a_session_emits_the_trailing_group_and_batch() {
 fn compose_with_clip_groups_inner_draws_under_scissor() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(0.0, 0.0, 10.0, 10.0));
-            clip(b, rect(50.0, 50.0, 100.0, 100.0));
-            draw(b, rect(60.0, 60.0, 20.0, 20.0));
-            draw(b, rect(90.0, 90.0, 20.0, 20.0));
+            draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
+            clip(b, Rect::new(50.0, 50.0, 100.0, 100.0));
+            draw(b, Rect::new(60.0, 60.0, 20.0, 20.0));
+            draw(b, Rect::new(90.0, 90.0, 20.0, 20.0));
             b.pop_clip();
-            draw(b, rect(0.0, 0.0, 5.0, 5.0));
+            draw(b, Rect::new(0.0, 0.0, 5.0, 5.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -101,9 +96,9 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
 fn compose_intersects_nested_clips() {
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            clip(b, rect(50.0, 50.0, 100.0, 100.0));
-            draw(b, rect(60.0, 60.0, 10.0, 10.0));
+            clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            clip(b, Rect::new(50.0, 50.0, 100.0, 100.0));
+            draw(b, Rect::new(60.0, 60.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
         },
@@ -117,83 +112,62 @@ fn compose_intersects_nested_clips() {
     assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 50, 50));
 }
 
+/// Every draw kind culls against the active clip the same way: a draw
+/// wholly outside it is dropped (the GPU would scissor it, but skipping
+/// the row saves the CPU work), and one that overlaps it at all is kept,
+/// since it could light a pixel. Under a 100 px clip each kind draws one
+/// rect inside, one at (200, 200) outside, and one straddling the clip's
+/// corner, so two rows of the kind survive.
 #[test]
-fn cull_drops_drawrect_entirely_outside_active_clip() {
-    // Two rect quads under the same clip: one inside, one fully
-    // outside. Composer must skip emitting the outside one (the GPU
-    // would scissor it, but skipping the `quads.push` saves CPU work).
-    // Push/Pop pair still emits a single scissored group covering the
-    // visible quad.
-    let buf = run(
-        |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(20.0, 20.0, 30.0, 30.0)); // inside
-            draw(b, rect(200.0, 200.0, 30.0, 30.0)); // entirely outside
-            b.pop_clip();
+fn cull_drops_only_draws_wholly_outside_the_active_clip() {
+    #[derive(Debug)]
+    struct Kind {
+        name: &'static str,
+        draw: fn(&mut PaintCapture, Rect),
+        rows: fn(&RenderBuffer) -> usize,
+    }
+    let kinds = [
+        Kind {
+            name: "rect",
+            draw,
+            rows: |buf| buf.quads.len(),
         },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(buf.quads.len(), 1, "outside-clip rect must be culled");
-    assert_eq!(buf.groups.len(), 1);
-    assert!(buf.groups[0].scissor.is_some());
-}
-
-#[test]
-fn cull_drops_drawtext_entirely_outside_active_clip() {
-    let buf = run(
-        |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            text(b, rect(10.0, 10.0, 50.0, 20.0)); // inside
-            text(b, rect(300.0, 300.0, 50.0, 20.0)); // outside
-            b.pop_clip();
+        Kind {
+            name: "text",
+            draw: text,
+            rows: |buf| buf.texts.len(),
         },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(buf.texts.len(), 1, "outside-clip text run must be culled");
-}
-
-#[test]
-fn cull_keeps_drawrect_partially_inside_active_clip() {
-    // Partial overlap counts — anything that could light a pixel keeps
-    // its quad. Only fully-disjoint draws are dropped.
-    let buf = run(
-        |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            draw(b, rect(80.0, 80.0, 50.0, 50.0)); // straddles the clip
-            b.pop_clip();
+        Kind {
+            name: "mesh",
+            draw: mesh,
+            rows: |buf| buf.meshes.len(),
         },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(buf.quads.len(), 1, "straddling rect must still emit");
+    ];
+    for kind in kinds {
+        let buf = run(
+            |b, _arena| {
+                clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                (kind.draw)(b, Rect::new(10.0, 10.0, 30.0, 30.0));
+                (kind.draw)(b, Rect::new(200.0, 200.0, 30.0, 30.0));
+                (kind.draw)(b, Rect::new(80.0, 80.0, 50.0, 50.0));
+                b.pop_clip();
+            },
+            &params(1.0, UVec2::new(400, 400)),
+        );
+        assert_eq!((kind.rows)(&buf), 2, "{}", kind.name);
+    }
 }
 
 #[test]
 fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(-10.0, -10.0, 20.0, 20.0));
+            draw(b, Rect::new(-10.0, -10.0, 20.0, 20.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
     assert_eq!(buf.groups.len(), 1);
-}
-
-#[test]
-fn cull_drops_drawmesh_entirely_outside_active_clip() {
-    // Mesh now gets the same active-clip cull every other shape draw
-    // performs. Two meshes under one clip: inside emits a row, fully
-    // outside is culled.
-    let buf = run(
-        |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // inside
-            mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip
-            b.pop_clip();
-        },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(buf.meshes.len(), 1, "outside-clip mesh must be culled");
 }
 
 #[test]
@@ -205,16 +179,16 @@ fn cull_handles_culled_text_then_quad_split() {
     // share one group with both rects in it (no spurious split).
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            text(b, rect(300.0, 300.0, 50.0, 20.0)); // culled
-            draw(b, rect(10.0, 10.0, 30.0, 30.0));
-            draw(b, rect(50.0, 50.0, 30.0, 30.0));
+            clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            text(b, Rect::new(300.0, 300.0, 50.0, 20.0)); // culled
+            draw_marked(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // call 2
+            draw_marked(b, Rect::new(50.0, 50.0, 30.0, 30.0)); // call 3
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.texts.len(), 0);
-    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(survivor_calls(&buf), [2, 3]);
     assert_eq!(
         buf.groups.len(),
         1,
@@ -226,7 +200,7 @@ fn cull_handles_culled_text_then_quad_split() {
 fn compose_skips_groups_with_no_quads() {
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 50.0, 50.0));
+            clip(b, Rect::new(0.0, 0.0, 50.0, 50.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -246,13 +220,13 @@ fn compose_skips_groups_with_no_quads() {
 fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
         |b, _arena| {
-            clip_rounded(b, rect(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
+            clip_rounded(b, Rect::new(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
             // Tier 1: direct draw under the rounded clip.
-            draw(b, rect(20.0, 30.0, 40.0, 40.0));
+            draw(b, Rect::new(20.0, 30.0, 40.0, 40.0));
             // Tier 2: nest a plain rect clip — children of THIS clip
             // must still inherit the rounded info from the ancestor.
-            clip(b, rect(30.0, 40.0, 40.0, 30.0));
-            draw(b, rect(35.0, 45.0, 10.0, 10.0));
+            clip(b, Rect::new(30.0, 40.0, 40.0, 30.0));
+            draw(b, Rect::new(35.0, 45.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
         },
@@ -298,12 +272,12 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
 fn push_clip_rounded_nested_builds_outer_inner_chain() {
     let buf = run(
         |b, _arena| {
-            clip_rounded(b, rect(10.0, 10.0, 200.0, 200.0), Corners::all(8.0));
-            draw(b, rect(20.0, 20.0, 40.0, 40.0));
-            clip_rounded(b, rect(20.0, 20.0, 100.0, 100.0), Corners::all(4.0));
-            draw(b, rect(30.0, 30.0, 20.0, 20.0));
-            clip(b, rect(30.0, 30.0, 50.0, 50.0));
-            draw(b, rect(35.0, 35.0, 10.0, 10.0));
+            clip_rounded(b, Rect::new(10.0, 10.0, 200.0, 200.0), Corners::all(8.0));
+            draw(b, Rect::new(20.0, 20.0, 40.0, 40.0));
+            clip_rounded(b, Rect::new(20.0, 20.0, 100.0, 100.0), Corners::all(4.0));
+            draw(b, Rect::new(30.0, 30.0, 20.0, 20.0));
+            clip(b, Rect::new(30.0, 30.0, 50.0, 50.0));
+            draw(b, Rect::new(35.0, 35.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
             b.pop_clip();
@@ -319,7 +293,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
 
     let outer = chain(0);
     assert_eq!(outer.len(), 1);
-    assert_eq!(outer[0].mask_rect, rect(10.0, 10.0, 200.0, 200.0));
+    assert_eq!(outer[0].mask_rect, Rect::new(10.0, 10.0, 200.0, 200.0));
     assert_eq!(outer[0].corners.as_array()[0], 8.0);
 
     let nested = chain(1);
@@ -328,7 +302,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
         nested[0], outer[0],
         "chain lists the ancestor first (outer→inner)"
     );
-    assert_eq!(nested[1].mask_rect, rect(20.0, 20.0, 100.0, 100.0));
+    assert_eq!(nested[1].mask_rect, Rect::new(20.0, 20.0, 100.0, 100.0));
     assert_eq!(nested[1].corners.as_array()[0], 4.0);
 
     // Rect clip under both: inherits the depth-2 chain verbatim.
@@ -344,7 +318,7 @@ fn rounded_clip_chain_accepts_stencil_depth_255() {
     let buf = run(
         |buffer, _payloads| {
             push_distinct_rounded_clips(buffer, 255);
-            draw(buffer, rect(100.0, 100.0, 20.0, 20.0));
+            draw(buffer, Rect::new(100.0, 100.0, 20.0, 20.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -369,10 +343,10 @@ fn rounded_clip_chain_rejects_stencil_depth_256() {
 fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     let buf = run(
         |b, _arena| {
-            clip_rounded(b, rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
-            draw(b, rect(20.0, 20.0, 20.0, 20.0));
-            clip_rounded(b, rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
-            draw(b, rect(50.0, 50.0, 20.0, 20.0));
+            clip_rounded(b, Rect::new(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
+            draw(b, Rect::new(20.0, 20.0, 20.0, 20.0));
+            clip_rounded(b, Rect::new(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
+            draw(b, Rect::new(50.0, 50.0, 20.0, 20.0));
             b.pop_clip();
             b.pop_clip();
         },
@@ -396,8 +370,8 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
 fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
     let buf = run(
         |b, _arena| {
-            clip_rounded(b, rect(-50.0, -20.0, 200.0, 100.0), Corners::all(8.0));
-            draw(b, rect(0.0, 0.0, 10.0, 10.0));
+            clip_rounded(b, Rect::new(-50.0, -20.0, 200.0, 100.0), Corners::all(8.0));
+            draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(120, 60)),
@@ -417,8 +391,8 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
 fn push_clip_rect_emits_no_rounded_data() {
     let buf = run(
         |b, _arena| {
-            clip(b, rect(10.0, 20.0, 100.0, 80.0));
-            draw(b, rect(20.0, 30.0, 10.0, 10.0));
+            clip(b, Rect::new(10.0, 20.0, 100.0, 80.0));
+            draw(b, Rect::new(20.0, 30.0, 10.0, 10.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -432,10 +406,10 @@ fn push_clip_rect_emits_no_rounded_data() {
 fn compose_culls_non_text_draws_outside_each_viewport_edge_without_clip() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(-40.0, 10.0, 10.0, 10.0));
-            mesh(b, rect(10.0, -40.0, 10.0, 10.0));
-            image(b, rect(240.0, 10.0, 10.0, 10.0));
-            curve(b, rect(10.0, 240.0, 10.0, 10.0));
+            draw(b, Rect::new(-40.0, 10.0, 10.0, 10.0));
+            mesh(b, Rect::new(10.0, -40.0, 10.0, 10.0));
+            image(b, Rect::new(240.0, 10.0, 10.0, 10.0));
+            curve(b, Rect::new(10.0, 240.0, 10.0, 10.0));
         },
         &params(1.0, UVec2::new(200, 200)),
     );

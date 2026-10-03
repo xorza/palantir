@@ -1,18 +1,18 @@
 //! What moves the offset, and where it is clamped.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::support::{
-    SURFACE, build, driven, read_state, scroll_content, scroll_viewport,
+    SURFACE, build, driven, fixed_block, read_state, scroll_content, scroll_viewport,
 };
 use glam::Vec2;
 
@@ -48,7 +48,9 @@ fn wheel_delta_advances_offset_with_clamp() {
     for (label, viewport_h, content_h, pushes, expected) in cases {
         let mut h = UiHarness::new(SURFACE);
         h.frame(|ui| build(ui, *viewport_h, *content_h));
-        h.move_to(Vec2::new(50.0, 50.0));
+        // Checked aim: a wheel that missed the scroll would also leave
+        // the non-overflowing rows at zero.
+        h.move_onto(WidgetId::from_hash("scroll"));
         for wheel_y in *pushes {
             h.scroll_pixels(Vec2::new(0.0, *wheel_y));
             h.frame(|ui| build(ui, *viewport_h, *content_h));
@@ -74,10 +76,7 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
             .hide_bars()
             .content_margin(m)
             .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("content"))
-                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                    .show(ui);
+                fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
             });
     };
     h.frame(build_m);
@@ -109,10 +108,7 @@ fn horizontal_scroll_pans_only_x() {
                     .id(WidgetId::from_hash("hscroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("hcontent"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("hcontent"), 800.0, 40.0)
                     });
             });
     };
@@ -121,7 +117,7 @@ fn horizontal_scroll_pans_only_x() {
 
     h.frame(build_h);
     let id = WidgetId::from_hash("hscroll");
-    let row = *h.ui.state_or_default::<ScrollState>(id);
+    let row = *h.state::<ScrollState>(id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
 }
 
@@ -136,10 +132,7 @@ fn both_axis_scroll_pans_both_axes() {
                     .id(WidgetId::from_hash("xy"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("xy-content"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("xy-content"), 800.0, 800.0)
                     });
             });
     };
@@ -148,7 +141,7 @@ fn both_axis_scroll_pans_both_axes() {
 
     h.frame(build_xy);
     let id = WidgetId::from_hash("xy");
-    let row = *h.ui.state_or_default::<ScrollState>(id);
+    let row = *h.state::<ScrollState>(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
     assert_eq!(scroll_content(&h.ui, id), Size::new(800.0, 800.0));
     // Viewport reserves `theme.width + theme.gap = 12px` per panned
@@ -173,15 +166,11 @@ fn drag_thumb_pans_proportionally() {
                         .id(WidgetId::from_hash("scroll"))
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                                .show(ui);
+                            fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                         });
                 });
         };
-        h.frame(build);
-        h.frame(build);
+        h.prime(2, build);
 
         let outer_id = WidgetId::from_hash("scroll");
         let scroll_id = outer_id.with("viewport");
@@ -194,16 +183,16 @@ fn drag_thumb_pans_proportionally() {
         // viewport = 200, content = 800 ⇒ max_offset = 600.
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
         // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
-        let offset_y = h.ui.state_or_default::<ScrollState>(outer_id).offset.y;
-        assert!(
-            (offset_y - 120.0).abs() < 0.5,
-            "30 logical px at {scale}× should produce offset 120, got {offset_y}",
+        let offset_y = h.state::<ScrollState>(outer_id).offset.y;
+        assert_eq!(
+            offset_y, 120.0,
+            "30 logical px at {scale}× should produce offset 120, got {offset_y}"
         );
 
         h.move_to(press + Vec2::new(0.0, 9_999.0 * scale));
         h.frame(build);
         assert_eq!(
-            h.ui.state_or_default::<ScrollState>(outer_id).offset.y,
+            h.state::<ScrollState>(outer_id).offset.y,
             600.0,
             "drag past end at {scale}× clamps to max offset",
         );
@@ -242,10 +231,12 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                                         .id(WidgetId::from_hash("hscroll"))
                                         .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                                         .show(ui, |ui| {
-                                            Block::new()
-                                                .id(WidgetId::from_hash("hcontent"))
-                                                .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
-                                                .show(ui);
+                                            fixed_block(
+                                                ui,
+                                                WidgetId::from_hash("hcontent"),
+                                                800.0,
+                                                40.0,
+                                            )
                                         });
                                 });
                         }
@@ -256,19 +247,16 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             let outer_id = WidgetId::from_hash(*scroll_key);
             let scroll_id = outer_id.with("viewport");
             let track_id = scroll_id.with(*track_suffix);
-            let track = h.ui.response_for(track_id);
-            let layout = track.layout_rect.expect("track arranged");
             let (forward_local, back_local) = match axis {
                 AxisCase::V => (Vec2::new(6.0, 196.0), Vec2::new(6.0, 4.0)),
                 AxisCase::H => (Vec2::new(196.0, 6.0), Vec2::new(4.0, 6.0)),
             };
-            let forward_press = track.transform.apply_point(layout.min + forward_local);
-            let back_press = track.transform.apply_point(layout.min + back_local);
+            let forward_press = h.point_in(track_id, forward_local);
 
             h.press_at(forward_press);
             h.release();
             h.frame(build_axis);
-            let offset = h.ui.state_or_default::<ScrollState>(outer_id).offset;
+            let offset = h.state::<ScrollState>(outer_id).offset;
             let forward = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -278,10 +266,13 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                 "case: {label} at {scale}× — click past thumb pages forward",
             );
 
+            // Aimed after the forward page: before it, the thumb sat
+            // over this end of the track.
+            let back_press = h.point_in(track_id, back_local);
             h.press_at(back_press);
             h.release();
             h.frame(build_axis);
-            let offset = h.ui.state_or_default::<ScrollState>(outer_id).offset;
+            let offset = h.state::<ScrollState>(outer_id).offset;
             let back = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -318,8 +309,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     // records against the stale 800px content (offset stays 600) and
     // arranges the new 300px content; frame 2 records against the fresh
     // 300px content and clamps the stranded offset down.
-    h.frame(|ui| build(ui, 200.0, 300.0));
-    h.frame(|ui| build(ui, 200.0, 300.0));
+    h.prime(2, |ui| build(ui, 200.0, 300.0));
     assert_eq!(
         read_state(&mut h).offset.y,
         100.0,
@@ -357,8 +347,7 @@ fn content_margin_does_not_shift_content_that_fits() {
                     .show(ui);
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert_eq!(
         read_state(&mut h).offset,
         Vec2::ZERO,
@@ -440,10 +429,7 @@ fn pan_by_composes_with_a_wheel_and_with_itself() {
                     .pan_by(Vec2::new(0.0, 8.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(200.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 200.0, 800.0)
                     });
             });
     });

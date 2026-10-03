@@ -35,7 +35,7 @@ struct ContextMenuState {
 /// caller threading a flag.
 ///
 /// **The one overlay that owns its own open state.**
-/// [`Popup`](crate::Popup) and [`Modal`](crate::Modal) make the caller hold
+/// [`Popup`] and [`Modal`](crate::Modal) make the caller hold
 /// the flag and record them only while it is set. A menu is raised by a
 /// gesture rather than by application state, so there is nothing an
 /// application would keep the flag *for* — [`Self::is_open`],

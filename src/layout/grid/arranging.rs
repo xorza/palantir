@@ -13,9 +13,9 @@ use glam::Vec2;
 pub(super) fn arrange_inner(
     pass: &mut LayoutPass<'_>,
     node: NodeId,
-    inner: Rect,
     idx: GridDefId,
     depth: usize,
+    inner: Rect,
 ) {
     let tree = pass.tree;
     let def = tree.grid_defs[usize::from(idx)];

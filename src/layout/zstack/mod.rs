@@ -6,7 +6,8 @@ use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -23,13 +24,13 @@ impl LayoutDriver for ZStack {
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
     /// ZStack: children all at the same position (top-left of inner rect).
-    /// Per-axis available width: pass `inner` when the ZStack itself is
-    /// constrained (Fill / Fixed) so children — including grids that need
-    /// a finite slot to commit cell widths (e.g. Grid's Phase-1 column
-    /// resolution) — get a meaningful
-    /// constraint. Pass `INFINITY` only on Hug axes, where passing `inner`
-    /// would create the recursive "ZStack hugs its own Fill child" loop.
-    /// Same per-axis pattern Stack uses on its cross axis.
+    /// Every child is offered the inner extent on both axes, Hug ones
+    /// included, so children — a grid committing cell widths, wrapping
+    /// text — get a finite constraint whenever the ZStack has one. A Hug
+    /// ZStack resolves to `min(content, available)`, so that extent is the
+    /// most it can grow to; a Fill child reports its content at measure
+    /// (`AxisSlot::resolve`), so hugging it does not feed back. Same
+    /// pattern Stack uses on its cross axis.
     ///
     /// Content size = `max(child desired)` per axis, so the panel hugs the
     /// largest child (cross-axis fall-back when ZStack is Hug).

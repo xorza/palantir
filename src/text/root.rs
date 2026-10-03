@@ -37,7 +37,7 @@ impl TextRoot {
     ///
     /// Panics with [`WRAP_FLOOR_ERROR`] when the run was shaped without
     /// the scan — a wiring bug rather than bad data.
-    pub(super) fn wrap_floor(&self) -> f32 {
+    pub(super) const fn wrap_floor(&self) -> f32 {
         self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
     }
 }
@@ -52,7 +52,7 @@ const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape:
      and the policy asking for it have drifted apart";
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use super::*;
     use crate::text::key::TextShapeKey;
 
@@ -91,7 +91,7 @@ pub(crate) mod test_support {
         /// with [`WRAP_FLOOR_ERROR`] exactly as [`TextRoot::wrap_floor`]
         /// does — same field, same contract, so a drift in one cannot
         /// leave the other explaining a rule it dropped.
-        pub(crate) fn wrap_floor(&self) -> f32 {
+        pub(crate) const fn wrap_floor(&self) -> f32 {
             self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
         }
 

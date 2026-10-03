@@ -1,4 +1,6 @@
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::size_trio::SizeTrio;
+use crate::primitives::size::Size;
 
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
@@ -31,43 +33,53 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     h.ui.theme_mut().separator.thickness = 11.0;
     h.ui.theme_mut().separator.margin = Spacing::all(9.0);
 
-    let (mut inherited, mut explicit, mut global) = (None, None, None);
-    h.frame(|ui| {
+    let [inherited, explicit, global, thick] = h.frame_value(|ui| {
         let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
         col.show(ui, |ui| {
-            inherited = Some(Separator::horizontal().style(&styled).show(ui).node());
-            explicit = Some(
+            [
+                Separator::horizontal().style(&styled).show(ui).node(),
                 Separator::horizontal()
                     .style(&styled)
                     .margin(Spacing::ZERO)
                     .show(ui)
                     .node(),
-            );
-            global = Some(Separator::horizontal().show(ui).node());
-        });
+                Separator::horizontal().show(ui).node(),
+                Separator::horizontal()
+                    .style(&styled)
+                    .thickness(7.0)
+                    .show(ui)
+                    .node(),
+            ]
+        })
+        .inner
     });
 
     let layouts = h.ui.tree(Layer::Main).records.layout();
     let rects = &h.ui.layout(Layer::Main).rect;
     assert_eq!(
-        layouts[inherited.unwrap().idx()].margin,
+        layouts[inherited.idx()].margin,
         Spacing::xy(0.0, 5.0),
         "the styled bundle's margin fills in",
     );
     assert_eq!(
-        rects[inherited.unwrap().idx()].size.h,
+        rects[inherited.idx()].size.h,
         3.0,
         "the styled bundle's thickness wins over the global slot's 11",
     );
     assert_eq!(
-        layouts[explicit.unwrap().idx()].margin,
+        layouts[explicit.idx()].margin,
         Spacing::ZERO,
         "an explicit margin beats the styled bundle",
     );
     assert_eq!(
-        layouts[global.unwrap().idx()].margin,
+        layouts[global.idx()].margin,
         Spacing::all(9.0),
         "an unstyled rule still reads the global slot",
+    );
+    assert_eq!(
+        rects[thick.idx()].size.h,
+        7.0,
+        "an explicit thickness beats the styled bundle's 3",
     );
 }
 
@@ -76,33 +88,21 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
 /// the 400-wide FILL column at the theme thickness of 1.
 #[test]
 fn explicit_size_overrides_stretch_default() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
-    let (mut sized, mut hug, mut default) = (None, None, None);
-    h.frame(|ui| {
-        let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
-        col.show(ui, |ui| {
-            sized = Some(
-                Separator::horizontal()
-                    .size((Sizing::fixed(50.0), Sizing::fixed(3.0)))
-                    .show(ui)
-                    .node(),
-            );
-            hug = Some(
-                Separator::horizontal()
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui)
-                    .node(),
-            );
-            default = Some(Separator::horizontal().show(ui).node());
-        });
+    let trio = SizeTrio::of((Sizing::fixed(50.0), Sizing::fixed(3.0)), |ui, size| {
+        let mut rule = Separator::horizontal();
+        if let Some(size) = size {
+            rule = rule.size(size);
+        }
+        rule.show(ui).node()
     });
-    let rects = &h.ui.layout(Layer::Main).rect;
-    let s = rects[sized.unwrap().idx()];
-    assert_eq!((s.size.w, s.size.h), (50.0, 3.0), "explicit size");
-    let h = rects[hug.unwrap().idx()];
-    assert_eq!((h.size.w, h.size.h), (0.0, 0.0), "explicit hug");
-    let d = rects[default.unwrap().idx()];
-    assert_eq!((d.size.w, d.size.h), (400.0, 1.0), "untouched default");
+    assert_eq!(
+        trio,
+        SizeTrio {
+            sized: Size::new(50.0, 3.0),
+            hug: Size::ZERO,
+            default: Size::new(400.0, 1.0),
+        }
+    );
 }
 
 /// The `Hug + Stretch` default is per-axis, so it fills in only the axis
@@ -117,39 +117,38 @@ fn explicit_size_overrides_stretch_default() {
 #[test]
 fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let (mut default, mut centered, mut bottom) = (None, None, None);
-    h.frame(|ui| {
+    let [default, centered, bottom] = h.frame_value(|ui| {
         let layers = Panel::zstack().auto_id().size((Sizing::FILL, Sizing::FILL));
-        layers.show(ui, |ui| {
-            default = Some(Separator::horizontal().show(ui).node());
-            centered = Some(
-                Separator::horizontal()
-                    .align(Align::h(HAlign::Center))
-                    .show(ui)
-                    .node(),
-            );
-            bottom = Some(
-                Separator::horizontal()
-                    .align(Align::v(VAlign::Bottom))
-                    .show(ui)
-                    .node(),
-            );
-        });
+        layers
+            .show(ui, |ui| {
+                [
+                    Separator::horizontal().show(ui).node(),
+                    Separator::horizontal()
+                        .align(Align::h(HAlign::Center))
+                        .show(ui)
+                        .node(),
+                    Separator::horizontal()
+                        .align(Align::v(VAlign::Bottom))
+                        .show(ui)
+                        .node(),
+                ]
+            })
+            .inner
     });
     let rects = &h.ui.layout(Layer::Main).rect;
-    let d = rects[default.unwrap().idx()];
+    let d = rects[default.idx()];
     assert_eq!(
         (d.min.x, d.size.w),
         (0.0, 400.0),
         "untouched rule stretches"
     );
-    let c = rects[centered.unwrap().idx()];
+    let c = rects[centered.idx()];
     assert_eq!(
         (c.min.x, c.size.w),
         (200.0, 0.0),
         "an explicit horizontal alignment beats the stretch default",
     );
-    let b = rects[bottom.unwrap().idx()];
+    let b = rects[bottom.idx()];
     assert_eq!(
         (b.min.y, b.size.w),
         (299.0, 400.0),

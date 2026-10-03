@@ -629,4 +629,17 @@ impl WindowDriver {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::host::window_driver::WindowDriver;
+
+    impl WindowDriver {
+        /// Whether the target holds this driver's last output. Read by
+        /// the offscreen host's tests, which run the GPU half that sets it.
+        pub(crate) const fn output_valid(&self) -> bool {
+            self.output_valid
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

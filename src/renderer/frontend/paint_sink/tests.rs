@@ -1,16 +1,18 @@
-use crate::gpu::gpu_frame_ctx::GpuFrameCtx;
-use crate::primitives::color::{RgbaF16, RgbaF32};
+//! The paint sink's no-op gate: what it drops, what it passes, and the
+//! faded payload it judges.
+
+use crate::internals::paint_capture::{PaintCall, PaintCapture};
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
-use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use glam::Vec2;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[test]
 fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
@@ -108,14 +110,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
 /// `paint.is_some()` and nothing else would notice if it stopped.
 #[test]
 fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
-    #[derive(Debug)]
-    struct NoopGpuPaint;
-
-    impl GpuPaint for NoopGpuPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-    }
-
-    let paint = GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)));
+    let paint = GpuPaintRef::noop();
     let live = Rect::new(1.0, 2.0, 10.0, 10.0);
     let cases = [
         (
@@ -151,7 +146,10 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                     handle,
                     flags: 0,
                 },
-                paint: has_paint.then_some(&paint),
+                view: has_paint.then_some(ViewPaint {
+                    paint: &paint,
+                    epoch: 7,
+                }),
             },
             1.0,
         );
@@ -163,6 +161,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
             PaintCall::Image {
                 payload,
                 paint: got,
+                epoch,
             },
         ] = sink.calls.as_slice()
         else {
@@ -172,6 +171,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
             );
         };
         assert_eq!(got.as_ref(), Some(&paint), "case {label}");
+        assert_eq!(*epoch, 7, "case {label}: the capture keeps the epoch");
         assert_eq!(payload.rect, rect, "case {label}");
         assert_eq!(payload.handle, handle, "case {label}");
         assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
@@ -200,7 +200,7 @@ fn the_gate_sees_the_faded_payload() {
             handle: TextureId(7),
             flags: 0,
         },
-        paint: None,
+        view: None,
     };
 
     let mut faded_out = PaintCapture::default();
@@ -216,13 +216,10 @@ fn the_gate_sees_the_faded_payload() {
     let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
+    // Half of an opaque white tint's alpha, colour untouched — values f16
+    // holds exactly.
     let tint = payload.tint.unpack();
-    assert!(
-        (tint.a - 0.5).abs() < 1e-3,
-        "tint alpha {} is not half",
-        tint.a
-    );
-    assert_eq!((tint.r, tint.g, tint.b), (1.0, 1.0, 1.0));
+    assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
     // A polyline gates the same way: its fade rides the payload's own
     // alpha lane, since its colours live in the record store.

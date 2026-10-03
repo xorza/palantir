@@ -18,7 +18,7 @@ use crate::gpu::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::text::encode::EncodedRunKey;
 use crate::gpu::text::encode::cache::{EncodedCache, EncodedGlyph};
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use glam::IVec2;
 
 /// The glyph-shaped half of the text pass: the encoded-run cache and the
@@ -163,10 +163,9 @@ impl TextEncoder {
 }
 
 /// Reach-in for the GPU text tests, which assert on what a hit and an
-/// invalidation leave in the encoded cache. Carries their `internals`
-/// gate, because every reader `EncodedCache` offers them carries it too.
-#[cfg(all(test, feature = "internals"))]
-pub(crate) mod test_support {
+/// invalidation leave in the encoded cache.
+#[cfg(test)]
+pub(crate) mod internals {
     use crate::gpu::text::encode::cache::EncodedCache;
     use crate::gpu::text::encode::encoder::TextEncoder;
 

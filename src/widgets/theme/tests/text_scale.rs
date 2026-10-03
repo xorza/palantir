@@ -1,61 +1,42 @@
+use crate::internals::panic_probe;
 use ron::Value;
 
 use super::pretty;
 use crate::widgets::theme::Theme;
 
-#[test]
-fn scale_text_is_relative_and_total() {
-    let mut theme = Theme::default();
-    let body = theme.text.font_size_px;
-    let tooltip = theme.tooltip.text.font_size_px;
-    let disabled = theme
+fn disabled_size(theme: &Theme) -> f32 {
+    theme
         .button
         .looks
         .disabled
         .text
         .as_ref()
         .expect("button disabled has a text override")
-        .font_size_px;
+        .font_size_px
+}
+
+#[test]
+fn scale_text_is_relative_and_total() {
+    let mut theme = Theme::default();
+    let body = theme.text.font_size_px;
+    let tooltip = theme.tooltip.text.font_size_px;
+    let disabled = disabled_size(&theme);
 
     theme.scale_text(2.0);
-    assert!((theme.text.font_size_px - body * 2.0).abs() < 1e-3);
-    assert!((theme.tooltip.text.font_size_px - tooltip * 2.0).abs() < 1e-3);
-    assert!(
-        (theme
-            .button
-            .looks
-            .disabled
-            .text
-            .as_ref()
-            .unwrap()
-            .font_size_px
-            - disabled * 2.0)
-            .abs()
-            < 1e-3
-    );
+    assert_eq!(theme.text.font_size_px, body * 2.0);
+    assert_eq!(theme.tooltip.text.font_size_px, tooltip * 2.0);
+    assert_eq!(disabled_size(&theme), disabled * 2.0);
 
     // Composes: 2.0 × 0.75 = 1.5, not 0.75.
     theme.scale_text(0.75);
-    assert!((theme.text.font_size_px - body * 1.5).abs() < 1e-3);
-    assert!((theme.tooltip.text.font_size_px - tooltip * 1.5).abs() < 1e-3);
+    assert_eq!(theme.text.font_size_px, body * 1.5);
+    assert_eq!(theme.tooltip.text.font_size_px, tooltip * 1.5);
 
     // And inverts back to the baseline: 1.5 × (1 / 1.5) = 1.0.
     theme.scale_text(1.0 / 1.5);
-    assert!((theme.text.font_size_px - body).abs() < 1e-3);
-    assert!((theme.tooltip.text.font_size_px - tooltip).abs() < 1e-3);
-    assert!(
-        (theme
-            .button
-            .looks
-            .disabled
-            .text
-            .as_ref()
-            .unwrap()
-            .font_size_px
-            - disabled)
-            .abs()
-            < 1e-3
-    );
+    assert_eq!(theme.text.font_size_px, body);
+    assert_eq!(theme.tooltip.text.font_size_px, tooltip);
+    assert_eq!(disabled_size(&theme), disabled);
 }
 
 #[test]
@@ -89,8 +70,9 @@ fn scale_text_reaches_every_font_size() {
             }
             (Value::Number(before), Value::Number(after)) if path.ends_with("font_size_px") => {
                 let (before, after) = (before.into_f64(), after.into_f64());
-                assert!(
-                    (after - before * 2.0).abs() < 1e-3,
+                assert_eq!(
+                    after,
+                    before * 2.0,
                     "{path}: {after} is not double {before}"
                 );
             }
@@ -172,20 +154,19 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 #[test]
 fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::approx::EPS;
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
-    for (label, factor) in [
-        ("zero", 0.0),
-        ("negative", -1.0),
-        ("not a number", f32::NAN),
-        ("infinite", f32::INFINITY),
-        ("overflow", f32::MAX),
-        ("sub-epsilon result", EPS / 32.0),
+    const FACTOR: &str = "text scale factor must be finite and positive";
+    const RESULT: &str = "text scale would make font size or line height invalid";
+    for (label, factor, expected) in [
+        ("zero", 0.0, FACTOR),
+        ("negative", -1.0, FACTOR),
+        ("not a number", f32::NAN, FACTOR),
+        ("infinite", f32::INFINITY, FACTOR),
+        ("overflow", f32::MAX, RESULT),
+        ("sub-epsilon result", EPS / 32.0, RESULT),
     ] {
         let mut theme = Theme::default();
         let before = pretty(&theme);
-        let panic = catch_unwind(AssertUnwindSafe(|| theme.scale_text(factor)));
-        assert!(panic.is_err(), "{label}: invalid factor was accepted");
+        panic_probe::assert_panics_with(expected, || theme.scale_text(factor));
         let after = pretty(&theme);
         assert_eq!(after, before, "{label}: theme was partially mutated");
     }

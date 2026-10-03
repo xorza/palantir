@@ -1,20 +1,33 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
-use crate::TextStyle;
+use crate::InternedStr;
 use crate::Ui;
-use crate::common::clipboard::Clipboard;
+use crate::internals::harness::UiHarness;
+use crate::internals::panic_probe;
+use crate::layout::types::align::Align;
+use crate::layout::types::sizing::Sizing;
+use crate::layout::types::track::Track;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::paint_anims::curves;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+use crate::shape::Shape;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
+use crate::text::font_family::FontFamily;
+use crate::text::font_slant::FontSlant;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::ui::harness::UiHarness;
+use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
-use crate::ui::tests::support::{SURFACE, measure_calls, ui_with_shared};
+use crate::ui::tests::support::{SURFACE, ui_with_shared};
 use crate::widgets::configure::Configure;
+use crate::widgets::grid::Grid;
+use crate::widgets::widget::Widget;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 use std::time::Duration;
@@ -24,10 +37,12 @@ use std::time::Duration;
 /// single-line, wrapped, and grid-intrinsic-query paths.
 #[test]
 fn text_reshape_skipped_when_unchanged() {
-    use crate::layout::types::{sizing::Sizing, track::Track};
-    use crate::widgets::{grid::Grid, text::Text};
-
     type Build = fn(&mut Ui);
+
+    // First-frame dispatches: a run that fits its slot resolves once,
+    // unbounded. One wider than its slot resolves again, bounded at the
+    // width it wraps to. The grid's label fits (1), and its fill-column
+    // sentence is wider than what the label leaves of 200 px (2).
 
     let single: Build = |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -43,7 +58,7 @@ fn text_reshape_skipped_when_unchanged() {
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("wrapped"))
-                    .style(&TextStyle::default().with_font_size(16.0))
+                    .font_size(16.0)
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });
@@ -66,20 +81,17 @@ fn text_reshape_skipped_when_unchanged() {
             });
     };
 
-    for (label, build) in [
-        ("single-line", single),
-        ("wrapped", wrapped),
-        ("grid-intrinsic", grid_intrinsic),
+    for (label, build, first_frame) in [
+        ("single-line", single, 1),
+        ("wrapped", wrapped, 2),
+        ("grid-intrinsic", grid_intrinsic, 3),
     ] {
         let mut h = UiHarness::new(UVec2::new(400, 200));
         h.frame(build);
-        let after_first = measure_calls(&h.ui);
-        assert!(
-            after_first > 0,
-            "{label}: first frame should drive at least one measure call",
-        );
+        let after_first = h.ui.shaper().measure_calls();
+        assert_eq!(after_first, first_frame, "{label}: first-frame dispatches");
         h.frame(build);
-        let after_second = measure_calls(&h.ui);
+        let after_second = h.ui.shaper().measure_calls();
         assert_eq!(
             after_second,
             after_first,
@@ -94,8 +106,6 @@ fn text_reshape_skipped_when_unchanged() {
 /// drives a fresh measure.
 #[test]
 fn text_reshape_runs_when_content_changes() {
-    use crate::widgets::text::Text;
-
     let render = |content: &'static str| {
         move |ui: &mut Ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
@@ -107,12 +117,13 @@ fn text_reshape_runs_when_content_changes() {
     };
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(render("first"));
-    let before = measure_calls(&h.ui);
+    let before = h.ui.shaper().measure_calls();
     h.frame(render("second"));
-    let after = measure_calls(&h.ui);
-    assert!(
-        after > before,
-        "content change must trigger fresh measure (before={before}, after={after})",
+    let after = h.ui.shaper().measure_calls();
+    assert_eq!(
+        after - before,
+        1,
+        "content change must trigger exactly one fresh unbounded measure",
     );
 }
 
@@ -120,8 +131,6 @@ fn text_reshape_runs_when_content_changes() {
 /// entry is evicted on the same frame.
 #[test]
 fn text_reuse_evicts_disappeared_widgets() {
-    use crate::widgets::text::Text;
-
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -158,9 +167,6 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// it, and a unit test on the method would pass with that call deleted.
 #[test]
 fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
-    use crate::shape::Shape;
-    use crate::widgets::widget::Widget;
-
     let wid = WidgetId::from_hash("multi-run");
     let build = move |runs: usize| {
         move |ui: &mut Ui| {
@@ -192,9 +198,6 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
 
 #[test]
 fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
-    use crate::layout::types::sizing::Sizing;
-    use crate::text::shaper::TextShaper;
-
     fn text_window(ui: &mut Ui, content: &'static str, width: f32) {
         Panel::vstack()
             .id(WidgetId::from_hash("shared-root"))
@@ -206,11 +209,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let shared = UiResources::new(
-        TextShaper::new(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_text();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
@@ -260,6 +259,39 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     );
 }
 
+/// Half the period of [`blinking_text`]'s blink.
+const HALF: Duration = Duration::from_millis(500);
+
+/// A leaf of `text` that blinks on a square wave, one step per [`HALF`].
+/// A blinking text boundary is what makes the harness produce paint-only
+/// frames at all: it repaints on a timer without re-recording.
+fn blinking_text(ui: &mut Ui, text: &str) {
+    let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
+    widget.record(ui, None, |ui| {
+        let text = ui.intern(text);
+        ui.add_shape_animated(
+            Shape::text(
+                text,
+                GlyphFont {
+                    line_height_px: 19.2,
+                    ..GlyphFont::new(16.0)
+                },
+            )
+            .color(RgbaF32::WHITE)
+            .wrap(TextWrap::SingleLine)
+            .align(Align::default())
+            .family(FontFamily::SANS)
+            .weight(FontWeight::REGULAR),
+            PaintAnim::alpha(0.0, 1.0)
+                .started_at(HALF)
+                .period(HALF * 2)
+                .steps(2)
+                .repeat(PaintRepeat::Settle(Duration::MAX))
+                .curve(curves::square),
+        );
+    });
+}
+
 /// Every frame that reaches the screen advances the shared text clock,
 /// `PaintOnly` ones included.
 ///
@@ -276,61 +308,11 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 /// separate tick the `PaintOnly` arm owes.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
-    use crate::common::clipboard::Clipboard;
-    use crate::layout::types::align::Align;
-    use crate::layout::types::sizing::Sizing;
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
-    use crate::shape::Shape;
-    use crate::text::font_family::FontFamily;
-    use crate::text::font_weight::FontWeight;
-    use crate::text::shaper::TextShaper;
-    use crate::ui::frame_report::FrameProcessing;
-    use crate::ui::resources::UiResources;
-    use crate::widgets::widget::Widget;
-
-    const HALF: Duration = Duration::from_millis(500);
-
-    // A blinking text boundary is what makes the harness produce
-    // paint-only frames at all: it repaints on a timer without
-    // re-recording.
-    fn blinking_text(ui: &mut Ui) {
-        let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
-        widget.record(ui, None, |ui| {
-            let text = ui.intern("paint-only clock");
-            ui.add_shape_animated(
-                Shape::text(
-                    text,
-                    GlyphFont {
-                        line_height_px: 19.2,
-                        ..GlyphFont::new(16.0)
-                    },
-                )
-                .color(RgbaF32::WHITE)
-                .wrap(TextWrap::SingleLine)
-                .align(Align::default())
-                .family(FontFamily::SANS)
-                .weight(FontWeight::REGULAR),
-                PaintAnim::alpha(0.0, 1.0)
-                    .started_at(HALF)
-                    .period(HALF * 2)
-                    .steps(2)
-                    .repeat(PaintRepeat::Settle(Duration::MAX))
-                    .curve(curves::square),
-            );
-        });
-    }
-
-    let shared = UiResources::new(
-        TextShaper::new(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_text();
     let mut ui = UiHarness::from_resources(shared.clone(), SURFACE);
     let shaper = ui.ui.resources.text().clone();
 
-    let first = ui.frame(blinking_text);
+    let first = ui.frame(|ui| blinking_text(ui, "paint-only clock"));
     assert_eq!(first.repaint_after, Some(HALF));
     let recorded = shaper.frame();
 
@@ -374,10 +356,10 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         at += HALF;
     }
     let over_the_streak = shaper.cache_counts() - before;
-    assert!(
-        over_the_streak.expiries > 0,
-        "a paint-only streak past the protected window must age the \
-         shaped-buffer cache; counts over the streak = {over_the_streak:?}",
+    assert_eq!(
+        over_the_streak.expiries, 1,
+        "a paint-only streak past the protected window must age the one \
+         shaped buffer out; counts over the streak = {over_the_streak:?}",
     );
     assert_eq!(
         over_the_streak.shapes, 0,
@@ -388,57 +370,11 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 
 #[test]
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
-    use crate::common::clipboard::Clipboard;
-    use crate::layout::types::align::Align;
-    use crate::layout::types::sizing::Sizing;
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
-    use crate::shape::Shape;
-    use crate::text::font_family::FontFamily;
-    use crate::text::font_weight::FontWeight;
-    use crate::text::shaper::TextShaper;
-    use crate::ui::frame_report::FrameProcessing;
-    use crate::ui::resources::UiResources;
-    use crate::widgets::widget::Widget;
-
-    const HALF: Duration = Duration::from_millis(500);
-
-    fn idle_body(ui: &mut Ui) {
-        let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
-        widget.record(ui, None, |ui| {
-            let text = ui.intern("idle interned window text");
-            ui.add_shape_animated(
-                Shape::text(
-                    text,
-                    GlyphFont {
-                        line_height_px: 19.2,
-                        ..GlyphFont::new(16.0)
-                    },
-                )
-                .color(RgbaF32::WHITE)
-                .wrap(TextWrap::SingleLine)
-                .align(Align::default())
-                .family(FontFamily::SANS)
-                .weight(FontWeight::REGULAR),
-                PaintAnim::alpha(0.0, 1.0)
-                    .started_at(HALF)
-                    .period(HALF * 2)
-                    .steps(2)
-                    .repeat(PaintRepeat::Settle(Duration::MAX))
-                    .curve(curves::square),
-            );
-        });
-    }
-
-    let shared = UiResources::new(
-        TextShaper::new(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_text();
     let mut idle = UiHarness::from_resources(shared.clone(), SURFACE);
     let mut active = UiHarness::from_resources(shared.clone(), SURFACE);
 
-    let idle_first = idle.frame(idle_body);
+    let idle_first = idle.frame(|ui| blinking_text(ui, "idle interned window text"));
     assert_eq!(idle_first.repaint_after, Some(HALF));
     let idle_key = idle.ui.layout[Layer::Main].text_shapes[0].buffer_key();
 
@@ -490,9 +426,6 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 /// is preserved — only the *wrap* reshape runs again.
 #[test]
 fn wrap_target_change_preserves_unbounded_cache() {
-    use crate::layout::types::sizing::Sizing;
-    use crate::widgets::text::Text;
-
     let render = |slot_w: f32| {
         move |ui: &mut Ui| {
             Panel::vstack()
@@ -501,7 +434,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
                 .show(ui, |ui| {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .id(WidgetId::from_hash("p"))
-                        .style(&TextStyle::default().with_font_size(16.0))
+                        .font_size(16.0)
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                 });
@@ -510,13 +443,13 @@ fn wrap_target_change_preserves_unbounded_cache() {
 
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(render(60.0));
-    let after_first = measure_calls(&h.ui);
-    assert!(
-        after_first >= 2,
-        "first frame should measure both unbounded and wrap (got {after_first})",
+    let after_first = h.ui.shaper().measure_calls();
+    assert_eq!(
+        after_first, 2,
+        "first frame measures unbounded, then wraps at the 60 px slot",
     );
     h.frame(render(80.0));
-    let after_second = measure_calls(&h.ui);
+    let after_second = h.ui.shaper().measure_calls();
     let delta = after_second - after_first;
     assert_eq!(
         delta, 1,
@@ -530,10 +463,6 @@ fn wrap_target_change_preserves_unbounded_cache() {
 /// axis overwriting the other. Both default to the theme's.
 #[test]
 fn text_face_hatches_compose_on_the_lowered_record() {
-    use crate::scene::shapes::record::ShapeRecord;
-    use crate::text::font_slant::FontSlant;
-    use crate::text::font_weight::FontWeight;
-
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Text::new("plain").id(WidgetId::from_hash("plain")).show(ui);
@@ -574,8 +503,6 @@ fn text_face_hatches_compose_on_the_lowered_record() {
 
 #[test]
 fn widget_text_inputs_lower_exact_bytes() {
-    use crate::scene::shapes::record::ShapeRecord;
-
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         let borrowed = String::from("borrowed");
@@ -637,8 +564,6 @@ fn widget_text_inputs_lower_exact_bytes() {
 /// the epoch at all.
 #[test]
 fn interned_handles_do_not_outlive_their_record_pass() {
-    use crate::InternedStr;
-
     fn intern_in_own_pass(h: &mut UiHarness) -> InternedStr {
         let mut escaped = None;
         h.frame(|ui| escaped = Some(ui.intern("escapee")));
@@ -648,30 +573,47 @@ fn interned_handles_do_not_outlive_their_record_pass() {
     // A later frame in the same window.
     let mut h = UiHarness::new(SURFACE);
     let stale = intern_in_own_pass(&mut h);
-    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        h.frame(|ui| {
-            Text::new(stale).id(WidgetId::from_hash("stale")).show(ui);
-        });
-    }));
-    assert!(
-        caught.is_err(),
-        "a handle from a previous frame must not lower"
+    panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || {
+            h.frame(|ui| {
+                Text::new(stale).id(WidgetId::from_hash("stale")).show(ui);
+            });
+        },
+    );
+
+    // Pass B of one frame: pass A interns and asks for a relayout, and
+    // pass B records the handle pass A minted.
+    let mut h = UiHarness::new(SURFACE);
+    let mut held = None;
+    panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || {
+            h.frame(|ui| match held {
+                None => {
+                    held = Some(ui.intern("escapee"));
+                    ui.request_relayout();
+                }
+                Some(stale) => {
+                    Text::new(stale).id(WidgetId::from_hash("pass-b")).show(ui);
+                }
+            });
+        },
     );
 
     // Another window, which never shared the epoch.
     let mut source = UiHarness::new(SURFACE);
     let foreign = intern_in_own_pass(&mut source);
     let mut destination = UiHarness::new(SURFACE);
-    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        destination.frame(|ui| {
-            Text::new(foreign)
-                .id(WidgetId::from_hash("cross-window"))
-                .show(ui);
-        });
-    }));
-    assert!(
-        caught.is_err(),
-        "a handle from another window must not lower"
+    panic_probe::assert_panics_with(
+        "InternedStr outlived the record pass that minted it",
+        || {
+            destination.frame(|ui| {
+                Text::new(foreign)
+                    .id(WidgetId::from_hash("cross-window"))
+                    .show(ui);
+            });
+        },
     );
 }
 
@@ -681,8 +623,6 @@ fn interned_handles_do_not_outlive_their_record_pass() {
 /// and each run mints its own handle.
 #[test]
 fn interning_per_pass_records_the_expected_bytes() {
-    use crate::scene::shapes::record::ShapeRecord;
-
     let mut h = UiHarness::cold(SURFACE);
     let mut passes = 0;
     h.frame(|ui| {
@@ -721,12 +661,7 @@ fn interning_per_pass_records_the_expected_bytes() {
 /// and the sibling's frame after them ticks nothing.
 #[test]
 fn the_text_clock_ticks_once_per_host_frame() {
-    use crate::text::shaper::TextShaper;
-    let shared = UiResources::new(
-        TextShaper::test_mono(),
-        Clipboard::memory(),
-        TextureLimit::default(),
-    );
+    let shared = UiResources::isolated_mono();
     let clock = || shared.text().frame();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
@@ -741,8 +676,7 @@ fn the_text_clock_ticks_once_per_host_frame() {
         assert_eq!(clock(), start + round, "one tick per round of both windows");
     }
 
-    a.frame(|_| {});
-    a.frame(|_| {});
+    a.prime(2, |_| {});
     b.frame(|_| {});
     assert_eq!(
         clock(),

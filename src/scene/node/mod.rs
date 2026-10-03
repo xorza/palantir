@@ -106,7 +106,7 @@ impl Node {
     ///
     /// The four `set_*` writers below own every check an authored field
     /// owes, and everything that writes one goes through them: the
-    /// consuming [`Configure`] setter, the
+    /// consuming [`Configure`](crate::Configure) setter, the
     /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
     /// fallback beside it, and the widgets that hold a `&mut Node` and
     /// cannot move it through a builder. A field written past them is a
@@ -165,16 +165,32 @@ impl Node {
     /// `fill_`, not `default_`: the consuming
     /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
     /// wrapper owns that name, and reads apart from it.
+    ///
+    /// A default also yields to the *other* bound the caller set: a themed
+    /// minimum above an authored maximum is clamped down to it, because a
+    /// default means "when the caller said nothing" and must never
+    /// contradict what the caller did say. Two authored bounds that
+    /// conflict still panic in [`Self::set_min_size`].
     #[inline]
     pub(crate) fn fill_min_size(&mut self, value: Size) {
         if self.min_size.is_none() {
+            let value = match self.max_size {
+                Some(max) => Size::new(at_most(value.w, max.w), at_most(value.h, max.h)),
+                None => value,
+            };
             self.set_min_size(value);
         }
     }
 
+    /// The mirror of [`Self::fill_min_size`]: a themed maximum below an
+    /// authored minimum is raised to it.
     #[inline]
     pub(crate) fn fill_max_size(&mut self, value: Size) {
         if self.max_size.is_none() {
+            let value = match self.min_size {
+                Some(min) => Size::new(at_least(value.w, min.w), at_least(value.h, min.h)),
+                None => value,
+            };
             self.set_max_size(value);
         }
     }
@@ -356,6 +372,17 @@ impl Node {
             },
         }
     }
+}
+
+/// `value` capped at `cap`, keeping a NaN `value` so the bound check
+/// that follows still sees it — `f32::min` would drop it.
+const fn at_most(value: f32, cap: f32) -> f32 {
+    if value > cap { cap } else { value }
+}
+
+/// `value` raised to `floor`, keeping a NaN `value` for the same reason.
+const fn at_least(value: f32, floor: f32) -> f32 {
+    if value < floor { floor } else { value }
 }
 
 #[cfg(test)]

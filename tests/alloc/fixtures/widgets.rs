@@ -161,6 +161,9 @@ fn expander_keep_body_alloc_free() {
 /// tween needs a clock that moves and the audit's own loop deliberately
 /// holds one still. Primed open so the height is measured, then closed
 /// over a minute-long reveal, so every audited frame lands inside it.
+/// Each frame steps the clock by one 60 Hz frame: a step below the
+/// animation substep carries rather than advances, and the reveal would
+/// stand still on most frames.
 ///
 /// The long warmup is the reveal's own settling, not margin: a body
 /// whose `max_size` moves every frame invalidates the measure cache
@@ -187,15 +190,28 @@ fn expander_mid_reveal_alloc_free() {
             .open(open)
             .show(ui, |ui| {
                 Text::new("body").auto_id().show(ui);
-            });
+            })
+            .openness
     };
     for _ in 0..4 {
-        h.frame(|ui| section(ui, &mut open));
+        h.frame(|ui| {
+            section(ui, &mut open);
+        });
     }
     open = false;
+    // The tween starts on the frame that closes the section, which still
+    // reads fully open.
+    h.frame(|ui| {
+        section(ui, &mut open);
+    });
     Audit::new().warmup(32).run_frames(|| {
-        h.advance(Duration::from_millis(1));
-        h.frame(|ui| section(ui, &mut open));
+        h.advance(Duration::from_millis(16));
+        let mut openness = 0.0;
+        h.frame(|ui| openness = section(ui, &mut open));
+        assert!(
+            openness > 0.0 && openness < 1.0,
+            "the frame lands mid-reveal, got openness {openness}",
+        );
     });
 }
 
@@ -334,21 +350,18 @@ fn scroll_fits_alloc_free() {
     });
 }
 
-/// The value and toggle widgets, plus a tooltip bubble — the ones the
-/// frame fixture's tree does not carry, so nothing else audits them.
+/// The value and toggle widgets — the ones the frame fixture's tree does
+/// not carry, so nothing else audits them.
 ///
-/// Warmed and measured in whole revolutions of the 128-bucket
-/// shaped-buffer expiry ring, rather than on the probe: a bucket's first
-/// drain grows the wheel's scratch, and the probe's two quiet frames land
-/// long before the widest bucket of the first revolution comes due. Two
-/// revolutions each way, so that growth is warmed away and a
-/// once-a-revolution cost still lands inside the window.
+/// The spinner's animation repaints paint-only, so the scene asks for a
+/// repaint each frame to keep every frame a recorded one.
 #[test]
 fn value_and_toggle_widgets_alloc_free() {
     let mut on = true;
     let mut choice = 1u8;
     let mut amount = 0.5f64;
-    Audit::new().text().warmup(256).frames(256).run(|ui| {
+    Audit::new().text().run(|ui| {
+        ui.request_repaint();
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -362,22 +375,50 @@ fn value_and_toggle_widgets_alloc_free() {
                 Switch::new(&mut on).id_salt("switch").show(ui);
                 Checkbox::new(&mut on).id_salt("check").show(ui);
                 RadioButton::new(&mut choice, 1u8).id_salt("radio").show(ui);
-                let r = Button::new()
-                    .id_salt("tip-host")
-                    .label("hover")
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(&r).label("a tooltip body").show(ui);
             });
+    });
+}
+
+/// A tooltip bubble held up over its hovered trigger. The bubble records
+/// only while it is up, so every measured frame asserts it is.
+#[test]
+fn tooltip_bubble_alloc_free() {
+    let host = WidgetId::from_hash("tip-host");
+    let scene = |ui: &mut Ui| {
+        let trigger = Button::new().id(host).label("hover").show(ui).snapshot();
+        Tooltip::on(&trigger)
+            .label("a tooltip body")
+            .delay(Duration::ZERO)
+            .show(ui)
+    };
+    let mut h = new_ui();
+    let _ = h.frame(|ui| {
+        scene(ui);
+    });
+    h.move_onto(host);
+    Audit::new().run_frames(|| {
+        let mut visible = false;
+        let _ = h.frame(|ui| visible = scene(ui).visible);
+        assert!(visible, "the bubble is up");
+    });
+}
+
+/// A spinner left alone: after its first frame it only repaints, so
+/// what this measures is the paint-only frame — damage from the retained
+/// tree, with no record, layout or cascade.
+#[test]
+fn spinner_paint_only_alloc_free() {
+    Audit::new().paint_only().run(|ui| {
+        Spinner::new().id_salt("spin").show(ui);
     });
 }
 
 /// The two side-layer overlays. Held open every frame, so what this reads
 /// is the steady state of a layer switch, not the frame one opens on.
-/// Warmed and measured like the fixture above, and for the same ring.
+/// Warmed and measured in whole ring revolutions, as every text audit is.
 #[test]
 fn overlays_alloc_free() {
-    Audit::new().text().warmup(256).frames(256).run(|ui| {
+    Audit::new().text().run(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))

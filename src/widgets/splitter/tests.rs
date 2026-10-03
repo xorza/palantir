@@ -2,16 +2,20 @@
 //! arranged extent, clamping at explicit and content-driven stops,
 //! the resulting pane re-layout, and the resize-cursor request.
 
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::passes::Passes;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
+use crate::ui::frame_report::FrameProcessing;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
+use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::splitter::{Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
+use crate::widgets::value_response::internals::ValueEdges;
 use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
 
@@ -21,35 +25,32 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
-/// What one [`frame_with`] frame recorded and reported.
-#[derive(Debug, Default)]
-struct Frame {
-    passes: usize,
-    changed: bool,
-    committed: bool,
-}
-
 /// One frame: a 401×100 horizontal splitter at the surface origin.
 /// Default theme reserves the 1 px rule, so the free span is 400 —
 /// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
 /// straddling it. Tests run two warm-up frames before interacting so
 /// the divider has arranged geometry for hit-testing.
 ///
-/// The signals are OR-ed across record passes: a frame with action input
-/// records twice, and a signal fires on the pass that saw the input.
-fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Frame {
-    let mut frame = Frame::default();
-    h.frame(|ui| {
-        let hit = Splitter::horizontal(ratio)
+/// One snapshot per record pass: a frame with action input records
+/// twice, and a signal fires on pass A, the one that saw the input.
+const QUIET: ValueEdges = ValueEdges {
+    changed: false,
+    committed: false,
+};
+const CHANGED: ValueEdges = ValueEdges {
+    changed: true,
+    committed: false,
+};
+
+fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Passes<ValueEdges> {
+    h.frame_passes(|ui| {
+        Splitter::horizontal(ratio)
             .id(split_id())
             .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
             .min_pane(50.0)
-            .show(ui, |_, _| {});
-        frame.passes += 1;
-        frame.changed |= hit.changed;
-        frame.committed |= hit.committed;
-    });
-    frame
+            .show(ui, |_, _| {})
+            .edges()
+    })
 }
 
 #[test]
@@ -65,75 +66,94 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.press_at(Vec2::new(200.5, 50.0));
     h.drag_to(Vec2::new(300.5, 50.0));
     let moved = frame_with(&mut h, &mut ratio);
-    assert!(
-        (ratio - 0.75).abs() < 1e-6,
+    assert_eq!(
+        ratio, 0.75,
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
-    assert!(
-        moved.changed && !moved.committed,
-        "a live drag changes the ratio and commits nothing: {moved:?}",
-    );
+    // Pass A lays the panes out at the pointer; the binding takes the
+    // arranged ratio on the next record, pass B of this same frame. One
+    // write, in one pass, and no commit.
+    assert_eq!(*moved.a(), QUIET, "{moved:?}");
+    assert_eq!(moved.b(), Some(&CHANGED), "{moved:?}");
 
     // A later drag movement records once. Layout follows the current
     // pointer immediately, while the caller still receives the prior
     // arranged ratio until the next record.
     h.drag_to(Vec2::new(999.0, 50.0));
     let held = frame_with(&mut h, &mut ratio);
-    assert_eq!(held.passes, 1);
-    assert!(
-        (ratio - 0.75).abs() < 1e-6,
+    assert_eq!(held.len(), 1);
+    assert_eq!(
+        ratio, 0.75,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
-    assert!(!held.changed, "the binding did not move this frame");
-    let rect = h.layout_rect(split_id().with("first")).expect("arranged");
-    assert!(
-        (rect.size.w - 350.0).abs() < 0.5,
+    assert_eq!(*held.a(), QUIET, "the binding did not move this frame");
+    let rect = h.arranged(split_id().with("first"));
+    assert_eq!(
+        rect.size.w, 350.0,
         "min_pane(50) stops the current layout at 350 px, got {}",
         rect.size.w
     );
 
     h.drag_to(Vec2::new(998.0, 50.0));
     let caught_up = frame_with(&mut h, &mut ratio);
-    assert_eq!(caught_up.passes, 1);
-    assert!(
-        (ratio - 0.875).abs() < 1e-6,
+    assert_eq!(caught_up.len(), 1);
+    assert_eq!(
+        ratio, 0.875,
         "the next record writes back the arranged 350/400 ratio, got {ratio}"
     );
-    assert!(caught_up.changed);
+    assert_eq!(*caught_up.a(), CHANGED);
 
     // Release ends the gesture and commits the ratio it holds; further
     // pointer motion leaves the ratio alone and commits nothing more.
     h.release();
     h.move_to(Vec2::new(100.0, 50.0));
     let released = frame_with(&mut h, &mut ratio);
-    assert!(
-        (ratio - 0.875).abs() < 1e-6,
-        "ratio holds after release, got {ratio}"
+    assert_eq!(ratio, 0.875, "ratio holds after release, got {ratio}");
+    // A release is action input, so the frame records twice; the
+    // commit is pass A's edge alone.
+    assert_eq!(
+        *released.a(),
+        ValueEdges {
+            changed: false,
+            committed: true
+        },
+        "the release commits the held ratio",
     );
-    assert!(
-        released.committed && !released.changed,
-        "the release commits the held ratio: {released:?}",
-    );
+    assert_eq!(released.b(), Some(&QUIET));
     let after = frame_with(&mut h, &mut ratio);
-    assert!(!after.committed && !after.changed, "{after:?}");
+    assert_eq!((after.len(), *after.a()), (1, QUIET));
 
     // A double-click on the divider — its seam now at 350.5 — resets to
     // the centre. Layout takes 0.5 on the first pass, and the binding
     // takes the arranged result on the next record, which commits it. A
     // double-click is action input, so that record is the frame's second
     // pass and the reset lands within the one frame.
+    // Each press and release lands in its own frame (`InputQueue`); the
+    // frame measured is the second release's, which is the double-click.
     let seam = Vec2::new(350.5, 50.0);
-    h.click_at(seam);
-    h.click_at(seam);
+    h.press_at(seam);
+    frame_with(&mut h, &mut ratio);
+    h.release();
+    frame_with(&mut h, &mut ratio);
+    h.press_at(seam);
+    frame_with(&mut h, &mut ratio);
+    h.release();
     let reset = frame_with(&mut h, &mut ratio);
-    assert_eq!(reset.passes, 2, "premise: a double-click records twice");
-    assert!(
-        (ratio - 0.5).abs() < 1e-6,
-        "the reset writes the centre, got {ratio}"
+    assert_eq!(reset.len(), 2, "premise: a double-click records twice");
+    assert_eq!(ratio, 0.5, "the reset writes the centre, got {ratio}");
+    // The same sync as a drag, so the write and its commit land on
+    // pass B together.
+    assert_eq!(*reset.a(), QUIET, "{reset:?}");
+    assert_eq!(
+        reset.b(),
+        Some(&ValueEdges {
+            changed: true,
+            committed: true
+        }),
+        "{reset:?}"
     );
-    assert!(reset.changed && reset.committed, "{reset:?}");
     let settled = frame_with(&mut h, &mut ratio);
-    assert!(!settled.changed && !settled.committed, "{settled:?}");
+    assert_eq!((settled.len(), *settled.a()), (1, QUIET));
 }
 
 #[test]
@@ -159,46 +179,33 @@ fn divider_drag_is_scale_invariant() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let divider =
-            h.ui.response_for(split_id().with("divider"))
-                .rect
-                .expect("divider arranged");
-        h.press_at(divider.center());
-        let splitter = h.ui.response_for(split_id());
-        let layout = splitter.layout_rect.expect("splitter arranged");
-        let pointer = splitter
-            .transform
-            .apply_point(layout.min + Vec2::new(300.5, 50.0));
-        h.move_to(pointer);
+        h.press_on(split_id().with("divider"));
+        // Drag targets along the splitter's own x, read before the drag
+        // moves anything. Unchecked: the pane under one need not sense.
+        let layout = h.arranged(split_id());
+        let transform = h.transform(split_id());
+        let target = |x: f32| transform.apply_point(layout.min + Vec2::new(x, 50.0));
+        h.move_to(target(300.5));
         frame(&mut h, &mut ratio);
 
-        assert!(
-            (ratio - 0.75).abs() < 1e-6,
-            "logical pointer 300.5 over span 400 at {scale}× produced {ratio}",
+        assert_eq!(
+            ratio, 0.75,
+            "logical pointer 300.5 over span 400 at {scale}× produced {ratio}"
         );
 
-        let beyond_limit = splitter
-            .transform
-            .apply_point(layout.min + Vec2::new(380.0, 50.0));
-        h.move_to(beyond_limit);
+        h.move_to(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
-            h.layout_rect(split_id().with("first"))
-                .expect("arranged")
-                .size
-                .w,
+            h.arranged(split_id().with("first")).size.w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
 
-        let next = splitter
-            .transform
-            .apply_point(layout.min + Vec2::new(381.0, 50.0));
-        h.move_to(next);
+        h.move_to(target(381.0));
         frame(&mut h, &mut ratio);
-        assert!(
-            (ratio - 0.875).abs() < 1e-6,
-            "minimum-pane ratio at {scale}× produced {ratio}",
+        assert_eq!(
+            ratio, 0.875,
+            "minimum-pane ratio at {scale}× produced {ratio}"
         );
     }
 }
@@ -214,9 +221,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let mut h = UiHarness::new(SURFACE);
         let mut ratio = 0.5;
         let frame = |h: &mut UiHarness, ratio: &mut f32| {
-            let mut passes = 0;
             h.frame(|ui| {
-                passes += 1;
                 let splitter = if horizontal {
                     Splitter::horizontal(ratio)
                 } else {
@@ -242,8 +247,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                                 .show(ui);
                         }
                     });
-            });
-            passes
+            })
+            .processing
         };
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
@@ -273,12 +278,12 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         });
         assert_eq!(
             frame(&mut h, &mut ratio),
-            1,
+            FrameProcessing::SingleLayout,
             "active drag movement must not request a second layout"
         );
 
-        assert!(
-            (ratio - 0.525).abs() < 1e-6,
+        assert_eq!(
+            ratio, 0.525,
             "model keeps the prior arranged ratio for one record"
         );
         let shrinking = h.node_for_widget_id(split_id().with(match rigid_half {
@@ -295,7 +300,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "{rigid_half:?} pane stops at its rigid content floor"
         );
-        let rigid_rect = h.layout_rect(split_id().with("rigid")).expect("arranged");
+        let rigid_rect = h.arranged(split_id().with("rigid"));
         assert_eq!(
             if horizontal {
                 rigid_rect.size.w
@@ -305,11 +310,10 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "rigid content remains laid out"
         );
-        let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
-        let divider_rect =
-            h.ui.response_for(split_id().with("divider"))
-                .rect
-                .expect("divider arranged");
+        let first_rect = h.arranged(split_id().with("first"));
+        let divider_rect = h
+            .rect(split_id().with("divider"))
+            .expect("divider arranged");
         let divider_center = if horizontal {
             divider_rect.center().x
         } else {
@@ -336,9 +340,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             Vec2::new(50.0, next_pointer)
         });
-        assert_eq!(frame(&mut h, &mut ratio), 1);
-        assert!(
-            (ratio - expected_ratio).abs() < 1e-6,
+        assert_eq!(frame(&mut h, &mut ratio), FrameProcessing::SingleLayout);
+        assert_eq!(
+            ratio, expected_ratio,
             "{rigid_half:?} next record writes back its content floor"
         );
     }
@@ -430,11 +434,10 @@ fn divider_requests_the_resize_cursor() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
-        let divider_rect =
-            h.ui.response_for(split_id().with("divider"))
-                .rect
-                .expect("divider arranged");
+        let first_rect = h.arranged(split_id().with("first"));
+        let divider_rect = h
+            .rect(split_id().with("divider"))
+            .expect("divider arranged");
         assert_eq!(divider_rect.size.w, grab_thickness);
         assert_eq!(
             divider_rect.center().x,
@@ -463,8 +466,8 @@ fn pointer_to_ratio_maps_center_edges_and_floors() {
     ];
     for (pos, extent, thickness, min_pane, want) in cases {
         let got = pointer_to_ratio(pos, extent, thickness, min_pane);
-        assert!(
-            (got - want).abs() < 1e-6,
+        assert_eq!(
+            got, want,
             "p2r({pos},{extent},{thickness},{min_pane})={got} want {want}"
         );
     }

@@ -1,9 +1,11 @@
 //! Window requests a frame queues, and the close veto's one-frame life.
 
 use crate::display::user_scale::UserScale;
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
+use crate::window::window_commands::WindowCommands;
 use crate::window::window_placement::WindowPlacement;
+use crate::window::window_token::WindowToken;
 use glam::{IVec2, UVec2};
 
 /// `open_window` / `close_window` enqueue onto the retained scratch the
@@ -14,7 +16,7 @@ use glam::{IVec2, UVec2};
 /// regained `&ActiveEventLoop` to act on it.
 #[test]
 fn window_requests_queue_and_survive_the_frame() {
-    use crate::{WindowConfig, WindowToken};
+    use crate::WindowConfig;
 
     let mut h = UiHarness::new(SURFACE);
     let open = WindowToken(7);
@@ -82,51 +84,52 @@ fn window_requests_queue_and_survive_the_frame() {
 /// The OS-close veto protocol between the host and app code:
 /// [`Ui::close_requested`] reflects the host's per-frame `wants_close`
 /// signal, and [`Ui::keep_open`] sets the veto the host reads back to
-/// decide whether to actually close. The host's decision rule is
-/// `wants_close && !close_vetoed` (the tail of `WinitHost::draw`); pin it
-/// here so the two flags can't drift out from under that resolution.
+/// decide whether to actually close. `WindowRequests::drain` resolves
+/// the two into a close command or none, and this drives it with the
+/// flags the frame set.
 #[test]
 fn close_request_veto_protocol() {
     let mut h = UiHarness::new(SURFACE);
 
     // No close pending: the flag is false and keep_open never fires.
-    h.frame(|ui| {
-        assert!(
-            !ui.close_requested(),
-            "no close pending ⇒ close_requested() false"
-        );
-    });
+    assert!(
+        !h.frame_value(|ui| ui.close_requested()),
+        "no close pending ⇒ close_requested() false"
+    );
     assert!(!h.ui.window_requests.close_vetoed);
 
     // Host signals a close; an app that vetoes keeps the window open.
     h.ui.window_frame.close_requested = true;
     h.ui.window_requests.close_vetoed = false;
-    h.frame(|ui| {
-        assert!(
-            ui.close_requested(),
-            "host signalled close ⇒ close_requested() true"
-        );
+    let requested = h.frame_value(|ui| {
         ui.keep_open();
+        ui.close_requested()
     });
+    assert!(requested, "host signalled close ⇒ close_requested() true");
     assert!(
         h.ui.window_requests.close_vetoed,
         "keep_open must set the veto the host reads"
     );
-    let should_close = h.ui.window_frame.close_requested && !h.ui.window_requests.close_vetoed;
+    let me = WindowToken(0);
+    let mut out = WindowCommands::default();
+    h.ui.window_requests
+        .drain(me, h.ui.window_frame.close_requested, &mut out);
     assert!(
-        !should_close,
+        out.closes.is_empty(),
         "a vetoed request must NOT resolve to a close"
     );
 
-    // Same signal, app ignores it: resolves to a real close. (The host
-    // resets the veto before every draw.)
-    h.ui.window_requests.close_vetoed = false;
-    h.frame(|ui| {
-        assert!(ui.close_requested());
-    });
+    // Same signal, app ignores it: resolves to a real close. The drain
+    // above already spent the veto.
+    assert!(h.frame_value(|ui| ui.close_requested()));
     assert!(!h.ui.window_requests.close_vetoed, "untouched ⇒ no veto");
-    let should_close = h.ui.window_frame.close_requested && !h.ui.window_requests.close_vetoed;
-    assert!(should_close, "an un-vetoed request must resolve to a close");
+    h.ui.window_requests
+        .drain(me, h.ui.window_frame.close_requested, &mut out);
+    assert_eq!(
+        out.closes,
+        [me],
+        "an un-vetoed request must resolve to a close"
+    );
 }
 
 /// Record passes replay (cold-start warmup, double-layout pass B), so
@@ -135,7 +138,6 @@ fn close_request_veto_protocol() {
 #[test]
 fn open_window_dedups_by_token_within_a_frame() {
     use crate::window::window_config::WindowConfig;
-    use crate::window::window_token::WindowToken;
     let mut h = UiHarness::new(SURFACE);
     let cfg = WindowConfig::new;
     h.ui.open_window(WindowToken(7), cfg("first"));

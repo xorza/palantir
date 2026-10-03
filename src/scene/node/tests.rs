@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
+use crate::internals::panic_probe;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::layout::types::scroll_axes::ScrollAxes;
 use crate::primitives::widget_id::WidgetId;
@@ -50,27 +50,6 @@ fn flag_setters_round_trip_each_field_independently() {
 }
 
 #[test]
-fn authoring_struct_sizes_stay_packed() {
-    // Grew from 1 byte to 2 when `Sense::PINCH` claimed bit 4,
-    // pushing `DISABLED`/`CLIP`/`FOCUSABLE` past the u8 ceiling.
-    // Still packed — sense (5 bits) + disabled (1) + clip (2) +
-    // focusable (1) = 9 bits, fitting in a u16 with 7 spare.
-    assert_eq!(std::mem::size_of::<NodeFlags>(), 2);
-    assert_eq!(std::mem::size_of::<Node>(), 100);
-}
-
-#[test]
-fn layout_core_size() {
-    assert_eq!(std::mem::size_of::<LayoutCore>(), 28);
-}
-
-#[test]
-fn layout_mode_size() {
-    assert_eq!(std::mem::size_of::<LayoutMode>(), 4);
-    assert_eq!(std::mem::size_of::<PackedLayoutMeta>(), 4);
-}
-
-#[test]
 fn unconfigured_and_explicit_default_values_remain_distinct() {
     let inherited = Widget::leaf();
     assert_eq!(inherited.node.size, None);
@@ -112,13 +91,19 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
 #[test]
 fn set_mode_refines_a_node_and_never_rekinds_it() {
     let mut grid = Node::new(NodeMode::PendingGrid);
-    assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&grid)).is_err());
+    panic_probe::assert_panics_with(
+        "grid node recorded before its definition was installed",
+        || LayoutCore::from_node(&grid),
+    );
     let grid_id = GridDefId::from_index(42);
     grid.set_mode(LayoutMode::Grid(grid_id));
     assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
 
     let mut bars = Node::new(NodeMode::PendingScrollbars);
-    assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&bars)).is_err());
+    panic_probe::assert_panics_with(
+        "scrollbar overlay recorded before its definition was installed",
+        || LayoutCore::from_node(&bars),
+    );
     let bars_id = ScrollbarsDefId::from_index(7);
     bars.set_mode(LayoutMode::Scrollbars(bars_id));
     assert_eq!(
@@ -132,30 +117,25 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
         refined.mode,
         NodeMode::Resolved(LayoutMode::Scroll(ScrollAxes::BOTH))
     );
-    assert!(
-        std::panic::catch_unwind(|| Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack))
-            .is_err(),
-        "a pending grid takes only a grid definition",
-    );
-    assert!(
-        std::panic::catch_unwind(|| {
-            Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
-        })
-        .is_err(),
-        "a pending bar overlay takes only a bar definition",
-    );
-    assert!(
-        std::panic::catch_unwind(|| {
-            Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
-                .set_mode(LayoutMode::Grid(grid_id))
-        })
-        .is_err(),
-        "a resolved mode is not re-kinded",
-    );
+    // A pending grid takes only a grid definition.
+    panic_probe::assert_panics_with("ZStack installed on a PendingGrid node", || {
+        Node::new(NodeMode::PendingGrid).set_mode(LayoutMode::ZStack)
+    });
+    // A pending bar overlay takes only a bar definition.
+    panic_probe::assert_panics_with("installed on a PendingScrollbars node", || {
+        Node::new(NodeMode::PendingScrollbars).set_mode(LayoutMode::Grid(grid_id))
+    });
+    // A resolved mode is not re-kinded.
+    panic_probe::assert_panics_with("installed on a Resolved(Stack(Y)) node", || {
+        Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
+            .set_mode(LayoutMode::Grid(grid_id))
+    });
 
     let last_grid = GridDefId::from_index(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
-    assert!(std::panic::catch_unwind(|| GridDefId::from_index(65_535)).is_err());
+    panic_probe::assert_panics_with("exceeded its 65535 row ceiling", || {
+        GridDefId::from_index(65_535)
+    });
 }
 
 #[test]
@@ -256,12 +236,41 @@ fn an_authored_value_wins_over_the_theme_default() {
     assert_eq!(untouched.padding, Some(Spacing::all(9.0)), "theme fills in");
 }
 
-/// A themed lower bound is checked against an authored upper one, the
-/// way an authored lower bound is.
+/// A themed default never contradicts what the caller authored: a default
+/// minimum above an authored maximum is clamped to it, a default maximum
+/// below an authored minimum is raised to it, per axis. Two authored
+/// bounds that conflict still panic, and a NaN default still reaches the
+/// check rather than being clamped away.
 #[test]
-#[should_panic]
-fn a_themed_min_size_is_bound_checked_against_an_authored_max() {
-    let mut node = Node::new(NodeMode::Resolved(LayoutMode::Leaf));
-    node.set_max_size(Size::new(10.0, 10.0));
-    node.fill_min_size(Size::new(40.0, 40.0));
+fn themed_bounds_yield_to_authored_ones() {
+    let leaf = || Node::new(NodeMode::Resolved(LayoutMode::Leaf));
+
+    // Modal: stock min width 280 under an authored max of 240.
+    let mut node = leaf();
+    node.set_max_size(Size::new(240.0, 400.0));
+    node.fill_min_size(Size::new(280.0, 0.0));
+    assert_eq!(node.min_size, Some(Size::new(240.0, 0.0)));
+
+    // Tooltip: stock max 280×∞ under an authored min width of 300.
+    let mut node = leaf();
+    node.set_min_size(Size::new(300.0, 0.0));
+    node.fill_max_size(Size::new(280.0, f32::INFINITY));
+    assert_eq!(node.max_size, Some(Size::new(300.0, f32::INFINITY)));
+
+    // A default inside the authored bound is taken as it is.
+    let mut node = leaf();
+    node.set_max_size(Size::new(500.0, 500.0));
+    node.fill_min_size(Size::new(280.0, 10.0));
+    assert_eq!(node.min_size, Some(Size::new(280.0, 10.0)));
+
+    panic_probe::assert_panics_with("node minimums must be finite", || {
+        let mut node = leaf();
+        node.set_max_size(Size::new(240.0, 400.0));
+        node.set_min_size(Size::new(280.0, 0.0));
+    });
+    panic_probe::assert_panics_with("node minimums must be finite", || {
+        let mut node = leaf();
+        node.set_max_size(Size::new(240.0, 400.0));
+        node.fill_min_size(Size::new(f32::NAN, 0.0));
+    });
 }

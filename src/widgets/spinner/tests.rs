@@ -1,4 +1,6 @@
-use crate::ui::harness::UiHarness;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::size_trio::SizeTrio;
+use crate::primitives::size::Size;
 use std::f32::consts::TAU;
 
 use crate::layout::types::sizing::Sizing;
@@ -39,18 +41,31 @@ fn arc_geometry_insets_by_half_width() {
 /// floor is what a tiny one lands on.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
-    use crate::scene::shapes::paint::CurveBasis;
+    use crate::scene::shapes::paint::curve_basis::CurveBasis;
     use crate::scene::shapes::record::ShapeRecord;
 
-    fn recorded(theme: SpinnerTheme, diameter: f32) -> (f32, f32, f32) {
+    /// What one spinner recorded: its arc's sweep and stroke width, and
+    /// its spin in radians per second.
+    #[derive(Debug)]
+    struct Recorded {
+        sweep: f32,
+        width: f32,
+        speed: f32,
+    }
+
+    fn recorded(theme: SpinnerTheme, diameter: f32, thickness: Option<f32>) -> Recorded {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.ui.theme_mut().spinner = theme;
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
-                Spinner::new()
+                let spinner = Spinner::new()
                     .id(WidgetId::from_hash("spin"))
-                    .diameter(diameter)
-                    .show(ui);
+                    .diameter(diameter);
+                match thickness {
+                    Some(px) => spinner.thickness(px),
+                    None => spinner,
+                }
+                .show(ui);
             });
         });
         let tree = h.ui.tree(Layer::Main);
@@ -80,34 +95,47 @@ fn arc_and_spin_follow_the_spinner_theme() {
                     .map(|_| TAU / e.anim.timing.period.as_secs_f32())
             })
             .expect("spinner registers a turning anim");
-        (arc.0, arc.1, speed)
+        Recorded {
+            sweep: arc.0,
+            width: arc.1,
+            speed,
+        }
     }
 
     // Stock theme: stroke is the ratio applied to the diameter,
     // clear of the floor at 50 px.
     let stock = SpinnerTheme::default();
-    let (sweep, width, speed) = recorded(stock.clone(), 50.0);
-    assert!((sweep - stock.sweep).abs() < 1e-4, "sweep is themed");
-    assert!((speed - stock.speed).abs() < 1e-4, "spin rate is themed");
+    let Recorded {
+        sweep,
+        width,
+        speed,
+    } = recorded(stock.clone(), 50.0, None);
+    assert_eq!(sweep, stock.sweep, "sweep is themed");
+    assert_eq!(speed, stock.speed, "spin rate is themed");
     let expected = 50.0 * stock.thickness_ratio;
-    assert!(
-        (width - expected).abs() < 1e-4,
-        "want {expected}, got {width}"
-    );
+    assert_eq!(width, expected, "want {expected}, got {width}");
 
     // Quarter the diameter and the stroke follows it down, rather
     // than staying put.
-    let (_, small, _) = recorded(stock.clone(), 12.5);
+    let small = recorded(stock.clone(), 12.5, None).width;
     let expected_small = 12.5 * stock.thickness_ratio;
-    assert!((small - expected_small).abs() < 1e-4);
+    assert_eq!(small, expected_small);
     assert_ne!(width, small);
 
     // Below the floor the derived value loses.
     let tiny = stock.min_thickness / stock.thickness_ratio * 0.5;
-    let (_, floored, _) = recorded(stock.clone(), tiny);
-    assert!(
-        (floored - stock.min_thickness).abs() < 1e-4,
-        "tiny spinner floors at min_thickness, got {floored}",
+    let floored = recorded(stock.clone(), tiny, None).width;
+    assert_eq!(
+        floored, stock.min_thickness,
+        "tiny spinner floors at min_thickness, got {floored}"
+    );
+
+    // An explicit width replaces the derived one outright — the floor
+    // included, which only guards the derivation.
+    let explicit = stock.min_thickness * 0.5;
+    assert_eq!(
+        recorded(stock.clone(), 50.0, Some(explicit)).width,
+        explicit
     );
 
     // Retheme: every one of the three moves.
@@ -117,10 +145,14 @@ fn arc_and_spin_follow_the_spinner_theme() {
         thickness_ratio: 0.5,
         ..SpinnerTheme::default()
     };
-    let (sweep_b, width_b, speed_b) = recorded(loud, 50.0);
-    assert!((sweep_b - 1.0).abs() < 1e-4);
-    assert!((speed_b - 9.0).abs() < 1e-4);
-    assert!((width_b - 25.0).abs() < 1e-4);
+    let Recorded {
+        sweep: sweep_b,
+        width: width_b,
+        speed: speed_b,
+    } = recorded(loud, 50.0, None);
+    assert_eq!(sweep_b, 1.0);
+    assert_eq!(speed_b, 9.0);
+    assert_eq!(width_b, 25.0);
     assert_ne!(sweep, sweep_b);
     assert_ne!(speed, speed_b);
     assert_ne!(width, width_b);
@@ -144,35 +176,24 @@ fn comet_fades_tail_to_head() {
     assert_eq!(base.tinted(tail.color()), base.with_alpha(0.0));
 }
 
+/// The layout size and the drawn diameter are separate: an explicit size
+/// or `HUG` replaces the box, and an untouched spinner is the diameter
+/// square.
 #[test]
 fn explicit_layout_size_is_independent_from_diameter() {
-    let mut h = UiHarness::new(UVec2::new(200, 120));
-    let (mut sized, mut hug, mut default) = (None, None, None);
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            sized = Some(
-                Spinner::new()
-                    .diameter(12.0)
-                    .size((Sizing::fixed(30.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .node(),
-            );
-            hug = Some(
-                Spinner::new()
-                    .diameter(12.0)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui)
-                    .node(),
-            );
-            default = Some(Spinner::new().diameter(12.0).show(ui).node());
-        });
+    let trio = SizeTrio::of((Sizing::fixed(30.0), Sizing::fixed(40.0)), |ui, size| {
+        let mut spinner = Spinner::new().diameter(12.0);
+        if let Some(size) = size {
+            spinner = spinner.size(size);
+        }
+        spinner.show(ui).node()
     });
-
-    let rects = &h.ui.layout(Layer::Main).rect;
-    let sized = rects[sized.unwrap().idx()];
-    let hug = rects[hug.unwrap().idx()];
-    let default = rects[default.unwrap().idx()];
-    assert_eq!((sized.size.w, sized.size.h), (30.0, 40.0));
-    assert_eq!((hug.size.w, hug.size.h), (0.0, 0.0));
-    assert_eq!((default.size.w, default.size.h), (12.0, 12.0));
+    assert_eq!(
+        trio,
+        SizeTrio {
+            sized: Size::new(30.0, 40.0),
+            hug: Size::ZERO,
+            default: Size::new(12.0, 12.0),
+        }
+    );
 }

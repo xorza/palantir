@@ -12,7 +12,9 @@ use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::fill_item::FillItem;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
@@ -94,7 +96,7 @@ impl LayoutDriver for Stack {
         // (or width-given-height): the child shapes/wraps under the finite
         // cross and reports the resulting main-axis size.
         //
-        // `main_avail` is the stack's own main extent — `resolve_sizing` has
+        // `main_avail` is the stack's own main extent — `AxisSlot::resolve` has
         // already clamped it to the stack's `Fixed`/`max_size`/inherited
         // bound. When the stack is unbounded on its main axis it's `INF`
         // (the common Hug-in-Hug case: children report their natural main
@@ -194,10 +196,9 @@ impl LayoutDriver for Stack {
         let layouts = tree.records.layout();
         // Shares the count / weight / gap accounting with `measure`; the
         // closure supplies the per-phase main source — here the cached
-        // `desired.main` (Fill children's content size, since the
-        // `AxisSlot::resolve` change pins Fill at content). Both
-        // parameters read that one source here, while `measure` gives
-        // them different ones.
+        // `desired.main` (Fill children's content size: measure pins
+        // Fill at content). Both parameters read that one source here,
+        // while `measure` gives them different ones.
         let main_desired = |pass: &mut LayoutPass<'_>, c: NodeId| axis.main(pass.desired(c));
         let StackPlan {
             sum_non_fill_main,

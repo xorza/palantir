@@ -6,7 +6,7 @@ use crate::primitives::color::RgbaF32;
 /// the colour behind them, and the font database that shaped them.
 ///
 /// The per-widget half of the baseline is
-/// [`DamageEngine::prev`](crate::scene::damage::DamageEngine::prev), and
+/// [`DamageEngine::prev`](crate::scene::damage::engine::DamageEngine::prev), and
 /// every input it carries belongs to some node. These two belong to
 /// none, so no
 /// [`NodeSnapshot`](crate::scene::damage::node_snapshot::NodeSnapshot)

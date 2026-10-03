@@ -65,20 +65,19 @@ impl<'a> TextGlyphs<'a> {
         self.cosmic.extract_glyphs(request, placement, out)
     }
 
-    /// Lay `text` out as one unwrapped line at `scale`, rewriting `out` with a
-    /// [`PlacedGlyph`] apiece.
+    /// Lay `text` out without wrapping at `scale`, rewriting `out` with a
+    /// [`PlacedGlyph`] apiece. A `\n` still breaks the text into lines.
     ///
     /// Positions are relative to the line's own origin — left edge, top of the
     /// line box — so a caller places the run by adding wherever it decided that
     /// origin is. That is what makes the answer reusable: text pinned to a
     /// moving point in a scene is laid out once and positioned every frame.
     ///
-    /// Rasterization is binned to that origin, which is to say not binned at
-    /// all: cosmic bins a run's fractional offset into each glyph's raster key,
-    /// and a caller positioning glyphs in its own vertex shader has no
-    /// fractional offset to declare at layout time. So one entry per glyph per
-    /// size, rather than four, and subpixel phase is whatever the caller's own
-    /// sampling makes of it.
+    /// The run declares no fractional offset of its own — a caller positioning
+    /// glyphs in its own vertex shader has none to give at layout time — but
+    /// cosmic still bins each glyph's own fractional `x * scale` into its
+    /// raster key. So a caller's atlas can hold up to four entries per glyph
+    /// per size, one per subpixel bin.
     ///
     /// Rewrites rather than appends, so a caller laying out the same label every
     /// frame keeps one buffer.

@@ -1,48 +1,35 @@
 use crate::Ui;
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::passes::Passes;
+use crate::internals::harness::size_trio::SizeTrio;
+use crate::internals::panic_probe;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
+use crate::widgets::value_response::internals::ValueEdges;
 use glam::{UVec2, Vec2};
-
-#[derive(Debug)]
-struct Signals {
-    changed: bool,
-    committed: bool,
-    /// Record passes that reported `committed` this frame. A frame
-    /// records twice on action input, and an undo pusher applies once
-    /// per pass — so a commit has to fire in exactly one of them.
-    commits: u32,
-}
 
 /// One frame driven by a commit-deferring caller: the draft re-seeds
 /// from `canonical` every record pass and is adopted only on
-/// `committed`. Signals OR-accumulate across the frame's passes,
-/// because a one-frame edge only shows in the first.
-fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Signals {
-    let mut s = Signals {
-        changed: false,
-        committed: false,
-        commits: 0,
-    };
-    h.frame(|ui| {
+/// `committed`. One snapshot per record pass, since a one-frame edge only
+/// shows in pass A and an undo pusher applies once per pass — so a commit
+/// has to fire in exactly one of them.
+fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
+    h.frame_passes(|ui| {
         let mut draft = *canonical;
         let r = Slider::new(&mut draft, 0.0..=1.0)
             .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
             .id(id)
             .show(ui);
-        s.changed |= r.changed;
         if r.committed {
-            s.committed = true;
-            s.commits += 1;
             *canonical = draft;
         }
-    });
-    s
+        r.edges()
+    })
 }
 
 /// The release frame re-writes the value, so a caller that re-seeds its
@@ -65,22 +52,32 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
 
     h.press_at(Vec2::new(59.0, 9.0));
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.changed && !s.committed, "press: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "press: live write, no commit"
+    );
     assert_eq!(canonical, 0.0, "deferred caller ignores mid-drag writes");
 
     h.drag_to(Vec2::new(89.0, 9.0));
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.changed && !s.committed, "drag: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "drag: live write, no commit"
+    );
     assert_eq!(canonical, 0.0);
 
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.committed, "release commits the gesture");
-    assert_eq!(s.commits, 1, "one commit, one record pass");
+    assert!(s.a().committed, "release commits the gesture");
+    assert_eq!(
+        s.count_where(|e| e.committed),
+        1,
+        "one commit, one record pass"
+    );
     assert_eq!(canonical, 0.8, "the commit frame carries the final value");
 
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(!s.changed && !s.committed, "no residual signals");
+    assert!(!s.a().changed && !s.a().committed, "no residual signals");
     assert_eq!(canonical, 0.8);
 }
 
@@ -102,7 +99,10 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
 
     h.press_at(Vec2::new(59.0, 9.0));
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.changed && !s.committed, "press: live write, no commit");
+    assert!(
+        s.a().changed && !s.a().committed,
+        "press: live write, no commit"
+    );
     assert_eq!(
         canonical, 0.0,
         "deferred caller ignores the mid-gesture write"
@@ -110,53 +110,44 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
 
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.committed, "the click's release commits it");
-    assert_eq!(s.commits, 1, "one commit, one record pass");
+    assert!(s.a().committed, "the click's release commits it");
+    assert_eq!(
+        s.count_where(|e| e.committed),
+        1,
+        "one commit, one record pass"
+    );
     assert_eq!(
         canonical, 0.5,
         "the commit frame carries the value it wrote"
     );
 
     let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(!s.changed && !s.committed, "no residual signals");
+    assert!(!s.a().changed && !s.a().committed, "no residual signals");
     assert_eq!(canonical, 0.5);
 }
 
 /// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
 /// default, and an untouched slider still gets that default
-/// (400-wide FILL column → 400 × knob_size 18).
+/// (400-wide FILL column → 400 × knob_size 18). Hugged, the slider is
+/// the knob alone.
 #[test]
 fn explicit_size_overrides_fill_default() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
     let mut v = 0.5_f64;
-    let (mut sized, mut hug, mut default) = (None, None, None);
-    h.frame(|ui| {
-        let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
-        col.show(ui, |ui| {
-            sized = Some(
-                Slider::new(&mut v, 0.0..=1.0)
-                    .size((Sizing::fixed(120.0), Sizing::fixed(30.0)))
-                    .show(ui)
-                    .response
-                    .node(),
-            );
-            hug = Some(
-                Slider::new(&mut v, 0.0..=1.0)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui)
-                    .response
-                    .node(),
-            );
-            default = Some(Slider::new(&mut v, 0.0..=1.0).show(ui).response.node());
-        });
+    let trio = SizeTrio::of((Sizing::fixed(120.0), Sizing::fixed(30.0)), |ui, size| {
+        let mut slider = Slider::new(&mut v, 0.0..=1.0);
+        if let Some(size) = size {
+            slider = slider.size(size);
+        }
+        slider.show(ui).response.node()
     });
-    let rects = &h.ui.layout(Layer::Main).rect;
-    let s = rects[sized.unwrap().idx()];
-    assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
-    let h = rects[hug.unwrap().idx()];
-    assert_eq!((h.size.w, h.size.h), (18.0, 18.0), "explicit hug");
-    let d = rects[default.unwrap().idx()];
-    assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
+    assert_eq!(
+        trio,
+        SizeTrio {
+            sized: Size::new(120.0, 30.0),
+            hug: Size::new(18.0, 18.0),
+            default: Size::new(400.0, 18.0),
+        }
+    );
 }
 
 /// Each endpoint collapses one track segment to a zero-extent `Fixed`, and an
@@ -217,10 +208,7 @@ fn value_to_fraction_maps_and_clamps() {
     ];
     for (v, min, max, want) in cases {
         let got = value_to_fraction(v, min, max);
-        assert!(
-            (got - want).abs() < 1e-6,
-            "v2f({v},{min},{max})={got} want {want}"
-        );
+        assert_eq!(got, want, "v2f({v},{min},{max})={got} want {want}");
     }
     // A NaN anywhere in the triple names no share, and the low end is
     // what this widget reads that as — the same answer `press_fraction`
@@ -244,16 +232,16 @@ fn fraction_to_value_inverts_value_to_fraction() {
     for &v in &[10.0_f64, 12.5, 15.0, 17.5, 20.0] {
         let f = value_to_fraction(v, 10.0, 20.0);
         let back = fraction_to_value(f, 10.0, 20.0);
-        assert!((back - v).abs() < 1e-5, "roundtrip {v} -> {f} -> {back}");
+        assert_eq!(back, v, "roundtrip {v} -> {f} -> {back}");
     }
-    assert!((fraction_to_value(0.25, 10.0, 20.0) - 12.5).abs() < 1e-6);
+    assert_eq!(fraction_to_value(0.25, 10.0, 20.0), 12.5);
     // A reversed range round-trips through the same inverse: 75 sits a
     // quarter of the way from 100 down to 0.
     let f = value_to_fraction(75.0, 100.0, 0.0);
-    assert!((f - 0.25).abs() < 1e-6, "reversed fraction {f}");
-    assert!((fraction_to_value(f, 100.0, 0.0) - 75.0).abs() < 1e-5);
+    assert_eq!(f, 0.25, "reversed fraction {f}");
+    assert_eq!(fraction_to_value(f, 100.0, 0.0), 75.0);
     // Out-of-range fraction clamps before mapping.
-    assert!((fraction_to_value(1.5, 0.0, 100.0) - 100.0).abs() < 1e-6);
+    assert_eq!(fraction_to_value(1.5, 0.0, 100.0), 100.0);
 }
 
 #[test]
@@ -277,17 +265,12 @@ fn pointer_mapping_is_scale_invariant() {
             };
             h.frame(|ui| build(ui, &mut value));
 
-            let response = h.ui.response_for(id);
-            let layout = response.layout_rect.expect("slider arranged");
-            let pointer = response
-                .transform
-                .apply_point(layout.min + Vec2::new(local_x, 9.0));
-            h.press_at(pointer);
+            h.press_in(id, Vec2::new(local_x, 9.0));
             h.frame(|ui| build(ui, &mut value));
 
-            assert!(
-                (value - expected).abs() < 1e-6,
-                "logical x={local_x} at {scale}× produced {value}, expected {expected}",
+            assert_eq!(
+                value, expected,
+                "logical x={local_x} at {scale}× produced {value}, expected {expected}"
             );
         }
     }
@@ -295,14 +278,14 @@ fn pointer_mapping_is_scale_invariant() {
 
 #[test]
 fn snap_to_step_rounds_to_grid() {
-    assert!((snap_to_step(53.0, 0.0, Some(10.0)) - 50.0).abs() < 1e-6);
-    assert!((snap_to_step(57.0, 0.0, Some(10.0)) - 60.0).abs() < 1e-6);
-    assert!((snap_to_step(12.0, 0.0, Some(5.0)) - 10.0).abs() < 1e-6);
-    assert!((snap_to_step(13.0, 0.0, Some(5.0)) - 15.0).abs() < 1e-6);
+    assert_eq!(snap_to_step(53.0, 0.0, Some(10.0)), 50.0);
+    assert_eq!(snap_to_step(57.0, 0.0, Some(10.0)), 60.0);
+    assert_eq!(snap_to_step(12.0, 0.0, Some(5.0)), 10.0);
+    assert_eq!(snap_to_step(13.0, 0.0, Some(5.0)), 15.0);
     // Off-anchor grid: steps of 0.5 from min=1.0.
-    assert!((snap_to_step(2.2, 1.0, Some(0.5)) - 2.0).abs() < 1e-6);
+    assert_eq!(snap_to_step(2.2, 1.0, Some(0.5)), 2.0);
     // A slider with no step passes the value through.
-    assert!((snap_to_step(53.0, 0.0, None) - 53.0).abs() < 1e-6);
+    assert_eq!(snap_to_step(53.0, 0.0, None), 53.0);
 }
 
 /// `None` is the only "off": the builder refuses a step that would be a
@@ -310,14 +293,27 @@ fn snap_to_step_rounds_to_grid() {
 #[test]
 fn step_rejects_a_value_that_cannot_snap() {
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        assert!(
-            std::panic::catch_unwind(move || {
-                let mut v = 0.5_f64;
-                let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
-            })
-            .is_err(),
-            "step({bad}) must panic",
-        );
+        panic_probe::assert_panics_with("slider step must be finite and greater than zero", || {
+            let mut v = 0.5_f64;
+            let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
+        });
+    }
+}
+
+/// A slider maps its track onto its range, so an infinite end is refused
+/// where the slider is built: a click would otherwise store `+inf`, or
+/// `NaN` over `-inf..=inf`.
+#[test]
+fn new_rejects_an_infinite_range() {
+    for (lo, hi) in [
+        (0.0, f64::INFINITY),
+        (f64::NEG_INFINITY, 1.0),
+        (f64::NAN, 1.0),
+    ] {
+        panic_probe::assert_panics_with("slider range must be finite", || {
+            let mut v = 0.5_f64;
+            let _ = Slider::new(&mut v, lo..=hi);
+        });
     }
 }
 

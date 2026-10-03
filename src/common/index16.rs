@@ -41,17 +41,17 @@ impl Index16 {
         self.0.get() as usize - 1
     }
 
+    /// The encoded value — the index plus one — that [`Self::from_raw`]
+    /// reads back.
+    pub(crate) const fn to_raw(self) -> u16 {
+        self.0.get()
+    }
+
     pub(crate) const fn from_raw(raw: u16) -> Option<Self> {
         match NonZeroU16::new(raw) {
             Some(raw) => Some(Self(raw)),
             None => None,
         }
-    }
-}
-
-impl From<Index16> for u16 {
-    fn from(value: Index16) -> Self {
-        value.0.get()
     }
 }
 
@@ -74,10 +74,10 @@ mod tests {
         let last = Index16::new(65_534, "test_table");
 
         assert_eq!(first.idx(), 0);
-        assert_eq!(u16::from(first), 1);
+        assert_eq!(first.to_raw(), 1);
         assert_eq!(Index16::from_raw(0), None);
         assert_eq!(last.idx(), 65_534);
-        assert_eq!(u16::from(last), u16::MAX);
+        assert_eq!(last.to_raw(), u16::MAX);
         assert_eq!(Index16::from_raw(u16::MAX), Some(last));
         assert_eq!(std::mem::size_of::<Index16>(), 2);
         assert_eq!(std::mem::size_of::<Option<Index16>>(), 2);

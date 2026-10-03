@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn mono_measure_cases() {
-    // Mono lays every ASCII byte out `font_size * 0.5` wide on a
+    // Mono lays every `char` out `font_size * 0.5` wide on a
     // `line_height` band, so each expected size below is arithmetic.
     //
     // The height column is what pins the wrap arithmetic: a case
@@ -34,6 +34,20 @@ fn mono_measure_cases() {
             Size::new(16.0, 16.0),
         ),
         ("line_height_param_short", "Hi", tall, Size::new(16.0, 24.0)),
+        // Seven chars in fourteen bytes: the width is the chars', 7 × 8.
+        (
+            "multibyte_counts_chars",
+            "ééééééé",
+            base,
+            Size::new(56.0, 16.0),
+        ),
+        // Eight two-byte chars at four per 32 px line: two lines.
+        (
+            "multibyte_wraps_by_chars",
+            "éééééééé",
+            base.width(32.0),
+            Size::new(32.0, 32.0),
+        ),
         (
             "line_height_param_wrapped",
             "12345678",
@@ -69,6 +83,8 @@ fn the_mono_root_reports_one_line_and_a_segment_floor() {
     // One unbroken word is its own floor, and a trailing space still
     // hangs rather than widening it.
     assert_eq!(mono_root("abcdefg ", params).wrap_floor(), 56.0);
+    // A floor counts chars too: "héllo" is five, in six bytes.
+    assert_eq!(mono_root("héllo wörld", params).wrap_floor(), 40.0);
 }
 
 #[test]
@@ -110,10 +126,10 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
         (58.0, 39.0),
         "bundled-face advances for 'MMMM'"
     );
-    assert!(
-        sans_bold > sans,
-        "Inter Bold ({sans_bold}) must be wider than Regular ({sans}) — a \
-         smaller-or-equal width means Bold silently fell back to Regular",
+    assert_eq!(
+        sans_bold, 60.0,
+        "Inter Bold is wider than Regular's 58 — an equal width means Bold \
+         silently fell back to Regular",
     );
     // The variable mono face instantiates `wght` without changing the cell
     // width, so weight-invariance here is the correct expectation.
@@ -253,11 +269,8 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
             assert_eq!(caret.x, 0.0);
             assert_eq!(caret.y_top, 0.0);
             // `TextShapeKey` quantizes leading to 1/64 px, so the band an
-            // empty block reports is the quantized one, not the request.
-            assert!(
-                (caret.line_height - params.font.line_height_px).abs() <= 1.0 / 64.0,
-                "{caret:?}",
-            );
+            // empty block reports is round(19.2 × 64) / 64, not the request.
+            assert_eq!(caret.line_height, 19.203125);
             assert_eq!(probe.byte_at(37.0, 5.0), 0, "every point is byte 0");
         });
     }
@@ -270,10 +283,24 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     // same ones cosmic-text splits its shape words on — so the floor has
     // to track punctuation and script boundaries, not just whitespace.
     let mut c = CosmicMeasure::default();
+    c.load_font(HEBREW.into())
+        .expect("the Hebrew test face loads");
     let shape = ui_shape(16.0);
 
     // (run, the widest segment its floor must land on)
     for (text, widest) in [
+        // Right to left: the scan reads segments in logical order. Read
+        // visually, each reset came one glyph late and merged the two
+        // words, and the space between them, into one segment.
+        (
+            "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4} \u{5d5}\u{5d6}",
+            "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4}",
+        ),
+        // Mixed directions on one line.
+        (
+            "ab \u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4} cd",
+            "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4}",
+        ),
         // "world" outweighs "hello" in Inter — `w` is the wider glyph.
         ("hello world hi", "world"),
         // A hyphen opens a break after itself, so the floor is the
@@ -290,57 +317,40 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     ] {
         let full = c.measure(text, shape);
         let segment = c.measure(widest, shape);
-        assert!(
-            full.wrap_floor() < full.size.w,
-            "{text:?} must break somewhere: floor {} vs total width {}",
-            full.wrap_floor(),
-            full.size.w,
-        );
-        // Kerning across a break can shift the in-run segment width a
-        // little against its standalone measurement, so allow ±15%.
-        let rel_err = (full.wrap_floor() - segment.wrap_floor()).abs() / segment.wrap_floor();
-        assert!(
-            rel_err < 0.15,
-            "{text:?} floor ({}) must be the width of {widest:?} ({}), rel_err = {rel_err}",
-            full.wrap_floor(),
+        // The floor is exactly the widest segment measured on its own.
+        assert_eq!(full.wrap_floor(), segment.size.w, "{text:?} vs {widest:?}");
+        assert_eq!(
             segment.wrap_floor(),
+            segment.size.w,
+            "{widest:?} is one segment"
         );
     }
 
     // A no-break space opens no opportunity, so it neither splits its run
-    // nor hangs — its own advance counts toward the segment.
-    let nbsp = c.measure("aaa\u{a0}bbb", shape);
-    assert!(
-        (nbsp.wrap_floor() - nbsp.size.w).abs() < 2.0,
-        "no-break space must keep one segment: floor {} vs width {}",
-        nbsp.wrap_floor(),
-        nbsp.size.w,
-    );
-
-    // Single-segment input: intrinsic_min ≈ size.w. size.w is the last
-    // glyph's (x + w) ceil'd; intrinsic_min sums glyph widths. The two
-    // differ by sub-pixel kerning / ceil rounding — allow 2 px.
-    let hello = c.measure("hello", shape);
-    assert!(
-        (hello.wrap_floor() - hello.size.w).abs() < 2.0,
-        "single word: intrinsic_min ({}) ≈ size.w ({})",
-        hello.wrap_floor(),
-        hello.size.w,
-    );
-
-    // The floor is a *width*, on the whole-pixel grid the committed wrap
-    // width is snapped to — a fractional one rounds down to a pixel
-    // narrower than the segment it exists to keep whole.
-    for text in ["hello", "hello world hi", "supercalifragilistic"] {
-        let floor = c.measure(text, shape).wrap_floor();
-        assert_eq!(floor, floor.ceil(), "{text}: the floor must be integral");
+    // nor hangs — its own advance counts toward the segment. A single word
+    // is one segment too. Both floors equal the run's own width, which is
+    // also why the floor is integral: it is on the whole-pixel grid the
+    // committed wrap width is snapped to.
+    for (text, width) in [("aaa\u{a0}bbb", 61.0), ("hello", 37.0)] {
+        let measured = c.measure(text, shape);
+        assert_eq!(measured.size.w, width, "{text:?}");
+        assert_eq!(measured.wrap_floor(), width, "{text:?}: one segment");
     }
+    assert_eq!(
+        c.measure("supercalifragilistic", shape).wrap_floor(),
+        138.0,
+        "a long word floors at its whole-pixel width",
+    );
 
     // Width-bounded shapes skip the segment scan and report a zero floor —
     // every consumer derives it from the unbounded root instead.
     let full = c.measure("hello world hi", shape);
     let bounded = c.measure("hello world hi", shape.width(60.0));
-    assert!(bounded.size.h > full.size.h, "60 px must force a wrap");
+    // One line is 19.203125, ceiled to 20. At 60 px the run breaks into
+    // "hello", "world" and "hi": 3 × 19.203125 = 57.609375, ceiled to 58,
+    // and as wide as its widest line, "world".
+    assert_eq!(full.size, Size::new(101.0, 20.0));
+    assert_eq!(bounded.size, Size::new(43.0, 58.0), "60 px forces a wrap");
     assert_eq!(
         bounded.intrinsic_min, None,
         "bounded shapes must not pay the segment scan",
@@ -378,11 +388,11 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     // against the resident buffer.
     let overflow = text.root(slot_at(wid, 1), request, TextWrap::WrapWithOverflow);
     let floor = overflow.wrap_floor();
-    assert!(
-        floor > 0.0 && floor < overflow.size.w,
-        "backfilled floor {floor} must be a real segment width inside the \
-         run's {} px, not a zero left behind by the Wrap run",
-        overflow.size.w,
+    assert_eq!(overflow.size.w, 137.0);
+    assert_eq!(
+        floor, 109.0,
+        "the backfilled floor is the width of \"extraordinarily\", not a zero \
+         left behind by the Wrap run",
     );
 
     // Same value as a shaper that scanned from the start, so the backfill
@@ -524,7 +534,7 @@ fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
         "a left-aligned empty line starts at the block's left edge",
     );
     drop(left);
-    assert!(block_w > 0.0, "the block has width for alignment to use");
+    assert_eq!(block_w, 98.0, "\"wide enough\" is the widest line");
 
     let right = shaper.layout(&run(HAlign::Right));
     assert_eq!(

@@ -1,15 +1,19 @@
 //! What a pinch, a wheel and a modifier do to the scale.
 
+use crate::TextStyle;
 use crate::Ui;
+use crate::internals::harness::UiHarness;
+use crate::internals::panic_probe;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
-use crate::widgets::scroll::tests::support::{SURFACE, build, read_state, zoom_driven};
+use crate::widgets::scroll::tests::support::{
+    SURFACE, build, fixed_block, read_state, zoom_driven,
+};
 use crate::widgets::scroll::zoom_config::ZoomConfig;
 use glam::{UVec2, Vec2};
 
@@ -28,10 +32,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
                     .id(inner_id)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
                     });
             });
     };
@@ -43,8 +44,8 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     assert!(h.pinch(1.5).requests_repaint);
     h.frame(build);
 
-    let outer_zoom = h.ui.state_or_default::<ScrollState>(outer_id).zoom;
-    let inner_zoom = h.ui.state_or_default::<ScrollState>(inner_id).zoom;
+    let outer_zoom = h.state::<ScrollState>(outer_id).zoom;
+    let inner_zoom = h.state::<ScrollState>(inner_id).zoom;
     assert_eq!(outer_zoom, 1.5);
     assert_eq!(inner_zoom, 1.0);
 }
@@ -123,10 +124,12 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("content"))
-                                .size((Sizing::fixed(content_size), Sizing::fixed(content_size)))
-                                .show(ui);
+                            fixed_block(
+                                ui,
+                                WidgetId::from_hash("content"),
+                                content_size,
+                                content_size,
+                            )
                         });
                 });
         };
@@ -140,7 +143,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         }
 
         let id = WidgetId::from_hash("xy");
-        let before = *h.ui.state_or_default::<ScrollState>(id);
+        let before = *h.state::<ScrollState>(id);
         let pivot_local = Vec2::new(pointer.0 - OUTER_PAD, pointer.1 - (OUTER_PAD + TEXT_GAP));
         let world_before = Vec2::new(
             (pivot_local.x + before.offset.x) / before.zoom,
@@ -152,7 +155,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             h.frame(build);
         }
 
-        let after = *h.ui.state_or_default::<ScrollState>(id);
+        let after = *h.state::<ScrollState>(id);
         let world_after = Vec2::new(
             (pivot_local.x + after.offset.x) / after.zoom,
             (pivot_local.y + after.offset.y) / after.zoom,
@@ -219,10 +222,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0)
                     });
             });
     };
@@ -237,21 +237,20 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     h.frame(build);
 
-    let after = *h.ui.state_or_default::<ScrollState>(id);
-    assert!(
-        (after.offset.y - (-45.0)).abs() < 1e-3,
+    let after = *h.state::<ScrollState>(id);
+    assert_eq!(
+        after.offset.y, -45.0,
         "wheel pan from out-of-range offset snapped: -50 + 5 should be -45, got {}",
-        after.offset.y,
+        after.offset.y
     );
 
     h.scroll_pixels(Vec2::new(0.0, -5.0));
     h.frame(build);
-    let after2 = *h.ui.state_or_default::<ScrollState>(id);
-    assert!(
-        (after2.offset.y - (-45.0)).abs() < 1e-3,
+    let after2 = *h.state::<ScrollState>(id);
+    assert_eq!(
+        after2.offset.y, -45.0,
         "pan further out-of-range should be blocked at current ({}), got {}",
-        -45.0,
-        after2.offset.y,
+        -45.0, after2.offset.y
     );
 }
 
@@ -264,10 +263,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
             .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("content"))
-                    .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-                    .show(ui);
+                fixed_block(ui, WidgetId::from_hash("content"), 100.0, 100.0)
             });
     };
     h.frame(build);
@@ -275,14 +271,14 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     h.frame(build);
 
     let id = WidgetId::from_hash("scroll");
-    let zoomed = *h.ui.state_or_default::<ScrollState>(id);
+    let zoomed = *h.state::<ScrollState>(id);
     let expected_zoomed_offset = (0.0 + 50.0) * 0.5 - 50.0;
     assert_eq!(zoomed.zoom, 0.5);
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
     h.scroll_pixels(Vec2::new(0.0, -10.0));
     h.frame(build);
-    let panned = *h.ui.state_or_default::<ScrollState>(id);
+    let panned = *h.state::<ScrollState>(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset.y, zoomed.offset.y);
 }
@@ -292,8 +288,8 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // The wheel-step refactor split lines vs pixels at the input
     // layer; the zoom path must combine them so a touchpad gesture
     // under ctrl still zooms — pre-split it did, and regressing that
-    // breaks touchpad pinch-via-modifier. With line_px = 19.2 (default
-    // 16 × 1.2), 38.4 px of touchpad scroll = 2 virtual notches.
+    // breaks touchpad pinch-via-modifier. Two lines' worth of touchpad
+    // pixels is two virtual notches.
     let mut h = UiHarness::new(SURFACE);
     let build_zoom = |ui: &mut Ui| {
         Panel::vstack()
@@ -304,17 +300,14 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                     .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("content"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0)
                     });
             });
     };
     h.frame(build_zoom);
 
     let scroll_id = WidgetId::from_hash("zoomy");
-    let before_zoom = h.ui.state_or_default::<ScrollState>(scroll_id).zoom;
+    let before_zoom = h.state::<ScrollState>(scroll_id).zoom;
 
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
@@ -324,14 +317,15 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
         ctrl: true,
         ..Modifiers::NONE
     });
-    h.scroll_pixels(Vec2::new(0.0, 38.4));
+    let line_px = TextStyle::default().line_height_for(16.0);
+    h.scroll_pixels(Vec2::new(0.0, 2.0 * line_px));
     h.frame(build_zoom);
 
-    let after_zoom = h.ui.state_or_default::<ScrollState>(scroll_id).zoom;
+    let after_zoom = h.state::<ScrollState>(scroll_id).zoom;
     let expected = before_zoom * 1.03_f32.powf(-2.0);
-    assert!(
-        (after_zoom - expected).abs() < 1e-3,
-        "ctrl+touchpad zoom: expected {expected}, got {after_zoom}",
+    assert_eq!(
+        after_zoom, expected,
+        "ctrl+touchpad zoom: expected {expected}, got {after_zoom}"
     );
 }
 
@@ -341,7 +335,8 @@ fn wheel_zoom_step_is_font_independent() {
     // The line→pan magnitude scales with font; the line→zoom step must
     // not — pin that so a future refactor that reintroduces a
     // font-scaled denominator on the zoom side fails loudly.
-    let mut last_zoom: Option<f32> = None;
+    // `ZoomConfig::default().step` is 1.03, and scrolling down zooms out.
+    let expected = 1.03_f32.powf(-1.0);
     for font_size in [12.0_f32, 16.0, 24.0] {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().text.font_size_px = font_size;
@@ -354,10 +349,7 @@ fn wheel_zoom_step_is_font_independent() {
                         .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("content"))
-                                .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                                .show(ui);
+                            fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0)
                         });
                 });
         };
@@ -373,24 +365,24 @@ fn wheel_zoom_step_is_font_independent() {
         h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
-        let zoom = h.ui.state_or_default::<ScrollState>(scroll_id).zoom;
-        if let Some(prev) = last_zoom {
-            assert!(
-                (zoom - prev).abs() < 1e-4,
-                "zoom step must be font-independent: prev {prev}, got {zoom} at font_size {font_size}",
-            );
-        }
-        last_zoom = Some(zoom);
+        let zoom = h.state::<ScrollState>(scroll_id).zoom;
+        // A tolerance for `powf`'s rounding only: a font-scaled step would
+        // miss by the font ratio, two orders of magnitude more.
+        assert_eq!(
+            zoom, expected,
+            "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}"
+        );
     }
 }
 
 #[test]
 fn line_wheel_step_scales_with_theme_font_size() {
-    // Pin: a `ScrollLines(0, 1)` event lands `font_size * line_height_mult`
-    // pixels of pan — not the legacy 40 px constant. Two themes, two
-    // expected pixel offsets.
+    // Pin: a `ScrollLines(0, 1)` event lands one laid-out line of pan —
+    // `font_size * line_height_mult` on the shaper's 1/64-px grid — not
+    // the legacy 40 px constant. 16 × 1.2 = 19.2 is 1228.8 64ths, which
+    // rounds to 1229: 19.203125. 24 × 1.5 = 36 is on the grid.
     let cases: &[(&str, f32, f32, f32)] = &[
-        ("default_16px_text", 16.0, 1.2, 19.2),
+        ("default_16px_text", 16.0, 1.2, 1229.0 / 64.0),
         ("larger_24px_text", 24.0, 1.5, 36.0),
     ];
     for (label, font_size, line_height_mult, expected_px) in cases {
@@ -404,10 +396,10 @@ fn line_wheel_step_scales_with_theme_font_size() {
         h.frame(build_v);
 
         let scroll_id = WidgetId::from_hash("scroll");
-        let offset_y = h.ui.state_or_default::<ScrollState>(scroll_id).offset.y;
-        assert!(
-            (offset_y - expected_px).abs() < 0.01,
-            "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",
+        let offset_y = h.state::<ScrollState>(scroll_id).offset.y;
+        assert_eq!(
+            offset_y, *expected_px,
+            "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}"
         );
     }
 }
@@ -473,12 +465,82 @@ fn zoom_by_composes_across_calls() {
 #[test]
 fn zoom_by_rejects_a_factor_that_cannot_scale() {
     for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        assert!(
-            std::panic::catch_unwind(move || {
-                let _ = Scroll::both().zoom_by(bad);
-            })
-            .is_err(),
-            "zoom_by({bad}) must panic",
+        panic_probe::assert_panics_with("a zoom factor must be finite and above zero", || {
+            let _ = Scroll::both().zoom_by(bad);
+        });
+    }
+}
+
+/// The offset band reaches both ends of zoomed content inside padding.
+///
+/// 200 × 200 viewport, padding 10, content 400 × 400, zoom 2. Each axis
+/// shows `200 - gutter - 2 × 10` px, and the content spans `400 × 2 = 800`.
+/// Panned to either end, the content's own edge sits exactly on the
+/// viewport's — the start on the padding's inner edge at offset 0, the end
+/// on the far edge at offset `800 - shown`. Scaled about the node's corner
+/// instead, the padding grew to 20 and both ends missed by 10.
+#[test]
+fn zoomed_padding_keeps_both_content_ends_reachable() {
+    let scroll_id = WidgetId::from_hash("scroll");
+    let content_id = WidgetId::from_hash("content");
+    let show = |ui: &mut Ui, zoom: f32, pan: Vec2| {
+        Scroll::both()
+            .id(scroll_id)
+            .zoomable()
+            .zoom_by(zoom)
+            .pan_by(pan)
+            .padding(10.0)
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+            .show(ui, |ui| fixed_block(ui, content_id, 400.0, 400.0));
+    };
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
+    h.frame(|ui| show(ui, 2.0, Vec2::ZERO));
+    let gutter = 200.0 - 2.0 * 10.0 - h.rect(content_id).unwrap().size.w;
+    let shown = 200.0 - gutter - 2.0 * 10.0;
+
+    for (pan, offset, edge) in [
+        (Vec2::splat(-1e4), 0.0, 10.0),
+        (Vec2::splat(1e4), 800.0 - shown, 10.0 + shown),
+    ] {
+        h.frame(|ui| show(ui, 1.0, pan));
+        h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
+        assert_eq!(
+            h.state::<ScrollState>(scroll_id).offset,
+            Vec2::splat(offset)
         );
+        let laid = h.arranged(content_id);
+        let transform = h.transform(content_id);
+        let start = transform.apply_point(laid.min);
+        let end = transform.apply_point(laid.max());
+        let reached = if offset == 0.0 { start } else { end };
+        assert_eq!(reached, Vec2::splat(edge), "panned by {pan:?}");
+    }
+}
+
+/// `zoomable_with` carries its range to the zoom: one 0.25× pinch lands
+/// at 0.25 under the default 0.1..=10 range, and clamps to the floor of a
+/// 0.5..=2 one.
+#[test]
+fn zoomable_with_clamps_to_its_own_range() {
+    let id = WidgetId::from_hash("ranged");
+    for (config, want) in [
+        (ZoomConfig::default(), 0.25),
+        (ZoomConfig::new(0.5..=2.0, 1.25), 0.5),
+    ] {
+        let mut h = UiHarness::new(SURFACE);
+        let build = |ui: &mut Ui| {
+            Scroll::both()
+                .id(id)
+                .zoomable_with(config.clone())
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    fixed_block(ui, WidgetId::from_hash("ranged-content"), 100.0, 100.0)
+                });
+        };
+        h.frame(build);
+        h.pinch_at(Vec2::new(50.0, 50.0), 0.25);
+        h.frame(build);
+        assert_eq!(h.state::<ScrollState>(id).zoom, want);
     }
 }

@@ -2,19 +2,19 @@
 //! settle.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame_report::FrameProcessing;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
-use crate::widgets::scroll::tests::support::{scroll_content, scroll_viewport};
+use crate::widgets::scroll::tests::support::{fixed_block, scroll_content, scroll_viewport};
 use glam::UVec2;
 use std::time::Duration;
 
@@ -34,21 +34,16 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     };
     let mut h = UiHarness::new(UVec2::new(400, 600));
-    let mut passes = 0;
-    let report = h.at(Duration::from_millis(16)).frame(|ui| {
-        passes += 1;
-        build(ui);
-    });
-    assert_eq!(passes, 1, "a cold-mounted scroll must not re-record");
-    assert_eq!(report.processing, FrameProcessing::SingleLayout);
+    assert_eq!(
+        h.at(Duration::from_millis(16)).frame(build).processing,
+        FrameProcessing::SingleLayout,
+        "a cold-mounted scroll must not re-record"
+    );
 
     // The vertical bar's gutter comes out of the *cross* axis (width),
     // so its own main extent is the full 200 — only a horizontal bar
@@ -60,11 +55,11 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
     assert_eq!(expected, 50.0, "arithmetic guard on the expectation");
     let thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(thumbs.len(), 1, "one vertical thumb, no collapsed peers");
-    assert!(
-        (thumbs[0].size.h - expected).abs() < 1e-3,
+    assert_eq!(
+        thumbs[0].size.h, expected,
         "first-frame thumb must already be sized from the measured \
          content: expected {expected}, got {}",
-        thumbs[0].size.h,
+        thumbs[0].size.h
     );
     assert_eq!(thumbs[0].size.w, theme.thickness);
 }
@@ -85,10 +80,7 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     };
@@ -123,10 +115,7 @@ fn cold_mount_bar_geometry_matches_frame_two() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("big"))
-                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("big"), 800.0, 800.0)
                     });
             });
     };
@@ -172,10 +161,7 @@ fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("short"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("short"), 180.0, 50.0)
                     });
             });
     };
@@ -216,8 +202,7 @@ fn scroll_with_bars_composes_through_warm_cache() {
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
 }
 
 /// Showcase-style nested scroll cards. Pin that the deeper
@@ -237,10 +222,7 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                         .id(WidgetId::from_hash(("card", tag)))
                         .padding(8.0)
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(RgbaF32::srgb(0.16, 0.20, 0.28)))
                         .clip_rect()
                         .show(ui, |ui| {
                             let s = match tag {
@@ -262,7 +244,5 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                 }
             });
     };
-    h.frame(build);
-    h.frame(build);
-    h.frame(build);
+    h.prime(3, build);
 }

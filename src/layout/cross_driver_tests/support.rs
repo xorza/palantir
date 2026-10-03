@@ -1,17 +1,30 @@
 //! Builders for the recurring widget patterns used by the cross-driver
 //! tests in this directory: chat-message HStacks, two-column grids with
-//! wrapping text. Local helpers — keep narrow, only generalize when a
-//! third caller appears.
+//! wrapping text, and the paragraph they wrap. Local helpers — keep
+//! narrow, only generalize when a third caller appears.
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::layout::layer_layout::LayerLayout;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::{sizing::Sizing, track::Track};
-use crate::layout::{LayerLayout, ShapedText};
 use crate::scene::tree::node_id::NodeId;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
+
+/// The paragraph the wrapping cases shape: nine words, so every narrow
+/// width breaks it somewhere.
+pub(super) const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
+
+/// The measured height of `lines` lines of `font_px` text: the default
+/// style's line height per line, on the shaper's 1/64-px grid, ceiled to
+/// whole pixels as the measurer does. Widths have no such formula — they
+/// are the bundled faces' glyph advances, the same on every machine.
+pub(super) fn lines_h(lines: u32, font_px: f32) -> f32 {
+    (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
+}
 
 /// Test helper: the leaf's single shaped-text result. Asserts the
 /// span holds exactly one entry — every cross-driver test today builds
@@ -42,7 +55,7 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
             text_node = Some(
                 Text::new(paragraph)
                     .auto_id()
-                    .style(&TextStyle::default().with_font_size(16.0))
+                    .font_size(16.0)
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((0, 0))
                     .show(ui)
@@ -50,7 +63,7 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
             );
             Text::new("right column")
                 .auto_id()
-                .style(&TextStyle::default().with_font_size(16.0))
+                .font_size(16.0)
                 .grid_cell((0, 1))
                 .show(ui);
         });
@@ -74,7 +87,7 @@ pub(super) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
                 message_node = Some(
                     Text::new(text)
                         .auto_id()
-                        .style(&TextStyle::default().with_font_size(text_px))
+                        .font_size(text_px)
                         .size((Sizing::FILL, Sizing::HUG))
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)

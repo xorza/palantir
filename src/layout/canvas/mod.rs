@@ -5,9 +5,9 @@ use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::pass::LayoutPass;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
@@ -108,10 +108,9 @@ impl LayoutDriver for Canvas {
         query: IntrinsicQuery,
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
-        let pos_inflates = matches!(
-            axis.main_sizing(tree.records.layout()[node.idx()].size),
-            Sizing::HUG
-        );
+        let pos_inflates = axis
+            .main_sizing(tree.records.layout()[node.idx()].size)
+            .is_hug();
         query.children_max(layout, tree, node, axis, interned_text, |tree, c| {
             if pos_inflates {
                 axis.main_v(tree.bounds(c).position)

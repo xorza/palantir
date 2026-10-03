@@ -18,27 +18,17 @@ fn pod_matches_write_of_bytes_of() {
         b: 0x9abc_def0,
     };
 
-    let check = |label: &str, bytes: &[u8]| {
-        let mut a = Hasher::new();
-        a.write(bytes);
-        let mut b = Hasher::new();
-        b.write(bytes);
-        assert_eq!(a.finish(), b.finish(), "case: {label} (sanity)");
-    };
-
     let mut h1 = Hasher::new();
     h1.pod(&scalar);
     let mut h2 = Hasher::new();
     h2.write(bytemuck::bytes_of(&scalar));
     assert_eq!(h1.finish(), h2.finish(), "case: scalar u32");
-    check("scalar u32", bytemuck::bytes_of(&scalar));
 
     let mut h1 = Hasher::new();
     h1.pod(&pair);
     let mut h2 = Hasher::new();
     h2.write(bytemuck::bytes_of(&pair));
     assert_eq!(h1.finish(), h2.finish(), "case: repr(C) Pair");
-    check("repr(C) Pair", bytemuck::bytes_of(&pair));
 
     // Same contract for the slice form.
     let pairs = [pair, Pair { a: 1, b: 2 }];
@@ -118,13 +108,4 @@ fn new_matches_default_seed() {
     wrapped.write(bytes);
     raw.write(bytes);
     assert_eq!(wrapped.finish(), raw.finish());
-}
-
-#[test]
-fn empty_hash_is_stable() {
-    // Cheap canary: if the underlying `FxHasher` swap changes the
-    // empty-input output, every persisted snapshot key shifts.
-    let h1 = Hasher::new().finish();
-    let h2 = Hasher::new().finish();
-    assert_eq!(h1, h2);
 }

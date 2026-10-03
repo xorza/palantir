@@ -1,13 +1,12 @@
 //! Observability for the gradient LUT atlas. Built on [`BenchOnly`], whose
 //! module doc explains the gated-cell pattern and why the two gates exist.
 //!
-//! On the wider cell gate rather than test-only because
-//! [`gradient_atlas`](crate::renderer::gradient_atlas::bench) benches
-//! the register path and asserts each arm actually exercised what its
-//! name claims — a "steady-state hit" arm that quietly started baking
-//! would otherwise read as a plausible slowdown rather than a broken
-//! fixture. Every counter is a plain `u32`; nothing here allocates, so
-//! the alloc bench sees nothing from this module.
+//! On the wider cell gate rather than test-only because the
+//! `gradient_atlas` bench drives the register path and asserts each arm
+//! actually exercised what its name claims — a "steady-state hit" arm
+//! that quietly started baking would otherwise read as a plausible
+//! slowdown rather than a broken fixture. Every counter is a plain `u32`; nothing here allocates, so
+//! the allocation suite sees nothing from this module.
 //!
 //! ## Why these seven
 //!

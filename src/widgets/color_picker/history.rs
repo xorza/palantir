@@ -9,7 +9,12 @@ use tinyvec::ArrayVec;
 /// Seeding is what makes "empty history shows presets" a stable row rather
 /// than a row that changes length on the first pick: the newest colour goes
 /// to the front and the oldest preset falls off the end.
-#[derive(Debug)]
+///
+/// Seeded on first use, not at construction: a picker's state is taken
+/// out and put back every frame, and a default that built the presets
+/// spent sixteen colour conversions a frame on a placeholder overwritten
+/// at once. A seeded row is never empty again, so empty means unseeded.
+#[derive(Debug, Default)]
 pub(crate) struct History {
     colors: ArrayVec<[RgbaF32; History::CAP]>,
 }
@@ -42,8 +47,15 @@ impl History {
     }
 
     /// The row, most recent first.
-    pub(crate) fn colors(&self) -> &[RgbaF32] {
+    pub(crate) fn colors(&mut self) -> &[RgbaF32] {
+        self.seed();
         &self.colors
+    }
+
+    fn seed(&mut self) {
+        if self.colors.is_empty() {
+            *self = Self::presets();
+        }
     }
 
     /// Put `color` at the front, dropping any earlier copy of it and the
@@ -53,6 +65,7 @@ impl History {
     /// shades of one colour: a gesture commits once, but a session picking
     /// the same swatch twice should not lose fourteen others to it.
     pub(crate) fn push(&mut self, color: RgbaF32) {
+        self.seed();
         if self.colors.first() == Some(&color) {
             return;
         }
@@ -64,9 +77,17 @@ impl History {
     }
 }
 
-impl Default for History {
-    fn default() -> Self {
-        Self::presets()
+/// Reach-in for the picker's tests, which read the row a picker kept
+/// without seeding one where it has not.
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::primitives::color::RgbaF32;
+    use crate::widgets::color_picker::history::History;
+
+    impl History {
+        pub(crate) fn peek(&self) -> &[RgbaF32] {
+            &self.colors
+        }
     }
 }
 
@@ -75,10 +96,12 @@ mod tests {
     use crate::primitives::color::RgbaF32;
     use crate::widgets::color_picker::history::History;
 
-    /// The row starts full, so it never changes length as colours arrive.
+    /// The row starts full, so it never changes length as colours arrive —
+    /// though a default history holds nothing until the row is first read.
     #[test]
     fn presets_fill_the_row() {
-        let history = History::default();
+        let mut history = History::default();
+        assert!(history.colors.is_empty(), "no presets built before use");
         assert_eq!(history.colors().len(), History::CAP);
     }
 
@@ -88,7 +111,7 @@ mod tests {
     #[test]
     fn presets_are_the_derived_list() {
         use crate::primitives::color::okhsv::Okhsv;
-        let history = History::default();
+        let mut history = History::default();
         let colors = history.colors();
         assert_eq!(colors[11], Okhsv::new(11.0 / 12.0, 1.0, 1.0).to_color());
         assert_eq!(colors[12], RgbaF32::BLACK);

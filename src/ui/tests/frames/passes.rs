@@ -3,11 +3,10 @@
 
 use crate::Ui;
 use crate::common::time::MAX_ANIM_DT;
-use crate::input::keyboard::key_text::KeyText;
+use crate::internals::harness::UiHarness;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
-use crate::ui::tests::support::{COLD, SURFACE};
+use crate::ui::tests::support::SURFACE;
 use crate::widgets::configure::Configure;
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -79,7 +78,7 @@ fn frame_pass_count_matches_action_trigger() {
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::modifiers::Modifiers;
-    use crate::input::pointer::PointerButton;
+
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use glam::Vec2;
@@ -93,70 +92,54 @@ fn frame_pass_count_matches_action_trigger() {
             .show(ui, |_| {});
     }
 
-    type Prime = fn(&mut Ui);
+    type Prime = fn(&mut UiHarness);
     let cases: &[(&str, Prime, usize)] = &[
         ("idle", |_ui| {}, 1),
         (
             "hover only",
-            |ui| {
-                ui.inject_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+            |h| {
+                h.move_to(Vec2::new(10.0, 10.0));
             },
             1,
         ),
         (
             "modifiers only",
-            |ui| {
-                ui.inject_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            |h| {
+                h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
             },
             1,
         ),
+        // The press frame first: a press lands a frame before its
+        // release, and the release frame is the one measured.
         (
             "routed click",
-            |ui| {
-                ui.inject_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-                ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
+            |h| {
+                h.press_at(Vec2::new(10.0, 10.0));
+                h.frame(build_target);
+                h.release();
             },
             2,
         ),
-        (
-            "unrouted click",
-            |ui| {
-                ui.inject_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
-                ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
-            },
-            1,
-        ),
+        ("unrouted click", |h| h.click_at(Vec2::new(150.0, 150.0)), 1),
         (
             "unrouted keydown",
-            |ui| {
-                ui.inject_input(InputEvent::KeyDown {
-                    key: Key::Enter,
-                    repeat: false,
-                    physical: Key::Other,
-                    text: KeyText::EMPTY,
-                });
+            |h| {
+                h.key(Key::Enter);
             },
             1,
         ),
         (
             "routed keydown",
-            |ui| {
-                ui.set_focus(WidgetId::from_hash("root"));
-                ui.inject_input(InputEvent::KeyDown {
-                    key: Key::Enter,
-                    repeat: false,
-                    physical: Key::Other,
-                    text: KeyText::EMPTY,
-                });
+            |h| {
+                h.set_focus(WidgetId::from_hash("root"));
+                h.key(Key::Enter);
             },
             2,
         ),
         (
             "scroll",
-            |ui| {
-                ui.inject_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+            |h| {
+                h.scroll_pixels(Vec2::new(0.0, 10.0));
             },
             1,
         ),
@@ -167,7 +150,7 @@ fn frame_pass_count_matches_action_trigger() {
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
         h.frame(build_target);
-        prime(&mut h.ui);
+        prime(&mut h);
 
         let count = Cell::new(0u32);
         let render_frame_before = h.ui.frame_runtime.render_frame_id;
@@ -214,19 +197,18 @@ fn action_effect_runs_once_across_record_replay() {
         let _ = build(ui);
     });
     h.press_at(Vec2::new(10.0, 10.0));
+    h.frame(|ui| {
+        let _ = build(ui);
+    });
     h.release();
 
-    let mut passes = 0;
-    let mut effects = 0;
-    let _ = h.at(Duration::from_millis(16)).frame(|ui| {
-        passes += 1;
-        if build(ui) {
-            effects += 1;
-        }
-    });
-
-    assert_eq!(passes, 2, "action input must request a replay pass");
-    assert_eq!(effects, 1, "the action edge must not replay");
+    let clicks = h.at(Duration::from_millis(16)).frame_passes(build);
+    assert_eq!(clicks.len(), 2, "action input must request a replay pass");
+    assert_eq!(
+        (*clicks.a(), clicks.b()),
+        (true, Some(&false)),
+        "the action edge shows in pass A and does not replay"
+    );
 }
 
 /// A relayout request forces a second record pass, exactly as pending
@@ -235,7 +217,7 @@ fn action_effect_runs_once_across_record_replay() {
 /// pass A is the one that observes one-frame edges.
 #[test]
 fn frame_value_records_both_relayout_passes_and_returns_the_first() {
-    let mut h = UiHarness::new(COLD);
+    let mut h = UiHarness::new(SURFACE);
     let mut calls = 0_u32;
 
     let captured = h.frame_value(|ui| {
@@ -277,10 +259,10 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "no animate-not-settled flag set — must stay false"
     );
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(16));
-    assert!(
-        (h.ui.frame_runtime.dt - 0.016).abs() < 1e-6,
-        "FrameRuntime::dt should be (now - prev) in seconds; got {}",
+    assert_eq!(
         h.ui.frame_runtime.dt,
+        Duration::from_millis(16).as_secs_f32(),
+        "FrameRuntime::dt should be (now - prev) in seconds",
     );
 
     // Frame B: simulate an unsettled animation tick by setting the
@@ -299,10 +281,10 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "repaint_requested set during recording must surface on FrameOutput",
     );
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(32));
-    assert!(
-        (h.ui.frame_runtime.dt - 0.016).abs() < 1e-6,
-        "FrameRuntime::dt should be next-frame delta; got {}",
+    assert_eq!(
         h.ui.frame_runtime.dt,
+        Duration::from_millis(16).as_secs_f32(),
+        "FrameRuntime::dt should be next-frame delta",
     );
 
     // Frame C: oversized gap (5s) clamps dt to MAX_ANIM_DT; `time` still
@@ -313,10 +295,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             .show(ui, |_| {});
     });
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(5_032));
-    assert!(
-        (h.ui.frame_runtime.dt - MAX_ANIM_DT).abs() < 1e-6,
-        "FrameRuntime::dt should clamp at MAX_ANIM_DT; got {}",
-        h.ui.frame_runtime.dt,
+    assert_eq!(
+        h.ui.frame_runtime.dt, MAX_ANIM_DT,
+        "FrameRuntime::dt should clamp at MAX_ANIM_DT",
     );
 
     // Frame D: prior frame's repaint_requested must NOT leak — resets
@@ -333,4 +314,43 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         !repaint,
         "repaint_requested must reset at the top of frame()",
     );
+}
+
+/// `App::update` reads responses before any record pass of its frame, so
+/// it needs its own quiescence snapshot. Here the last pass ran with the
+/// pointer off the surface, and the press arrived after it: a snapshot
+/// left from that pass would default the whole interaction half out.
+#[test]
+fn update_sees_input_that_arrived_after_a_quiescent_pass() {
+    use crate::app::App;
+    use crate::window::window_token::WindowToken;
+
+    #[derive(Debug)]
+    struct Probe {
+        id: WidgetId,
+        seen: Vec<bool>,
+    }
+
+    impl App for Probe {
+        fn update(&mut self, _win: WindowToken, ui: &Ui) {
+            let response = ui.response_for(self.id);
+            self.seen.push(response.pressed() && response.pointer_over);
+        }
+
+        fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
+            Button::new().id(self.id).size(40.0).show(ui);
+        }
+    }
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut probe = Probe {
+        id: WidgetId::from_hash("update-reads-press"),
+        seen: Vec::new(),
+    };
+    h.frame_app(&mut probe);
+    assert_eq!(probe.seen, [false], "nothing pressed yet");
+
+    h.press_at(Vec2::new(20.0, 20.0));
+    h.frame_app(&mut probe);
+    assert_eq!(probe.seen, [false, true], "the press reaches update");
 }

@@ -1,13 +1,13 @@
 //! The per-node rows the walk fills, and what each covers.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -27,10 +27,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
             Panel::hstack()
                 .id(WidgetId::from_hash("chrome"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .background(Background {
-                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {});
             Panel::hstack()
                 .id(WidgetId::from_hash("bare"))
@@ -149,10 +146,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
             Block::new()
                 .id(WidgetId::from_hash("painted"))
                 .size(50.0)
-                .background(Background {
-                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         });
     });
@@ -186,10 +180,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
                     Panel::vstack()
                         .id(WidgetId::from_hash("child"))
                         .size(Sizing::fixed(size))
-                        .background(Background {
-                            fill: fill.into(),
-                            ..Default::default()
-                        })
+                        .background(Background::fill(fill))
                         .show(ui, |_| {});
                 });
         }

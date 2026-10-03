@@ -1,6 +1,6 @@
 //! Composited image and off-screen `GpuView` draw records.
 
-use crate::primitives::color::RgbaF16;
+use crate::primitives::color::rgba_f16::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
@@ -9,12 +9,11 @@ use soa_rs::Soars;
 
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`](crate::renderer::render_buffer::RenderBuffer::frame_targets)):
-/// the view's stable texture `id`, its used
-/// physical size (`used`), where that sits in the view, the display and
-/// effective raster scales, and the app
-/// `paint` callback (threaded from `Ui::gpu_views` through the typed image
-/// command, so the backend reaches the renderer without a `Ui`-side registry).
-/// The backend allocates the target to exactly `used` and runs `paint` into it
+/// the view's stable texture `id`, its used physical size (`used`), where
+/// that sits in the view, the effective raster scale, and the app `paint`
+/// callback (threaded from `Ui::gpu_views` through the typed image command,
+/// so the backend reaches the renderer without a `Ui`-side registry). The
+/// backend allocates the target to exactly `used` and runs `paint` into it
 /// before the main pass samples it.
 #[derive(Clone, Debug)]
 pub(crate) struct RenderTargetDraw {
@@ -32,9 +31,40 @@ pub(crate) struct RenderTargetDraw {
     pub(crate) full: UVec2,
     /// Where `used` begins within `full`, in the same pixels.
     pub(crate) offset: UVec2,
-    pub(crate) display_scale: f32,
     pub(crate) raster_scale: f32,
     pub(crate) paint: GpuPaintRef,
+    /// The view's repaint version. See [`ViewStamp`].
+    pub(crate) epoch: u64,
+}
+
+/// Everything a painted target's pixels depend on besides the callback,
+/// which keys the target itself: the view's repaint version and the
+/// geometry the paint was asked for. A target whose last paint carries
+/// the same stamp holds this frame's pixels, so compositing it again
+/// needs no paint — the case of a `repaint(false)` view under a partial
+/// repaint that crosses it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ViewStamp {
+    epoch: u64,
+    used: UVec2,
+    full: UVec2,
+    offset: UVec2,
+    display_scale: f32,
+    raster_scale: f32,
+}
+
+impl RenderTargetDraw {
+    /// The stamp of this draw painted at the frame's `display_scale`.
+    pub(crate) const fn stamp(&self, display_scale: f32) -> ViewStamp {
+        ViewStamp {
+            epoch: self.epoch,
+            used: self.used,
+            full: self.full,
+            offset: self.offset,
+            display_scale,
+            raster_scale: self.raster_scale,
+        }
+    }
 }
 
 /// The frame's two views of its `GpuView`s, handed to the backend together
@@ -54,6 +84,8 @@ pub(crate) struct FrameViews<'a> {
     /// Every view the frame recorded, painted or not — the retention roster.
     /// A superset of the ids in [`Self::draws`].
     pub(crate) live: &'a [TextureId],
+    /// The frame's display scale, which every draw is painted at.
+    pub(crate) display_scale: f32,
 }
 
 /// One image draw row. Composer pushes one of these per image; the

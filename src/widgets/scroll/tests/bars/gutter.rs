@@ -1,16 +1,15 @@
 //! The width a bar reserves from the viewport, and the padding it lands in.
 
 use crate::Ui;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
-use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::tests::bars::support::{record_two_frames, theme, thumb_rects};
-use crate::widgets::scroll::tests::support::{scroll_content, scroll_viewport};
+use crate::widgets::scroll::tests::support::{fixed_block, scroll_content, scroll_viewport};
 use glam::UVec2;
 
 /// Reservation: when content overflows on the V axis, the inner
@@ -27,15 +26,11 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert_eq!(
         scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
         Size::new(188.0, 200.0),
@@ -57,15 +52,11 @@ fn user_padding_is_preserved_when_bar_reserves() {
                     .padding(16.0)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(100.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 100.0, 800.0)
                     });
             });
     };
-    h.frame(build);
-    h.frame(build);
+    h.prime(2, build);
     assert_eq!(
         scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
         Size::new(156.0, 168.0)
@@ -77,7 +68,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
 /// inside any user-set padding.
 #[test]
 fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
-    let (ui, node) = record_two_frames(UVec2::new(400, 600), |ui| {
+    let ui = record_two_frames(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -86,18 +77,14 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
                     .padding(16.0)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(100.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 100.0, 800.0)
                     });
             });
     });
-    let _ = node;
     let theme = theme();
     let expected_x = 200.0 - theme.thickness;
     let overlays = thumb_rects(&ui.ui, "scroll");
-    assert!(!overlays.is_empty(), "expected at least one thumb");
+    assert_eq!(overlays.len(), 1, "one vertical thumb");
     for r in &overlays {
         assert_eq!(
             r.min.x, expected_x,
@@ -131,25 +118,20 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("body"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(content_h)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("body"), 180.0, content_h)
                     });
             });
     };
 
     let mut h = UiHarness::new(surface);
-    h.frame(|ui| build(ui, 800.0));
-    h.frame(|ui| build(ui, 800.0));
+    h.prime(2, |ui| build(ui, 800.0));
     assert_eq!(
         read_viewport(&mut h.ui),
         Size::new(188.0, 200.0),
         "viewport = 200 - (width + gap) when content overflows",
     );
 
-    h.frame(|ui| build(ui, 50.0));
-    h.frame(|ui| build(ui, 50.0));
+    h.prime(2, |ui| build(ui, 50.0));
     assert_eq!(
         read_viewport(&mut h.ui),
         Size::new(188.0, 200.0),
@@ -178,23 +160,20 @@ fn overlay_mode_skips_gutter_reservation() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .bar_mode(BarMode::Overlay)
                     .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
+                        fixed_block(ui, WidgetId::from_hash("tall"), 180.0, 800.0)
                     });
             });
     };
-    h.frame(scene);
-    h.frame(scene);
+    h.prime(2, scene);
     assert_eq!(
         scroll_viewport(&h.ui, scroll_id),
         Size::new(200.0, 200.0),
         "Overlay: viewport = full outer (no gutter reservation), \
          even when content overflows and the bar is drawn",
     );
-    assert!(
-        scroll_content(&h.ui, scroll_id).h > scroll_viewport(&h.ui, scroll_id).h,
-        "content > viewport on Y — bar should be drawn"
+    assert_eq!(
+        scroll_content(&h.ui, scroll_id),
+        Size::new(180.0, 800.0),
+        "the content overflows the viewport on Y, so the bar is drawn"
     );
 }

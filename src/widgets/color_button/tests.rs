@@ -1,11 +1,10 @@
+use crate::internals::harness::UiHarness;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
@@ -20,8 +19,8 @@ fn panel_nodes(h: &UiHarness) -> usize {
     h.ui.layout(Layer::Popup).rect.len()
 }
 
-/// One click on a chip at the surface's corner, with a frame between the
-/// press and the release so the chip sees both edges.
+/// One click on a chip at the surface's corner. The input queue lands a
+/// press a frame before the release behind it, so each takes a frame.
 fn click_chip(h: &mut UiHarness, mut frame: impl FnMut(&mut UiHarness)) {
     h.press_at(Vec2::new(10.0, 10.0));
     frame(h);
@@ -45,11 +44,46 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "a chip starts closed");
 
     click_chip(&mut h, |h| frame(h, &mut color));
-    assert!(panel_nodes(&h) > 0, "the click opened the panel");
+    assert!(
+        h.rect(id.with("panel")).is_some(),
+        "the click opened this chip's panel"
+    );
 
-    h.advance_past_double_click(|_| {});
+    h.advance_past_double_click();
     click_chip(&mut h, |h| frame(h, &mut color));
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
+}
+
+/// The panel's picker shows its swatch row by default — a chip has no
+/// room for a preset row of its own — and `history(false)` hides it.
+#[test]
+fn history_reaches_the_picker_in_the_panel() {
+    let id = WidgetId::from_hash("color-button-history");
+    for (history, shown) in [(None, true), (Some(false), false)] {
+        let mut h = harness();
+        let mut color = RgbaF32::hex(0x4cd3ff);
+        let mut frame = |h: &mut UiHarness| {
+            h.frame(|ui| {
+                let chip = ColorButton::new(&mut color).id(id);
+                match history {
+                    Some(on) => chip.history(on),
+                    None => chip,
+                }
+                .show(ui);
+            });
+        };
+        frame(&mut h);
+        click_chip(&mut h, &mut frame);
+        assert!(
+            h.rect(id.with("panel")).is_some(),
+            "premise: the panel opened"
+        );
+        assert_eq!(
+            h.node_of(id.with("picker").with("swatches")).is_some(),
+            shown,
+            "history {history:?}",
+        );
+    }
 }
 
 /// Opening the panel does not touch the colour. Only a gesture inside it
@@ -60,15 +94,14 @@ fn opening_the_panel_is_not_an_edit() {
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
     let before = color;
-    let mut changed = false;
-    for _ in 0..2 {
-        h.frame(|ui| {
-            changed |= ColorButton::new(&mut color).id(id).show(ui).changed;
-        });
+    for round in 0..2 {
+        let changes = h
+            .frame_passes(|ui| ColorButton::new(&mut color).id(id).show(ui).changed)
+            .count_where(|&changed| changed);
+        assert_eq!(changes, 0, "round {round}");
         h.press_at(Vec2::new(10.0, 10.0));
         h.release();
     }
-    assert!(!changed);
     assert_eq!(color, before);
 }
 
@@ -95,17 +128,13 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     click_chip(&mut h, &mut frame);
 
     let body_id = id.with("panel");
-    let tree = h.ui.tree(Layer::Popup);
-    let body = tree
-        .records
-        .widget_id()
-        .iter()
-        .position(|w| *w == body_id)
-        .expect("popup body recorded");
-    let chrome = tree
-        .chrome(NodeId(body as u32))
-        .expect("the popup body paints chrome");
-    let rect = |id: WidgetId| h.ui.response_for(id).rect.expect("arranged");
+    let body = h.node_of(body_id).expect("popup body recorded");
+    assert_eq!(body.layer, Layer::Popup);
+    let chrome =
+        h.ui.tree(body.layer)
+            .chrome(body.node)
+            .expect("the popup body paints chrome");
+    let rect = |id: WidgetId| h.rect(id).expect("arranged");
     Opened {
         corners: chrome.corners,
         height: rect(body_id).size.h,

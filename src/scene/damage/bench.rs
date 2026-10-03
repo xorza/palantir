@@ -14,6 +14,7 @@
 //! benches).
 
 use crate::bench::Run;
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -23,7 +24,6 @@ use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::ui::harness::UiHarness;
 use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -62,10 +62,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
                             Block::new()
                                 .id_salt(("cell", r, c))
                                 .size((Sizing::fixed(30.0), Sizing::FILL))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui);
                         }
                     });
@@ -92,10 +89,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
                     .id_salt(("row", r))
                     .gap(2.0)
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .background(Background {
-                        fill: row_bg.into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(row_bg))
                     .show(ui, |ui| {
                         for c in 0..COLS {
                             let i = r * COLS + c;
@@ -107,10 +101,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
                             Block::new()
                                 .id_salt(("cell", r, c))
                                 .size((Sizing::fixed(30.0), Sizing::FILL))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui);
                         }
                     });
@@ -395,10 +386,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         Panel::vstack()
             .id(WidgetId::from_hash(("canvas", c)))
             .size((Sizing::fixed(40.0), Sizing::fixed(25.0)))
-            .background(Background {
-                fill: RgbaF32::srgb(0.1, 0.1, 0.12).into(),
-                ..Default::default()
-            })
+            .background(Background::fill(RgbaF32::srgb(0.1, 0.1, 0.12)))
             .show(ui, |ui| {
                 for s in 0..count {
                     ui.add_shape(
@@ -627,10 +615,7 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
                 Block::new()
                     .id_salt(("sib", i))
                     .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                    .background(Background {
-                        fill: RgbaF32::srgb(0.2, 0.2, 0.25).into(),
-                        ..Default::default()
-                    })
+                    .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.25)))
                     .show(ui);
             }
         });

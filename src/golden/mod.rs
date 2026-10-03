@@ -3,8 +3,8 @@
 //!
 //! Kept here rather than in a test directory because more than one crate wants
 //! it — Palantir's own visual suite, and anything drawing through Palantir that
-//! wants the same workflow. Feature-gated so nothing pays for `image` and
-//! `rayon` unless it asks.
+//! wants the same workflow. Feature-gated so nothing pays for `image`
+//! unless it asks.
 
 mod row_stats;
 
@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 
 use crate::golden::row_stats::RowStats;
 use image::RgbaImage;
-use rayon::prelude::*;
 
 /// Per-channel + ratio thresholds for [`Tolerance::diff`]. A pixel
 /// "differs" when any R/G/B/A channel deviates by more than
@@ -39,9 +38,6 @@ impl Tolerance {
     /// Compare two equal-sized RGBA images under these thresholds. The
     /// diff image marks each differing pixel red (alpha 255) and dims the
     /// rest of the `actual` image to 25% so failures pop visually.
-    ///
-    /// Per-row parallel via rayon; rows are independent, so the reduction
-    /// is a trivial `(max, sum)`.
     pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport {
         // For the suites that pair two images themselves —
         // `assert_matches` screens the same mismatch first, with a
@@ -58,9 +54,9 @@ impl Tolerance {
         let mut diff_image = RgbaImage::new(w, h);
 
         // A pair covering no pixels differs nowhere, and the scan below
-        // cannot be asked about one: `par_chunks_exact` rejects a
-        // zero-length chunk, so a zero-width image panics inside rayon
-        // rather than reporting anything. A zero-*height* one reaches the
+        // cannot be asked about one: `chunks_exact` rejects a
+        // zero-length chunk, so a zero-width image panics there rather
+        // than reporting anything. A zero-*height* one reaches the
         // end and divides by no pixels. One early answer covers both.
         if w == 0 || h == 0 {
             return DiffReport {
@@ -76,11 +72,11 @@ impl Tolerance {
         let per_channel = self.per_channel;
         let totals = actual
             .as_raw()
-            .par_chunks_exact(row_bytes)
-            .zip(expected.as_raw().par_chunks_exact(row_bytes))
-            .zip(diff_image.par_chunks_exact_mut(row_bytes))
+            .chunks_exact(row_bytes)
+            .zip(expected.as_raw().chunks_exact(row_bytes))
+            .zip(diff_image.chunks_exact_mut(row_bytes))
             .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row, per_channel))
-            .reduce(RowStats::default, RowStats::merge);
+            .fold(RowStats::default(), RowStats::merge);
 
         // `u64` because the product overflows `u32` past 65 536², and the
         // divisor is nonzero by the guard above.
@@ -169,10 +165,22 @@ impl Goldens {
     /// test in the suite, which is the one result this is here to prevent —
     /// and a first golden is exactly the image that most wants looking at
     /// before it becomes the thing everything else is judged against.
+    ///
+    /// With `UPDATE_GOLDEN` set, a missing or failing golden is rewritten
+    /// from `actual` and passes; a passing one is left as it is, so an
+    /// update run changes only what it has to. A pass clears whatever an
+    /// earlier failure left under `output/<name>/`.
     pub fn assert_matches(&self, name: &str, actual: &RgbaImage) {
-        let golden = self.golden_path(name);
         let forced = std::env::var_os(UPDATE).is_some_and(|value| !value.is_empty());
-        if forced || !golden.exists() {
+        self.check(name, actual, forced);
+    }
+
+    /// [`Self::assert_matches`] with the update flag passed in rather than
+    /// read from the environment, which a test cannot set for itself alone.
+    fn check(&self, name: &str, actual: &RgbaImage, forced: bool) {
+        let golden = self.golden_path(name);
+        let output = self.root.join("output").join(name);
+        if !golden.exists() {
             self.write(&golden, actual);
             if forced {
                 return;
@@ -186,20 +194,25 @@ impl Goldens {
         let expected = image::open(&golden)
             .unwrap_or_else(|error| panic!("read golden {}: {error}", golden.display()))
             .to_rgba8();
-        if actual.dimensions() != expected.dimensions() {
+        let report = (actual.dimensions() == expected.dimensions())
+            .then(|| self.tolerance.diff(actual, &expected));
+        if report.as_ref().is_some_and(DiffReport::passes) {
+            Self::clear_output(&output);
+            return;
+        }
+        if forced {
+            self.write(&golden, actual);
+            Self::clear_output(&output);
+            return;
+        }
+        let Some(report) = report else {
             panic!(
                 "`{name}` is {:?}, golden is {:?} — a golden is only meaningful at one size",
                 actual.dimensions(),
                 expected.dimensions()
             );
-        }
+        };
 
-        let report = self.tolerance.diff(actual, &expected);
-        if report.passes() {
-            return;
-        }
-
-        let output = self.root.join("output").join(name);
         std::fs::create_dir_all(&output).expect("create golden output directory");
         actual.save(output.join("actual.png")).expect("save actual");
         expected
@@ -224,6 +237,15 @@ impl Goldens {
             self.tolerance.max_ratio,
             output.display(),
         );
+    }
+
+    /// Remove a failure's artifacts, so `output/` names only what fails now.
+    fn clear_output(output: &Path) {
+        match std::fs::remove_dir_all(output) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("clear {}: {error}", output.display()),
+        }
     }
 
     fn write(&self, golden: &Path, actual: &RgbaImage) {

@@ -62,7 +62,7 @@ impl FreeSlots {
 }
 
 #[cfg(test)]
-pub(super) mod test_support {
+pub(super) mod internals {
     use crate::gpu::raster_atlas::free_slots::FreeSlots;
 
     impl FreeSlots {

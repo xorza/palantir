@@ -8,9 +8,9 @@ pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
-use crate::layout::ShapedText;
 use crate::layout::grid::grid_track_store::GridTrackStore;
-use crate::layout::intrinsic::SLOT_COUNT;
+use crate::layout::intrinsic::len_req::SLOT_COUNT;
+use crate::layout::shaped_text::ShapedText;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::num::F32Px;
 use crate::primitives::rect::Rect;
@@ -60,23 +60,14 @@ pub(super) struct CachedSubtree<'a> {
 
 #[derive(Debug)]
 pub(super) struct CaptureTreeInput<'a> {
-    pub(super) desired: &'a mut Vec<Size>,
+    pub(super) desired: &'a [Size],
     pub(super) rect: &'a [Rect],
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(super) available_q: &'a mut Vec<AvailableKey>,
+    pub(super) available_q: &'a [AvailableKey],
     pub(super) grid_track_state: &'a GridTrackStore,
     pub(super) text_spans: &'a [Span],
     pub(super) text_shapes: &'a [ShapedText],
-}
-
-/// `pub(crate)` for one caller outside `layout`:
-/// `text::wrap::tests::wrap_target_matches_cache_grid`, which pins the
-/// wrap width against this very grid.
-#[inline]
-pub(crate) fn quantize_available(s: Size) -> AvailableKey {
-    debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
-    IVec2::new(s.w.quantize_px(), s.h.quantize_px())
 }
 
 fn union_spans(a: Span, b: Span) -> Span {
@@ -243,6 +234,18 @@ pub(crate) struct MeasureCache {
 }
 
 impl MeasureCache {
+    /// The cache key for an available size: each axis quantized to the
+    /// grid `try_lookup` matches on.
+    ///
+    /// `pub(crate)` for one caller outside `layout`:
+    /// `text::wrap::tests::wrap_target_matches_cache_grid`, which pins the
+    /// wrap width against this very grid.
+    #[inline]
+    pub(crate) fn available_key(s: Size) -> AvailableKey {
+        debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
+        IVec2::new(s.w.quantize_px(), s.h.quantize_px())
+    }
+
     pub(super) fn begin_frame(&mut self) {
         self.current.clear_capture();
     }
@@ -265,8 +268,8 @@ impl MeasureCache {
                 let root = slot.first_node;
                 let current = RootSnapshotKey {
                     wid: tree.records.widget_id()[root.idx()],
-                    subtree_hash: tree.rollups.subtree[root.idx()],
-                    available_q: quantize_available(slot.available(layer, surface)),
+                    subtree_hash: tree.rollups.layout_subtree[root.idx()],
+                    available_q: Self::available_key(slot.available(layer, surface)),
                 };
                 if snapshot.roots[root_index] != current {
                     return false;
@@ -427,7 +430,7 @@ impl MeasureCache {
             let index = slot.first_node.idx();
             self.current.roots.push(RootSnapshotKey {
                 wid: tree.records.widget_id()[index],
-                subtree_hash: tree.rollups.subtree[index],
+                subtree_hash: tree.rollups.layout_subtree[index],
                 available_q: available_q[index],
             });
         }
@@ -455,7 +458,7 @@ impl MeasureCache {
                 ^ wid.0)
                 .wrapping_mul(0x517c_c1b7_2722_0a95);
             self.current.descriptors.push(ArenaSnapshot {
-                subtree_hash: tree.rollups.subtree[index],
+                subtree_hash: tree.rollups.layout_subtree[index],
                 available_q: available_q[index],
                 nodes: Span::new(node_base + index as u32, (end - index) as u32),
                 tracks,
@@ -464,16 +467,15 @@ impl MeasureCache {
             self.current.descriptor_wids.push(wid);
         }
 
-        if node_base == 0 {
-            std::mem::swap(&mut self.current.nodes.desired, desired);
-            std::mem::swap(&mut self.current.nodes.available_q, available_q);
-        } else {
-            self.current.nodes.desired.extend_from_slice(desired);
-            self.current
-                .nodes
-                .available_q
-                .extend_from_slice(available_q);
-        }
+        // Copied for every layer, the first included, like the columns
+        // above: a swap for the first would leave the engine's scratch
+        // columns empty until the next `resize_for`, while the
+        // container-text pass still runs.
+        self.current.nodes.desired.extend_from_slice(desired);
+        self.current
+            .nodes
+            .available_q
+            .extend_from_slice(available_q);
     }
 
     pub(super) fn end_frame(&mut self) {
@@ -497,10 +499,78 @@ impl MeasureCache {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod test_support {
+/// What the measure-cache tests reach, and the adversarial tree shapes
+/// the measure-cache bench times — shared with the tests that pin what
+/// the cache retains for them: a deep chain and a balanced broad tree.
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod internals {
+    #[cfg(test)]
     use super::*;
+    use crate::layout::types::sizing::Sizing;
+    use crate::ui::Ui;
+    use crate::widgets::block::Block;
+    use crate::widgets::configure::Configure;
+    use crate::widgets::panel::Panel;
 
+    /// Nested panels in the deep chain, above its one leaf.
+    pub(crate) const DEEP_DEPTH: usize = 192;
+    /// Children per panel in the broad tree.
+    pub(crate) const BROAD_FANOUT: usize = 8;
+    /// Panel levels below the broad tree's root.
+    pub(crate) const BROAD_DEPTH: usize = 3;
+
+    pub(crate) fn build_deep(ui: &mut Ui) {
+        build_deep_level(ui, 0);
+    }
+
+    fn build_deep_level(ui: &mut Ui, depth: usize) {
+        if depth == DEEP_DEPTH {
+            Block::new()
+                .id_salt("deep-leaf")
+                .size((Sizing::FILL, Sizing::fixed(1.0)))
+                .show(ui);
+            return;
+        }
+
+        Panel::vstack()
+            .id_salt(("deep", depth))
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| build_deep_level(ui, depth + 1));
+    }
+
+    pub(crate) fn build_broad(ui: &mut Ui) {
+        build_broad_variant(ui, false);
+    }
+
+    pub(crate) fn build_broad_variant(ui: &mut Ui, changed: bool) {
+        build_broad_level(ui, 0, 0, changed);
+    }
+
+    fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
+        Panel::vstack()
+            .id_salt(("broad", depth, key))
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| {
+                if depth == BROAD_DEPTH {
+                    // The change is to layout authoring — one leaf's fill
+                    // weight, which an only child's geometry ignores. A colour
+                    // would be paint, which the measure cache does not key on,
+                    // and the whole tree would hit at the root.
+                    let weight = if changed && key == 0 { 2.0 } else { 1.0 };
+                    Block::new()
+                        .id_salt(("broad-leaf", key))
+                        .size((Sizing::fill(weight), Sizing::fixed(1.0)))
+                        .show(ui);
+                    return;
+                }
+
+                for child in 0..BROAD_FANOUT {
+                    build_broad_level(ui, depth + 1, key * BROAD_FANOUT + child, changed);
+                }
+            });
+    }
+
+    #[cfg(test)]
     impl MeasureCache {
         /// Last frame's measured `desired` column, which the layout
         /// tests read to prove what a capture retained.

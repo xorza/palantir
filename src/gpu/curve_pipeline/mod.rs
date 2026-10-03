@@ -20,7 +20,7 @@ pub(crate) mod bench;
 use crate::gpu::dynamic_buffer::DynamicBuffer;
 use crate::gpu::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline_recipe::PipelineRecipe;
-use crate::gpu::shader_template::{self, ShaderConstant};
+use crate::gpu::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::stencil_variant::ColorVariantSpec;
 use crate::gpu::stencil_variant::StencilVariant;
 use crate::primitives::fill_kind::FillKind;
@@ -66,29 +66,28 @@ pub(super) struct CurvePipeline {
     /// Curve shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
+    /// Format-independent, so built once here rather than per format.
+    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl CurvePipeline {
     /// Format-independent curve resources; the pipelines are built by
     /// [`FormatPipelines`](crate::gpu::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
-        let wgsl = shader_template::specialize(
-            shader_template::CURVE_WGSL,
-            &[
-                ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
-                ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
-                ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
-                ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
-                ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
-                ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
-                ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
-                ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
-                ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
-                ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
-                ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
-            ],
-        );
+    pub(super) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
+        let wgsl = ShaderBody::Curve.specialize(&[
+            ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
+            ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
+            ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+            ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
+            ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
+            ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
+            ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
+            ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
+            ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
+            ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
+            ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
+        ]);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.curve.shader"),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
@@ -106,6 +105,13 @@ impl CurvePipeline {
             instance_buffer,
             index_buffer,
             shader,
+            // Gradient at group 0 — viewport rides the shared immediate
+            // region, no bind-group slot needed for it.
+            pipeline_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.curve.pl",
+                &[Some(gradient_bgl)],
+            ),
         }
     }
 
@@ -117,27 +123,21 @@ impl CurvePipeline {
         }
     }
 
-    /// Build the base + stencil-test color pipelines against `format`.
-    /// Caller passes the shared `gradient_bgl` (owned by
-    /// `GpuGradientAtlas`) so the layout matches; the instance buffer
-    /// is format-independent. Called by `FormatPipelines` per format.
+    /// Build the base + stencil-test color pipelines against `format`;
+    /// the layout and the instance buffer are format-independent. Called
+    /// by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Gradient at group 0 — viewport rides the shared immediate
-        // region, no bind-group slot needed for it.
-        let layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.curve.pipeline",
                 stencil_label: "palantir.curve.pipeline.stencil_test",
                 shader: &self.shader,
-                layout: &layout,
+                layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },

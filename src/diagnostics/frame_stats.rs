@@ -88,3 +88,18 @@ pub(crate) fn record(ui: &mut Ui) {
             });
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::diagnostics::frame_stats::GpuSegment;
+
+    /// The GPU segment appends a separator and a two-decimal time padded
+    /// to five columns, and nothing at all when the device publishes no
+    /// pass time.
+    #[test]
+    fn the_gpu_segment_formats_or_vanishes() {
+        assert_eq!(GpuSegment(Some(3.456)).to_string(), " · gpu  3.46 ms");
+        assert_eq!(GpuSegment(Some(12.0)).to_string(), " · gpu 12.00 ms");
+        assert_eq!(GpuSegment(None).to_string(), "");
+    }
+}

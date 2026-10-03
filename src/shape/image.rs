@@ -6,7 +6,7 @@ use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::paint::ImageSource;
+use crate::scene::shapes::paint::image_source::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
 

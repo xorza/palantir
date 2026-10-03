@@ -16,14 +16,17 @@ use crate::widgets::theme::palette::Palette;
 pub struct ScrollbarTheme {
     /// Cross-axis thickness of the bar in logical px. The pill radius
     /// of track and thumb is `thickness / 2`.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub thickness: f32,
     /// Empty padding strip between content and the bar. Reserved
     /// alongside `thickness` (total reservation = `thickness + gap`) but
     /// painted as nothing — pure breathing room so the bar doesn't
     /// touch the visible content.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub gap: f32,
     /// Floor for the thumb's main-axis length so a tiny `viewport /
     /// content` ratio doesn't produce an ungrabbable nub.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub min_thumb_px: f32,
     /// Track background. `RgbaF32::TRANSPARENT` = pure overlay (only the
     /// thumb is visible) — the macOS-style default.

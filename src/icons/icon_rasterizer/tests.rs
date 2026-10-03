@@ -3,6 +3,7 @@ use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::{IconDef, IconId, IconTable};
+use crate::icons::internals::BROKEN;
 use crate::primitives::content_type::ContentType;
 use crate::primitives::raster_image::RasterImage;
 use crate::primitives::span::Span;
@@ -15,10 +16,8 @@ const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8
 /// Left half opaque red, right half empty — a hand-checkable split, and
 /// the colour path's fixture.
 const HALF: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#ff0000"/><rect x="4" width="4" height="8" fill="#0000ff" fill-opacity="0.5"/></svg>"##;
-/// Broken markup — the parse must fail once and stay failed.
-const BROKEN: &str = "<svg";
 
-/// The three fixtures as a set. `leak_from_svgs` derives each one's
+/// The two fixtures as a set. `IconTable::from_svgs` derives each one's
 /// viewBox and tintability by parsing it, which is also what makes the
 /// ids below the *name-sorted* order rather than the listed one.
 fn fixtures() -> IconTable {
@@ -36,13 +35,12 @@ fn raster<'a>(r: &'a mut IconRasterizer, table: &IconTable, key: IconRasterKey) 
 }
 
 fn key(icon: IconId, w: u16, h: u16) -> IconRasterKey {
-    IconRasterKey::for_test(
-        IconRef {
-            set: IconSetId::new(0, 0),
-            icon,
-        },
-        U16Vec2::new(w, h),
-    )
+    in_set(0, icon, w, h)
+}
+
+/// [`key`] for set slot `set`.
+fn in_set(set: u16, icon: IconId, w: u16, h: u16) -> IconRasterKey {
+    IconRasterKey::for_test(IconRef::fixture(set, icon.0), U16Vec2::new(w, h))
 }
 
 /// The parse cache is capped, and what leaves is what has gone longest
@@ -134,7 +132,7 @@ fn colour_icon_rasterizes_to_straight_srgb_rgba() {
     );
 }
 
-/// `leak_from_svgs` drops a source that will not parse, so reaching this
+/// `IconTable::from_svgs` drops a source that will not parse, so reaching this
 /// path takes a hand-built set — which a baked one effectively is. The
 /// rasterizer still has to fail *once* rather than once per frame.
 #[test]
@@ -166,9 +164,7 @@ fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
     for set in [0u16, 1] {
         for icon in [HALF_ID, SOLID_ID] {
-            let mut k = key(icon, 8, 8);
-            k.icon.set = IconSetId::new(set, 0);
-            raster(&mut r, &table, k);
+            raster(&mut r, &table, in_set(set, icon, 8, 8));
         }
     }
     assert_eq!(r.parsed_count(), 4, "two icons in each of two sets");
@@ -195,18 +191,14 @@ fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
 fn forgetting_a_batch_drops_exactly_its_members() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
     for set in [0u16, 1, 2] {
-        let mut k = key(SOLID_ID, 8, 8);
-        k.icon.set = IconSetId::new(set, 0);
-        raster(&mut r, &table, k);
+        raster(&mut r, &table, in_set(set, SOLID_ID, 8, 8));
     }
     assert_eq!(r.parsed_count(), 3);
 
     r.forget_sets(&[IconSetId::new(0, 0), IconSetId::new(2, 0)]);
     assert_eq!(r.parsed_count(), 1, "both named sets go, in one pass");
     // And it is set 1 that survived, not whichever was cheapest to keep.
-    let mut survivor = key(SOLID_ID, 8, 8);
-    survivor.icon.set = IconSetId::new(1, 0);
-    r.forget_sets(&[survivor.icon.set]);
+    r.forget_sets(&[in_set(1, SOLID_ID, 8, 8).icon.set]);
     assert_eq!(r.parsed_count(), 0);
 }
 

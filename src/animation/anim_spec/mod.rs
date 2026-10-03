@@ -87,12 +87,7 @@ impl AnimSpec {
     ///
     /// Panics unless `secs` is finite and in `0.0..=60.0`.
     pub const fn duration(secs: f32, ease: Easing) -> Self {
-        // Spelled out rather than `"{DURATION_ERROR}"`: a `const fn`
-        // cannot run the formatting machinery interpolation needs.
-        assert!(
-            duration_is_valid(secs),
-            "animation duration must be finite and in 0.0..=60.0 seconds"
-        );
+        assert!(duration_is_valid(secs), "{}", DURATION_ERROR);
         Self::duration_from_validated(secs, ease)
     }
 

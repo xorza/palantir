@@ -37,6 +37,7 @@ pub struct TabsTheme {
     /// Cap breadth in logical px. The selected chip lifts its inner top
     /// inset by the same amount, so the cap adds no height and every
     /// label sits on the same line.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub accent_thickness: f32,
     /// The band behind the chips. [`Background::NONE`] by default: a
     /// strip reads from its own chips, and an application that wants a
@@ -46,15 +47,18 @@ pub struct TabsTheme {
     /// Inset between the band's edges and the chips.
     pub strip_padding: Spacing,
     /// Gutter between two chips.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
     pub gap: f32,
     /// Hairline under the band, drawn only when
     /// [`Self::hline_thickness`] is set.
     pub hline: RgbaF32,
     /// Hairline breadth in logical px. `0.0` — the default — records no
     /// rule at all, so the chips meet the content below them directly.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub hline_thickness: f32,
     /// Chip corner radius. Applied to the top corners only — a chip
     /// meets the content below it square.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub corner: f32,
     /// Inset between a chip's edges and its label. Named apart from
     /// [`SlotDefaults::padding`], which this bundle flattens: that one
@@ -68,22 +72,28 @@ pub struct TabsTheme {
     /// Their own boxes already carry the breathing room the right inset
     /// exists to give a bare label, so charging both leaves a chip
     /// looking like it reserves a slot it does not have.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub trailing_inset: f32,
     /// Chip width floor, so a one-glyph label still reads as a tab.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub min_width: f32,
     /// Chip width ceiling. What lets a long title ellipsise instead of
     /// pushing its neighbours out of the band.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub max_width: f32,
     /// Look pack for the chip's close button.
     pub close: StatefulLook,
     /// Close button side in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub close_size: f32,
     /// Ink of the status dot.
     pub badge: RgbaF32,
     /// Status-dot diameter in logical px.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::length")]
     pub badge_size: f32,
     /// Gutter between a chip's own children — its icon, label, badge
     /// and close button.
+    #[serde(deserialize_with = "crate::primitives::serde::checked::gap")]
     pub label_gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]

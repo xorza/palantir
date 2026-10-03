@@ -4,14 +4,13 @@
 //!
 //! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
-//!   wgpu device at all** (same deviceless path as the alloc bench's
-//!   `record-only` step). Each
-//!   iter runs record → measure → arrange → cascade → damage → encode +
-//!   compose and acks the present; nothing touches the GPU. This is the
-//!   clean signal: no queue submit, no `device.poll` ioctl, no
-//!   per-size framebuffer reconfiguration. Going through the offscreen renderer
-//!   driver plus a poll charges every iter driver work that
-//!   profiles as NVIDIA / kernel self-time — ~20% on
+//!   wgpu device at all** (the same deviceless path as the allocation
+//!   suite's fixtures). Each iter runs record → measure → arrange →
+//!   cascade → damage → encode + compose and acks the present; nothing
+//!   touches the GPU. This is the clean signal: no queue submit, no
+//!   `device.poll` ioctl, no per-size framebuffer reconfiguration. Going
+//!   through the offscreen renderer driver plus a poll charges every iter
+//!   driver work that profiles as NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
@@ -58,25 +57,23 @@
 //! All four arrive in [`Run::fixture`] — this bench reads no environment
 //! of its own.
 //!
-//! The shared workload lives in [`crate::frame_fixture`] and also drives
-//! the allocation gates in `tests/alloc/gates/` and the showcase's
-//! `frame bench` page — run `cargo run --example showcase` to eyeball the
+//! The shared workload lives in [`crate::internals::frame_fixture`] and
+//! also drives the allocation gates in `tests/alloc/gates/` and the
+//! showcase's `frame bench` page — run `cargo run --example showcase` to eyeball the
 //! tree these numbers come from.
 
-use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::gpu::texture_region::counters::WriteStats;
 use crate::host::offscreen::OffscreenHost;
+use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+use crate::internals::harness::UiHarness;
+use crate::internals::harness::frontend_harness::FrontendHarness;
+use crate::internals::record_app::RecordApp;
 use crate::primitives::color::RgbaF32;
-use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::harness::UiHarness;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::fs::OpenOptions;
@@ -87,9 +84,9 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-// Surface clear colour. Set on `theme.window_clear` in both harnesses
-// and reused as the `clear` for the synthesized `Full` plan the CPU
-// `cached` arm encodes against (see `CpuHarness::frame`).
+// Surface clear colour, set on `theme.window_clear` in both harnesses —
+// which is also what the CPU `cached` arm's full repaint clears to (see
+// `CpuHarness::frame`).
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
 // Proportioned against `BENCH_SURFACE` — `Surface::new` rescales them by
 // whatever ratio `--size` asks for, so what matters is the spread
@@ -165,22 +162,18 @@ fn gpu_frame(
 /// frames as `PaintOnly` and skip the record closure the arms depend on.
 #[derive(Debug)]
 struct CpuHarness {
-    harness: UiHarness,
-    frontend: Frontend,
+    frontend: FrontendHarness,
     start: std::time::Instant,
 }
 
 impl CpuHarness {
     fn new(surface: &Surface) -> Self {
-        let harness = UiHarness::with_text(surface.size).scale(surface.scale);
-        let frontend = Frontend::for_test();
-        let mut h = Self {
-            harness,
-            frontend,
+        let mut harness = UiHarness::with_text(surface.size).scale(surface.scale);
+        harness.ui.theme_mut().window_clear = WINDOW_CLEAR;
+        Self {
+            frontend: FrontendHarness::new(harness),
             start: Instant::now(),
-        };
-        h.harness.ui.theme_mut().window_clear = WINDOW_CLEAR;
-        h
+        }
     }
 
     /// Drive one full CPU frame and ack the present so
@@ -197,14 +190,10 @@ impl CpuHarness {
     /// (the partial-encode path is its real workload); the substitution
     /// only kicks in when there's nothing to paint at all.
     fn frame(&mut self, record: impl FnMut(&mut Ui)) {
-        let report = self.harness.at(self.start.elapsed()).frame(record);
-        let plan = report.plan.unwrap_or(RenderPlan {
-            clear: WINDOW_CLEAR,
-            damage: Damage::Full,
-        });
-        // The deviceless CPU harness's `Frontend` carries the baseline
-        // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
-        self.frontend.build(self.harness.ui.frame_scene(), plan);
+        self.frontend.harness.at(self.start.elapsed());
+        if self.frontend.frame(record).plan.is_none() {
+            self.frontend.paint_full();
+        }
     }
 }
 
@@ -261,7 +250,7 @@ fn cpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     run_cpu_arm(group, "resizing_cpu", surface, move |h, state| {
         let size = pool[idx % pool.len()];
         idx = idx.wrapping_add(1);
-        h.harness.resize(size);
+        h.frontend.harness.resize(size);
         h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
@@ -279,6 +268,7 @@ fn assert_partial_invariant(surface: &Surface) {
         state.tick = state.tick.wrapping_add(1);
     }
     let report = h
+        .frontend
         .harness
         .at(h.start.elapsed())
         .frame(|ui| state.render(BENCH_SCALE, ui));
@@ -313,7 +303,7 @@ where
 }
 
 fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target(surface.size, "palantir.frame_bench.cached");
+    let target = gpu().target("palantir.frame_bench.cached", surface.size);
     let scale = surface.scale;
     run_gpu_arm(group, "cached_gpu", |host, state| {
         gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
@@ -323,7 +313,7 @@ fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 }
 
 fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target(surface.size, "palantir.frame_bench.partial");
+    let target = gpu().target("palantir.frame_bench.partial", surface.size);
     let scale = surface.scale;
     run_gpu_arm(group, "partial_gpu", |host, state| {
         state.tick = state.tick.wrapping_add(1);
@@ -334,7 +324,7 @@ fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 }
 
 fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target(surface.size, "palantir.frame_bench.scrolling");
+    let target = gpu().target("palantir.frame_bench.scrolling", surface.size);
     let scale = surface.scale;
     run_gpu_arm(group, "scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
@@ -350,7 +340,7 @@ fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
         .pool
         .iter()
         .enumerate()
-        .map(|(i, s)| gpu().target(*s, &format!("palantir.frame_bench.resize.{i}")))
+        .map(|(i, s)| gpu().target(&format!("palantir.frame_bench.resize.{i}"), *s))
         .collect();
     let mut idx = 0usize;
     let scale = surface.scale;
@@ -432,10 +422,10 @@ fn report_write_stats(surface: &Surface) {
 
     let g = gpu();
     let scale = surface.scale;
-    let cached = [g.target(surface.size, "write_stats.cached")];
+    let cached = [g.target("write_stats.cached", surface.size)];
     run("cached", scale, &cached, |_, _| {});
 
-    let partial = [g.target(surface.size, "write_stats.partial")];
+    let partial = [g.target("write_stats.partial", surface.size)];
     run("partial", scale, &partial, |state, _| {
         state.tick = state.tick.wrapping_add(1);
     });
@@ -444,11 +434,11 @@ fn report_write_stats(surface: &Surface) {
         .pool
         .iter()
         .enumerate()
-        .map(|(i, s)| g.target(*s, &format!("write_stats.resize.{i}")))
+        .map(|(i, s)| g.target(&format!("write_stats.resize.{i}"), *s))
         .collect();
     run("resizing", scale, &pool, |_, _| {});
 
-    let scrolling = [g.target(surface.size, "write_stats.scrolling")];
+    let scrolling = [g.target("write_stats.scrolling", surface.size)];
     run("scrolling", scale, &scrolling, |state, _| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
@@ -813,7 +803,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 #[cfg(test)]
 mod tests {
     use crate::bench::Fixture;
-    use crate::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
+    use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
     use crate::ui::bench::{RESIZE_POOL, Surface, estimates_path, prepend_block};
 
     /// The results directory is gitignored, so the common case on a

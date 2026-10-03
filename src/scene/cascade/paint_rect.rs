@@ -2,14 +2,14 @@
 //! it comes to.
 
 use crate::common::content_hash::ContentHash;
-use crate::layout::LayerLayout;
+use crate::layout::layer_layout::LayerLayout;
 use crate::layout::text_runs::TextRuns;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::paint::{Paint, PaintArena};
-use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
 use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
@@ -48,7 +48,7 @@ pub(super) fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
 /// measured extent on each axis side, then re-clamp to `clip`.
 ///
 /// The composer paints glyphs at the ladder-*snapped* scale
-/// (`composer::snap_text_scale`), while the cascade lifts the rect at
+/// (`composer::geometry::snap_text_scale`), while the cascade lifts the rect at
 /// the unsnapped scale. The painted block can be up to
 /// `|snapped − cascade| ≤ STEP/2` longer per axis than the lifted
 /// rect, which works out to `measured × STEP/2` of absolute screen
@@ -216,21 +216,35 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
         size: layout_rect.size,
     };
 
-    if let Some(bg) = tree.chrome(node) {
-        let screen = if bg.shadow.is_noop() {
-            visible_rect
-        } else {
-            let chrome_local =
-                owner_local.union(bg.shadow.paint_rect_local(None, layout_rect.size));
-            lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip)
-        };
-        push_paint(arena, &mut union, screen, bg.hash);
-    } else if clips {
-        // Chromeless clip-only container: union the owner rect into
-        // the cull rollup so the encoder emits the PushClip/PopClip
-        // pair even when the subtree paints nothing (empty scroll
-        // host, etc.). No Paint row — the node contributes no pixels.
-        union = visible_rect;
+    match tree.chrome(node) {
+        Some(bg) if bg.paints_nothing() => {
+            // Kept for a rounded clip and nothing else: a row with an empty
+            // screen, so it damages nothing, and the owner rect in the cull
+            // rollup, as for a chromeless clip below.
+            arena.rows.push(Paint {
+                screen: Rect::ZERO,
+                hash: bg.hash,
+            });
+            union = visible_rect;
+        }
+        Some(bg) => {
+            let screen = if bg.shadow.is_noop() {
+                visible_rect
+            } else {
+                let chrome_local =
+                    owner_local.union(bg.shadow.paint_rect_local(None, layout_rect.size));
+                lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip)
+            };
+            push_paint(arena, &mut union, screen, bg.hash);
+        }
+        None if clips => {
+            // Chromeless clip-only container: union the owner rect into
+            // the cull rollup so the encoder emits the PushClip/PopClip
+            // pair even when the subtree paints nothing (empty scroll
+            // host, etc.). No Paint row — the node contributes no pixels.
+            union = visible_rect;
+        }
+        None => {}
     }
 
     let has_shapes = tree.records.shape_span()[node.idx()].len > 0;
@@ -339,14 +353,31 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     shape_transform,
                     shape_clip,
                 ),
-                ShapeRecord::Image { local_rect, .. } | ShapeRecord::Icon { local_rect, .. } => {
-                    lift_to_screen(
-                        local_rect.unwrap_or(owner_local),
-                        layout_rect.min,
-                        shape_transform,
-                        shape_clip,
-                    )
-                }
+                // Bounded by the rect the encoder draws, which overflows
+                // the base under `ImageFit::None`.
+                ShapeRecord::Image {
+                    local_rect,
+                    source,
+                    fit,
+                    ..
+                } => lift_to_screen(
+                    fit.resolve(local_rect.unwrap_or(owner_local), source.intrinsic())
+                        .rect,
+                    layout_rect.min,
+                    shape_transform,
+                    shape_clip,
+                ),
+                ShapeRecord::Icon {
+                    local_rect,
+                    handle,
+                    fit,
+                    ..
+                } => lift_to_screen(
+                    fit.resolve(local_rect.unwrap_or(owner_local), handle.view_box()),
+                    layout_rect.min,
+                    shape_transform,
+                    shape_clip,
+                ),
             };
             push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }

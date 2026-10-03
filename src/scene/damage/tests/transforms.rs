@@ -1,15 +1,16 @@
 //! What a transform on a parent does to the damage under it.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::scene::damage::Damage;
+use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::tests::support::{BLUE, RED};
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -33,10 +34,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background {
-                                fill: fill.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(fill))
                             .show(ui)
                             .node(),
                     );
@@ -87,10 +85,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -144,10 +139,6 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 #[test]
 fn transform_animation_keeps_far_positions_split() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    // Drop the merge budget to strict-overlap-only so the prev/curr
-    // pair (cost 6 400 < default budget) stays split. Pins both
-    // ends of the merge rule against future budget tweaks.
-    h.engines.damage.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
@@ -159,10 +150,7 @@ fn transform_animation_keeps_far_positions_split() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -175,9 +163,16 @@ fn transform_animation_keeps_far_positions_split() {
 
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600.
     // bbox 240×40 = 9600. SAH cost = 6400 — under the default
-    // 20 000 budget, this would merge; the guard above drops the
-    // budget to 0 to pin the strict-overlap-only branch.
-    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    // 20 000 budget, this would merge; collapsing the frame's raw rects
+    // under a budget of 0 pins the strict-overlap-only branch.
+    let rects: Vec<Rect> = DamageRegion::collapse_from(
+        &h.engines.damage.raw_rects,
+        0.0,
+        h.ui.display().logical_rect(),
+    )
+    .region
+    .iter_rects()
+    .collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");
@@ -247,7 +242,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
         "ancestor-transform shift moves a direct-shape leaf's pixels; \
          damage must still cover the shape area even though the \
          clipped paint_rect is invariant. region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -296,7 +291,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
              (the new diff branch pushes one paint_rect per shifted node; \
              that must not blow past FULL_REPAINT_THRESHOLD on a single tick). \
              dx = {dx}, region = {:?}, damage = {damage:?}",
-            collapsed.region.iter_rects().collect::<Vec<_>>(),
+            collapsed.region,
         );
     }
 }
@@ -351,7 +346,7 @@ fn self_transform_shift_damages_direct_shapes() {
         covered,
         "self-transform shift on a panel with direct shapes must \
          damage both old and new shape positions. region = {:?}",
-        region.iter_rects().collect::<Vec<_>>(),
+        region,
     );
 }
 
@@ -381,10 +376,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
                                 Block::new()
                                     .id(WidgetId::from_hash(key))
                                     .size(40.0)
-                                    .background(Background {
-                                        fill: BLUE.into(),
-                                        ..Default::default()
-                                    })
+                                    .background(Background::fill(BLUE))
                                     .show(ui);
                             }
                         });
@@ -453,18 +445,12 @@ fn content_change_under_constant_transform_stays_row_tight() {
                             Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size(40.0)
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(fill))
                                 .show(ui);
                             Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size(40.0)
-                                .background(Background {
-                                    fill: BLUE.into(),
-                                    ..Default::default()
-                                })
+                                .background(Background::fill(BLUE))
                                 .show(ui);
                         });
                 });

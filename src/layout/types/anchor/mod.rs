@@ -3,7 +3,6 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::types::align::AxisAlign;
-use crate::primitives::approx::FloatHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -89,19 +88,6 @@ pub struct Anchor {
 }
 
 impl Anchor {
-    /// Feed this anchor to a hasher under visual canonicalization.
-    ///
-    /// Inherent rather than an [`FloatHash`] impl: the trait's other half
-    /// is the `Hash`/`PartialEq` agreement, and this type has neither. The
-    /// one reader is the cascade fingerprint, which asks whether a
-    /// placement would arrange to the same pixels.
-    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.rect.hash_visual(state);
-        state.write_u8(self.side as u8);
-        state.write_u8(self.align as u8);
-        self.gap.hash_visual(state);
-    }
-
     pub(crate) const fn new(rect: Rect, side: AnchorSide, align: AnchorAlign, gap: f32) -> Self {
         Self {
             rect,

@@ -249,6 +249,16 @@ impl Ui {
         FrameCycle::new(self, engines).run(input, win, app)
     }
 
+    /// The scale the current cascade was laid out at — what a host
+    /// divides an event's position by, since that cascade is what the
+    /// event is hit-tested against. `None` before the first frame.
+    #[cfg(any(test, feature = "winit"))]
+    pub(crate) fn laid_out_scale(&self) -> Option<f32> {
+        self.frame_runtime
+            .prev_stamp
+            .map(|stamp| stamp.display.scale_factor())
+    }
+
     /// Feed an event that arrived at `now`. Returns an [`InputDelta`] the
     /// host reads to decide whether to request a redraw — pointer moves
     /// over inert surfaces leave `requests_repaint` false so the host can
@@ -813,11 +823,10 @@ impl Ui {
     /// **this frame** re-shapes the text on screen, not the next one.
     ///
     /// So it schedules nothing, and needs no `&mut self` to do it. An app
-    /// holds a `Ui` only inside [`App::update`](crate::App::update) and
-    /// [`App::record`](crate::App::record), both of which run on a
-    /// recorded frame *before* that frame measures and before it submits
-    /// — and measuring and submitting are the two steps that re-read the
-    /// font database. Loads are cold events; one remeasured frame is the
+    /// holds a `Ui` only inside [`App::update`] and [`App::record`], both
+    /// of which run on a recorded frame *before* that frame measures and
+    /// before it submits — and measuring and submitting are the two steps
+    /// that re-read the font database. Loads are cold events; one remeasured frame is the
     /// whole cost.
     ///
     /// ```ignore
@@ -832,10 +841,9 @@ impl Ui {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`](crate::FontLoadError::Io) when the file
-    /// cannot be read, and
-    /// [`FontLoadError::NoFaces`](crate::FontLoadError::NoFaces) when the
-    /// bytes hold no face fontdb can parse.
+    /// [`FontLoadError::Io`] when the file cannot be read, and
+    /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
+    /// parse.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)
@@ -926,7 +934,7 @@ impl Ui {
     /// [`Self::gpu_views`], then append a
     /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
     /// sourced from an
-    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView)
+    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::image_source::ImageSource::GpuView)
     /// carrying the row's `epoch` to the active node — the encoder
     /// recovers id and paint from the store by `id`.
     ///
@@ -1120,10 +1128,11 @@ impl Ui {
     ///
     /// **Read it during the frame's record** — as every widget does. The
     /// interaction half is gated on a `frame_quiescent` snapshot taken
-    /// once at record-pass start, so a read taken *between* frames would
-    /// reflect the previous frame's input, not events fed since. Reading
-    /// earlier in the same record than the widget's own node is fine —
-    /// e.g. baking a drag delta into a widget's position before recording it.
+    /// before `App::update` and at each record-pass start, so a read taken
+    /// *between* frames would reflect the previous frame's input, not
+    /// events fed since. Reading earlier in the same record than the
+    /// widget's own node is fine — e.g. baking a drag delta into a widget's
+    /// position before recording it.
     /// The widget's own `NodeFlags::is_disabled` is **not** folded in here — only
     /// `Widget::response` can see it. Both fold through
     /// `ResponseState::merge_disabled`, which is idempotent, so the
@@ -1132,7 +1141,7 @@ impl Ui {
         let mut state = self.input.response_for(id, &self.cascade, &self.layout);
         // Cascade lags one frame; fold this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
-        state.merge_disabled(self.forest.current_scratch().ancestor_disabled());
+        state.merge_disabled(self.forest.ancestor_disabled());
         state
     }
 
@@ -1253,7 +1262,7 @@ impl Ui {
     /// Currently focused widget id, or `None`.
     #[inline]
     pub fn focused_id(&self) -> Option<WidgetId> {
-        self.input.focused
+        self.input.focused()
     }
 
     /// True when keyboard focus sits on `ancestor` or any widget
@@ -1267,7 +1276,7 @@ impl Ui {
     #[inline]
     pub fn focus_within(&self, ancestor: WidgetId) -> bool {
         self.input
-            .focused
+            .focused()
             .is_some_and(|f| self.cascade.is_within(f, ancestor))
     }
 
@@ -1283,7 +1292,7 @@ impl Ui {
     #[inline]
     pub fn hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
-            .hovered
+            .hovered()
             .is_some_and(|h| self.cascade.is_within(h, ancestor))
     }
 
@@ -1335,7 +1344,7 @@ impl Ui {
     /// closure [`WinitHostBuilder::build`](crate::WinitHostBuilder::build)
     /// hands a `&mut Ui`, and it runs before the first frame, so the first
     /// window opens at the right size. That is the same place a
-    /// [`Theme`](crate::Theme) is restored, and there is no host setting
+    /// [`Theme`] is restored, and there is no host setting
     /// for either.
     ///
     /// Each distinct scale re-rasterizes every glyph on screen — see
@@ -1473,7 +1482,7 @@ impl Ui {
     #[inline]
     pub fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
-        self.input.pointer_pos
+        self.input.pointer_pos()
     }
 
     /// Current pointer position in `id`'s pre-transform local logical
@@ -1502,7 +1511,7 @@ impl Ui {
     #[inline]
     pub fn modifiers(&mut self) -> Modifiers {
         self.watch_keyboard(KeyboardWake::MODIFIER);
-        self.input.modifiers
+        self.input.modifiers()
     }
 
     /// [`Self::pointer_pos`] without the [`PointerWake::MOVE`] watch.
@@ -1514,7 +1523,7 @@ impl Ui {
     /// stale result stays on screen.
     #[inline]
     pub fn peek_pointer_pos(&self) -> Option<Vec2> {
-        self.input.pointer_pos
+        self.input.pointer_pos()
     }
 
     /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch.
@@ -1536,27 +1545,27 @@ impl Ui {
     /// the pointer holds still.
     #[inline]
     pub fn peek_modifiers(&self) -> Modifiers {
-        self.input.modifiers
+        self.input.modifiers()
     }
 
     /// What a press on a non-focusable widget does to focus. See
     /// [`FocusPolicy`].
     #[inline]
     pub fn focus_policy(&self) -> FocusPolicy {
-        self.input.focus_policy
+        self.input.focus_policy()
     }
 
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     #[inline]
     pub fn set_focus_policy(&mut self, p: FocusPolicy) {
-        self.input.focus_policy = p;
+        self.input.set_focus_policy(p);
     }
 
     /// Which "did input arrive?" signal the frame gate consults before
     /// it commits to a full record pass. See [`InputPolicy`].
     #[inline]
     pub fn input_policy(&self) -> InputPolicy {
-        self.input.input_policy
+        self.input.input_policy()
     }
 
     /// Set the record gate's input signal. Default
@@ -1565,12 +1574,9 @@ impl Ui {
     /// custom canvases that need every event.
     #[inline]
     pub fn set_input_policy(&mut self, p: InputPolicy) {
-        self.input.input_policy = p;
+        self.input.set_input_policy(p);
     }
 }
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod harness;
 
 /// The doors past [`Ui`]'s private fields, and the only ones.
 ///
@@ -1579,11 +1585,9 @@ pub(crate) mod harness;
 /// white-box suites need more than that surface: they assert on tree
 /// contents, measure-cache descriptors, cascade rows and routing state that
 /// no widget has any business reading. They reach it here, in a module that
-/// does not exist in a shipped build.
-///
-/// Two gates, and the narrower one says something the wider cannot — that the
-/// benches, which compile under `internals` without `cfg(test)`, do not use
-/// what it holds.
+/// does not exist in a shipped build: `pub` items for the integration suites
+/// outside the crate, `pub(crate)` ones for this crate's own tests, benches
+/// and harness.
 ///
 /// None of these carry `#[inline]`, unlike the one-line façade above. Nothing
 /// here reaches an optimized build that would want it: `cfg(test)` compiles
@@ -1592,17 +1596,19 @@ pub(crate) mod harness;
 /// the crate regardless.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use crate::widgets::theme::Theme;
+    use std::rc::Rc;
+
     #[cfg(test)]
-    use crate::input::input_event::InputEvent;
-    #[cfg(test)]
+    use crate::animation::AnimMap;
+    use crate::display::Display;
     use crate::input::input_state::InputState;
-    #[cfg(test)]
-    use crate::layout::LayerLayout;
     #[cfg(any(test, feature = "bench"))]
     use crate::layout::Layout;
     #[cfg(test)]
-    use crate::primitives::rect::Rect;
+    use crate::layout::layer_layout::LayerLayout;
     #[cfg(test)]
+    use crate::primitives::rect::Rect;
     use crate::scene::cascade::Cascade;
     #[cfg(test)]
     use crate::scene::endpoint::Endpoint;
@@ -1617,49 +1623,59 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    #[cfg(test)]
     use crate::ui::frame_runtime::FrameRuntime;
-    use crate::widgets::theme::Theme;
+    use crate::ui::frame_stamp::FrameStamp;
     #[cfg(all(test, feature = "winit"))]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
-    use std::rc::Rc;
 
+    /// What the frame harness reads and seeds: it drives frames the way a
+    /// host does, and asserts on the routing a host never sees.
     impl Ui {
-        /// The active theme, for in-place edits
-        /// (`ui.theme_mut().button.anim = …`).
-        ///
-        /// Gated, because in-place mutation is a fixture affordance
-        /// rather than how an app dresses a `Ui`: build the [`Theme`]
-        /// you want and hand it over with
-        /// [`set_theme`](Ui::set_theme) — which is what every caller in
-        /// this workspace does, and what the `winit` module's example
-        /// shows. This exists so a test can nudge one axis of an
-        /// already-running harness without rebuilding the bundle.
-        ///
-        /// Copy-on-write, so a handle taken from [`Ui::theme`] keeps the
-        /// values it was taken with and the `Ui` moves on alone.
-        #[inline]
-        pub fn theme_mut(&mut self) -> &mut Theme {
-            Rc::make_mut(&mut self.theme)
+        /// The input machine itself, for tests that assert on routing
+        /// state the public surface deliberately does not expose —
+        /// capture targets, the raw per-layer streams, the action flag.
+        pub(crate) const fn input(&self) -> &InputState {
+            &self.input
+        }
+
+        pub(crate) const fn cascade(&self) -> &Cascade {
+            &self.cascade
+        }
+
+        pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
+            &self.frame_runtime
+        }
+
+        /// Set the last frame's stamp. `Some` makes the next frame warm, so
+        /// it skips the warmup pass. `None` makes it a cold start.
+        pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
+            self.frame_runtime.prev_stamp = stamp;
+        }
+
+        /// Replace the display the next frame lays out at, as the window
+        /// driver does before each frame.
+        pub(crate) const fn set_display(&mut self, display: Display) {
+            self.display = display;
         }
     }
 
-    /// The two authored tables the benches read as well as the tests: the
-    /// tree walkers and measure-cache cases take `Self::forest`, and the
-    /// cascade bench runs its engine over both.
-    ///
-    /// `bench` rather than the mod's own `internals`, which is wider than
-    /// either consumer: a build that reaches past the published surface
-    /// without compiling the bench drivers has no caller for these, and
-    /// `-W dead_code` says so.
+    /// What the benches read as well as the tests: the tree walkers and
+    /// measure-cache cases take `Self::forest`, and the cascade bench runs
+    /// its engine over both tables.
     #[cfg(any(test, feature = "bench"))]
     impl Ui {
         /// The whole forest, for the callers that re-run a pass over it —
         /// the cascade engine and the measure cache both walk every layer.
         pub(crate) fn forest(&self) -> &Forest {
             &self.forest
+        }
+
+        /// The font database's epoch, for the tests and benches that
+        /// re-compute a reuse key this `Ui` folds it into.
+        pub(crate) fn font_epoch(&self) -> u32 {
+            self.resources.text().font_epoch()
         }
 
         /// The whole layout table, for the handful of callers that re-run a
@@ -1670,47 +1686,14 @@ pub(crate) mod internals {
         }
     }
 
-    /// Narrower than the mod's own gate: these are `pub(crate)` and only
-    /// this crate's own tests call them, so under `internals` alone they
-    /// would be dead code.
+    /// Only this crate's own tests call these.
     #[cfg(test)]
     impl Ui {
-        /// The input machine itself, for tests that assert on routing
-        /// state the public surface deliberately does not expose —
-        /// capture targets, the raw per-layer streams, the action flag.
-        pub(crate) fn input(&self) -> &InputState {
-            &self.input
-        }
-
         /// [`Self::input`], mutably — for tests that *drive* routing
         /// state rather than assert on it (planting focus, taking the
         /// action flag).
         pub(crate) fn input_mut(&mut self) -> &mut InputState {
             &mut self.input
-        }
-
-        pub(crate) fn cascade(&self) -> &Cascade {
-            &self.cascade
-        }
-
-        /// The font database's epoch, for the tests that re-compute a
-        /// reuse key this `Ui` folds it into.
-        pub(crate) fn font_epoch(&self) -> u32 {
-            self.resources.text().font_epoch()
-        }
-
-        /// Deliver `event` as though it arrived now, for a case that
-        /// drives a bare `Ui` rather than a [`UiHarness`].
-        ///
-        /// [`Self::on_input`] is the host's door and takes the arrival
-        /// time the host read. A test synthesizing an event has no such
-        /// clock, and the frame's own time is the honest answer for
-        /// something that arrives during it.
-        ///
-        /// [`UiHarness`]: crate::ui::harness::UiHarness
-        pub(crate) fn inject_input(&mut self, event: InputEvent) {
-            let now = self.now();
-            self.on_input(event, now);
         }
 
         /// One layer's recorded tree — its `records` columns, `rollups`,
@@ -1756,8 +1739,9 @@ pub(crate) mod internals {
             self.resources.text()
         }
 
-        pub(crate) fn frame_runtime(&self) -> &FrameRuntime {
-            &self.frame_runtime
+        /// The animation rows, for the tests that count what is resident.
+        pub(crate) fn anim_mut(&mut self) -> &mut AnimMap {
+            &mut self.anim
         }
 
         /// Narrower again: only the winit host's own tests write here.
@@ -1774,6 +1758,26 @@ pub(crate) mod internals {
         #[cfg(feature = "winit")]
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame
+        }
+    }
+
+    impl Ui {
+        /// The active theme, for in-place edits
+        /// (`ui.theme_mut().button.anim = …`).
+        ///
+        /// Gated, because in-place mutation is a fixture affordance
+        /// rather than how an app dresses a `Ui`: build the [`Theme`]
+        /// you want and hand it over with
+        /// [`set_theme`](Ui::set_theme) — which is what every caller in
+        /// this workspace does, and what the `winit` module's example
+        /// shows. This exists so a test can nudge one axis of an
+        /// already-running harness without rebuilding the bundle.
+        ///
+        /// Copy-on-write, so a handle taken from [`Ui::theme`] keeps the
+        /// values it was taken with and the `Ui` moves on alone.
+        #[inline]
+        pub fn theme_mut(&mut self) -> &mut Theme {
+            Rc::make_mut(&mut self.theme)
         }
     }
 }

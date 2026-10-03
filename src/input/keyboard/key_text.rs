@@ -90,6 +90,24 @@ impl fmt::Debug for KeyText {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_text::KeyText;
+
+    impl KeyText {
+        /// What a window reports beside `key` on a plain layout: a
+        /// printable key carries its character, and a named one carries
+        /// nothing.
+        pub(crate) fn of_key(key: Key) -> Self {
+            match key {
+                Key::Char(c) => Self::from_char(c),
+                _ => Self::EMPTY,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::input::keyboard::key_text::KeyText;

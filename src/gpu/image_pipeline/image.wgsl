@@ -3,9 +3,11 @@
 // implicitly via `vertex_index` (TriangleStrip).
 //
 // Colour pipeline: texture is `Rgba8UnormSrgb`, so the sampler decodes
-// sRGB → linear automatically. We multiply by `tint` (linear, straight
-// alpha) and premultiply at write time to match the rest of the
-// premultiplied-blend pipeline.
+// sRGB → linear automatically. Texels were premultiplied at upload
+// (`image_store::premultiply_into`), so the sample is premultiplied and
+// the filter between texels blends premultiplied. `tint` (linear, straight
+// alpha) is premultiplied in `fs` and the two multiply as premultiplied
+// values, matching the rest of the premultiplied-blend pipeline.
 
 @group(0) @binding(0) var tex:     texture_2d<f32>;
 @group(0) @binding(1) var tex_smp: sampler;

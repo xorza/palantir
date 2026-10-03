@@ -4,9 +4,9 @@
 //!
 //! Test-only rather than the wider gate because
 //! [`LayoutCounters::cache_hits`] pushes to a `Vec` on *every* cache hit,
-//! which in steady state is every subtree root — the alloc bench requires
-//! `bench` and asserts steady-state frames allocate nothing, so it would
-//! end up measuring this probe instead of the frame.
+//! which in steady state is every subtree root — the allocation suite
+//! (`tests/alloc`) asserts steady-state frames allocate nothing, so it
+//! would end up measuring this probe instead of the frame.
 //!
 //! [`PhaseTimings`] rides a [`BenchOnly`] cell like everything else
 //! here. What lets it is [`PhaseSpan::elapsed_ns`] answering zero
@@ -23,9 +23,10 @@ use crate::primitives::widget_id::WidgetId;
 /// Split because the cross-frame cache covers only the first half.
 /// `MeasureCache::try_lookup` can short-circuit an entire subtree — in
 /// steady state the root itself, so measure collapses to a few whole-tree
-/// `copy_from_slice`s — while `LayoutPass::arrange` walks every node
-/// with full driver dispatch regardless. A whole-`run` number averages
-/// that asymmetry away; these two are what make it visible.
+/// `copy_from_slice`s — while `LayoutPass::arrange` still visits every
+/// node, replaying a hit subtree's rects rather than dispatching it. A
+/// whole-`run` number averages that asymmetry away; these two are what
+/// make it visible.
 ///
 /// The sliver between the two (resolving the root's own size from
 /// `desired`) is charged to neither: it is one `arrange_size` call per
@@ -113,7 +114,7 @@ counter_snapshot! {
 /// earlier layer's counts.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutCounters {
-    /// `intrinsic::compute` (cache-miss) calls this run. Tests assert a
+    /// `IntrinsicQuery::walk` (cache-miss) calls this run. Tests assert a
     /// localized change doesn't trigger a whole-tree intrinsic re-walk.
     intrinsic_computes: TestOnly<u32>,
     /// Subtree roots restored from the measure cache this run. A cache-hit
@@ -192,38 +193,48 @@ impl LayoutCounters {
     }
 }
 
-/// Bench-facing read. Separate from the test-only accessors below
-/// because its cell carries the wider gate.
-#[cfg(feature = "bench")]
-impl LayoutCounters {
-    pub(crate) fn phase_timings(&self) -> PhaseTimings {
-        *self.phase_timings.get()
-    }
-}
+/// Reads gated to the builds that ask: `bench.rs` drivers read the phase
+/// timings, and only tests read the rest. Nothing in a shipping build has
+/// a reason to ask, which is what lets the counters themselves be absent.
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::common::counters::CounterSet;
+    use crate::layout::counters::LayoutCounters;
+    #[cfg(feature = "bench")]
+    use crate::layout::counters::PhaseTimings;
+    #[cfg(test)]
+    use crate::layout::counters::ReplayCounts;
+    #[cfg(test)]
+    use crate::primitives::widget_id::WidgetId;
 
-/// Reads are test-only: nothing in a shipping build has a reason to ask,
-/// and gating them here is what lets the counters themselves be absent.
-#[cfg(test)]
-impl LayoutCounters {
-    pub(crate) fn intrinsic_computes(&self) -> u32 {
-        self.intrinsic_computes.count()
-    }
+    impl LayoutCounters {
+        #[cfg(feature = "bench")]
+        pub(crate) fn phase_timings(&self) -> PhaseTimings {
+            *self.phase_timings.get()
+        }
 
-    /// Zero the intrinsic counter mid-run — for a test that primes a frame
-    /// and then counts only what a subsequent query costs.
-    pub(crate) fn reset_intrinsic_computes(&mut self) {
-        self.intrinsic_computes.reset();
-    }
+        #[cfg(test)]
+        pub(crate) fn intrinsic_computes(&self) -> u32 {
+            self.intrinsic_computes.count()
+        }
 
-    pub(crate) fn cache_hits(&self) -> &[WidgetId] {
-        self.cache_hits.as_slice()
-    }
+        /// Zero the intrinsic counter mid-run — for a test that primes a
+        /// frame and then counts only what a subsequent query costs.
+        #[cfg(test)]
+        pub(crate) fn reset_intrinsic_computes(&mut self) {
+            self.intrinsic_computes.reset();
+        }
 
-    pub(crate) fn arrange_replays(&self) -> ReplayCounts {
-        // Full path rather than a `use`: `CounterSet` is itself gated, so
-        // an import of it at the top of the file would not compile in the
-        // builds this accessor is absent from.
-        crate::common::counters::CounterSet::counts(&self.replays)
+        #[cfg(test)]
+        pub(crate) fn cache_hits(&self) -> &[WidgetId] {
+            self.cache_hits.as_slice()
+        }
+
+        #[cfg(test)]
+        pub(crate) fn arrange_replays(&self) -> ReplayCounts {
+            self.replays.counts()
+        }
     }
 }
 

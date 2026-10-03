@@ -139,9 +139,9 @@ struct VsOut {
     // Fringe is baked in once here so the fragment's coverage is just
     // `clamp(half_w - r, 0, plateau)`.
     @location(2) @interpolate(flat) half_w: f32,
-    // Stroke colour, lerped `color0 → color1` along `t` for strips
-    // (constant when both lanes are equal). Multiplies the ramp sample
-    // under `FLAG_RAMP_FILL`.
+    // Stroke colour, premultiplied, lerped `color0 → color1` along `t`
+    // for strips (constant when both lanes are equal). Multiplies the
+    // ramp sample under `FLAG_RAMP_FILL`, once both are straight.
     @location(3) color: vec4<f32>,
     // `FLAG_*` bits (+ join metric in bits 4..6).
     @location(4) @interpolate(flat) flags: u32,
@@ -253,7 +253,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.curve_t = 0.0;
     out.jv0 = vec4<f32>(0.0);
     out.jv1 = vec4<f32>(0.0);
-    out.color = in.color0;
+    out.color = premultiply(in.color0.rgb, in.color0.a);
     var flags = select(0u, FLAG_RAMP_FILL, (in.fill_kind & 0xFFu) == BRUSH_KIND_RAMP);
     var phys: vec2<f32>;
 
@@ -328,7 +328,14 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         out.offset = offset;
         out.cap_t = cap_t;
         out.curve_t = t;
-        out.color = mix(in.color0, in.color1, t);
+        // Premultiplied, so a fade to transparent passes through the
+        // stroke's own colour rather than darkening or taking on
+        // `color1`'s hue, and the rasterizer interpolates it the same way.
+        out.color = mix(
+            premultiply(in.color0.rgb, in.color0.a),
+            premultiply(in.color1.rgb, in.color1.a),
+            t,
+        );
 
         if (in.kind == KIND_SEGMENT
             && (any(in.p1 != vec2<f32>(0.0)) || any(in.p2 != vec2<f32>(0.0)))) {
@@ -413,18 +420,24 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             coverage = 0.0;
         }
     }
-    var rgba = in.color;
+    var rgba = unpremultiply(in.color);
     if ((in.flags & FLAG_RAMP_FILL) != 0u) {
         // `curve_t` is in [0, 1] by construction and the sampler is
         // clamp-to-edge, so no explicit clamp. Row count is queried,
         // not baked in as a const: the atlas texture grows when one
         // frame registers more distinct gradients than it holds, and a
         // query keeps this pipeline valid across that resize.
-        let lut_v = (f32(in.lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
-        let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
+        let dims = vec2<f32>(textureDimensions(gradient_tex));
+        let lut_v = (f32(in.lut_row) + 0.5) / dims.y;
+        let c = textureSample(
+            gradient_tex,
+            gradient_sampler,
+            vec2<f32>(lut_u(in.curve_t, dims.x), lut_v),
+        );
         // The stroke colour multiplies the sample, channel by channel —
-        // the same rule as a mesh tint. See `GpuFill::curve`.
-        rgba = c * rgba;
+        // the same rule as a mesh tint, on the straight colours. See
+        // `GpuFill::curve`.
+        rgba = unpremultiply(c) * rgba;
     }
     let a = rgba.a * coverage;
     return premultiply(rgba.rgb, a);

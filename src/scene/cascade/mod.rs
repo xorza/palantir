@@ -13,195 +13,25 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+pub(crate) mod cascade_input_hash;
+pub(crate) mod cascade_key;
 pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod entry;
+pub(crate) mod layer_cascade;
 pub(crate) mod paint;
 mod paint_rect;
 
-use crate::common::content_hash::ContentHash;
 use crate::input::sense::Sense;
-use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::scene::cascade::cascade_key::CascadeKey;
 use crate::scene::cascade::entry::{
     EntryRow, HitRow, HitTargets, PressTargets, ScopeRow, WidgetLocation,
 };
-use crate::scene::cascade::paint::PaintArena;
+use crate::scene::cascade::layer_cascade::LayerCascade;
 use crate::scene::endpoint::Endpoint;
-use crate::scene::layer::PerLayer;
+use crate::scene::per_layer::PerLayer;
 use glam::Vec2;
-
-/// Per-node fingerprint of cascade inputs flowing in from ancestors
-/// (parent transform/clip/disabled/invisible) plus the node's own
-/// arranged rect, packed with the resolved `invisible` bit. Folded
-/// into a 64-bit `FxHash` (lower 63 bits) during the cascade walk;
-/// the high bit holds the cascade-resolved `invisible` so encoder
-/// and damage can read both in one 8-byte load. Compared
-/// frame-over-frame by `DamageEngine::compute`: if this matches AND
-/// `subtree[i]` matches, the entire subtree's paint state is
-/// bit-identical by induction and the per-node diff jumps to
-/// `subtree_end[i]`.
-///
-/// Why packing is sound: the skip predicate also requires
-/// `subtree[i]` match, which covers every descendant's `node_hash`
-/// (where own visibility lives). If `subtree` matches AND the lower
-/// 63 hash bits match, the high `invisible` bit is implied — own
-/// visibility is in `node_hash`, parent_invisible is in the hash
-/// inputs.
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CascadeInputHash(pub(crate) u64);
-
-const INVISIBLE_BIT: u64 = 1u64 << 63;
-const HASH_MASK: u64 = !INVISIBLE_BIT;
-
-impl CascadeInputHash {
-    /// Combine a raw 64-bit hash output with the cascade-resolved
-    /// `invisible` flag. The hash's top bit is masked off before the
-    /// flag is shifted into place — 63 bits of entropy is more than
-    /// enough for the skip predicate, and branchless avoids the cost
-    /// of a per-node conditional move on the hot cascade path.
-    #[inline]
-    pub(crate) fn pack(hash: u64, invisible: bool) -> Self {
-        Self((hash & HASH_MASK) | ((invisible as u64) << 63))
-    }
-
-    #[inline]
-    pub(crate) fn invisible(self) -> bool {
-        self.0 & INVISIBLE_BIT != 0
-    }
-}
-
-/// All per-layer cascade state grouped on one struct. The `cascade_inputs`,
-/// `subtree_paint_rects`, and `paint_arena` columns are produced together
-/// by [`CascadeEngine::run_tree`](engine::CascadeEngine::run_tree),
-/// retained together between frames, and read together by the damage diff
-/// and encoder.
-///
-/// ## Columnar split
-///
-/// The per-node data is deliberately divided five ways, driven by
-/// who reads what together:
-///
-/// - [`Self::cascade_inputs`] is the only datum on the per-node hot
-///   path: the encoder reads `cascade_input.invisible()` for every
-///   node it walks, and damage compares the full u64 on its skip /
-///   descend arms. At 8 B/node the encoder's per-frame walk and
-///   damage's scan stay cache-dense.
-/// - [`Self::subtree_paint_rects`] answers "what does this subtree
-///   paint" — the encoder's cull, and damage's two moved-subtree
-///   pushes. One column rather than a fold each caller runs over the
-///   rows, so the answer cannot depend on who asked.
-/// - [`Self::subtree_ends`] is read only by [`Cascade::is_within`]
-///   ancestry lookups — sparse random access, never a walk, so it
-///   must not fatten the walked columns.
-/// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
-///   [`Paint`](paint::Paint)s plus the `node_spans` index). Read only on damage's
-///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
-///   so it sits behind a `node_spans[i]` indirection that damage's
-///   subtree-skip fast path skips entirely.
-/// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with
-///   the authoring rollup they were built from — provenance, not a
-///   walked column.
-#[derive(Debug, Default)]
-pub(crate) struct LayerCascade {
-    /// Paint-excluding authoring hash from the last full rebuild.
-    static_hash: ContentHash,
-    /// `Tree::fingerprint.paint_counts` as of the last full rebuild.
-    /// The incremental walk can only repair paint rows in place, so a
-    /// changed row count sends it home empty-handed after it has already
-    /// walked part of the tree; comparing this first turns that wasted
-    /// half-walk into an immediate full rebuild.
-    paint_counts: ContentHash,
-    /// `LayerLayout::rect_hash` as of the last full rebuild — the arranged
-    /// geometry these retained rows were built against.
-    /// [`CascadeEngine::can_update`](engine::CascadeEngine::can_update)
-    /// compares it to the live layout's hash to decide whether the retained
-    /// non-paint columns still describe the current arrangement.
-    layout_hash: ContentHash,
-    /// Per-node `cascade_input` fingerprint, indexed the same way as
-    /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
-    /// ancestor state + own arranged rect hash with the cascade-resolved
-    /// `invisible` bit in the high position (see [`CascadeInputHash`]).
-    /// The encoder reads `.invisible()`; damage pairs the full u64 with
-    /// `Tree.rollups.subtree[i]` for its subtree-skip fast path.
-    pub(crate) cascade_inputs: Vec<CascadeInputHash>,
-    /// Per-node subtree paint rect — the node's own paint extent rolled
-    /// up with every descendant's `subtree_paint_rects[i]`. Computed
-    /// inline in [`CascadeEngine::run_tree`](engine::CascadeEngine::run_tree)
-    /// via a stack-frame accumulator.
-    ///
-    /// Read by the encoder for the viewport + damage subtree culls where
-    /// "may I skip the whole subtree?" must consider overhanging
-    /// descendants — Canvas-positioned children outside the parent's
-    /// `Fixed` bound, shapes with negative-margin overhang, etc. Damage
-    /// reads the same column wherever it asks the same question: the
-    /// extent a moved subtree paints, and a child marker's extent in the
-    /// order-inversion check.
-    ///
-    /// Invisible subtrees seed with `Rect::ZERO` so a long-lived hidden
-    /// subtree doesn't keep the cull from firing at ancestors — and so a
-    /// hidden subtree that moves damages nothing, where a fold over its
-    /// rows would repaint pixels no pass paints. A clip-only container's
-    /// own visible rect is in here and in no row, which only ever makes
-    /// the answer cover more than the subtree's rows do.
-    pub(crate) subtree_paint_rects: Vec<Rect>,
-    /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid
-    /// flag stripped), snapshotted so ancestry queries
-    /// ([`Cascade::is_within`]) can run against the frozen cascade
-    /// result *during the next record* — by then the live tree's
-    /// columns are already being rebuilt. Indexed like
-    /// `cascade_inputs`.
-    subtree_ends: Vec<u32>,
-    /// Unified paint arena (rows + per-node spans).
-    pub(super) paint_arena: PaintArena,
-    /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
-    /// rows were built from — the per-node half of the validity gate
-    /// whose whole-layer half is [`Self::static_hash`],
-    /// [`Self::paint_counts`] and [`Self::layout_hash`]. An
-    /// incremental repair descends exactly where this disagrees with the
-    /// live rollup and re-stamps what it repaired. Dirty ancestors
-    /// recompute their own paint rows, so no separate per-node paint hash
-    /// or own extent is retained.
-    ///
-    /// **Not the damage engine's snapshot of the same rollup.** The two
-    /// hold equal values and cannot be merged: this one is node-indexed,
-    /// and [`NodeSnapshot::subtree_hash`](crate::scene::damage::node_snapshot::NodeSnapshot)
-    /// is keyed by [`WidgetId`] because a widget outlives the index it
-    /// occupied. The frames where a widget's index moves are exactly the
-    /// frames a full rebuild overwrites this whole column, so neither
-    /// reader can answer from the other's copy without a per-node hash
-    /// probe on the repair path.
-    arena_hashes: Vec<ContentHash>,
-    /// Offset of this layer's first `EntryRow` in
-    /// [`Cascade::entries`] — fixed for the layer's run, set at
-    /// `reset_for` time. A full rebuild pushes one entry per node;
-    /// paint-only runs retain the block. The entry index is therefore
-    /// always `entries_base + node.0`. Combined with the per-pass
-    /// [`Cascade::by_id`] snapshot this gives O(1) `WidgetId → entry`
-    /// without a per-widget `WidgetId → u32` hashmap fill.
-    pub(super) entries_base: u32,
-}
-
-impl LayerCascade {
-    /// Reset all per-node columns for `n_nodes` and stamp the layer's
-    /// `entries_base` in one call — both prep this
-    /// layer for the upcoming `run_tree`, splitting them invites a
-    /// caller that resets but forgets the offset (or vice versa).
-    /// The fixed-size per-node columns are resized once and overwritten
-    /// in place during the walk, retaining both allocation and initialized
-    /// slots when the tree size is stable;
-    /// `paint_arena` columns reset according to their own sizing rules.
-    fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
-        self.cascade_inputs
-            .resize(n_nodes, CascadeInputHash::default());
-        self.subtree_paint_rects.resize(n_nodes, Rect::ZERO);
-        self.subtree_ends.resize(n_nodes, 0);
-        self.paint_arena.reset_for(n_nodes);
-        self.arena_hashes.resize(n_nodes, ContentHash::default());
-        self.entries_base = entries_base;
-    }
-}
 
 /// Read-only artifact of `CascadeEngine::run`. Holds per-layer
 /// cascade state (per-node rows, subtree rollups, paint arena — see
@@ -225,8 +55,8 @@ pub(crate) struct Cascade {
     /// ([`crate::input::input_state::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
     /// the end of the most recent `CascadeEngine::run`** — a full
-    /// rebuild populates it with `clone_from(&seen.curr)`; paint-only
-    /// runs retain it because their preflight includes every widget
+    /// rebuild refills it from `seen.curr`, and paint-only runs and
+    /// skips retain it because [`Self::key`] includes every widget
     /// identity. The snapshot is required (rather than reading
     /// `seen.curr` directly) because `response_for` is called during
     /// recording, and `SeenIds::pre_record` clears `curr` at the top
@@ -238,6 +68,9 @@ pub(crate) struct Cascade {
     /// on a full rebuild in exchange for not paying an O(N) hashmap
     /// insert per widget.
     pub(crate) by_id: WidgetIdMap<Endpoint>,
+    /// The inputs this cascade was built from; `None` before the first
+    /// run.
+    pub(crate) key: Option<CascadeKey>,
 }
 
 impl Cascade {
@@ -252,6 +85,14 @@ impl Cascade {
     #[inline]
     pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
         self.by_id.get(&id).copied()
+    }
+
+    /// The entry row of the node at `endpoint`. Gated like its one
+    /// caller, the development-only collision overlay.
+    #[cfg(debug_assertions)]
+    #[inline]
+    pub(crate) fn entry_at(&self, endpoint: Endpoint) -> &EntryRow {
+        &self.entries[(self.layers[endpoint.layer].entries_base + endpoint.node.0) as usize]
     }
 
     /// Both indexes a widget's per-frame rows are reached by, from one
@@ -358,11 +199,73 @@ impl Cascade {
 // production routes through the two fused walks above, each of which
 // answers its whole question in one pass.
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::common::content_hash::ContentHash;
     use crate::input::sense::Sense;
+    #[cfg(test)]
+    use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::cascade::Cascade;
+    #[cfg(test)]
+    use crate::scene::cascade::LayerCascade;
+    #[cfg(test)]
+    use crate::scene::forest::Forest;
+    #[cfg(test)]
+    use crate::scene::tree::Tree;
+    #[cfg(test)]
+    use crate::scene::tree::iter::TreeItem;
+    #[cfg(test)]
+    use crate::scene::tree::node_id::NodeId;
     use glam::Vec2;
+
+    /// One paint row with the widget that owns it — what the damage
+    /// oracle diffs between two frames.
+    #[cfg(test)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub(crate) struct OwnedPaint {
+        pub(crate) owner: WidgetId,
+        pub(crate) screen: Rect,
+        pub(crate) hash: ContentHash,
+        /// Position in the frame's paint order.
+        pub(crate) rank: u32,
+    }
+
+    #[cfg(test)]
+    impl LayerCascade {
+        fn owned_paints_of(&self, tree: &Tree, node: NodeId, out: &mut Vec<OwnedPaint>) {
+            let arena = &self.paint_arena;
+            let span = arena.node_spans[node.idx()];
+            // An invisible node's span is empty, and so is every one
+            // under it.
+            if span.len == 0 {
+                return;
+            }
+            let owner = tree.records.widget_id()[node.idx()];
+            let mut row = span.start as usize;
+            let push = |row: usize, out: &mut Vec<OwnedPaint>| {
+                let paint = arena.rows[row];
+                out.push(OwnedPaint {
+                    owner,
+                    screen: paint.screen,
+                    hash: paint.hash,
+                    rank: out.len() as u32,
+                });
+            };
+            if tree.chrome(node).is_some() {
+                push(row, out);
+                row += 1;
+            }
+            for item in tree.tree_items(node) {
+                match item {
+                    TreeItem::ShapeRecord(..) => push(row, out),
+                    TreeItem::Child(child) => self.owned_paints_of(tree, child.id, out),
+                }
+                row += 1;
+            }
+            debug_assert_eq!(row, span.range().end, "rows out of sync with the span");
+        }
+    }
 
     impl Cascade {
         /// Every interactive row's widget, in paint order — the raw
@@ -374,6 +277,69 @@ pub(crate) mod test_support {
         #[cfg(test)]
         pub(crate) fn hit_ids(&self) -> impl Iterator<Item = WidgetId> + '_ {
             self.hits.iter().map(|row| row.widget_id)
+        }
+
+        /// Append every row that paints, with the widget that owns it, in
+        /// the order the encoder draws them: layer by layer, root by root,
+        /// and inside a node its chrome, then each shape and child subtree
+        /// in record order. Child markers paint nothing and are left out.
+        #[cfg(test)]
+        pub(crate) fn owned_paints(&self, forest: &Forest, out: &mut Vec<OwnedPaint>) {
+            for (layer, tree) in forest.trees.iter_paint_order() {
+                for slot in &tree.roots {
+                    self.layers[layer].owned_paints_of(tree, slot.first_node, out);
+                }
+            }
+        }
+
+        /// Assert that this cascade — however it was reached, full or
+        /// incremental — equals `cold`, a full rebuild over the same
+        /// forest and layout. Compares every column a reader consumes,
+        /// per node, so a retained row that went stale is named. The id
+        /// lookup is not among them: it snapshots the live seen-id table,
+        /// which a rebuild after the frame no longer finds.
+        #[cfg(test)]
+        pub(crate) fn assert_same_as(&self, cold: &Cascade, forest: &Forest) {
+            assert_eq!(self.entries, cold.entries, "entry rows");
+            assert_eq!(self.hits, cold.hits, "hit rows");
+            let scopes = |cascade: &Cascade| {
+                cascade
+                    .scopes
+                    .iter()
+                    .map(|row| (row.layer, row.id, row.filter))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(scopes(self), scopes(cold), "scope rows");
+            for (layer, tree) in forest.trees.iter_paint_order() {
+                let (warm, full) = (&self.layers[layer], &cold.layers[layer]);
+                for (node, id) in tree.records.widget_id().iter().enumerate() {
+                    let at = || format!("{layer:?} node {node} ({id:?})");
+                    assert_eq!(
+                        warm.cascade_inputs[node],
+                        full.cascade_inputs[node],
+                        "cascade input of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.subtree_paint_rects[node],
+                        full.subtree_paint_rects[node],
+                        "subtree paint rect of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.subtree_ends[node],
+                        full.subtree_ends[node],
+                        "subtree end of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.paint_arena.rows_of(node),
+                        full.paint_arena.rows_of(node),
+                        "paint rows of {}",
+                        at(),
+                    );
+                }
+            }
         }
 
         /// Topmost entry under `pos` whose `Sense` passes `filter`.

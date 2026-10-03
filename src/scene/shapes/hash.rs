@@ -16,9 +16,12 @@ use crate::common::hash::Hasher;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
-use crate::scene::shapes::paint::{
-    BrushHash, CurveBasis, CurveRamp, ImageSource, QuadShape, ShapeBrush,
-};
+use crate::scene::shapes::paint::curve_basis::CurveBasis;
+use crate::scene::shapes::paint::image_source::ImageSource;
+use crate::scene::shapes::paint::quad_shape::QuadShape;
+use crate::scene::shapes::paint::shape_brush::BrushHash;
+use crate::scene::shapes::paint::shape_brush::CurveRamp;
+use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
@@ -107,13 +110,15 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             colors: _,
             bbox: _,
         } => h.write_u64(*content_hash),
+        // The shaping inputs are layout's as well as paint's, so they are
+        // fed by the one method the layout rollup reads too.
         ShapeRecord::Text {
             local_origin,
-            text,
             color,
-            font,
-            wrap,
-            align,
+            text: _,
+            font: _,
+            wrap: _,
+            align: _,
         } => {
             match local_origin {
                 None => h.write_u8(0),
@@ -122,20 +127,8 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     origin.hash_visual(&mut h);
                 }
             }
-            text.hash(&mut h);
             color.hash(&mut h);
-            font.size_px.hash_visual(&mut h);
-            font.line_height_px.hash_visual(&mut h);
-            // The five face axes in one word: family and weight are 16
-            // bits each, so the set needs a `u64`. Two runs that differ
-            // only in weight, style or family must not collide here — the
-            // node hash is what damage and reuse compare.
-            let face = (u64::from(font.family.raw()) << 40)
-                | (u64::from(font.weight.value()) << 24)
-                | ((font.slant as u64) << 16)
-                | (u64::from(align.raw()) << 8)
-                | (*wrap as u64);
-            h.write_u64(face);
+            record.hash_layout_inputs(&mut h);
         }
         // Fields named exhaustively for the reason given on the
         // `Polyline` arm above.

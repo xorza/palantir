@@ -6,7 +6,7 @@
 //! content/viewport *ratio*, and on a scroll's first frame neither term is
 //! available: the viewport comes from the previous pass's arranged rect,
 //! and the content extent is written by the viewport's own measure into
-//! [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content).
+//! [`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content).
 //! Resolving it here is what lets the widget record its bars
 //! unconditionally instead of asking `Ui` to re-record the whole frame.
 //!
@@ -16,12 +16,14 @@
 //! keeps the same shape every frame and the bar ids stay stable across
 //! an overflow toggle.
 
+pub(crate) mod bar_geometry;
 pub(crate) mod scrollbars_def;
 
 use crate::layout::axis::Axis;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::pass::LayoutPass;
 use crate::layout::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::layout::types::layout_mode::ScrollbarsDefId;

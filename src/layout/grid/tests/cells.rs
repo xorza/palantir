@@ -1,9 +1,9 @@
 //! Placing a child inside its resolved cell, and the depth stack that
 //! brackets the walk.
 
+use crate::internals::harness::UiHarness;
 use crate::layout::types::track::Track;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid};
 use glam::UVec2;

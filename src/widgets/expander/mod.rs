@@ -1,5 +1,7 @@
 //! The disclosure control: a header that reveals or hides a body.
 
+pub(crate) mod expander_response;
+
 use crate::animation::anim_slot::AnimSlot;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
@@ -17,27 +19,13 @@ use crate::ui::Ui;
 use crate::widgets::arrow::Arrow;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::expander::expander_response::ExpanderResponse;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::expander::ExpanderTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
-
-/// What one pass over an [`Expander`] produced.
-#[derive(Debug)]
-pub struct ExpanderResponse<'a, R> {
-    /// The header's response — the whole row is the hit target.
-    pub response: Response<'a>,
-    /// What the body closure returned, or `None` on a frame the body did
-    /// not record. A collapsed [`Expander::keep_body`] section still
-    /// records, so it still answers `Some`.
-    pub inner: Option<R>,
-    /// The header was activated this frame, by click or by key.
-    pub toggled: bool,
-    /// `0.0` closed, `1.0` open, in between while the reveal animates.
-    pub openness: f32,
-}
 
 /// A header that reveals or hides a body — `<details>` / `<summary>` in
 /// HTML, an `Expander` in WPF and GTK, a `CollapsingHeader` in egui.
@@ -192,6 +180,7 @@ impl<'a> Expander<'a> {
                 t.defaults.anim
             };
             let openness = ui.animate(header_id, SLOT_OPEN, f32::from(now_open), spec);
+            let showing = openness > 0.0;
             let [a, b, c] =
                 Arrow { size: t.arrow_size }.rounded(t.arrow_radius, t.arrow_angle(openness));
             let text = look.text;
@@ -213,25 +202,29 @@ impl<'a> Expander<'a> {
                     .show(ui);
             });
 
-            let showing = openness > 0.0;
             if showing || keep_body {
-                let mut body_panel = Widget::vstack()
-                    .id(body_id)
+                // The body records whole inside a wrapper, and the
+                // wrapper's clip is what reveals it. Laying the body out
+                // at a fraction of its height instead would reflow its
+                // text on every frame of the tween, and would leave the
+                // body's own rect clipped, so no frame of the tween could
+                // measure the height the next one clips against.
+                let mut reveal = Widget::vstack()
+                    .id(body_id.with("reveal"))
                     .size((Sizing::FILL, Sizing::HUG))
-                    .margin(Spacing::new(t.indent, 0.0, 0.0, 0.0))
-                    .padding(t.body_padding);
+                    .margin(Spacing::new(t.indent, 0.0, 0.0, 0.0));
                 if !showing {
-                    body_panel = body_panel.collapsed();
+                    reveal = reveal.collapsed();
                 } else if let Some(full) = height.filter(|_| openness < 1.0) {
-                    // The body records whole and the clip is what reveals
-                    // it. Laying it out at a fraction of its height
-                    // instead would reflow its text on every frame of the
-                    // tween.
-                    body_panel = body_panel
+                    reveal = reveal
                         .max_size(Size::new(f32::INFINITY, openness * full))
                         .clip_rect();
                 }
-                pass.inner = Some(body_panel.record(ui, None, body));
+                let body_panel = Widget::vstack()
+                    .id(body_id)
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .padding(t.body_padding);
+                pass.inner = Some(reveal.record(ui, None, |ui| body_panel.record(ui, None, body)));
             }
             pass.header = state;
             pass.toggled = activated;
@@ -242,19 +235,17 @@ impl<'a> Expander<'a> {
         if let Some(flag) = open {
             *flag = now_open;
         }
-        // Measured only while the body is whole: a clipped or collapsed
-        // one reports the height it was constrained to, not its own.
-        let height = if pass.openness >= 1.0 {
-            ui.response_for(body_id)
-                .layout_rect
-                .map(|r| r.size.h)
-                .or(height)
-        } else {
-            height
-        };
+        // The body lays out whole whenever it shows, clipped or not, so
+        // last frame's rect is its height whenever last frame showed it.
+        // A collapsed or unrecorded one has none to give.
+        let measured = stored
+            .is_some_and(|s| s.shown)
+            .then(|| ui.response_for(body_id).layout_rect.map(|r| r.size.h))
+            .flatten();
         let row = ExpanderState {
             open: now_open,
-            height,
+            height: measured.or(height),
+            shown: pass.openness > 0.0,
         };
         // Written only on a change, so a section nobody has opened mints
         // no row at all — the same probe-don't-insert path `ComboBox`
@@ -266,6 +257,7 @@ impl<'a> Expander<'a> {
         let current = stored.unwrap_or(ExpanderState {
             open: was_open,
             height: None,
+            shown: false,
         });
         if current != row {
             *ui.state_or_default::<ExpanderState>(header_id) = row;
@@ -302,10 +294,14 @@ struct Pass<R> {
 /// response because a skipped body has none: the row hangs off the
 /// *header*, which is recorded on every frame, so a section reopened
 /// later still animates.
+///
+/// `shown` is whether the body laid out showing, which is when its rect
+/// is its height.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct ExpanderState {
     open: bool,
     height: Option<f32>,
+    shown: bool,
 }
 
 /// Whether an activation key fired on the focused header.
