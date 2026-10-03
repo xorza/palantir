@@ -445,26 +445,6 @@ impl Widget {
         self.node.set_mode(LayoutMode::Scrollbars(id));
     }
 
-    /// Take over `from`'s placement — where it sits in its parent, and
-    /// nothing about what it contains, how it behaves, or who it is.
-    ///
-    /// For a widget that hands its slot to a second one partway through
-    /// a gesture: [`crate::DragValue`] swaps its scrub chip for an inline
-    /// [`crate::TextEdit`] on click, and without this the field visibly
-    /// moves and resizes on the edit frame, because margin, alignment,
-    /// grid placement and canvas position all go with the chip.
-    ///
-    /// And for a widget that records as two nodes rather than one:
-    /// [`crate::Scroll`] splits the caller's widget into an outer box
-    /// and an inner viewport, and the placement is the outer one's.
-    ///
-    /// Margin is the one `Option`: `None` there means the caller stated
-    /// no opinion, so the adopting widget keeps its own themed default
-    /// rather than taking a zero.
-    pub fn adopt_placement(&mut self, from: &Widget) {
-        self.node.adopt_placement(from.node);
-    }
-
     /// Identity's half of "explicit wins, the theme fills in the rest".
     /// Its "caller stayed silent" test is [`Ident::is_explicit`] rather
     /// than an `Option`, because every widget carries a `#[track_caller]`

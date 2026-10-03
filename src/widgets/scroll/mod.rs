@@ -138,7 +138,7 @@ impl ScrollWrappers {
             .disabled(widget.authored_disabled())
             .focusable(widget.authored_focusable())
             .input_scope(widget.authored_input_scope());
-        outer.adopt_placement(widget);
+        outer.configure().adopt_placement(widget);
         if let Some(size) = widget.authored_size() {
             outer.configure().size(size);
         }
@@ -615,6 +615,18 @@ impl Scroll<'_> {
     /// paints no background. Pass one explicitly to fill it.
     pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
+        self
+    }
+
+    /// Paint `bg` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    pub const fn default_background(mut self, bg: Background) -> Self {
+        if self.chrome.is_none() {
+            self.chrome = Some(bg);
+        }
         self
     }
 }

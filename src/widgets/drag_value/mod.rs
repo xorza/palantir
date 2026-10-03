@@ -391,8 +391,11 @@ impl<'a> DragValue<'a> {
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
             // The chip's placement has to survive the swap or the field
-            // visibly jumps mid-interaction; which fields that means is
-            // `TextEdit`'s call, and documented there.
+            // visibly jumps mid-interaction. Its size does not travel with
+            // it: the width is pinned above to the chip's last rect, so a
+            // long value scrolls instead of growing the row, and
+            // `DragValueTheme::from_chip` mirrors the chip's padding onto
+            // the editor.
             let resp = edit.adopt_placement(&self.widget).show(ui);
             EditEnd {
                 submitted: resp.submitted,

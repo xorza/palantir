@@ -123,20 +123,6 @@ impl Popup {
         self
     }
 
-    /// Chrome to fall back on when the caller set none — the `Popup`
-    /// peer of [`ThemeDefaults::default_padding`](crate::widget_core::configure::ThemeDefaults::default_padding),
-    /// since chrome is a field here rather than on the node.
-    ///
-    /// Takes a borrow so a wrapper's themed panel is cloned only where
-    /// it is used — the caller holds the whole theme bundle and reads
-    /// the rest of it.
-    pub fn default_background(mut self, bg: &Background) -> Self {
-        if self.chrome.is_none() {
-            self.chrome = Some(bg.clone());
-        }
-        self
-    }
-
     /// Re-anchor an already-built popup.
     ///
     /// For a wrapper whose placement is late-bound: [`crate::ContextMenu`]
@@ -206,6 +192,18 @@ impl Popup {
     /// [`Background::NONE`] to suppress that fallback for this popup.
     pub const fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
+        self
+    }
+
+    /// Paint `bg` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    pub const fn default_background(mut self, bg: Background) -> Self {
+        if self.chrome.is_none() {
+            self.chrome = Some(bg);
+        }
         self
     }
 }

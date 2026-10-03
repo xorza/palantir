@@ -207,7 +207,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             let popup = Popup::below(rect)
                 .id(id.with("list"))
                 .min_size((rect.size.w, 0.0))
-                .default_background(&ctx.panel)
+                .default_background(ctx.panel.clone())
                 .default_padding(ctx.padding)
                 .default_gap(ctx.gap);
             let resp = popup.show(ui, |ui, popup| {
