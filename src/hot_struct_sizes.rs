@@ -121,7 +121,7 @@ const UI_SIZE: usize = 6296;
 /// cell are zero-sized in a release build, which leaves a shipped
 /// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
 /// the production footprint.
-const FRAME_ENGINES_SIZE: usize = 1904;
+const FRAME_ENGINES_SIZE: usize = 1928;
 
 /// Single source of truth for the per-frame hot-struct inventory.
 /// Each entry is `pin::<Type>("name", expected_size, expected_align)`.

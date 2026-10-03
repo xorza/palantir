@@ -17,12 +17,18 @@ use glam::BVec2;
 /// explicit `min_size`, the longest unbreakable word) — and a Hug axis
 /// is also floored at what its content takes at the size it is laid out
 /// at, such as the height of a paragraph wrapped to its width. The
-/// ceiling is its `max_size`. Fill participants whose weighted share falls outside
-/// that interval take the bound they violated and the rest re-divide,
-/// CSS-Flexbox style. One solver answers that for every container, so
-/// `Fill` means the same thing in a `Panel` and in a `Grid`. A parent
-/// never grows to fit a child, so overflow only happens when rigid
-/// descendants genuinely do not fit.
+/// ceiling is its `max_size`.
+///
+/// Siblings that share an axis — a stack's children, a grid's tracks —
+/// share it the same way in every container, CSS-Flexbox style: each
+/// Fill participant's floor is set aside first; the Hug participants
+/// then share what is left, each giving way from what it wants toward
+/// its floor, in proportion to how far it can give, when they do not
+/// all fit; and the Fill participants divide the rest by `weight`,
+/// taking any bound their share violates while the rest re-divide. So
+/// `Hug` and `Fill` mean the same thing in a `Panel` and in a `Grid`. A
+/// parent never grows to fit a child, so overflow only happens when
+/// rigid descendants genuinely do not fit.
 ///
 /// # Which constructors panic, and why
 ///
@@ -51,8 +57,8 @@ impl Sizing {
     /// Shrink-wrap the content: `min(content, available)`, floored at the
     /// smallest extent the content takes at the size it is laid out at —
     /// its wrapped text, its fixed and minimum sizes. Content that can
-    /// give way, such as a scroll on its panned axis, still shrinks. The
-    /// default.
+    /// give way, such as a scroll on its panned axis, still shrinks, to
+    /// what its parent has and to what its siblings leave. The default.
     pub const HUG: Self = Self(SizingValue::Hug);
     /// Take the leftover space at weight `1.0` — [`Self::fill`] with the
     /// weight you'd almost always pass.

@@ -282,7 +282,7 @@ fn cache_hit_preserves_per_driver_rects() {
         ("vstack_fill_freeze", |ui, capture| {
             // Three Fill children with min-content floors that force
             // the freeze loop. Stack measure pushes onto
-            // `stack_fill.pool`; a cache hit at the outer panel skips
+            // `stack.fill`; a cache hit at the outer panel skips
             // the freeze entirely, so arrange must still read correct
             // per-child slots from `desired` alone.
             Panel::vstack().auto_id().show(ui, |ui| {
@@ -466,8 +466,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 
 /// Stress test: surface resizes on both axes force the cache through
 /// repeated hit/replace transitions. At each step, the warm cache's
-/// rects must equal what a cold remeasure produces — clearing the
-/// measure cache is the ground-truth oracle.
+/// rects and text shapes must equal what a cold remeasure produces —
+/// clearing the measure cache is the ground-truth oracle.
 ///
 /// Each child of the root is offered the whole surface, and each is a
 /// shape whose range the cache must get right: Hug content that holds
@@ -480,6 +480,9 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 /// is cut below 700 and holds from 700 above it — Fill across, so its
 /// own axis does not cover that for it — and a Hug grid whose two
 /// 350 px Hug columns are squeezed below 700 and hold from 700 above it.
+/// A Fill hstack shares its width the same way before its two 350 px
+/// labels measure, and a vstack shares its height at arrange between a
+/// header and a scroll below 430.
 /// The sizes step both ways across each of those thresholds. Labels that
 /// fit — the Hug stack of buttons — hold under every surface, as fixed
 /// blocks do.
@@ -622,12 +625,44 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                                     .position((20.0, 30.0))
                                     .show(ui, |ui| rows(ui, "canvas-row"));
                             });
+                        Panel::hstack()
+                            .id(WidgetId::from_hash("width-share"))
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .show(ui, |ui| {
+                                for col in 0..2u16 {
+                                    Text::new(&LONG_LABEL[..50])
+                                        .id_salt(("width-share-cell", col))
+                                        .font_size(14.0)
+                                        .text_wrap(TextWrap::Truncate)
+                                        .show(ui);
+                                }
+                            });
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("height-share"))
+                            .show(ui, |ui| {
+                                Block::new()
+                                    .id_salt("height-share-header")
+                                    .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
+                                    .show(ui);
+                                Scroll::vertical()
+                                    .id(WidgetId::from_hash("height-share-scroll"))
+                                    .show(ui, |ui| rows(ui, "height-share-row"));
+                            });
                     });
             });
     };
     let rects = |h: &UiHarness| -> Vec<_> {
         (0..h.ui.tree(Layer::Main).records.len() as u32)
             .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
+            .collect()
+    };
+    // Rects alone can hide a stale measure: arrange places a stale run
+    // at the right rect while it paints the text it was shaped to.
+    let shapes = |h: &UiHarness| -> Vec<_> {
+        h.ui.layout(Layer::Main)
+            .text_shapes
+            .iter()
+            .map(|shaped| (shaped.extent, shaped.key))
             .collect()
     };
 
@@ -649,6 +684,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
         h.resize(UVec2::new(w, ht));
         h.frame(record);
         let warm = rects(&h);
+        let warm_shapes = shapes(&h);
         if i > 0 {
             for held in ["blocks", "buttons"] {
                 assert!(
@@ -669,6 +705,11 @@ fn cache_rects_match_cold_oracle_across_resizes() {
             warm,
             rects(&h),
             "step {i}: warm-cache rects diverged from cold remeasure at {w}x{ht}",
+        );
+        assert_eq!(
+            warm_shapes,
+            shapes(&h),
+            "step {i}: warm-cache text shapes diverged from cold remeasure at {w}x{ht}",
         );
     }
 }

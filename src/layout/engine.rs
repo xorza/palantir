@@ -5,7 +5,7 @@
 use crate::common::tracy;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
-use crate::layout::axis_placement::AxisPlacement;
+use crate::layout::axis_placement::{AxisPlacement, Placed};
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
 use crate::layout::counters::PhaseSpan;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
@@ -244,16 +244,16 @@ impl LayoutEngine {
                     // ones. Per root, not per node: bounded by layer
                     // count, so the zone budget stays flat.
                     let measure_span = PhaseSpan::start();
-                    let desired = {
+                    let measured = {
                         tracy::zone!("Layout::measure");
-                        pass.measure(root, available).size
+                        pass.measure(root, available)
                     };
                     pass.note_measure(measure_span);
                     let root_layout = tree.records.layout()[root.idx()];
                     let size = AxisPlacement::arrange_size(
                         &root_layout,
                         tree.bounds(root),
-                        desired,
+                        Placed::of(measured.size, measured.floor),
                         available,
                     );
                     // Overlay policies need the current measured body, not a

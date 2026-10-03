@@ -10,6 +10,8 @@ use crate::widgets::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;
 
+mod sharing;
+
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
@@ -398,7 +400,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         ];
         assert_eq!(actual, expected, "case: {}", case.label);
         assert!(
-            h.engines.layout.scratch.stack_fill.is_empty(),
+            h.engines.layout.scratch.stack.is_empty(),
             "case: {} must release its planning scratch",
             case.label,
         );

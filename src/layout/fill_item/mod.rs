@@ -49,6 +49,12 @@ impl<K> FillItem<K> {
         }
     }
 
+    /// The least extent this item takes, which a caller sets aside
+    /// before anything else shares the axis.
+    pub(super) const fn floor(&self) -> f32 {
+        self.floor.min(self.cap)
+    }
+
     /// Split `budget` across `items`, writing each allocation into its
     /// own [`Self::size`]. Every item is allocated, including the ones a
     /// clamp pinned to a bound.

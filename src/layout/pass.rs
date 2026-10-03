@@ -17,6 +17,7 @@
 //! sites stay short without widening what the query can touch.
 
 use crate::layout::axis::Axis;
+use crate::layout::axis_placement::Placed;
 use crate::layout::axis_slot::AxisSlot;
 use crate::layout::cache::MeasureCache;
 use crate::layout::counters::PhaseSpan;
@@ -29,7 +30,7 @@ use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::layout_scratch::NO_ARRANGE_SRC;
 use crate::layout::measured::Measured;
-use crate::layout::stack::StackScratch;
+use crate::layout::stack::stack_scratch::StackScratch;
 use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
@@ -159,6 +160,13 @@ impl LayoutPass<'_> {
         self.engine.scratch.desired[node.idx()]
     }
 
+    /// What this node measured to, as a parent places it: [`Self::desired`]
+    /// and the floor it gives way to no further — see [`Placed::of`].
+    #[inline]
+    pub(super) fn placed(&self, node: NodeId) -> Placed {
+        Placed::of(self.desired(node), self.engine.scratch.floor[node.idx()])
+    }
+
     /// Grid's per-depth track scratch and durable hug pool. Handed back
     /// whole because `grid` disjoint-borrows the two halves in one
     /// expression.
@@ -174,10 +182,10 @@ impl LayoutPass<'_> {
         &mut self.engine.scratch.grid.track_state
     }
 
-    /// Stack's flat Fill-entry pool, shared across nesting depths.
+    /// Stack's flat Fill and Hug pools, shared across nesting depths.
     #[inline]
     pub(super) fn stack_scratch_mut(&mut self) -> &mut StackScratch {
-        &mut self.engine.scratch.stack_fill
+        &mut self.engine.scratch.stack
     }
 
     /// WrapStack's flat per-depth line buffer.

@@ -1,32 +1,42 @@
 //! Single-axis stack layout — measure, arrange and intrinsic for a panel
 //! whose children run along one [`Axis`].
 //!
-//! Non-`Fill` children measure first. What is left of the main axis after
-//! them and the gaps goes through [`FillItem::distribute`], the same
-//! `[floor, cap]`-clamped weighted split the grid resolves its Fill tracks
-//! with.
+//! The main axis is shared through `axis_share`, the solve the grid
+//! sizes its tracks with: the `Fill` children's floors are set aside, the
+//! other children share what is left — each giving way from what it
+//! wants toward its floor when they do not all fit — and the `Fill`
+//! children divide the rest.
+//!
+//! **Width in, height out**, as the grid splits its columns and rows.
+//! Text wraps to the width it is given, so on a horizontal main axis the
+//! widths are shared before the children measure, from their intrinsic
+//! ranges, and each child measures at its share. A height is what a
+//! child measures *to*, so on a vertical main axis the children measure
+//! against the whole extent and the heights are shared at arrange, from
+//! what each measured to and its floor.
 
 use crate::layout::axis::Axis;
-use crate::layout::axis_placement::AxisPlacement;
-use crate::layout::depth_scratch::DepthScratch;
+use crate::layout::axis_placement::{AxisPlacement, Placed};
+use crate::layout::axis_share;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::fill_item::FillItem;
+use crate::layout::hug_item::HugItem;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
+use crate::layout::stack::stack_scratch::StackScratch;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Px;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
+use glam::BVec2;
 
-/// The Fill distribution's depth-shared buffer: one entry per `Fill`
-/// child of the stack being laid out.
-pub(super) type StackScratch = DepthScratch<FillItem<NodeId>>;
+pub(crate) mod stack_scratch;
 
 #[derive(Debug)]
 struct StackPlan {
@@ -34,19 +44,24 @@ struct StackPlan {
     count: usize,
     total_gap: f32,
     fill_start: usize,
+    hug_start: usize,
 }
 
+/// Walk the active children once: push a [`FillItem`] for each `Fill`
+/// child, and hand every other child to `non_fill`, which pushes its
+/// [`HugItem`] and returns what it wants.
 fn build_stack_plan(
     pass: &mut LayoutPass<'_>,
     node: NodeId,
     axis: Axis,
     gap: f32,
-    mut non_fill_main: impl FnMut(&mut LayoutPass<'_>, NodeId) -> f32,
+    mut non_fill: impl FnMut(&mut LayoutPass<'_>, NodeId) -> f32,
     mut fill_floor: impl FnMut(&mut LayoutPass<'_>, NodeId) -> f32,
 ) -> StackPlan {
     let tree = pass.tree;
     let layouts = tree.records.layout();
-    let fill_start = pass.stack_scratch_mut().mark();
+    let fill_start = pass.stack_scratch_mut().fill.mark();
+    let hug_start = pass.stack_scratch_mut().hug.mark();
     let mut sum_non_fill_main = 0.0f32;
     let mut count = 0usize;
     for c in tree.active_children(node) {
@@ -55,15 +70,15 @@ fn build_stack_plan(
         if let Some(weight) = axis.main_sizing(child_layout.size).fill_weight() {
             // Floor source depends on the phase the caller is in:
             // `measure` passes the child's `intrinsic(MinContent)` (its
-            // largest non-shrinkable descendant), `arrange` its measured
-            // `desired.main`. Arrange's is never the lower of the two,
-            // since `AxisSlot::resolve` floors `desired` by `intrinsic_min`.
+            // largest non-shrinkable descendant), since a Fill child has
+            // not measured yet; `arrange` its measured floor.
             let floor = fill_floor(pass, c);
             let cap = axis.main(tree.bounds(c).max_size) + axis.spacing(child_layout.margin);
             pass.stack_scratch_mut()
+                .fill
                 .push(FillItem::new(c, weight, floor, cap));
         } else {
-            sum_non_fill_main += non_fill_main(pass, c);
+            sum_non_fill_main += non_fill(pass, c);
         }
     }
     StackPlan {
@@ -71,11 +86,190 @@ fn build_stack_plan(
         count,
         total_gap: gap.gaps_between(count),
         fill_start,
+        hug_start,
+    }
+}
+
+/// What a stack's width share decided before its children measured.
+#[derive(Debug)]
+struct WidthShare {
+    /// Where the shares sit in the Hug pool, one per non-`Fill` child in
+    /// child order.
+    start: usize,
+    /// Whether the children did not all fit at what they want, so each
+    /// measures at its share rather than at the whole width.
+    squeezed: bool,
+    /// The least width from which the shares hold — see
+    /// [`Measured::stable_from`].
+    stable_from: f32,
+}
+
+/// Share a horizontal main axis of `main_avail` before the children
+/// measure, from each one's intrinsic range: what it wants is its
+/// max-content width, what it cannot go below its min-content width.
+/// Leaves the shares in the Hug pool and the Fill pool as it found it.
+fn share_widths(pass: &mut LayoutPass<'_>, node: NodeId, gap: f32, main_avail: f32) -> WidthShare {
+    let StackPlan {
+        total_gap,
+        fill_start,
+        hug_start,
+        ..
+    } = build_stack_plan(
+        pass,
+        node,
+        Axis::X,
+        gap,
+        |pass, c| {
+            let range = pass.intrinsic_range(c, Axis::X);
+            let wants = range.max.max(range.min);
+            pass.stack_scratch_mut()
+                .hug
+                .push(HugItem::new(c, range.min, wants));
+            wants
+        },
+        |pass, c| pass.intrinsic(c, Axis::X, LenReq::MinContent),
+    );
+    let StackScratch { fill, hug } = pass.stack_scratch_mut();
+    let shares_from = axis_share::solve(
+        hug.since(hug_start),
+        fill.since(fill_start),
+        (main_avail - total_gap).max(0.0),
+    );
+    fill.truncate(fill_start);
+    WidthShare {
+        start: hug_start,
+        squeezed: shares_from == Measured::AT_OFFER_ONLY,
+        stable_from: if shares_from > 0.0 {
+            shares_from + total_gap
+        } else {
+            0.0
+        },
     }
 }
 
 #[derive(Debug)]
 pub(super) struct Stack;
+
+impl Stack {
+    /// [`LayoutDriver::arrange`], with the children given no give on the
+    /// axes `rigid` sets — a scroll's panned axes, where its content takes
+    /// what it measured to however small the viewport, and a Fill child
+    /// only grows to fill it.
+    pub(super) fn arrange_in(
+        pass: &mut LayoutPass<'_>,
+        node: NodeId,
+        axis: Axis,
+        inner: Rect,
+        rigid: BVec2,
+    ) {
+        let tree = pass.tree;
+        let panel = tree.panel(node);
+        let (gap, justify, parent_child_align) =
+            (panel.gaps.gap(), panel.justify, panel.child_align);
+
+        // WPF Stretch semantics: `Fill` (the Stretch hint) reports content
+        // size at measure-time (so a Hug ancestor doesn't balloon to its
+        // grandparent's allocation), then expands at *arrange* to its share
+        // of the slot. The other children share what is left as measure
+        // shared it, from what each measured to and its floor — which on a
+        // vertical axis is where a child that wants more than its siblings
+        // leave gives way (height out; see the module doc).
+        let layouts = tree.records.layout();
+        let placed = |pass: &LayoutPass<'_>, c: NodeId| pass.placed(c).rigid_on(rigid);
+        let StackPlan {
+            count,
+            total_gap,
+            fill_start,
+            hug_start,
+            ..
+        } = build_stack_plan(
+            pass,
+            node,
+            axis,
+            gap,
+            |pass, c| {
+                let p = placed(pass, c);
+                let wants = axis.main(p.desired);
+                pass.stack_scratch_mut()
+                    .hug
+                    .push(HugItem::new(c, axis.main(p.floor), wants));
+                wants
+            },
+            |pass, c| axis.main(placed(pass, c).floor),
+        );
+        let main_total = axis.main(inner.size);
+        let cross = axis.cross(inner.size);
+        let StackScratch { fill, hug } = pass.stack_scratch_mut();
+        axis_share::solve(
+            hug.since(hug_start),
+            fill.since(fill_start),
+            (main_total - total_gap).max(0.0),
+        );
+        // The sum we report to `justify` is what the children will
+        // *actually* occupy after the share.
+        let sum_main_arranged = hug
+            .since(hug_start)
+            .iter()
+            .map(|item| item.size)
+            .sum::<f32>()
+            + fill
+                .since(fill_start)
+                .iter()
+                .map(|item| item.size)
+                .sum::<f32>();
+        let leftover_for_justify = (main_total - sum_main_arranged - total_gap).max(0.0);
+
+        // `justify` distributes any *remaining* main-axis slack. With Fill
+        // children that hit their cap (or with zero leftover) we may still
+        // have free pixels — justify them out.
+        let JustifyOffsets {
+            start: start_offset,
+            gap: effective_gap,
+        } = JustifyOffsets::new(justify, leftover_for_justify, gap, count);
+
+        let cross_min = axis.cross_v(inner.min);
+        let mut cursor = axis.main_v(inner.min) + start_offset;
+        let mut first = true;
+        let mut fill_cursor = fill_start;
+        let mut hug_cursor = hug_start;
+
+        for child in tree.children(node) {
+            let c = child.id;
+            if child.visibility.is_collapsed() {
+                pass.zero_subtree(c, axis.compose_point(cursor, cross_min));
+                continue;
+            }
+            let i = c.idx();
+            let s = layouts[i];
+            if !first {
+                cursor += effective_gap;
+            }
+            first = false;
+
+            let main_size = if axis.main_sizing(s.size).fill_weight().is_some() {
+                let alloc = pass.stack_scratch_mut().fill.at(fill_cursor).size;
+                fill_cursor += 1;
+                alloc
+            } else {
+                let share = pass.stack_scratch_mut().hug.at(hug_cursor).size;
+                hug_cursor += 1;
+                share
+            };
+
+            let bounds = tree.bounds(c);
+            let cross_p =
+                AxisPlacement::cross(axis, &s, bounds, parent_child_align, placed(pass, c), cross);
+
+            let child_rect =
+                axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
+            pass.arrange(c, child_rect);
+            cursor += main_size;
+        }
+        let scratch = pass.stack_scratch_mut();
+        scratch.fill.truncate(fill_start);
+        scratch.hug.truncate(hug_start);
+    }
+}
 
 impl LayoutDriver for Stack {
     type Payload = Axis;
@@ -105,11 +299,17 @@ impl LayoutDriver for Stack {
         // bound flows down — so a `max_size` on any ancestor constrains its
         // descendants (CSS `max-height` semantics), and content that wraps or
         // scrolls against the main axis respects it instead of overrunning a
-        // box the cap only shrank. Children still clamp at arrange; a rigid
-        // child whose content exceeds the bound overflows, same as on the
-        // cross axis.
+        // box the cap only shrank. Arrange then shares the extent among
+        // them; a rigid child whose content exceeds the bound overflows,
+        // same as on the cross axis.
         let main_avail = axis.main(inner_avail);
         let main_finite = main_avail.is_finite();
+        // Width in: see the module doc. A width share that squeezes hands
+        // each child its share to measure at; otherwise every child
+        // measures at the whole width, as on a vertical axis.
+        let widths =
+            (axis == Axis::X && main_finite).then(|| share_widths(pass, node, gap, main_avail));
+        let mut width_cursor = widths.as_ref().map_or(0, |w| w.start);
         let mut max_cross = 0.0f32;
         // The floor composes like the content: children's floors summed
         // along the pack axis, the widest across it.
@@ -123,6 +323,7 @@ impl LayoutDriver for Stack {
             sum_non_fill_main,
             total_gap,
             fill_start,
+            hug_start,
             ..
         } = build_stack_plan(
             pass,
@@ -130,13 +331,28 @@ impl LayoutDriver for Stack {
             axis,
             gap,
             |pass, c| {
-                let d = pass.measure(c, axis.compose_size(main_avail, cross_avail));
+                let offer = match &widths {
+                    Some(w) if w.squeezed => {
+                        let share = pass.stack_scratch_mut().hug.at(width_cursor).size;
+                        width_cursor += 1;
+                        share
+                    }
+                    _ => main_avail,
+                };
+                let d = pass.measure(c, axis.compose_size(offer, cross_avail));
+                let wants = axis.main(d.size);
+                // What arrange will let this child give way to, so the
+                // Fill shares below are the ones arrange hands out.
+                let gives_to = axis.main(Placed::of(d.size, d.floor).floor);
+                pass.stack_scratch_mut()
+                    .hug
+                    .push(HugItem::new(c, gives_to, wants));
                 max_cross = max_cross.max(axis.cross(d.size));
                 floor_main += axis.main(d.floor);
                 floor_cross = floor_cross.max(axis.cross(d.floor));
                 stable_main = stable_main.max(axis.main(d.stable_from));
                 stable_cross = stable_cross.max(axis.cross(d.stable_from));
-                axis.main(d.size)
+                wants
             },
             |pass, c| {
                 if main_finite {
@@ -147,16 +363,12 @@ impl LayoutDriver for Stack {
             },
         );
 
-        // Pass 2: measure Fill children against their share of what is
-        // left. The `MinContent` floor is what stops a sibling with rigid
-        // descendants (Fixed widget, longest-unbreakable-word) being
-        // squeezed past its content — the other Fill siblings absorb the
-        // squeeze instead. Without it, Fixed children overflow visibly
-        // when the parent is narrow even though shrinkable siblings still
-        // have room to give.
-        //
-        // On a Hug stack (INF main) there is nothing to divide — every
-        // Fill child measures at INF main and reports its natural width.
+        // Share the main axis as arrange will, so each Fill child measures
+        // at the share it is arranged at: its floor is set aside first, so
+        // a rigid or wrapping sibling never squeezes it below its content,
+        // and it takes what the others leave. On an unbounded main axis
+        // there is nothing to share — every Fill child measures at INF and
+        // reports its natural extent.
         //
         // Soundness: the `axis.main(inner_avail)` we use as the budget here
         // must equal the `axis.main(inner.size)` the matching `arrange` call
@@ -165,19 +377,24 @@ impl LayoutDriver for Stack {
         // deterministic function of (its own `Sizing` + parent-supplied
         // `available`) via `AxisSlot::resolve`, and the parent passes the
         // same `available` to `measure` that determines its arranged outer
-        // size. Any future driver that clamps a child's slot
-        // *between* its own measure and arrange would break this.
-        if main_finite {
-            let leftover = (main_avail - sum_non_fill_main - total_gap).max(0.0);
-            FillItem::distribute(pass.stack_scratch_mut().since(fill_start), leftover);
+        // size.
+        //
+        // The share sizes the Fill children alone here, so a stack without
+        // one has nothing to solve. The pool ends where the walk above left
+        // it: every nested measure truncated what it pushed.
+        let fill_end = pass.stack_scratch_mut().fill.mark();
+        if main_finite && fill_end > fill_start {
+            let StackScratch { fill, hug } = pass.stack_scratch_mut();
+            axis_share::solve(
+                hug.since(hug_start),
+                fill.since(fill_start),
+                (main_avail - total_gap).max(0.0),
+            );
         }
 
-        // Snapshot the pool end because recursive measurement may append entries
-        // for nested stacks.
-        let fill_end = pass.stack_scratch_mut().mark();
         let mut fill_main = 0.0f32;
         for i in fill_start..fill_end {
-            let entry = pass.stack_scratch_mut().at(i);
+            let entry = pass.stack_scratch_mut().fill.at(i);
             let fill_avail = if main_finite {
                 entry.size
             } else {
@@ -190,11 +407,20 @@ impl LayoutDriver for Stack {
             floor_cross = floor_cross.max(axis.cross(desired.floor));
             stable_cross = stable_cross.max(axis.cross(desired.stable_from));
         }
-        pass.stack_scratch_mut().truncate(fill_start);
-        // A Fill child is offered its share of the main axis, which moves
-        // with every change to it.
+        let scratch = pass.stack_scratch_mut();
+        scratch.fill.truncate(fill_start);
+        scratch
+            .hug
+            .truncate(widths.as_ref().map_or(hug_start, |w| w.start));
+        // A Fill child is offered its share of the main axis, and a child
+        // of a squeezed width share its own share, each of which moves with
+        // every change to the axis. Unsqueezed, the widths hold while what
+        // the children want still fits.
         if fill_end > fill_start {
             stable_main = Measured::AT_OFFER_ONLY;
+        }
+        if let Some(w) = &widths {
+            stable_main = stable_main.max(w.stable_from);
         }
 
         Measured {
@@ -205,96 +431,7 @@ impl LayoutDriver for Stack {
     }
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, axis: Self::Payload, inner: Rect) {
-        let tree = pass.tree;
-        let panel = tree.panel(node);
-        let (gap, justify, parent_child_align) =
-            (panel.gaps.gap(), panel.justify, panel.child_align);
-
-        // WPF Stretch semantics: `Fill` (the Stretch hint) reports content
-        // size at measure-time (so a Hug ancestor doesn't balloon to its
-        // grandparent's allocation), then expands at *arrange* to its share
-        // of the slot. Re-run the floor-aware freeze loop here against
-        // `inner.main` (the slot we actually got) so Fill children stretch
-        // to fill leftover. Without this, Fill children would arrange at
-        // their measured content size and the parent's leftover would just
-        // dead-space.
-        let layouts = tree.records.layout();
-        // Shares the count / weight / gap accounting with `measure`; the
-        // closure supplies the per-phase main source — here the cached
-        // `desired.main` (Fill children's content size: measure pins
-        // Fill at content). Both parameters read that one source here,
-        // while `measure` gives them different ones.
-        let main_desired = |pass: &mut LayoutPass<'_>, c: NodeId| axis.main(pass.desired(c));
-        let StackPlan {
-            sum_non_fill_main,
-            count,
-            total_gap,
-            fill_start,
-        } = build_stack_plan(pass, node, axis, gap, main_desired, main_desired);
-        // The distribution mirrors `measure`: a child whose share falls
-        // outside `[floor, cap]` takes the bound, then the rest re-share.
-        let main_total = axis.main(inner.size);
-        let cross = axis.cross(inner.size);
-        let leftover_for_fill = (main_total - sum_non_fill_main - total_gap).max(0.0);
-        FillItem::distribute(
-            pass.stack_scratch_mut().since(fill_start),
-            leftover_for_fill,
-        );
-        // The sum we report to `justify` is the post-redistribute total —
-        // i.e., what the children will *actually* occupy after arrange.
-        let sum_main_arranged = sum_non_fill_main
-            + pass
-                .stack_scratch_mut()
-                .since(fill_start)
-                .iter()
-                .map(|entry| entry.size)
-                .sum::<f32>();
-        let leftover_for_justify = (main_total - sum_main_arranged - total_gap).max(0.0);
-
-        // `justify` distributes any *remaining* main-axis slack. With Fill
-        // children that hit their cap (or with zero leftover) we may still
-        // have free pixels — justify them out.
-        let JustifyOffsets {
-            start: start_offset,
-            gap: effective_gap,
-        } = JustifyOffsets::new(justify, leftover_for_justify, gap, count);
-
-        let cross_min = axis.cross_v(inner.min);
-        let mut cursor = axis.main_v(inner.min) + start_offset;
-        let mut first = true;
-        let mut fill_cursor = fill_start;
-
-        for child in tree.children(node) {
-            let c = child.id;
-            if child.visibility.is_collapsed() {
-                pass.zero_subtree(c, axis.compose_point(cursor, cross_min));
-                continue;
-            }
-            let i = c.idx();
-            let s = layouts[i];
-            let d = pass.desired(c);
-            if !first {
-                cursor += effective_gap;
-            }
-            first = false;
-
-            let main_size = if axis.main_sizing(s.size).fill_weight().is_some() {
-                let alloc = pass.stack_scratch_mut().at(fill_cursor).size;
-                fill_cursor += 1;
-                alloc
-            } else {
-                axis.main(d)
-            };
-
-            let bounds = tree.bounds(c);
-            let cross_p = AxisPlacement::cross(axis, &s, bounds, parent_child_align, d, cross);
-
-            let child_rect =
-                axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
-            pass.arrange(c, child_rect);
-            cursor += main_size;
-        }
-        pass.stack_scratch_mut().truncate(fill_start);
+        Self::arrange_in(pass, node, axis, inner, BVec2::FALSE);
     }
 
     /// Intrinsic size of a stack on `query_axis`. When the query

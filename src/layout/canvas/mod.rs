@@ -87,7 +87,7 @@ impl LayoutDriver for Canvas {
             let slot = d.select(canvas_size.hug_mask(), room);
             let child_rect = Rect {
                 min: inner.min + pos,
-                size: AxisPlacement::arrange_size(&child_layout, bounds, d, slot),
+                size: AxisPlacement::arrange_size(&child_layout, bounds, pass.placed(c), slot),
             };
             pass.arrange(c, child_rect);
         }

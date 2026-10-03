@@ -183,11 +183,11 @@ impl ScrollWrappers {
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
 ///
-/// **In a stack, a scroll that should take the space its siblings leave
-/// is `Sizing::FILL` on the stack's main axis.** A stack shares what is
-/// left only among its `Fill` children; a `Hug` scroll is measured against
-/// the stack's whole extent, as every other child is, and runs past the
-/// stack by as much as its siblings take.
+/// **In a stack, a scroll gives way to its siblings.** A `Hug` scroll
+/// wants its content and can shrink to nothing on its panned axis, so it
+/// takes what the siblings that cannot shrink leave it. A `Fill` scroll
+/// also grows into space no sibling wants — except in a `Hug` stack, which
+/// has none to give it: there a `Fill` scroll is empty.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Scroll<'a> {

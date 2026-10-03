@@ -6,16 +6,17 @@
 //! other: `measuring` and `arranging` both depend *down* on this one.
 
 use crate::layout::axis::Axis;
+use crate::layout::axis_share;
 use crate::layout::fill_item::FillItem;
 use crate::layout::grid::grid_track_store::GridTrackStore;
-use crate::layout::measured::Measured;
+use crate::layout::hug_item::HugItem;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
 use crate::primitives::num::F32Px;
 use crate::primitives::span::Span;
 use fixedbitset::FixedBitSet;
 
-/// Per-axis scratch for one nesting depth. `flexible` and `hug_bounds`
+/// Per-axis scratch for one nesting depth. `flexible` and `hugs`
 /// are transient lists used only inside [`Self::resolve_axis`]; they live on
 /// the per-axis struct so their capacity is retained across frames.
 ///
@@ -35,7 +36,7 @@ pub(super) struct AxisScratch {
     /// total, which the caller answers for.
     pub(super) stable_from: f32,
     flexible: Vec<FillItem<usize>>,
-    hug_bounds: Vec<HugBound>,
+    hugs: Vec<HugItem<usize>>,
 }
 
 /// The per-track content range one axis solves against: `min[i]` is
@@ -58,13 +59,6 @@ pub(super) struct HugRanges<'a> {
 pub(super) struct HugRangesMut<'a> {
     pub(super) min: &'a mut [f32],
     pub(super) max: &'a mut [f32],
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(super) struct HugBound {
-    idx: usize,
-    lo: f32,
-    hi: f32,
 }
 
 impl AxisScratch {
@@ -215,73 +209,21 @@ impl AxisScratch {
         let total_gap = gap.gaps_between(n);
 
         // Phase 1: Fixed.
-        let mut consumed = total_gap + self.resolve_fixed(tracks);
+        let consumed = total_gap + self.resolve_fixed(tracks);
 
-        // Phase 2: Hug, constraint-solved against remaining-after-Fixed.
-        // Single pass: snapshot each Hug track's clamped `(lo, hi)` once,
-        // pick the distribution rule from the totals, then write sizes.
-        self.stable_from = 0.0;
-        self.hug_bounds.clear();
-        let mut hug_min_sum = 0.0_f32;
-        let mut hug_max_sum = 0.0_f32;
+        // Phases 2 and 3: the Hug tracks share what Fixed leaves once the
+        // Fill tracks' floors are set aside, and the Fill tracks divide
+        // the rest — see `axis_share`. Capping the min-content floor at
+        // `Track.max` keeps each interval ordered when a rigid descendant
+        // exceeds the explicit track cap.
+        self.hugs.clear();
+        self.flexible.clear();
         for (i, t) in tracks.iter().enumerate() {
             if t.size.is_hug() {
                 let lo = t.content_floor(hugs.min[i]);
                 let hi = hugs.max[i].max(lo).min(t.max);
-                hug_min_sum += lo;
-                hug_max_sum += hi;
-                self.hug_bounds.push(HugBound { idx: i, lo, hi });
-            }
-        }
-
-        if !self.hug_bounds.is_empty() {
-            let fill_floors: f32 = tracks
-                .iter()
-                .enumerate()
-                .filter(|(_, t)| t.size.fill_weight().is_some())
-                .map(|(i, t)| t.content_floor(hugs.min[i]))
-                .sum();
-            let remaining_after_fixed = (total - consumed - fill_floors).max(0.0);
-            // Pick distribution mode once. `unconstrained` covers infinite
-            // total (Hug parent) and the "every Hug fits at max" case;
-            // `cramped` covers "even at min the Hugs overflow"; otherwise
-            // distribute slack proportional to per-track `(hi - lo)`.
-            let unconstrained = total.is_infinite() || hug_max_sum <= remaining_after_fixed;
-            let cramped = !unconstrained && hug_min_sum >= remaining_after_fixed;
-            // Every Hug at its preferred extent holds while what is left
-            // still holds them all; one squeezed holds at this total alone.
-            self.stable_from = if !unconstrained {
-                Measured::AT_OFFER_ONLY
-            } else if hug_max_sum > 0.0 {
-                consumed + fill_floors + hug_max_sum
-            } else {
-                0.0
-            };
-            let slack = remaining_after_fixed - hug_min_sum;
-            let total_range = hug_max_sum - hug_min_sum;
-
-            for &HugBound { idx, lo, hi } in &self.hug_bounds {
-                let v = if unconstrained {
-                    hi
-                } else if cramped {
-                    lo
-                } else if total_range > 0.0 {
-                    (lo + slack * (hi - lo) / total_range).min(hi)
-                } else {
-                    lo
-                };
-                self.sizes[idx] = v;
-                self.resolved.insert(idx);
-                consumed += v;
-            }
-        }
-
-        // Phase 3: Fill, over what Fixed and Hug left. Capping the
-        // min-content floor at `Track.max` keeps the interval ordered when
-        // a rigid descendant exceeds the explicit track cap.
-        self.flexible.clear();
-        for (i, t) in tracks.iter().enumerate() {
-            if let Some(weight) = t.size.fill_weight() {
+                self.hugs.push(HugItem::new(i, lo, hi));
+            } else if let Some(weight) = t.size.fill_weight() {
                 self.flexible.push(FillItem::new(
                     i,
                     weight,
@@ -290,7 +232,18 @@ impl AxisScratch {
                 ));
             }
         }
-        FillItem::distribute(&mut self.flexible, (total - consumed).max(0.0));
+        let budget = (total - consumed).max(0.0);
+        let shares_from = axis_share::solve(&mut self.hugs, &mut self.flexible, budget);
+        // The shares hold while what Fixed leaves still holds them.
+        self.stable_from = if shares_from > 0.0 {
+            consumed + shares_from
+        } else {
+            0.0
+        };
+        for item in &self.hugs {
+            self.sizes[item.key] = item.size;
+            self.resolved.insert(item.key);
+        }
         for item in &self.flexible {
             self.sizes[item.key] = item.size;
         }
