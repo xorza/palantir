@@ -23,6 +23,8 @@ use std::hash::Hash;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 
+use crate::input::keyboard::key::Key;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -760,7 +762,7 @@ impl<T: DockTab> DockState<T> {
             self.set_drag(ui, None);
             return;
         };
-        if ui.escape_pressed() {
+        if ui.key_pressed(Shortcut::key(Key::Escape)) {
             self.set_drag(ui, None);
             return;
         }

@@ -14,7 +14,7 @@
 // doctest when that feature is on. Without it the crate docs open at the
 // orientation section below instead.
 #![cfg_attr(feature = "winit", doc = include_str!("../README.md"))]
-// `WinitHost`, `WinitHostConfig` and `HostHandle` are the windowed host's own
+// `WinitHost`, `WinitHostBuilder` and `HostHandle` are the windowed host's own
 // types, and the docs on the backend-agnostic items around them — `Ui`'s
 // window commands, `WindowConfig`, `WindowToken` — say what that host does
 // with each. Those sentences are worth as much to a reader building without
@@ -293,7 +293,6 @@ pub mod widget {
     pub use crate::animation::animatable::Animatable;
     pub use crate::common::span::Span;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
-    pub use crate::primitives::geometry::spacing::Sums;
     pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
@@ -358,9 +357,8 @@ pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 #[cfg(feature = "winit")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
-    config::WinitHostConfig,
     error::{HostDisconnected, WinitHostError},
-    handle::{HostHandle, UserEvent},
+    handle::HostHandle,
 };
 /// The event a host feeds a `Ui`. Toolkit-independent, so a host of your
 /// own translates its platform's events into these — see

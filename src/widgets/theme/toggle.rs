@@ -23,9 +23,9 @@ use glam::Vec2;
 /// would otherwise hardcode.
 ///
 /// The chrome painted on the small box/pip comes from
-/// `checked.pick(state)` or `unchecked.pick(state)`; the indicator
+/// `checked` or `unchecked` by state; the indicator
 /// (check polyline, radio dot) uses [`Self::indicator`]. The label
-/// reads through the same `pick`'s `text` overrides (defaults: none on
+/// reads through the picked look's `text` overrides (defaults: none on
 /// active states, so they inherit `Theme::text`; `disabled` names the
 /// palette's `text_disabled` colour alone) — same flow as Button.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -92,16 +92,6 @@ impl ToggleTheme {
     /// [`crate::Checkbox`] draws, in box-local pixels.
     pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
         self.check_pts.map(|p| p * self.box_size)
-    }
-
-    /// Pick the chrome+label look for this `(state, checked)` pair
-    /// (`active` = pressed).
-    pub const fn pick(&self, state: &ResponseState, checked: bool) -> &WidgetLook {
-        if checked {
-            self.checked.pick(state, state.pressed())
-        } else {
-            self.unchecked.pick(state, state.pressed())
-        }
     }
 
     /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
@@ -238,8 +228,15 @@ struct ToggleGeometry {
 impl ThemeSlot for ToggleTheme {
     type Pick = bool;
 
+    /// The checked or the unchecked pack, then its state (`active` =
+    /// pressed).
     fn look(&self, response: &ResponseState, checked: bool) -> &WidgetLook {
-        self.pick(response, checked)
+        let pack = if checked {
+            &self.checked
+        } else {
+            &self.unchecked
+        };
+        pack.pick(response, response.pressed())
     }
 
     fn defaults(&self) -> SlotDefaults {

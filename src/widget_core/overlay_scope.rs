@@ -1,7 +1,9 @@
 //! [`OverlayScope`] — a dismissible overlay's claim on its layer.
 
 use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -125,11 +127,11 @@ impl OverlayScope {
     ///
     /// The Escape read happens in here, before the layer closes, and it
     /// has to: outside the layer the ambient scope sits below this
-    /// overlay's, so an `escape_pressed()` call made after the fact is
+    /// overlay's, so a `key_pressed(Escape)` call made after the fact is
     /// silenced by the very scope the overlay just declared — and the
     /// overlay never sees its own dismiss key. A backdrop-less scope
     /// reports `false` without asking: it has no dismiss key, and
-    /// `escape_pressed` auto-watches the chord for wake-up, which an
+    /// `key_pressed` auto-watches the chord for wake-up, which an
     /// always-recorded overlay would re-arm every frame for nothing.
     ///
     /// A recorded eater goes down first, so it paints *under* the body.
@@ -159,7 +161,10 @@ impl OverlayScope {
         };
         let (inner, escape) = scope.show(|ui| {
             let inner = body(ui);
-            (inner, owns_input && ui.escape_pressed())
+            (
+                inner,
+                owns_input && ui.key_pressed(Shortcut::key(Key::Escape)),
+            )
         });
         OverlayTurn {
             inner,

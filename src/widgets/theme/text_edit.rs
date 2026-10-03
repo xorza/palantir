@@ -69,17 +69,6 @@ impl TextEditTheme {
         looks.for_each_text(f);
     }
 
-    /// Pick the visual state: `active` = focused. Disabled wins over
-    /// focused, focused over hovered; otherwise normal.
-    /// `state.disabled` already carries the node's own flag —
-    /// [`Widget::response`](crate::widget::Widget) merges it, so a field
-    /// disabled this frame paints disabled without waiting for the
-    /// cascade.
-    #[inline(always)]
-    pub const fn pick(&self, state: &ResponseState) -> &WidgetLook {
-        self.looks.pick(state, state.focused)
-    }
-
     /// Where a field must put its own corner for a run measuring `text` to come
     /// out centred on `at`.
     ///
@@ -171,8 +160,11 @@ impl TextEditTheme {
 impl ThemeSlot for TextEditTheme {
     type Pick = ();
 
+    /// `active` = focused. Disabled wins over focused, focused over
+    /// hovered; otherwise normal.
+    #[inline(always)]
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.pick(response)
+        self.looks.pick(response, response.focused)
     }
 
     fn defaults(&self) -> SlotDefaults {

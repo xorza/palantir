@@ -1,6 +1,7 @@
 //! Per-side padding and margin, four f16 lanes in eight bytes — the same
 //! packing `Corners` and `RgbaF16` use, with edge names on the lanes.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
@@ -63,26 +64,14 @@ impl Spacing {
         let [_l, t, _r, b] = self.as_array();
         t + b
     }
-    /// Both totals in a single SIMD unpack. Use when both axes are
-    /// needed; otherwise prefer `horizontal_sum()` / `vertical_sum()`.
+    /// The size this spacing costs: `w = left + right`, `h = top + bottom`,
+    /// from one unpack of the lanes. Use when both axes are needed;
+    /// otherwise prefer [`Self::horizontal_sum`] / [`Self::vertical_sum`].
     #[inline]
-    pub fn sums(self) -> Sums {
+    pub fn sums(self) -> Size {
         let [l, t, r, b] = self.as_array();
-        Sums {
-            horizontal: l + r,
-            vertical: t + b,
-        }
+        Size::new(l + r, t + b)
     }
-}
-
-/// Both axis totals from one [`Spacing`], unpacked together — `horizontal =
-/// left + right`, `vertical = top + bottom`.
-#[derive(Clone, Copy, Debug)]
-pub struct Sums {
-    /// `left + right`.
-    pub horizontal: f32,
-    /// `top + bottom`.
-    pub vertical: f32,
 }
 
 impl ops::Add for Spacing {

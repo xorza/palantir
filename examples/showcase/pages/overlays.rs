@@ -12,9 +12,9 @@ use std::time::Duration;
 use crate::support;
 use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
-    Align, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem, Panel,
-    Popup, Rect, ResponseSnapshot, Sense, Shortcut, ShortcutMods, Sizing, Spacing, Text, Tooltip,
-    Ui, Vec2, WidgetId, fmt,
+    Align, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem,
+    MenuSeparator, Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, ShortcutMods, Sizing,
+    Spacing, Text, Tooltip, Ui, Vec2, WidgetId, fmt,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -333,12 +333,12 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
                 ui.state_or_default::<CtxState>(state_id).last_action = Some(action);
             }
         }
-        MenuItem::separator().style(rule).show(ui);
+        MenuSeparator::new().style(rule).show(ui);
         MenuItem::new("Disabled")
             .disabled(true)
             .style(item)
             .show(ui, popup);
-        MenuItem::separator().style(rule).show(ui);
+        MenuSeparator::new().style(rule).show(ui);
         if MenuItem::new("Delete")
             .shortcut(Shortcut::new(ShortcutMods::NONE, Key::Backspace))
             .style(item)

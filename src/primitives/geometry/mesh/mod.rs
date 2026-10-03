@@ -72,8 +72,7 @@ pub struct Mesh {
     cached_hash: Cell<Option<u64>>,
     /// Lazy cache of owner-local AABB. Same memoization contract as
     /// `cached_hash` — a retained mesh re-lowered each frame would
-    /// otherwise recompute its AABB every frame. [`Self::with_known_bbox`]
-    /// pre-seeds it to skip the compute entirely.
+    /// otherwise recompute its AABB every frame.
     cached_bbox: Cell<Option<Rect>>,
 }
 
@@ -235,16 +234,6 @@ impl Mesh {
         let b = compute_aabb(&self.vertices);
         self.cached_bbox.set(Some(b));
         b
-    }
-
-    /// Skip the lazy compute by handing over a pre-computed AABB.
-    /// Caller is responsible for correctness — a wrong bbox silently
-    /// breaks scissor culling. Use for procedural / baked meshes where
-    /// the AABB falls out of the construction algorithm.
-    #[must_use]
-    pub fn with_known_bbox(self, bbox: Rect) -> Self {
-        self.cached_bbox.set(Some(bbox));
-        self
     }
 
     /// Convenience: filled triangle in a single color (`RgbaF32` or

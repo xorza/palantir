@@ -6,7 +6,7 @@ use glam::{IVec2, UVec2};
 
 /// Per-window options — what [`Ui::open_window`](crate::Ui::open_window)
 /// takes (and what the first window's options live in inside
-/// [`WinitHostConfig`](crate::WinitHostConfig)). Backend-agnostic by
+/// [`WinitHostBuilder`](crate::WinitHostBuilder)). Backend-agnostic by
 /// design: no winit or wgpu types, so opening a window from app code
 /// doesn't pull the windowing backend into the `Ui` API. Sizes are
 /// `UVec2` logical pixels (DPI-independent), `.x` = width, `.y` = height

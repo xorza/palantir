@@ -9,6 +9,7 @@ use crate::input::input_state::tests::{
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::shortcut::Shortcut;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -81,7 +82,7 @@ fn a_tree_with_no_scopes_still_reads_every_chord() {
     press_escape(&mut h);
     let pressed = h.frame_value(|ui| {
         bare(ui);
-        ui.escape_pressed()
+        ui.key_pressed(Shortcut::key(Key::Escape))
     });
     assert!(pressed, "no scopes declared must not gate the chord out");
 }
@@ -153,12 +154,12 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                let at_root = ui.escape_pressed();
+                let at_root = ui.key_pressed(Shortcut::key(Key::Escape));
                 let at_inner = Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .show(ui, Ui::escape_pressed)
+                    .show(ui, |ui| ui.key_pressed(Shortcut::key(Key::Escape)))
                     .inner;
                 [at_root, at_inner]
             })
@@ -205,7 +206,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
             for id in ["first", "second"] {
                 scope_leaf(ui, Layer::Popup, id, |ui| {
                     if id == survivor {
-                        read_by_survivor = ui.escape_pressed();
+                        read_by_survivor = ui.key_pressed(Shortcut::key(Key::Escape));
                     }
                 });
             }
@@ -271,7 +272,7 @@ fn a_close_takes_effect_at_the_next_resolution() {
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                reads.at_root = ui.escape_pressed();
+                reads.at_root = ui.key_pressed(Shortcut::key(Key::Escape));
                 Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
@@ -283,11 +284,11 @@ fn a_close_takes_effect_at_the_next_resolution() {
                                 .size(10.0)
                                 .show(ui);
                         }
-                        reads.inner_before = ui.escape_pressed();
+                        reads.inner_before = ui.key_pressed(Shortcut::key(Key::Escape));
                         if closes {
                             ui.release_input_scope(WidgetId::from_hash("inner"));
                         }
-                        reads.inner_after = ui.escape_pressed();
+                        reads.inner_after = ui.key_pressed(Shortcut::key(Key::Escape));
                     });
             });
         reads

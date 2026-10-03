@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::gpu::error::{GpuRequestError, SurfaceError};
+use crate::gpu::error::SurfaceError;
 use crate::window::window_token::WindowToken;
 use std::fmt;
 use winit::error;
@@ -60,12 +60,6 @@ pub enum WinitHostError {
         /// What went wrong with it.
         source: SurfaceError,
     },
-    /// Asking the driver for a device failed — the same four ways it fails
-    /// for every host, so the same enum describes them.
-    Gpu {
-        /// Which of the four ways the request failed.
-        source: GpuRequestError,
-    },
 }
 
 impl Display for WinitHostError {
@@ -79,14 +73,7 @@ impl Display for WinitHostError {
             Self::Surface { token, source } => {
                 write!(f, "window {token:?} surface failed: {source}")
             }
-            Self::Gpu { source } => Display::fmt(source, f),
         }
-    }
-}
-
-impl From<GpuRequestError> for WinitHostError {
-    fn from(source: GpuRequestError) -> Self {
-        Self::Gpu { source }
     }
 }
 
@@ -96,10 +83,6 @@ impl Error for WinitHostError {
             Self::CreateEventLoop { source } | Self::RunEventLoop { source } => Some(source),
             Self::CreateWindow { source, .. } => Some(source),
             Self::Surface { source, .. } => Some(source),
-            // The inner's own source, skipping the inner itself. This
-            // variant adds no words of its own — its `Display` forwards —
-            // so chaining it would print the identical sentence twice.
-            Self::Gpu { source } => source.source(),
         }
     }
 }
@@ -108,8 +91,9 @@ impl Error for WinitHostError {
 mod tests {
     use std::error::Error;
 
-    use crate::gpu::error::{GpuRequestError, UnmetRequirements};
+    use crate::gpu::error::{GpuRequestError, SurfaceError, UnmetRequirements};
     use crate::host::winit::error::{HostDisconnected, WinitHostError};
+    use crate::window::window_token::WindowToken;
     use winit::error;
 
     #[test]
@@ -123,26 +107,35 @@ mod tests {
         );
         assert!(event_loop.source().is_some());
 
-        // A device request is the shared type's to describe. The host
-        // forwards its words and hands on *its* cause rather than itself,
-        // so a chain printer never meets the same sentence twice.
+        // A device request fails while a window opens its surface, so it
+        // arrives as that window's surface error. The surface forwards the
+        // request's words and hands on *its* cause rather than itself, so a
+        // chain printer never meets the same sentence twice.
         let unmet = UnmetRequirements::Limit {
             name: "max_immediate_size",
             required: 16,
             available: 8,
         };
-        let capability = WinitHostError::from(GpuRequestError::Requirements {
-            source: unmet.clone(),
-        });
+        let capability = WinitHostError::Surface {
+            token: WindowToken(7),
+            source: SurfaceError::Device {
+                source: GpuRequestError::Requirements {
+                    source: unmet.clone(),
+                },
+            },
+        };
+        let request = "the graphics adapter cannot run Palantir: \
+             graphics device limit max_immediate_size is 8, but Palantir requires 16";
         assert_eq!(
             capability.to_string(),
-            "the graphics adapter cannot run Palantir: \
-             graphics device limit max_immediate_size is 8, but Palantir requires 16",
+            format!("window WindowToken(7) surface failed: {request}"),
         );
+        let surface = capability.source().expect("the surface error");
+        assert_eq!(surface.to_string(), request);
         assert_eq!(
-            capability.source().map(ToString::to_string),
+            surface.source().map(ToString::to_string),
             Some(unmet.to_string()),
-            "the chain skips the wrapper, which added no words of its own",
+            "the chain skips the device wrapper, which added no words of its own",
         );
     }
 

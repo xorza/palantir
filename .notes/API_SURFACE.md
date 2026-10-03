@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `a1555cea`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `a488e118`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `SelectResponse`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -44,7 +44,6 @@ struct           widget::Mesh
     fn triangle(self, a, b, c)
     fn append(self, other)
     fn bbox(self)
-    fn with_known_bbox(self, bbox)
     fn filled_triangle(a, b, c, color)
     fn filled_polygon(points, color)
     traits: Clone, Debug, Default
@@ -52,9 +51,6 @@ struct           widget::MeshVertex
     fields: pos, color
     fn new(pos, color)
     traits: Clone, Copy, Debug, Default, PartialEq, Pod, StructuralPartialEq, Zeroable
-struct           widget::Sums
-    fields: horizontal, vertical
-    traits: Clone, Copy, Debug
 module           widget::domain
 module           widget::domain::vec2
 function         widget::domain::vec2::approx_eq(a, b)
@@ -449,9 +445,8 @@ struct           WinitHost
     fn builder(first_token)
     fn handle(self)
     fn run(self)
-    traits: ApplicationHandler, Debug
+    traits: Debug
 struct           WinitHostBuilder
-    fn config(self, config)
     fn window(self, window)
     fn title(self, title)
     const fn fonts(self, scope)
@@ -461,22 +456,16 @@ struct           WinitHostBuilder
     const fn pixel_snap(self, pixel_snap)
     fn build(self, create_app)
     traits: Debug
-struct           WinitHostConfig
-    fields: window, vsync, power_preference, collect_gpu_stats, fonts, pixel_snap
-    traits: Clone, Debug, Default
 struct           HostDisconnected
     traits: Clone, Copy, Debug, Display, Eq, Error, PartialEq, StructuralPartialEq
 enum             WinitHostError
-    variants: CreateEventLoop, RunEventLoop, CreateWindow, Surface, Gpu
-    traits: Debug, Display, Error, From
+    variants: CreateEventLoop, RunEventLoop, CreateWindow, Surface
+    traits: Debug, Display, Error
 struct           HostHandle
     fn request_repaint(self, win)
     fn run_on_main(self, f)
     fn quit(self)
     traits: Clone, Debug
-enum             UserEvent
-    variants: Repaint, RunOnMain, Quit
-    traits: ApplicationHandler, Debug
 enum             InputEvent
     variants: PointerMoved, PointerLeft, PointerPressed, PointerReleased, ScrollPixels, ScrollLines, Zoom, KeyDown, ModifiersChanged, SurfaceFocusLost
     traits: Clone, Copy, Debug
@@ -1074,7 +1063,6 @@ struct           Ui
     fn pointer_events(self)
     fn keyboard_events(self)
     fn key_pressed(self, sc)
-    fn escape_pressed(self)
     fn request_relayout(self)
     const fn now(self)
     const fn set_cursor(self, cursor)
@@ -1264,7 +1252,6 @@ struct           MenuItem
     fn style(self, s)
     const fn shortcut(self, s)
     const fn shortcut_hint(self, shortcut)
-    fn separator()
     fn show(self, ui, popup)
     traits: Configure, Debug
 struct           MenuSeparator
@@ -1596,7 +1583,6 @@ struct           ButtonTheme
     fields: looks, defaults
     fn from_palette(p)
     fn menu_button(p)
-    const fn pick(self, state)
     traits: Clone, Debug, Default, Deserialize, Serialize, ThemeSlot
 struct           ColorPickerTheme
     fields: field_width, field_height, bar_thickness, chip_size, swatch_size, handle_radius, handle_width, handle_outer, handle_inner, checker_light, checker_dark, checker_cell, border, border_width, gap, popup, popup_padding, value, hex, label
@@ -1613,7 +1599,6 @@ struct           ContextMenuTheme
     traits: Clone, Debug, Default, Deserialize, Serialize
 struct           MenuItemTheme
     fields: looks, shortcut, gap, defaults
-    const fn pick(self, state)
     fn from_palette(p)
     traits: Clone, Debug, Default, Deserialize, Serialize, ThemeSlot
 struct           DockTheme
@@ -1668,13 +1653,11 @@ struct           SplitterTheme
     traits: Clone, Debug, Default, Deserialize, Serialize
 struct           TabsTheme
     fields: active, inactive, accent, accent_idle, accent_thickness, strip, strip_padding, gap, hline, hline_thickness, corner, chip_padding, trailing_inset, min_width, max_width, close, close_size, badge, badge_size, label_gap, defaults
-    const fn pick(self, state, selected)
     const fn cap(self, focused)
     fn from_palette(p)
     traits: Clone, Debug, Default, Deserialize, Serialize, ThemeSlot
 struct           TextEditTheme
     fields: looks, placeholder, caret, caret_width, selection, defaults
-    const fn pick(self, state)
     fn corner_centering(self, text, at)
     fn from_palette(p)
     traits: Clone, Debug, Default, Deserialize, Serialize, ThemeSlot
@@ -1704,7 +1687,6 @@ struct           TextStyleOverrides
     traits: Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, StructuralPartialEq
 struct           ToggleTheme
     fields: unchecked, checked, indicator, box_size, indicator_stroke, check_pts, indicator_inset, gap, track_aspect, defaults
-    const fn pick(self, state, checked)
     fn checkbox(p)
     fn radio(p)
     fn switch(p)

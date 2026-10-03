@@ -8,6 +8,7 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -52,8 +53,8 @@ fn button_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            ptr::eq(theme.pick(state), *expected),
-            "{label}: pick should return the matching slot",
+            ptr::eq(theme.look(state, ()), *expected),
+            "{label}: look should return the matching slot",
         );
     }
 }
@@ -89,8 +90,8 @@ fn text_edit_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            ptr::eq(theme.pick(state), *expected),
-            "{label}: pick should return the matching slot",
+            ptr::eq(theme.look(state, ()), *expected),
+            "{label}: look should return the matching slot",
         );
     }
 }
@@ -158,15 +159,15 @@ fn toggle_theme_pick_selects_pack_then_state() {
     ];
     for (state, checked, expected, label) in cases {
         assert!(
-            ptr::eq(theme.pick(state, *checked), *expected),
-            "{label}: pick should return the matching slot",
+            ptr::eq(theme.look(state, *checked), *expected),
+            "{label}: look should return the matching slot",
         );
     }
 
     // The checked flag decides the answer on its own: one state, two packs.
     let idle = state(false, false, false);
     assert!(
-        !ptr::eq(theme.pick(&idle, false), theme.pick(&idle, true)),
+        !ptr::eq(theme.look(&idle, false), theme.look(&idle, true)),
         "checked and unchecked must not resolve to the same look",
     );
 }

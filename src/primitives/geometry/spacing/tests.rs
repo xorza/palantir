@@ -33,6 +33,8 @@ fn lanes_round_trip_integer_values_exactly() {
     assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(s.horizontal_sum(), 4.0);
     assert_eq!(s.vertical_sum(), 6.0);
+    // Left + right = 1 + 3, top + bottom = 2 + 4.
+    assert_eq!(s.sums(), Size::new(4.0, 6.0));
 }
 
 /// Documents the f16 precision contract.

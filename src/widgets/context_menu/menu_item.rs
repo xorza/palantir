@@ -13,7 +13,6 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 
@@ -80,14 +79,6 @@ impl<'a> MenuItem<'a> {
     pub const fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Hint(shortcut);
         self
-    }
-
-    /// Thin horizontal divider between groups — no label, no input.
-    /// Chain `.show(ui)` and ignore the response. See
-    /// [`MenuSeparator`].
-    #[track_caller]
-    pub fn separator<'s>() -> MenuSeparator<'s> {
-        MenuSeparator::new()
     }
 
     /// Record the row inside an open menu. Activating it closes the menu
