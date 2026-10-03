@@ -223,3 +223,68 @@ fn every_edit_action_chord_is_edit_class() {
     }
     assert_eq!(checked, 6, "six of the seven actions carry a chord");
 }
+
+/// A focused field takes only the keys it acts on. The arrows and Home /
+/// End move its caret, so an app root reading them misses; Tab, Shift+Tab,
+/// the page keys and Ctrl+Tab do nothing in a field, so they reach the
+/// root's own scope. The root declares one — without it, the root would
+/// read as the layer's outermost scope, the field's, and see every key.
+#[test]
+fn a_focused_field_yields_the_keys_it_does_not_act_on() {
+    use crate::KeyFilter;
+    use crate::input::shortcut::{Shortcut, ShortcutMods};
+
+    let field = WidgetId::from_hash(EDITOR);
+    let scene = |ui: &mut Ui, buf: &mut String, probe: Shortcut| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("app-root"))
+            .input_scope(KeyFilter::ACCEL)
+            .show(ui, |ui| {
+                let at_root = ui.key_pressed(probe);
+                TextEdit::new(buf)
+                    .id(field)
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                    .show(ui);
+                at_root
+            })
+            .inner
+    };
+    let shift = Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    };
+    let ctrl = Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    };
+    for (key, mods, probe_mods, reaches_root) in [
+        (Key::ArrowLeft, Modifiers::NONE, ShortcutMods::NONE, false),
+        (Key::End, Modifiers::NONE, ShortcutMods::NONE, false),
+        (Key::Tab, Modifiers::NONE, ShortcutMods::NONE, true),
+        (Key::Tab, shift, ShortcutMods::SHIFT, true),
+        (Key::PageDown, Modifiers::NONE, ShortcutMods::NONE, true),
+        (Key::Tab, ctrl, ShortcutMods::CTRL, true),
+    ] {
+        let probe = Shortcut::new(probe_mods, key);
+        let mut h = UiHarness::with_text(SMALL);
+        let mut buf = String::from("hello");
+        h.frame(|ui| {
+            scene(ui, &mut buf, probe);
+        });
+        h.set_focus(field);
+        // Settles the scope path, which resolves against the previous
+        // frame's cascade.
+        h.frame(|ui| {
+            scene(ui, &mut buf, probe);
+        });
+        h.set_modifiers(mods);
+        h.key(key);
+        let at_root = h.frame_value(|ui| scene(ui, &mut buf, probe));
+        assert_eq!(at_root, reaches_root, "{key:?} under {mods:?}");
+        assert_eq!(
+            h.focused_id(),
+            Some(field),
+            "{key:?}: the field keeps focus"
+        );
+    }
+}

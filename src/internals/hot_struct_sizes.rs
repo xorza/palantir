@@ -164,14 +164,17 @@ const PINS: &[Pin] = &[
     pin::<NodeRecord>("scene::NodeRecord", 64, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
     // Sense (5 bits), disabled (1), clip (2), focusable (1) and the key
-    // scope (5): 14 bits, past a `u8`, with 2 spare in the `u16`.
-    pin::<NodeFlags>("scene::NodeFlags", 2, 2),
+    // scope (8): 17 bits, one past a `u16`, so 15 spare in the `u32`.
+    // `NodeRecord` absorbs the two bytes in padding it already had;
+    // `Node` grows by 4 to keep 4-byte alignment, and the `attrs` column
+    // of the record arena by 2 a node.
+    pin::<NodeFlags>("scene::NodeFlags", 4, 4),
     pin::<LayoutMode>("primitives::LayoutMode", 4, 2),
     pin::<PackedLayoutMeta>("primitives::PackedLayoutMeta", 4, 4),
     pin::<ExtrasIdx>("scene::ExtrasIdx", 6, 2),
     pin::<BoundsExtras>("scene::BoundsExtras", 32, 4),
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
-    pin::<Node>("scene::Node", 100, 4),
+    pin::<Node>("scene::Node", 104, 4),
     pin::<ShapeRecord>("shape::ShapeRecord", 88, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
     pin::<ChromeRow>("scene::ChromeRow", 64, 8),

@@ -17,9 +17,10 @@
 /// modeled.
 ///
 /// What a press *means* to input routing is [`KeyClass`](crate::KeyClass),
-/// not this type: the arrows, Home, End, the paging keys and Tab are
-/// `Motion`, Backspace and Delete are `Edit`, Escape is its own class, and
-/// the function keys are `Accel`.
+/// not this type: the arrows, Home and End are `Caret`, the paging keys
+/// `Page`, Tab `Focus` and Tab under a command modifier `Cycle`,
+/// Backspace and Delete `Edit`, Escape its own class, and the function
+/// keys `Accel`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     /// Left arrow.

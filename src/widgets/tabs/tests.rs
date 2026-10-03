@@ -333,6 +333,54 @@ fn travel_needs_focus_inside_the_strip() {
     assert_eq!(keyed, None);
 }
 
+/// A focused strip takes Ctrl+Tab, which it cycles on, and lets bare Tab
+/// walk past to an app root that declares a scope of its own — the strip
+/// has no use for traversal, so claiming it would cut the app's traversal
+/// off at the chips.
+#[test]
+fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
+    use crate::KeyFilter;
+    use crate::input::shortcut::{Shortcut, ShortcutMods};
+
+    let scene = |ui: &mut Ui, probe: Shortcut| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("app-root"))
+            .input_scope(KeyFilter::ACCEL)
+            .show(ui, |ui| {
+                let at_root = ui.key_pressed(probe);
+                let items = items(ui, TabBadge::None);
+                let keyed = TabStrip::new(&items)
+                    .id(strip_id())
+                    .selected(0)
+                    .show(ui)
+                    .keyed;
+                (at_root, keyed)
+            })
+            .inner
+    };
+    let ctrl = Modifiers {
+        ctrl: true,
+        ..Modifiers::default()
+    };
+    for (mods, probe_mods, want) in [
+        (Modifiers::default(), ShortcutMods::NONE, (true, None)),
+        (ctrl, ShortcutMods::CTRL, (false, Some(1))),
+    ] {
+        let probe = Shortcut::new(probe_mods, Key::Tab);
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| {
+            scene(ui, probe);
+        });
+        h.set_focus(strip_id());
+        h.frame(|ui| {
+            scene(ui, probe);
+        });
+        h.set_modifiers(mods);
+        h.key(Key::Tab);
+        assert_eq!(h.frame_value(|ui| scene(ui, probe)), want, "{mods:?}");
+    }
+}
+
 /// The insertion rule is a pure count of the chip centres the pointer
 /// has passed, so it is checked against hand-placed rects.
 #[test]

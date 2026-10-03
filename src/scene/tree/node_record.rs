@@ -48,7 +48,7 @@ pub(crate) struct NodeRecord {
     /// Layout-pass column: geometry + visibility. Bundled because the
     /// hot measure/arrange path reads all six fields together.
     pub layout: LayoutCore,
-    /// Packed paint/input flags (2 B: sense / disabled / clip /
+    /// Packed paint/input flags (4 B: sense / disabled / clip /
     /// focusable / key-scope filter). Read by cascade / encoder /
     /// hit-test / input routing.
     pub attrs: NodeFlags,
@@ -56,7 +56,6 @@ pub(crate) struct NodeRecord {
     /// `panel_table` / `chrome_table`. A field rather than a `Vec`
     /// beside `records`, so "one row per node" is what `Soa` already
     /// guarantees instead of a `debug_assert` on two lengths — a
-    /// missed push cannot happen when there is only one push. Rides
-    /// free: 6 B at align 2 fills the 8 B slot `attrs` opens.
+    /// missed push cannot happen when there is only one push.
     pub extras: ExtrasIdx,
 }
