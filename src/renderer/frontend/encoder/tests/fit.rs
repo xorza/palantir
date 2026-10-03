@@ -38,7 +38,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let handle = h
         .ui()
-        .load_image(&Image::from_srgba8(UVec2::new(2, 2), vec![255; 16]))
+        .load_image(&Image::from_srgba8(UVec2::new(2, 2), vec![255; 16]).unwrap())
         .unwrap();
     // Three shapes on one node: they all paint the same rect, and record order
     // is what pairs each draw back up with the mode that asked for it.
@@ -101,10 +101,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
     let mut h = UiHarness::new(UVec2::new(300, 300));
     let handle = h
         .ui()
-        .load_image(&Image::from_srgba8(
-            UVec2::new(200, 100),
-            vec![255; 200 * 100 * 4],
-        ))
+        .load_image(&Image::from_srgba8(UVec2::new(200, 100), vec![255; 200 * 100 * 4]).unwrap())
         .unwrap();
     for (fit, expected) in fits.into_iter().zip(drawn) {
         h.frame(|ui| {

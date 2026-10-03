@@ -217,8 +217,9 @@ impl TextShaper {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] for an unreadable file, and
-    /// [`FontLoadError::NoFaces`] for bytes that parse to no face.
+    /// [`FontLoadError::Io`] for an unreadable file,
+    /// [`FontLoadError::NoFaces`] for bytes that parse to no face,
+    /// and [`FontLoadError::FamilyTableFull`] when the family table is full.
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         let loaded = self
             .shared

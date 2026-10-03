@@ -1,6 +1,6 @@
-use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::error::ImageDataError;
 use crate::primitives::paint::image::{Image, ImageFit};
 use glam::{UVec2, Vec2};
 
@@ -60,7 +60,7 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
 #[test]
 fn image_stores_valid_rgba8_dimensions_and_pixels() {
     let pixels = vec![255, 0, 0, 255, 0, 255, 0, 128];
-    let image = Image::from_srgba8(UVec2::new(2, 1), pixels.clone());
+    let image = Image::from_srgba8(UVec2::new(2, 1), pixels.clone()).unwrap();
     assert_eq!(image.size(), UVec2::new(2, 1));
     assert_eq!(image.pixels, pixels);
 
@@ -148,14 +148,30 @@ fn image_rejects_invalid_rgba8_dimensions_and_lengths() {
     ];
 
     let expected = [
-        "RGBA8 dimensions must be non-zero",
-        "RGBA8 dimensions must be non-zero",
-        "RGBA8 dimensions overflow addressable byte length",
-        "RGBA8 byte length 15 does not match 2x2x4 = 16",
+        ImageDataError::ZeroSize {
+            size: UVec2::new(0, 1),
+        },
+        ImageDataError::ZeroSize {
+            size: UVec2::new(1, 0),
+        },
+        ImageDataError::TooLarge {
+            size: UVec2::new(u32::MAX, u32::MAX),
+        },
+        ImageDataError::LengthMismatch {
+            size: UVec2::new(2, 2),
+            expected: 16,
+            actual: 15,
+        },
     ];
     for (case, expected) in cases.into_iter().zip(expected) {
-        panic_probe::assert_panics_with(expected, || {
-            Image::from_srgba8(UVec2::new(case.width, case.height), vec![0; case.len])
-        });
+        assert_eq!(
+            Image::from_srgba8(UVec2::new(case.width, case.height), vec![0; case.len]),
+            Err(expected),
+            "{case:?}",
+        );
     }
+    assert_eq!(
+        expected[3].to_string(),
+        "RGBA8 byte length 15 does not match 2x2x4 = 16"
+    );
 }

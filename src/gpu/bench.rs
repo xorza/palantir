@@ -282,7 +282,9 @@ impl Fixture {
         let handles = (0..workload.textures())
             .map(|seed| {
                 host.ui()
-                    .load_image(&Image::from_srgba8(UVec2::new(TEXEL, TEXEL), texels(seed)))
+                    .load_image(
+                        &Image::from_srgba8(UVec2::new(TEXEL, TEXEL), texels(seed)).unwrap(),
+                    )
                     .expect("benchmark image fits every supported GPU")
             })
             .collect();

@@ -83,17 +83,6 @@ key-driven; Slider, Checkbox, RadioButton and Switch are not.
 **Recommendation.** Make them focusable with Space/arrow handling. If this needs a public setter
 (for example `focusable(bool)`), match Expander's. Pairs with A19's focus traversal.
 
-## A21. A font load that fills the family table
-
-**Findings.** REVIEW "Release builds lack screens the primitive docs promise": `load_font`
-interned family names with the panicking `FontFamily::named`. The interim (REDESIGN D11) uses
-`try_named`, skips a name that does not fit, and returns `FontLoadError::NoFaces` when none fits —
-true about the result, but it names the wrong cause.
-
-**Recommendation.** Add `FontLoadError::FamilyTableFull` (check whether the enum is
-`#[non_exhaustive]` first) and return it when no loaded family could be interned.
-
-
 ## A22. Wheel sense per axis
 
 **Findings.** REVIEW "Wheel routing" / REDESIGN D9: `hit_test_targets` sends the whole wheel delta

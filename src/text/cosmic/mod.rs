@@ -361,9 +361,10 @@ impl CosmicMeasure {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read or mapped, and
+    /// [`FontLoadError::Io`] when the file cannot be read or mapped,
     /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
-    /// parse.
+    /// parse, and [`FontLoadError::FamilyTableFull`] when no family the
+    /// faces name fits the family table.
     pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
         let source = match source {
             // The `Cow` goes into the `Arc` whole: it is `AsRef<[u8]>`,
@@ -400,18 +401,7 @@ impl CosmicMeasure {
             };
             names.extend(face.families.iter().map(|(name, _)| name.clone()));
         }
-        // `try_named`, because the names come from the file: a collection
-        // with enough distinct families to fill the name table is bad
-        // font data, which this reports as an error rather than a panic.
-        // A name that does not fit is skipped; when none fits, the load
-        // has nothing to hand back.
-        let mut loaded = None;
-        for name in &names {
-            if let Some(family) = FontFamily::try_named(name) {
-                loaded.get_or_insert(family);
-            }
-        }
-        let loaded = loaded.ok_or(FontLoadError::NoFaces)?;
+        let loaded = first_family(&names, FontFamily::named)?;
 
         // Everything downstream of the database is now stale: a family
         // that resolved to SANS may answer for itself, and every shaped
@@ -481,7 +471,8 @@ impl CosmicMeasure {
     /// A `Vec` rather than an iterator: the database sits behind the
     /// shaper's `RefCell`, so a lending iterator would hold that borrow
     /// across the caller's whole walk. Cold — a preferences picker asks
-    /// once.
+    /// once. A name that no longer fits a full family table is left out:
+    /// the caller could not shape with it either.
     pub(super) fn font_families(&self) -> Vec<FontFamily> {
         let mut names: Vec<&str> = self
             .font_system
@@ -491,7 +482,7 @@ impl CosmicMeasure {
             .collect();
         names.sort_unstable();
         names.dedup();
-        names.into_iter().map(FontFamily::named).collect()
+        names.into_iter().filter_map(FontFamily::named).collect()
     }
 
     /// Drop every shaped buffer now — see
@@ -954,6 +945,30 @@ impl fmt::Debug for CosmicMeasure {
             .field("frame", &self.cache.frame())
             .finish_non_exhaustive()
     }
+}
+
+/// The first of a loaded file's family `names` that `intern` admits.
+///
+/// Every name interns, so a family the file shares with another load
+/// resolves to the same id. The names come from the file: a collection
+/// with enough distinct families to fill the table is bad font data, so a
+/// name that does not fit is skipped. No names at all means nothing parsed
+/// ([`FontLoadError::NoFaces`]); names of which none fits is
+/// [`FontLoadError::FamilyTableFull`].
+pub(super) fn first_family(
+    names: &[String],
+    intern: impl Fn(&str) -> Option<FontFamily>,
+) -> Result<FontFamily, FontLoadError> {
+    if names.is_empty() {
+        return Err(FontLoadError::NoFaces);
+    }
+    let mut loaded = None;
+    for name in names {
+        if let Some(family) = intern(name) {
+            loaded.get_or_insert(family);
+        }
+    }
+    loaded.ok_or(FontLoadError::FamilyTableFull)
 }
 
 #[cfg(any(test, feature = "bench"))]

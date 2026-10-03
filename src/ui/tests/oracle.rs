@@ -159,10 +159,7 @@ fn run(script: &[Knobs]) {
     let mut h = UiHarness::new(SURFACE);
     let picture = h
         .ui()
-        .load_image(&Image::from_srgba8(
-            UVec2::new(100, 100),
-            vec![200; 100 * 100 * 4],
-        ))
+        .load_image(&Image::from_srgba8(UVec2::new(100, 100), vec![200; 100 * 100 * 4]).unwrap())
         .expect("a 100x100 image loads");
     let mut oracle = Oracle::default();
     for knobs in [Knobs::BASE, Knobs::BASE].iter().chain(script) {
@@ -266,10 +263,7 @@ fn resize_between_frames() {
     let mut h = UiHarness::new(SURFACE);
     let picture = h
         .ui()
-        .load_image(&Image::from_srgba8(
-            UVec2::new(100, 100),
-            vec![200; 100 * 100 * 4],
-        ))
+        .load_image(&Image::from_srgba8(UVec2::new(100, 100), vec![200; 100 * 100 * 4]).unwrap())
         .expect("a 100x100 image loads");
     let mut oracle = Oracle::default();
     for surface in [

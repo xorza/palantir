@@ -162,7 +162,7 @@ fn image_dimensions_above_u16_survive_lowering() {
     const WIDTH: u32 = u16::MAX as u32 + 1;
     let handle = ImageHandle::new(
         TextureId(1),
-        &Image::from_srgba8(UVec2::new(WIDTH, 1), vec![0; WIDTH as usize * 4]),
+        &Image::from_srgba8(UVec2::new(WIDTH, 1), vec![0; WIDTH as usize * 4]).unwrap(),
         ImageRegistry::default(),
     );
     let mut shapes = Shapes::default();
