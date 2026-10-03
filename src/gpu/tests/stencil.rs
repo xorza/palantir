@@ -291,16 +291,16 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     let sa = URect::new(0, 0, 40, 40);
     let sb = URect::new(50, 0, 40, 40);
     let sc = URect::new(0, 50, 100, 50);
-    let group = |scissor, chain, q| DrawGroup {
+    let clipped = |scissor, chain, q| DrawGroup {
         scissor: Some(scissor),
         rounded_clips: chain,
         ..group(Span::new(q, 1))
     };
     let clips = vec![rounded(40.0, 40.0, 8.0), rounded(40.0, 40.0, 4.0)];
     let mut buf = buf_with(vec![
-        group(sa, Span::new(0, 1), 0),
-        group(sb, Span::new(1, 1), 1),
-        group(sc, Span::default(), 2),
+        clipped(sa, Span::new(0, 1), 0),
+        clipped(sb, Span::new(1, 1), 1),
+        clipped(sc, Span::default(), 2),
     ]);
     buf.rounded_clips = clips.clone();
     let mut masks = Vec::new();
@@ -377,8 +377,8 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     // Same walk minus C: it now ends with mask 1 stamped, so a tail
     // clear (again under SB, the stamp scissor) must close the walk.
     let mut buf = buf_with(vec![
-        group(sa, Span::new(0, 1), 0),
-        group(sb, Span::new(1, 1), 1),
+        clipped(sa, Span::new(0, 1), 0),
+        clipped(sb, Span::new(1, 1), 1),
     ]);
     buf.rounded_clips = clips;
     let mi = mask_ix(&buf, &mut masks);
@@ -412,15 +412,15 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     let e = URect::new(0, 0, 100, 100);
     let outer = rounded(100.0, 100.0, 8.0);
     let inner = rounded(80.0, 80.0, 4.0);
-    let group = |chain, q| DrawGroup {
+    let clipped = |chain, q| DrawGroup {
         scissor: Some(e),
         rounded_clips: chain,
         ..group(Span::new(q, 1))
     };
     let mut buf = buf_with(vec![
-        group(Span::new(0, 2), 0),
-        group(Span::new(2, 2), 1),
-        group(Span::default(), 2),
+        clipped(Span::new(0, 2), 0),
+        clipped(Span::new(2, 2), 1),
+        clipped(Span::default(), 2),
     ]);
     buf.rounded_clips = vec![outer, inner, outer, inner];
     let mut masks = Vec::new();
@@ -464,7 +464,10 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
 
     // Walk ending at depth 2: tail clear is still the single
     // outermost-quad draw under the stamp-time scissor.
-    let mut buf = buf_with(vec![group(Span::new(0, 2), 0), group(Span::new(2, 2), 1)]);
+    let mut buf = buf_with(vec![
+        clipped(Span::new(0, 2), 0),
+        clipped(Span::new(2, 2), 1),
+    ]);
     buf.rounded_clips = vec![outer, inner, outer, inner];
     let mi = mask_ix(&buf, &mut masks);
     let steps = collect(&buf, None, &mi, true);
@@ -689,15 +692,15 @@ fn stencil_dedups_a_chain_seen_before_the_previous_group() {
     let e = URect::new(0, 0, 100, 100);
     let outer = rounded(100.0, 100.0, 8.0);
     let inner = rounded(50.0, 50.0, 4.0);
-    let group = |chain, q| DrawGroup {
+    let clipped = |chain, q| DrawGroup {
         scissor: Some(e),
         rounded_clips: chain,
         ..group(Span::new(q, 1))
     };
     let mut buf = buf_with(vec![
-        group(Span::new(0, 1), 0),
-        group(Span::new(1, 1), 1),
-        group(Span::new(2, 1), 2),
+        clipped(Span::new(0, 1), 0),
+        clipped(Span::new(1, 1), 1),
+        clipped(Span::new(2, 1), 2),
     ]);
     buf.rounded_clips = vec![outer, inner, outer];
     let mut masks = Vec::new();

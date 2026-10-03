@@ -90,7 +90,7 @@ fn scrub_distance_is_scale_invariant() {
         h.move_to(drag);
         h.frame(|ui| build(ui, &mut value));
 
-        assert_eq!(value, 30.0, "20 logical px at {scale}× must add exactly 20",);
+        assert_eq!(value, 30.0, "20 logical px at {scale}× must add exactly 20");
     }
 }
 

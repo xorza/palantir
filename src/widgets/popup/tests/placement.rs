@@ -116,8 +116,8 @@ fn popup_near_bottom_flips_upward() {
     );
 }
 
-/// The placement policy participates in the cascade fingerprint, so the
-/// painted position stays synchronized with layout.
+/// A flip moves the root's arranged rect, which the cascade key holds, so
+/// the painted position stays synchronized with layout.
 #[test]
 fn popup_flip_reaches_cascade_not_just_layout() {
     const SURF: UVec2 = UVec2::new(400, 300);

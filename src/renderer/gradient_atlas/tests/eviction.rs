@@ -255,7 +255,7 @@ fn epoch_current_rows_form_an_mru_prefix() {
     let mut atlas = CpuGradientAtlas::default();
     fill_rows(&mut atlas, 40);
     let _ = atlas.flush();
-    assert!(atlas.epoch_prefix_holds(), "a fresh epoch protects nothing",);
+    assert!(atlas.epoch_prefix_holds(), "a fresh epoch protects nothing");
 
     // New epoch: re-touch some resident rows out of insertion order,
     // claim some fresh ones, leave the rest alone.
@@ -353,7 +353,7 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
         None,
         "evicted gradient still resolves to a row",
     );
-    assert_eq!(atlas.resident_row(&newcomer.ramp), Some(first_row),);
+    assert_eq!(atlas.resident_row(&newcomer.ramp), Some(first_row));
     // The table stayed at one entry per occupied row.
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 

@@ -31,10 +31,10 @@ use palantir::RgbaF32;
 use crate::harness::FIXTURE_PALETTE;
 
 /// The scene background most fixtures render on — the suite palette's own
-/// window colour, so the ground matches the theme the widgets wear. It
-/// arrives as `Harness::render`'s `clear` argument rather than from
-/// `Theme::window_clear`, since a fixture wanting harder contrast passes
-/// `RgbaF32::BLACK` instead.
+/// window colour, so the ground matches the theme the widgets wear. It is
+/// `Harness::clear`'s default, which every frame writes over
+/// `Theme::window_clear`, so a fixture wanting harder contrast sets
+/// `RgbaF32::BLACK` there instead.
 pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.window_bg;
 
 /// How far a probed channel may sit from the 8-bit value its fixture

@@ -188,7 +188,7 @@ mod tests {
                 assert!(!rects.any_overlap(URect::new(16 * i + 9, 16 * j + 9, 6, 6)));
             }
         }
-        let tests: u64 = rects.tiers.iter().map(|t| t.grid.intersect_tests()).sum();
+        let tests: u32 = rects.tiers.iter().map(|t| t.grid.intersect_tests()).sum();
         assert_eq!(tests, 500 * 16);
     }
 }

@@ -290,7 +290,7 @@ impl Window {
     }
 
     /// A resize happened: the one cached fact it can change is stale.
-    pub(super) fn note_resized(&mut self) {
+    pub(super) const fn note_resized(&mut self) {
         self.maximized_stale = true;
     }
 

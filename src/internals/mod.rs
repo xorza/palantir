@@ -11,7 +11,8 @@
 //! `bench` facade.
 //!
 //! An item here is `pub` when code outside the crate calls it, and
-//! `pub(crate)` when only this crate's own tests and benches do. Each module carries the gate of the builds that use it.
+//! `pub(crate)` when only this crate's own tests and benches do. Each
+//! module carries the gate of the builds that use it.
 
 #[cfg(feature = "internals")]
 pub mod demo_swatches;

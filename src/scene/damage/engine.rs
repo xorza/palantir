@@ -267,7 +267,7 @@ impl DamageEngine {
     /// leaves that frame's baseline standing. Stamping regardless would
     /// adopt a clear colour no pixel was ever painted under, and the
     /// change would then never reach the screen at all.
-    fn note_presented(
+    const fn note_presented(
         &mut self,
         baseline: FrameBaseline,
         damage: Option<Damage>,
@@ -353,7 +353,6 @@ fn extend_predamaged(
     }
 }
 
-/// In-tree-test-only reach-in.
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::primitives::rect::Rect;

@@ -29,7 +29,7 @@ impl FrontendHarness {
 
     /// The harness the frames run on, for input, the clock, the surface
     /// and the theme.
-    pub fn harness(&mut self) -> &mut UiHarness {
+    pub const fn harness(&mut self) -> &mut UiHarness {
         &mut self.harness
     }
 

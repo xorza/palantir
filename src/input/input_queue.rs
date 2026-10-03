@@ -27,14 +27,21 @@ use strum::EnumCount as _;
 /// changed applies at once, as before.
 #[derive(Debug, Default)]
 pub(crate) struct InputQueue {
-    /// Held events with the time each arrived, oldest first. Capacity is
-    /// retained, so steady state allocates nothing.
-    pending: VecDeque<(InputEvent, Duration)>,
+    /// Held events, oldest first. Capacity is retained, so steady state
+    /// allocates nothing.
+    pending: VecDeque<HeldEvent>,
     /// Buttons pressed or released since the frame began.
     buttons: [bool; PointerButton::COUNT],
     /// This frame's command key — a key press that typed nothing and is
     /// not a bare modifier. A frame takes one; repeats of it ride along.
     command_key: Option<Key>,
+}
+
+/// An event held for a later frame, with the time it arrived.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct HeldEvent {
+    pub(super) event: InputEvent,
+    pub(super) at: Duration,
 }
 
 impl InputQueue {
@@ -73,7 +80,7 @@ impl InputQueue {
     /// `button`'s capture began or ended this frame. A press that hit
     /// nothing, or a release with no capture to end, changes no widget's
     /// state and is not noted: a frame can hold any number of those.
-    pub(super) fn note_button(&mut self, button: PointerButton) {
+    pub(super) const fn note_button(&mut self, button: PointerButton) {
         self.buttons[button.idx()] = true;
     }
 
@@ -86,20 +93,20 @@ impl InputQueue {
 
     /// Hold `event` for a later frame.
     pub(super) fn defer(&mut self, event: InputEvent, now: Duration) {
-        self.pending.push_back((event, now));
+        self.pending.push_back(HeldEvent { event, at: now });
     }
 
     /// Start the next frame: forget what this one changed.
-    pub(super) fn next_frame(&mut self) {
+    pub(super) const fn next_frame(&mut self) {
         self.buttons = [false; PointerButton::COUNT];
         self.command_key = None;
     }
 
     /// The oldest held event, if the frame now admits it, taken off the
     /// queue. Applying it notes what it changes.
-    pub(super) fn pop_admitted(&mut self) -> Option<(InputEvent, Duration)> {
-        let (event, _) = self.pending.front()?;
-        if !self.admits(event) {
+    pub(super) fn pop_admitted(&mut self) -> Option<HeldEvent> {
+        let held = self.pending.front()?;
+        if !self.admits(&held.event) {
             return None;
         }
         self.pending.pop_front()
@@ -117,13 +124,10 @@ pub(crate) mod internals {
         /// one is held — what the modifiers will be once everything held
         /// lands.
         pub(crate) fn last_held_modifiers(&self) -> Option<Modifiers> {
-            self.pending
-                .iter()
-                .rev()
-                .find_map(|(event, _)| match event {
-                    InputEvent::ModifiersChanged(mods) => Some(*mods),
-                    _ => None,
-                })
+            self.pending.iter().rev().find_map(|held| match held.event {
+                InputEvent::ModifiersChanged(mods) => Some(mods),
+                _ => None,
+            })
         }
     }
 }
@@ -275,9 +279,9 @@ mod tests {
         while !queue.is_empty() {
             queue.next_frame();
             let mut frame = Vec::new();
-            while let Some((event, at)) = queue.pop_admitted() {
-                admit_and_apply(&mut queue, &event);
-                frame.push(at.as_millis());
+            while let Some(held) = queue.pop_admitted() {
+                admit_and_apply(&mut queue, &held.event);
+                frame.push(held.at.as_millis());
             }
             frames.push(frame);
         }

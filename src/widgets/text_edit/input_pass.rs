@@ -183,7 +183,7 @@ impl InputPass<'_> {
             // the caller learns the user accepted the value.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
                 submitted = true;
-                stop_after(ui.keyboard_events(), i);
+                assert_only_repeats_after(ui.keyboard_events(), i);
                 break;
             }
             if let Some(action) = EditAction::from_keypress(kp) {
@@ -193,7 +193,7 @@ impl InputPass<'_> {
             match apply_key(&mut ed, kp) {
                 KeyOutcome::Blur => {
                     cancelled = true;
-                    stop_after(ui.keyboard_events(), i);
+                    assert_only_repeats_after(ui.keyboard_events(), i);
                     break;
                 }
                 KeyOutcome::Vertical { up, extend } => {
@@ -215,12 +215,13 @@ impl InputPass<'_> {
     }
 }
 
-/// The field stops reading keys at a submit or a cancel: what follows
-/// belongs to whoever owns focus next. `InputQueue` already holds every
-/// key press after a command key for the next frame, so only repeats of
-/// that key can follow it here; the assert keeps a change to that rule
-/// from silently typing into a field that just let go.
-fn stop_after(events: &[KeyPress], terminal: usize) {
+/// Assert that only repeats of the key at `terminal` follow it. The field
+/// stops reading keys at a submit or a cancel: what follows belongs to
+/// whoever owns focus next. `InputQueue` already holds every key press
+/// after a command key for the next frame, so only repeats of that key can
+/// follow it here; the assert keeps a change to that rule from silently
+/// typing into a field that just let go.
+fn assert_only_repeats_after(events: &[KeyPress], terminal: usize) {
     let key = events[terminal].key;
     debug_assert!(
         events[terminal + 1..]

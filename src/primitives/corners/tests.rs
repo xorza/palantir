@@ -112,7 +112,7 @@ fn approx_zero_handles_edge_lane_patterns() {
         Corners::all(-0.0).approx_zero(),
         "-0.0 lanes (sign bit set)"
     );
-    assert!(Corners::all(EPS * 0.5).approx_zero(), "sub-EPS positive",);
+    assert!(Corners::all(EPS * 0.5).approx_zero(), "sub-EPS positive");
     assert!(
         !Corners::all(EPS * 10.0).approx_zero(),
         "10×EPS must NOT register as zero",
@@ -225,6 +225,29 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
     ];
     for (label, input, want) in cases {
         assert_eq!(from_ron::<Corners>(input), *want, "case: {label}");
+    }
+}
+
+/// A file radius is a finite, non-negative f16: 0 and 65504 are the
+/// ends, and -1, one past 65504, infinity and NaN fail with the rule.
+#[test]
+fn deserialize_rejects_a_radius_f16_cannot_hold() {
+    for (input, valid) in [
+        ("0.0", true),
+        ("65504.0", true),
+        ("-1.0", false),
+        ("65505.0", false),
+        ("inf", false),
+        ("NaN", false),
+    ] {
+        let parsed = ron::from_str::<Corners>(input);
+        assert_eq!(parsed.is_ok(), valid, "{input}: {parsed:?}");
+        if let Err(error) = parsed {
+            assert!(
+                error.to_string().contains(Corners::LANE_RULE),
+                "{input}: {error}"
+            );
+        }
     }
 }
 

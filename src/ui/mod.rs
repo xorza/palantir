@@ -823,11 +823,10 @@ impl Ui {
     /// **this frame** re-shapes the text on screen, not the next one.
     ///
     /// So it schedules nothing, and needs no `&mut self` to do it. An app
-    /// holds a `Ui` only inside [`App::update`] and
-    /// [`App::record`], both of which run on a
-    /// recorded frame *before* that frame measures and before it submits
-    /// — and measuring and submitting are the two steps that re-read the
-    /// font database. Loads are cold events; one remeasured frame is the
+    /// holds a `Ui` only inside [`App::update`] and [`App::record`], both
+    /// of which run on a recorded frame *before* that frame measures and
+    /// before it submits — and measuring and submitting are the two steps
+    /// that re-read the font database. Loads are cold events; one remeasured frame is the
     /// whole cost.
     ///
     /// ```ignore
@@ -842,10 +841,9 @@ impl Ui {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file
-    /// cannot be read, and
-    /// [`FontLoadError::NoFaces`] when the
-    /// bytes hold no face fontdb can parse.
+    /// [`FontLoadError::Io`] when the file cannot be read, and
+    /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
+    /// parse.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)
@@ -1132,9 +1130,9 @@ impl Ui {
     /// interaction half is gated on a `frame_quiescent` snapshot taken
     /// before `App::update` and at each record-pass start, so a read taken
     /// *between* frames would reflect the previous frame's input, not
-    /// events fed since. Reading
-    /// earlier in the same record than the widget's own node is fine —
-    /// e.g. baking a drag delta into a widget's position before recording it.
+    /// events fed since. Reading earlier in the same record than the
+    /// widget's own node is fine — e.g. baking a drag delta into a widget's
+    /// position before recording it.
     /// The widget's own `NodeFlags::is_disabled` is **not** folded in here — only
     /// `Widget::response` can see it. Both fold through
     /// `ResponseState::merge_disabled`, which is idempotent, so the
@@ -1638,27 +1636,27 @@ pub(crate) mod internals {
         /// The input machine itself, for tests that assert on routing
         /// state the public surface deliberately does not expose —
         /// capture targets, the raw per-layer streams, the action flag.
-        pub(crate) fn input(&self) -> &InputState {
+        pub(crate) const fn input(&self) -> &InputState {
             &self.input
         }
 
-        pub(crate) fn cascade(&self) -> &Cascade {
+        pub(crate) const fn cascade(&self) -> &Cascade {
             &self.cascade
         }
 
-        pub(crate) fn frame_runtime(&self) -> &FrameRuntime {
+        pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
             &self.frame_runtime
         }
 
         /// Set the last frame's stamp. `Some` makes the next frame warm, so
         /// it skips the warmup pass. `None` makes it a cold start.
-        pub(crate) fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
+        pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
             self.frame_runtime.prev_stamp = stamp;
         }
 
         /// Replace the display the next frame lays out at, as the window
         /// driver does before each frame.
-        pub(crate) fn set_display(&mut self, display: Display) {
+        pub(crate) const fn set_display(&mut self, display: Display) {
             self.display = display;
         }
     }

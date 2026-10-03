@@ -100,7 +100,6 @@ impl<'a> LayoutPass<'a> {
     /// The extent reported differs per axis: a bounded axis reports the
     /// child's own extent, and a Hug axis folds the offset back in,
     /// because a panel that hugs has to cover where it put things.
-    ///
     pub(super) fn measure_per_axis_hug(
         &mut self,
         node: NodeId,

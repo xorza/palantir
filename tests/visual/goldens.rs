@@ -1,10 +1,19 @@
 //! This suite's golden directory, bound once so a fixture names only its image.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use image::{RgbaImage, imageops};
 use palantir::Rect;
 use palantir::golden::{Goldens, Tolerance};
+
+/// The suite's directory: goldens under `golden/`, failures under
+/// `output/`.
+const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/visual");
+
+/// Where a failure named `name` leaves its images.
+fn output_dir(name: &str) -> PathBuf {
+    Path::new(ROOT).join("output").join(name)
+}
 
 /// No pixel may differ at all. The goldens are local and written by the
 /// adapter that compares against them, so an unchanged tree diffs at zero;
@@ -22,7 +31,7 @@ pub(crate) fn assert_matches_golden(name: &str, actual: &RgbaImage) {
 /// pixels genuinely vary between runs on one adapter. The caller states
 /// the derivation beside it.
 pub(crate) fn assert_matches_golden_within(name: &str, actual: &RgbaImage, tolerance: Tolerance) {
-    Goldens::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/visual"))
+    Goldens::new(ROOT)
         .tolerance(tolerance)
         .assert_matches(name, actual);
 }
@@ -36,7 +45,7 @@ pub(crate) fn assert_same(name: &str, actual: &RgbaImage, expected: &RgbaImage) 
     if report.passes() {
         return;
     }
-    let output = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/visual/output")).join(name);
+    let output = output_dir(name);
     std::fs::create_dir_all(&output).expect("create comparison output directory");
     actual.save(output.join("actual.png")).expect("save actual");
     expected
@@ -84,7 +93,7 @@ pub(crate) struct KeptOnFailure<'a> {
 }
 
 impl<'a> KeptOnFailure<'a> {
-    pub(crate) fn new(name: &'a str, image: &'a RgbaImage) -> Self {
+    pub(crate) const fn new(name: &'a str, image: &'a RgbaImage) -> Self {
         Self { name, image }
     }
 }
@@ -94,8 +103,7 @@ impl Drop for KeptOnFailure<'_> {
         if !std::thread::panicking() {
             return;
         }
-        let output =
-            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/visual/output")).join(self.name);
+        let output = output_dir(self.name);
         // A failure to write must not turn the test's panic into an abort.
         if std::fs::create_dir_all(&output).is_ok()
             && self.image.save(output.join("actual.png")).is_ok()

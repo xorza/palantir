@@ -111,19 +111,19 @@ impl Harness {
     }
 
     /// The target's size in physical pixels, for this frame and the next.
-    pub(crate) fn size(&mut self, physical: UVec2) -> &mut Self {
+    pub(crate) const fn size(&mut self, physical: UVec2) -> &mut Self {
         self.physical = Some(physical);
         self
     }
 
     /// The system scale the host is told, `1.0` until set.
-    pub(crate) fn scale(&mut self, scale: f32) -> &mut Self {
+    pub(crate) const fn scale(&mut self, scale: f32) -> &mut Self {
         self.scale = scale;
         self
     }
 
     /// The window clear colour, [`DARK_BG`] until set.
-    pub(crate) fn clear(&mut self, clear: RgbaF32) -> &mut Self {
+    pub(crate) const fn clear(&mut self, clear: RgbaF32) -> &mut Self {
         self.clear = clear;
         self
     }
@@ -132,7 +132,7 @@ impl Harness {
     /// RGBA byte order whatever the format: BGRA targets are swizzled on
     /// readback. A change from the last frame's format is auto-detected
     /// by the renderer, which repaints in full at the new one.
-    pub(crate) fn format(&mut self, format: wgpu::TextureFormat) -> &mut Self {
+    pub(crate) const fn format(&mut self, format: wgpu::TextureFormat) -> &mut Self {
         self.format = format;
         self
     }

@@ -1,3 +1,8 @@
+use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
+use crate::primitives::serde::internals::{from_ron, ron_text};
+use crate::primitives::spacing::*;
+
 /// A NaN edge is reportable, and reported per-lane — the four are one
 /// `u64` and a check that only looked at the first would pass a NaN
 /// bottom margin straight into layout.
@@ -7,9 +12,6 @@
 /// along now covers spacing too.
 #[test]
 fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
-    use crate::primitives::corners::Corners;
-    use crate::primitives::nan::NanCheck;
-
     assert!(!Spacing::all(4.0).has_nan(), "a whole spacing is finite");
     for lane in 0..4 {
         let mut lanes = [1.0, 2.0, 3.0, 4.0];
@@ -24,9 +26,6 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
         );
     }
 }
-
-use crate::primitives::serde::internals::{from_ron, ron_text};
-use crate::primitives::spacing::*;
 
 #[test]
 fn lanes_round_trip_integer_values_exactly() {
@@ -118,6 +117,29 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
     ];
     for (label, input, want) in cases {
         assert_eq!(from_ron::<Spacing>(input), *want, "case: {label}");
+    }
+}
+
+/// A file lane is any finite f32 an f16 lane can hold, either sign:
+/// ±65504 is the largest, and one past it packs to infinity.
+#[test]
+fn deserialize_rejects_a_lane_past_f16() {
+    for (input, valid) in [
+        ("65504.0", true),
+        ("-65504.0", true),
+        ("65505.0", false),
+        ("-65505.0", false),
+        ("inf", false),
+        ("NaN", false),
+    ] {
+        let parsed = ron::from_str::<Spacing>(input);
+        assert_eq!(parsed.is_ok(), valid, "{input}: {parsed:?}");
+        if let Err(error) = parsed {
+            assert!(
+                error.to_string().contains(Spacing::LANE_RULE),
+                "{input}: {error}"
+            );
+        }
     }
 }
 

@@ -10,8 +10,7 @@ use crate::widgets::widget::Widget;
 
 /// A leaf rectangle: optional background / size / margin plus an optional
 /// `Sense`. Dividers, hit areas, colour swatches, spacers. Chrome + clip
-/// behavior come from [`Self::background`] /
-/// [`Configure::clip_rect`] /
+/// behavior come from [`Self::background`] / [`Configure::clip_rect`] /
 /// [`Configure::clip_rounded`].
 ///
 /// **It takes no body.** A decorated rectangle *around* content is a

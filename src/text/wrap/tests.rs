@@ -123,12 +123,12 @@ fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
 
 #[test]
 fn wrap_target_matches_cache_grid() {
-    assert_eq!(100.1_f32.canonical_px(), 100.4_f32.canonical_px(),);
-    assert_eq!(99.6_f32.canonical_px(), 100.4_f32.canonical_px(),);
-    assert_ne!(100.4_f32.canonical_px(), 100.6_f32.canonical_px(),);
+    assert_eq!(100.1_f32.canonical_px(), 100.4_f32.canonical_px());
+    assert_eq!(99.6_f32.canonical_px(), 100.4_f32.canonical_px());
+    assert_ne!(100.4_f32.canonical_px(), 100.6_f32.canonical_px());
     for width in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
         let cache_width = MeasureCache::available_key(Size::new(width, 0.0)).x;
-        assert_eq!(width.canonical_px() as i32, cache_width, "width={width}",);
+        assert_eq!(width.canonical_px() as i32, cache_width, "width={width}");
     }
     // The wrap width adds one rule on top of the shared grid: an
     // over-constrained layout can commit a negative width, which the

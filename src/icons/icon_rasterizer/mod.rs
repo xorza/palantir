@@ -100,8 +100,7 @@ impl std::fmt::Debug for IconRasterizer {
 
 impl IconRasterizer {
     /// Rasterize `key`, handing back the image over this rasterizer's own
-    /// retained buffer — the same shape
-    /// `CosmicMeasure::rasterize_glyph`
+    /// retained buffer — the same shape `CosmicMeasure::rasterize_glyph`
     /// answers a glyph in, so the atlas takes either without a conversion.
     ///
     /// The pixels live until the next rasterize overwrites them, so the

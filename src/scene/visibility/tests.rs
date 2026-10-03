@@ -91,7 +91,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
-    assert_eq!(h.ui.tree(Layer::Main).paint_anims.entries.len(), 1,);
+    assert_eq!(h.ui.tree(Layer::Main).paint_anims.entries.len(), 1);
 
     h.ui.request_repaint();
     let hidden_at = Duration::from_millis(16);

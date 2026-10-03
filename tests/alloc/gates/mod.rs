@@ -1,12 +1,11 @@
 //! Coarse gates over the whole pipeline, the counterpart to the
 //! fine-grained fixtures next door.
 //!
-//! Those audit small scenes one at a time, most of them GPU-less, so a failure can
-//! name the line that allocated. These three answer what a small scene
-//! cannot:
-//! whether the pipeline allocates at all at *full* scale, whether the
-//! wgpu floor beneath it has drifted, and what a frame costs when every
-//! glyph and icon on it misses its atlas.
+//! Those audit small scenes one at a time, with no device, so a failure
+//! can name the line that allocated. These three answer what a small
+//! scene cannot: whether the pipeline allocates at all at *full* scale,
+//! whether the wgpu floor beneath it has drifted, and what a frame costs
+//! when every glyph and icon on it misses its atlas.
 //!
 //! | gate | covers | budget |
 //! |---|---|---|

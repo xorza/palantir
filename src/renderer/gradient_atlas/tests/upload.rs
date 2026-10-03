@@ -179,7 +179,7 @@ fn cross_epoch_churn_evicts_without_growing() {
     // never-claimed rows and the rest evict.
     assert_eq!(counts.hits, 0, "cyclic churn cannot hit");
     assert_eq!(counts.bakes, registrations);
-    assert_eq!(counts.evictions, registrations - (INITIAL_ATLAS_ROWS - 1),);
+    assert_eq!(counts.evictions, registrations - (INITIAL_ATLAS_ROWS - 1));
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 }
 

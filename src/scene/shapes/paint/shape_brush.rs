@@ -91,6 +91,7 @@ impl NanCheck for ShapeBrush {
 mod tests {
     use crate::primitives::color::RgbaF32;
     use crate::primitives::color::rgba_f16::RgbaF16;
+    use crate::scene::record_store::recorded_gradients::GradientId;
     use crate::scene::shapes::paint::shape_brush::ShapeBrush;
 
     /// A gradient's hash payload is the lowering-time content hash, not
@@ -99,8 +100,6 @@ mod tests {
     /// not.
     #[test]
     fn a_gradient_hashes_by_its_stops_and_not_its_frame_local_id() {
-        use crate::scene::record_store::recorded_gradients::GradientId;
-
         let gradient = |id, hash| {
             ShapeBrush::Gradient {
                 id: GradientId(id),
@@ -116,6 +115,6 @@ mod tests {
 
         let solid = ShapeBrush::Solid(RgbaF32::WHITE.into()).hash_parts();
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
-        assert_eq!(solid.payload, RgbaF16::from(RgbaF32::WHITE).as_u64(),);
+        assert_eq!(solid.payload, RgbaF16::from(RgbaF32::WHITE).as_u64());
     }
 }

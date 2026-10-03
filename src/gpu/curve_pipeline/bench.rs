@@ -131,7 +131,7 @@ fn median(values: &mut [f32]) -> Option<f32> {
 }
 
 fn report_evidence(gpu: &BenchGpu, workload: Workload) {
-    let target = gpu.target(PHYSICAL, "palantir.curve_pipeline_bench.target");
+    let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
     let mut host = host(gpu);
     let mut phase = false;
     let mut curve_ms = Vec::with_capacity(EVIDENCE_FRAMES);
@@ -179,7 +179,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     group.sample_size(20);
     for workload in [Workload::CubicStrips, Workload::JoinChrome] {
         report_evidence(gpu, workload);
-        let target = gpu.target(PHYSICAL, "palantir.curve_pipeline_bench.target");
+        let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
         let mut host = host(gpu);
         let mut phase = false;
         for _ in 0..4 {

@@ -50,8 +50,7 @@ use crate::widgets::widget::Widget;
 /// ```
 ///
 /// The font size is [`Self::font_size`] and not `size`, because
-/// [`Configure::size`] already names the widget's
-/// layout extent.
+/// [`Configure::size`] already names the widget's layout extent.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Text<'a> {
@@ -100,8 +99,8 @@ impl<'a> Text<'a> {
 
     /// Font size in logical px, overriding the resolved style's.
     ///
-    /// Named apart from [`Configure::size`], which
-    /// is the widget's layout extent.
+    /// Named apart from [`Configure::size`], which is the widget's layout
+    /// extent.
     pub fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(px);
         self

@@ -1,4 +1,4 @@
-//! Overlap-index benchmarks for the composer's text-rect grid.
+//! Overlap-index benchmarks for the composer's rect grid.
 //!
 //! Split from the `composer` benches because they answer a different
 //! question: not "how fast does compose run" but "is the tiled index the
@@ -192,7 +192,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let mut fixture = SaturatedFixture::new(tiles, wide);
         fixture.round();
         eprintln!(
-            "[text_grid] tiles={tiles} wide={wide} overflow={}",
+            "[rect_grid] tiles={tiles} wide={wide} overflow={}",
             fixture.grid.overflow.len(),
         );
         group.throughput(Throughput::Elements((tiles * wide) as u64));

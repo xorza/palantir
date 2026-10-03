@@ -136,7 +136,6 @@ fn the_key_covers_authoring_input_classes() {
 /// frame recorded or arranged; a load can change a run's ink in a rect
 /// that does not move, while every hash addressing that run stands still.
 /// So the epoch is folded in directly.
-///
 #[test]
 fn the_key_covers_the_font_database() {
     let mut h = UiHarness::with_text(SURFACE);

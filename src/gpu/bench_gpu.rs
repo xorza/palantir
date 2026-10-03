@@ -84,9 +84,9 @@ impl BenchGpu {
         }
     }
 
-    /// A render target of `size`, with the usages every driver needs:
-    /// draw into it, and copy either way for readback and clears.
-    pub(crate) fn target(&self, size: UVec2, label: &str) -> BenchTarget {
+    /// A render target of `size`, with the test device's
+    /// [`HeadlessTestGpuLease::TARGET_USAGES`].
+    pub(crate) fn target(&self, label: &str, size: UVec2) -> BenchTarget {
         BenchTarget(render_target::internals::texture(
             &self.gpu.device,
             label,

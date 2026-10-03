@@ -5,13 +5,12 @@
 //! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
 //!   wgpu device at all** (the same deviceless path as the allocation
-//!   suite's fixtures). Each
-//!   iter runs record → measure → arrange → cascade → damage → encode +
-//!   compose and acks the present; nothing touches the GPU. This is the
-//!   clean signal: no queue submit, no `device.poll` ioctl, no
-//!   per-size framebuffer reconfiguration. Going through the offscreen renderer
-//!   driver plus a poll charges every iter driver work that
-//!   profiles as NVIDIA / kernel self-time — ~20% on
+//!   suite's fixtures). Each iter runs record → measure → arrange →
+//!   cascade → damage → encode + compose and acks the present; nothing
+//!   touches the GPU. This is the clean signal: no queue submit, no
+//!   `device.poll` ioctl, no per-size framebuffer reconfiguration. Going
+//!   through the offscreen renderer driver plus a poll charges every iter
+//!   driver work that profiles as NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
@@ -58,9 +57,9 @@
 //! All four arrive in [`Run::fixture`] — this bench reads no environment
 //! of its own.
 //!
-//! The shared workload lives in [`crate::internals::frame_fixture`] and also drives
-//! the allocation gates in `tests/alloc/gates/` and the showcase's
-//! `frame bench` page — run `cargo run --example showcase` to eyeball the
+//! The shared workload lives in [`crate::internals::frame_fixture`] and
+//! also drives the allocation gates in `tests/alloc/gates/` and the
+//! showcase's `frame bench` page — run `cargo run --example showcase` to eyeball the
 //! tree these numbers come from.
 
 use crate::bench::{Arms, Fixture, Run};
@@ -304,7 +303,7 @@ where
 }
 
 fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target(surface.size, "palantir.frame_bench.cached");
+    let target = gpu().target("palantir.frame_bench.cached", surface.size);
     let scale = surface.scale;
     run_gpu_arm(group, "cached_gpu", |host, state| {
         gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
@@ -314,7 +313,7 @@ fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 }
 
 fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target(surface.size, "palantir.frame_bench.partial");
+    let target = gpu().target("palantir.frame_bench.partial", surface.size);
     let scale = surface.scale;
     run_gpu_arm(group, "partial_gpu", |host, state| {
         state.tick = state.tick.wrapping_add(1);
@@ -325,7 +324,7 @@ fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 }
 
 fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target(surface.size, "palantir.frame_bench.scrolling");
+    let target = gpu().target("palantir.frame_bench.scrolling", surface.size);
     let scale = surface.scale;
     run_gpu_arm(group, "scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
@@ -341,7 +340,7 @@ fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
         .pool
         .iter()
         .enumerate()
-        .map(|(i, s)| gpu().target(*s, &format!("palantir.frame_bench.resize.{i}")))
+        .map(|(i, s)| gpu().target(&format!("palantir.frame_bench.resize.{i}"), *s))
         .collect();
     let mut idx = 0usize;
     let scale = surface.scale;
@@ -423,10 +422,10 @@ fn report_write_stats(surface: &Surface) {
 
     let g = gpu();
     let scale = surface.scale;
-    let cached = [g.target(surface.size, "write_stats.cached")];
+    let cached = [g.target("write_stats.cached", surface.size)];
     run("cached", scale, &cached, |_, _| {});
 
-    let partial = [g.target(surface.size, "write_stats.partial")];
+    let partial = [g.target("write_stats.partial", surface.size)];
     run("partial", scale, &partial, |state, _| {
         state.tick = state.tick.wrapping_add(1);
     });
@@ -435,11 +434,11 @@ fn report_write_stats(surface: &Surface) {
         .pool
         .iter()
         .enumerate()
-        .map(|(i, s)| g.target(*s, &format!("write_stats.resize.{i}")))
+        .map(|(i, s)| g.target(&format!("write_stats.resize.{i}"), *s))
         .collect();
     run("resizing", scale, &pool, |_, _| {});
 
-    let scrolling = [g.target(surface.size, "write_stats.scrolling")];
+    let scrolling = [g.target("write_stats.scrolling", surface.size)];
     run("scrolling", scale, &scrolling, |state, _| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;

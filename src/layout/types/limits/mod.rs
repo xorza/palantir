@@ -13,9 +13,11 @@
 //! a handful of compares in a builder setter the caller reached for
 //! deliberately.
 
+use crate::primitives::half_simd::F16x4;
 use crate::primitives::size::Size;
 
-pub(crate) const MAX_PACKED_GAP: f32 = 65_504.0;
+/// A gap travels in one f16 lane.
+pub(crate) const MAX_PACKED_GAP: f32 = F16x4::MAX_LANE;
 
 #[inline]
 pub(crate) const fn valid_lower_bound(value: f32) -> bool {

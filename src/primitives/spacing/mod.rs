@@ -133,7 +133,7 @@ impl LaneCodec for Spacing {
     const LANE_RULE: &'static str = "a spacing lane must be finite and within ±65504";
 
     fn lane_is_valid(lane: f32) -> bool {
-        lane.is_finite() && lane.abs() <= 65_504.0
+        lane.abs() <= F16x4::MAX_LANE
     }
 }
 

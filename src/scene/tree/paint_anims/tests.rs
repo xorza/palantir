@@ -1,8 +1,10 @@
+use crate::common::hash::Hasher;
 use crate::primitives::approx::internals::assert_close;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
+use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintChannel, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
 use std::f32::consts::TAU;
+use std::hash::Hasher as _;
 
 const HP: Duration = Duration::from_millis(500);
 const START: Duration = Duration::from_secs(1);
@@ -324,4 +326,48 @@ fn a_settled_animation_stops_modifying_the_shape() {
 #[should_panic = "zero steps"]
 fn zero_steps_is_a_caller_bug() {
     let _ = PaintAnim::alpha(0.0, 1.0).steps(0);
+}
+
+/// Every part of an animation reaches its hash, so a shape whose
+/// animation changes in any one of them reads as changed: the range
+/// either channel drives, each timing field, and the curve. The same
+/// animation hashes the same.
+#[test]
+fn hash_static_covers_channel_timing_and_curve() {
+    let hash = |anim: PaintAnim| {
+        let mut h = Hasher::new();
+        anim.hash_static(&mut h);
+        h.finish()
+    };
+    let base = blink();
+    assert_eq!(hash(base), hash(blink()), "the same animation");
+    for (label, other) in [
+        (
+            "alpha range",
+            PaintAnim {
+                channel: PaintChannel {
+                    alpha: Some((0.0, 0.5)),
+                    turn: None,
+                },
+                ..base
+            },
+        ),
+        (
+            "the same range on the other channel",
+            PaintAnim {
+                channel: PaintChannel {
+                    alpha: None,
+                    turn: Some((0.0, 1.0)),
+                },
+                ..base
+            },
+        ),
+        ("started_at", base.started_at(START + HP)),
+        ("period", base.period(HP)),
+        ("repeat", base.repeat(PaintRepeat::Forever)),
+        ("steps", base.steps(3)),
+        ("curve", base.curve(curves::linear)),
+    ] {
+        assert_ne!(hash(base), hash(other), "{label}");
+    }
 }
