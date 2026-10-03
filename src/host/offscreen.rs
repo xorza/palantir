@@ -250,7 +250,7 @@ impl OffscreenHost {
     /// Start building an offscreen host. The text shaper defaults to bundled
     /// fonts, GPU timing defaults off, the clock defaults to realtime, and
     /// physical-pixel snapping defaults on.
-    pub fn builder(gpu: Gpu) -> OffscreenHostBuilder {
+    pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
             retained_target: false,

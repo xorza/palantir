@@ -25,7 +25,7 @@ pub enum Easing {
 impl Easing {
     /// Ease normalized progress `t`. Input is clamped to 0..1; output is
     /// also 0..1 except for [`Self::OutBack`], which overshoots.
-    pub fn apply(self, t: f32) -> f32 {
+    pub const fn apply(self, t: f32) -> f32 {
         let t = t.clamp(0.0, 1.0);
         match self {
             Easing::Linear => t,

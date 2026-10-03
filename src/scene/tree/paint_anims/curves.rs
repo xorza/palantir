@@ -21,7 +21,7 @@ pub const fn linear(t: f32) -> f32 {
 /// value changes twice a period, so a frame in between buys an identical
 /// picture.
 #[inline]
-pub fn square(t: f32) -> f32 {
+pub const fn square(t: f32) -> f32 {
     if t < 0.5 { 1.0 } else { 0.0 }
 }
 

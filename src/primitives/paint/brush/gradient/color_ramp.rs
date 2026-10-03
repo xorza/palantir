@@ -49,7 +49,15 @@ impl ColorRamp {
 
     /// Paints nothing visible when every stop is transparent.
     #[inline]
-    pub fn is_noop(&self) -> bool {
-        self.stops.iter().all(|stop| stop.color().is_noop())
+    pub const fn is_noop(&self) -> bool {
+        let stops = self.stops.as_slice();
+        let mut i = 0;
+        while i < stops.len() {
+            if !stops[i].color().is_noop() {
+                return false;
+            }
+            i += 1;
+        }
+        true
     }
 }

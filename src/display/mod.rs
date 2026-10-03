@@ -123,11 +123,13 @@ impl Display {
     /// a `Display` built here would silently take these defaults instead —
     /// so both hosts mint theirs through the `WindowDriver` that owns both,
     /// and that is the only place either reaches a frame.
-    pub fn from_physical(physical: UVec2, system_scale: f32) -> Self {
+    pub const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
         Self {
             physical,
             system_scale,
-            ..Default::default()
+            user_scale: UserScale::ONE,
+            pixel_snap: true,
+            refresh_millihertz: None,
         }
     }
 

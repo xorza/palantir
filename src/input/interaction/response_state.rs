@@ -178,7 +178,7 @@ impl ResponseState {
     /// whose press was the second in its run, not a separate event. Read
     /// [`ButtonState::click_count`] for triple and beyond.
     #[inline]
-    pub fn double_clicked(&self) -> bool {
+    pub const fn double_clicked(&self) -> bool {
         self.left.double_clicked()
     }
 

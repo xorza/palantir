@@ -116,7 +116,7 @@ pub struct DiffReport {
 impl DiffReport {
     /// Whether [`Self::differing_ratio`] is within the tolerance the
     /// comparison ran under.
-    pub fn passes(&self) -> bool {
+    pub const fn passes(&self) -> bool {
         self.differing_ratio <= self.tolerance.max_ratio
     }
 }
