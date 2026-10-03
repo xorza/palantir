@@ -120,7 +120,7 @@ use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
-use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::primitives::geometry::urect::URect;
@@ -307,20 +307,11 @@ impl WgpuBackend {
         // that through `entry().or_insert_with(closure)`, so build first
         // then insert.
         if !self.pipelines.contains_key(&format) {
-            // Once per format, so a release check: the shaders write
-            // linear light and leave its encoding to the target. A unorm
-            // target would store it as is, and everything renders too
-            // dark — sRGB 0x80 grey lands as 0x37 — with no error.
-            assert!(
-                format.is_srgb()
-                    || matches!(
-                        format,
-                        wgpu::TextureFormat::Rgba16Float
-                            | wgpu::TextureFormat::Rgba32Float
-                            | wgpu::TextureFormat::Rg11b10Ufloat
-                    ),
-                "render target format {format:?} does not encode linear light: \
-                 use an sRGB or a float format",
+            // Every format arrives through `TargetFormat::new`, which
+            // checks this in release.
+            debug_assert!(
+                TargetFormat::encodes_linear(format),
+                "{format:?} reached the backend unchecked",
             );
             let built = FormatPipelines::new(
                 &self.device,

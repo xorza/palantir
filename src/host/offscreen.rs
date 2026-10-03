@@ -299,13 +299,12 @@ impl OffscreenHost {
     /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame
     /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
     /// window lifecycle.
-    pub fn frame<'t, T: App>(
+    pub fn frame<T: App>(
         &mut self,
-        target: impl Into<RenderTarget<'t>>,
+        target: RenderTarget<'_>,
         system_scale: f32,
         app: &mut T,
     ) -> FrameReport {
-        let target = target.into();
         assert!(
             display::scale_factor_is_valid(system_scale),
             "offscreen system scale must be finite and at least {EPS}, got \
@@ -358,8 +357,8 @@ pub(crate) mod internals {
         /// Whether the shared backend has built a pipeline set for `format`.
         /// Lets format-change tests confirm a new format materializes its own
         /// pipelines.
-        pub fn has_format_pipelines(&self, format: impl Into<TargetFormat>) -> bool {
-            self.core.backend.has_format_pipelines(format.into())
+        pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
+            self.core.backend.has_format_pipelines(format)
         }
 
         /// Images resident in the GPU texture cache. Used by the format-change
@@ -410,7 +409,7 @@ mod tests {
         });
 
         for (frame, paints) in [(0, true), (1, false)] {
-            let target = RenderTarget::from(&texture);
+            let target = RenderTarget::new(&texture);
             let key = TargetKey::of(target);
             host.driver.note_target(key);
             let display = host.driver.display(key.physical, 1.0, None);

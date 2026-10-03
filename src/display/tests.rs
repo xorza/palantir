@@ -141,3 +141,18 @@ fn sanitize_system_scale_keeps_a_usable_scale_or_falls_back_to_one() {
         assert_eq!(sanitize_system_scale(reported), kept, "{reported}");
     }
 }
+
+/// A display built by hand takes a positive system scale and panics on
+/// any other.
+#[test]
+fn from_physical_checks_its_scale() {
+    use crate::internals::panic_probe;
+    use crate::primitives::math::domain;
+
+    assert_eq!(Display::from_physical(UVec2::ONE, 2.0).system_scale, 2.0);
+    for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
+            Display::from_physical(UVec2::ONE, bad)
+        });
+    }
+}

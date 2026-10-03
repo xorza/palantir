@@ -309,7 +309,7 @@ mod output_validity_tests {
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
-            format: wgpu::TextureFormat::Rgba8Unorm.into(),
+            format: TargetFormat::new(wgpu::TextureFormat::Rgba8UnormSrgb),
             vsync: Some(Vsync::On),
         };
         let resized = TargetKey {
@@ -317,7 +317,7 @@ mod output_validity_tests {
             ..first
         };
         let reformatted = TargetKey {
-            format: wgpu::TextureFormat::Bgra8Unorm.into(),
+            format: TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb),
             ..resized
         };
         let vsync_off = TargetKey {
@@ -367,7 +367,7 @@ mod output_validity_tests {
     #[test]
     fn a_surface_key_describes_its_acquired_texture_whatever_the_pacing() {
         let physical = UVec2::new(3078, 1908);
-        let format = TargetFormat::from(wgpu::TextureFormat::Bgra8UnormSrgb);
+        let format = TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb);
         let surface = TargetKey {
             physical,
             format,
@@ -388,7 +388,10 @@ mod output_validity_tests {
         // genuinely not the one the CPU half ran against.
         assert!(!surface.describes(UVec2::new(3078, 1907), format), "size");
         assert!(
-            !surface.describes(physical, wgpu::TextureFormat::Rgba8Unorm.into()),
+            !surface.describes(
+                physical,
+                TargetFormat::new(wgpu::TextureFormat::Rgba8UnormSrgb)
+            ),
             "format"
         );
         // And the mode axis stays live for `note_target`'s own equality —

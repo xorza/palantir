@@ -41,19 +41,6 @@ W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key
 Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
 display gets the platform glyph. Low priority.
 
-## A16. A checked render target
-
-**Findings.** REVIEW "Render target colour encoding is not enforced". `From<&wgpu::Texture> for
-RenderTarget` accepts any texture, and a wrong format panics on the first frame, inside the
-renderer, far from the line that chose the texture. `From<wgpu::TextureFormat> for TargetFormat` is
-the same gap for a format named before a texture exists.
-
-**Decided 2026-10-04.** `RenderTarget::new(&texture)` asserts the format (sRGB or float) and the
-usage (`RENDER_ATTACHMENT`, plus `COPY_DST` where the host presents through its backbuffer), with
-`#[track_caller]` and a `# Panics` section, as A50 rule 3 says for a caller contract.
-`TargetFormat::new(format)` asserts the same format rule. Both `From` impls go, because `From` must
-not fail; the entry points take `RenderTarget` itself instead of `impl Into<RenderTarget>`.
-
 ## A18. Icon set limits and names
 
 **Findings.** REVIEW "`IconId` is u16 but icon sets are unbounded" and "`IconDef::name:

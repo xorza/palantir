@@ -203,7 +203,7 @@ fn split_move_and_collapse_roundtrip() {
     d.validate().unwrap();
     let root = root_split(&d);
     assert_eq!(root.split.dir, SplitDir::Row);
-    assert_eq!(root.split.ratio, 0.5);
+    assert_eq!(root.split.ratio(), 0.5);
     let DockNode::Group(first) = root.first else {
         panic!("primary stays first for a Right split");
     };
@@ -465,7 +465,7 @@ fn set_ratio_clamps_and_survives_stale_paths() {
         split: DockPath::ROOT,
         ratio: 0.7,
     });
-    assert_eq!(root_split(&d).split.ratio, 0.7);
+    assert_eq!(root_split(&d).split.ratio(), 0.7);
 
     d.apply(DockOp::SetRatio {
         split: DockPath::ROOT,

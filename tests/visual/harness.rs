@@ -14,8 +14,8 @@ use image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
 use palantir::{
-    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RgbaF32, TextShaper, Theme,
-    Ui,
+    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RenderTarget, RgbaF32,
+    TextShaper, Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -157,9 +157,11 @@ impl Harness {
         );
 
         self.host.ui().theme_mut().window_clear = self.clear;
-        let report = self
-            .host
-            .frame(&target, self.scale, &mut RecordApp::new(scene));
+        let report = self.host.frame(
+            RenderTarget::new(&target),
+            self.scale,
+            &mut RecordApp::new(scene),
+        );
 
         let mut image = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
