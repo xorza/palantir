@@ -625,8 +625,8 @@ fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
 }
 
 /// A rect off the pixel grid covers, on each side, the pixel its edge
-/// crosses — also where that pixel's centre is outside the rect, which the
-/// quad drawn at the rect itself never shaded. With the snap off, the rect
+/// crosses, also where that pixel's centre is outside the rect. With the
+/// snap off, the rect
 /// (40.75, 20.75)..(100.25, 60.25) puts every edge a quarter pixel into
 /// the pixel outside it: column 40 and row 20 are covered 0.25 from the
 /// left and top, column 100 and row 60 0.25 from the right and bottom, and

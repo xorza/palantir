@@ -1,11 +1,10 @@
 //! Pixel-level shadow fixtures.
 
-use std::f64::consts::SQRT_2;
-
 use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::widget::Shape;
 use palantir::{Background, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke};
+use std::f64::consts::SQRT_2;
 
 use crate::goldens::{assert_same, assert_same_in, crop};
 use crate::harness::Harness;
@@ -479,9 +478,8 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
 
 /// An inset shadow takes its source's own edge ramp. With its hole closed
 /// by the spread, it covers the source exactly as a fill of its colour
-/// does, so the two renders match pixel for pixel — the rounded corners'
-/// partly covered pixels included, which a hard cut at the edge left at
-/// full shadow inside the edge and bare outside it.
+/// does, so the two renders match pixel for pixel, the rounded corners'
+/// partly covered pixels included.
 #[test]
 fn an_inset_shadow_shares_its_source_edge_ramp() {
     let source = Rect::new(40.5, 40.25, 100.0, 80.0);
