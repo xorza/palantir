@@ -127,6 +127,12 @@ no `ldlat` filter.
   alternating rounds against item 3 measured −0.1 to +1.0 % on the frame
   arms, inside the noise. A shrink to 64 bytes cannot gain more than
   that, so the payload move into `RecordStore` does not pay for itself.
+- **Follow-up to item 2, the id slot index** (6800U, three alternating
+  rounds): `resolve` hands the widget the index of its id's entry, and
+  the record writes it with no second probe. `cached_cpu` and
+  `partial_cpu` −2.2 %, `scrolling_cpu` −1.7 % at default size, −1.4 to
+  −2.6 % on every arm at 10×. Every widget builder is 8 bytes larger,
+  because `Ident` grew from 16 to 24 bytes.
 
 ## How to measure
 
