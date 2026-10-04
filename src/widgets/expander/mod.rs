@@ -8,7 +8,6 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
@@ -166,7 +165,7 @@ impl<'a> Expander<'a> {
             // The click half needs no `disabled` guard — a disabled
             // widget's button slices are already empty. The key half
             // does: keyboard events never pass through that fold.
-            let activated = state.clicked() || (!state.disabled && activation_key(ui, header_id));
+            let activated = state.clicked() || (!state.disabled && activation_key(ui, &mut header));
             let now_open = was_open != activated;
             // No measured height yet, so a tween would have nothing to
             // clip against. Snap instead of guessing one, and animate
@@ -306,12 +305,13 @@ struct ExpanderState {
 /// Both are sampled, never short-circuited: `key_pressed` also keeps the
 /// chord subscribed for the wake gate, so one firing must not drop the
 /// other's subscription that frame.
-fn activation_key(ui: &mut Ui, header: WidgetId) -> bool {
-    if !ui.is_focus_within(header) {
+fn activation_key(ui: &mut Ui, header: &mut Widget) -> bool {
+    let id = header.resolve(ui);
+    if !ui.is_focus_within(id) {
         return false;
     }
-    let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
-    let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+    let space = header.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+    let enter = header.key_pressed(ui, Shortcut::key(Key::Enter));
     space || enter
 }
 

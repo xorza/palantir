@@ -10,6 +10,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -219,6 +220,22 @@ impl Widget {
         state
     }
 
+    /// Whether `shortcut` was pressed and granted to this widget — read as
+    /// the widget itself, for a widget that reads its keys before it
+    /// opens its node. Resolves the identity if nothing did yet.
+    ///
+    /// [`Ui::key_pressed`] reads as the place a record has reached, which
+    /// before this node opens is the node around it. A widget that
+    /// declares an [`input_scope`](Configure::input_scope) is granted the
+    /// keys of its classes while it holds focus, so that read misses them
+    /// whenever another scope encloses it — a popup, an application root.
+    /// This one does not. Like [`Ui::key_pressed`], it keeps the chord
+    /// subscribed for the wake gate.
+    pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool {
+        let id = self.resolve(ui);
+        ui.key_pressed_as(id, shortcut)
+    }
+
     /// Open this widget's node, run its body, and close it. Resolves the
     /// identity if nothing did yet.
     ///
@@ -396,6 +413,13 @@ impl Widget {
     #[inline]
     pub const fn authored_tab_stop(&self) -> bool {
         self.node.flags.is_tab_stop()
+    }
+
+    /// The axis the caller made this widget an arrow group along, or
+    /// `None`. See [`Configure::arrow_focus`].
+    #[inline]
+    pub const fn authored_arrow_focus(&self) -> Option<Axis> {
+        self.node.flags.arrow_focus()
     }
 
     /// The caller's Tab order key. See [`Configure::tab_index`].

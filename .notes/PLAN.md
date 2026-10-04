@@ -6,8 +6,9 @@ see ends with a showcase section. Steps marked **API** add public surface; your 
 
 ## Status (2026-10-04)
 
-Done: golden orphans; F1–F4; I1–I5; F5 (`Button`, `PopupTrigger`, `ColorButton`); F6 (`ComboBox`);
-F8 (`Splitter`); F9 in part (`MenuItem` on Enter and Space).
+All steps are implemented: golden orphans; F1–F10; I1–I5. Two checks remain, both by hand: the
+showcase (`cargo run --example showcase`), and IME with a Japanese or Chinese input source on the
+macOS laptop. Windows and X11 are not checked for a key typed twice with IME on.
 
 Changed from the design below while implementing:
 
@@ -26,20 +27,18 @@ Changed from the design below while implementing:
 - **The preedit cursor is a `Span`** in `InputEvent`, because `Range` is not `Copy`;
   `ImePreedit::cursor` is a `Range<usize>`.
 
-Decided 2026-10-04, still to implement:
+Decided 2026-10-04 and implemented:
 
-- **Key routing — `Widget::key_pressed(&mut self, ui, shortcut) -> bool`.** A public read as the
-  widget itself, resolving its id if needed. `Button`, `ColorButton`, `ComboBox`, `MenuItem`, the
-  `Splitter` divider, `Slider`, the toggles and `Expander`'s header move to it; `ui.key_pressed`
-  keeps its meaning for app code. Closes the routing entry in `ISSUES.md`. Restore the dropdown
-  test that walks Enter, Tab, Enter through a `ComboBox`.
-- **F7 `DragValue` — a spin button.** Focus alone leaves the chip a chip, so a scrub's press may
-  focus it. A focused chip steps on Up and Down by one unit of its last decimal, ten with Shift;
-  Enter, or a typed character, opens the edit field; a click without a drag still opens it.
-- **F9 arrows — `Configure::arrow_focus(Axis)`.** A node with it moves focus between the stops
-  inside it on the arrows along that axis, wrapping, for every arrow press no inner scope claims —
-  as the framework does for Tab. `ContextMenu`'s body and `ComboBox`'s list set it.
-- F10 docs (README, `Key::Tab`) wait on the above.
+- **Key routing — `Widget::key_pressed(&mut self, ui, shortcut)`**, a read as the widget itself.
+  The widgets with their own scope read through it: `Button`, `ColorButton`, `ComboBox`,
+  `MenuItem`, `DragValue`, the `Splitter` divider, the toggles and `Expander`'s header.
+  `Slider`, `ColorField` and `ColorStrip` declare no scope, so their reads were already right.
+- **`DragValue` is a spin button.** Focus opens no editor; Up and Down step one unit of the last
+  decimal (ten with Shift); Enter, a typed character or a click without a drag opens the editor;
+  the chip keeps focus when the edit ends.
+- **`Configure::arrow_focus(Axis)`** makes a node an arrow group; a scope strictly inside it may
+  claim the arrows, and its own node's claim does not count. `ContextMenu` and `ComboBox`'s list
+  set it.
 
 ---
 

@@ -397,3 +397,53 @@ fn the_keys_step_a_closed_pick_and_open_the_list() {
         frame(&mut h, &mut selected);
     }
 }
+
+/// The whole keyboard path through a dropdown: Enter on the focused combo
+/// box opens it with focus on the first row, Tab and the arrows walk the
+/// rows inside the list it traps, Enter picks the row it is on and closes
+/// the list, and
+/// focus goes back to the combo box.
+#[test]
+fn the_keyboard_alone_picks_from_the_dropdown() {
+    use crate::input::keyboard::key::Key;
+
+    const OPTIONS: [&str; 3] = ["A", "B", "C"];
+    let id = WidgetId::from_hash("combo-walk");
+    let mut selected = 0usize;
+    let mut h = UiHarness::new(SURFACE);
+    let frame = |h: &mut UiHarness, selected: &mut usize| {
+        h.frame_value(|ui| ComboBox::new(selected, &OPTIONS).id(id).show(ui).changed)
+    };
+    frame(&mut h, &mut selected);
+    h.key(Key::Tab);
+    frame(&mut h, &mut selected);
+    assert_eq!(h.focus(), Some(id), "Tab reaches the combo box");
+
+    h.key(Key::Enter);
+    frame(&mut h, &mut selected);
+    assert!(PopupTrigger::is_open(&h.ui, id));
+    let first = h.focus().expect("focus moved into the list");
+    assert_ne!(first, id);
+
+    h.key(Key::Tab);
+    frame(&mut h, &mut selected);
+    let second = h.focus().expect("a row holds focus");
+    assert_ne!(second, first, "Tab moves to the next row");
+    h.key(Key::ArrowDown);
+    frame(&mut h, &mut selected);
+    let third = h.focus().expect("a row holds focus");
+    assert!(third != first && third != second, "Down moves to the third");
+    h.key(Key::ArrowUp);
+    frame(&mut h, &mut selected);
+    assert_eq!(h.focus(), Some(second), "Up moves back");
+
+    h.key(Key::Enter);
+    let changed = frame(&mut h, &mut selected);
+    assert!(changed && selected == 1, "Enter picks the second row");
+    frame(&mut h, &mut selected);
+    assert!(
+        !PopupTrigger::is_open(&h.ui, id),
+        "the pick closes the list"
+    );
+    assert_eq!(h.focus(), Some(id), "focus goes back to the combo box");
+}

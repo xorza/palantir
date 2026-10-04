@@ -144,6 +144,14 @@ impl<'a> Splitter<'a> {
         // is this frame's.
         let divider_id = id.with("divider");
         let divider = ui.response_for(divider_id);
+        // A Tab stop taking the arrows, Home and End — the `CARET` class —
+        // as WAI-ARIA's window splitter does. Built here so it reads its
+        // keys as itself before the grid around it records.
+        let mut divider_widget = Widget::leaf()
+            .id(divider_id)
+            .sense(Sense::DRAG)
+            .focusable(true)
+            .input_scope(KeyFilter::CARET);
         let first_id = id.with("first");
         let second_id = id.with("second");
         let axis = self.axis;
@@ -202,7 +210,7 @@ impl<'a> Splitter<'a> {
                 // Every chord sampled: `key_pressed` also keeps it
                 // subscribed for the wake gate.
                 .fold(None, |target, (key, pos)| {
-                    let pressed = ui.key_pressed(Shortcut::key(key));
+                    let pressed = divider_widget.key_pressed(ui, Shortcut::key(key));
                     if pressed { Some(pos) } else { target }
                 });
                 if let Some(pos) = target {
@@ -273,13 +281,7 @@ impl<'a> Splitter<'a> {
             // The grab bar overhangs the seam on the split axis only, so
             // its inset is main-axis with nothing across.
             let inset = (rule_thickness - grab_thickness) * 0.5;
-            Widget::leaf()
-                .id(divider_id)
-                .sense(Sense::DRAG)
-                // A Tab stop taking the arrows, Home and End — the `CARET`
-                // class — as WAI-ARIA's window splitter does.
-                .focusable(true)
-                .input_scope(KeyFilter::CARET)
+            divider_widget
                 .size((Sizing::FILL, Sizing::FILL))
                 .margin(axis.compose_spacing(inset, 0.0))
                 .grid_cell(GridCell::along(axis, 1))

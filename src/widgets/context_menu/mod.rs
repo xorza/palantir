@@ -6,6 +6,7 @@ pub(crate) mod menu_separator;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
@@ -181,6 +182,8 @@ impl<'a> ContextMenu<'a> {
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
+            // Up and Down walk the rows, as a native menu's do.
+            .arrow_focus(Axis::Y)
             .show(ui, |ui, handle| Some(body(ui, handle)));
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);

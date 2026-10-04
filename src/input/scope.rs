@@ -219,6 +219,20 @@ impl Scopes {
         self.path.iter().any(|row| row.filter.takes(class))
     }
 
+    /// [`Self::path_takes`] counting only the scopes strictly inside
+    /// `ancestor` — the claims an arrow group yields its arrows to, and
+    /// not its own node's or any around it.
+    pub(super) fn path_takes_within(
+        &self,
+        class: KeyClass,
+        ancestor: WidgetId,
+        cascade: &Cascade,
+    ) -> bool {
+        self.path.iter().any(|row| {
+            row.id != ancestor && cascade.is_within(row.id, ancestor) && row.filter.takes(class)
+        })
+    }
+
     pub(super) fn grant(&self, class: KeyClass) -> Option<WidgetId> {
         self.path
             .iter()

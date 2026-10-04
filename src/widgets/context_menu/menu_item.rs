@@ -140,8 +140,8 @@ impl<'a> MenuItem<'a> {
         if !disabled && ui.is_focus_within(id) {
             // Both sampled: `key_pressed` also keeps each chord subscribed
             // for the wake gate.
-            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
-            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
+            let enter = self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
+            let space = self.widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
             shortcut_fired |= enter || space;
         }
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));
