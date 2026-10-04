@@ -7,7 +7,6 @@
 //! What differs between the passes is only which atlas they bind and where
 //! their pixels came from.
 
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 
@@ -58,29 +57,6 @@ impl RasterQuad {
             attributes: &RASTER_QUAD_ATTRS,
         }
     }
-
-    /// The shader both passes build their pipelines from.
-    ///
-    /// Rust owns the `uv_and_kind` bit layout; the shader declares the
-    /// numbers it needs as markers so the two cannot drift (`specialize`
-    /// panics on an unsubstituted one). The flags arrive already shifted
-    /// down by [`U_BITS`], which is how the shader reads them.
-    pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
-        let wgsl = ShaderBody::RasterAtlas.specialize(&[
-            ShaderConstant::uint("U_BITS", U_BITS),
-            ShaderConstant::uint("V_SHIFT", V_SHIFT),
-            ShaderConstant::uint("FLAG_MASK", FLAG_MASK),
-            ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),
-            ShaderConstant::uint(
-                "FLAG_COLOR",
-                (ContentType::Color as u32) << (KIND_SHIFT - U_BITS),
-            ),
-        ]);
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(label),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-        })
-    }
 }
 
 /// Bits of `uv_and_kind` that hold `u`, and so the shift the two flags sit at.
@@ -88,8 +64,8 @@ impl RasterQuad {
 /// Fourteen is more than either side can use: the byte budget caps a mask
 /// atlas at 4096 and a colour atlas at 2048, both inside 12 bits. Every other
 /// number in the layout derives from this one — including the shader's, which
-/// [`RasterQuad::shader_module`] substitutes rather than restates.
-const U_BITS: u32 = 14;
+/// `ShaderBody::RasterAtlas` substitutes rather than restates.
+pub(crate) const U_BITS: u32 = 14;
 
 /// Largest `u` the layout can carry.
 const U_MAX: u32 = (1 << U_BITS) - 1;
@@ -98,22 +74,28 @@ const U_MAX: u32 = (1 << U_BITS) - 1;
 const KIND_SHIFT: u32 = U_BITS + 1;
 
 /// Where `v` starts: the upper half, which holds any `u16`.
-const V_SHIFT: u32 = 16;
+pub(crate) const V_SHIFT: u32 = 16;
 
 /// The carried flags — [`RasterQuad::DESATURATE`] and the content type —
 /// once shifted down by [`U_BITS`]: every bit between `u` and `v`.
-const FLAG_MASK: u32 = (1 << (V_SHIFT - U_BITS)) - 1;
+pub(crate) const FLAG_MASK: u32 = (1 << (V_SHIFT - U_BITS)) - 1;
+
+/// [`RasterQuad::DESATURATE`] as the shader reads it, shifted down by
+/// [`U_BITS`].
+pub(crate) const FLAG_DESATURATE: u32 = RasterQuad::DESATURATE >> U_BITS;
+
+/// A colour raster's content-type bit as the shader reads it, shifted down
+/// by [`U_BITS`].
+pub(crate) const FLAG_COLOR: u32 = (ContentType::Color as u32) << (KIND_SHIFT - U_BITS);
 
 // Compile-time guard on the layout: the three fields must tile the `u32`
 // without overlapping, so both carried flags fall inside `FLAG_MASK`.
 const _: () = {
-    let flags = (RasterQuad::DESATURATE | (ContentType::Color as u32) << KIND_SHIFT) >> U_BITS;
-    assert!(flags & !FLAG_MASK == 0, "a flag reaches `v`");
     assert!(
-        (RasterQuad::DESATURATE >> U_BITS) & ((ContentType::Color as u32) << (KIND_SHIFT - U_BITS))
-            == 0,
-        "the two flags overlap",
+        (FLAG_DESATURATE | FLAG_COLOR) & !FLAG_MASK == 0,
+        "a flag reaches `v`"
     );
+    assert!(FLAG_DESATURATE & FLAG_COLOR == 0, "the two flags overlap");
 };
 
 const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![

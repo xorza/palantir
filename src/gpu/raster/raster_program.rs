@@ -14,6 +14,7 @@
 //! [`RasterPass`]: crate::gpu::raster::raster_pass::RasterPass
 
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::{ColorVariantSpec, StencilVariant};
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::resource::texture_binding;
@@ -42,7 +43,7 @@ impl RasterProgram {
         let pipeline_layout =
             PipelineRecipe::pipeline_layout(device, "palantir.raster.pl", &[Some(&layout)]);
         Self {
-            shader: RasterQuad::shader_module(device, "palantir.raster.shader"),
+            shader: ShaderBody::RasterAtlas.module(device),
             layout,
             pipeline_layout,
         }

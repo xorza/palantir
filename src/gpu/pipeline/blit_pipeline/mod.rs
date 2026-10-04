@@ -25,10 +25,7 @@ pub(crate) struct BlitPipeline {
 
 impl BlitPipeline {
     pub(crate) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.blit.shader"),
-            source: wgpu::ShaderSource::Wgsl(ShaderBody::Blit.specialize(&[]).into()),
-        });
+        let shader = ShaderBody::Blit.module(device);
         Self {
             shader,
             pipeline_layout: PipelineRecipe::pipeline_layout(

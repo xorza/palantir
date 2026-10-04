@@ -13,7 +13,7 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -21,7 +21,6 @@ use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::image::ImageInstance;
-use crate::renderer::render_buffer::image_flags::ImageFlags;
 use rustc_hash::FxHashMap;
 
 /// One batch of image draws: the frame's whole per-draw texture column,
@@ -50,19 +49,7 @@ impl ImagePipeline {
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
-        // Rust owns the flag bits; the shader declares them as markers so the
-        // two cannot drift (`specialize` panics on an unsubstituted one).
-        let wgsl = ShaderBody::Image.specialize(&[
-            ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
-            ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
-            ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),
-            ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
-            ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
-        ]);
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.image.shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-        });
+        let shader = ShaderBody::Image.module(device);
 
         let instance_buffer =
             DynamicBuffer::<ImageInstance>::vertex(device, "palantir.image.instances", 16);

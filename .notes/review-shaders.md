@@ -7,20 +7,6 @@ the pipeline modules that build and feed them, and the wire types they read
 
 Whoever addresses an item deletes it.
 
-## Shader-module construction is repeated at each pipeline
-
-- [ ] `quad_pipeline/mod.rs:201-225`, `curve_pipeline/mod.rs:78-94`,
-  `image_pipeline/mod.rs:57-67`, `mesh_pipeline/mod.rs:65-68`,
-  `blit_pipeline/mod.rs:28-31`, `raster_quad.rs:86-99`. Each one calls
-  `ShaderBody::X.specialize(&[..])` and then writes the same
-  `create_shader_module` descriptor with its own label. `ShaderBody` already
-  names each file. Its constants and its label are facts about the same
-  body, but they are kept in six other files. Target:
-  `ShaderBody::module(self, device) -> wgpu::ShaderModule`, with the label
-  and the constant list in the `ShaderBody` match. Then a test can specialize
-  every body completely without a device, and a missing marker fails at
-  test time and not at pipeline build.
-
 ## Docs that contradict the code
 
 - [ ] Conic direction. `src/primitives/paint/brush/gradient/conic_geometry.rs:14`
