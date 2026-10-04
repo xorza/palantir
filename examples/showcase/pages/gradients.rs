@@ -149,7 +149,7 @@ fn radial_ellipse(ui: &mut Ui) {
 }
 
 /// Conic colour-wheel centred in the tile. Six saturated stops sweep
-/// CCW from the positive-x axis, with stop 0 == stop 1 so the seam
+/// clockwise from the positive-x axis, with stop 0 == stop 1 so the seam
 /// hides at angle 0.
 fn conic_wheel(ui: &mut Ui) {
     let g = ConicGradient::new(

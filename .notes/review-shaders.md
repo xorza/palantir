@@ -7,35 +7,6 @@ the pipeline modules that build and feed them, and the wire types they read
 
 Whoever addresses an item deletes it.
 
-## Docs that contradict the code
-
-- [ ] Conic direction. `src/primitives/paint/brush/gradient/conic_geometry.rs:14`
-  (public API) and `quad_pipeline/shader.wgsl:279` say "counter-clockwise".
-  `atan2` in y-down pixel space increases clockwise on screen, as
-  `CurveInstance` says correctly (`curve.rs:57`). Target: "clockwise" in
-  both places.
-- [ ] `quad_pipeline/shader.wgsl:1-5` and `curve_pipeline/shader.wgsl:54-57`
-  say that the gradient LUT stores straight alpha. The bake stores
-  premultiplied texels (`renderer/gradient_atlas/bake.rs:3, 35`), and
-  `eval_fill` unpremultiplies them (`:298-302`).
-- [ ] The drop-shadow lanes. `FillKind::SHADOW_DROP`
-  (`fill_kind.rs:91-97`) and `FillAxis` (`fill_axis.rs:8-9`) say that the
-  lanes are `(0, 0, σ, spread)` and that the shader runs `shadow_coverage`.
-  The composer sends `(offset.x, offset.y, σ, spread)`, the shader reads the
-  offset from `.xy` (`quad_pipeline/shader.wgsl:386`), and no
-  `shadow_coverage` exists.
-- [ ] `src/renderer/quad.rs:23` and `fill_kind.rs:60` say `fill: RgbaF32`.
-  The field is `RgbaF16`.
-- [ ] `src/renderer/render_buffer/curve.rs:8-16, 18-19` and
-  `curve_pipeline/shader.wgsl:35-38` say "lockstep" and "bump together" for
-  `SEGMENTS_PER_INSTANCE` and the `KIND_*` tags. Both are substituted, so
-  nothing must be changed by hand to match.
-- [ ] `curve_pipeline/shader.wgsl:146` says `flags` holds a "join metric in
-  bits 4..6". The join look is now two independent flags
-  (`FLAG_JOIN_BEVEL`, `FLAG_JOIN_MITER`).
-- [ ] `src/gpu/pipeline/curve_pipeline/mod.rs:1-2` lists cubics and arcs
-  only. The pipeline also draws polyline segments and join chrome.
-
 ## Comments that tell history (coding guide)
 
 - [ ] These comments tell what the code did before, not why it is as it is
