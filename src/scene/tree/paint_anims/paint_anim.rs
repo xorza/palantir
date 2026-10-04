@@ -31,10 +31,13 @@ pub type PaintCurve = fn(f32) -> f32;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaintChannel {
     /// Alpha multiplier, lerped `from` → `to` by the curve. `None`
-    /// leaves the shape's own opacity alone.
+    /// leaves the shape's own opacity alone. The sample is read as a
+    /// *fraction*: clamped to `0..=1`, and `0` when it is not finite, so an
+    /// overshooting curve or a NaN end cannot reach paint.
     pub alpha: Option<(f32, f32)>,
     /// Turns about the owner box's centre, in **full turns**, lerped
-    /// `from` → `to`. `None` leaves the shape's orientation alone.
+    /// `from` → `to`. `None` leaves the shape's orientation alone. A sample
+    /// that is not finite reads as no turn.
     ///
     /// Honoured on stroked shapes — polylines, curves and arcs. A quad,
     /// a text run and an image cannot be turned.
@@ -289,12 +292,16 @@ impl PaintAnim {
             return PaintMod::IDENTITY;
         };
         let t = (self.curve)(phase);
+        let rotation = |(a, b)| {
+            let radians = f32::lerp(a, b, t) * TAU;
+            if radians.is_finite() { radians } else { 0.0 }
+        };
         PaintMod {
-            alpha: self.channel.alpha.map_or(1.0, |(a, b)| f32::lerp(a, b, t)),
-            rotation: self
+            alpha: self
                 .channel
-                .turn
-                .map_or(0.0, |(a, b)| f32::lerp(a, b, t) * TAU),
+                .alpha
+                .map_or(1.0, |(a, b)| domain::fraction(f32::lerp(a, b, t))),
+            rotation: self.channel.turn.map_or(0.0, rotation),
         }
     }
 

@@ -173,7 +173,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
         let clicked = h.frame_value(build);
 
         assert_eq!(clicked, expect_click, "{label}: the widget underneath");
-        assert_eq!(h.focused_id(), expect_focus, "{label}: focus");
+        assert_eq!(h.focus(), expect_focus, "{label}: focus");
     }
 }
 

@@ -81,8 +81,7 @@ impl<'a> Slider<'a> {
     /// spelling of "off".
     #[track_caller]
     pub const fn step(mut self, step: f64) -> Self {
-        assert!(step.is_finite() && step > 0.0, "{}", domain::POSITIVE_RULE);
-        self.step = Some(step);
+        self.step = Some(domain::f64::positive(step));
         self
     }
 
@@ -141,7 +140,7 @@ impl<'a> Slider<'a> {
         }
         // A key press is a whole edit of its own, so it commits at once.
         let keyed = !response.disabled
-            && ui.focus_within(id)
+            && ui.is_focus_within(id)
             && key_target(ui, self.value.read().widen(), self.min, self.max, self.step)
                 .is_some_and(|to| {
                     self.value.commit_value(

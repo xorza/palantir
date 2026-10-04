@@ -174,11 +174,11 @@ impl ToggleTheme {
         let acc = p.accent;
         let checked = StatefulLook {
             normal: WidgetLook {
-                background: bg(acc, Stroke::ZERO),
+                background: bg(acc, Stroke::NONE),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                background: bg(acc, Stroke::ZERO),
+                background: bg(acc, Stroke::NONE),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
@@ -186,7 +186,7 @@ impl ToggleTheme {
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                background: bg(acc.with_alpha(0.45), Stroke::ZERO),
+                background: bg(acc.with_alpha(0.45), Stroke::NONE),
                 text: disabled_text,
             },
         };

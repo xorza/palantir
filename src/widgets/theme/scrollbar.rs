@@ -27,7 +27,7 @@ pub struct ScrollbarTheme {
     /// Floor for the thumb's main-axis length so a tiny `viewport /
     /// content` ratio doesn't produce an ungrabbable nub.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub min_thumb_px: f32,
+    pub min_thumb: f32,
     /// Track background. `RgbaF32::TRANSPARENT` = pure overlay (only the
     /// thumb is visible) — the macOS-style default.
     pub track: RgbaF32,
@@ -49,7 +49,7 @@ impl ScrollbarTheme {
         Self {
             thickness: 8.0,
             gap: 4.0,
-            min_thumb_px: 24.0,
+            min_thumb: 24.0,
             track: RgbaF32::TRANSPARENT,
             thumb: thumb(0.45),
             thumb_hovered: thumb(0.65),

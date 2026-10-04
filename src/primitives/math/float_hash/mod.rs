@@ -23,7 +23,7 @@ pub(crate) const fn eq_bits(f: f32) -> u32 {
 pub(crate) const fn canon_bits(f: f32) -> u32 {
     if f.is_nan() {
         f32::NAN.to_bits()
-    } else if domain::approx_zero(f) {
+    } else if domain::is_approx_zero(f) {
         0u32
     } else {
         f.to_bits()

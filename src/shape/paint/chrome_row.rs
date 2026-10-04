@@ -20,7 +20,7 @@ impl ChromeRow {
     /// `ClipMode::Rounded` mask can read its corners. Lowering turns a
     /// no-op fill into a transparent solid, so a gradient never needs its
     /// stops read here.
-    pub(crate) const fn paints_nothing(&self) -> bool {
+    pub(crate) const fn is_invisible(&self) -> bool {
         matches!(self.fill, ShapeBrush::Solid(color) if color.is_noop())
             && self.border.is_noop()
             && self.shadow.is_noop()

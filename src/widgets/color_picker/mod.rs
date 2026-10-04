@@ -435,7 +435,7 @@ fn values_grid(
     let gap = domain::length_at_least(theme.gap, 0.0);
     let quantized = shown.to_srgba_u8();
     let hex_id = id.with("hex");
-    if ui.focused_id() != Some(hex_id) {
+    if ui.focus() != Some(hex_id) {
         state.hex.clear();
         let _ = write!(
             state.hex,

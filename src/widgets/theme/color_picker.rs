@@ -125,7 +125,7 @@ fn mono_states(looks: &mut StatefulLook) {
         &mut looks.disabled,
     ] {
         look.text.family = Some(FontFamily::MONO);
-        look.text.font_size_px = Some(VALUE_FONT_PX);
+        look.text.font_size = Some(VALUE_FONT_PX);
     }
 }
 

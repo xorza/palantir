@@ -109,7 +109,11 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
     let cmds = h.encode_paint();
     assert_eq!(cmds.kinds(), ["PushClip", "PopClip"]);
     assert!(
-        cmds.calls[0].as_push_clip().unwrap().corners.approx_zero(),
+        cmds.calls[0]
+            .as_push_clip()
+            .unwrap()
+            .corners
+            .is_approx_zero(),
         "no background → no radius → falls back to plain scissor",
     );
 }

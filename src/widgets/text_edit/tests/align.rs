@@ -298,7 +298,7 @@ fn caret_tracks_aligned_text() {
 fn empty_focused_caret_vcenters_against_one_line() {
     // Bug fix pin: empty buffer's measured height is 0; if the widget
     // used it directly the caret would sit below center. The widget
-    // floors measured.h at `line_height_px`, so VAlign::Center
+    // floors measured.h at `line_height`, so VAlign::Center
     // centers the caret against a full virtual line.
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();

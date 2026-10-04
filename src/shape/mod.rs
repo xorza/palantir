@@ -28,7 +28,7 @@ pub(crate) mod triangle;
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::domain;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -144,7 +144,14 @@ impl Shape {
     /// A rounded rectangle painting `rect` (owner-relative). Starts
     /// transparent-filled, borderless, sharp-cornered — chain
     /// [`RectShape::fill`] / [`RectShape::border`] / [`RectShape::corners`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Every shape's geometry is checked the same way: finite.
+    #[track_caller]
     pub const fn rect(rect: Rect) -> RectShape {
+        rect.validate();
         RectShape::new(RectKind::Rounded, Some(rect))
     }
 
@@ -155,7 +162,13 @@ impl Shape {
 
     /// An inverse-mask rectangle over `rect` — the sibling of
     /// [`Self::rect`], same chainable fill/border/corners.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::rect`].
+    #[track_caller]
     pub const fn windowed_rect(rect: Rect) -> RectShape {
+        rect.validate();
         RectShape::new(RectKind::Windowed, Some(rect))
     }
 
@@ -166,19 +179,26 @@ impl Shape {
 
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp
     /// (radius 0), transparent-filled, borderless.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every corner is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
-        TriangleShape::new(a, b, c)
+        TriangleShape::new(vec2::offset(a), vec2::offset(b), vec2::offset(c))
     }
 
     /// A straight line from `a` to `b` in `stroke` (`Butt` cap).
     ///
     /// # Panics
     ///
-    /// Panics unless the stroke's width is a *length* and its colour a
-    /// *colour*. The same holds for every stroked shape below.
+    /// Panics unless every point is an *offset*, the stroke's width a
+    /// *length* and its colour a *colour*. The same holds for every stroked
+    /// shape below.
     #[track_caller]
     pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
         stroke.validate();
+        let (a, b) = (vec2::offset(a), vec2::offset(b));
         CurveShape::new(CurveGeometry::Line { a, b }, stroke)
     }
 
@@ -192,7 +212,11 @@ impl Shape {
     #[track_caller]
     pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_> {
         stroke.validate();
-        PolylineShape::new(points, stroke)
+        let shape = PolylineShape::new(points, stroke);
+        // The points' box is folded under the NaN contract, so one check
+        // of it covers every point.
+        shape.bbox.validate();
+        shape
     }
 
     /// A cubic Bézier through control points `p0..=p3` in `stroke`
@@ -210,6 +234,8 @@ impl Shape {
         stroke: Stroke,
     ) -> CurveShape {
         stroke.validate();
+        let (p0, p1) = (vec2::offset(p0), vec2::offset(p1));
+        let (p2, p3) = (vec2::offset(p2), vec2::offset(p3));
         CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, stroke)
     }
 
@@ -222,6 +248,7 @@ impl Shape {
     #[track_caller]
     pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
         stroke.validate();
+        let (p0, p1, p2) = (vec2::offset(p0), vec2::offset(p1), vec2::offset(p2));
         CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
     }
 
@@ -245,7 +272,7 @@ impl Shape {
         stroke.validate();
         CurveShape::new(
             CurveGeometry::Arc {
-                center,
+                center: vec2::offset(center),
                 radius: domain::length(radius),
                 start_angle: domain::angle(start_angle),
                 sweep: domain::angle(sweep),
@@ -275,6 +302,10 @@ impl Shape {
     /// which place the bytes in the frame's text arena. Widget
     /// constructors take borrowed or owned text directly because they
     /// defer interning until `show`.
+    ///
+    /// A font is how a theme's text reaches paint, so it is coerced rather
+    /// than checked: a face the shaper cannot use — a size or a leading
+    /// not finite and above the UI epsilon — shapes nothing.
     pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape {
         TextShape::new(text, font)
     }

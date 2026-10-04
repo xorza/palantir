@@ -113,7 +113,7 @@ impl<'a> Text<'a> {
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size_px = Some(domain::length(px));
+        self.overrides.font_size = Some(domain::length(px));
         self
     }
 

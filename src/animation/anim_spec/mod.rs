@@ -1,12 +1,13 @@
 //! The authored animation spec: which motion model a value travels
 //! under, and the parameters that model was authored with.
 
-use crate::animation::duration::{DURATION_ERROR, duration_is_valid};
+use crate::animation::duration::{DURATION_ERROR, MAX_DURATION, duration_is_valid};
 use crate::animation::easing::Easing;
 use crate::animation::spring::{SPRING_ERROR, params_are_valid as spring_params_are_valid};
 use crate::primitives::math::domain::EPS;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::time::Duration;
 
 /// How a value moves toward its target. Animation itself is opt-in
 /// at the call site — pass `None` to [`crate::Ui::animate`] (or omit
@@ -80,16 +81,20 @@ impl AnimSpec {
         },
     };
 
-    /// Construct a duration animation. Values below `1e-4` canonicalize to an
-    /// instant snap.
+    /// Construct a duration animation that runs for `length`. A length
+    /// under `1e-4` seconds canonicalizes to an instant snap.
     ///
     /// # Panics
     ///
-    /// Panics unless `secs` is finite and in `0.0..=60.0`.
+    /// Panics when `length` is longer than 60 seconds.
     #[track_caller]
-    pub const fn duration(secs: f32, ease: Easing) -> Self {
-        assert!(duration_is_valid(secs), "{}", DURATION_ERROR);
-        Self::duration_from_validated(secs, ease)
+    pub const fn duration(length: Duration, ease: Easing) -> Self {
+        assert!(
+            length.as_nanos() <= MAX_DURATION.as_nanos(),
+            "{}",
+            DURATION_ERROR
+        );
+        Self::duration_from_validated(length.as_secs_f32(), ease)
     }
 
     const fn duration_from_validated(secs: f32, ease: Easing) -> Self {

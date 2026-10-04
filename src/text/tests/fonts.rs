@@ -23,16 +23,16 @@ use glam::UVec2;
 /// whatever the machine happens to have installed.
 ///
 /// The look of an app must not depend on its host's font directory, so
-/// the fallback is a family this crate ships. `font_available` is how an
+/// the fallback is a family this crate ships. `has_font` is how an
 /// app asks in advance rather than discovering it by eye.
 #[test]
 fn an_unknown_family_resolves_to_the_bundled_default() {
     let mut c = CosmicMeasure::default();
     let missing = FontFamily::named("No Such Family Exists").unwrap();
 
-    assert!(!c.font_available(missing));
-    assert!(c.font_available(FontFamily::SANS));
-    assert!(c.font_available(FontFamily::MONO));
+    assert!(!c.has_font(missing));
+    assert!(c.has_font(FontFamily::SANS));
+    assert!(c.has_font(FontFamily::MONO));
 
     let face = GlyphFont {
         family: missing,
@@ -54,14 +54,14 @@ fn a_late_load_makes_its_family_resolvable() {
     // family shapes under: it shapes under its own name either way,
     // because it is what everything else falls back to.
     assert!(
-        !c.font_available(FontFamily::SANS),
+        !c.has_font(FontFamily::SANS),
         "the fixture starts with no faces at all",
     );
 
     let loaded = c.load_font(INTER.into()).expect("the bundled Inter loads");
     assert_eq!(loaded, FontFamily::SANS);
     assert_eq!(loaded.name(), "Inter");
-    assert!(c.font_available(FontFamily::SANS));
+    assert!(c.has_font(FontFamily::SANS));
     assert_eq!(
         c.resolved_family("M", GlyphFont::new(16.0)).as_deref(),
         Some("Inter"),
@@ -295,7 +295,7 @@ fn italic_reaches_the_italic_file_at_every_weight() {
 ///
 /// `u16::MAX` is past anything the name table has interned, which is the
 /// point: the key is a carrier, and the resolution that decides what an
-/// index *means* happens later, at `font_available`.
+/// index *means* happens later, at `has_font`.
 #[test]
 fn the_key_carries_any_family_index() {
     for raw in [0, 1, 2, u16::MAX] {

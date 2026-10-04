@@ -16,14 +16,14 @@ fn cache_key_discriminates_every_shaping_axis() {
         (
             "font size",
             shape(20.0),
-            (|k: TextShapeKey| k.font_size_px().to_bits()) as fn(TextShapeKey) -> u32,
-            base.font_size_px().to_bits(),
+            (|k: TextShapeKey| k.font_size().to_bits()) as fn(TextShapeKey) -> u32,
+            base.font_size().to_bits(),
         ),
         (
             "line height",
             shape(16.0).leading(24.0),
-            (|k: TextShapeKey| k.line_height_px().to_bits()) as fn(TextShapeKey) -> u32,
-            base.line_height_px().to_bits(),
+            (|k: TextShapeKey| k.line_height().to_bits()) as fn(TextShapeKey) -> u32,
+            base.line_height().to_bits(),
         ),
         (
             "family",
@@ -138,8 +138,8 @@ fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
     ];
     let mono = TextShaper::test_mono();
     let cosmic = TextShaper::new();
-    for (label, font_size_px, line_height_px) in cases {
-        let params = shape(font_size_px).leading(line_height_px);
+    for (label, font_size, line_height) in cases {
+        let params = shape(font_size).leading(line_height);
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
             let shaped = shaper.measure("hi", params);
@@ -197,21 +197,17 @@ fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
     let natural = shaper.measure("hi", base);
     let unbounded = natural.buffer_key();
     assert!(
-        unbounded.max_width_px().is_none(),
+        unbounded.max_width().is_none(),
         "None is the unbounded form",
     );
     let zero = shaper.measure("hi", base.width(0.0)).buffer_key();
-    assert_eq!(
-        zero.max_width_px(),
-        Some(0.0),
-        "zero is a valid bounded width",
-    );
+    assert_eq!(zero.max_width(), Some(0.0), "zero is a valid bounded width");
     // Negative widths (over-constrained layouts) clamp to the zero-width key.
     let negative = shaper.measure("hi", base.width(-1.0)).buffer_key();
     assert_eq!(negative, zero);
     // A width that names no width binds nothing, so the run keeps the
     // unbounded shape it would have had with no width at all. Answered
-    // rather than rejected because `TextRun::max_width_px` is a public
+    // rather than rejected because `TextRun::max_width` is a public
     // field a caller derives from an arranged rect.
     for (label, width) in [
         ("NaN", f32::NAN),
@@ -236,8 +232,8 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     let key = cosmic.measure("x", shape(EPS * 2.0)).buffer_key();
     // Both floored onto the key's 1/64-px grid rather than to zero, which
     // would name a face that shapes nothing.
-    assert_eq!(key.font_size_px(), 1.0 / 64.0);
-    assert_eq!(key.line_height_px(), 1.0 / 64.0);
+    assert_eq!(key.font_size(), 1.0 / 64.0);
+    assert_eq!(key.line_height(), 1.0 / 64.0);
     assert!(cosmic.shaped_run(key).is_some());
 }
 
@@ -248,11 +244,11 @@ fn cache_key_collapses_halign_when_unbounded() {
     // callers don't pay an N-way cache split. With a target it must
     // discriminate, or two alignments share one shaped buffer.
     let mut c = CosmicMeasure::default();
-    let key = |c: &mut CosmicMeasure, halign, max_width_px: Option<f32>| {
+    let key = |c: &mut CosmicMeasure, halign, max_width: Option<f32>| {
         let base = shape(16.0).halign(halign);
         c.measure(
             "hi",
-            match max_width_px {
+            match max_width {
                 Some(w) => base.width(w),
                 None => base,
             },
@@ -349,8 +345,8 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
     TextShapeKey::unbounded(
         recorded.hash,
         GlyphFont {
-            size_px: 16.0,
-            line_height_px: 19.2,
+            size: 16.0,
+            line_height: 19.2,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,

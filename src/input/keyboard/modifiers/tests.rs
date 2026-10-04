@@ -3,14 +3,14 @@ use crate::input::keyboard::modifiers::Modifiers;
 
 #[test]
 fn any_command_excludes_shift() {
-    assert!(!Modifiers::SHIFT.any_command());
-    assert!(Modifiers::CTRL.any_command());
-    assert!(Modifiers::ALT.any_command());
+    assert!(!Modifiers::SHIFT.has_command());
+    assert!(Modifiers::CTRL.has_command());
+    assert!(Modifiers::ALT.has_command());
     let meta = Modifiers {
         meta: true,
         ..Modifiers::NONE
     };
-    assert!(meta.any_command(), "the Windows / Super key commands");
+    assert!(meta.has_command(), "the Windows / Super key commands");
 }
 
 /// Every modifier combination on every platform, hand-derived from the

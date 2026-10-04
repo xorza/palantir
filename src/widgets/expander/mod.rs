@@ -307,7 +307,7 @@ struct ExpanderState {
 /// chord subscribed for the wake gate, so one firing must not drop the
 /// other's subscription that frame.
 fn activation_key(ui: &mut Ui, header: WidgetId) -> bool {
-    if !ui.focus_within(header) {
+    if !ui.is_focus_within(header) {
         return false;
     }
     let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));

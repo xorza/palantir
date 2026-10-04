@@ -37,19 +37,6 @@ non-canonical, and what to do about it. Where a finding extends an earlier item,
 took it: A7, A9, A10, A11, A15, A18 and A19. The plan at the end of the file orders all
 items, old and new.
 
-## A31. Text arguments take one type
-
-**Blocked** on `QUESTIONS.md` Q1.
-
-**Findings.** Every widget label and caption takes `impl Into<TextInput<'a>>`, so a caller passes
-`&str`, `String`, an interned string or `fmt!` output alike. (Window titles take
-`impl Into<String>`, correctly: they outlive the frame.) `TextEdit::placeholder(&str)` and
-`DragValue::suffix(&str)` take only `&str`.
-
-**Recommendation.** Both take `impl Into<TextInput<'a>>`. `TabItem::new(key, label: InternedStr)`
-stays as it is: a `TabItem` is `Copy` data in a slice, so it cannot own a borrow.
-
----
 
 # Implementation plan
 
@@ -83,7 +70,7 @@ Each line is one commit; none depends on another inside the phase.
 1. Done: names (A28, A29, A30, A42, A45, A46).
 2. Done: chainers (A47, A44).
 3. Done: removals (A8, A13, A34, A35, A38, A40, A43, A48, A49).
-4. Done: argument types (A33 with A9, A37). A31 waits on `QUESTIONS.md` Q1.
+4. Done: argument types (A31, A33 with A9, A37).
 5. Done: test features (A17).
 
 ## Phase 3 — structural API

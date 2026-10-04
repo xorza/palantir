@@ -102,31 +102,31 @@ fn scaled_by_multiplies_each_corner() {
     assert_eq!(c.as_array(), [3.0, 6.0, 9.0, 12.0]);
 }
 
-/// Pins the bit-trick path in `approx_zero`. ±0 lanes, sub-EPS,
+/// Pins the bit-trick path in `is_approx_zero`. ±0 lanes, sub-EPS,
 /// at-EPS, above-EPS, and NaN must all classify correctly.
 #[test]
 fn approx_zero_handles_edge_lane_patterns() {
-    assert!(Corners::ZERO.approx_zero(), "all-zero bytes");
-    assert!(Corners::all(0.0).approx_zero(), "+0.0 lanes");
+    assert!(Corners::ZERO.is_approx_zero(), "all-zero bytes");
+    assert!(Corners::all(0.0).is_approx_zero(), "+0.0 lanes");
     assert!(
-        Corners::all(-0.0).approx_zero(),
+        Corners::all(-0.0).is_approx_zero(),
         "-0.0 lanes (sign bit set)"
     );
-    assert!(Corners::all(EPS * 0.5).approx_zero(), "sub-EPS positive");
+    assert!(Corners::all(EPS * 0.5).is_approx_zero(), "sub-EPS positive");
     assert!(
-        !Corners::all(EPS * 10.0).approx_zero(),
+        !Corners::all(EPS * 10.0).is_approx_zero(),
         "10×EPS must NOT register as zero",
     );
     // One asymmetric lane above EPS — short-circuit must not
     // accept it just because the other three lanes are zero.
     assert!(
-        !Corners::new(0.0, 0.0, 1.0, 0.0).approx_zero(),
+        !Corners::new(0.0, 0.0, 1.0, 0.0).is_approx_zero(),
         "single non-zero lane breaks zero contract",
     );
     // NaN bits land in the exponent region (≥ 0x7C00 absolute),
     // far above the EPS threshold — must classify as non-zero.
     assert!(
-        !Corners::all(f32::NAN).approx_zero(),
+        !Corners::all(f32::NAN).is_approx_zero(),
         "NaN lanes are not zero"
     );
 }

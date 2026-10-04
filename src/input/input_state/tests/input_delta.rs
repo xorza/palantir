@@ -236,7 +236,7 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
         delta.repaint_requested,
         "press on inert with prior focus → focus clear → repaint",
     );
-    assert_eq!(h.focused_id(), None, "focus must be cleared");
+    assert_eq!(h.focus(), None, "focus must be cleared");
 }
 
 /// A bare modifier press — `Key::Other` with no text, which is how a

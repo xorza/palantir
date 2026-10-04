@@ -653,7 +653,7 @@ impl WgpuBackend {
     /// Host CPU time for the whole of this — pass open, every recorded
     /// draw step, and the end-of-pass command replay that `pass`'s drop
     /// runs — publishes to
-    /// [`GpuPassStats::last_main_pass_cpu_ms`]. It is the one frame cost
+    /// [`GpuPassStats::last_main_pass_cpu`]. It is the one frame cost
     /// that scales with draw-step *count* rather than pixel count, so it
     /// is the metric the `record_pass` benchmark reads.
     fn run_main_pass(

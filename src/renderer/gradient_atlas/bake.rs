@@ -129,7 +129,7 @@ impl<'a> RampTexels<'a> {
         let lower_offset = self.stops[upper - 1].offset();
         let upper_offset = self.stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if domain::approx_zero(denominator) {
+        if domain::is_approx_zero(denominator) {
             return self.linear[upper];
         }
         let amount = (t - lower_offset) / denominator;

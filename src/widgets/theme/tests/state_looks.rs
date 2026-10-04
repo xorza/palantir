@@ -173,11 +173,11 @@ fn toggle_theme_pick_selects_pack_then_state() {
 }
 
 #[test]
-fn animated_look_line_height_px_delegates_to_text_style() {
+fn animated_look_line_height_delegates_to_text_style() {
     let look = AnimatedLook {
         background: Background::default(),
         text: TextStyle {
-            font_size_px: 16.0,
+            font_size: 16.0,
             color: RgbaF32::TRANSPARENT,
             line_height_mult: 1.5,
             family: FontFamily::SANS,
@@ -185,7 +185,7 @@ fn animated_look_line_height_px_delegates_to_text_style() {
             slant: FontSlant::Normal,
         },
     };
-    assert_eq!(look.text.font().line_height_px, 24.0);
+    assert_eq!(look.text.font().line_height, 24.0);
 }
 
 /// The picker's channel values keep `DragValueTheme`'s promise: the editor
@@ -206,7 +206,7 @@ fn the_picker_value_editor_is_its_chip() {
         value.chip.looks.normal.text,
         TextStyleOverrides {
             family: Some(FontFamily::MONO),
-            font_size_px: Some(13.0),
+            font_size: Some(13.0),
             ..TextStyleOverrides::NONE
         },
         "the face and size are the picker's, every other axis the theme's",

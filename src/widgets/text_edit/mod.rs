@@ -32,6 +32,7 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::text::text_input::TextInput;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -66,6 +67,10 @@ struct TextEditState {
     /// disjoint, where a field of `view` would have to be moved out and put
     /// back around every call that touches the rest of the view.
     selection_rects: Vec<Rect>,
+    /// An interned placeholder's characters, copied out of the arena so the
+    /// pass can measure them while it holds `&mut Ui`. Retained, so a
+    /// steady placeholder allocates once.
+    placeholder: String,
 }
 
 /// Editable text leaf. Supports typing (whatever text a press produced —
@@ -89,7 +94,7 @@ pub struct TextEdit<'a> {
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
     overrides: TextStyleOverrides,
-    placeholder: &'a str,
+    placeholder: TextInput<'a>,
     /// When `true`, Enter inserts `\n`, paste preserves newlines,
     /// click hit-test + caret + selection render in 2D, and text
     /// soft-wraps to the editor's inner width via cosmic-text. v1
@@ -157,7 +162,7 @@ impl<'a> TextEdit<'a> {
             text,
             style: None,
             overrides: TextStyleOverrides::NONE,
-            placeholder: "",
+            placeholder: TextInput::Borrowed(""),
             multiline: false,
             text_align: None,
             max_chars: None,
@@ -201,7 +206,7 @@ impl<'a> TextEdit<'a> {
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size_px = Some(domain::length(px));
+        self.overrides.font_size = Some(domain::length(px));
         self
     }
 
@@ -257,8 +262,8 @@ impl<'a> TextEdit<'a> {
     /// same-frame pointer press — so a value handed to it (via `set_focus`)
     /// is replaced by the first keystroke. Clicking into the field still
     /// places the caret at the hit. Default off.
-    pub const fn select_all_on_focus(mut self) -> Self {
-        self.select_all_on_focus = true;
+    pub const fn select_all_on_focus(mut self, on: bool) -> Self {
+        self.select_all_on_focus = on;
         self
     }
 
@@ -274,8 +279,8 @@ impl<'a> TextEdit<'a> {
     /// Off by default, because the other archetype is the common one: an
     /// inline rename or a value editor, where Escape *is* the cancel and
     /// must not reach past the field to close the surface behind it.
-    pub const fn escape_falls_through(mut self) -> Self {
-        self.escape_falls_through = true;
+    pub const fn escape_falls_through(mut self, on: bool) -> Self {
+        self.escape_falls_through = on;
         self
     }
 
@@ -308,12 +313,10 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Text drawn in place of an empty, unfocused buffer.
-    ///
-    /// Borrowed for the frame, so it need not be `'static` — a prompt from
-    /// a locale table goes straight in.
-    pub const fn placeholder(mut self, s: &'a str) -> Self {
-        self.placeholder = s;
+    /// Text drawn in place of an empty, unfocused buffer: borrowed, owned,
+    /// interned or `fmt!` output, as every widget's text.
+    pub fn placeholder(mut self, text: impl Into<TextInput<'a>>) -> Self {
+        self.placeholder = text.into();
         self
     }
 
@@ -348,7 +351,7 @@ impl<'a> TextEdit<'a> {
     /// [`Self::show`] for why it is passed in rather than looked up.
     /// Returns the borrow-free half of [`TextEditResponse`].
     fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> EditSignals {
-        let mut is_focused = ui.focused_id() == Some(id);
+        let mut is_focused = ui.focus() == Some(id);
         // The pass's one probe, and what `show` hands back at the end.
         // Nothing below can move a cascade or layout answer — both are frozen
         // for the pass — so the only field kept current is `focused`, updated
@@ -505,15 +508,24 @@ impl<'a> TextEdit<'a> {
         let wheel = if response.disabled {
             Vec2::ZERO
         } else {
-            response.scroll.pan(ctx.font.line_height_px)
+            response.scroll.pan(ctx.font.line_height)
         };
 
+        let placeholder: &str = match &self.placeholder {
+            TextInput::Borrowed(text) => text,
+            TextInput::Owned(text) => text,
+            TextInput::Interned(text) => {
+                state.placeholder.clear();
+                state.placeholder.push_str(ui.text(*text));
+                &state.placeholder
+            }
+        };
         let geometry = TextGeometry::resolve(
             ui,
             GeometryInput {
                 layout,
                 text: self.text,
-                placeholder: self.placeholder,
+                placeholder,
                 caret: caret_byte,
                 selection: is_focused.then_some(selection).flatten(),
             },
@@ -543,7 +555,7 @@ impl<'a> TextEdit<'a> {
             chrome: look.background,
             block_id: id.with("text-block"),
             text: self.text,
-            placeholder: self.placeholder,
+            placeholder,
             geometry,
             selection_rects: &state.selection_rects,
             selection_color,

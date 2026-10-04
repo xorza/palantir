@@ -174,7 +174,7 @@ fn expander_mid_reveal_alloc_free() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            anim: Some(AnimSpec::duration(60.0, Easing::Linear)),
+            anim: Some(AnimSpec::duration(Duration::from_secs(60), Easing::Linear)),
             ..base.defaults
         },
         ..base
@@ -300,7 +300,7 @@ fn long_multiline_selection_alloc_free() {
         TextEdit::new(&mut document)
             .id(editor_id)
             .multiline(true)
-            .select_all_on_focus()
+            .select_all_on_focus(true)
             .size((Sizing::fixed(360.0), Sizing::fixed(500.0)))
             .show(ui);
     });

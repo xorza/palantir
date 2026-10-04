@@ -68,7 +68,7 @@ fn empty_then_populated_frame() {
 
 /// Pin: `Ui::frame` panics if `display.scale_factor()` is below `EPS`.
 #[test]
-#[should_panic(expected = "Display::scale_factor() must be finite and ≥ EPSILON")]
+#[should_panic(expected = "a scale factor must be finite and at least 1e-4")]
 fn frame_rejects_zero_scale_factor() {
     let mut h = UiHarness::new(UVec2::new(800, 600)).scale(0.0);
     let _ = h.frame(|_| {});
@@ -252,12 +252,12 @@ fn warmup_keeps_focus_requests() {
                 }
             }
             records += 1;
-            seen.push(ui.focused_id());
+            seen.push(ui.focus());
             Block::new().id(target).size(10.0).show(ui);
         });
         assert_eq!(records, 2, "warmup + real");
         assert_eq!(seen, [request, request], "{before:?} → {request:?}");
-        assert_eq!(h.ui.focused_id(), request, "{before:?} → {request:?}");
+        assert_eq!(h.ui.focus(), request, "{before:?} → {request:?}");
     }
 }
 

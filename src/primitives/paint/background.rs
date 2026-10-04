@@ -2,7 +2,7 @@
 //! corner radii and a shadow, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::math::domain::paints_nothing;
+use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::shadow::Shadow;
@@ -21,9 +21,9 @@ use palantir_anim_derive::Animatable;
 /// `Animatable` derived: fill and border interpolate componentwise;
 /// `radius` is `#[animate(snap)]` (corner-radius morphing across
 /// states is rarely-wanted polish and would require `Corners:
-/// Animatable`). "No border" is `Stroke::ZERO` (width 0, transparent)
+/// Animatable`). "No border" is `Stroke::NONE` (width 0, transparent)
 /// — there is no `Option<Stroke>` here. The animation pipeline lerps
-/// `Stroke` directly through `Stroke::ZERO`; paint-time `is_noop`
+/// `Stroke` directly through `Stroke::NONE`; paint-time `is_noop`
 /// filtering catches both authored and animation-decayed no-ops.
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A
@@ -50,17 +50,17 @@ pub struct Background {
     /// the padding, so children sit inside the border without the caller
     /// subtracting it.
     ///
-    /// `Stroke::ZERO` (the `Default`) omitted from serialized output —
+    /// `Stroke::NONE` (the `Default`) omitted from serialized output —
     /// the common "fill-only, no border" case stays compact.
     #[serde(default, skip_serializing_if = "Stroke::is_noop")]
     pub border: Stroke,
     /// Zero (or sub-`EPS`) radii — the `Default` — omitted from
     /// serialized output.
-    #[serde(default, skip_serializing_if = "Corners::approx_zero")]
+    #[serde(default, skip_serializing_if = "Corners::is_approx_zero")]
     #[animate(snap)]
     pub corners: Corners,
     /// Single drop / inset shadow. `Shadow::NONE` (the `Default`) is
-    /// the "no shadow" sentinel — matches the `Stroke::ZERO` border
+    /// the "no shadow" sentinel — matches the `Stroke::NONE` border
     /// convention so the field stays plain `Shadow` and animates
     /// componentwise (alpha lerps in/out for hover-elevation), with
     /// the paint-time `is_noop` filter catching authored or
@@ -89,7 +89,7 @@ impl Background {
     /// suppress.
     pub const NONE: Self = Self {
         fill: Brush::TRANSPARENT,
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
@@ -122,7 +122,7 @@ impl Background {
     /// colour makes invisible is still a border the fold makes room for.
     #[inline]
     pub(crate) const fn border_inset(&self) -> f32 {
-        if paints_nothing(self.border.width) {
+        if is_invisible(self.border.width) {
             0.0
         } else {
             self.border.width
@@ -133,7 +133,7 @@ impl Background {
     pub fn fill<I: Into<Brush>>(brush: I) -> Self {
         Self {
             fill: brush.into(),
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
             corners: Corners::ZERO,
             shadow: Shadow::NONE,
         }
@@ -144,7 +144,7 @@ impl Background {
     pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self {
         Self {
             fill: brush.into(),
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
             corners,
             shadow: Shadow::NONE,
         }
@@ -194,7 +194,7 @@ mod tests {
     // `with_border`/`with_shadow` chained in a const context. If either
     // regresses to non-const, this fails to compile.
     const _CONST_BUILDER: Background = Background::NONE
-        .with_border(Stroke::ZERO)
+        .with_border(Stroke::NONE)
         .with_shadow(Shadow::NONE);
 
     #[test]

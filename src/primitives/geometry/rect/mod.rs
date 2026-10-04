@@ -7,6 +7,7 @@ pub(crate) mod aabb;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::float_hash::canon_bits;
 use crate::primitives::math::nan::{self, NanCheck};
@@ -57,6 +58,17 @@ impl FloatHash for Rect {
 }
 
 impl Rect {
+    /// Panics unless every component is an [offset](crate::widget::domain::offset):
+    /// finite. The check shape geometry faces where it enters a shape. A
+    /// negative size is not refused: it paints nothing.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(self) {
+        vec2::offset(self.min);
+        domain::offset(self.size.w);
+        domain::offset(self.size.h);
+    }
+
     /// Origin at `(0, 0)` with zero extent.
     pub const ZERO: Self = Self {
         min: Vec2::ZERO,
@@ -275,7 +287,7 @@ impl Rect {
         // corner inward to the arc's 45° point.
         const KAPPA: f32 = 1.0 - FRAC_1_SQRT_2;
 
-        if corners.approx_zero() {
+        if corners.is_approx_zero() {
             return self;
         }
         // Single SIMD f16x4→f32x4 unpack — `tl()`/`tr()`/`br()`/`bl()`

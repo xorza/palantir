@@ -61,8 +61,8 @@ const LEADING_RATIO: f32 = 1.2;
 /// `internals`, so this side gets it too rather than re-deriving the
 /// constants per helper.
 const UI_FACE: TestShape = TestShape::new(GlyphFont {
-    size_px: 14.0,
-    line_height_px: 14.0 * LEADING_RATIO,
+    size: 14.0,
+    line_height: 14.0 * LEADING_RATIO,
     family: FontFamily::SANS,
     weight: FontWeight::REGULAR,
     slant: FontSlant::Normal,
@@ -87,15 +87,15 @@ fn measure_truncated_face(
     slot: TextRunSlot,
     text: &str,
     width: f32,
-    font_size_px: f32,
+    font_size: f32,
     weight: FontWeight,
 ) -> ShapedText {
     // Overridden field by field rather than by struct update: outside
     // `cfg(test)` the fixture is `font` alone, so `..UI_FACE` would be
     // updating nothing.
     let mut shape = UI_FACE;
-    shape.font.size_px = font_size_px;
-    shape.font.line_height_px = font_size_px * LEADING_RATIO;
+    shape.font.size = font_size;
+    shape.font.line_height = font_size * LEADING_RATIO;
     shape.font.weight = weight;
     let request = shape.unbounded_request(text);
     text_system

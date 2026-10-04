@@ -800,8 +800,8 @@ impl UiHarness {
     /// makes a between-frames read wrong. `response_for` deliberately
     /// stays off this rung; use [`Self::rect`] for geometry and
     /// [`Self::response_in`] for edges.
-    pub const fn focused_id(&self) -> Option<WidgetId> {
-        self.ui.focused_id()
+    pub const fn focus(&self) -> Option<WidgetId> {
+        self.ui.focus()
     }
 
     /// [`Ui::set_focus`].
@@ -814,9 +814,9 @@ impl UiHarness {
         self.ui.clear_focus();
     }
 
-    /// [`Ui::focus_within`].
-    pub fn focus_within(&self, ancestor: WidgetId) -> bool {
-        self.ui.focus_within(ancestor)
+    /// [`Ui::is_focus_within`].
+    pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
+        self.ui.is_focus_within(ancestor)
     }
 
     /// Topmost widget the pointer would hit at `pos`, by the same filter

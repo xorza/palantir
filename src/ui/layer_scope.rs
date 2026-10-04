@@ -3,6 +3,7 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::placement::Placement;
+use crate::primitives::math::domain::{self, vec2};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
@@ -40,8 +41,13 @@ impl<'a> LayerScope<'a> {
     ///
     /// [`Self::anchored`] is the other form, and the one an overlay
     /// wants: it moves the body to keep it on screen.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn fixed_at(mut self, point: Vec2) -> Self {
-        self.placement = self.placement.with_fixed(point);
+        self.placement = self.placement.with_fixed(vec2::offset(point));
         self
     }
 
@@ -60,8 +66,16 @@ impl<'a> LayerScope<'a> {
     /// Cap the available extent at `size`, still clamped to the surface
     /// so an oversized cap can't bleed past the viewport. The root's own
     /// `Sizing` (Hug / Fill / Fixed) governs the painted size within it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes are [extents](crate::widget::domain::extent).
+    #[track_caller]
     pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.placement = self.placement.with_max_size(size.into());
+        let size = size.into();
+        domain::extent(size.w);
+        domain::extent(size.h);
+        self.placement = self.placement.with_max_size(size);
         self
     }
 

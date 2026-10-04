@@ -88,7 +88,8 @@ impl<'a> FrameCycle<'a> {
         // is screened where it enters, and neither door sees the other.
         assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor()),
-            "Display::scale_factor() must be finite and ≥ EPSILON; got {}",
+            "{}, got {}",
+            display::SCALE_RULE,
             stamp.display.scale_factor(),
         );
 

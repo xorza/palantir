@@ -223,15 +223,15 @@ impl Theme {
     pub fn scale_text(&mut self, factor: f32) {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
         let scale = |px: f32| px * factor;
-        let ambient = self.text.with_font_size(scale(self.text.font_size_px));
+        let ambient = self.text.with_font_size(scale(self.text.font_size));
         let mut metrics_valid = true;
         self.for_each_text(|text| {
             metrics_valid &= match text {
-                ThemeText::Style(style) => style
-                    .with_font_size(scale(style.font_size_px))
-                    .metrics_valid(),
+                ThemeText::Style(style) => {
+                    style.with_font_size(scale(style.font_size)).metrics_valid()
+                }
                 ThemeText::Overrides(o) => TextStyleOverrides {
-                    font_size_px: o.font_size_px.map(scale),
+                    font_size: o.font_size.map(scale),
                     ..*o
                 }
                 .apply(&ambient)
@@ -240,8 +240,8 @@ impl Theme {
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(|text| match text {
-            ThemeText::Style(style) => style.font_size_px = scale(style.font_size_px),
-            ThemeText::Overrides(o) => o.font_size_px = o.font_size_px.map(scale),
+            ThemeText::Style(style) => style.font_size = scale(style.font_size),
+            ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
         });
     }
 
@@ -256,7 +256,7 @@ impl Theme {
     /// runtime backstop is
     /// `tests::text_scale::scale_text_reaches_every_font_size`,
     /// which scales a default theme and asserts over its serialized
-    /// form that every `font_size_px` moved. The test can only see
+    /// form that every `font_size` moved. The test can only see
     /// sizes the default theme materializes — a look's size override
     /// left unset by default is invisible to it — which is exactly the
     /// gap the destructuring closes.

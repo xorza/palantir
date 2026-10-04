@@ -103,7 +103,7 @@ fn escape_reports_lost_focus_on_the_blur_frame() {
         escaped.a().lost_focus,
         "Escape reports the focus edge immediately"
     );
-    assert!(h.focused_id().is_none());
+    assert!(h.focus().is_none());
     assert!(
         !frame(&mut h, &mut buf).a().lost_focus,
         "the edge is not repeated next frame",
@@ -165,7 +165,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     assert_eq!(buf, "", "typing into a disabled editor is dropped");
     assert!(!sig.a().changed, "no change reported");
     assert!(sig.a().lost_focus, "disable frame reports lost_focus");
-    assert!(h.focused_id().is_none(), "focus was kicked out");
+    assert!(h.focus().is_none(), "focus was kicked out");
 }
 
 /// Every chord `TextEdit` binds as an editing action must classify as
@@ -273,10 +273,6 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         h.key(key);
         let at_root = h.frame_value(|ui| scene(ui, &mut buf, probe));
         assert_eq!(at_root, reaches_root, "{key:?} under {mods:?}");
-        assert_eq!(
-            h.focused_id(),
-            Some(field),
-            "{key:?}: the field keeps focus"
-        );
+        assert_eq!(h.focus(), Some(field), "{key:?}: the field keeps focus");
     }
 }

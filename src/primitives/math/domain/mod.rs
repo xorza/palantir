@@ -49,12 +49,14 @@
 //!
 //! Every function is a `const fn` on `f32` rather than a method, because a
 //! trait method cannot be `const` and the setters that call these are.
-//! [`vec2`] holds the per-axis twins a two-axis widget needs.
+//! [`vec2`] holds the per-axis twins a two-axis widget needs, and [`f64`](mod@f64)
+//! the twins for the `f64` values a slider or a drag value binds.
 
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 use std::ops::RangeInclusive;
 
+pub mod f64;
 pub mod vec2;
 
 /// Float comparisons at UI tolerance.
@@ -83,7 +85,7 @@ pub(crate) const RANGE_RULE: &str = "a range must have finite ends";
 
 /// True if `v` is within [`EPS`] of zero.
 #[inline]
-pub const fn approx_zero(v: f32) -> bool {
+pub const fn is_approx_zero(v: f32) -> bool {
     v.abs() <= EPS
 }
 
@@ -91,7 +93,7 @@ pub const fn approx_zero(v: f32) -> bool {
 /// is NaN.
 #[inline]
 pub const fn approx_eq(a: f32, b: f32) -> bool {
-    approx_zero(a - b)
+    is_approx_zero(a - b)
 }
 
 /// True if `v` would produce no visible paint when used as a magnitude
@@ -107,7 +109,7 @@ pub const fn approx_eq(a: f32, b: f32) -> bool {
 /// question, and a type that carries both geometry and paint answers it by
 /// asking the first and then testing its ink.
 #[inline]
-pub const fn paints_nothing(v: f32) -> bool {
+pub const fn is_invisible(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
 
@@ -120,13 +122,13 @@ pub const fn paints_nothing(v: f32) -> bool {
 /// a tolerance instead returns an enormous number for a quantity every
 /// caller then reads as a fraction: a wrong answer stated confidently.
 ///
-/// The gate is [`paints_nothing`], so a *negative* `d` is degenerate too and
+/// The gate is [`is_invisible`], so a *negative* `d` is degenerate too and
 /// not merely a sign flip. Every `d` this divides is a distance, and one
 /// that came out backwards has no share to report any more than a zero
 /// one does.
 #[inline]
 pub const fn share_of(n: f32, d: f32) -> f32 {
-    if paints_nothing(d) { 0.0 } else { n / d }
+    if is_invisible(d) { 0.0 } else { n / d }
 }
 
 /// Where `pos` sits along a track of `extent` that reserves `band` to a

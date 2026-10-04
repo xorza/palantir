@@ -16,7 +16,7 @@ struct Look {
     // Non-animated: lerp jumps to the target, spring math noops on it,
     // and it contributes nothing to the magnitude.
     #[animate(snap)]
-    font_size_px: f32,
+    font_size: f32,
 }
 ```
 

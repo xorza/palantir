@@ -54,7 +54,7 @@ pub trait GpuPaint: 'static {
     /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) keeps its
     /// off-screen texture — and neither does a resize, since the resolved
     /// color target is framework-owned. Recreate your own depth / MSAA
-    /// attachments inside [`Self::paint`] when [`GpuFrameCtx::size_px`]
+    /// attachments inside [`Self::paint`] when [`GpuFrameCtx::physical_size`]
     /// changes.
     ///
     /// It runs again only after the view is genuinely gone and comes back:

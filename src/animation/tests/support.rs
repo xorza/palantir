@@ -11,6 +11,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use glam::UVec2;
+use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);
 
@@ -112,5 +113,5 @@ pub(super) fn closed_form_settle_step(
 }
 
 pub(super) fn linear_100ms() -> AnimSpec {
-    AnimSpec::duration(0.1, Easing::Linear)
+    AnimSpec::duration(Duration::from_millis(100), Easing::Linear)
 }

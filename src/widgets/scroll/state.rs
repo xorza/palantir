@@ -218,7 +218,7 @@ impl ScrollState {
         } else {
             1.0
         };
-        if !domain::approx_zero(dz_eff - 1.0) {
+        if !domain::is_approx_zero(dz_eff - 1.0) {
             self.offset = (self.offset + pivot) * dz_eff - pivot;
             self.zoom = new_zoom;
         }

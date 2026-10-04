@@ -263,7 +263,7 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
             font: params.font,
             wrap: TextWrap::Wrap,
             align: Align::h(HAlign::Auto),
-            max_width_px: None,
+            max_width: None,
         }
         .unbounded_key()
         .is_some(),
@@ -491,7 +491,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             font: params.font,
             wrap,
             align: Align::h(HAlign::Auto),
-            max_width_px: Some(width),
+            max_width: Some(width),
         });
         assert_eq!(
             probed.shaped_key(),
@@ -544,7 +544,7 @@ fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
         font: shape(16.0).leading(19.2).font,
         wrap: TextWrap::SingleLine,
         align: Align::h(halign),
-        max_width_px: None,
+        max_width: None,
     };
 
     let left = shaper.layout(&run(HAlign::Left));

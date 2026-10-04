@@ -31,7 +31,7 @@ pub enum ZoomPivot {
 }
 
 /// Per-widget zoom configuration. Attach to a `Scroll::both` via
-/// [`Scroll::zoomable`](crate::Scroll::zoomable) / [`Scroll::zoomable_with`](crate::Scroll::zoomable_with).
+/// [`Scroll::zoomable`](crate::Scroll::zoomable) / [`Scroll::zoom_config`](crate::Scroll::zoom_config).
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ZoomConfig {

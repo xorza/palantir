@@ -27,7 +27,7 @@ impl QuadBuilder {
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.into()),
-            stroke: Stroke::ZERO,
+            stroke: Stroke::NONE,
         }
     }
 

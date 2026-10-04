@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::AxisAlign;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::math::domain::{self, vec2};
 use glam::Vec2;
 
 /// Which side of the anchored rect the body sits on — outside it, not
@@ -102,27 +103,57 @@ impl Anchor {
     /// overlay raised at the pointer rather than off a widget's rect.
     /// Still flips and shifts, so a menu opened near the bottom edge
     /// comes up rather than off-screen.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn at_point(point: Vec2) -> Self {
+        let point = vec2::offset(point);
         Self::below(Rect::new(point.x, point.y, 0.0, 0.0))
     }
 
     /// Above `rect`, falling back to below it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn above(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::Above, AnchorAlign::Start, 0.0)
     }
 
     /// Below `rect`, falling back to above it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn below(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::Below, AnchorAlign::Start, 0.0)
     }
 
     /// Left of `rect`, falling back to its right.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn left_of(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::LeftOf, AnchorAlign::Start, 0.0)
     }
 
     /// Right of `rect`, falling back to its left.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn right_of(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::RightOf, AnchorAlign::Start, 0.0)
     }
 
@@ -137,9 +168,14 @@ impl Anchor {
     ///
     /// Zero by default, because a dropdown meets the trigger it drops out
     /// of. An overlay that reads as a separate object — a tooltip — sets
-    /// its own.
+    /// its own. `px`: a *length*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn with_gap(mut self, px: f32) -> Self {
-        self.gap = px;
+        self.gap = domain::length(px);
         self
     }
 

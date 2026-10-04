@@ -20,7 +20,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::domain;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -260,8 +260,13 @@ impl<'a> Scroll<'a> {
     ///
     /// Relative, because that is what a builder can state without first
     /// reading where the viewport already sits.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `delta` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub fn pan_by(mut self, delta: Vec2) -> Self {
-        self.pan_request += delta;
+        self.pan_request += vec2::offset(delta);
         self
     }
 
@@ -333,26 +338,46 @@ impl<'a> Scroll<'a> {
     /// band; `right`/`bottom` extend the positive band) — set them
     /// dynamically per frame from your own content's bounding box if
     /// you need the slack to track a moving leading edge.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.content_margin = m.into();
+        let m = m.into();
+        for edge in m.as_array() {
+            domain::length(edge);
+        }
+        self.content_margin = m;
         self
     }
 
-    /// Let the viewport zoom, pivot-anchored, with a default
-    /// [`ZoomConfig`]. A switch, not a step — [`Self::zoom_by`] is the
-    /// step.
+    /// Let the viewport zoom, pivot-anchored, under a default
+    /// [`ZoomConfig`] — the shorthand for [`Self::zoom_config`]. A switch,
+    /// not a step: [`Self::zoom_by`] is the step.
     ///
-    /// Asserts at record time that the scroll pans on both axes (built
-    /// via [`Scroll::both`]) — uniform scale on a single-axis scroll has
-    /// no clean answer (cross-axis content escapes the viewport with no
-    /// way to reach it). Debug builds reject the caller bug.
+    /// # Panics
+    ///
+    /// As [`Self::zoom_config`].
+    #[track_caller]
     pub fn zoomable(self) -> Self {
-        self.zoomable_with(ZoomConfig::default())
+        self.zoom_config(ZoomConfig::default())
     }
 
-    /// [`Self::zoomable`] with an explicit [`ZoomConfig`] in place of
-    /// the default. Same assert, same pivot rule.
-    pub fn zoomable_with(mut self, cfg: ZoomConfig) -> Self {
+    /// Let the viewport zoom under `cfg`'s range, step, modifier and pivot.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the scroll pans on both axes (built by
+    /// [`Scroll::both`]): a uniform scale on a single-axis scroll has no
+    /// clean answer, since content that escapes across the axis has no way
+    /// back into the viewport.
+    #[track_caller]
+    pub fn zoom_config(mut self, cfg: ZoomConfig) -> Self {
+        assert!(
+            self.axes.pans(Axis::X) && self.axes.pans(Axis::Y),
+            "a zoomable scroll must pan on both axes",
+        );
         self.zoom = Some(cfg);
         self.add_sense(Sense::PINCH)
     }
@@ -380,7 +405,7 @@ impl<'a> Scroll<'a> {
         // children for a dominant font — that's a future polish; for
         // now the active theme's text size is a good proxy and stays
         // consistent with what the user is reading.
-        let line_px = ui.theme().text.font().line_height_px;
+        let line_px = ui.theme().text.font().line_height;
         let scroll = response.scroll;
         let pan_raw = scroll.pan(line_px);
         // A theme with no line metric behind it contributes no notches,
@@ -410,7 +435,7 @@ impl<'a> Scroll<'a> {
         let centre = response
             .layout_rect
             .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
-        let zoom_changed = !domain::approx_zero(zoom_delta.get() - 1.0);
+        let zoom_changed = !domain::is_approx_zero(zoom_delta.get() - 1.0);
         let pivot = zoom_changed
             .then(
                 || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
@@ -458,7 +483,7 @@ impl<'a> Scroll<'a> {
                 reserve: self.bar_mode.gutter(self.axes, theme),
                 padding: self.widget.authored_padding().unwrap_or(Spacing::ZERO),
                 bar_thickness: theme.thickness,
-                min_thumb: theme.min_thumb_px,
+                min_thumb: theme.min_thumb,
             },
         }
     }
@@ -553,12 +578,6 @@ impl<'a> Scroll<'a> {
         // Identity resolves on the widget that came in; the outer wrapper
         // takes it below.
         let id = self.widget.resolve(ui);
-        if self.zoom.is_some() {
-            debug_assert!(
-                self.axes.pans(Axis::X) && self.axes.pans(Axis::Y),
-                "Scroll::zoomable requires Scroll::both — single-axis scroll has no clean zoom semantics",
-            );
-        }
         // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack, so wheel events over the bar gutter still pan the
         // viewport.
@@ -622,7 +641,7 @@ impl<'a> Scroll<'a> {
                 id,
                 ui,
                 ResponseState {
-                    focused: ui.focused_id() == Some(id),
+                    focused: ui.focus() == Some(id),
                     ..response
                 },
             ),

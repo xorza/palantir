@@ -269,8 +269,8 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
 fn add_direct_text(
     ui: &mut Ui,
     text: &'static str,
-    font_size_px: f32,
-    line_height_px: f32,
+    font_size: f32,
+    line_height: f32,
     wrap: TextWrap,
     local_origin: Option<glam::Vec2>,
 ) {
@@ -278,8 +278,8 @@ fn add_direct_text(
     let shape = Shape::text(
         text,
         GlyphFont {
-            line_height_px,
-            ..GlyphFont::new(font_size_px)
+            line_height,
+            ..GlyphFont::new(font_size)
         },
     )
     .color(RgbaF32::WHITE)

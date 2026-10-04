@@ -33,7 +33,7 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 ///
 /// `text` overrides [`crate::Theme::text`] axis by axis, so a look that
 /// dims the ink names the colour alone and keeps the theme's size and
-/// face: an app changing `theme.text.font_size_px` moves every label,
+/// face: an app changing `theme.text.font_size` moves every label,
 /// and one changing `theme.text.color` moves every label whose look
 /// didn't name a colour. `background` has no ambient to inherit —
 /// [`Background::NONE`] already *is* "paints nothing", and

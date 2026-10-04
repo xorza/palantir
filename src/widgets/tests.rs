@@ -286,12 +286,19 @@ fn chrome_setters_check_the_background() {
 #[test]
 fn widget_setters_check_their_kinds() {
     use crate::internals::panic_probe;
+    use crate::primitives::geometry::spacing::Spacing;
+    use crate::primitives::layout::anchor::Anchor;
     use crate::primitives::math::domain;
     use crate::primitives::paint::color::color_coords::ColorCoords;
+    use crate::scene::layer::Layer;
     use crate::widgets::color_field::ColorField;
+    use crate::widgets::dock::dock_state::DockState;
+    use crate::widgets::dock::dock_view::DockView;
     use crate::widgets::drag_value::DragValue;
     use crate::widgets::separator::Separator;
+    use crate::widgets::slider::Slider;
     use crate::widgets::spinner::Spinner;
+    use crate::widgets::splitter::Splitter;
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
 
@@ -357,6 +364,64 @@ fn widget_setters_check_their_kinds() {
         let mut value = 0.0_f64;
         drop(DragValue::new(&mut value).range(f64::NAN..=1.0));
     });
+
+    // The layout and overlay setters a frame calls: a pane floor and a
+    // margin are lengths, a pan and a point are offsets, a cap is an
+    // extent, a rect is geometry, and a slider step is positive.
+    let mut ratio = 0.5_f32;
+    let _ = Splitter::row(&mut ratio).min_pane(0.0);
+    let length: [fn(); 4] = [
+        || {
+            let mut ratio = 0.5_f32;
+            drop(Splitter::row(&mut ratio).min_pane(-1.0));
+        },
+        || {
+            let state = DockState::new("kinds.dock", 0_u32);
+            let mut ops = Vec::new();
+            drop(DockView::new(&state, &mut ops).min_pane(f32::NAN));
+        },
+        || drop(Scroll::both().content_margin(Spacing::new(0.0, -1.0, 0.0, 0.0))),
+        || {
+            let _ = Anchor::below(Rect::ZERO).with_gap(f32::INFINITY);
+        },
+    ];
+    for set in length {
+        panic_probe::assert_panics_with(domain::LENGTH_RULE, set);
+    }
+    let offset: [fn(); 4] = [
+        || drop(Scroll::both().pan_by(Vec2::new(f32::NAN, 0.0))),
+        || {
+            let _ = Anchor::at_point(Vec2::new(0.0, f32::INFINITY));
+        },
+        || drop(Popup::below(Rect::new(f32::NAN, 0.0, 4.0, 4.0))),
+        || {
+            let mut h = UiHarness::new(SURFACE);
+            ContextMenu::open(
+                &mut h.ui,
+                WidgetId::from_hash("m"),
+                Vec2::new(f32::NAN, 0.0),
+            );
+        },
+    ];
+    for set in offset {
+        panic_probe::assert_panics_with(domain::OFFSET_RULE, set);
+    }
+    panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.layer(Layer::Popup)
+            .fixed_at(Vec2::new(f32::NAN, 0.0))
+            .show(|_| {});
+    });
+    panic_probe::assert_panics_with(domain::EXTENT_RULE, || {
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.layer(Layer::Popup).max_size((-1.0, 10.0)).show(|_| {});
+    });
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
+            let mut value = 0.5_f64;
+            drop(Slider::new(&mut value, 0.0..=1.0).step(bad));
+        });
+    }
 }
 
 /// The frame property behind every coercing input: at its worst — NaN and

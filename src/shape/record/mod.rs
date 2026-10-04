@@ -104,9 +104,9 @@ pub(crate) enum ShapeRecord {
         /// — so the mirror between the three is one field, not four kept
         /// in step by eye.
         ///
-        /// `line_height_px` is a resolved logical-px leading, fed straight
+        /// `line_height` is a resolved logical-px leading, fed straight
         /// to the shaper's `Metrics::new`. Authoring-side widgets set it to
-        /// `size_px * line_height_mult` where the multiplier defaults to
+        /// `size * line_height_mult` where the multiplier defaults to
         /// [`LINE_HEIGHT_MULT`](crate::widgets::theme::text_style::LINE_HEIGHT_MULT)
         /// (1.2). Carrying the resolved px — instead of a multiplier the
         /// shaper would re-resolve — keeps widget conventions out of the
@@ -274,8 +274,8 @@ impl ShapeRecord {
             return false;
         };
         text.hash(h);
-        font.size_px.hash_visual(h);
-        font.line_height_px.hash_visual(h);
+        font.size.hash_visual(h);
+        font.line_height.hash_visual(h);
         // The five face axes in one word: family and weight are 16 bits
         // each, so the set needs a `u64`. Two runs that differ only in
         // weight, style or family must not collide here.

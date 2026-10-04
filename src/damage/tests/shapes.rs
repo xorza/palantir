@@ -715,8 +715,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
 
-    // Mono fallback geometry: glyph width = font_size_px * 0.5, line
-    // height = font_size_px. With font_size_px = 14, "abc" measures
+    // Mono fallback geometry: glyph width = font_size * 0.5, line
+    // height = font_size. With font_size = 14, "abc" measures
     // 21×14 and "abcdef" measures 42×14.
     const FONT: f32 = 14.0;
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
@@ -735,7 +735,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         Shape::text(
                             text,
                             GlyphFont {
-                                line_height_px: FONT,
+                                line_height: FONT,
                                 ..GlyphFont::new(FONT)
                             },
                         )
@@ -833,7 +833,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
                         Shape::text(
                             text,
                             GlyphFont {
-                                line_height_px: FONT,
+                                line_height: FONT,
                                 slant: FontSlant::Italic,
                                 ..GlyphFont::new(FONT)
                             },

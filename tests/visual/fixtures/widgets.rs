@@ -455,7 +455,7 @@ fn modal_dialog_matches_golden() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
                     fill: RgbaF32::srgb(0.35, 0.45, 0.65).into(),
-                    border: Stroke::ZERO,
+                    border: Stroke::NONE,
                     corners: Corners::ZERO,
                     shadow: Shadow::NONE,
                 })

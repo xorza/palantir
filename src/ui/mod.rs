@@ -720,7 +720,7 @@ impl Ui {
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames,
-            gpu_ms: self.resources.diagnostics().gpu_pass_stats.last_pass_ms(),
+            gpu: self.resources.diagnostics().gpu_pass_stats.last_pass(),
         }
     }
 
@@ -854,8 +854,8 @@ impl Ui {
     /// warns once — never to whatever the machine happens to have
     /// installed. Ask here to choose deterministically instead.
     #[inline]
-    pub fn font_available(&self, family: FontFamily) -> bool {
-        self.resources.text().font_available(family)
+    pub fn has_font(&self, family: FontFamily) -> bool {
+        self.resources.text().has_font(family)
     }
 
     /// Every family the shaper's database knows, system fonts included —
@@ -974,6 +974,23 @@ impl Ui {
     #[must_use]
     pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
         self.forest.record_store.intern(text.into())
+    }
+
+    /// The characters of `text`, a handle this pass interned — how a widget
+    /// reads text a caller handed it as an [`InternedStr`].
+    ///
+    /// The borrow holds `self`, so a widget that also needs `&mut Ui` while
+    /// it reads the text (to measure it with [`Self::probe_text`], or to
+    /// format it into a new string with [`Self::fmt`]) copies it into a
+    /// scratch `String` it keeps in its state first.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `text` was interned by an earlier pass or another
+    /// window, as [`Self::intern`] does.
+    #[must_use]
+    pub fn text(&self, text: InternedStr) -> &str {
+        self.forest.record_store.text(text)
     }
 
     /// Append `shape` to the active node and animate it at **paint**
@@ -1259,7 +1276,7 @@ impl Ui {
 
     /// Currently focused widget id, or `None`.
     #[inline]
-    pub const fn focused_id(&self) -> Option<WidgetId> {
+    pub const fn focus(&self) -> Option<WidgetId> {
         self.input.focused()
     }
 
@@ -1272,7 +1289,7 @@ impl Ui {
     /// off-screen subtrees keep the one holding an in-progress edit
     /// alive without enumerating every focusable widget it contains.
     #[inline]
-    pub fn focus_within(&self, ancestor: WidgetId) -> bool {
+    pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .focused()
             .is_some_and(|f| self.cascade.is_within(f, ancestor))
@@ -1280,7 +1297,7 @@ impl Ui {
 
     /// True when the pointer's hover target is `ancestor` or any widget
     /// recorded inside its subtree — the hover sibling of
-    /// [`Self::focus_within`], same cascade timing and layer caveats.
+    /// [`Self::is_focus_within`], same cascade timing and layer caveats.
     /// Prefer this over testing `Self::pointer_pos` against a rect for
     /// "is the pointer on me" styling: it's occlusion-aware (a panel
     /// stacked on top wins the pointer), and because it's a pure
@@ -1288,7 +1305,7 @@ impl Ui {
     /// the target changes — which is exactly when a repaint is already
     /// scheduled, so no `MOVE` watch is needed to stay fresh.
     #[inline]
-    pub fn hover_within(&self, ancestor: WidgetId) -> bool {
+    pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .hovered()
             .is_some_and(|h| self.cascade.is_within(h, ancestor))
@@ -1442,7 +1459,7 @@ impl Ui {
     /// Move keyboard focus to `id`. Bypasses [`FocusPolicy`], and takes
     /// effect at once rather than asking anything.
     ///
-    /// [`Self::focused_id`] reads back immediately, but key-class routing
+    /// [`Self::focus`] reads back immediately, but key-class routing
     /// does not move until the next record pass: this pass's keystrokes
     /// were already routed by the scope path resolved at its start. A
     /// widget that blurs itself on Escape therefore does not also hand
@@ -1474,7 +1491,7 @@ impl Ui {
     /// another reason.
     ///
     /// This is the *raw* pointer, so it ignores who owns input. For "is
-    /// the pointer on me" styling prefer [`Self::hover_within`], which
+    /// the pointer on me" styling prefer [`Self::is_hover_within`], which
     /// routes through the hit index and is therefore occlusion- and
     /// overlay-aware.
     #[inline]

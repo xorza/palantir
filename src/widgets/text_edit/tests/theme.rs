@@ -10,7 +10,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(UVec2::new(600, 200));
-    h.ui.theme_mut().text.font_size_px = 22.0;
+    h.ui.theme_mut().text.font_size = 22.0;
     h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE.with_font_size(24.0);
     let mut buf = String::from("hi");
 
@@ -39,7 +39,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let read_fs = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.size_px),
+                ShapeRecord::Text { font, .. } => Some(font.size),
                 _ => None,
             })
             .unwrap()
@@ -148,7 +148,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let read_lh = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.line_height_px),
+                ShapeRecord::Text { font, .. } => Some(font.line_height),
                 _ => None,
             })
             .unwrap()
@@ -188,9 +188,9 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         ("infinite line height", 16.0, f32::INFINITY),
     ];
 
-    for (label, font_size_px, line_height_mult) in cases {
+    for (label, font_size, line_height_mult) in cases {
         let style = TextStyle {
-            font_size_px,
+            font_size,
             line_height_mult,
             ..TextStyle::default()
         };
@@ -215,7 +215,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         }
 
         h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE
-            .with_font_size(font_size_px)
+            .with_font_size(font_size)
             .with_line_height_mult(line_height_mult);
         let calls = h.ui.shaper().measure_calls();
 
@@ -302,7 +302,7 @@ fn textedit_style_override_replaces_default_theme() {
         });
         let lh = painted_shapes(&h.ui, leaf)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.line_height_px),
+                ShapeRecord::Text { font, .. } => Some(font.line_height),
                 _ => None,
             })
             .unwrap();
@@ -329,7 +329,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             .inner
     });
     let text_shape = painted_shapes(&h.ui, leaf_node).find_map(|s| match s {
-        ShapeRecord::Text { font, .. } => Some((font.size_px, font.line_height_px)),
+        ShapeRecord::Text { font, .. } => Some((font.size, font.line_height)),
         _ => None,
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
@@ -339,7 +339,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     assert_eq!(
         lh,
         (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0,
-        "default line_height_px is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
+        "default line_height is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
     );
     assert_eq!(lh, 19.203125);
 }

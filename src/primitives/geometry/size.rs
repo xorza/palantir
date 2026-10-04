@@ -68,11 +68,11 @@ impl Size {
 
     /// True if both axes are within `EPS` of zero — i.e. this size
     /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
-    /// match the crate's scalar `approx_zero` predicate.
+    /// match the crate's scalar `is_approx_zero` predicate.
     /// For "paints no pixels" use [`Self::is_paint_empty`] —
     /// different (looser) predicate.
-    pub const fn approx_zero(self) -> bool {
-        domain::approx_zero(self.w) && domain::approx_zero(self.h)
+    pub const fn is_approx_zero(self) -> bool {
+        domain::is_approx_zero(self.w) && domain::is_approx_zero(self.h)
     }
 
     /// True when either axis is at or below `EPS` (including NaN /
@@ -81,7 +81,7 @@ impl Size {
     /// zero-extent geometry before emit / cache work runs.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        domain::paints_nothing(self.w) || domain::paints_nothing(self.h)
+        domain::is_invisible(self.w) || domain::is_invisible(self.h)
     }
 
     /// True if either axis is NaN. `const`, so the const predicates that

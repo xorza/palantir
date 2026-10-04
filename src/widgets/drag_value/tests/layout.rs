@@ -236,3 +236,46 @@ fn entering_edit_mode_keeps_the_chips_box() {
         "entering edit mode resized the field (chip {chip:?}, editor {editor:?})",
     );
 }
+
+/// The suffix takes every form of text a widget takes, and each one
+/// labels the chip the same: borrowed, owned, interned this pass, and
+/// `fmt!` output. The interned form is copied out of the arena while the
+/// label is formatted into it, which is the case a plain `&str` never
+/// meets. A chip with no suffix is narrower, so the width reads the
+/// suffix.
+#[test]
+fn every_text_form_labels_the_same_suffix() {
+    use crate::primitives::text::text_input::TextInput;
+
+    type Form = fn(&mut Ui) -> TextInput<'static>;
+    let forms: [(&str, Form); 5] = [
+        ("none", |_| TextInput::default()),
+        ("borrowed", |_| " fps".into()),
+        ("owned", |_| " fps".to_owned().into()),
+        ("interned", |ui| ui.intern(" fps").into()),
+        ("fmt", |ui| crate::fmt!(ui, " {}", "fps").into()),
+    ];
+    let id = WidgetId::from_hash("dv-suffix");
+    let widths = forms.map(|(label, form)| {
+        let mut h = UiHarness::new(UVec2::new(400, 120));
+        let mut fps = 120_i64;
+        for _ in 0..2 {
+            h.frame(|ui| {
+                Panel::hstack().auto_id().show(ui, |ui| {
+                    let suffix = form(ui);
+                    DragValue::new(&mut fps)
+                        .suffix(suffix)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .id(id)
+                        .show(ui);
+                });
+            });
+        }
+        (label, h.arranged(id).size.w)
+    });
+    let [none, borrowed, rest @ ..] = widths;
+    assert!(borrowed.1 > none.1, "premise: the suffix widens the chip");
+    for (label, w) in rest {
+        assert_eq!(w, borrowed.1, "{label}");
+    }
+}

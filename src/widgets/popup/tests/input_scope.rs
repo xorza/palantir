@@ -240,13 +240,10 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                         .id(WidgetId::from_hash("filter-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _handle| {
-                            let edit = TextEdit::new(buf).id(field);
-                            let edit = if falls_through {
-                                edit.escape_falls_through()
-                            } else {
-                                edit
-                            };
-                            edit.show(ui);
+                            TextEdit::new(buf)
+                                .id(field)
+                                .escape_falls_through(falls_through)
+                                .show(ui);
                         })
                         .dismissed
                 })
@@ -267,11 +264,11 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         h.frame(|ui| {
             scene(ui, &mut buf);
         });
-        assert_eq!(h.focused_id(), Some(field), "the field holds focus");
+        assert_eq!(h.focus(), Some(field), "the field holds focus");
 
         h.key(Key::Escape);
         let dismissed = h.frame_value(|ui| scene(ui, &mut buf));
-        (dismissed, h.focused_id())
+        (dismissed, h.focus())
     }
 
     use crate::input::keyboard::key::Key;
