@@ -3,9 +3,9 @@
 // compile in front of every one of them — nothing may declare a
 // binding, which is the one thing they disagree about.
 
-// The whole immediate region: the viewport size, written once per pass
-// by the backend. Every pipeline declares the same size
-// (`IMMEDIATES_BYTES`), so the bytes stay valid across a pipeline switch.
+// The whole immediate region: the viewport size, which the backend
+// pushes after every pipeline bind. Every pipeline layout declares its
+// size, `IMMEDIATES_BYTES`.
 //
 // **Flat members, no nested structs**, should it ever grow: HLSL
 // constant-buffer rules start a *struct* member on the next 16-byte

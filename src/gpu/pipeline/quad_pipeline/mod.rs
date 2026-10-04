@@ -157,8 +157,8 @@ impl QuadPipeline {
     /// Bind a mask pipeline (stamp or clear — the schedule picks) +
     /// the mask instance buffer. Caller sets `stencil_reference` per
     /// draw (the chain level for stamps, 0 for clears). Group 0 is the
-    /// shared gradient bind group; viewport rides immediates,
-    /// pre-pushed by the backend.
+    /// shared gradient bind group; the backend pushes the viewport
+    /// after the bind.
     pub(crate) fn bind_mask<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,

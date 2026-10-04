@@ -5,19 +5,6 @@ Whoever addresses an item deletes it.
 Scope: `src/gpu` (`WgpuBackend` and everything it draws through), the
 backend half of the renderer. Test code is out of scope.
 
-## The immediate-region contract is stated in three ways that disagree
-
-- [ ] `src/gpu/pipeline/mod.rs:15-24`, `src/gpu/pipeline/pipeline_recipe.rs:66-69`,
-  `src/gpu/surface/viewport.rs:1-6` — all three say that the viewport is
-  written once per pass and stays valid across a pipeline switch, because
-  every layout declares the same size. `render_groups`
-  (`wgpu_backend/mod.rs:796-802`) re-pushes it after every rebind and says
-  that it does not trust that contract. The code that runs is the re-push.
-  Target: one statement of the rule. Each bind pushes the viewport, and
-  every layout declares `IMMEDIATES_BYTES` because the prelude declares
-  `Immediates` in every shader. Remove the "valid across a switch"
-  reasoning from the three docs.
-
 ## Two texture-binding shapes where the code says there is one
 
 - [ ] `src/gpu/resource/gpu_gradient_atlas.rs:53-58`, `:87`, `:92` —

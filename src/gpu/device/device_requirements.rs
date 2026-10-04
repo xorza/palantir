@@ -55,7 +55,7 @@ impl DeviceRequirements {
     }
 
     /// The two conditions Palantir cannot draw without: its non-negotiable
-    /// features, and immediate-region bytes for the text pipeline.
+    /// features, and the immediate-region bytes the viewport rides in.
     ///
     /// Both entry points answer it — [`Self::against`] before folding the
     /// rest of a request around it, [`Self::met_by`] on a device where the

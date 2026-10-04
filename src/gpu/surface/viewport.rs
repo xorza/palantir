@@ -2,8 +2,9 @@
 //! [`ViewportPush`] carrier every shader's shared `Immediates`
 //! region reads as `imm.viewport_size` (offset 0). The whole quad /
 //! curve / mesh / image / text family shares the same immediate layout
-//! ([`crate::gpu::pipeline::IMMEDIATES_BYTES`]), so a single `set_immediates(0, ..)`
-//! per pass covers all of them — no bind group, no uniform buffer.
+//! ([`crate::gpu::pipeline::IMMEDIATES_BYTES`]), and the backend pushes
+//! the viewport after every pipeline bind — no bind group, no uniform
+//! buffer.
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;

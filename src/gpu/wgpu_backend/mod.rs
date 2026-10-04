@@ -806,12 +806,8 @@ impl WgpuBackend {
         }
 
         // `viewport.push_into(pass)` is called after every (re)bind
-        // below. Cheap (register-mapped `set_immediates`, no buffer
-        // round-trip) and dodges the immediate-state-survives-pipeline-
-        // switch contract entirely — wgpu's IMMEDIATES feature claims
-        // it does, but the symptom of a missed push is silent NDC
-        // corruption (wrong-scaled quads painting outside their
-        // damage scissor). Re-push is the unambiguous fix.
+        // below — the rule `IMMEDIATES_BYTES` states. Cheap: a
+        // register-mapped `set_immediates`, no buffer round-trip.
         //
         // `rebind` bundles the "bind ⇒ re-push viewport ⇒ record bound"
         // triple so no draw arm can bind a pipeline and forget the
