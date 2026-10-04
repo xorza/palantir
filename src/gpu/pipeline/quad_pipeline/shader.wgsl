@@ -16,19 +16,17 @@ const ZERO_EPS: f32 = 1e-6;
 // limit keeps `1/σ` out of the arithmetic.
 const BLUR_EPS: f32 = 1e-4;
 
-// How far past the pixel box the Gaussian is followed, in σ. The tail
-// left out is Φ(−4) ≈ 3e-5 of the kernel's weight.
-const BLUR_REACH_SIGMAS: f32 = 4.0;
+// How far a shadow's Gaussian is followed, in σ (`ShadowGeom::REACH_SIGMAS`):
+// a drop shadow's quad reaches this far past its source, beside the
+// positive spread, and a blurred corner is sliced only this far past the
+// pixel box.
+const SHADOW_REACH_SIGMAS: f32 = /*{SHADOW_REACH_SIGMAS}*/;
 
 // Slices per half of a blurred corner arc. Midpoint slices with exact
 // weights err as 1/N²: 12 keeps the worst corner pixel within 0.002 of
 // the exact integral (σ = 0.5 px against a 30 px radius), under half an
 // 8-bit step.
 const BLUR_ARC_SLICES: u32 = 12u;
-
-// How far a drop shadow's quad reaches past its moved source, in σ, beside
-// the positive spread (`ShadowGeom::halo`).
-const SHADOW_HALO_SIGMAS: f32 = /*{SHADOW_HALO_SIGMAS}*/;
 
 const SQRT_HALF: f32 = 0.70710678;
 const INV_SQRT_TAU: f32 = 0.39894228;
@@ -139,7 +137,21 @@ fn vs(
     let s_lo = unpack2x16float(stroke_color_packed.x);
     let s_hi = unpack2x16float(stroke_color_packed.y);
     let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
-    let local = CORNERS[vi] * size;
+    // The instance is the shape's rect, but its coverage reaches
+    // `AA_HALF_WIDTH` past each edge, and the rasterizer only shades a
+    // pixel whose centre is inside the drawn quad. So the quad grows to
+    // every pixel centre within `AA_HALF_WIDTH` of the rect, out to whole
+    // pixels. A rect on pixel boundaries does not grow. A windowed rect is
+    // a mask over content of its own extent and paints its fill outside
+    // the shape, so it stays at its rect.
+    var lo = pos;
+    var hi = pos + size;
+    if ((fill_kind & FILL_FLAG_WINDOW) == 0u) {
+        lo = floor(lo - vec2<f32>(AA_HALF_WIDTH - 0.5));
+        hi = ceil(hi + vec2<f32>(AA_HALF_WIDTH - 0.5));
+    }
+    let corner = select(lo, hi, CORNERS[vi] > vec2<f32>(0.5));
+    let local = corner - pos;
 
     var corner_lanes = radius;
     var axis_lanes = fill_axis;
@@ -155,7 +167,7 @@ fn vs(
     }
 
     var out: VertexOut;
-    out.clip         = clip_from_px(pos + local);
+    out.clip         = clip_from_px(corner);
     out.local        = local;
     out.size         = size;
     out.fill         = fill;
@@ -423,7 +435,7 @@ fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigm
 // its two edge pairs, an empty box covers nothing, and σ = 0 is the box's
 // exact pixel coverage. `radius` is `(tl, tr, br, bl)`, fitted to the box.
 fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32) -> f32 {
-    let reach = BLUR_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+    let reach = SHADOW_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
     let right = filter_cdf(half.x - p.x, sigma)
         * (filter_cdf(half.y - radius.z - p.y, sigma) - filter_cdf(radius.y - half.y - p.y, sigma));
     let left = filter_cdf(-half.x - p.x, sigma)
@@ -493,7 +505,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let sigma  = in.fill_axis.z;
         let spread = in.fill_axis.w;
         let half   = in.size * 0.5;
-        let source_half = half - vec2<f32>(SHADOW_HALO_SIGMAS * sigma + max(spread, 0.0));
+        let source_half = half - vec2<f32>(SHADOW_REACH_SIGMAS * sigma + max(spread, 0.0));
         // CSS clips an outer shadow inside the box that casts it
         // (Backgrounds 3 §7.1.1). Only where S's own coverage is full:
         // the fill drawn over S's edge pixels then blends with the shadow

@@ -517,3 +517,85 @@ fn an_inset_shadow_shares_its_source_edge_ramp() {
     };
     assert_same("shadow_inset_edge", &render(true), &render(false));
 }
+
+/// A drop shadow's quad holds every pixel its coverage reaches: the
+/// antialiasing ramp past a sharp edge, and the blurred tail out to where
+/// it no longer shows.
+///
+/// - A sharp shadow moved by (0.75, 50) from the source at x = 40 has its
+///   left edge at 40.75, a quarter pixel into column 40, and its right
+///   edge at 100.75, three quarters into column 100. 85 % black over
+///   white leaves `1 − 0.85·coverage` linear.
+/// - A white glow over black, σ = 8, is the box's convolution with the
+///   Gaussian out to its quad's edge, 4σ = 32 px past the box at x = 192,
+///   where it is under half an 8-bit step. At 3σ, x = 184, the tail is
+///   still about 4 steps up, and the reference holds that too. Near black
+///   one step is under 0.0002 linear, so the probes allow one step.
+#[test]
+fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
+    let img = render_shadow(
+        Rect::new(40.0, 20.0, 60.0, 40.0),
+        0.0,
+        Vec2::new(0.75, 50.0),
+        0.0,
+        0.0,
+        false,
+    );
+    let encode = |coverage: f64| {
+        let lin = (1.0 - 0.85 * coverage) as f32;
+        RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
+    };
+    for (x, coverage) in [(39, 0.0), (40, 0.25), (41, 1.0), (100, 0.75), (101, 0.0)] {
+        let got = img.get_pixel(x, 90).0[0];
+        let want = encode(coverage);
+        assert!(
+            got.abs_diff(want) <= 1,
+            "sharp shadow at ({x}, 90) is covered {coverage}: got {got}, want {want}",
+        );
+    }
+
+    let source = Rect::new(60.0, 40.0, 100.0, 100.0);
+    let mut harness = Harness::new();
+    let img = harness
+        .size(VIEWPORT)
+        .clear(RgbaF32::BLACK)
+        .frame(|ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::shadow(Shadow {
+                            color: RgbaF32::WHITE,
+                            offset: Vec2::ZERO,
+                            blur: 8.0,
+                            spread: 0.0,
+                            inset: false,
+                        })
+                        .at(source),
+                    );
+                });
+        })
+        .image;
+    let encode = |coverage: f64| {
+        let lin = coverage as f32;
+        RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
+    };
+    assert!(
+        encode(reference_coverage(Vec2::new(184.5, 90.5), source, 0.0, 8.0)) >= 3,
+        "the tail past 3σ shows",
+    );
+    for x in 176..196 {
+        let got = img.get_pixel(x, 90).0[0];
+        let want = encode(reference_coverage(
+            Vec2::new(x as f32 + 0.5, 90.5),
+            source,
+            0.0,
+            8.0,
+        ));
+        assert!(
+            got.abs_diff(want) <= 1,
+            "glow at ({x}, 90): got {got}, want {want}",
+        );
+    }
+}

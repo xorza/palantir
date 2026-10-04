@@ -41,17 +41,22 @@ impl ShadowGeom {
         }
     }
 
-    /// How many standard deviations of blur [`Self::halo`] reaches. The
-    /// quad shader takes it as a substituted constant, to find the source
-    /// inside a drop shadow's quad.
-    pub(crate) const HALO_SIGMAS: f32 = 3.0;
+    /// How many standard deviations of blur a shadow is followed. The
+    /// Gaussian's weight past it, `Φ(−4) ≈ 3e-5`, is a tenth of an 8-bit
+    /// step even where sRGB is steepest (`12.92` near black, for a light
+    /// shadow over a dark background), where `Φ(−3)` is 4 steps and a glow
+    /// would end in a ledge. The quad shader takes it as a substituted
+    /// constant: it finds the source inside a drop shadow's quad by it, and
+    /// slices a blurred corner only within it.
+    pub(crate) const REACH_SIGMAS: f32 = 4.0;
 
     /// How far a drop shadow reaches past its moved source:
-    /// [`Self::HALO_SIGMAS`] standard deviations of blur, where the
-    /// Gaussian's tail drops below one 8-bit step, plus a positive spread.
+    /// [`Self::REACH_SIGMAS`] standard deviations of blur plus a positive
+    /// spread. The antialiasing ramp past that is not in it: the quad
+    /// shader grows every quad by its own ramp.
     #[inline]
     pub(crate) const fn halo(self) -> f32 {
-        Self::HALO_SIGMAS * self.blur.max(0.0) + self.spread.max(0.0)
+        Self::REACH_SIGMAS * self.blur.max(0.0) + self.spread.max(0.0)
     }
 }
 

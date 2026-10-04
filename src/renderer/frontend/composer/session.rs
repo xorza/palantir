@@ -957,12 +957,13 @@ impl ComposeSession<'_> {
                 let (a, b, c) = (xf(a), xf(b), xf(c));
                 let radius_phys = (radius * scale_phys).max(0.0);
                 // Covering AABB: the rounded shape (the SDF offsets the
-                // triangle outward by `radius` to round its corners) plus
-                // the ½px AA fringe. The stroke sits on the *inner* edge
-                // (like a rounded rect), so it adds no outward reach.
+                // triangle outward by `radius` to round its corners). The
+                // shader grows the quad by the AA ramp, as it does every
+                // quad's. The stroke sits on the *inner* edge (like a
+                // rounded rect), so it adds no outward reach.
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
-                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + AA_HALF_WIDTH);
+                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys);
                 // Pack the three points as unorm16 shares of the covering
                 // rect, which holds them, so every share is in 0..=1, and
                 // the corner radius as f16, into the reused `corners` /
