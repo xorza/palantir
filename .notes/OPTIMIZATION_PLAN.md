@@ -110,6 +110,12 @@ no `ldlat` filter.
   events in `open_node`, and the background reads in `lower::background`
   about 18 %. The rest is the builder pattern: a widget writes a value
   field by field and the next pass reads it whole.
+- **Item 4, visibility in `SubtreeEnd`: measured and dropped** (6800U,
+  three alternating rounds against item 3). With visibility in bits
+  29–30 and `ChildIter`, `TreeItems` and the cascade walk reading it
+  from there, every arm got slower: +0.9 to +1.7 % at default size,
+  −0.3 to +1.1 % at 10×. The second column a child step touched was not
+  a cost on this CPU, so the change was reverted.
 
 ## How to measure
 
@@ -162,22 +168,6 @@ measure both.
 
 ## Plan, highest value first
 
-### 4. The child walks read `LayoutCore` only to get visibility
-
-`ChildIter::next` and `TreeItems::next` load the 28-byte `LayoutCore` row of
-each child to read 2 bits of `meta`. `compute_rollups` and
-`compute_paint_rect` drive `TreeItems` and do not use that value. Children are
-not adjacent in pre-order, so each child step touches a new line in two
-columns (`subtree_end` and `layout`).
-
-- Change: store visibility in `SubtreeEnd`. Only bit 31 (the grid flag) is in
-  use, so bits 29–30 can hold it. The arena limit becomes 2^29, and the
-  debug assert in `SubtreeEnd::new_open` moves with it. `ChildIter` then reads
-  only `subtree_end`. 9 sites call `visibility()`. The layout sites read
-  `LayoutCore` anyway and can stay as they are.
-- Check: `frame/cached_cpu` (post_record), `frame/resizing_cpu` (cascade), and
-  the tree tests.
-
 ### 5. The three rollup columns move together
 
 `SubtreeRollups` keeps `node`, `subtree` and `layout_subtree` as three
@@ -225,4 +215,4 @@ Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
 
 ## Order
 
-Items 4–6 are small and independent, and each one is worth more at 10× than at default size.
+Items 5 and 6 are small and independent, and each one is worth more at 10× than at default size.
