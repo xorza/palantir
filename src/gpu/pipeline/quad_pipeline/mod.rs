@@ -9,7 +9,7 @@ use crate::common::tracy;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::schedule::{MaskPlan, build_mask_plan};
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -17,7 +17,6 @@ use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -198,31 +197,7 @@ impl QuadPipeline {
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
-        let wgsl = ShaderBody::Quad.specialize(&[
-            ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
-            ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
-            ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
-            // The family tags, not whole packed words: the shader
-            // compares them against the tag bits alone.
-            ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::TAG_SOLID),
-            ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
-            ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
-            ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::TAG_CONIC),
-            ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
-            ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
-            ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
-            ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-            ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
-            // `Pad` is not pinned: it is `apply_spread`'s fallback,
-            // which is also the right answer for a mode the shader
-            // does not know, so nothing there compares against it.
-            ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
-            ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-        ]);
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.quad.shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-        });
+        let shader = ShaderBody::Quad.module(device);
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
 

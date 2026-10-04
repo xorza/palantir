@@ -62,10 +62,7 @@ impl MeshPipeline {
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.mesh.shader"),
-            source: wgpu::ShaderSource::Wgsl(ShaderBody::Mesh.specialize(&[]).into()),
-        });
+        let shader = ShaderBody::Mesh.module(device);
 
         let vertex_buffer =
             DynamicBuffer::<MeshVertex>::vertex(device, "palantir.mesh.vertices", 256);

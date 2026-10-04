@@ -41,6 +41,13 @@ fn specialization_rejects_missing_marker() {
 /// fix for a failure here is one or the other, never an exemption.
 #[test]
 fn every_pinned_shader_constant_is_read() {
+    // Each body's own constants fill every marker it and the prelude
+    // declare, exactly once — `specialize` panics otherwise — so a
+    // constant added on one side only fails here, with no device.
+    for &body in ShaderBody::VARIANTS {
+        let source = body.specialize();
+        assert!(source.starts_with("// Shared WGSL prelude."), "{body:?}");
+    }
     let sources = ShaderBody::VARIANTS
         .iter()
         .map(|body| (format!("{body:?}"), body.wgsl()))
