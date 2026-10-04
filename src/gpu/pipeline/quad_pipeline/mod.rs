@@ -12,6 +12,7 @@ use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -37,15 +38,15 @@ pub(crate) struct QuadVariants {
     pub(crate) mask_clear: wgpu::RenderPipeline,
 }
 
+/// Format-independent quad resources. The format-dependent render
+/// pipelines ([`QuadVariants`]) live in
+/// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines),
+/// keyed by swapchain format and passed into every `bind*` call.
+/// The group-0 bind group, the gradient atlas, is owned by
+/// [`GpuGradientAtlas`](crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas)
+/// and passed to every `bind*` call.
 #[derive(Debug)]
 pub(crate) struct QuadPipeline {
-    /// Format-independent quad resources. The format-dependent render
-    /// pipelines ([`QuadVariants`]) live in
-    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines),
-    /// keyed by swapchain format and passed into every `bind*` call.
-    /// Group 0 (gradient atlas + sampler) is owned by
-    /// [`GpuGradientAtlas`](crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas)
-    /// and passed to every `bind*` call.
     instance_buffer: DynamicBuffer<Quad>,
     /// Lazy buffer holding one `Quad` per deduped rounded clip in the
     /// current frame; uploaded by `upload_masks`, drawn by `draw_mask`.
@@ -178,7 +179,7 @@ impl QuadPipeline {
     /// pipelines are built separately by
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, texture_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Quad.module(device);
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
@@ -195,7 +196,7 @@ impl QuadPipeline {
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.quad.pl",
-                &[Some(texture_bgl)],
+                &[Some(textures.layout())],
             ),
         }
     }
@@ -210,7 +211,7 @@ impl QuadPipeline {
 
     /// Build every quad pipeline against `format` — the only
     /// format-dependent quad objects; the gradient LUT atlas (texture +
-    /// bind group + sampler) and the instance / clear buffers are
+    /// bind group) and the instance / clear buffers are
     /// reused. Called by `FormatPipelines` for each swapchain format.
     pub(super) fn build_variants(
         &self,

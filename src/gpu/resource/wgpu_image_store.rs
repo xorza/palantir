@@ -26,9 +26,8 @@ pub(crate) struct WgpuImageStore {
     device: wgpu::Device,
     queue: wgpu::Queue,
     /// The group-0 layout and sampler every image bind group is built
-    /// against. The `GpuView` targets clone it, so a composite of a view
-    /// binds exactly like an image, and each format's image pipeline
-    /// composes over its layout.
+    /// against — the backend's one, which the `GpuView` targets share, so
+    /// a composite of a view binds exactly like an image.
     binding: TextureBinding,
     textures: RefCell<FxHashMap<TextureId, ImageTexture>>,
     /// Where [`premultiply_into`] stages a write, kept so a refilled

@@ -18,6 +18,7 @@ use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::image::ImageInstance;
@@ -48,7 +49,7 @@ impl ImagePipeline {
     /// buffer. The pipelines are built by
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, texture_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Image.module(device);
 
         let instance_buffer =
@@ -60,7 +61,7 @@ impl ImagePipeline {
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.image.pl",
-                &[Some(texture_bgl)],
+                &[Some(textures.layout())],
             ),
         }
     }
@@ -75,7 +76,7 @@ impl ImagePipeline {
 
     /// Build the base + stencil-test color pipelines against `format` —
     /// the only format-dependent image objects; the per-image textures,
-    /// bind groups, sampler, and `texture_bgl` are all format-independent.
+    /// bind groups and the shared [`TextureBinding`] are all format-independent.
     /// Called by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,

@@ -3,8 +3,8 @@
 
 /// The group-0 layout every sampled texture binds through, and the sampler
 /// it pairs with: the gradient LUT atlas, the registered images, the
-/// `GpuView` targets and the backbuffer a target that takes no copy is
-/// drawn from.
+/// `GpuView` targets, and the backbuffer when it is drawn onto a target
+/// that takes no copy.
 ///
 /// Built once by the backend. `Clone` hands out `wgpu`'s own
 /// reference-counted handles, so every holder shares one layout and one

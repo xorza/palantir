@@ -26,7 +26,8 @@ struct StagedChain {
     masks: Span,
 }
 
-/// Per-group and per-text-batch spans into the staged mask-quad buffer.
+/// Per-group and per-text-batch spans, and the deduplicated mask quads
+/// they index.
 ///
 /// **Value-equal chains always share one span.** [`PassState::establish`]
 /// decides whether a group can keep the chain already stamped by
