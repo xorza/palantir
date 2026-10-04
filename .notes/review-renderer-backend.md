@@ -5,12 +5,6 @@ Whoever addresses an item deletes it.
 Scope: `src/gpu` (`WgpuBackend` and everything it draws through), the
 backend half of the renderer. Test code is out of scope.
 
-## Arguments threaded down the schedule walk
-
-- [ ] `src/gpu/frame/schedule/mod.rs:55` — `build_mask_plan` is a free
-  `pub(crate)` function that fills a `&mut MaskPlan`. Target:
-  `MaskPlan::build(&mut self, buffer, masks)`.
-
 ## A per-type rule checked at run time, and an alignment rule not checked
 
 - [ ] `src/gpu/resource/dynamic_buffer.rs:57-68` — `DynamicBuffer::new`

@@ -40,60 +40,71 @@ pub(crate) struct MaskPlan {
     /// Every distinct chain staged this frame. Retained so the sweep
     /// costs no allocation.
     staged: Vec<StagedChain>,
+    /// See [`Self::quads`]. Retained like `staged`.
+    quads: Vec<Quad>,
 }
 
-/// Build the schedule's mask spans and deduplicated mask-quad instances.
-///
-/// The scan over already-staged chains is linear in the number of
-/// *distinct* chains, not in the group count: a chain exists only where
-/// authoring nested a rounded clip, so the list is a handful of entries
-/// on any real frame and one on most. A neighbour-only comparison would
-/// be O(1), but it breaks the span-per-chain invariant above the moment
-/// anything sits between two groups that share a chain — including a
-/// group the walk goes on to skip entirely, which leaves the chain
-/// stamped and then denies the elision that would have kept it.
-pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks: &mut Vec<Quad>) {
-    plan.groups.clear();
-    plan.batches.clear();
-    plan.staged.clear();
-    masks.clear();
-    for group in &buffer.groups {
-        let chain = group.rounded_clips;
-        let mask_span = if group.scissor.is_some() && chain.len != 0 {
-            if let Some(staged) = plan
-                .staged
-                .iter()
-                .find(|staged| buffer.chains_equal(staged.chain, chain))
-            {
-                staged.masks
-            } else {
-                let start = masks.len() as u32;
-                for clip in &buffer.rounded_clips[chain.range()] {
-                    masks.push(Quad {
-                        rect: clip.mask_rect,
-                        corners: clip.corners,
-                        ..Default::default()
+impl MaskPlan {
+    /// Rebuild the plan for `buffer`: the mask spans and the deduplicated
+    /// mask quads they index.
+    ///
+    /// The scan over already-staged chains is linear in the number of
+    /// *distinct* chains, not in the group count: a chain exists only where
+    /// authoring nested a rounded clip, so the list is a handful of entries
+    /// on any real frame and one on most. A neighbour-only comparison would
+    /// be O(1), but it breaks the span-per-chain invariant above the moment
+    /// anything sits between two groups that share a chain — including a
+    /// group the walk goes on to skip entirely, which leaves the chain
+    /// stamped and then denies the elision that would have kept it.
+    pub(crate) fn build(&mut self, buffer: &RenderBuffer) {
+        self.groups.clear();
+        self.batches.clear();
+        self.staged.clear();
+        self.quads.clear();
+        for group in &buffer.groups {
+            let chain = group.rounded_clips;
+            let mask_span = if group.scissor.is_some() && chain.len != 0 {
+                if let Some(staged) = self
+                    .staged
+                    .iter()
+                    .find(|staged| buffer.chains_equal(staged.chain, chain))
+                {
+                    staged.masks
+                } else {
+                    let start = self.quads.len() as u32;
+                    for clip in &buffer.rounded_clips[chain.range()] {
+                        self.quads.push(Quad {
+                            rect: clip.mask_rect,
+                            corners: clip.corners,
+                            ..Default::default()
+                        });
+                    }
+                    let staged = Span::new(start, chain.len);
+                    self.staged.push(StagedChain {
+                        chain,
+                        masks: staged,
                     });
+                    staged
                 }
-                let staged = Span::new(start, chain.len);
-                plan.staged.push(StagedChain {
-                    chain,
-                    masks: staged,
-                });
-                staged
-            }
-        } else {
-            Span::default()
-        };
-        plan.groups.push(mask_span);
+            } else {
+                Span::default()
+            };
+            self.groups.push(mask_span);
+        }
+        for batch in &buffer.text_batches {
+            let group = batch.last_group as usize;
+            debug_assert!(
+                buffer.chains_equal(batch.rounded_clips, buffer.groups[group].rounded_clips),
+                "text batch chain decorrelated from its last_group's chain"
+            );
+            self.batches.push(self.groups[group]);
+        }
     }
-    for batch in &buffer.text_batches {
-        let group = batch.last_group as usize;
-        debug_assert!(
-            buffer.chains_equal(batch.rounded_clips, buffer.groups[group].rounded_clips),
-            "text batch chain decorrelated from its last_group's chain"
-        );
-        plan.batches.push(plan.groups[group]);
+
+    /// The mask quads the spans index, one per level of each distinct
+    /// chain, in the order the spans name them.
+    pub(crate) fn quads(&self) -> &[Quad] {
+        &self.quads
     }
 }
 
@@ -602,13 +613,12 @@ pub(crate) mod internals {
     #[derive(Debug, Default)]
     pub(crate) struct Walk {
         plan: MaskPlan,
-        masks: Vec<Quad>,
     }
 
     impl Walk {
         pub(crate) fn new(buffer: &RenderBuffer) -> Self {
             let mut walk = Self::default();
-            build_mask_plan(buffer, &mut walk.plan, &mut walk.masks);
+            walk.plan.build(buffer);
             walk
         }
 

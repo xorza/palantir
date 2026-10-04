@@ -104,7 +104,7 @@ use crate::gpu::device::requested_gpu::Gpu;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::frame::overlay_pass::DebugOverlay;
-use crate::gpu::frame::schedule::{MaskPlan, RenderStep, build_mask_plan, for_each_step};
+use crate::gpu::frame::schedule::{MaskPlan, RenderStep, for_each_step};
 use crate::gpu::frame::submission::{Submission, SubmissionTargets};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
@@ -125,7 +125,6 @@ use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_owner_id::RenderOwnerId;
@@ -189,13 +188,10 @@ pub(crate) struct WgpuBackend {
     /// each window's backbuffer. One, so a group built for one binds in
     /// every pipeline that samples any of them.
     texture_binding: TextureBinding,
-    /// The rounded-clip chains each group and text batch stamps, rebuilt
-    /// on every stencil frame and handed to the schedule only on those.
-    /// Retained so a frame costs no allocation.
+    /// The rounded-clip chains each group and text batch stamps, and the
+    /// mask quads they index, rebuilt on every stencil frame and handed to
+    /// the schedule only on those. Retained so a frame costs no allocation.
     mask_plan: MaskPlan,
-    /// The mask quads [`Self::mask_plan`] indexes, one per chain level
-    /// of each distinct chain, uploaded through `QuadPipeline`.
-    mask_quads: Vec<Quad>,
     /// Format-dependent render pipelines, keyed by swapchain color format
     /// and built lazily ([`Self::ensure_format`]) the first time a
     /// surface of that format is submitted. Windows on different-format
@@ -311,7 +307,6 @@ impl WgpuBackend {
             debug,
             texture_binding,
             mask_plan: MaskPlan::default(),
-            mask_quads: Vec::new(),
             pipelines,
             gpu_timings,
             pass_stats: resources.gpu_pass_stats.clone(),
@@ -538,9 +533,9 @@ impl WgpuBackend {
             tracy::zone!("stage_masks");
             // After this, `mask_plan.groups` parallels `buffer.groups` and
             // `.batches` parallels `buffer.text_batches`, each entry the
-            // span of `mask_quads` that chain stamps.
-            build_mask_plan(buffer, &mut self.mask_plan, &mut self.mask_quads);
-            self.quad.upload_masks(&mut ctx, &self.mask_quads);
+            // span of its quads that chain stamps.
+            self.mask_plan.build(buffer);
+            self.quad.upload_masks(&mut ctx, self.mask_plan.quads());
         }
 
         self.quad.upload(&mut ctx, &buffer.quads);
