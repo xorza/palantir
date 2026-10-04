@@ -16,9 +16,9 @@ fn ep(node: u32) -> Endpoint {
 /// depends on `curr` being populated between consecutive resolves
 /// of the same raw id, so tests interleave them the same way.
 fn open(ids: &mut SeenIds, raw_id: WidgetId, is_explicit: bool, node: u32) -> WidgetId {
-    let final_id = ids.resolve(raw_id, is_explicit);
-    ids.record_endpoint(final_id, ep(node));
-    final_id
+    let resolved = ids.resolve(raw_id, is_explicit);
+    ids.record_endpoint(resolved, ep(node));
+    resolved.id()
 }
 
 #[test]
@@ -55,12 +55,12 @@ fn resolve_skips_occupied_occurrence_ids() {
         let node = occupied_slots + 1;
         let final_id = open(&mut ids, x, true, node);
         assert_eq!(final_id, x.with(occupied_slots + 1));
-        assert_eq!(ids.curr.len(), (occupied_slots + 2) as usize);
-        assert_eq!(ids.curr[&x], ep(0));
+        assert_eq!(ids.curr.entries.len(), (occupied_slots + 2) as usize);
+        assert_eq!(ids.endpoint(x), Some(ep(0)));
         for slot in 1..=occupied_slots {
-            assert_eq!(ids.curr[&x.with(slot)], ep(slot));
+            assert_eq!(ids.endpoint(x.with(slot)), Some(ep(slot)));
         }
-        assert_eq!(ids.curr[&final_id], ep(node));
+        assert_eq!(ids.endpoint(final_id), Some(ep(node)));
         assert!(ids.pending.is_empty());
     }
 }
@@ -75,14 +75,14 @@ fn resolve_queues_pending_only_for_explicit_collisions() {
 
     let y = WidgetId::from_hash("y");
     // First explicit — fast path, no pending.
-    ids.resolve(y, true);
-    ids.record_endpoint(y, ep(3));
+    let first = ids.resolve(y, true);
+    ids.record_endpoint(first, ep(3));
     // Second explicit — collision, queued. record_endpoint will
     // drain it; check it was queued first.
     let second = ids.resolve(y, true);
     assert_eq!(ids.pending.len(), 1);
     assert_eq!(ids.pending[0].first_raw_id, y);
-    assert_eq!(ids.pending[0].second_final_id, second);
+    assert_eq!(ids.pending[0].second_final_id, second.id());
 }
 
 #[test]
@@ -117,12 +117,30 @@ fn record_endpoint_no_pair_for_auto_collisions() {
 fn record_endpoint_rejects_duplicate_without_overwriting() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    ids.record_endpoint(x, ep(1));
+    let resolved = ids.resolve(x, false);
+    ids.record_endpoint(resolved, ep(1));
 
     panic_probe::assert_panics_with("record_endpoint called twice", || {
-        ids.record_endpoint(x, ep(2))
+        ids.record_endpoint(resolved, ep(2))
     });
-    assert_eq!(ids.curr[&x], ep(1));
+    assert_eq!(ids.endpoint(x), Some(ep(1)));
+
+    // An id resolved in an earlier pass names an entry this pass may
+    // have given to another widget, so recording it is refused.
+    let mut ids = SeenIds::default();
+    let stale = ids.resolve(x, false);
+    ids.pre_record();
+    let y = WidgetId::from_hash("y");
+    let fresh = ids.resolve(y, false);
+    panic_probe::assert_panics_with("which was not resolved this pass", || {
+        ids.record_endpoint(stale, ep(1))
+    });
+    assert_eq!(
+        ids.endpoint(y),
+        None,
+        "the entry the stale id named is untouched"
+    );
+    assert!(ids.record_endpoint(fresh, ep(2)).is_none());
 }
 
 /// Two widgets resolve the same raw auto id before either records — the
@@ -134,23 +152,42 @@ fn resolving_twice_before_recording_disambiguates() {
     let x = WidgetId::from_hash("x");
     let first = ids.resolve(x, false);
     let second = ids.resolve(x, false);
-    assert_eq!(first, x);
-    assert_eq!(second, x.with(1));
+    assert_eq!(first.id(), x);
+    assert_eq!(second.id(), x.with(1));
     assert!(ids.record_endpoint(second, ep(2)).is_none());
     assert!(ids.record_endpoint(first, ep(1)).is_none());
 
     // An explicit id that is only reserved is its owner claiming it —
     // a widget recording a wrapper under the id it resolved.
     let mut ids = SeenIds::default();
-    assert_eq!(ids.resolve(x, false), x);
-    assert_eq!(ids.resolve(x, true), x, "the reservation's owner claims it");
-    assert!(ids.record_endpoint(x, ep(1)).is_none());
+    let owner = ids.resolve(x, false);
+    assert_eq!(owner.id(), x);
+    assert_eq!(
+        ids.resolve(x, true),
+        owner,
+        "the reservation's owner claims it, entry and all"
+    );
+    assert!(ids.record_endpoint(owner, ep(1)).is_none());
     // Once recorded, an explicit repeat is a collision as ever.
-    assert_eq!(ids.resolve(x, true), x.with(1));
+    assert_eq!(ids.resolve(x, true).id(), x.with(1));
 
     // A reservation lasts one pass.
     ids.pre_record();
-    assert_eq!(ids.resolve(x, false), x);
+    assert_eq!(ids.resolve(x, false).id(), x);
+
+    // And it is no recording: an id resolved and never shown has no
+    // endpoint, is in no frame's recording, and so is never reported
+    // removed either.
+    let mut ids = SeenIds::default();
+    let y = WidgetId::from_hash("y");
+    open(&mut ids, x, false, 1);
+    assert_eq!(ids.resolve(y, false).id(), y);
+    assert_eq!(ids.endpoint(y), None);
+    assert!(ids.rollover().is_empty());
+    assert_eq!(ids.last_frame().keys().copied().collect::<Vec<_>>(), [x]);
+    ids.pre_record();
+    open(&mut ids, x, false, 1);
+    assert!(ids.rollover().is_empty(), "y was never recorded");
 }
 
 #[test]
@@ -216,8 +253,8 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     assert!(!ids.counters.is_empty());
 
     ids.rollover();
-    assert!(ids.curr.is_empty());
-    assert_eq!(ids.prev.len(), 2);
+    assert!(ids.curr.entries.is_empty());
+    assert_eq!(ids.prev.entries.len(), 2);
     // Counters persist across rollover (rollover is the painted-
     // frame swap; `pre_record` clears per-frame disambiguation
     // state at the next record cycle).
@@ -225,6 +262,6 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
 
     ids.pre_record();
     assert!(ids.counters.is_empty());
-    assert!(ids.curr.is_empty());
-    assert_eq!(ids.prev.len(), 2, "prev must survive pre_record");
+    assert!(ids.curr.entries.is_empty());
+    assert_eq!(ids.prev.entries.len(), 2, "prev must survive pre_record");
 }

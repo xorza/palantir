@@ -24,6 +24,16 @@ impl NodeFlags {
     /// node: `0` none, `1 + Axis`.
     const ARROW_SHIFT: u32 = 19;
     const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
+    /// How many low bits of [`Self::bits`] can be set — what a caller
+    /// packing the word beside others reserves for it.
+    pub(crate) const WIDTH: u32 = (Self::SENSE_MASK
+        | Self::DISABLED
+        | Self::CLIP_MASK
+        | Self::FOCUSABLE
+        | Self::SCOPE_MASK
+        | Self::NOT_TAB_STOP
+        | Self::ARROW_MASK)
+        .bit_width();
 
     /// The whole bitset, for callers that fold it into a hash rather
     /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
@@ -32,7 +42,7 @@ impl NodeFlags {
     /// [`LayoutCore::hash_with_flags`]:
     ///     crate::scene::node::layout_core::LayoutCore::hash_with_flags
     #[inline]
-    pub(super) const fn bits(self) -> u32 {
+    pub(crate) const fn bits(self) -> u32 {
         self.bits
     }
 

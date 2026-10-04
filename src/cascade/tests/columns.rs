@@ -159,16 +159,14 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     );
 }
 
-/// `LayerLayout::rect_hash` is what `CascadeEngine::can_update` reads
-/// to decide whether the retained cascade rows still describe the
-/// current arrangement — it replaced a per-node copy of every arranged
-/// rect that `EntryRow` used to carry purely for that comparison.
+/// `LayerLayout::rect_hash` is what the incremental cascade walk reads
+/// to decide whether it may skip a clean subtree whole — while no rect
+/// in the layer moved, a subtree whose own inputs held holds below too.
 ///
 /// So it has to discriminate on exactly one axis. Identical geometry
 /// must hash equal even when paint changed, or every recolour would
-/// force a full cascade rebuild and the incremental path would never
-/// fire. Any moved rect must hash different, or a stale cascade
-/// survives a relayout.
+/// walk the whole tree. Any moved rect must hash different, or a moved
+/// descendant under a clean ancestor keeps its stale rows.
 #[test]
 fn rect_hash_tracks_geometry_and_ignores_paint() {
     fn build(size: f32, fill: RgbaF32) -> impl FnMut(&mut Ui) {
@@ -195,11 +193,11 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
         base,
-        "an identical frame must hash equal, or the cascade never takes its incremental path",
+        "an identical frame must hash equal, or the cascade walks every node",
     );
 
-    // Same geometry, different paint: `can_update` must still be able
-    // to retain its rows and repair paint only.
+    // Same geometry, different paint: the walk must still be able to
+    // skip the clean subtrees.
     h.frame(build(50.0, RgbaF32::srgb(0.0, 1.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
@@ -212,7 +210,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     let moved = h.ui.layout(Layer::Main).rect_hash();
     assert_ne!(
         moved, base,
-        "a resized child must move the rect hash, or a stale cascade survives relayout",
+        "a resized child must move the rect hash, or its rows go stale under a clean ancestor",
     );
 
     // And it is a function of the geometry, not a change counter:

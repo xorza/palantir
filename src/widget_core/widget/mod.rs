@@ -30,6 +30,7 @@ use crate::primitives::paint::background::Background;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::node::node_mode::NodeMode;
+use crate::scene::seen_ids::ResolvedId;
 use crate::ui::Ui;
 use crate::widget_core::configure::{Configure, ConfigureWidget};
 use crate::widget_core::response::{InnerResponse, Response};
@@ -186,12 +187,18 @@ impl Widget {
     /// record to a second occurrence, and the reads made here would have
     /// keyed the first.
     pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId {
+        self.resolved(ui).id()
+    }
+
+    /// [`Self::resolve`], keeping the entry the id holds in the pass's id
+    /// table, which [`Self::record`] hands to the open.
+    fn resolved(&mut self, ui: &mut Ui) -> ResolvedId {
         match self.ident {
-            Ident::Resolved(id) => id,
+            Ident::Resolved(resolved) => resolved,
             recipe => {
-                let id = ui.resolve_ident(recipe);
-                self.ident = Ident::Resolved(id);
-                id
+                let resolved = ui.resolve_ident(recipe);
+                self.ident = Ident::Resolved(resolved);
+                resolved
             }
         }
     }
@@ -256,8 +263,8 @@ impl Widget {
         chrome: Option<&Background>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        let id = self.resolve(ui);
-        ui.open_node(id, &self.node, chrome);
+        let resolved = self.resolved(ui);
+        ui.open_node(resolved, &self.node, chrome);
         let r = body(ui);
         ui.close_node();
         r

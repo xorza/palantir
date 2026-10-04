@@ -50,6 +50,7 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::Node;
 use crate::scene::node::bounds_extras::BoundsExtras;
+use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::RecordStore;
 use crate::scene::tree::extras_idx::ExtrasIdx;
@@ -285,41 +286,57 @@ impl Tree {
             let mut ph = Hasher::new();
             layouts[i].hash_with_flags(attrs[i], &mut lh);
             let ex = extras[i];
+            let mut tab_index = 0;
             if let Some(s) = ex.bounds {
-                bounds_tab[s.idx()].hash(&mut lh);
+                let bounds = &bounds_tab[s.idx()];
+                bounds.hash(&mut lh);
+                tab_index = bounds.tab_index;
             }
-            if let Some(s) = ex.panel {
-                // `PanelExtras::hash` already folds `transform`
-                // (identity-filtered), which is required so a
-                // self-transform shift dirties `node_hash` — direct
-                // shapes paint inside the transform per the
-                // `Panel::transform` contract. Pinned by
-                // `self_transform_change_flips_node_hash`.
-                panel_tab[s.idx()].hash(&mut lh);
+            // The transform moves no rect, so it rides the paint half:
+            // the measure cache keeps hitting under a pan, and the
+            // cascade refreshes geometry in place rather than rebuilding.
+            // It still dirties `node_hash`, which it must — direct shapes
+            // paint inside it per the `Panel::transform` contract. Pinned
+            // by `self_transform_change_flips_node_hash`.
+            let panel = ex.panel.map(|s| &panel_tab[s.idx()]);
+            if let Some(panel) = panel {
+                panel.hash_layout(&mut lh);
+            }
+            let transformed = panel.filter(|p| !p.transform.is_identity());
+            // What the cascade's structural tables are built from, and
+            // nothing else: identity, nesting, the flag word, visibility
+            // and the Tab order key. Nesting is what makes this hash
+            // describe the tree's *shape* — without it two trees with
+            // the same nodes nested differently collide. The flag word
+            // and visibility share the end's word, and its top bit says
+            // whether a Tab key follows.
+            const {
+                assert!(
+                    32 + NodeFlags::WIDTH + u8::BITS <= 63,
+                    "the flag word and visibility overrun the Tab bit",
+                );
             }
             cascade_static_hasher.write_u64(widget_ids[i].0);
-            cascade_static_hasher.write_u64(lh.finish());
-            // Nesting, folded in so this hash actually describes the
-            // tree's *shape* and not just its nodes. Without it two
-            // trees with the same node count and the same per-node
-            // hashes but different nesting collide, and `can_update`
-            // had to zip the whole `subtree_ends` column every cascade
-            // run to notice — an O(nodes) walk per layer per frame on
-            // the incremental fast path, and the reason
-            // `LayerCascade::subtree_ends` could not be the sparse
-            // random-access column its doc describes.
-            cascade_static_hasher.write_u32(subtree_ends[i].end());
-            // Chrome authoring hash is pre-computed at lowering time
-            // (`shapes::lower::background`) and stored inline on
-            // `ChromeRow.hash`. Both arms write a 1-byte discriminant
-            // before any payload so a chromeless node's stream can't
-            // collide with a chromed node whose hash happens to start
-            // `0x00`.
-            if let Some(s) = ex.chrome {
-                ph.write_u8(1);
-                ph.write_u64(chrome_tab[s.idx()].hash.0);
-            } else {
-                ph.write_u8(0);
+            cascade_static_hasher.write_u64(
+                u64::from(subtree_ends[i].end())
+                    | (u64::from(attrs[i].bits()) << 32)
+                    | (u64::from(layouts[i].meta.visibility() as u8) << (32 + NodeFlags::WIDTH))
+                    | (u64::from(tab_index != 0) << 63),
+            );
+            if tab_index != 0 {
+                cascade_static_hasher.write_u16(tab_index.cast_unsigned());
+            }
+            // One leading byte says which of the two optional payloads
+            // follow — chrome, whose authoring hash was computed at
+            // lowering time (`shapes::lower::background`), and the
+            // transform — so no stream can be read as another's.
+            let chrome = ex.chrome.map(|s| chrome_tab[s.idx()].hash);
+            ph.write_u8(u8::from(chrome.is_some()) | (u8::from(transformed.is_some()) << 1));
+            if let Some(hash) = chrome {
+                ph.write_u64(hash.0);
+            }
+            if let Some(panel) = transformed {
+                panel.hash_transform(&mut ph);
             }
 
             // Walk this node's direct shapes + immediate-child position
