@@ -104,8 +104,8 @@ impl<'a> Button<'a> {
         if !response.disabled && ui.is_focus_within(id) {
             // Both sampled: `key_pressed` also keeps each chord subscribed
             // for the wake gate.
-            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
-            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+            let space = self.widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+            let enter = self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
             if space || enter {
                 response.left.phase = ButtonPhase::Up { click: Some(1) };
             }

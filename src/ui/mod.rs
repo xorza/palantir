@@ -377,6 +377,16 @@ impl Ui {
             .key_pressed(layer, parent, &self.cascade, shortcut)
     }
 
+    /// [`Self::key_pressed`] read as `reader` rather than as the record
+    /// position — what [`Widget::key_pressed`](crate::widget::Widget::key_pressed)
+    /// asks with the widget's own id.
+    #[inline]
+    pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
+        let layer = self.forest.current_layer();
+        self.input
+            .key_pressed(layer, Some(reader), &self.cascade, shortcut)
+    }
+
     /// Re-record this frame after measure runs, for authoring code that
     /// realizes its record-time inputs were stale. Capped at one
     /// re-record per frame — so it cannot converge a feedback loop, only

@@ -7,6 +7,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -134,11 +135,12 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         if !response.disabled && ui.is_focus_within(id) {
             // Every chord sampled: `key_pressed` also keeps it subscribed
             // for the wake gate.
-            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
-            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
-            let alt_down = ui.key_pressed(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
-            let up = ui.key_pressed(Shortcut::key(Key::ArrowUp));
-            let down = ui.key_pressed(Shortcut::key(Key::ArrowDown));
+            let mut key = |shortcut| self.widget.key_pressed(ui, shortcut);
+            let space = key(Shortcut::key(Key::Char(' ')));
+            let enter = key(Shortcut::key(Key::Enter));
+            let alt_down = key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
+            let up = key(Shortcut::key(Key::ArrowUp));
+            let down = key(Shortcut::key(Key::ArrowDown));
             if space || enter || alt_down {
                 response.left.phase = ButtonPhase::Up { click: Some(1) };
             } else if !PopupTrigger::is_open(ui, id)
@@ -219,6 +221,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         // `ContextMenuTheme::min_width`. Esc closes through the popup.
         let resp = PopupTrigger::on(&trigger)
             .id(id.with("list"))
+            // Up and Down walk the rows of the open list.
+            .arrow_focus(Axis::Y)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
             .default_background(ctx.panel.clone())
             .default_padding(ctx.padding)

@@ -74,7 +74,7 @@ impl ToggleChrome {
         response.clicked()
             || (!response.disabled
                 && ui.is_focus_within(id)
-                && ui.key_pressed(Shortcut::key(Key::Char(' '))))
+                && widget.key_pressed(ui, Shortcut::key(Key::Char(' '))))
     }
 
     /// Flip `value` when the row was `activated`, and answer what it now

@@ -2,7 +2,10 @@
 //! widget, the integer-or-float target it writes through, the retained
 //! drag and edit state, and what a frame of either reports.
 
+use crate::input::key_class::{KeyClass, KeyFilter};
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -122,7 +125,12 @@ impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
         Self {
-            widget: Widget::leaf(),
+            // A Tab stop, as WAI-ARIA's spin button: the arrows step it, and
+            // typing and Enter open the editor — the `CARET` and `TEXT`
+            // classes.
+            widget: Widget::leaf()
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
             value: value.into(),
             speed: 1.0,
             min: f64::NEG_INFINITY,
@@ -185,9 +193,11 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Enable click-to-type keyboard entry alongside drag-to-scrub. A click
-    /// (that doesn't latch a drag) focuses the field and swaps the chip for
-    /// an inline `TextEdit`; Enter / click-away commits, Escape reverts.
+    /// Enable keyboard entry alongside drag-to-scrub. A click that latches
+    /// no drag, Enter on the focused chip, or a character typed into it
+    /// swaps the chip for an inline `TextEdit` — a typed character
+    /// replaces the value, as a spin button's does. Enter and click-away
+    /// commit, Escape reverts, and either leaves the chip focused.
     /// Default off.
     pub const fn editable(mut self, on: bool) -> Self {
         self.editable = on;
@@ -221,6 +231,11 @@ impl<'a> DragValue<'a> {
     }
 
     /// Record the chip, or its inline editor while one is open.
+    ///
+    /// A focused chip is a spin button: Up and Down step the value by one
+    /// unit of its last decimal — one, for an integer — and ten units
+    /// with Shift, each step a committed edit. Focus alone opens no
+    /// editor, so the press that starts a scrub may focus the chip.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let required = self.required_sense();
         self.configure().add_sense(required);
@@ -234,11 +249,21 @@ impl<'a> DragValue<'a> {
         // `rect` is post-zoom and would mismatch the sizing units under a
         // scaled canvas. Disabled mid-edit falls through to the chip path,
         // which kicks focus out and discards the pending draft below.
-        if self.editable && ui.focus() == Some(id) {
+        let focused = ui.focus() == Some(id);
+        if self.editable && focused {
             if response.disabled {
                 ui.clear_focus();
             } else {
-                return self.show_editing(ui, id, response.layout_rect);
+                // An open draft keeps the editor; a character typed into
+                // the chip opens it this frame, so the editor takes that
+                // character itself and it replaces the selected value.
+                let editing = matches!(
+                    ui.state::<DragValueState>(id),
+                    Some(DragValueState::Editing { .. })
+                );
+                if editing || typed(ui) {
+                    return self.show_editing(ui, id, response.layout_rect);
+                }
             }
         }
 
@@ -315,14 +340,47 @@ impl<'a> DragValue<'a> {
             }
         }
 
-        // A plain enabled click (no drag latched) enters keyboard entry;
-        // `show_editing` seeds the buffer on entry, so a click and a
-        // programmatic `set_focus` get the same fresh draft.
-        if self.editable && response.clicked() {
+        if focused && !response.disabled {
+            let step = match self.value.read() {
+                Num::I64(_) => 1.0,
+                Num::F64(_) => 1.0 / 10f64.powi(self.decimals.min(15) as i32),
+            };
+            // Every chord sampled: `key_pressed` also keeps it subscribed
+            // for the wake gate.
+            let mut moved = 0.0;
+            for (key, sign) in [(Key::ArrowUp, 1.0), (Key::ArrowDown, -1.0)] {
+                let coarse = self
+                    .widget
+                    .key_pressed(ui, Shortcut::new(ShortcutMods::SHIFT, key));
+                let plain = self.widget.key_pressed(ui, Shortcut::key(key));
+                if coarse {
+                    moved += sign * step * 10.0;
+                } else if plain {
+                    moved += sign * step;
+                }
+            }
+            if moved != 0.0 {
+                let to = self.value.read().widen() + moved;
+                changed |= self
+                    .value
+                    .commit_value(to, self.decimals, self.min, self.max);
+                committed = true;
+            }
+        }
+
+        // A plain enabled click (no drag latched), or Enter on the focused
+        // chip, opens keyboard entry on the next frame — Enter so the
+        // editor does not take the Enter that opened it as its submit.
+        let enter = focused && self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
+        if self.editable && !response.disabled && (response.clicked() || enter) {
             ui.set_focus(id);
             // The probed snapshot predates the request, so without this
             // the response denies the focus the widget just took.
             response.focused = true;
+            *ui.state_or_default::<DragValueState>(id) = DragValueState::Editing {
+                buffer: self.value.edit_string(),
+                original: self.value.read(),
+            };
         }
 
         let text = match &self.suffix {
@@ -443,8 +501,10 @@ impl<'a> DragValue<'a> {
         } else {
             DragValueState::Editing { buffer, original }
         };
-        if ended.submitted {
-            ui.clear_focus();
+        // The chip keeps focus once the edit ends, as a spin button does,
+        // so the keyboard goes on from it; Escape blurred the editor.
+        if ended.canceled {
+            ui.set_focus(id);
         }
         ValueResponse {
             response: Response::lazy(id, ui),
@@ -462,6 +522,16 @@ impl Configure for DragValue<'_> {
 }
 
 /// The chip's text: `value` at `decimals` places, then `suffix`.
+/// Whether a character was typed into the focused chip this frame — text
+/// a press produced, Space aside, which a spin button does not type.
+fn typed(ui: &Ui) -> bool {
+    ui.keyboard_events().iter().any(|press| {
+        KeyClass::of(*press) == KeyClass::Text
+            && !press.text.is_empty()
+            && press.text.as_str() != " "
+    })
+}
+
 fn label(ui: &mut Ui, value: &DragNum<'_>, decimals: usize, suffix: &str) -> InternedStr {
     match value {
         DragNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),

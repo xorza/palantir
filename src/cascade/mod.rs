@@ -24,8 +24,8 @@ mod paint_rect;
 
 use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::entry::{
-    EntryRow, HitRow, HitTargets, PressTargets, RootRow, ScopeRow, TabDirection, TabDomain,
-    TabStopRow, WidgetLocation,
+    ArrowGroupRow, EntryRow, HitRow, HitTargets, PressTargets, RootRow, ScopeRow, TabDirection,
+    TabDomain, TabStopRow, WidgetLocation,
 };
 use crate::cascade::layer_cascade::LayerCascade;
 use crate::input::sense::Sense;
@@ -57,6 +57,8 @@ pub(crate) struct Cascade {
     pub(crate) tab_stops: Vec<TabStopRow>,
     /// Layer roots in record order — see [`RootRow`].
     pub(crate) roots: Vec<RootRow>,
+    /// Arrow groups in record order — see [`ArrowGroupRow`].
+    pub(crate) arrow_groups: Vec<ArrowGroupRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
     /// ([`crate::input::input_state::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
@@ -230,7 +232,7 @@ impl Cascade {
             self.tab_stops
                 .iter()
                 .enumerate()
-                .filter(move |(_, row)| domain.contains(row))
+                .filter(move |(_, row)| self.in_domain(domain, row))
                 .map(|(position, row)| ((row.index, position), row.id))
         };
         let current =
@@ -252,6 +254,25 @@ impl Cascade {
                 .or_else(|| stops().max_by_key(|&(key, _)| key)),
         }
         .map(|(_, id)| id)
+    }
+
+    /// Whether `row` is one of `domain`'s stops.
+    fn in_domain(&self, domain: TabDomain, row: &TabStopRow) -> bool {
+        match domain {
+            TabDomain::Root(root) => row.root == root,
+            TabDomain::Layer(layer) => row.layer == layer,
+            TabDomain::Group(group) => self.is_within(row.id, group),
+        }
+    }
+
+    /// The innermost arrow group `focused` sits in, or `None`. Groups are
+    /// rows in pre-order, so the last one holding it is the innermost.
+    pub(crate) fn arrow_group_of(&self, focused: WidgetId) -> Option<ArrowGroupRow> {
+        self.arrow_groups
+            .iter()
+            .rev()
+            .find(|row| self.is_within(focused, row.id))
+            .copied()
     }
 
     /// The first stop in Tab order recorded under `ancestor`, or `None`
@@ -424,6 +445,7 @@ pub(crate) mod internals {
             assert_eq!(scopes(self), scopes(cold), "scope rows");
             assert_eq!(self.tab_stops, cold.tab_stops, "tab stop rows");
             assert_eq!(self.roots, cold.roots, "root rows");
+            assert_eq!(self.arrow_groups, cold.arrow_groups, "arrow group rows");
             for (layer, tree) in forest.trees.iter_paint_order() {
                 let (warm, full) = (&self.layers[layer], &cold.layers[layer]);
                 for (node, id) in tree.records.widget_id().iter().enumerate() {

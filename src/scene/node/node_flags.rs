@@ -2,6 +2,7 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -19,6 +20,10 @@ impl NodeFlags {
     const SCOPE_MASK: u32 = 0xff << Self::SCOPE_SHIFT;
     /// Set when the node is *not* a Tab stop, so the zero default is one.
     const NOT_TAB_STOP: u32 = 1 << 18;
+    /// The axis whose arrows move focus between the stops inside the
+    /// node: `0` none, `1 + Axis`.
+    const ARROW_SHIFT: u32 = 19;
+    const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
 
     /// The whole bitset, for callers that fold it into a hash rather
     /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
@@ -88,6 +93,25 @@ impl NodeFlags {
     #[inline]
     pub(crate) const fn set_focusable(&mut self, v: bool) {
         self.bits = (self.bits & !Self::FOCUSABLE) | (if v { Self::FOCUSABLE } else { 0 });
+    }
+
+    #[inline]
+    pub(crate) const fn arrow_focus(self) -> Option<Axis> {
+        match (self.bits & Self::ARROW_MASK) >> Self::ARROW_SHIFT {
+            0 => None,
+            1 => Some(Axis::X),
+            2 => Some(Axis::Y),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) const fn set_arrow_focus(&mut self, axis: Option<Axis>) {
+        let lane = match axis {
+            None => 0,
+            Some(axis) => 1 + axis as u32,
+        };
+        self.bits = (self.bits & !Self::ARROW_MASK) | (lane << Self::ARROW_SHIFT);
     }
 
     #[inline]

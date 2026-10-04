@@ -3,4 +3,5 @@
 mod edit;
 mod layout;
 mod scrub;
+mod spin;
 mod support;

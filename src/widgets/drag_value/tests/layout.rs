@@ -2,6 +2,7 @@
 //! node.
 
 use crate::Ui;
+use crate::input::keyboard::key::Key;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -46,6 +47,7 @@ fn editing_a_long_value_holds_the_field_width() {
 
     // Enter edit mode; entry seeds the full-precision text.
     h.set_focus(id);
+    h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut v));
     let edit_w = h.arranged(id).size.w;
 
@@ -88,6 +90,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     };
     h.frame(|ui| draw(ui, &mut v));
     h.set_focus(id);
+    h.key(Key::Enter);
     h.frame(|ui| draw(ui, &mut v));
 }
 
@@ -165,6 +168,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 
     // Focus flips the same widget to its inline editor.
     h.set_focus(id);
+    h.key(Key::Enter);
     h.frame(scene);
     let editor = placement(&h.ui, id);
 
@@ -227,6 +231,8 @@ fn entering_edit_mode_keeps_the_chips_box() {
     let chip = h.arranged(id).size;
 
     h.set_focus(id);
+
+    h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut fps));
     let editor = h.arranged(id).size;
 

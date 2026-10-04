@@ -33,6 +33,7 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::Layout;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::mem;
@@ -168,6 +169,13 @@ pub(crate) struct InputState {
     queue: InputQueue,
 }
 
+/// Where one press moves focus: the stops it may reach, and which way.
+#[derive(Clone, Copy, Debug)]
+struct Traversal {
+    domain: TabDomain,
+    direction: TabDirection,
+}
+
 /// Where focus goes back to when the overlay it entered closes.
 #[derive(Clone, Copy, Debug)]
 struct FocusReturn {
@@ -200,20 +208,20 @@ impl InputState {
     /// each move, so the next press is judged against the new focus. Here,
     /// before anything records, so the whole pass routes by the focus Tab
     /// left behind.
+    ///
+    /// Arrows move the same way inside an arrow group
+    /// ([`Configure::arrow_focus`](crate::Configure::arrow_focus)): an
+    /// unmodified arrow along the innermost group around the focus, that
+    /// no scope strictly inside the group takes, steps to the group's next
+    /// or previous stop.
     fn traverse_focus(&mut self, cascade: &Cascade) {
         let mut i = 0;
         while i < self.frame_keyboard_events.len() {
             let press = self.frame_keyboard_events[i];
-            if KeyClass::of(press) != KeyClass::Focus || self.scopes.path_takes(KeyClass::Focus) {
+            let Some(Traversal { domain, direction }) = self.traversal(press, cascade) else {
                 i += 1;
                 continue;
-            }
-            let direction = if press.mods.shift {
-                TabDirection::Previous
-            } else {
-                TabDirection::Next
             };
-            let domain = cascade.tab_domain(self.focused);
             if let Some(next) = cascade.next_tab_stop(domain, self.focused, direction) {
                 if let TabDomain::Root(root) = domain {
                     self.enter_overlay(root, cascade);
@@ -223,6 +231,41 @@ impl InputState {
             }
             self.frame_keyboard_events.remove(i);
             self.scopes.resolve(self.focused, cascade);
+        }
+    }
+
+    /// Where `press` moves focus, if it is the framework's to move: a Tab
+    /// no scope on the path claims, or an arrow along an arrow group no
+    /// scope inside the group claims.
+    fn traversal(&self, press: KeyPress, cascade: &Cascade) -> Option<Traversal> {
+        match KeyClass::of(press) {
+            KeyClass::Focus if !self.scopes.path_takes(KeyClass::Focus) => {
+                let direction = if press.mods.shift {
+                    TabDirection::Previous
+                } else {
+                    TabDirection::Next
+                };
+                Some(Traversal {
+                    domain: cascade.tab_domain(self.focused),
+                    direction,
+                })
+            }
+            KeyClass::Caret if press.mods == Modifiers::NONE => {
+                let group = cascade.arrow_group_of(self.focused?)?;
+                let direction = match (group.axis, press.key) {
+                    (Axis::Y, Key::ArrowDown) | (Axis::X, Key::ArrowRight) => TabDirection::Next,
+                    (Axis::Y, Key::ArrowUp) | (Axis::X, Key::ArrowLeft) => TabDirection::Previous,
+                    _ => return None,
+                };
+                let claimed = self
+                    .scopes
+                    .path_takes_within(KeyClass::Caret, group.id, cascade);
+                (!claimed).then_some(Traversal {
+                    domain: TabDomain::Group(group.id),
+                    direction,
+                })
+            }
+            _ => None,
         }
     }
 

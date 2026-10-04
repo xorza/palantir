@@ -128,8 +128,8 @@ impl<'a> ColorButton<'a> {
         let mut response = widget.response(ui);
         let id = widget.resolve(ui);
         if !response.disabled && ui.is_focus_within(id) {
-            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
-            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+            let space = widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+            let enter = widget.key_pressed(ui, Shortcut::key(Key::Enter));
             if space || enter {
                 response.left.phase = ButtonPhase::Up { click: Some(1) };
             }

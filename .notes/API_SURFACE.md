@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `24d0fe66` (plus the working tree).
+Generated on top of `e67c3749` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -535,6 +535,7 @@ Configure
         fn disabled(self, d: bool) -> Self { .. }
         fn focusable(self, f: bool) -> Self { .. }
         fn tab_stop(self, stop: bool) -> Self { .. }
+        fn arrow_focus(self, axis: Axis) -> Self { .. }
         fn tab_index(self, index: i16) -> Self { .. }
         fn input_scope(self, takes: KeyFilter) -> Self { .. }
         fn visibility(self, v: Visibility) -> Self { .. }
@@ -3716,6 +3717,7 @@ widget::ConfigureWidget
         pub const fn disabled(&mut self, d: bool) -> &mut Self
         pub const fn focusable(&mut self, f: bool) -> &mut Self
         pub const fn tab_stop(&mut self, stop: bool) -> &mut Self
+        pub const fn arrow_focus(&mut self, axis: Axis) -> &mut Self
         pub const fn tab_index(&mut self, index: i16) -> &mut Self
         pub const fn input_scope(&mut self, takes: KeyFilter) -> &mut Self
         pub const fn visibility(&mut self, v: Visibility) -> &mut Self
@@ -4130,6 +4132,7 @@ widget::Widget
         pub fn grid() -> Self
         pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId
         pub fn response(&mut self, ui: &mut Ui) -> ResponseState
+        pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool
         pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Background>, body: impl FnOnce(&mut Ui) -> R) -> R
         pub fn show<'a, R>(self, ui: &'a mut Ui, chrome: Option<&Background>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'a, R>
         pub const fn authored_size(&self) -> Option<SizeSpec>
@@ -4149,6 +4152,7 @@ widget::Widget
         pub const fn authored_disabled(&self) -> bool
         pub const fn authored_focusable(&self) -> bool
         pub const fn authored_tab_stop(&self) -> bool
+        pub const fn authored_arrow_focus(&self) -> Option<Axis>
         pub const fn authored_tab_index(&self) -> i16
         pub const fn authored_input_scope(&self) -> KeyFilter
         pub const fn authored_visibility(&self) -> Visibility

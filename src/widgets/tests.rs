@@ -542,3 +542,91 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
         "no index was written back"
     );
 }
+
+/// Every widget that declares its own input scope takes its keys while an
+/// application root's scope encloses it — the case where reading as the
+/// record position, the node around the widget, reads as the root and
+/// misses the key the widget was granted.
+#[test]
+fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
+    use crate::input::key_class::KeyFilter;
+    use crate::input::keyboard::key::Key;
+    use crate::widgets::button::Button;
+    use crate::widgets::checkbox::Checkbox;
+    use crate::widgets::color_button::ColorButton;
+    use crate::widgets::combo_box::ComboBox;
+    use crate::widgets::expander::Expander;
+    use crate::widgets::splitter::Splitter;
+
+    fn under_root<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
+        Panel::vstack()
+            .id(WidgetId::from_hash("app-root"))
+            .input_scope(KeyFilter::ACCEL)
+            .show(ui, body)
+            .inner
+    }
+    /// Settle, focus `focus`, settle, press `key`, and record two frames —
+    /// a splitter's ratio comes back on the frame after the key.
+    fn press(focus: WidgetId, key: Key, mut record: impl FnMut(&mut Ui)) {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(&mut record);
+        h.set_focus(focus);
+        h.frame(&mut record);
+        h.key(key);
+        h.frame(&mut record);
+        h.frame(&mut record);
+    }
+    let id = own_id();
+
+    let mut clicks = 0;
+    press(id, Key::Char(' '), |ui| {
+        let clicked = under_root(ui, |ui| Button::new().id(id).size(40.0).show(ui).clicked());
+        clicks += usize::from(clicked);
+    });
+    assert_eq!(clicks, 1, "Button");
+
+    let mut on = false;
+    press(id, Key::Char(' '), |ui| {
+        under_root(ui, |ui| {
+            Checkbox::new(&mut on).id(id).show(ui);
+        });
+    });
+    assert!(on, "Checkbox");
+
+    let mut open = false;
+    press(id.with("header"), Key::Enter, |ui| {
+        under_root(ui, |ui| {
+            Expander::new("x").id(id).open(&mut open).show(ui, |_| {});
+        });
+    });
+    assert!(open, "Expander");
+
+    let mut picked = 0usize;
+    press(id, Key::ArrowDown, |ui| {
+        under_root(ui, |ui| {
+            ComboBox::new(&mut picked, &["a", "b"]).id(id).show(ui);
+        });
+    });
+    assert_eq!(picked, 1, "ComboBox");
+
+    let mut color = RgbaF32::WHITE;
+    let mut opened = false;
+    press(id, Key::Enter, |ui| {
+        under_root(ui, |ui| {
+            ColorButton::new(&mut color).id(id).show(ui);
+        });
+        opened |= PopupTrigger::is_open(ui, id);
+    });
+    assert!(opened, "ColorButton");
+
+    let mut ratio = 0.5;
+    press(id.with("divider"), Key::End, |ui| {
+        under_root(ui, |ui| {
+            Splitter::row(&mut ratio)
+                .id(id)
+                .size((200.0, 50.0))
+                .show(ui, |_, _| {});
+        });
+    });
+    assert!(ratio > 0.99, "Splitter: {ratio}");
+}

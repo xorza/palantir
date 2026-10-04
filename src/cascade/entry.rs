@@ -9,6 +9,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 
@@ -141,15 +142,17 @@ pub(crate) enum TabDomain {
     Root(WidgetId),
     /// Every stop of one layer.
     Layer(Layer),
+    /// The stops recorded under one arrow group.
+    Group(WidgetId),
 }
 
-impl TabDomain {
-    pub(crate) fn contains(self, row: &TabStopRow) -> bool {
-        match self {
-            Self::Root(root) => row.root == root,
-            Self::Layer(layer) => row.layer == layer,
-        }
-    }
+/// One arrow group — see [`Configure::arrow_focus`](crate::Configure::arrow_focus) —
+/// in record order across every layer. A node in a disabled or invisible
+/// subtree is no group, as it is no stop. Same lifecycle as [`ScopeRow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ArrowGroupRow {
+    pub(crate) id: WidgetId,
+    pub(crate) axis: Axis,
 }
 
 /// One root a layer recorded, in record order across every layer — how

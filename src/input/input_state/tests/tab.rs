@@ -400,3 +400,53 @@ fn a_dialog_takes_focus_as_it_opens_and_gives_it_back() {
     h.frame(dialog_scene(false, false));
     assert_eq!(h.focus(), Some(id("a")));
 }
+
+/// The arrows along an arrow group walk its stops and wrap; an arrow
+/// across it, or one with a modifier, moves nothing. A scope strictly
+/// inside the group that takes the arrows keeps them, and one on the
+/// group's own node — an overlay's claim — does not.
+#[test]
+fn arrows_walk_an_arrow_group() {
+    use crate::primitives::layout::axis::Axis;
+
+    let group = |own_scope: KeyFilter| {
+        move |ui: &mut Ui| {
+            Panel::vstack()
+                .id(id("group"))
+                .arrow_focus(Axis::Y)
+                .input_scope(own_scope)
+                .show(ui, |ui| {
+                    stop(ui, "a");
+                    stop(ui, "b");
+                    Block::new()
+                        .id(id("field"))
+                        .focusable(true)
+                        .input_scope(KeyFilter::CARET)
+                        .show(ui);
+                });
+        }
+    };
+    let arrow = |h: &mut UiHarness, mods: Modifiers, key: Key, record: &mut dyn FnMut(&mut Ui)| {
+        h.set_modifiers(mods);
+        h.key(key);
+        h.frame(&mut *record);
+    };
+    for own in [KeyFilter::NONE, KeyFilter::ALL.difference(KeyFilter::FOCUS)] {
+        let mut record = group(own);
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(&mut record);
+        h.set_focus(id("a"));
+        h.frame(&mut record);
+        for (mods, key, want) in [
+            (Modifiers::NONE, Key::ArrowDown, "b"),
+            (Modifiers::NONE, Key::ArrowRight, "b"),
+            (Modifiers::SHIFT, Key::ArrowDown, "b"),
+            (Modifiers::NONE, Key::ArrowUp, "a"),
+            (Modifiers::NONE, Key::ArrowUp, "field"),
+            (Modifiers::NONE, Key::ArrowDown, "field"),
+        ] {
+            arrow(&mut h, mods, key, &mut record);
+            assert_eq!(h.focus(), Some(id(want)), "{own:?}: {mods:?} {key:?}");
+        }
+    }
+}

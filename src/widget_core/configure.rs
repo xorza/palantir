@@ -16,6 +16,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::justify::Justify;
@@ -212,6 +213,13 @@ impl ConfigureWidget<'_> {
     #[inline]
     pub const fn tab_stop(&mut self, stop: bool) -> &mut Self {
         self.widget.node.flags.set_tab_stop(stop);
+        self
+    }
+
+    /// Borrowing form of [`Configure::arrow_focus`].
+    #[inline]
+    pub const fn arrow_focus(&mut self, axis: Axis) -> &mut Self {
+        self.widget.node.flags.set_arrow_focus(Some(axis));
         self
     }
 
@@ -723,6 +731,22 @@ pub trait Configure: Sized {
     #[must_use]
     fn tab_stop(mut self, stop: bool) -> Self {
         self.configure().tab_stop(stop);
+        self
+    }
+
+    /// Make this node a group whose stops the arrow keys along `axis`
+    /// move focus between, as WAI-ARIA's menus, list boxes, radio groups
+    /// and toolbars do: the next arrow goes to the next stop inside the
+    /// node in Tab order, the previous one back, both wrapping.
+    ///
+    /// The framework moves focus, as it does on Tab, for every arrow
+    /// press that no scope *inside* the group claims — a text field in a
+    /// toolbar keeps its caret keys, and a popup around a menu does not
+    /// take the menu's arrows away. Unmodified arrows only.
+    #[inline]
+    #[must_use]
+    fn arrow_focus(mut self, axis: Axis) -> Self {
+        self.configure().arrow_focus(axis);
         self
     }
 

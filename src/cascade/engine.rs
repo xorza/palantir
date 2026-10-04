@@ -7,7 +7,7 @@ use crate::cascade::Cascade;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::counters::CascadeCounters;
-use crate::cascade::entry::{EntryRow, HitRow, RootRow, ScopeRow, TabStopRow};
+use crate::cascade::entry::{ArrowGroupRow, EntryRow, HitRow, RootRow, ScopeRow, TabStopRow};
 use crate::cascade::layer_cascade::LayerCascade;
 use crate::cascade::paint::PaintArena;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
@@ -45,6 +45,7 @@ struct TreeSink<'a> {
     scopes: &'a mut Vec<ScopeRow>,
     tab_stops: &'a mut Vec<TabStopRow>,
     roots: &'a mut Vec<RootRow>,
+    arrow_groups: &'a mut Vec<ArrowGroupRow>,
     layer: Layer,
     /// The root the walk is under, set as each one opens.
     root: WidgetId,
@@ -202,6 +203,7 @@ impl CascadeEngine {
         cascade.scopes.clear();
         cascade.tab_stops.clear();
         cascade.roots.clear();
+        cascade.arrow_groups.clear();
 
         for (layer, tree) in forest.trees.iter_paint_order() {
             let n = tree.records.len();
@@ -218,6 +220,7 @@ impl CascadeEngine {
                     scopes: &mut cascade.scopes,
                     tab_stops: &mut cascade.tab_stops,
                     roots: &mut cascade.roots,
+                    arrow_groups: &mut cascade.arrow_groups,
                     layer,
                     root: WidgetId::default(),
                 }),
@@ -442,6 +445,12 @@ impl CascadeEngine {
                 // widget absorbs it, but *focusing* one would put the
                 // keyboard somewhere that answers no key.
                 let focusable = !keyboard_off && attrs.is_focusable();
+                if !keyboard_off && let Some(axis) = attrs.arrow_focus() {
+                    sink.arrow_groups.push(ArrowGroupRow {
+                        id: widget_ids[iu],
+                        axis,
+                    });
+                }
                 if focusable && attrs.is_tab_stop() {
                     sink.tab_stops.push(TabStopRow {
                         layer,
