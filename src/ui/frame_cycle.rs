@@ -31,6 +31,7 @@ use crate::display;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::render_plan::RenderPlan;
+use crate::scene::node::ident::Ident;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
@@ -326,7 +327,8 @@ impl<'a> FrameCycle<'a> {
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
         // like any other parent-scoped id (see `Widget::resolve`).
-        self.ui.open_node(WidgetId::VIEWPORT, &viewport.node, None);
+        let viewport_id = self.ui.resolve_ident(Ident::Verbatim(WidgetId::VIEWPORT));
+        self.ui.open_node(viewport_id, &viewport.node, None);
         {
             tracy::zone!("Ui::record_user");
             app.record(win, self.ui);
