@@ -5,27 +5,33 @@
 //! on the GPU curve pipeline, with no CPU tessellation anywhere.
 
 use crate::support;
-use crate::support::{demo_cell, section, tiles};
+use crate::support::{api, demo_cell, note, section, tiles};
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui, Vec2};
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(
-        ui,
-        "width — a float, not an integer; sub-pixel widths fade rather than \
-         snapping to 1 px",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "widths 1–8 px", widths);
-                demo_cell(ui, "hairlines 0.1–1 px", hairlines);
-            });
-        },
-    );
+    section(ui, "Width", &[api!(type Stroke)], |ui| {
+        note(
+            ui,
+            "A float, not an integer: widths under a pixel fade instead of \
+                 snapping to 1 px.",
+        );
+        tiles(ui, |ui| {
+            demo_cell(ui, "widths 1–8 px", widths);
+            demo_cell(ui, "hairlines 0.1–1 px", hairlines);
+        });
+    });
 
     section(
         ui,
-        "joins & caps — how a stroke turns, and how it ends",
+        "Joins and caps",
+        &[api!(type LineJoin), api!(type LineCap)],
         |ui| {
+            note(
+                ui,
+                "How a stroke turns a corner, and how it ends. The white rules mark \
+                 the line ends.",
+            );
             tiles(ui, |ui| {
                 demo_cell(ui, "joins — Miter / Bevel / Round", joins);
                 demo_cell(ui, "line caps — Butt / Square / Round", caps);
@@ -34,26 +40,32 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
+    section(ui, "Colour along a stroke", &[api!(type ColorRamp)], |ui| {
+        note(ui, "Per point, per segment, or a ramp along the curve.");
+        tiles(ui, |ui| {
+            demo_cell(ui, "per-point colours", per_point);
+            demo_cell(ui, "per-segment colours", per_segment);
+            demo_cell(ui, "gradient along t", gradient_cubic);
+            demo_cell(ui, "gradient, three stops", gradient_multistop);
+        });
+    });
+
     section(
         ui,
-        "colour — per point, per segment, or from a gradient brush",
+        "Curves and arcs",
+        &[
+            api!(Shape::cubic_bezier),
+            api!(Shape::quadratic_bezier),
+            api!(Shape::arc),
+        ],
         |ui| {
             tiles(ui, |ui| {
-                demo_cell(ui, "per-point colours", per_point);
-                demo_cell(ui, "per-segment colours", per_segment);
-                demo_cell(ui, "gradient along t", gradient_cubic);
-                demo_cell(ui, "gradient, three stops", gradient_multistop);
+                demo_cell(ui, "cubic bézier", cubic);
+                demo_cell(ui, "quadratic bézier", quadratic);
+                demo_cell(ui, "arcs & circles", arcs);
             });
         },
     );
-
-    section(ui, "curves & arcs — béziers and circular sweeps", |ui| {
-        tiles(ui, |ui| {
-            demo_cell(ui, "cubic bézier", cubic);
-            demo_cell(ui, "quadratic bézier", quadratic);
-            demo_cell(ui, "arcs & circles", arcs);
-        });
-    });
 }
 
 fn widths(ui: &mut Ui) {

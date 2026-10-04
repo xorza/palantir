@@ -1,298 +1,296 @@
-//! Side-layer widgets. `Popup::new` records a side root in the
-//! `Popup` layer that paints above the main tree, escapes ancestor clip,
-//! and hit-tests on top. Tooltips live one layer higher still, with a
-//! ~0.5 s delay and a warmup window — move between adjacent triggers
-//! within ~1 s and the next bubble skips the delay. ContextMenus attach
-//! to any sensed widget and auto-open on secondary-click at the pointer.
+//! Side-layer widgets. A popup records a side root in the `Popup` layer
+//! that paints above the main tree, escapes ancestor clip, and hit-tests
+//! on top. Tooltips live one layer higher still, with a delay and a
+//! warmup window — move between adjacent triggers quickly and the next
+//! bubble skips the delay. Context menus attach to any sensed widget and
+//! open on secondary-click at the pointer.
 
 use std::time::Duration;
 
 use crate::support;
-use crate::support::{note_style, raised_bg, row, section};
+use crate::support::{api, note, note_style, raised_bg, readout, row, section, tiles, well_bg};
 use palantir::{
-    Align, Anchor, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem,
-    MenuSeparator, Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text,
-    Tooltip, Ui, Vec2, WidgetId, fmt,
+    Align, Anchor, AnchorAlign, Block, Button, Checkbox, ClickOutside, Configure, ContextMenu,
+    ContextMenuTheme, Justify, Key, MenuItem, MenuSeparator, Panel, Popup, PopupTrigger,
+    RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,
 };
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Side {
+    Below,
+    Above,
+    LeftOf,
+    RightOf,
+}
+
+#[derive(Debug)]
+struct State {
+    choice: Option<&'static str>,
+    side: Side,
+    align: AnchorAlign,
+    anchored: bool,
+    action: Option<&'static str>,
+    /// The roomy menu's theme: the live one with its spacing loosened.
+    /// Built on the first frame and kept, rather than cloned from the
+    /// theme every frame for a menu that is nearly always closed.
+    roomy: Option<ContextMenuTheme>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            choice: None,
+            side: Side::Below,
+            align: AnchorAlign::Start,
+            anchored: true,
+            action: None,
+            roomy: None,
+        }
+    }
+}
+
 pub(crate) fn build(ui: &mut Ui) {
-    popup_section(ui);
-    tooltip_section(ui);
-    context_menu_section(ui);
+    let state_id = WidgetId::from_hash("showcase::overlays::state");
+    ui.with_state::<State, _>(state_id, |ui, s| {
+        popup_section(ui, s);
+        anchor_section(ui, s);
+        tooltip_section(ui);
+        context_menu_section(ui, s);
+    });
 }
 
-#[derive(Default, Debug)]
-struct MenuState {
-    open: bool,
-    last_choice: Option<&'static str>,
-}
-
-fn popup_section(ui: &mut Ui) {
-    let menu_id = WidgetId::from_hash("showcase::overlays::popup");
-    ui.with_state::<MenuState, _>(menu_id, popup_menu);
-}
-
-fn popup_menu(ui: &mut Ui, menu: &mut MenuState) {
-    let mut trigger_rect: Option<Rect> = None;
-    let mut clicked = false;
-
+fn popup_section(ui: &mut Ui, s: &mut State) {
     section(
         ui,
-        "popup — paints on the Popup layer, above and outside the main tree; an \
-         outside click dismisses it",
+        "Popup",
+        &[api!(PopupTrigger::on), api!(PopupTrigger::is_open)],
         |ui| {
+            note(
+                ui,
+                "A panel dropped below its trigger on the Popup layer, above and outside the \
+                 main tree. A second click, an outside press or Escape closes it.",
+            );
             row(ui, |ui| {
-                let r = Button::new()
-                    .id_salt("popup-trigger")
-                    .label("menu")
-                    .show(ui);
-                if r.clicked() {
-                    clicked = true;
-                }
-                trigger_rect = r.rect;
-
-                let label = menu.last_choice.unwrap_or("(no selection yet)");
-                Text::new(label)
-                    .id_salt("popup-choice")
-                    .style(&note_style())
-                    .show(ui);
-            });
-        },
-    );
-
-    menu.open ^= clicked;
-    if !menu.open {
-        return;
-    }
-    let Some(trigger) = trigger_rect else {
-        return;
-    };
-
-    let anchor = Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0);
-    let mut chosen: Option<&'static str> = None;
-    let resp = Popup::new(Anchor::at_point(anchor))
-        .id_salt("popup-menu")
-        .padding(6.0)
-        .size((Sizing::HUG, Sizing::HUG))
-        // `min_size` floors the body so the popup doesn't collapse to
-        // bare label width — the inner Fill buttons then expand to the
-        // floored width.
-        .min_size((220.0, 110.0))
-        .max_size((280, 200))
-        .justify(Justify::Center)
-        .child_align(Align::CENTER)
-        .gap(10.0)
-        .background(raised_bg())
-        .show(ui, |ui, _popup| {
-            for label in ["copy", "paste", "delete"] {
-                if Button::new()
-                    .id_salt(("popup-item", label))
-                    .label(label)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui)
-                    .left
-                    .clicked()
-                {
-                    chosen = Some(label);
-                }
-            }
-        });
-
-    if let Some(label) = chosen {
-        menu.last_choice = Some(label);
-        menu.open = false;
-    } else if resp.dismissed {
-        menu.open = false;
-    }
-}
-
-fn tooltip_section(ui: &mut Ui) {
-    section(
-        ui,
-        "tooltips — hover ~0.5 s; delays, wrap width, and the disabled rules",
-        |ui| {
-            row(ui, |ui| {
-                let r = Button::new()
-                    .id_salt("d-default")
-                    .label("default")
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(&r, "Default 0.5 s delay before this appears.").show(ui);
-
-                let r = Button::new()
-                    .id_salt("d-instant")
-                    .label("instant")
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(&r, "No delay — fires the frame the pointer arrives.")
-                    .delay(Duration::ZERO)
-                    .show(ui);
-
-                let r = Button::new()
-                    .id_salt("d-slow")
-                    .label("slow (1.5 s)")
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(&r, "Held for 1.5 s before showing.")
-                    .delay(Duration::from_millis(1_500))
-                    .show(ui);
-
-                let r = Button::new()
-                    .id_salt("w-1")
-                    .label("long text")
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(
-                    &r,
-                    "Tooltips wrap to the configured max width — the default is \
-                         280 logical pixels. Long bodies stack into multiple lines \
-                         automatically; the bubble's height hugs the shaped text.",
-                )
-                .show(ui);
-
-                let r = Button::new()
-                    .id_salt("w-2")
-                    .label("narrow")
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(
-                    &r,
-                    "Override max width to force tighter wrap on a single tooltip.",
-                )
-                .max_size((140.0, f32::INFINITY))
-                .show(ui);
-
-                let r = Button::new()
-                    .id_salt("dis-1")
-                    .label("disabled (no tooltip)")
-                    .disabled(true)
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(
-                    &r,
-                    "This text is suppressed by the default skip-on-disabled rule.",
-                )
-                .show(ui);
-
-                let r = Button::new()
-                    .id_salt("dis-2")
-                    .label("disabled (with tooltip)")
-                    .disabled(true)
-                    .show(ui)
-                    .snapshot();
-                Tooltip::on(
-                    &r,
-                    "Opt in via .when_disabled(true) for 'why is this disabled' hints.",
-                )
-                .when_disabled(true)
-                .show(ui);
-            });
-        },
-    );
-
-    section(
-        ui,
-        "tooltip warmup — hover one, then move along the row within ~1 s and the \
-         next bubble skips its delay; pause and it re-delays",
-        |ui| {
-            row(ui, |ui| {
-                for i in 0..5 {
-                    let r = Button::new()
-                        .id_salt(("warm", i))
-                        .label(fmt!(ui, "item {}", i + 1))
-                        .show(ui)
-                        .snapshot();
-                    Tooltip::on(
-                        &r,
-                        match i {
-                            0 => "Hover, then move to the next item within ~1 s.",
-                            1 => "See how the next bubble appears instantly?",
-                            2 => "The warmup window keeps scanning a row snappy.",
-                            3 => "Pause for ~1 s and the next one re-delays.",
-                            _ => "Last one.",
-                        },
-                    )
-                    .show(ui);
-                }
+                let trigger = Button::new().label("Edit ▾").show(ui).snapshot();
+                PopupTrigger::on(&trigger)
+                    .padding(6.0)
+                    .gap(4.0)
+                    .min_size((180.0, 0.0))
+                    .background(raised_bg())
+                    .show(ui, |ui, close| {
+                        for label in ["Copy", "Paste", "Delete"] {
+                            if Button::new()
+                                .id_salt(label)
+                                .label(label)
+                                .size((Sizing::FILL, Sizing::HUG))
+                                .show(ui)
+                                .clicked()
+                            {
+                                s.choice = Some(label);
+                                close.close();
+                            }
+                        }
+                    });
+                readout(ui, "picked", s.choice.unwrap_or("—"));
             });
         },
     );
 }
 
-#[derive(Default, Debug)]
-struct CtxState {
-    last_action: Option<&'static str>,
-}
-
-fn context_menu_section(ui: &mut Ui) {
-    let state_id = WidgetId::from_hash("showcase::overlays::ctx-menu");
-
+fn anchor_section(ui: &mut Ui, s: &mut State) {
     section(
         ui,
-        "context menu — right-click the button or either surface; an item click, an \
-         outside click, or Esc dismisses",
+        "Anchors",
+        &[
+            api!(Anchor::below),
+            api!(Anchor::with_align),
+            api!(ClickOutside::PassThrough),
+        ],
         |ui| {
+            note(
+                ui,
+                "Where a popup sits against a rect: the side, and how it lines up along that \
+                 side. This one lets outside clicks pass through, so it stays open while you \
+                 change the controls.",
+            );
             row(ui, |ui| {
-                let trigger = Button::new()
-                    .id_salt("ctx-button-trigger")
-                    .label("right-click me")
-                    .show(ui)
-                    .snapshot();
-                attach_menu(ui, &trigger, state_id, Flavor::Default);
-
-                // Static strings only — no per-frame alloc.
-                let label = ui
-                    .state::<CtxState>(state_id)
-                    .and_then(|s| s.last_action)
-                    .unwrap_or("last action: (none yet)");
-                Text::new(label)
-                    .id_salt("ctx-status")
-                    .style(&note_style())
-                    .show(ui);
+                for (value, label) in [
+                    (Side::Below, "below"),
+                    (Side::Above, "above"),
+                    (Side::LeftOf, "left_of"),
+                    (Side::RightOf, "right_of"),
+                ] {
+                    RadioButton::new(&mut s.side, value)
+                        .id_salt(label)
+                        .label(label)
+                        .show(ui);
+                }
             });
-
+            row(ui, |ui| {
+                for (value, label) in [
+                    (AnchorAlign::Start, "Start"),
+                    (AnchorAlign::Center, "Center"),
+                    (AnchorAlign::End, "End"),
+                ] {
+                    RadioButton::new(&mut s.align, value)
+                        .id_salt(label)
+                        .label(label)
+                        .show(ui);
+                }
+                Checkbox::new(&mut s.anchored).label("show").show(ui);
+            });
             Panel::hstack()
-                .id_salt("ctx-surfaces")
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::HUG))
+                .size((Sizing::FILL, Sizing::fixed(150.0)))
+                .padding(8.0)
+                .justify(Justify::Center)
+                .child_align(Align::CENTER)
+                .background(well_bg())
                 .show(ui, |ui| {
-                    // A generic Frame surface (Sense::CLICK so it can
-                    // receive secondary clicks) with the theme-driven
-                    // default menu look.
-                    let surface = Block::new()
-                        .id_salt("ctx-surface")
-                        .size((Sizing::FILL, Sizing::fixed(90.0)))
-                        .sense(Sense::CLICK)
-                        .background(raised_bg())
-                        .show(ui)
-                        .snapshot();
-                    attach_menu(ui, &surface, state_id, Flavor::Default);
-
-                    // Same items, configured wider with bigger padding and
-                    // a maximum width.
-                    let wide = Block::new()
-                        .id_salt("ctx-wide-surface")
-                        .size((Sizing::FILL, Sizing::fixed(90.0)))
-                        .sense(Sense::CLICK)
-                        .background(support::well_bg())
-                        .show(ui)
-                        .snapshot();
-                    attach_menu(ui, &wide, state_id, Flavor::Wide);
+                    let target = Block::new()
+                        .size((Sizing::fixed(140.0), Sizing::fixed(48.0)))
+                        .background(support::swatch_bg(support::A))
+                        .show(ui);
+                    if s.anchored
+                        && let Some(rect) = target.rect
+                    {
+                        let anchor = match s.side {
+                            Side::Below => Anchor::below(rect),
+                            Side::Above => Anchor::above(rect),
+                            Side::LeftOf => Anchor::left_of(rect),
+                            Side::RightOf => Anchor::right_of(rect),
+                        };
+                        Popup::new(anchor.with_align(s.align).with_gap(6.0))
+                            .click_outside(ClickOutside::PassThrough)
+                            .padding((10.0, 6.0))
+                            .background(raised_bg())
+                            .show(ui, |ui, _| {
+                                Text::new("popup").style(&note_style()).show(ui);
+                            });
+                    }
                 });
         },
     );
 }
 
-#[derive(Copy, Clone, Debug)]
-enum Flavor {
-    Default,
-    Wide,
+fn tooltip_section(ui: &mut Ui) {
+    section(
+        ui,
+        "Tooltips",
+        &[
+            api!(Tooltip::on as fn(&'static ResponseSnapshot, &'static str) -> Tooltip<'static>),
+            api!(Tooltip::delay),
+            api!(Tooltip::when_disabled),
+        ],
+        |ui| {
+            note(
+                ui,
+                "Hover for half a second. The bubble wraps at 280 px unless told otherwise, and \
+                 a disabled widget shows none unless it opts in. Once one shows, the next \
+                 within a second skips its delay — sweep along the lower row.",
+            );
+            row(ui, |ui| {
+                let r = Button::new().label("default").show(ui).snapshot();
+                Tooltip::on(&r, "The default 0.5 s delay before this appears.").show(ui);
+
+                let r = Button::new().label("instant").show(ui).snapshot();
+                Tooltip::on(&r, "No delay — shows on the frame the pointer arrives.")
+                    .delay(Duration::ZERO)
+                    .show(ui);
+
+                let r = Button::new().label("slow").show(ui).snapshot();
+                Tooltip::on(&r, "Held for 1.5 s before showing.")
+                    .delay(Duration::from_millis(1_500))
+                    .show(ui);
+
+                let r = Button::new().label("long text").show(ui).snapshot();
+                Tooltip::on(
+                    &r,
+                    "Tooltips wrap to the configured max width — 280 logical pixels by \
+                     default. A long body stacks into several lines, and the bubble's height \
+                     hugs the shaped text.",
+                )
+                .show(ui);
+
+                let r = Button::new().label("narrow").show(ui).snapshot();
+                Tooltip::on(&r, "A max width on one tooltip forces a tighter wrap.")
+                    .max_size((140.0, f32::INFINITY))
+                    .show(ui);
+
+                let r = Button::new()
+                    .label("disabled")
+                    .disabled(true)
+                    .show(ui)
+                    .snapshot();
+                Tooltip::on(&r, "Never shown: a disabled trigger skips its tooltip.").show(ui);
+
+                let r = Button::new()
+                    .label("disabled, explains")
+                    .disabled(true)
+                    .show(ui)
+                    .snapshot();
+                Tooltip::on(&r, "when_disabled(true) is for 'why is this off' hints.")
+                    .when_disabled(true)
+                    .show(ui);
+            });
+            row(ui, |ui| {
+                for (label, tip) in [
+                    ("one", "Hover, then move to the next item within a second."),
+                    ("two", "This one showed at once — the warmup window."),
+                    ("three", "Scanning a row stays quick."),
+                    ("four", "Pause for a second and the next one waits again."),
+                    ("five", "Last one."),
+                ] {
+                    let r = Button::new()
+                        .id_salt(label)
+                        .label(label)
+                        .show(ui)
+                        .snapshot();
+                    Tooltip::on(&r, tip).show(ui);
+                }
+            });
+        },
+    );
 }
 
-/// The `Wide` flavor's per-instance theme: same palette, looser
-/// everything. Built per call rather than kept in a static because a
-/// `ContextMenuTheme` isn't `const`-constructible; it's one small
-/// struct on an already-open menu's frame.
+fn context_menu_section(ui: &mut Ui, s: &mut State) {
+    section(
+        ui,
+        "Context menu",
+        &[api!(ContextMenu::on), api!(MenuItem::shortcut)],
+        |ui| {
+            note(
+                ui,
+                "Right-click the button or either surface. An item click, an outside click or \
+                 Escape closes the menu, and ↑ ↓ walk its items. The right surface's menu \
+                 has a looser theme.",
+            );
+            row(ui, |ui| {
+                let trigger = Button::new().label("right-click me").show(ui).snapshot();
+                attach_menu(ui, &trigger, &mut s.action, None);
+                readout(ui, "last action", s.action.unwrap_or("—"));
+            });
+            let roomy = s.roomy.get_or_insert_with(|| roomy_menu_theme(ui));
+            tiles(ui, |ui| {
+                for (label, roomy) in [("default theme", None), ("roomy theme", Some(&*roomy))] {
+                    let surface = Panel::zstack()
+                        .id_salt(label)
+                        .size((Sizing::fixed(260.0), Sizing::fixed(90.0)))
+                        .child_align(Align::CENTER)
+                        .sense(Sense::CLICK)
+                        .background(raised_bg())
+                        .show(ui, |ui| {
+                            Text::new(label).style(&note_style()).show(ui);
+                        })
+                        .response
+                        .snapshot();
+                    attach_menu(ui, &surface, &mut s.action, roomy);
+                }
+            });
+        },
+    );
+}
+
+/// The live context menu theme with looser spacing everywhere.
 fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
     let mut t = ui.theme().context_menu.clone();
     t.padding = Spacing::all(10.0);
@@ -304,35 +302,40 @@ fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
     t
 }
 
-fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flavor: Flavor) {
-    // `Wide` restyles through the theme bundle every menu widget reads;
-    // the panel takes it via `.style`, and the rows — recorded by this
-    // closure, not by `ContextMenu` — take their own halves of it. Every
-    // `style` setter takes an `Option`, so "styled or default" stays a value
-    // threaded through the tree rather than a branch around each widget.
-    let style = matches!(flavor, Flavor::Wide).then(|| roomy_menu_theme(ui));
+/// `style` restyles through the theme bundle every menu widget reads:
+/// the panel takes it via `.style`, and the rows — recorded by this
+/// closure, not by `ContextMenu` — take their own halves of it. Every
+/// `style` setter takes an `Option`, so "styled or default" stays a
+/// value threaded through the tree rather than a branch around each
+/// widget.
+fn attach_menu(
+    ui: &mut Ui,
+    trigger: &ResponseSnapshot,
+    action: &mut Option<&'static str>,
+    style: Option<&ContextMenuTheme>,
+) {
     let mut menu = ContextMenu::on(trigger)
         .size((Sizing::HUG, Sizing::HUG))
-        .style(style.as_ref());
+        .style(style);
     if style.is_some() {
         menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
     }
     menu.show(ui, |ui, popup| {
-        let item = style.as_ref().map(|s| &s.item);
-        let rule = style.as_ref().map(|s| &s.separator);
-        for (label, shortcut, action) in [
-            ("Copy", Shortcut::ctrl('C'), "last action: Copy"),
-            ("Cut", Shortcut::ctrl('X'), "last action: Cut"),
-            ("Paste", Shortcut::ctrl('V'), "last action: Paste"),
+        let item = style.map(|s| &s.item);
+        let rule = style.map(|s| &s.separator);
+        for (label, shortcut) in [
+            ("Copy", Shortcut::ctrl('C')),
+            ("Cut", Shortcut::ctrl('X')),
+            ("Paste", Shortcut::ctrl('V')),
         ] {
             if MenuItem::new(label)
+                .id_salt(label)
                 .shortcut(shortcut)
                 .style(item)
                 .show(ui, popup)
-                .left
                 .clicked()
             {
-                ui.with_state::<CtxState, _>(state_id, |_, s| s.last_action = Some(action));
+                *action = Some(label);
             }
         }
         MenuSeparator::new().style(rule).show(ui);
@@ -345,12 +348,9 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
             .shortcut(Shortcut::key(Key::Backspace))
             .style(item)
             .show(ui, popup)
-            .left
             .clicked()
         {
-            ui.with_state::<CtxState, _>(state_id, |_, s| {
-                s.last_action = Some("last action: Delete");
-            });
+            *action = Some("Delete");
         }
     });
 }

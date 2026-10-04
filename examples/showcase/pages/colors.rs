@@ -5,10 +5,10 @@
 //! Okhsv square keeps one brightness right across the hue circle where the
 //! HSV one does not. Switch the model under the panel to see the difference.
 
-use crate::support::{note_style, row, section};
+use crate::support::{api, note, row, section};
 use palantir::{
     ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
-    Configure, Panel, RgbaF32, Sizing, Text, Ui, WidgetId,
+    Configure, Panel, RgbaF32, Sizing, Ui, WidgetId,
 };
 
 #[derive(Debug)]
@@ -38,95 +38,87 @@ impl Default for State {
     }
 }
 
+/// How many colours the app-owned swatch row keeps.
+const RECENT: usize = 12;
+
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::colors::state");
     ui.with_state::<State, _>(state_id, |ui, state| {
-        section(ui, "PICKER", |ui| {
-            Text::new(
-                "The whole panel: field, hue and alpha bars, preview, channel values, the \
-                 model switch and a swatch row the picker keeps itself.",
-            )
-            .style(&note_style())
-            .show(ui);
-            row(ui, |ui| {
-                let picked = ColorPicker::new(&mut state.picked)
-                    .alpha(true)
-                    .history(true)
-                    .id(state_id.with("panel"))
-                    .show(ui);
-                if picked.committed {
-                    state.recent.insert(0, state.picked);
-                    state.recent.truncate(12);
-                }
-                Panel::vstack()
-                    .id(state_id.with("app-row"))
-                    .gap(8.0)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui, |ui| {
-                        Text::new("An app-owned swatch row instead of the picker's own:")
-                            .style(&note_style())
-                            .show(ui);
-                        ColorPicker::new(&mut state.accent)
-                            .swatches(&state.recent)
-                            .id(state_id.with("app-panel"))
-                            .show(ui);
-                    });
-            });
-        });
+        section(
+            ui,
+            "Picker",
+            &[api!(ColorPicker::alpha), api!(ColorPicker::history)],
+            |ui| {
+                note(
+                    ui,
+                    "The whole panel: field, hue and alpha bars, preview, channel values, the \
+                     model switch, and a swatch row the picker keeps itself. The second panel \
+                     shows an app-owned swatch row instead, filled by each commit of the first.",
+                );
+                row(ui, |ui| {
+                    let picked = ColorPicker::new(&mut state.picked)
+                        .alpha(true)
+                        .history(true)
+                        .show(ui);
+                    if picked.committed {
+                        if state.recent.len() == RECENT {
+                            state.recent.pop();
+                        }
+                        state.recent.insert(0, state.picked);
+                    }
+                    ColorPicker::new(&mut state.accent)
+                        .swatches(&state.recent)
+                        .show(ui);
+                });
+            },
+        );
 
-        section(ui, "PARTS", |ui| {
-            Text::new(
-                "The same widgets on their own, for a layout of your own. The field and the \
-                 bar share one ColorCoords, so the bar's hue is the field's.",
-            )
-            .style(&note_style())
-            .show(ui);
-            row(ui, |ui| {
-                ColorField::new(&mut state.parts)
-                    .id(state_id.with("field"))
-                    .show(ui);
-                Panel::vstack()
-                    .id(state_id.with("part-bars"))
-                    .gap(8.0)
-                    .size((Sizing::fixed(180.0), Sizing::HUG))
-                    .show(ui, |ui| {
-                        ColorStrip::for_hue(&mut state.parts)
-                            .id(state_id.with("hue"))
-                            .size((Sizing::FILL, Sizing::fixed(14.0)))
-                            .show(ui);
-                        ColorSwatch::new(state.parts.to_color())
-                            .id(state_id.with("part-chip"))
-                            .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                            .show(ui);
-                        Text::new("A texel size of 16, for the difference it makes:")
-                            .style(&note_style())
-                            .show(ui);
-                        ColorField::new(&mut state.parts)
-                            .texel_size(16)
-                            .id(state_id.with("coarse"))
-                            .size((Sizing::FILL, Sizing::fixed(80.0)))
-                            .show(ui);
-                    });
-            });
-        });
+        section(
+            ui,
+            "Parts",
+            &[
+                api!(ColorField::new),
+                api!(ColorStrip::for_hue),
+                api!(ColorField::texel_size),
+            ],
+            |ui| {
+                note(
+                    ui,
+                    "The same widgets on their own, for a layout of your own. The field and the \
+                     bar share one set of colour coordinates, so the bar's hue is the field's. The lower \
+                     field has a texel size of 16, for the difference it makes.",
+                );
+                row(ui, |ui| {
+                    ColorField::new(&mut state.parts).show(ui);
+                    Panel::vstack()
+                        .gap(8.0)
+                        .size((Sizing::fixed(180.0), Sizing::HUG))
+                        .show(ui, |ui| {
+                            ColorStrip::for_hue(&mut state.parts)
+                                .size((Sizing::FILL, Sizing::fixed(14.0)))
+                                .show(ui);
+                            ColorSwatch::new(state.parts.to_color())
+                                .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
+                                .show(ui);
+                            ColorField::new(&mut state.parts)
+                                .texel_size(16)
+                                .size((Sizing::FILL, Sizing::fixed(80.0)))
+                                .show(ui);
+                        });
+                });
+            },
+        );
 
-        section(ui, "CHIP", |ui| {
-            Text::new(
-                "A chip that opens the panel in a popup. Click outside or press Escape to \
-                 close it.",
-            )
-            .style(&note_style())
-            .show(ui);
+        section(ui, "Chip", &[api!(ColorButton::new)], |ui| {
+            note(
+                ui,
+                "A chip that opens the panel in a popup, beside a swatch that echoes what it \
+                 holds. Click outside or press Escape to close it.",
+            );
             row(ui, |ui| {
                 ColorButton::new(ColorPicker::new(&mut state.port).alpha(true).history(true))
-                    .id(state_id.with("chip"))
                     .show(ui);
-                ColorSwatch::new(state.port)
-                    .id(state_id.with("chip-echo"))
-                    .show(ui);
-                Text::new("the chip and an echo of what it holds")
-                    .style(&note_style())
-                    .show(ui);
+                ColorSwatch::new(state.port).show(ui);
             });
         });
     });

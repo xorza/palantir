@@ -8,6 +8,7 @@
 //! no caller-side pointer tracking, no per-frame delta accumulation.
 
 use crate::support;
+use crate::support::{api, note, section};
 use palantir::{
     AnimationSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense,
     Sizing, Stroke, Text, Ui, Vec2, WidgetId,
@@ -36,17 +37,24 @@ pub(crate) fn build(ui: &mut Ui) {
 
 fn easing(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("motion::bars");
-    support::section(
+    section(
         ui,
-        "easing — Ui::animate; every bar retargets at once, one AnimationSpec each",
+        "Easing",
+        &[
+            api!(
+                Ui::animate
+                    as fn(&mut Ui, WidgetId, &'static str, f32, Option<AnimationSpec>) -> f32
+            ),
+            api!(AnimationSpec::duration),
+        ],
         |ui| {
-            if Button::new()
-                .id_salt("anim-go")
-                .label("go")
-                .show(ui)
-                .left
-                .clicked()
-            {
+            note(
+                ui,
+                "Each bar retargets on the same frame through Ui::animate, with an \
+                 AnimationSpec of its own. Click the button to send them all the \
+                 other way.",
+            );
+            if Button::new().label("toggle").show(ui).clicked() {
                 ui.with_state::<Bars, _>(demo_id, |_, s| s.wide = !s.wide);
             }
             let target = if ui.state::<Bars>(demo_id).is_some_and(|s| s.wide) {
@@ -88,7 +96,7 @@ fn bar(
     let id = WidgetId::from_hash(("motion::bar", key));
     let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()
-        .id_salt(("anim-row", key))
+        .id_salt(key)
         .size((Sizing::FILL, Sizing::HUG))
         .gap(10.0)
         .show(ui, |ui| {
@@ -97,10 +105,7 @@ fn bar(
                 .size((Sizing::fixed(width), Sizing::fixed(18.0)))
                 .background(support::swatch_bg(support::A))
                 .show(ui);
-            Text::new(label)
-                .id_salt(("anim-label", key))
-                .style(&support::note_style())
-                .show(ui);
+            Text::new(label).style(&support::note_style()).show(ui);
         });
 }
 
@@ -114,28 +119,29 @@ fn drag(ui: &mut Ui) {
             .is_some_and(|st| st.dragging)
     });
 
-    support::section(
-        ui,
-        "drag — grab a card; the active one raises above its neighbors",
-        |ui| {
-            Panel::canvas()
-                .id_salt("drag-canvas")
-                .size((Sizing::FILL, Sizing::fixed(CANVAS_H)))
-                .background(support::well_bg())
-                .clip_rounded()
-                .show(ui, |ui| {
-                    for (i, (key, initial, accent)) in CARDS.iter().enumerate() {
-                        if Some(i) != dragging {
-                            card(ui, key, *initial, *accent);
-                        }
+    section(ui, "Drag", &[], |ui| {
+        note(
+            ui,
+            "Grab a card. Each card adds the drag delta to the position it had \
+                 when the drag started, so the page tracks no pointer of its own. The \
+                 card in hand records last, so it paints above the others.",
+        );
+        Panel::canvas()
+            .size((Sizing::FILL, Sizing::fixed(CANVAS_H)))
+            .background(support::well_bg())
+            .clip_rounded()
+            .show(ui, |ui| {
+                for (i, (key, initial, accent)) in CARDS.iter().enumerate() {
+                    if Some(i) != dragging {
+                        card(ui, key, *initial, *accent);
                     }
-                    if let Some(i) = dragging {
-                        let (key, initial, accent) = CARDS[i];
-                        card(ui, key, initial, accent);
-                    }
-                });
-        },
-    );
+                }
+                if let Some(i) = dragging {
+                    let (key, initial, accent) = CARDS[i];
+                    card(ui, key, initial, accent);
+                }
+            });
+    });
 }
 
 #[derive(Default, Debug)]

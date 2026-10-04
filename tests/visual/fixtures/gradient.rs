@@ -177,7 +177,7 @@ mod showcase_page;
 fn showcase_gradients_page_matches_golden() {
     // The column the showcase's shell gives a scrolling page.
     let img = Harness::new()
-        .size(UVec2::new(560, 1000))
+        .size(UVec2::new(560, 1180))
         .frame(|ui| {
             Panel::vstack()
                 .auto_id()

@@ -1,8 +1,7 @@
-//! The two tab widgets side by side: a page view bound to an index, and
-//! the strip on its own with badges, close buttons and overflow.
+//! The two tab widgets: a page view bound to an index, and the strip on
+//! its own with badges, close buttons and overflow.
 
-use crate::support;
-use crate::support::{body_style, note_style, well_bg};
+use crate::support::{api, body_style, note, note_style, readout, section, well, well_bg};
 use palantir::{
     Configure, Panel, Sizing, TabBadge, TabItem, TabOverflow, TabStrip, TabbedView, Text, Ui,
     WidgetId, fmt,
@@ -22,6 +21,10 @@ struct State {
     /// Chips the strip demo has closed, so a close reads as a real
     /// removal rather than a flash.
     open: Vec<u64>,
+    /// The frame's chips. Their labels are interned per frame, so the
+    /// items are rebuilt every frame — into this, which keeps its
+    /// capacity, rather than into a fresh `Vec`.
+    items: Vec<TabItem>,
 }
 
 impl Default for State {
@@ -31,6 +34,7 @@ impl Default for State {
             picked: 1,
             overflowing: 0,
             open: (0..4).collect(),
+            items: Vec::with_capacity(MANY.len()),
         }
     }
 }
@@ -38,75 +42,67 @@ impl Default for State {
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::tabs::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
-        support::section(ui, "TABBED VIEW", |ui| {
-            support::note(
+        section(ui, "Tabbed view", &[api!(type TabbedView)], |ui| {
+            note(
                 ui,
-                "A strip over a content area, bound to a &mut usize — the same shape as \
-                 ComboBox. Click a chip, or focus the strip and travel with the arrow keys, \
-                 Home / End and Ctrl+Tab.",
+                "A strip over a content area, bound to a &mut usize as a combo box is. Click a \
+                 chip, or focus the strip and move with the arrow keys, Home and End.",
             );
             Panel::vstack()
-                .id_salt("view-well")
                 .size((Sizing::FILL, Sizing::fixed(180.0)))
                 .padding(10.0)
                 .background(well_bg())
                 .show(ui, |ui| {
                     TabbedView::new(&mut s.page, &PAGES)
-                        .id_salt("pages")
                         .closable(false)
                         .show(ui, |ui, page| {
                             Panel::vstack()
-                                .id_salt("page-body")
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .padding(14.0)
                                 .gap(6.0)
                                 .show(ui, |ui| {
-                                    Text::new(PAGES[page])
-                                        .id_salt("page-title")
-                                        .style(&body_style())
-                                        .show(ui);
+                                    Text::new(PAGES[page]).style(&body_style()).show(ui);
                                     let line = fmt!(ui, "page index {page}");
-                                    Text::new(line)
-                                        .id_salt("page-note")
-                                        .style(&note_style())
-                                        .show(ui);
+                                    Text::new(line).style(&note_style()).show(ui);
                                 });
                         });
                 });
         });
 
-        support::section(ui, "THE STRIP ALONE", |ui| {
-            support::note(
-                ui,
-                "TabStrip draws chips and nothing else. The first chip carries a status dot \
-                 whose box is reserved on every frame, so inking it never shifts its \
-                 neighbours.",
-            );
-            strip_demo(ui, s);
-        });
+        section(
+            ui,
+            "The strip alone",
+            &[api!(TabStrip::new), api!(TabBadge::Idle)],
+            |ui| {
+                note(
+                    ui,
+                    "TabStrip draws chips and nothing else. Every chip reserves the status \
+                     dot's box and the even ones ink it, so a dot never shifts a neighbour. \
+                     Close a chip with its × button.",
+                );
+                strip_demo(ui, s);
+            },
+        );
 
-        support::section(ui, "OVERFLOW", |ui| {
-            support::note(
+        section(ui, "Overflow", &[api!(TabOverflow::Menu)], |ui| {
+            note(
                 ui,
-                "More chips than room. They pan under the wheel, and the trailing button \
-                 lists every tab so one that scrolled out is still reachable.",
+                "More chips than room. They pan under the wheel, and the trailing button lists \
+                 every tab so one that scrolled out is still reachable.",
             );
             Panel::vstack()
-                .id_salt("overflow-well")
                 .size((Sizing::fixed(320.0), Sizing::HUG))
                 .padding(10.0)
                 .background(well_bg())
                 .show(ui, |ui| {
-                    let items: Vec<TabItem> = MANY
-                        .iter()
-                        .enumerate()
-                        .map(|(i, label)| TabItem {
+                    s.items.clear();
+                    for (i, label) in MANY.iter().enumerate() {
+                        s.items.push(TabItem {
                             closable: false,
                             ..TabItem::new(i as u64, ui.intern(*label))
-                        })
-                        .collect();
-                    let hit = TabStrip::new(&items)
-                        .id_salt("overflow-strip")
+                        });
+                    }
+                    let hit = TabStrip::new(&s.items)
                         .selected(s.overflowing)
                         .overflow(TabOverflow::Menu)
                         .show(ui);
@@ -114,60 +110,35 @@ pub(crate) fn build(ui: &mut Ui) {
                         s.overflowing = i;
                     }
                 });
-            let readout = fmt!(ui, "showing: {}", MANY[s.overflowing]);
-            Text::new(readout)
-                .id_salt("overflow-readout")
-                .style(&note_style())
-                .show(ui);
+            readout(ui, "showing", MANY[s.overflowing]);
         });
     });
 }
 
 fn strip_demo(ui: &mut Ui, s: &mut State) {
-    Panel::vstack()
-        .id_salt("strip-well")
-        .size((Sizing::FILL, Sizing::HUG))
-        .padding(10.0)
-        .gap(8.0)
-        .background(well_bg())
-        .show(ui, |ui| {
-            let items: Vec<TabItem> = s
-                .open
-                .iter()
-                // Every chip reserves the dot's box; the even ones ink
-                // it. Both states side by side is the point — the
-                // reserved box is what keeps an inked chip the width of
-                // an idle one.
-                .map(|&key| TabItem {
-                    badge: if key % 2 == 0 {
-                        TabBadge::On
-                    } else {
-                        TabBadge::Idle
-                    },
-                    ..TabItem::new(key, fmt!(ui, "layer {key}"))
-                })
-                .collect();
-            let hit = TabStrip::new(&items)
-                .id_salt("bare-strip")
-                .selected(s.picked)
-                .show(ui);
-            if let Some(slot) = hit.closed
-                && s.open.len() > 1
-            {
-                s.open.remove(slot);
-                s.picked = s.picked.min(s.open.len() - 1);
-            } else if let Some(slot) = hit.activated() {
-                s.picked = slot;
-            }
-        });
-    let readout = fmt!(
-        ui,
-        "{} chips open, chip {} selected",
-        s.open.len(),
-        s.picked
-    );
-    Text::new(readout)
-        .id_salt("strip-readout")
-        .style(&note_style())
-        .show(ui);
+    well(ui, |ui| {
+        s.items.clear();
+        for &key in &s.open {
+            let badge = if key % 2 == 0 {
+                TabBadge::On
+            } else {
+                TabBadge::Idle
+            };
+            s.items.push(TabItem {
+                badge,
+                ..TabItem::new(key, fmt!(ui, "layer {key}"))
+            });
+        }
+        let hit = TabStrip::new(&s.items).selected(s.picked).show(ui);
+        if let Some(slot) = hit.closed
+            && s.open.len() > 1
+        {
+            s.open.remove(slot);
+            s.picked = s.picked.min(s.open.len() - 1);
+        } else if let Some(slot) = hit.activated() {
+            s.picked = slot;
+        }
+    });
+    let line = fmt!(ui, "{} open, slot {} selected", s.open.len(), s.picked);
+    readout(ui, "chips", line);
 }

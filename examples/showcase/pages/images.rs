@@ -9,7 +9,7 @@
 )]
 
 use crate::support;
-use crate::support::{demo_cell, demo_cell_at, section, tiles};
+use crate::support::{api, demo_cell, demo_cell_at, note, section, tiles};
 use palantir::widget::Shape;
 use palantir::{
     Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, UVec2, Ui, Vec2, WidgetId,
@@ -149,49 +149,44 @@ fn sources(ui: &mut Ui) -> Sources {
 pub(crate) fn build(ui: &mut Ui) {
     let src = sources(ui);
 
-    section(
-        ui,
-        "fit — how the source is mapped onto a non-square destination rect",
-        |ui| {
-            tiles(ui, |ui| {
-                for (label, fit) in [
-                    ("Fill — stretch to the rect", ImageFit::Fill),
-                    ("Contain — whole image, letterboxed", ImageFit::Contain),
-                    ("Cover — fill the rect, crop", ImageFit::Cover),
-                    ("None — 1:1, centred", ImageFit::None),
-                ] {
-                    demo_cell_at(ui, label, 232.0, 132.0, |ui| {
-                        image(ui, &src.checker, fit, RgbaF32::WHITE);
-                    });
-                }
-            });
-        },
-    );
+    section(ui, "Fit", &[api!(type ImageFit)], |ui| {
+        note(ui, "How the source maps onto a rect that is not its shape.");
+        tiles(ui, |ui| {
+            for (label, fit) in [
+                ("Fill — stretch to the rect", ImageFit::Fill),
+                ("Contain — whole image, letterboxed", ImageFit::Contain),
+                ("Cover — fill the rect, crop", ImageFit::Cover),
+                ("None — 1:1, centred", ImageFit::None),
+            ] {
+                demo_cell_at(ui, label, 232.0, 132.0, |ui| {
+                    image(ui, &src.checker, fit, RgbaF32::WHITE);
+                });
+            }
+        });
+    });
 
-    section(
-        ui,
-        "tint — the tint colour multiplies the sampled texel",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "no tint", |ui| {
-                    image(ui, &src.gradient, ImageFit::Fill, RgbaF32::WHITE);
-                });
-                demo_cell(ui, "red tint", |ui| {
-                    image(ui, &src.gradient, ImageFit::Fill, support::E);
-                });
-                demo_cell(ui, "half alpha", |ui| {
-                    image(
-                        ui,
-                        &src.gradient,
-                        ImageFit::Fill,
-                        RgbaF32::WHITE.with_alpha(0.5),
-                    );
-                });
+    section(ui, "Tint", &[api!(type ImageHandle)], |ui| {
+        note(ui, "The tint multiplies each sampled texel.");
+        tiles(ui, |ui| {
+            demo_cell(ui, "no tint", |ui| {
+                image(ui, &src.gradient, ImageFit::Fill, RgbaF32::WHITE);
             });
-        },
-    );
+            demo_cell(ui, "red tint", |ui| {
+                image(ui, &src.gradient, ImageFit::Fill, support::E);
+            });
+            demo_cell(ui, "half alpha", |ui| {
+                image(
+                    ui,
+                    &src.gradient,
+                    ImageFit::Fill,
+                    RgbaF32::WHITE.with_alpha(0.5),
+                );
+            });
+        });
+    });
 
-    section(ui, "tiling — UV wrap with a scale and an offset", |ui| {
+    section(ui, "Tiling", &[], |ui| {
+        note(ui, "The UVs wrap, with a scale and an offset.");
         tiles(ui, |ui| {
             demo_cell(ui, "tile 3×3", |ui| {
                 let fit = ImageFit::Tile {
@@ -210,47 +205,47 @@ pub(crate) fn build(ui: &mut Ui) {
         });
     });
 
-    section(
-        ui,
-        "filtering — magnification on a 4×4 sprite, minification on a 64×64 \
-         checker tiled 32×",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "magnify — Linear", |ui| {
-                    magnified(ui, &src.sprite, ImageFilter::Linear);
-                });
-                demo_cell(ui, "magnify — Nearest", |ui| {
-                    magnified(ui, &src.sprite, ImageFilter::Nearest);
-                });
-                demo_cell(ui, "minify — Linear", |ui| {
-                    minified(ui, &src.checker, ImageFilter::Linear);
-                });
-                demo_cell(ui, "minify — Nearest", |ui| {
-                    minified(ui, &src.checker, ImageFilter::Nearest);
-                });
+    section(ui, "Filtering", &[api!(type ImageFilter)], |ui| {
+        note(
+            ui,
+            "Magnification on a 4×4 sprite, minification on a 64×64 checker tiled \
+                 32 times.",
+        );
+        tiles(ui, |ui| {
+            demo_cell(ui, "magnify — Linear", |ui| {
+                magnified(ui, &src.sprite, ImageFilter::Linear);
             });
-        },
-    );
+            demo_cell(ui, "magnify — Nearest", |ui| {
+                magnified(ui, &src.sprite, ImageFilter::Nearest);
+            });
+            demo_cell(ui, "minify — Linear", |ui| {
+                minified(ui, &src.checker, ImageFilter::Linear);
+            });
+            demo_cell(ui, "minify — Nearest", |ui| {
+                minified(ui, &src.checker, ImageFilter::Nearest);
+            });
+        });
+    });
 
-    section(
-        ui,
-        "downsampling — a 512×512 starfield minified ~5×. One tap keeps a \
-         shifting subset of the stars, Mean keeps all of them and dims each by \
-         the footprint area, Peak keeps them at their own brightness",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "Single (default)", |ui| {
-                    downsampled(ui, &src.starfield, ImageDownsample::Single);
-                });
-                demo_cell(ui, "Mean", |ui| {
-                    downsampled(ui, &src.starfield, ImageDownsample::Mean);
-                });
-                demo_cell(ui, "Peak", |ui| {
-                    downsampled(ui, &src.starfield, ImageDownsample::Peak);
-                });
+    section(ui, "Downsampling", &[api!(type ImageDownsample)], |ui| {
+        note(
+            ui,
+            "A 512×512 starfield shrunk about 5 times. Single keeps a shifting \
+                 subset of the stars, Mean keeps all of them and dims each by its \
+                 footprint, and Peak keeps them at their own brightness.",
+        );
+        tiles(ui, |ui| {
+            demo_cell(ui, "Single (default)", |ui| {
+                downsampled(ui, &src.starfield, ImageDownsample::Single);
             });
-        },
-    );
+            demo_cell(ui, "Mean", |ui| {
+                downsampled(ui, &src.starfield, ImageDownsample::Mean);
+            });
+            demo_cell(ui, "Peak", |ui| {
+                downsampled(ui, &src.starfield, ImageDownsample::Peak);
+            });
+        });
+    });
 }
 
 fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: RgbaF32) {

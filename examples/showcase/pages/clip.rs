@@ -9,7 +9,7 @@
 //! translated and scaled, stroke widths included.
 
 use crate::support;
-use crate::support::{captioned_cell, demo_cell, section, tiles};
+use crate::support::{api, captioned_cell, demo_cell, note, section, tiles};
 use palantir::{
     Align, Background, Block, Configure, Corners, Panel, RgbaF32, Sizing, Stroke, TranslateScale,
     Ui, Vec2,
@@ -25,8 +25,13 @@ const CELL: f32 = CARD + 2.0 * SPILL;
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "clip modes — the same overflowing child under each mode",
+        "Clip modes",
+        &[api!(Panel::clip_rect), api!(Panel::clip_rounded)],
         |ui| {
+            note(
+                ui,
+                "The same child, overflowing the card by 18 px on every side, under each mode.",
+            );
             tiles(ui, |ui| {
                 clip_card(ui, "None — the child spills", Mode::None, 0.0);
                 clip_card(ui, "Rect — square cut at the bounds", Mode::Rect, 0.0);
@@ -35,43 +40,45 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
-    section(
-        ui,
-        "clip & padding — padding moves the boundary inward to the content rect",
-        |ui| {
-            tiles(ui, |ui| {
-                clip_card(ui, "padded, no clip", Mode::None, 28.0);
-                clip_card(ui, "padded, Rect", Mode::Rect, 28.0);
-                clip_card(ui, "padded, Rounded", Mode::Rounded, 14.0);
-            });
-        },
-    );
+    section(ui, "Clip and padding", &[], |ui| {
+        note(
+            ui,
+            "Padding moves the clip boundary in, to the content rect, and the rounded mask \
+                 follows the same edge.",
+        );
+        tiles(ui, |ui| {
+            clip_card(ui, "padded, no clip", Mode::None, 28.0);
+            clip_card(ui, "padded, Rect", Mode::Rect, 28.0);
+            clip_card(ui, "padded, Rounded", Mode::Rounded, 14.0);
+        });
+    });
 
     section(
         ui,
-        "subtree transform — TranslateScale on a container moves everything \
-         beneath it",
+        "Subtree transform",
+        &[api!(Panel::transform), api!(TranslateScale::from_scale)],
         |ui| {
+            note(
+                ui,
+                "A TranslateScale on a container moves and scales everything under it, stroke \
+                 widths included. Nested transforms compose.",
+            );
             tiles(ui, |ui| {
                 demo_cell(ui, "translate (30, 24)", |ui| {
                     Panel::zstack()
-                        .id_salt("t-outer")
                         .transform(TranslateScale::from_translation(Vec2::new(30.0, 24.0)))
                         .show(ui, |ui| tile(ui));
                 });
                 demo_cell(ui, "scale 1.5 — strokes scale too", |ui| {
                     Panel::zstack()
-                        .id_salt("s-outer")
                         .transform(TranslateScale::from_scale(1.5))
                         .show(ui, |ui| tile(ui));
                 });
                 demo_cell(ui, "composed — scale 1.25, then translate", |ui| {
                     Panel::zstack()
-                        .id_salt("c-outer")
                         .transform(TranslateScale::from_scale(1.25))
                         .show(ui, |ui| {
                             Panel::zstack()
-                                .id_salt("c-inner")
                                 .transform(TranslateScale::from_translation(Vec2::new(20.0, 10.0)))
                                 .show(ui, |ui| tile(ui));
                         });

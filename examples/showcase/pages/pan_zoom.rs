@@ -13,7 +13,6 @@
 //! touching the real cursor.
 
 use crate::support;
-use crate::support::note_style;
 use palantir::SlotDefaults;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
@@ -35,7 +34,8 @@ enum Content {
 struct State {
     content: Content,
     auto: bool,
-    /// Auto-drive frame counter; 0 means "seed the pointer this frame".
+    /// Auto-drive frame counter, the oscillator's phase. Reset when the
+    /// drive stops, so it always starts from the same pose.
     tick: u32,
     last_click: Option<(u32, u32)>,
 }
@@ -60,36 +60,25 @@ fn page(ui: &mut Ui, s: &mut State) {
         s.tick = 0;
     }
 
-    Panel::hstack()
-        .id_salt("pz-controls")
-        .gap(16.0)
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, |ui| {
-            for (value, label) in [
-                (Content::Grid, "button grid"),
-                (Content::Document, "heavy document"),
-            ] {
-                RadioButton::new(&mut s.content, value)
-                    .id_salt(("pz-content", label))
-                    .label(label)
-                    .show(ui);
-            }
-            Checkbox::new(&mut s.auto)
-                .id_salt("pz-auto")
-                .label("auto-drive input")
+    support::row(ui, |ui| {
+        for (value, label) in [
+            (Content::Grid, "button grid"),
+            (Content::Document, "heavy document"),
+        ] {
+            RadioButton::new(&mut s.content, value)
+                .id_salt(label)
+                .label(label)
                 .show(ui);
-            let click = match s.last_click {
-                Some((r, c)) => fmt!(ui, "last click: r{r} c{c}"),
-                None => fmt!(
-                    ui,
-                    "click a cell to confirm hit-testing through the transform"
-                ),
-            };
-            Text::new(click)
-                .id_salt("pz-click")
-                .style(&note_style())
-                .show(ui);
-        });
+        }
+        Checkbox::new(&mut s.auto)
+            .label("auto-drive input")
+            .show(ui);
+        let click = match s.last_click {
+            Some((r, c)) => fmt!(ui, "row {r}, column {c}"),
+            None => ui.intern("— click a cell to check hit-testing through the zoom"),
+        };
+        support::readout(ui, "last click", click);
+    });
 
     let mut clicked = None;
     Scroll::both()
@@ -109,24 +98,19 @@ fn page(ui: &mut Ui, s: &mut State) {
 /// The heavy mixed document — a long vertical run of grids, wrapping
 /// text, gradient swatches, polylines, and button grids.
 fn document(ui: &mut Ui, clicked: &mut Option<(u32, u32)>) {
-    Panel::vstack()
-        .id_salt("doc")
-        .gap(16.0)
-        .padding(8.0)
-        .show(ui, |ui| {
-            header_band(ui);
-            property_grid(ui);
-            gradient_strip(ui);
-            cell_grid(ui, "cells-a", 24, 24, clicked);
-            chat_messages(ui, 20);
-            canvas_polylines(ui);
-            cell_grid(ui, "cells-b", 12, 32, clicked);
-        });
+    Panel::vstack().gap(16.0).padding(8.0).show(ui, |ui| {
+        header_band(ui);
+        property_grid(ui);
+        gradient_strip(ui);
+        cell_grid(ui, "cells-a", 24, 24, clicked);
+        chat_messages(ui, 20);
+        canvas_polylines(ui);
+        cell_grid(ui, "cells-b", 12, 32, clicked);
+    });
 }
 
 fn header_band(ui: &mut Ui) {
     Panel::hstack()
-        .id_salt("hdr")
         .gap(6.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
@@ -134,12 +118,11 @@ fn header_band(ui: &mut Ui) {
                 .style(&TextStyle::default().with_font_size(18.0))
                 .show(ui);
             Block::new()
-                .id_salt("hdr-spacer")
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .show(ui);
             for i in 0..6 {
                 Button::new()
-                    .id_salt(("hdr-btn", i))
+                    .id_salt(i)
                     .label(fmt!(ui, "Action {i}"))
                     .show(ui);
             }
@@ -149,10 +132,10 @@ fn header_band(ui: &mut Ui) {
 fn property_grid(ui: &mut Ui) {
     const ROWS: usize = 12;
     Grid::new()
-        .id_salt("props")
         .cols([Track::HUG.with_min(96.0), Track::FILL, Track::fixed(72.0)])
         .rows([Track::HUG; ROWS])
-        .line_gap(6.0).gap(6.0)
+        .line_gap(6.0)
+        .gap(6.0)
         .padding(4.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
@@ -204,7 +187,6 @@ fn property_grid(ui: &mut Ui) {
 
 fn gradient_strip(ui: &mut Ui) {
     Panel::hstack()
-        .id_salt("grad-row")
         .gap(6.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
@@ -213,7 +195,7 @@ fn gradient_strip(ui: &mut Ui) {
                 let a = RgbaF32::srgb(0.2 + 0.6 * t, 0.4, 0.9 - 0.6 * t);
                 let b = RgbaF32::srgb(0.95 - 0.5 * t, 0.7 * t, 0.3 + 0.5 * t);
                 Block::new()
-                    .id_salt(("grad", i))
+                    .id_salt(i)
                     .size((Sizing::fixed(72.0), Sizing::fixed(56.0)))
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
@@ -237,33 +219,27 @@ fn cell_grid(
     // varies, and a `ButtonTheme` is four `WidgetLook`s deep — building
     // one per cell was the largest piece of per-cell work on the page.
     let mut style = cell_theme();
-    Panel::vstack()
-        .id_salt((salt, "v"))
-        .gap(4.0)
-        .show(ui, |ui| {
-            for r in 0..rows {
-                Panel::hstack()
-                    .id_salt((salt, "row", r))
-                    .gap(4.0)
-                    .show(ui, |ui| {
-                        for c in 0..cols {
-                            recolor_cell(&mut style, cell_color(r, c));
-                            if cell(ui, salt, r, c, &style) {
-                                *clicked = Some((r, c));
-                            }
-                        }
-                    });
-            }
-        });
+    Panel::vstack().id_salt(salt).gap(4.0).show(ui, |ui| {
+        for r in 0..rows {
+            Panel::hstack().id_salt(r).gap(4.0).show(ui, |ui| {
+                for c in 0..cols {
+                    recolor_cell(&mut style, cell_color(r, c));
+                    if cell(ui, r, c, &style) {
+                        *clicked = Some((r, c));
+                    }
+                }
+            });
+        }
+    });
 }
 
-fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32, style: &ButtonTheme) -> bool {
+fn cell(ui: &mut Ui, r: u32, c: u32, style: &ButtonTheme) -> bool {
     // Formatted into the record arena rather than a `String`: this runs for
     // every cell of every grid every frame, and the page is the pan/zoom
     // benchmark workload.
     let label = fmt!(ui, "{r},{c}");
     Button::new()
-        .id_salt((salt, "cell", r, c))
+        .id_salt(c)
         .label(label)
         .size((Sizing::fixed(56.0), Sizing::fixed(40.0)))
         .padding((6.0, 4.0))
@@ -275,18 +251,16 @@ fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32, style: &ButtonTheme) ->
 
 fn chat_messages(ui: &mut Ui, count: u32) {
     Panel::vstack()
-        .id_salt("chat")
         .gap(8.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for i in 0..count {
                 Panel::hstack()
-                    .id_salt(("chat-row", i))
+                    .id_salt(i)
                     .gap(8.0)
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         Block::new()
-                            .id_salt(("avatar", i))
                             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                             .background(Background::rounded(
                                 cell_color(i, i / 3),
@@ -294,19 +268,16 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                             ))
                             .show(ui);
                         Panel::vstack()
-                            .id_salt(("chat-text", i))
                             .gap(2.0)
                             .size((Sizing::FILL, Sizing::HUG))
                             .show(ui, |ui| {
                                 Text::new(fmt!(ui, "user_{i}"))
-                                    .id_salt(("from", i))
                                     .style(&TextStyle::default().with_font_size(12.0))
                                     .show(ui);
                                 Text::new(
                                     "Lorem ipsum dolor sit amet consectetur adipiscing elit sed \
                                      do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
                                 )
-                                .id_salt(("msg", i))
                                 .style(&TextStyle::default().with_font_size(13.0))
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .size((Sizing::FILL, Sizing::HUG))
@@ -319,17 +290,13 @@ fn chat_messages(ui: &mut Ui, count: u32) {
 
 fn canvas_polylines(ui: &mut Ui) {
     Panel::canvas()
-        .id_salt("polylines")
         .size((Sizing::FILL, Sizing::fixed(120.0)))
         .background(
             Background::rounded(support::WELL, Corners::all(4.0))
                 .with_border(Stroke::new(support::BORDER, 1.0)),
         )
         .show(ui, |ui| {
-            Block::new()
-                .id_salt("poly-host")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui);
+            Block::new().size((Sizing::FILL, Sizing::FILL)).show(ui);
             for line in 0..6 {
                 // Fixed count, so the points sit on the stack — a `Vec` per
                 // line per frame was six allocations for a shape whose size
@@ -393,13 +360,8 @@ fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
     theme.looks.disabled.background = bg(base);
 }
 
-fn brighten(c: RgbaF32, t: f32) -> RgbaF32 {
-    RgbaF32::new(
-        c.r + (1.0 - c.r) * t,
-        c.g + (1.0 - c.g) * t,
-        c.b + (1.0 - c.b) * t,
-        c.a,
-    )
+const fn brighten(c: RgbaF32, t: f32) -> RgbaF32 {
+    support::mix(c, RgbaF32::WHITE.with_alpha(c.a), t)
 }
 
 fn cell_color(r: u32, c: u32) -> RgbaF32 {

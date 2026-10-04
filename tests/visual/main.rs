@@ -25,6 +25,7 @@ mod harness;
 /// render a showcase page itself rather than a copy that drifts from it.
 #[expect(
     dead_code,
+    unused_macro_rules,
     reason = "the module is compiled whole, and only the part those pages call is used here"
 )]
 #[path = "../../examples/showcase/support.rs"]
