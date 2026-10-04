@@ -1,95 +1,80 @@
 # Benches
 
-Criterion benches over the frame pipeline, and `benches/bench-perf.sh`, which
-profiles them. The script's header says how to invoke it;
-`benches/profiling.md` says how to read what it writes.
+One target, `criterion`, holds every driver and needs `--features bench`.
+Separate targets under the fat-LTO `[profile.bench]` linked in parallel and
+risked OOM. The drivers sit in `bench.rs` files beside the code they measure;
+`src/bench/mod.rs` says why.
 
-## Running them
-
-One target, `criterion` (`harness = false`, its own `main`), holds every
-driver: under the fat-LTO `[profile.bench]`, separate targets meant parallel
-whole-graph links that risked OOM. It requires `--features bench`.
+## Running
 
 ```sh
 cargo bench -p palantir --features bench --bench criterion -- --list-drivers
-cargo bench -p palantir --features bench --bench criterion -- -d damage
-cargo bench -p palantir --features bench --bench criterion -- --arms cpu
-cargo bench -p palantir --features bench --bench criterion -- 'cascade/hit_test$'
+cargo bench -p palantir --features bench --bench criterion -- -d cascade 'hit_test$'
 cargo bench -p palantir --features bench --bench criterion -- -d frame --arms cpu --note 'after belt rework'
 ```
 
-`-d`/`--driver` is exact and repeatable — an unselected driver never runs, so
-it costs nothing and stays out of a profile. `--arms` picks a half of the
-pipeline; a bare positional is criterion's regex over benchmark ids. `--help`
-lists the rest.
+- `-d` selects drivers by exact name, and an unselected driver never runs
+  its setup. A positional is criterion's regex over benchmark ids, which
+  filters only after the setup. `--arms cpu|gpu|both` picks a half of the
+  pipeline. `--help` lists the rest.
+- `frame` is opt-in. Its full matrix takes ~90 s (`--arms cpu`, ~40 s) and
+  appends a row to `benches/results/<machine>.txt`, so it needs `--note`.
+- The binary reads no environment variable. Every knob is a flag.
+- Cut `--sample-size` and `--measurement-time` while you iterate. Report
+  only numbers from a full run.
 
-**`frame` is opt-in.** A bare run skips it: the full matrix is ~90 s and
-appends a row to `benches/results/<machine>.txt`, which demands a `--note`.
+## Measuring
 
-**A/B a change with a baseline pair** — back-to-back runs on a busy machine
-drift several percent on their own:
+- **Pin the run, never the build.** `taskset` in front of `cargo` pins the
+  compiler too.
+- **One core, sibling idle.** Pin to one core and keep its SMT sibling idle.
+  On this machine CPU 2 shares a core with CPU 3.
+- **`setarch -R`.** It fixes the address layout, so stack and heap alignment
+  do not change between processes.
+- **Governor and EPP at `performance`** (`sudo /usr/local/sbin/cpu-bench-pin.sh`
+  here). The SMU ignores boost caps, so a drift of several percent between
+  runs stays.
+- **No `RUSTFLAGS`.** It replaces the rustflags of `.cargo/config.toml` and
+  drops `target-cpu=x86-64-v3`. Add a flag with `--config`, which merges:
+  `--config "target.'cfg(target_arch = \"x86_64\")'.rustflags=['-C','force-frame-pointers=yes']"`.
+  Each flag set is a fresh fat-LTO link, ~2 min.
+
+**A/B in ABBA order.** A drift reads as a change in one direction only. Run
+before, after, after, before, and trust a change only when both comparisons
+report it, mirrored. Run from the repository root: without cargo, criterion
+keeps baselines in `./target/criterion`.
 
 ```sh
-cargo bench -p palantir --features bench --bench criterion -- -d cascade --save-baseline before
+bench_bin() {
+    cargo bench -p palantir --features bench --bench criterion --no-run 2>&1 |
+        sed -n 's/.*Executable .*(\(.*\))$/\1/p'
+}
+cp "$(bench_bin)" tmp/criterion-a
 # ... make the change ...
-cargo bench -p palantir --features bench --bench criterion -- -d cascade --baseline before
+cp "$(bench_bin)" tmp/criterion-b
+RUN=(taskset -c 2 setarch -R)
+"${RUN[@]}" tmp/criterion-a --bench -d cascade --save-baseline a
+"${RUN[@]}" tmp/criterion-b --bench -d cascade --baseline a   # B against A
+"${RUN[@]}" tmp/criterion-b --bench -d cascade --save-baseline b
+"${RUN[@]}" tmp/criterion-a --bench -d cascade --baseline b   # A against B
 ```
-
-`--baseline` fails on a benchmark with no sample under that name;
-`--baseline-lenient` leaves it uncompared.
-
-**Every input is a flag.** No bench reads an environment variable: a knob a
-driver needs goes on the CLI, where `--help` lists it, and reaches the driver
-in the resolved `Run`.
 
 ## Profiling
 
-`benches/bench-perf.sh` (Linux; needs `perf` and `taskset`) detects the CPU
-vendor, pins one core, and runs five passes into `tmp/palantir-perf-*`:
+`benches/bench-perf.sh` (Linux) profiles the bench under the rules above,
+with `perf` on the other cores. Its header lists the options. It needs
+`sudo sysctl kernel.perf_event_paranoid=-1 kernel.nmi_watchdog=0`, and
+warns when either is missing.
 
-| pass | Intel | AMD | output |
+| pass | Intel | AMD | output in `tmp/` |
 |---|---|---|---|
-| counters | `cpu_core/…/` events | `perf stat -d`¹ | `-stat.txt` |
-| microarch | `-M TopdownL1` (TMA) | `-M branch_prediction,tlb`² | `-micro.txt` |
-| callgraph | `perf record` cycles, `dwarf,16384`³ | same | `.data`, `-report.txt` |
-| precise-IP | `cycles/ppp` (PEBS) | `ibs_op//` (IBS) | `-ibs.data`, `-ibs.txt` |
-| data-source | `perf mem -t load --ldlat=50` | `perf mem` (no `ldlat` pre-Zen5) | `-mem.data`, `-mem.txt` |
+| counters | `cpu_core/…/` events | `perf stat -d` | `palantir-perf-stat.txt` |
+| microarch | `-M TopdownL1` | `-M branch_prediction,tlb`¹ | `palantir-perf-micro.txt` |
+| callgraph | cycles, `dwarf,65528` or LBR | cycles, `dwarf,65528` | `palantir-perf.data`, `-report.txt` |
+| precise IP | `cycles/ppp` (PEBS) | `ibs_op//` (IBS) | `palantir-perf-ibs.data`, `-ibs.txt` |
+| data source | `perf mem -t load --ldlat=50` | `perf mem` | `palantir-perf-mem.data`, `-mem.txt` |
 
-¹ LLC reads `<not supported>` — it is an uncore PMU. ² Zen<4 has no
-slot-based topdown; Zen4+ adds `Pipeline_Util_*`, auto-detected.
-³ `CALLGRAPH=lbr` is Intel-only — Zen3's BRS silently falls back.
+¹ `Pipeline_Util_Level1` where perf offers it (Zen4+).
 
-It needs `sudo sysctl kernel.perf_event_paranoid=-1` (IBS, raw events, kernel
-symbols) and `kernel.nmi_watchdog=0` (the watchdog holds a PMC, so coverage
-never reaches 100%); it warns on both. `[profile.bench]` already carries
-line-table debuginfo, so symbolication needs no extra flags. `--profile-time N`
-beats criterion's adaptive loop: a fixed window keeps sample counts comparable
-across runs.
-
-Read `benches/profiling.md` before interpreting a capture or hand-rolling a
-`perf` command.
-
-### Budget
-
-Run the script before hand-rolling `perf record` — it already knows the
-vendor, PMU prefix, call-graph mechanism, and pinning. Hand-rolled captures
-hit these traps:
-
-- **`perf report -g graph,…` over a whole capture never finishes** (10 min, no
-  output, 16 MB file). For "who calls X", filter `perf script` stacks to those
-  containing X and tally the frame above it; keep `perf report` for flat
-  self-time (`-g none`), where it is instant.
-- **dwarf profiles perf itself.** `--call-graph dwarf,16384` at 3 kHz wrote
-  577 MB in 12 s, and its own writeback read as ~25% kernel page-fault and FS
-  time — indistinguishable from a real finding. Flat, the same run is 7 MB.
-- **dwarf does not unwind this binary** — 146 of 76 000 stack lines resolved
-  against the 137 MB fat-LTO build. Call graphs need `CALLGRAPH=lbr`, or
-  `-C force-frame-pointers=yes` and a 2-min relink.
-- **Startup is ~1 s** (font DB) — 8% of a 12 s window, with
-  `fontdb::parse_face_info` near the top. `-D <ms>` skips it;
-  `--profile-time 4` is enough for flat self-time.
-
-Each `RUSTFLAGS` variant is a fresh fat-LTO relink (~2 min), and a four-arm
-`--arms cpu` run is ~40 s at stock statistics. Cut `--sample-size` /
-`--measurement-time` while iterating; spend the full run on the number you
-report.
+`benches/profiling.md` says how to read the output and how to drill past it
+by hand.
