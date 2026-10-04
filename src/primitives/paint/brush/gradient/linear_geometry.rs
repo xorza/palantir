@@ -15,6 +15,7 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct LinearGeometry {
     /// Axis direction in radians — `0` runs right, `π/2` runs down.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub angle: f32,
 }
 

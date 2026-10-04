@@ -323,7 +323,9 @@ fn the_nan_gate_drops_every_shape_kind() {
 #[test]
 fn builders_refuse_what_they_check() {
     use crate::internals::panic_probe;
+    use crate::primitives::geometry::corners::Corners;
     use crate::primitives::math::domain;
+    use crate::primitives::packed::serde::LaneCodec;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
@@ -333,12 +335,11 @@ fn builders_refuse_what_they_check() {
     const N: f32 = f32::NAN;
     let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
     let white = RgbaF32::WHITE;
-    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
-        Shape::rect(ok_rect).fill(white).corners(N)
-    });
-    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
-        Shape::rect(ok_rect).fill(white).corners(-1.0)
-    });
+    for radius in [N, -1.0, 1.0e5] {
+        panic_probe::assert_panics_with(<Corners as LaneCodec>::LANE_RULE, || {
+            Shape::rect(ok_rect).fill(white).corners(radius)
+        });
+    }
     panic_probe::assert_panics_with("a color must have finite channels", || {
         Shape::rect(ok_rect).border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0))
     });

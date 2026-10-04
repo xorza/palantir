@@ -18,8 +18,10 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGeometry {
     /// Sweep centre, in object-space `0..1` coordinates.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub center: Vec2,
     /// Where the sweep begins, in radians.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub start_angle: f32,
 }
 

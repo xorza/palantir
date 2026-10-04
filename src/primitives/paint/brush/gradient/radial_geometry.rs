@@ -20,8 +20,10 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGeometry {
     /// Ramp origin, in object-space `0..1` coordinates.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub center: Vec2,
     /// Elliptical radius, per axis, in the same coordinates.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
     pub radius: Vec2,
 }
 

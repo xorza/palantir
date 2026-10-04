@@ -1,5 +1,6 @@
 use crate::animation::animatable::Animatable;
 use crate::internals::panic_probe;
+use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -236,8 +237,8 @@ fn two_stop_gradients_take_their_kind_defaults() {
 
 /// In code a stop's offset is a fraction, coerced: out of range clamps to
 /// the end it overshot, a non-finite one reads as 0. Its colour is checked
-/// and panics on a non-finite channel. A file refuses either, since its
-/// author can fix it.
+/// and panics on a non-finite channel. A file refuses any offset outside
+/// `0..=1`, as it refuses every fraction, since its author can fix it.
 #[test]
 fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
     for (offset, want) in [
@@ -254,7 +255,7 @@ fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
         Stop::new(0.5, RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0))
     });
 
-    for literal in ["NaN", "inf", "-inf"] {
+    for literal in ["NaN", "inf", "-inf", "-0.5", "1.5"] {
         let document = format!(
             "(stops: [\
                (offset: {literal}, color: \"#ffffff\"),\
@@ -263,14 +264,18 @@ fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
         );
         let error = ron::from_str::<StopsDocument>(&document).unwrap_err();
         assert!(
-            error.to_string().contains("offset must be finite"),
+            error.to_string().contains(domain::FRACTION_RULE),
             "{literal} produced unexpected error: {error}",
         );
     }
 }
 
+/// Every gradient kind round-trips, and a file whose geometry breaks its
+/// kind is a deserialization error rather than a brush that panics where
+/// it enters a node: angles are *angles*, centres *offsets*, a radial
+/// radius a *length* on each axis.
 #[test]
-fn every_gradient_variant_round_trips_validated_stops() {
+fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
     #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
     struct BrushDocument {
         brush: Brush,
@@ -290,6 +295,31 @@ fn every_gradient_variant_round_trips_validated_stops() {
         let encoded = ser::to_string(&document).expect("serialize valid gradient");
         let decoded = ron::from_str::<BrushDocument>(&encoded).expect("deserialize valid gradient");
         assert_eq!(decoded, document);
+    }
+
+    let stops = r##""stops":[(offset:0.0,color:"#000000"),(offset:1.0,color:"#ffffff")],"interp":Oklab,"spread":Pad"##;
+    for (geometry, rule) in [
+        (r#"Linear({"angle":inf,"#, domain::ANGLE_RULE),
+        (
+            r#"Radial({"center":(NaN,0.5),"radius":(0.5,0.5),"#,
+            domain::OFFSET_RULE,
+        ),
+        (
+            r#"Radial({"center":(0.5,0.5),"radius":(-0.5,0.5),"#,
+            domain::LENGTH_RULE,
+        ),
+        (
+            r#"Conic({"center":(0.5,inf),"start_angle":0.0,"#,
+            domain::OFFSET_RULE,
+        ),
+        (
+            r#"Conic({"center":(0.5,0.5),"start_angle":NaN,"#,
+            domain::ANGLE_RULE,
+        ),
+    ] {
+        let document = format!("(brush:{geometry}{stops}}}))");
+        let error = ron::from_str::<BrushDocument>(&document).unwrap_err();
+        assert!(error.to_string().contains(rule), "{geometry}: {error}");
     }
 }
 
