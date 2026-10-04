@@ -1,5 +1,7 @@
 //! Pixel-level shadow fixtures.
 
+use std::f64::consts::SQRT_2;
+
 use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::widget::Shape;
@@ -345,5 +347,132 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
             below(&shadowed) < below(&bare) - 20,
             "{label}: the shadow shows below the box",
         );
+    }
+}
+
+/// `erf` to 1.5e-7 (Abramowitz & Stegun 7.1.26), in f64 for the reference.
+fn erf(x: f64) -> f64 {
+    let t = 1.0 / (1.0 + 0.327_591_1 * x.abs());
+    let poly = ((((1.061_405_429 * t - 1.453_152_027) * t + 1.421_413_741) * t - 0.284_496_736)
+        * t
+        + 0.254_829_592)
+        * t;
+    (1.0 - poly * (-x * x).exp()).copysign(x)
+}
+
+/// What one pixel sees of a blurred half-line below `u`: the Gaussian's
+/// CDF averaged across the pixel's 1 px box, by 64 midpoint samples.
+fn pixel_cdf(u: f64, sigma: f64) -> f64 {
+    const SAMPLES: u32 = 64;
+    (0..SAMPLES)
+        .map(|i| {
+            let t = (f64::from(i) + 0.5) / f64::from(SAMPLES) - 0.5;
+            0.5 + 0.5 * erf((u + t) / (sigma * SQRT_2))
+        })
+        .sum::<f64>()
+        / f64::from(SAMPLES)
+}
+
+/// The coverage, at the pixel centred on `p`, of the box `rect` with
+/// every corner rounded by `radius`, blurred by σ — summed row by row the
+/// long way: each 1/2000 of the box's height is a span whose two ends
+/// the pixel sees through `pixel_cdf`, weighted by how much of the
+/// kernel falls on that row.
+fn reference_coverage(p: Vec2, rect: Rect, radius: f32, sigma: f64) -> f64 {
+    const ROWS: u32 = 2000;
+    let (px, py) = (f64::from(p.x), f64::from(p.y));
+    let (x0, y0) = (f64::from(rect.min.x), f64::from(rect.min.y));
+    let (w, h, r) = (
+        f64::from(rect.size.w),
+        f64::from(rect.size.h),
+        f64::from(radius),
+    );
+    let row = h / f64::from(ROWS);
+    (0..ROWS)
+        .map(|i| {
+            let top = y0 + f64::from(i) * row;
+            let mid = top + 0.5 * row;
+            let from_edge = (mid - y0).min(y0 + h - mid);
+            let inset = if from_edge < r {
+                r - (r * r - (r - from_edge).powi(2)).sqrt()
+            } else {
+                0.0
+            };
+            let span = pixel_cdf(x0 + w - inset - px, sigma) - pixel_cdf(x0 + inset - px, sigma);
+            let weight = pixel_cdf(top + row - py, sigma) - pixel_cdf(top - py, sigma);
+            span * weight
+        })
+        .sum()
+}
+
+/// A blurred shadow is its box convolved with the Gaussian, pixel by
+/// pixel, against the reference integral above. 85 % black over white
+/// leaves `1 − 0.85·coverage` linear. Two 8-bit steps: one for the
+/// target's rounding, one for the shader's corner slices, which stay
+/// within 0.002 linear of the integral — at most 0.7 of a step on the
+/// darkest of these probes.
+///
+/// The probes are where the blur of the box and an erf of its distance
+/// field part ways:
+/// - outside a sharp corner, where the blur is the product of the two
+///   edges' falloffs, 0.25 on the corner's own diagonal at the edge;
+/// - outside a rounded one;
+/// - in a 4 px box under σ = 8, which the blur spreads to under 4 %;
+/// - in a drop shadow that spread −8 shrinks to nothing, which paints
+///   nothing;
+/// - in an inset shadow whose hole spread 25 closes, which is shadow
+///   throughout.
+#[test]
+fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
+    let encode = |coverage: f64| {
+        let lin = (1.0 - 0.85 * coverage) as f32;
+        RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
+    };
+    let probe = |img: &RgbaImage, x: u32, y: u32, want: f64, what: &str| {
+        let got = img.get_pixel(x, y).0[0];
+        let want = encode(want);
+        assert!(
+            got.abs_diff(want) <= 2,
+            "{what} at ({x}, {y}): got {got}, want {want}"
+        );
+    };
+    let centre = |x: u32, y: u32| Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+
+    let sharp = Rect::new(40.0, 40.0, 60.0, 40.0);
+    let img = render_shadow(sharp, 0.0, Vec2::ZERO, 6.0, 0.0, false);
+    for (x, y) in [(39, 39), (33, 33), (30, 30), (70, 37), (36, 60)] {
+        let want = reference_coverage(centre(x, y), sharp, 0.0, 6.0);
+        probe(&img, x, y, want, "sharp box");
+    }
+    assert!(
+        (reference_coverage(Vec2::new(40.0, 40.0), sharp, 0.0, 6.0) - 0.25).abs() < 1e-3,
+        "the reference puts a quarter of the kernel on the corner",
+    );
+
+    let img = render_shadow(sharp, 12.0, Vec2::ZERO, 6.0, 0.0, false);
+    for (x, y) in [(41, 41), (37, 37), (33, 33), (44, 38), (38, 44)] {
+        let want = reference_coverage(centre(x, y), sharp, 12.0, 6.0);
+        probe(&img, x, y, want, "rounded box");
+    }
+
+    let small = Rect::new(150.0, 20.0, 4.0, 4.0);
+    let moved = Rect::new(150.0, 80.0, 4.0, 4.0);
+    let img = render_shadow(small, 0.0, Vec2::new(0.0, 60.0), 8.0, 0.0, false);
+    for (x, y) in [(151, 81), (152, 82), (158, 82), (152, 90)] {
+        let want = reference_coverage(centre(x, y), moved, 0.0, 8.0);
+        assert!(want < 0.04, "the reference spreads the box thin");
+        probe(&img, x, y, want, "small box");
+    }
+
+    let collapsed = Rect::new(150.0, 120.0, 10.0, 10.0);
+    let img = render_shadow(collapsed, 2.0, Vec2::new(0.0, 30.0), 4.0, -8.0, false);
+    for (x, y) in [(154, 154), (155, 155), (150, 150)] {
+        probe(&img, x, y, 0.0, "collapsed drop shadow");
+    }
+
+    let closed = Rect::new(20.0, 110.0, 40.0, 40.0);
+    let img = render_shadow(closed, 6.0, Vec2::ZERO, 4.0, 25.0, true);
+    for (x, y) in [(39, 129), (40, 130), (30, 140)] {
+        probe(&img, x, y, 1.0, "closed inset hole");
     }
 }
