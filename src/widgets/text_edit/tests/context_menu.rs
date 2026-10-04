@@ -168,7 +168,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     assert_eq!(state.caret, 4);
 
     // Non-primary modifier must NOT trigger any clipboard action.
-    // (On macOS, raw Ctrl+C is not Copy; on Win/Linux, Super+C is
+    // (On macOS, raw Ctrl+C is not Copy; on Windows/Linux, Super+C is
     // not Copy.) Reset state and verify a no-op.
     clipboard.set_text("CLIP").unwrap();
     let mut text2 = String::from("hello");

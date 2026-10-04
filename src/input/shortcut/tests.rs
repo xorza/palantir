@@ -203,7 +203,7 @@ fn the_meta_modifier_reaches_matching_and_display() {
     assert!(!Shortcut::key(Key::Char('L')).matches(kp(held, Key::Char('l'))));
     let shown = super_l.to_string();
     match PLATFORM {
-        Platform::Win => assert_eq!(shown, "Win+L"),
+        Platform::Windows => assert_eq!(shown, "Win+L"),
         Platform::Linux => assert_eq!(shown, "Super+L"),
         // macOS reports no Super key: Command is `ctrl` there, so a Super
         // chord is never held and its name is never read.

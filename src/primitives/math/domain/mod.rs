@@ -30,7 +30,7 @@
 //! | [`color`] | every channel finite | panic |
 //! | [`count`] | `>= 1` | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
-//! | [`range`] | both ends finite | panic; the order is coerced |
+//! | [`f64::range`] | both ends finite | panic; the order is coerced |
 //! | [`fraction`] | `0..=1` | clamped; non-finite is `0` |
 //! | [`turn`] | `0..1` | wrapped; non-finite is `0` |
 //! | [`index`] | `0..len` | clamped; no index when `len == 0` |
@@ -54,7 +54,6 @@
 
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
-use std::ops::RangeInclusive;
 
 pub mod f64;
 pub mod vec2;
@@ -316,29 +315,6 @@ pub const fn is_power_of_two_in(n: u32, max: u32) -> bool {
 pub const fn power_of_two_in(n: u32, max: u32) -> u32 {
     assert!(is_power_of_two_in(n, max), "{}", POWER_OF_TWO_RULE);
     n
-}
-
-/// True if both ends of `r` are finite, in either order.
-#[inline]
-pub const fn is_range(r: &RangeInclusive<f64>) -> bool {
-    r.start().is_finite() && r.end().is_finite()
-}
-
-/// `r` in ascending order, whose ends must be finite.
-///
-/// The ends are validated and the order is coerced: a reversed range is
-/// ordinary data — two settings read from a file — and means the same
-/// span.
-///
-/// # Panics
-///
-/// Panics unless [`is_range`]`(&r)`.
-#[inline]
-#[track_caller]
-pub const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
-    assert!(is_range(&r), "{}", RANGE_RULE);
-    let (a, b) = (*r.start(), *r.end());
-    RangeInclusive::new(a.min(b), a.max(b))
 }
 
 /// True if `v` is a *fraction* as a file states one: in `0..=1`.

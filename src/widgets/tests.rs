@@ -19,6 +19,7 @@ use crate::widgets::grid::Grid;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tooltip::Tooltip;
 use glam::{UVec2, Vec2};
@@ -67,7 +68,7 @@ impl Chrome {
     }
 }
 
-/// A trigger the pointer rests on, for the tooltip.
+/// A trigger the pointer rests on, for the tooltip and the popup trigger.
 fn hovered_trigger() -> ResponseSnapshot {
     ResponseSnapshot {
         id: WidgetId::from_hash("chrome-trigger"),
@@ -161,6 +162,21 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
                 .show(ui, |_, _| {});
             },
             chrome_node: own_id,
+            layer: Layer::Popup,
+        },
+        Kind {
+            name: "PopupTrigger",
+            record: |ui, c| {
+                let trigger = hovered_trigger();
+                PopupTrigger::open(ui, trigger.id);
+                c.apply(
+                    PopupTrigger::on(&trigger),
+                    PopupTrigger::background,
+                    PopupTrigger::default_background,
+                )
+                .show(ui, |_, _| {});
+            },
+            chrome_node: || hovered_trigger().id.with("popup"),
             layer: Layer::Popup,
         },
         Kind {

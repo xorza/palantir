@@ -89,7 +89,7 @@ impl Modifiers {
     pub(crate) const fn compose_text(self, platform: Platform) -> bool {
         match platform {
             Platform::Mac => !self.ctrl && !self.mac_ctrl,
-            Platform::Win | Platform::Linux => self.ctrl == self.alt && !self.meta,
+            Platform::Windows | Platform::Linux => self.ctrl == self.alt && !self.meta,
         }
     }
 }

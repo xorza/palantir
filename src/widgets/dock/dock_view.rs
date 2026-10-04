@@ -57,7 +57,7 @@ use std::rc::Rc;
 /// # enum Tab { Main }
 /// # fn demo<D: DockTabs<Tab = Tab>>(ui: &mut Ui, dock: &mut DockState<Tab>, tabs: &mut D) {
 /// let mut operations: Vec<DockOperation<Tab>> = Vec::new();
-/// DockView::scan(dock, ui, &mut operations);
+/// DockView::scan(ui, dock, &mut operations);
 /// for operation in operations.drain(..) {
 ///     dock.apply(operation);
 /// }
@@ -178,7 +178,7 @@ impl<T: DockTab> DockView<'_, T> {
             .map(|buf| mem::take(&mut buf.operations))
             .unwrap_or_default();
         operations.clear();
-        DockView::scan(state, ui, &mut operations);
+        DockView::scan(ui, state, &mut operations);
         for operation in operations.drain(..) {
             state.apply(operation);
         }
@@ -249,7 +249,7 @@ impl<T: DockTab> DockView<'_, T> {
     /// replaced. Scanning a phase earlier settles the new arrangement
     /// first, so a switch — or a committed drop — draws on the frame it
     /// lands rather than the one after.
-    pub fn scan(state: &DockState<T>, ui: &mut Ui, operations: &mut Vec<DockOperation<T>>) {
+    pub fn scan(ui: &mut Ui, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>) {
         // Ahead of the chip pass: a read-only focus query that only ever
         // moves `focused`, so it composes with an activation from the
         // same scan rather than racing it.
@@ -369,7 +369,7 @@ impl<T: DockTab> DockView<'_, T> {
     /// The arranged size of a group's content area, `None` before its
     /// first layout — the one frame in a group's life where a view has
     /// to size itself.
-    pub fn content_size(state: &DockState<T>, ui: &Ui, group: TabGroupId) -> Option<Size> {
+    pub fn content_size(ui: &Ui, state: &DockState<T>, group: TabGroupId) -> Option<Size> {
         let size = ui
             .response_for(Self::content_id(state, group))
             .layout_rect?
@@ -482,7 +482,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 // a record is — but of the *group's* content area, which
                 // outlives the tab in it. That is what lets a view first
                 // recording on this pass still be handed a size.
-                let size = DockView::content_size(state, ui, group.id);
+                let size = DockView::content_size(ui, state, group.id);
                 let tab = group.active_tab();
                 let tabs = &mut *self.tabs;
                 Panel::vstack()

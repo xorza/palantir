@@ -115,7 +115,7 @@ fn modifier_normalization_translates_each_bit() {
                 ..none
             },
         ),
-        (ModifiersState::CONTROL, Platform::Win, Modifiers::CTRL),
+        (ModifiersState::CONTROL, Platform::Windows, Modifiers::CTRL),
         (
             ModifiersState::SUPER,
             Platform::Linux,
@@ -347,7 +347,7 @@ fn shift_wheel_turns_vertical_into_horizontal_off_macos() {
     let shift = ModifiersState::SHIFT;
     let rows = [
         (down, shift, Platform::Linux, Vec2::new(3.0, 0.0)),
-        (down, shift, Platform::Win, Vec2::new(3.0, 0.0)),
+        (down, shift, Platform::Windows, Vec2::new(3.0, 0.0)),
         (down, shift, Platform::Mac, down),
         (down, ModifiersState::empty(), Platform::Linux, down),
         (diagonal, shift, Platform::Linux, diagonal),

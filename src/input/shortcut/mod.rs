@@ -5,7 +5,7 @@
 //! ## Conventions
 //!
 //! - The primary command modifier (`ShortcutMods::ctrl`) maps to the
-//!   platform's convention: **Cmd on macOS, Ctrl on Win/Linux** — one
+//!   platform's convention: **Cmd on macOS, Ctrl on Windows/Linux** — one
 //!   binding fires on ⌘S on a Mac and Ctrl+S elsewhere. Raw Ctrl on
 //!   macOS is the rare case; match a `KeyPress` directly for it.
 //! - [`ShortcutMods`] is the *shortcut* vocabulary, distinct from [`Modifiers`]
@@ -26,7 +26,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use std::fmt;
 
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command
-/// key — Cmd on macOS, Ctrl on Win/Linux (see its `From<Modifiers>`);
+/// key — Cmd on macOS, Ctrl on Windows/Linux (see its `From<Modifiers>`);
 /// `shift` and `alt` are literal.
 ///
 /// Distinct from event-state [`Modifiers`] on purpose: that type also
@@ -209,7 +209,7 @@ impl Shortcut {
 }
 
 /// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
-/// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier renders
+/// Windows/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier renders
 /// as ⌘ on macOS (it *is* Cmd there).
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -250,7 +250,7 @@ impl fmt::Display for Shortcut {
         }
         if self.mods.meta {
             sep(f, &mut first)?;
-            f.write_str(if matches!(PLATFORM, Platform::Win) {
+            f.write_str(if matches!(PLATFORM, Platform::Windows) {
                 "Win"
             } else {
                 "Super"

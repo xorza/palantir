@@ -143,7 +143,7 @@ fn caret_blinks_on_and_off_while_focused() {
 
 /// Caret *motion* with no edit resets the blink, on its own: `End`
 /// walks the caret to the buffer end and leaves the text alone, so the
-/// reset rides on `caret_moved` with `edited` and `gained_focus` both
+/// reset rides on `caret_moved` with `edited` and `focus_gained` both
 /// false. Separate from the sweep above because the reset it performs
 /// moves that test's last-change timestamp, and its long-idle tail
 /// assertion is phase-sensitive to exactly that.

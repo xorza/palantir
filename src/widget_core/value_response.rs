@@ -21,7 +21,8 @@ use crate::widget_core::response::Response;
 /// disabled checkbox writes nothing. Read `changed` for the value.
 ///
 /// [`TextEditResponse`](crate::TextEditResponse) stays separate: a text
-/// editor reports focus and submit edges a scrub has no equivalent of.
+/// editor reports cancel, submit and focus edges a scrub has no
+/// equivalent of. Its `changed` and `committed` mean what these do.
 #[derive(Debug)]
 pub struct ValueResponse<'a> {
     /// The widget's pointer/click/hover [`Response`].

@@ -101,11 +101,11 @@ impl Corners {
         Self(F16x4::from_lanes([0.0, r, 0.0, r]))
     }
 
-    /// Every radius multiplied by `scale` — what carries a logical
+    /// Every radius multiplied by `factor` — what carries a logical
     /// radius into physical pixels at compose time.
     #[inline]
-    pub fn scaled_by(self, scale: f32) -> Self {
-        Self(self.0.scaled(scale))
+    pub fn scaled_by(self, factor: f32) -> Self {
+        Self(self.0.scaled(factor))
     }
 
     /// The radii a box of `size` physical px is drawn with: every radius

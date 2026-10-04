@@ -57,7 +57,7 @@ impl<'a> Slider<'a> {
         // A track maps its fraction onto the range, and an infinite end
         // maps every fraction past zero to infinity or NaN: a click would
         // store `+inf` in the bound value.
-        assert!(domain::is_range(&range), "{}", domain::RANGE_RULE);
+        assert!(domain::f64::is_range(&range), "{}", domain::RANGE_RULE);
         Self {
             widget: Widget::hstack()
                 .sense(Sense::CLICK | Sense::DRAG)

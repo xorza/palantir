@@ -53,7 +53,7 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::image::Image;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
-use crate::renderer::error::ImageLoadError;
+use crate::renderer::error::ImageTooLarge;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
@@ -385,6 +385,11 @@ impl Ui {
     /// after measure instead. Prefer that shape — or handling the edge in
     /// [`App::update`], which runs before any
     /// recording — and reach for this only when neither fits.
+    ///
+    /// # Panics
+    ///
+    /// Panics outside a record pass, where there is no record to retry.
+    #[track_caller]
     pub fn request_relayout(&mut self) {
         // Record-pass only. `FrameCycle::run` clears the flag before
         // handing the `Ui` to the app, so a call from outside a record —
@@ -800,7 +805,7 @@ impl Ui {
     /// texture limit. A rejected image never reaches the GPU. Standalone
     /// CPU recorders have no device limit and retain the original dimensions.
     #[inline]
-    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError> {
+    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
         self.resources.load_image(image)
     }
 

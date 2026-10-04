@@ -49,6 +49,7 @@ impl FontWeight {
     /// whole `wght` range a variable face registers. A weight is authored
     /// in a theme or a builder, never taken from a frame, so this is a
     /// cold check on public-API misuse.
+    #[track_caller]
     pub const fn new(weight: u16) -> Self {
         assert!(Self::in_range(weight), "a font weight is 1..=1000");
         Self(weight)

@@ -105,7 +105,7 @@ impl DragNum<'_> {
     }
 
     /// Write back `value` exactly, as read by [`Self::read`] before an edit
-    /// that is now cancelled. Returns whether the stored value changed.
+    /// that is now canceled. Returns whether the stored value changed.
     pub(crate) fn restore(&mut self, value: Num) -> bool {
         match (self, value) {
             (DragNum::I64(v), Num::I64(n)) => {
