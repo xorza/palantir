@@ -2,8 +2,10 @@
 //!
 //! `Stepper` — `[ − ] value [ + ]` over a caller-owned `&mut i32` — is
 //! built the way a widget in another crate would be: `Widget` plus the
-//! `Configure` builder, `Ui::response_for` to read last frame, and
-//! `Ui::add_shape` to paint the ± glyphs.
+//! `Configure` builder, `Ui::response_for` to read last frame,
+//! `Ui::add_shape` to paint the ± glyphs, and `focusable` plus
+//! `Widget::key_pressed` for the keyboard. The focus ring is the
+//! framework's, so the widget draws none of its own.
 //!
 //! It reaches no crate internal, but nothing here enforces that — the
 //! showcase builds with `internals` on. The listing beside the demo is
@@ -14,10 +16,11 @@
 //! widget beside it does.
 
 use crate::support;
-use palantir::widget::{ConfigureWidget, LineCap, LineJoin, Shape, Widget};
+use crate::support::{Column, api, columns, section, well};
+use palantir::widget::{ConfigureWidget, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Background, Configure, Corners, FontFamily, Panel, Response, ResponseState, Sense,
-    Shadow, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
+    Align, Background, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense,
+    Shadow, Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
 };
 
 /// Large enough to read beside 13 px body copy, small enough that the pair
@@ -28,27 +31,15 @@ const BUTTON: f32 = 28.0;
 const VALUE_W: f32 = 34.0;
 /// Fixed, so every stepper on the page starts at one x.
 const LABEL_W: f32 = 62.0;
-/// Sized to the longest entry in [`SURFACE`], so every description starts at
-/// one x.
+/// Sized to the longest entry in [`surface`]'s list, so every description
+/// starts at one x.
 const ITEM_W: f32 = 146.0;
-const WELL_GAP: f32 = 7.0;
 const CODE_SIZE: f32 = 12.0;
+/// Room around the buttons for the focus ring, which paints inside the
+/// widget's own rect.
+const RING_ROOM: f32 = 3.0;
 /// Leaves a 12 px bar centred in a [`BUTTON`]-square node.
 const GLYPH_INSET: f32 = 8.0;
-
-/// What an outside crate would need to write the same widget.
-const SURFACE: &[(&str, &str)] = &[
-    (
-        "Widget + Configure",
-        "construct and configure what it records",
-    ),
-    ("Widget::resolve", "the stable id, resolved once and kept"),
-    ("Widget::record", "open the node, run the body, close it"),
-    ("Ui::response_for", "last frame's hover, press and click"),
-    ("Ui::add_shape", "paint custom geometry — the ± glyphs"),
-    ("WidgetId::with", "key child nodes off the parent id"),
-    ("Response", "the value a caller chains on"),
-];
 
 /// Shown beside the demo, so the page carries what an application writes as
 /// well as what it gets.
@@ -80,78 +71,104 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, s: &mut State) {
-    Panel::hstack()
-        .id_salt("columns")
-        .gap(24.0)
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, |ui| {
-            support::column(ui, "col-l", |ui| demo(ui, s));
-            support::column(ui, "col-r", surface);
-        });
+    columns(ui, |ui, column| match column {
+        Column::Left => demo(ui, s),
+        Column::Right => surface(ui),
+    });
 }
 
 fn demo(ui: &mut Ui, s: &mut State) {
-    support::section(ui, "stepper — two instances over separate values", |ui| {
-        well(ui, "demo", |ui| {
-            labelled(ui, "volume", |ui| {
-                Stepper::new(&mut s.volume).range(0, 100).step(5).show(ui);
+    section(
+        ui,
+        "Stepper",
+        &[api!(Widget::hstack), api!(Widget::key_pressed)],
+        |ui| {
+            support::note(
+                ui,
+                "Two instances over separate values. Click a sign, or Tab to a stepper and \
+                 use ↑ ↓ Home End.",
+            );
+            well(ui, |ui| {
+                labelled(ui, "volume", |ui| {
+                    Stepper::new(&mut s.volume).range(0, 100).step(5).show(ui);
+                });
+                labelled(ui, "count", |ui| {
+                    Stepper::new(&mut s.count).range(-10, 10).show(ui);
+                });
             });
-            labelled(ui, "count", |ui| {
-                Stepper::new(&mut s.count).range(-10, 10).show(ui);
-            });
-        });
-    });
+        },
+    );
 
-    support::section(ui, "the call site", |ui| {
-        well(ui, "call-site", |ui| {
+    section(ui, "The call site", &[], |ui| {
+        well(ui, |ui| {
             for (i, line) in CALL_SITE.iter().enumerate() {
                 Text::new(*line)
                     .id_salt(i)
-                    .family(FontFamily::MONO)
-                    .font_size(CODE_SIZE)
-                    .color(support::INK)
+                    .style(&support::mono_style(CODE_SIZE, support::INK))
                     .show(ui);
             }
         });
     });
 }
 
+/// A record body, named so the check below can spell `Widget::record`'s
+/// signature.
+type Body = fn(&mut Ui);
+
+/// What an outside crate would need to write the same widget, each name
+/// checked by [`api!`] so the list cannot drift from the API.
 fn surface(ui: &mut Ui) {
-    support::section(ui, "the authoring surface it uses", |ui| {
-        well(ui, "surface", |ui| {
-            for (i, (item, what)) in SURFACE.iter().enumerate() {
+    let surface = [
+        (api!(type Widget), "what it records, built and configured"),
+        (api!(type Configure), "every shared setter, from one method"),
+        (
+            api!(Widget::resolve),
+            "the stable id, resolved once and kept",
+        ),
+        (
+            api!(Widget::record as fn(Widget, &mut Ui, Option<&Background>, Body)),
+            "open the node, run the body, close it",
+        ),
+        (
+            api!(Ui::response_for),
+            "last frame's hover, press and click",
+        ),
+        (
+            api!(Ui::add_shape as fn(&mut Ui, PolylineShape<'static>)),
+            "paint custom geometry — the ± glyphs",
+        ),
+        (
+            api!(Configure::focusable as fn(Stepper<'static>, bool) -> Stepper<'static>),
+            "a Tab stop, with the framework's ring",
+        ),
+        (
+            api!(Widget::key_pressed),
+            "↑ ↓ Home End, read as the widget",
+        ),
+        (
+            api!(WidgetId::with as fn(WidgetId, &'static str) -> WidgetId),
+            "key child nodes off the parent id",
+        ),
+        (api!(type Response), "the value a caller chains on"),
+    ];
+    section(ui, "The authoring surface it uses", &[], |ui| {
+        well(ui, |ui| {
+            for (i, (item, what)) in surface.into_iter().enumerate() {
                 Panel::hstack()
                     .id_salt(i)
                     .size((Sizing::FILL, Sizing::HUG))
                     .gap(support::ROW_GAP)
                     .child_align(Align::v(VAlign::Center))
                     .show(ui, |ui| {
-                        Text::new(*item)
-                            .id_salt("item")
-                            .family(FontFamily::MONO)
-                            .font_size(CODE_SIZE)
-                            .color(support::INK)
+                        Text::new(item)
+                            .style(&support::mono_style(CODE_SIZE, support::INK))
                             .min_size((ITEM_W, 0.0))
                             .show(ui);
-                        Text::new(*what)
-                            .id_salt("what")
-                            .style(&support::caption_style())
-                            .show(ui);
+                        Text::new(what).style(&support::caption_style()).show(ui);
                     });
             }
         });
     });
-}
-
-#[track_caller]
-fn well(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::HUG))
-        .gap(WELL_GAP)
-        .padding(14.0)
-        .background(support::well_bg())
-        .show(ui, body);
 }
 
 /// Centred across the control's height, so a 12 px label sits on the axis of
@@ -165,7 +182,6 @@ fn labelled(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
         .child_align(Align::v(VAlign::Center))
         .show(ui, |ui| {
             Text::new(label)
-                .id_salt("label")
                 .style(&support::note_style())
                 .min_size((LABEL_W, 0.0))
                 .show(ui);
@@ -196,7 +212,9 @@ impl<'a> Stepper<'a> {
             step: 1,
         }
         .gap(6.0)
+        .padding(RING_ROOM)
         .child_align(Align::v(VAlign::Center))
+        .focusable(true)
     }
 
     fn range(mut self, lo: i32, hi: i32) -> Self {
@@ -220,17 +238,43 @@ impl<'a> Stepper<'a> {
         let minus = ui.response_for(minus_id);
         let plus = ui.response_for(plus_id);
         if minus.clicked() {
-            *self.value = (*self.value - self.step).max(self.min);
+            *self.value = self.value.saturating_sub(self.step).max(self.min);
         }
         if plus.clicked() {
-            *self.value = (*self.value + self.step).min(self.max);
+            *self.value = self.value.saturating_add(self.step).min(self.max);
+        }
+        if ui.is_focus_within(id) {
+            // Sampled, not short-circuited: each read also subscribes its
+            // chord, so the frame wakes for it.
+            let up = widget.key_pressed(ui, Shortcut::key(Key::ArrowUp));
+            let down = widget.key_pressed(ui, Shortcut::key(Key::ArrowDown));
+            let home = widget.key_pressed(ui, Shortcut::key(Key::Home));
+            let end = widget.key_pressed(ui, Shortcut::key(Key::End));
+            if up {
+                *self.value = self.value.saturating_add(self.step).min(self.max);
+            }
+            if down {
+                *self.value = self.value.saturating_sub(self.step).max(self.min);
+            }
+            if home {
+                *self.value = self.min;
+            }
+            if end {
+                *self.value = self.max;
+            }
         }
 
         // Straight into the record store — no `String` is built at all.
         let label = fmt!(ui, "{}", self.value);
 
+        // No fill of its own: the corners are for the framework's focus
+        // ring, which follows the chrome's shape.
+        let chrome = Background::rounded(
+            RgbaF32::TRANSPARENT,
+            Corners::all(support::RADIUS + RING_ROOM),
+        );
         widget
-            .show(ui, None, |ui| {
+            .show(ui, Some(&chrome), |ui| {
                 step_button(ui, minus_id, minus, Glyph::Minus);
                 Text::new(label)
                     .id(id.with("value"))

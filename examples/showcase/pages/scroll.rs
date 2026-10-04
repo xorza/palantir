@@ -4,7 +4,7 @@
 //! horizontal scroll strip and a two-axis scroll grid.
 
 use crate::support;
-use crate::support::{note_style, on_swatch_style, swatch_bg, well_bg};
+use crate::support::{on_swatch_style, readout, swatch_bg, well_bg};
 use palantir::{
     Configure, Panel, RgbaF32, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
 };
@@ -28,12 +28,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
 fn split_panes(ui: &mut Ui, s: &mut State) {
     Splitter::row(&mut s.h)
-        .id_salt("split-h")
         .min_pane(120.0)
         .show(ui, |ui, half| match half {
             SplitHalf::First => pane(ui, "vertical", |ui| {
                 Scroll::vertical()
-                    .id_salt("rows-scroll")
                     .size((Sizing::FILL, Sizing::FILL))
                     .gap(4.0)
                     .show(ui, |ui| {
@@ -44,12 +42,10 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
             }),
             SplitHalf::Second => {
                 Splitter::column(&mut s.v)
-                    .id_salt("split-v")
                     .min_pane(100.0)
                     .show(ui, |ui, half| match half {
                         SplitHalf::First => pane(ui, "horizontal", |ui| {
                             Scroll::horizontal()
-                                .id_salt("cols-scroll")
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .gap(4.0)
                                 .show(ui, |ui| {
@@ -60,7 +56,6 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
                         }),
                         SplitHalf::Second => pane(ui, "two-axis", |ui| {
                             Scroll::both()
-                                .id_salt("grid-scroll")
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui, grid);
                         }),
@@ -68,11 +63,8 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
             }
         });
 
-    let readout = fmt!(ui, "split fractions: h = {:.2}   v = {:.2}", s.h, s.v);
-    Text::new(readout)
-        .id_salt("readout")
-        .style(&note_style())
-        .show(ui);
+    let line = fmt!(ui, "row {:.2}  column {:.2}", s.h, s.v);
+    readout(ui, "split ratios", line);
 }
 
 #[track_caller]
@@ -91,31 +83,25 @@ fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
 
 fn row(ui: &mut Ui, i: u32) {
     Panel::hstack()
-        .id_salt(("scroll-row", i))
+        .id_salt(i)
         .size((Sizing::FILL, Sizing::fixed(28.0)))
         .padding((10.0, 6.0))
         .background(swatch_bg(ramp(i)))
         .show(ui, |ui| {
             let label = fmt!(ui, "row {i:02}");
-            Text::new(label)
-                .id_salt(("scroll-row-label", i))
-                .style(&on_swatch_style())
-                .show(ui);
+            Text::new(label).style(&on_swatch_style()).show(ui);
         });
 }
 
 fn col(ui: &mut Ui, i: u32) {
     Panel::vstack()
-        .id_salt(("scroll-col", i))
+        .id_salt(i)
         .size((Sizing::fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
         .background(swatch_bg(ramp(i)))
         .show(ui, |ui| {
             let label = fmt!(ui, "col {i:02}");
-            Text::new(label)
-                .id_salt(("scroll-col-label", i))
-                .style(&on_swatch_style())
-                .show(ui);
+            Text::new(label).style(&on_swatch_style()).show(ui);
         });
 }
 
@@ -124,27 +110,23 @@ fn grid(ui: &mut Ui) {
     // VStack/HStack. Both-axes Scroll measures with INF on both axes, so
     // the inner stacks size to natural content and overflow the viewport
     // on both sides.
-    Panel::vstack().id_salt("xy-grid").gap(4.0).show(ui, |ui| {
+    Panel::vstack().gap(4.0).show(ui, |ui| {
         for r in 0..16u32 {
-            Panel::hstack()
-                .id_salt(("xy-row", r))
-                .gap(4.0)
-                .show(ui, |ui| {
-                    for c in 0..12u32 {
-                        Panel::hstack()
-                            .id_salt(("xy-cell", r, c))
-                            .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
-                            .padding((6.0, 4.0))
-                            .background(swatch_bg(ramp(r * 12 + c)))
-                            .show(ui, |ui| {
-                                let label = fmt!(ui, "{r},{c}");
-                                Text::new(label)
-                                    .id_salt(("xy-cell-label", r, c))
-                                    .style(&on_swatch_style().with_font_size(11.0))
-                                    .show(ui);
-                            });
-                    }
-                });
+            Panel::hstack().id_salt(r).gap(4.0).show(ui, |ui| {
+                for c in 0..12u32 {
+                    Panel::hstack()
+                        .id_salt(c)
+                        .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
+                        .padding((6.0, 4.0))
+                        .background(swatch_bg(ramp(r * 12 + c)))
+                        .show(ui, |ui| {
+                            let label = fmt!(ui, "{r},{c}");
+                            Text::new(label)
+                                .style(&on_swatch_style().with_font_size(11.0))
+                                .show(ui);
+                        });
+                }
+            });
         }
     });
 }
@@ -159,10 +141,5 @@ fn ramp(i: u32) -> RgbaF32 {
     } else {
         (support::D, support::B, (t - 0.5) * 2.0)
     };
-    RgbaF32::new(
-        from.r + (to.r - from.r) * u,
-        from.g + (to.g - from.g) * u,
-        from.b + (to.b - from.b) * u,
-        1.0,
-    )
+    support::mix(from, to, u)
 }

@@ -6,45 +6,52 @@
 //! for rounded-corner clipping without a stencil pass.
 
 use crate::support;
-use crate::support::{demo_cell, section, tiles};
+use crate::support::{api, demo_cell, note, section, tiles};
 use palantir::widget::{Mesh, Shape};
 use palantir::{LinearGradient, RgbaF32, Stroke, Ui, Vec2, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(
-        ui,
-        "triangles — one instanced quad each; coverage, rounding, and stroke all \
-         come from the SDF",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "sharp fill", sharp);
-                demo_cell(ui, "rounded 12 px", rounded);
-                demo_cell(ui, "fill + inner stroke", stroked);
-                demo_cell(ui, "outline only", outline);
-                demo_cell(ui, "play glyph — radii 0 / 4 / 10", radii);
-            });
-        },
-    );
+    section(ui, "Triangles", &[api!(Shape::triangle)], |ui| {
+        note(
+            ui,
+            "One instanced quad each: coverage, rounded corners and the stroke \
+                 all come from the signed distance field.",
+        );
+        tiles(ui, |ui| {
+            demo_cell(ui, "sharp fill", sharp);
+            demo_cell(ui, "rounded 12 px", rounded);
+            demo_cell(ui, "fill + inner stroke", stroked);
+            demo_cell(ui, "outline only", outline);
+            demo_cell(ui, "play glyph — radii 0 / 4 / 10", radii);
+        });
+    });
+
+    section(ui, "Meshes", &[api!(type Mesh), api!(Shape::mesh)], |ui| {
+        note(
+            ui,
+            "Raw vertices and indices, sent straight to the mesh pipeline. Each \
+                 mesh is built once and kept in a state row.",
+        );
+        tiles(ui, |ui| {
+            demo_cell(ui, "single triangle", mesh_triangle);
+            demo_cell(ui, "star — centroid fan", polygon_star);
+            demo_cell(ui, "per-vertex gradient", gradient_quad);
+            demo_cell(ui, "5 000-vertex stress grid", stress);
+        });
+    });
 
     section(
         ui,
-        "meshes — raw vertices and indices, uploaded straight to the mesh pipeline",
+        "Windowed rect",
+        &[api!(Shape::owner_windowed_rect)],
         |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "single triangle", mesh_triangle);
-                demo_cell(ui, "star — centroid fan", polygon_star);
-                demo_cell(ui, "per-vertex gradient", gradient_quad);
-                demo_cell(ui, "5 000-vertex stress grid", stress);
-            });
-        },
-    );
-
-    section(
-        ui,
-        "windowed rect — an inverted rounded-rect fill: paints the corner wedges, \
-         leaves the window alone",
-        |ui| {
+            note(
+                ui,
+                "An inverted rounded-rect fill: it paints the corner wedges and \
+                 leaves the window alone, which gives rounded clipping with no \
+                 stencil pass.",
+            );
             tiles(ui, |ui| {
                 demo_cell(ui, "corner mask over content", window_mask);
                 demo_cell(ui, "anatomy — translucent fill", window_anatomy);

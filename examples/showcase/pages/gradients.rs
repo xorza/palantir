@@ -5,7 +5,7 @@
 //! glance.
 
 use crate::support;
-use crate::support::{demo_cell, section, tiles};
+use crate::support::{api, demo_cell, note, section, tiles};
 use palantir::{
     Background, Block, Brush, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
     RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui, Vec2,
@@ -20,42 +20,50 @@ const RED: RgbaF32 = RgbaF32::hex(0xff5e44);
 const GREEN: RgbaF32 = RgbaF32::hex(0x46c46c);
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(ui, "linear — angle in radians from the +x axis", |ui| {
+    section(
+        ui,
+        "Linear",
+        &[api!(type LinearGradient), api!(LinearGradient::two_stop)],
+        |ui| {
+            note(ui, "The angle is in radians from the +x axis.");
+            tiles(ui, |ui| {
+                demo_cell(ui, "horizontal", horizontal);
+                demo_cell(ui, "vertical", vertical);
+                demo_cell(ui, "45°", diagonal);
+            });
+        },
+    );
+
+    section(ui, "Radial", &[api!(type RadialGradient)], |ui| {
+        note(
+            ui,
+            "A centre and a radius per axis, in the unit square of the box.",
+        );
         tiles(ui, |ui| {
-            demo_cell(ui, "horizontal", horizontal);
-            demo_cell(ui, "vertical", vertical);
-            demo_cell(ui, "45°", diagonal);
+            demo_cell(ui, "centred, circular", radial_centered);
+            demo_cell(ui, "offset centre, three stops", radial_offset);
+            demo_cell(ui, "elliptical radius", radial_ellipse);
+        });
+    });
+
+    section(ui, "Conic", &[api!(type ConicGradient)], |ui| {
+        note(ui, "A sweep about a centre from a start angle.");
+        tiles(ui, |ui| {
+            demo_cell(ui, "colour wheel", conic_wheel);
+            demo_cell(ui, "rotated 90°", conic_rotated);
         });
     });
 
     section(
         ui,
-        "radial — centre and per-axis radius in unit space",
+        "Spread and interpolation",
+        &[api!(type Spread), api!(type Interpolation)],
         |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "centred, circular", radial_centered);
-                demo_cell(ui, "offset centre, three stops", radial_offset);
-                demo_cell(ui, "elliptical radius", radial_ellipse);
-            });
-        },
-    );
-
-    section(
-        ui,
-        "conic — sweep about a centre from a start angle",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell(ui, "colour wheel", conic_wheel);
-                demo_cell(ui, "rotated 90°", conic_rotated);
-            });
-        },
-    );
-
-    section(
-        ui,
-        "spread & interpolation — what happens outside the stop range, and the \
-         space stops blend in",
-        |ui| {
+            note(
+                ui,
+                "What happens outside the stop range, and the colour space the stops \
+                 blend in.",
+            );
             tiles(ui, |ui| {
                 demo_cell(ui, "Spread::Reflect — rings mirror out", reflect);
                 demo_cell(ui, "Spread::Repeat — rings", repeat);

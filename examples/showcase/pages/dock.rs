@@ -84,28 +84,18 @@ impl DockTabs for Panes {
 
     fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
         Panel::vstack()
-            .id_salt(("pane", tab.label()))
             .size((Sizing::FILL, Sizing::FILL))
             .padding(14.0)
             .gap(6.0)
             .background(well_bg())
             .show(ui, |ui| {
-                Text::new(tab.label())
-                    .id_salt("title")
-                    .style(&body_style())
-                    .show(ui);
-                Text::new(tab.blurb())
-                    .id_salt("blurb")
-                    .style(&note_style())
-                    .show(ui);
+                Text::new(tab.label()).style(&body_style()).show(ui);
+                Text::new(tab.blurb()).style(&note_style()).show(ui);
                 let measured = match size {
                     Some(s) => fmt!(ui, "content area {:.0} x {:.0}", s.w, s.h),
                     None => ui.intern("content area not laid out yet"),
                 };
-                Text::new(measured)
-                    .id_salt("size")
-                    .style(&note_style())
-                    .show(ui);
+                Text::new(measured).style(&note_style()).show(ui);
             });
     }
 
@@ -122,18 +112,10 @@ impl DockTabs for Panes {
 
     fn tab_menu(&mut self, ui: &mut Ui, menu: DockTabMenu<'_, Tab>) {
         let mut side = None;
-        if MenuItem::new("Split right")
-            .show(ui, menu.close)
-            .left
-            .clicked()
-        {
+        if MenuItem::new("Split right").show(ui, menu.close).clicked() {
             side = Some(SplitSide::Right);
         }
-        if MenuItem::new("Split down")
-            .show(ui, menu.close)
-            .left
-            .clicked()
-        {
+        if MenuItem::new("Split down").show(ui, menu.close).clicked() {
             side = Some(SplitSide::Bottom);
         }
         if let Some(side) = side {
@@ -153,7 +135,6 @@ pub(crate) fn build(ui: &mut Ui) {
     ui.with_state::<State, _>(state_id, |ui, s| {
         reopen_row(ui, s);
         Panel::vstack()
-            .id_salt("dock-well")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 let mut panes = Panes;
@@ -166,7 +147,6 @@ pub(crate) fn build(ui: &mut Ui) {
                     s.dock.apply(operation);
                 }
                 DockView::new(&s.dock, &mut s.operations)
-                    .id_salt("dock")
                     .min_pane(140.0)
                     .show(ui, &mut panes);
                 for operation in s.operations.drain(..) {
@@ -179,26 +159,22 @@ pub(crate) fn build(ui: &mut Ui) {
 /// Buttons that re-open whichever tabs are closed, so the demo cannot be
 /// emptied down to the pinned pane and left there.
 fn reopen_row(ui: &mut Ui, s: &mut State) {
-    let closed: Vec<Tab> = OPENABLE
-        .into_iter()
-        .filter(|t| s.dock.find_tab(*t).is_none())
-        .collect();
-    let line = if closed.is_empty() {
-        ui.intern("every tab is open — drag a chip onto a pane edge to split it")
+    let all_open = OPENABLE.iter().all(|&t| s.dock.find_tab(t).is_some());
+    let line = if all_open {
+        "every tab is open — drag a chip onto a pane edge to split it"
     } else {
-        ui.intern("closed tabs re-open in the focused pane:")
+        "closed tabs reopen in the focused pane:"
     };
     support::row(ui, |ui| {
-        Text::new(line)
-            .id_salt("dock-note")
-            .style(&note_style())
-            .show(ui);
-        for tab in closed {
+        Text::new(line).style(&note_style()).show(ui);
+        for tab in OPENABLE {
+            if s.dock.find_tab(tab).is_some() {
+                continue;
+            }
             if Button::new()
-                .id_salt(("reopen", tab.label()))
+                .id_salt(tab.label())
                 .label(tab.label())
                 .show(ui)
-                .left
                 .clicked()
             {
                 s.dock.apply(DockOperation::OpenTab { tab });

@@ -12,10 +12,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::support;
+use crate::support::{api, note, section};
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
-use palantir::{Configure, GpuFrameContext, GpuInitContext, GpuPaint, GpuView, Sense, Sizing, Ui};
+use palantir::{
+    Configure, GpuFrameContext, GpuInitContext, GpuPaint, GpuView, Sense, Sizing, Ui, WidgetId,
+};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -95,7 +97,7 @@ struct CubeGpu {
 /// `yaw`/`pitch` are driven by drag. `'static` (no borrows) so it can
 /// live behind the `Rc<RefCell<…>>` the framework holds across frames.
 #[derive(Debug)]
-pub(crate) struct Cube {
+struct Cube {
     gpu: Option<CubeGpu>,
     spin: f32,
     yaw: f32,
@@ -103,7 +105,7 @@ pub(crate) struct Cube {
 }
 
 impl Cube {
-    pub(crate) const fn new() -> Self {
+    const fn new() -> Self {
         Self {
             gpu: None,
             spin: 0.0,
@@ -303,19 +305,33 @@ impl GpuPaint for Cube {
     }
 }
 
-/// Showcase page. `cube` persists across frames on the shell's `State`
-/// (the device isn't available at construction, so its GPU resources
-/// build lazily on first paint).
-pub(crate) fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
+/// Showcase page. The cube lives in a state row under an id no node
+/// records, so it lasts as long as the `Ui` — the device isn't available
+/// at construction, so its GPU resources build lazily on first paint.
+pub(crate) fn build(ui: &mut Ui) {
+    let id = WidgetId::from_hash("showcase::gpu_view::cube");
+    ui.with_state::<Option<Rc<RefCell<Cube>>>, _>(id, |ui, cube| {
+        let cube = cube.get_or_insert_with(|| Rc::new(RefCell::new(Cube::new())));
+        view(ui, cube);
+    });
+}
+
+fn view(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
     // A GpuView re-renders on every painted frame, so keep frames coming to
     // animate the spin.
     ui.request_repaint();
-    support::note(
+    section(
         ui,
-        "The cube is drawn with raw wgpu into a framework-owned off-screen \
-         texture, then composited as an ordinary image — so clipping, rounded \
-         corners, z-order, and partial-damage recompositing all come for free. \
-         Drag inside the view to orbit it.",
+        "Cube",
+        &[api!(type GpuView), api!(type GpuPaint)],
+        |ui| {
+            note(
+                ui,
+                "Drawn with raw wgpu into an off-screen texture the framework owns, then \
+             composited as an ordinary image — so clipping, rounded corners, z-order and \
+             partial repaint all come for free. Drag inside the view to orbit it.",
+            );
+        },
     );
 
     // GpuView doesn't sense by default — opt into drag so the returned

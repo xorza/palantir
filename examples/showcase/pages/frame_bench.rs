@@ -13,14 +13,18 @@
 //! widgets. Anything that looks broken here is a layout or paint
 //! regression the timing numbers alone would not have caught.
 
-use palantir::Ui;
 use palantir::internals::frame_fixture::FrameFixture;
+use palantir::{Ui, WidgetId};
 
 /// Content multiplier. The benches use 32 against a 3840x6000 offscreen
 /// target; this is sized so the card column fills a normal window instead
 /// of running thousands of pixels past the bottom of the page scroll.
 const SCALE: usize = 6;
 
-pub(crate) fn build(ui: &mut Ui, fixture: &mut FrameFixture) {
-    fixture.render(SCALE, ui);
+/// The fixture holds the values the tree binds `&mut` to, so it lives in a
+/// state row across frames, as the benches hold it: a fresh one each frame
+/// would reset every control.
+pub(crate) fn build(ui: &mut Ui) {
+    let id = WidgetId::from_hash("showcase::frame_bench::fixture");
+    ui.with_state::<FrameFixture, _>(id, |ui, fixture| fixture.render(SCALE, ui));
 }

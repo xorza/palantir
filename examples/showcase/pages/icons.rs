@@ -8,8 +8,7 @@
 //! derives each icon's viewBox, tintability, and filter use from the artwork
 //! itself, so a demo page states only its SVGs.
 
-use crate::support;
-use crate::support::{demo_cell_at, section, tiles};
+use crate::support::{api, demo_cell_at, note, section, tiles};
 use palantir::{IconId, IconSet, IconTable, RgbaF32, Ui, WidgetId};
 use std::rc::Rc;
 
@@ -113,8 +112,18 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "sizes — each cell rasterizes at its own physical size, not a scaled copy",
+        "Sizes",
+        &[
+            api!(Ui::load_icons as fn(&Ui, IconTable) -> IconSet),
+            api!(IconSet::shape),
+        ],
         |ui| {
+            note(
+                ui,
+                "Each cell rasterizes the icon at its own physical size — not a \
+                 scaled copy. Change the UI scale and every cell rasterizes again, so \
+                 edges stay exact.",
+            );
             tiles(ui, |ui| {
                 for (px, label) in SIZES {
                     demo_cell_at(ui, label, px + 24.0, px + 24.0, |ui| {
@@ -125,69 +134,65 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
-    section(
-        ui,
-        "artwork — gradients, a filter, a tintable outline, and a 2:1 aspect",
-        |ui| {
-            tiles(ui, |ui| {
-                demo_cell_at(ui, "save — gradient + clip path", 120.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.save, RgbaF32::WHITE);
-                });
-                demo_cell_at(ui, "folder — radial + drop shadow", 120.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.folder, RgbaF32::WHITE);
-                });
-                demo_cell_at(ui, "new-file — tintable outline", 120.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.new_file, RgbaF32::WHITE);
-                });
-                demo_cell_at(ui, "wide — 2:1, Contain", 160.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.wide, RgbaF32::WHITE);
-                });
+    section(ui, "Artwork", &[api!(type IconTable)], |ui| {
+        note(
+            ui,
+            "Gradients, a clip path, a filter, a tintable outline, and a 2:1 \
+                 aspect.",
+        );
+        tiles(ui, |ui| {
+            demo_cell_at(ui, "save — gradient + clip path", 120.0, 120.0, |ui| {
+                draw(ui, &icons, icons.save, RgbaF32::WHITE);
             });
-        },
-    );
-
-    section(
-        ui,
-        "tint — whole for a tintable icon, alpha and desaturation for a colour one",
-        |ui| {
-            tiles(ui, |ui| {
-                for (label, tint) in [
-                    ("tintable, white", RgbaF32::WHITE),
-                    ("tintable, amber", RgbaF32::srgb(0.98, 0.75, 0.15)),
-                    ("tintable, teal", RgbaF32::srgb(0.30, 0.85, 0.78)),
-                ] {
-                    demo_cell_at(ui, label, 96.0, 96.0, |ui| {
-                        draw(ui, &icons, icons.new_file, tint);
-                    });
-                }
-                // A colour icon takes only the tint's alpha, so fading is
-                // what it gets instead of recolouring.
-                demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
-                    draw(ui, &icons, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
-                });
-                // …and `desaturate` is the other half of a disabled state:
-                // the artwork's own luminance, hue gone.
-                demo_cell_at(ui, "colour icon desaturated", 96.0, 96.0, |ui| {
-                    ui.add_shape(icons.set.shape(icons.save).desaturate(true));
-                });
-                demo_cell_at(ui, "desaturated + 50% alpha", 96.0, 96.0, |ui| {
-                    ui.add_shape(
-                        icons
-                            .set
-                            .shape(icons.save)
-                            .desaturate(true)
-                            .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
-                    );
-                });
+            demo_cell_at(ui, "folder — radial + drop shadow", 120.0, 120.0, |ui| {
+                draw(ui, &icons, icons.folder, RgbaF32::WHITE);
             });
-        },
-    );
+            demo_cell_at(ui, "new-file — tintable outline", 120.0, 120.0, |ui| {
+                draw(ui, &icons, icons.new_file, RgbaF32::WHITE);
+            });
+            demo_cell_at(ui, "wide — 2:1, Contain", 160.0, 120.0, |ui| {
+                draw(ui, &icons, icons.wide, RgbaF32::WHITE);
+            });
+        });
+    });
 
-    support::note(
-        ui,
-        "Resize the window between display scales: every cell re-rasterizes at \
-         the new physical size rather than resampling, so edges stay exact.",
-    );
+    section(ui, "Tint", &[], |ui| {
+        note(
+            ui,
+            "A single-colour icon takes the whole tint. A colour icon takes only \
+                 its alpha, and desaturate is the other half of a disabled look.",
+        );
+        tiles(ui, |ui| {
+            for (label, tint) in [
+                ("tintable, white", RgbaF32::WHITE),
+                ("tintable, amber", RgbaF32::srgb(0.98, 0.75, 0.15)),
+                ("tintable, teal", RgbaF32::srgb(0.30, 0.85, 0.78)),
+            ] {
+                demo_cell_at(ui, label, 96.0, 96.0, |ui| {
+                    draw(ui, &icons, icons.new_file, tint);
+                });
+            }
+            // A colour icon takes only the tint's alpha, so fading is
+            // what it gets instead of recolouring.
+            demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
+                draw(ui, &icons, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
+            });
+            // …and `desaturate` is the other half of a disabled state:
+            // the artwork's own luminance, hue gone.
+            demo_cell_at(ui, "colour icon desaturated", 96.0, 96.0, |ui| {
+                ui.add_shape(icons.set.shape(icons.save).desaturate(true));
+            });
+            demo_cell_at(ui, "desaturated + 50% alpha", 96.0, 96.0, |ui| {
+                ui.add_shape(
+                    icons
+                        .set
+                        .shape(icons.save)
+                        .desaturate(true)
+                        .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
+                );
+            });
+        });
+    });
 }
 
 fn draw(ui: &mut Ui, icons: &Icons, icon: IconId, tint: RgbaF32) {

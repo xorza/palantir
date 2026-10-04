@@ -15,7 +15,7 @@
 //!   straight-alpha-into-premul bug yields over-bright colors.
 
 use crate::support;
-use crate::support::{captioned_cell, demo_cell, section, swatch_bg, tiles};
+use crate::support::{api, captioned_cell, demo_cell, note, section, swatch_bg, tiles};
 use palantir::widget::Shape;
 use palantir::{
     Align, Background, Block, Button, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke,
@@ -25,9 +25,16 @@ use palantir::{
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "id collisions — the first row reuses one explicit id across siblings and \
-         gets the magenta outline; the second row is clean",
+        "Id collisions",
+        &[api!(
+            Button::id_salt as fn(Button<'static>, &'static str) -> Button<'static>
+        )],
         |ui| {
+            note(
+                ui,
+                "The first row reuses one explicit id across siblings and gets the \
+                 magenta outline. The second row is clean.",
+            );
             support::row(ui, |ui| {
                 for label in ["dup A", "dup B", "dup C"] {
                     Button::new().id_salt("idcol-dup-btn").label(label).show(ui);
@@ -53,40 +60,40 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
-    section(
-        ui,
-        "text z-order — record order decides who covers whom, quads and text alike",
-        |ui| {
-            tiles(ui, |ui| {
-                zorder_cell(ui, "text over an earlier quad", false);
-                zorder_cell(ui, "quad recorded AFTER the text covers it", true);
-            });
-        },
-    );
+    section(ui, "Text z-order", &[], |ui| {
+        note(
+            ui,
+            "Record order decides what covers what, quads and text alike.",
+        );
+        tiles(ui, |ui| {
+            zorder_cell(ui, "text over an earlier quad", false);
+            zorder_cell(ui, "quad recorded AFTER the text covers it", true);
+        });
+    });
 
-    section(
-        ui,
-        "chrome & blending — concentric corners, and premultiplied-alpha repros \
-         over a magenta backdrop",
-        |ui| {
-            tiles(ui, |ui| {
-                captioned_cell(
-                    ui,
-                    "chrome concentricity",
-                    support::TILE,
-                    support::TILE,
-                    concentricity,
-                );
-                demo_cell(ui, "premul — solid α 0.5, expect grey", translucent_solid);
-                demo_cell(ui, "premul — per-point α 0.5", translucent_per_point);
-                demo_cell(
-                    ui,
-                    "premul — α 0.25, expect slight tint",
-                    translucent_quarter,
-                );
-            });
-        },
-    );
+    section(ui, "Chrome and blending", &[], |ui| {
+        note(
+            ui,
+            "Concentric corners, and premultiplied-alpha repros over a magenta \
+                 backdrop.",
+        );
+        tiles(ui, |ui| {
+            captioned_cell(
+                ui,
+                "chrome concentricity",
+                support::TILE,
+                support::TILE,
+                concentricity,
+            );
+            demo_cell(ui, "premul — solid α 0.5, expect grey", translucent_solid);
+            demo_cell(ui, "premul — per-point α 0.5", translucent_per_point);
+            demo_cell(
+                ui,
+                "premul — α 0.25, expect slight tint",
+                translucent_quarter,
+            );
+        });
+    });
 }
 
 /// ZStack of background + label, optionally with an occluder recorded

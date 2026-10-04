@@ -1,22 +1,20 @@
-//! Modal flows: a ComboBox dropdown, a confirm Modal, and close-request
-//! interception (`Ui::close_requested` / `Ui::keep_open`). The page
-//! exposes a toggle standing in for "the document has unsaved changes";
-//! [`intercept`], wired into the window's frame at the top level in the
-//! shell, catches the OS close request, vetoes it while changes are
-//! pending, and shows a Save / Discard / Cancel dialog instead of
-//! letting the window vanish.
+//! Modal flows: a confirm Modal, and close-request interception
+//! (`Ui::close_requested` / `Ui::keep_open`). The page exposes a toggle
+//! standing in for "the document has unsaved changes"; [`intercept`],
+//! wired into the window's frame at the top level in the shell, catches
+//! the OS close request, vetoes it while changes are pending, and shows a
+//! Save / Discard / Cancel dialog instead of letting the window vanish.
 
-use crate::support;
-use crate::support::{note_style, row, section};
+use crate::support::{api, checklist, note, readout, row, section};
 use palantir::{
-    Button, Checkbox, CloseHandle, ComboBox, Configure, Modal, OverlayResponse, Panel, Sizing,
-    Text, Ui, WidgetId, WindowToken, fmt,
+    Button, Checkbox, CloseHandle, Configure, Modal, OverlayResponse, Panel, Text, Ui, WidgetId,
+    WindowToken,
 };
 
 #[derive(Clone, Copy, Default, Debug)]
 struct State {
-    fruit: usize,
     modal_open: bool,
+    last: Option<&'static str>,
 }
 
 /// Shared between the page (writes `pretend_dirty`) and [`intercept`]
@@ -36,31 +34,22 @@ fn exit_state_id() -> WidgetId {
 
 /// The scaffold both dialogs on this page share: a titled card over a
 /// button row. What the buttons are and what they do differs per dialog,
-/// so those stay with the caller — `key` scopes the whole tree.
+/// so those stay with the caller.
+#[track_caller]
 fn dialog(
     ui: &mut Ui,
-    key: &'static str,
     title: &'static str,
     buttons: impl FnOnce(&mut Ui, &CloseHandle),
 ) -> OverlayResponse<()> {
-    Modal::new().id_salt((key, "modal")).show(ui, |ui, close| {
-        Panel::vstack()
-            .id_salt((key, "body"))
-            .gap(16.0)
-            .show(ui, |ui| {
-                Text::new(title).id_salt((key, "title")).show(ui);
-                Panel::hstack()
-                    .id_salt((key, "row"))
-                    .gap(8.0)
-                    .show(ui, |ui| buttons(ui, close));
-            });
+    Modal::new().auto_id().show(ui, |ui, close| {
+        Panel::vstack().gap(16.0).show(ui, |ui| {
+            Text::new(title).show(ui);
+            Panel::hstack().gap(8.0).show(ui, |ui| buttons(ui, close));
+        });
     })
 }
 
 pub(crate) fn build(ui: &mut Ui) {
-    // Both rows are read and written from several nested closures below, so
-    // each is lent to the whole page body once. Probing the map at each use
-    // was sixteen lookups a frame to move four bytes around.
     let state_id = WidgetId::from_hash("showcase::dialogs::state");
     ui.with_state::<State, _>(state_id, |ui, state| {
         ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, state, exit));
@@ -68,65 +57,62 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
-    let options = ["Apple", "Banana", "Cherry", "Durian", "Elderberry"];
-
-    section(ui, "combo box — click to open the dropdown", |ui| {
-        row(ui, |ui| {
-            ComboBox::new(&mut state.fruit, &options)
-                .size((Sizing::fixed(180.0), Sizing::HUG))
-                .id_salt("combo")
-                .show(ui);
-            let chosen = fmt!(ui, "selected: {}", options[state.fruit]);
-            Text::new(chosen)
-                .id_salt("chosen")
-                .style(&note_style())
-                .show(ui);
-        });
-    });
-
     section(
         ui,
-        "modal — dims the background and takes every pointer; Esc or a backdrop \
-         click closes",
+        "Modal",
+        &[api!(Modal::new), api!(CloseHandle::close)],
         |ui| {
-            if Button::new()
-                .id_salt("open")
-                .label("Open dialog")
-                .show(ui)
-                .left
-                .clicked()
-            {
-                state.modal_open = true;
-            }
+            note(
+                ui,
+                "A modal dims the window and takes every pointer. Escape or a click on the \
+             backdrop closes it, and Tab stays inside it — see the focus & keyboard page \
+             for the focus side.",
+            );
+            row(ui, |ui| {
+                if Button::new().label("Delete all…").show(ui).clicked() {
+                    state.modal_open = true;
+                }
+                readout(ui, "last answer", state.last.unwrap_or("—"));
+            });
+            checklist(
+                ui,
+                &[
+                    "The backdrop dims the page, and nothing under it reacts to the pointer",
+                    "Escape and a backdrop click close the dialog, and leave the last answer as it was",
+                ],
+            );
         },
     );
 
     section(
         ui,
-        "close interception — the app decides whether the window may go away",
+        "Close interception",
+        &[api!(Ui::close_requested), api!(Ui::keep_open)],
         |ui| {
-            support::note(
+            note(
                 ui,
-                "Turn on 'unsaved changes', then close the window: the app vetoes \
-                 the OS request via ui.keep_open() and prompts instead of vanishing.",
+                "Turn on the unsaved changes, then close the window: the app vetoes the OS \
+                 request and asks first.",
             );
             Checkbox::new(&mut exit.pretend_dirty)
-                .id_salt("dirty")
                 .label("simulate unsaved changes")
                 .show(ui);
+            checklist(
+                ui,
+                &[
+                    "With no unsaved changes, closing the window closes it",
+                    "With unsaved changes, closing the window shows the dialog instead",
+                    "Cancel keeps the window open, and Discard closes it",
+                ],
+            );
         },
     );
 
     if state.modal_open {
-        let resp = dialog(ui, "confirm", "Delete all the things?", |ui, close| {
-            for (key, label) in [("cancel", "Cancel"), ("ok", "Delete")] {
-                if Button::new()
-                    .id_salt(key)
-                    .label(label)
-                    .show(ui)
-                    .left
-                    .clicked()
-                {
+        let resp = dialog(ui, "Delete all the things?", |ui, close| {
+            for label in ["Cancel", "Delete"] {
+                if Button::new().id_salt(label).label(label).show(ui).clicked() {
+                    state.last = Some(label);
                     close.close();
                 }
             }
@@ -155,37 +141,18 @@ fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
 
     let resp = dialog(
         ui,
-        "exit",
         "You have unsaved changes. Close anyway?",
         |ui, close| {
-            if Button::new()
-                .id_salt("save")
-                .label("Save & Close")
-                .show(ui)
-                .left
-                .clicked()
-            {
+            if Button::new().label("Save & Close").show(ui).clicked() {
                 exit.pretend_dirty = false;
                 close.close();
                 ui.close_window(win);
             }
-            if Button::new()
-                .id_salt("discard")
-                .label("Discard")
-                .show(ui)
-                .left
-                .clicked()
-            {
+            if Button::new().label("Discard").show(ui).clicked() {
                 close.close();
                 ui.close_window(win);
             }
-            if Button::new()
-                .id_salt("cancel")
-                .label("Cancel")
-                .show(ui)
-                .left
-                .clicked()
-            {
+            if Button::new().label("Cancel").show(ui).clicked() {
                 close.close();
             }
         },

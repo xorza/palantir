@@ -1,6 +1,6 @@
-//! One module per nav entry. A page exposes `build(&mut Ui)` and emits
-//! `support::section`s into the vstack the shell hands it — no root
-//! panel, no padding, no title of its own.
+//! One module per nav entry. A page exposes the `build` the shell's page
+//! table calls, and emits `support::section`s into the vstack the shell
+//! hands it — no root panel, no padding, no title of its own.
 
 pub(crate) mod clip;
 pub(crate) mod colors;
@@ -10,6 +10,7 @@ pub(crate) mod custom_widget;
 pub(crate) mod dialogs;
 pub(crate) mod dock;
 pub(crate) mod fixtures;
+pub(crate) mod focus;
 pub(crate) mod frame_bench;
 pub(crate) mod gpu_view;
 pub(crate) mod gradients;
@@ -26,4 +27,4 @@ pub(crate) mod state;
 pub(crate) mod strokes;
 pub(crate) mod tabs;
 pub(crate) mod text;
-pub(crate) mod text_edit;
+pub(crate) mod text_input;

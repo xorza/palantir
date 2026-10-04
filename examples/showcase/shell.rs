@@ -1,23 +1,22 @@
 //! The showcase chrome: a grouped nav rail on the left, a titled page
 //! card on the right, and the table that drives both.
 //!
-//! [`PAGES`] is the single source of truth — nav label, group heading,
-//! the blurb rendered under the page title, whether the page scrolls,
-//! and how its body is built. Adding a page is one row here plus one
-//! module under `pages/`; nothing else in the shell knows page names.
+//! [`PAGES`] is the single source of truth — nav label, group, the blurb
+//! and key hints rendered under the page title, whether the page
+//! scrolls, and how its body is built. Adding a page is one row here
+//! plus one module under `pages/`; nothing else in the shell knows page
+//! names.
 
 use palantir::SlotDefaults;
-use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
-    Align, AnimationSpec, App, Background, Block, Button, ButtonTheme, Checkbox, Configure,
-    Corners, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut,
-    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides, TextWrap, Theme,
-    Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
+    Align, AnimationSpec, App, Axis, Background, Block, Button, ButtonTheme, Checkbox, Configure,
+    Corners, FocusPolicy, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll,
+    Shortcut, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides, TextWrap,
+    Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use crate::pages;
+use crate::pages::state::AppState;
 use crate::support;
 
 /// Token for the bootstrap window (the showcase itself).
@@ -41,6 +40,37 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
 
 const SIDEBAR_W: f32 = 196.0;
 
+/// A heading in the nav rail. Pages of one group are adjacent in
+/// [`PAGES`]; the rail emits a heading whenever the group changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Group {
+    Widgets,
+    Input,
+    Layout,
+    Paint,
+    Runtime,
+    /// Regression content and the bench viewer: kept in reach, drawn in
+    /// quieter ink, so they don't read as part of the tour.
+    Diagnostics,
+}
+
+impl Group {
+    const fn heading(self) -> &'static str {
+        match self {
+            Group::Widgets => "WIDGETS",
+            Group::Input => "INPUT",
+            Group::Layout => "LAYOUT",
+            Group::Paint => "PAINT",
+            Group::Runtime => "RUNTIME",
+            Group::Diagnostics => "DIAGNOSTICS",
+        }
+    }
+
+    const fn is_quiet(self) -> bool {
+        matches!(self, Group::Diagnostics)
+    }
+}
+
 /// How the shell hosts a page's body.
 #[derive(Clone, Copy, Debug)]
 enum Flow {
@@ -53,230 +83,229 @@ enum Flow {
     Fill,
 }
 
-/// How a page's body is built. Most pages are a plain function; the three
-/// that own cross-frame resources are dispatched explicitly rather than
-/// smuggled through a function pointer that can't carry them.
-#[derive(Clone, Copy, Debug)]
-enum Body {
-    Simple(fn(&mut Ui)),
-    State,
-    GpuView,
-    Fixture,
-}
-
 #[derive(Clone, Copy, Debug)]
 struct Page {
-    /// Heading this page sits under in the nav rail. Pages sharing a
-    /// group must be adjacent — the rail emits a heading whenever this
-    /// changes.
-    group: &'static str,
+    group: Group,
     label: &'static str,
-    /// One line under the page title saying what to look at or try.
+    /// One line under the page title saying what the page shows.
     blurb: &'static str,
+    /// The keys and gestures the page answers to, set as keycaps under
+    /// the blurb.
+    keys: &'static [&'static str],
     flow: Flow,
-    body: Body,
+    /// Every page takes the app state, so one table row drives every
+    /// page; the pages that don't read it take it as `_`.
+    build: fn(&mut Ui, &mut AppState),
 }
 
 const PAGES: &[Page] = &[
     Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "controls",
-        blurb: "Form controls wired together — flip 'Airplane mode' to cascade-disable the \
-                network group; Apply runs a fake sync through Ui::animate.",
+        blurb: "Form controls wired together, button themes, and disclosure sections.",
+        keys: &["click", "drag", "Space", "←→"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::controls::build),
+        build: |ui, _| pages::controls::build(ui),
     },
     Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "colors",
-        blurb: "The colour picker and its parts. Drag the field and the bars; switch the \
-                model under the panel to see Okhsv hold one brightness where HSV does not.",
+        blurb: "The colour picker, its parts on their own, and the chip that opens it.",
+        keys: &["drag", "Esc"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::colors::build),
+        build: |ui, _| pages::colors::build(ui),
     },
     Page {
-        group: "WIDGETS",
-        label: "text edit",
-        blurb: "Click to focus, type to insert; arrows / Home / End / Backspace / Delete \
-                navigate, Escape blurs.",
-        flow: Flow::Scroll,
-        body: Body::Simple(pages::text_edit::build),
-    },
-    Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "tabs",
-        blurb: "A page view bound to an index, the chip row on its own, and a strip with \
-                more tabs than room. Arrow keys travel; Ctrl+Tab cycles.",
+        blurb: "A page view bound to an index, the chip strip on its own, and overflow.",
+        keys: &["←→", "Home", "End", "Ctrl+Tab", "wheel"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::tabs::build),
+        build: |ui, _| pages::tabs::build(ui),
     },
     Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "dock",
-        blurb: "Drag a chip onto a pane edge to split it, into a strip to join, and \
-                right-click one for the split menu.",
+        blurb: "Tabbed panes that split, join and resize by drag.",
+        keys: &["drag chip", "drag divider", "right-click"],
         flow: Flow::Fill,
-        body: Body::Simple(pages::dock::build),
+        build: |ui, _| pages::dock::build(ui),
     },
     Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "custom widget",
-        blurb: "A Stepper authored the way a widget in another crate would be — Widget and \
-                Configure, response_for, add_shape, and no crate internal.",
+        blurb: "A widget written against the public authoring API and nothing else.",
+        keys: &["click", "Tab", "↑↓"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::custom_widget::build),
+        build: |ui, _| pages::custom_widget::build(ui),
     },
     Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "dialogs",
-        blurb: "Modal flows — a dropdown, a confirm dialog, and OS close-request \
-                interception.",
+        blurb: "Modal dialogs, and a window close the app can veto.",
+        keys: &["Esc", "Tab", "close window"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::dialogs::build),
+        build: |ui, _| pages::dialogs::build(ui),
     },
     Page {
-        group: "WIDGETS",
+        group: Group::Widgets,
         label: "overlays",
-        blurb: "Popups, tooltips, and context menus paint above the main tree and \
-                hit-test on top of it.",
+        blurb: "Popups, anchors, tooltips and context menus, above the main tree.",
+        keys: &["click", "hover", "right-click", "Esc"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::overlays::build),
+        build: |ui, _| pages::overlays::build(ui),
     },
     Page {
-        group: "LAYOUT",
+        group: Group::Input,
+        label: "text input",
+        blurb: "Single- and multi-line editors, the edges they report, and IME composition.",
+        keys: &["type", "Enter", "Esc", "Shift+arrows", "IME"],
+        flow: Flow::Scroll,
+        build: |ui, _| pages::text_input::build(ui),
+    },
+    Page {
+        group: Group::Input,
+        label: "focus & keyboard",
+        blurb: "Tab traversal, the focus ring, arrow groups, and focus that stays inside an overlay.",
+        keys: &["Tab", "Shift+Tab", "←→↑↓", "Enter", "Space", "Esc"],
+        flow: Flow::Scroll,
+        build: |ui, _| pages::focus::build(ui),
+    },
+    Page {
+        group: Group::Layout,
         label: "sizing & spacing",
-        blurb: "Sizing, justification, alignment, padding / margin / gap, and visibility. \
-                The colored chips show where layout puts each child.",
+        blurb: "Sizing, justification, alignment, padding, margin, gap and visibility.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::sizing::build),
+        build: |ui, _| pages::sizing::build(ui),
     },
     Page {
-        group: "LAYOUT",
+        group: Group::Layout,
         label: "containers",
-        blurb: "Stacks, wrapping flow, and Grid tracks. Resize the window to watch wrap \
-                lines and Fill tracks re-divide.",
+        blurb: "Stacks, wrapping flow, and grid tracks.",
+        keys: &["resize window"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::containers::build),
+        build: |ui, _| pages::containers::build(ui),
     },
     Page {
-        group: "LAYOUT",
+        group: Group::Layout,
         label: "text",
-        blurb: "Wrapping mechanics and intrinsic-dimension composition patterns. Resize \
-                the window — the right column reflows live.",
+        blurb: "Wrapping, and text inside Hug and Fill layouts.",
+        keys: &["resize window"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::text::build),
+        build: |ui, _| pages::text::build(ui),
     },
     Page {
-        group: "LAYOUT",
+        group: Group::Layout,
         label: "clip & transform",
-        blurb: "Clip modes against a child that overflows on all four sides, and \
-                TranslateScale applied to whole subtrees.",
+        blurb: "Clip modes against an overflowing child, and transforms on whole subtrees.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::clip::build),
+        build: |ui, _| pages::clip::build(ui),
     },
     Page {
-        group: "LAYOUT",
+        group: Group::Layout,
         label: "scroll & split",
-        blurb: "Scroll viewports inside splitter panes — drag the bars (double-click \
-                recenters); hover a pane and wheel / two-finger scroll.",
+        blurb: "Scroll viewports on three axes, inside resizable splitter panes.",
+        keys: &["wheel", "drag bar", "double-click bar"],
         flow: Flow::Fill,
-        body: Body::Simple(pages::scroll::build),
+        build: |ui, _| pages::scroll::build(ui),
     },
     Page {
-        group: "LAYOUT",
+        group: Group::Layout,
         label: "pan & zoom",
-        blurb: "Wheel pans, Ctrl/Cmd + wheel zooms about the cursor, pinch zooms on a \
-                touchpad. Cells stay under the cursor while zooming.",
+        blurb: "A zoomable viewport: the point under the cursor stays put.",
+        keys: &["wheel", "Ctrl+wheel", "pinch"],
         flow: Flow::Fill,
-        body: Body::Simple(pages::pan_zoom::build),
+        build: |ui, _| pages::pan_zoom::build(ui),
     },
     Page {
-        group: "PAINT",
+        group: Group::Paint,
         label: "shapes",
-        blurb: "SDF triangles, raw meshes, and the windowed rect — the inverted-fill \
-                corner mask that fakes rounded clipping.",
+        blurb: "SDF triangles, raw meshes, and the windowed rect.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::shapes::build),
+        build: |ui, _| pages::shapes::build(ui),
     },
     Page {
-        group: "PAINT",
+        group: Group::Paint,
         label: "strokes",
-        blurb: "Lines, polylines, béziers, and arcs — widths down to hairlines, joins, \
-                caps, and per-point / gradient brushes.",
+        blurb: "Lines, polylines, béziers and arcs: widths, joins, caps and colour.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::strokes::build),
+        build: |ui, _| pages::strokes::build(ui),
     },
     Page {
-        group: "PAINT",
+        group: Group::Paint,
         label: "gradients",
-        blurb: "Linear, radial, and conic brushes through the full path — composer to \
-                atlas to shader to premultiplied blend.",
+        blurb: "Linear, radial and conic brushes, spread modes and interpolation spaces.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::gradients::build),
+        build: |ui, _| pages::gradients::build(ui),
     },
     Page {
-        group: "PAINT",
+        group: Group::Paint,
         label: "shadows",
-        blurb: "Drop shadows via raw shape pushes and via widget chrome. Light surfaces \
-                because black-on-dark shadows don't read.",
+        blurb: "Drop and inset shadows, as shapes and as widget chrome.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::shadows::build),
+        build: |ui, _| pages::shadows::build(ui),
     },
     Page {
-        group: "PAINT",
+        group: Group::Paint,
         label: "icons",
-        blurb: "Baked SVG icons rasterized at their exact physical size — gradients, a \
-                filtered drop shadow, tintable outlines, and non-square artwork.",
+        blurb: "SVG icons rasterized at the exact physical size they land on.",
+        keys: &["Ctrl +", "Ctrl −"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::icons::build),
+        build: |ui, _| pages::icons::build(ui),
     },
     Page {
-        group: "PAINT",
+        group: Group::Paint,
         label: "images",
-        blurb: "Fit modes, tint and alpha, tiled repeat, and linear vs nearest sampling \
-                under magnification and minification.",
+        blurb: "Fit modes, tint, tiling, and sampling under magnification and minification.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::images::build),
+        build: |ui, _| pages::images::build(ui),
     },
     Page {
-        group: "RUNTIME",
+        group: Group::Runtime,
         label: "motion",
-        blurb: "Ui::animate easing curves side by side, and drag responses that report \
-                an anchored position with no caller-side tracking.",
+        blurb: "Easing curves, and drag handling with no tracking code.",
+        keys: &["click", "drag"],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::motion::build),
+        build: |ui, _| pages::motion::build(ui),
     },
     Page {
-        group: "RUNTIME",
+        group: Group::Runtime,
         label: "gpu view",
-        blurb: "Raw wgpu inside a widget — the framework owns the target texture and \
-                composites the result as an ordinary image.",
+        blurb: "Raw wgpu inside a widget, composited as an ordinary image.",
+        keys: &["drag"],
         flow: Flow::Fill,
-        body: Body::GpuView,
+        build: |ui, _| pages::gpu_view::build(ui),
     },
     Page {
-        group: "RUNTIME",
+        group: Group::Runtime,
         label: "state & windows",
-        blurb: "Carrier-only app state threaded through the record closure, shared live \
-                with a second OS window.",
+        blurb: "App state passed through the record closure, shared with a second OS window.",
+        keys: &["F8"],
         flow: Flow::Scroll,
-        body: Body::State,
+        build: pages::state::build,
     },
     Page {
-        group: "RUNTIME",
+        group: Group::Diagnostics,
         label: "fixtures",
-        blurb: "Deliberately ugly regression content — id collisions, text z-order, \
-                chrome concentricity, premultiplied-alpha repros.",
+        blurb: "Deliberately ugly regression content: id collisions, z-order, alpha blending.",
+        keys: &[],
         flow: Flow::Scroll,
-        body: Body::Simple(pages::fixtures::build),
+        build: |ui, _| pages::fixtures::build(ui),
     },
     Page {
-        group: "RUNTIME",
+        group: Group::Diagnostics,
         label: "frame bench",
-        blurb: "The workload `cargo bench -p palantir --bench criterion -- -d frame` records, \
-                drawn live. Nothing here animates — the benches need damage to settle.",
+        blurb: "The workload the frame benchmark records, drawn live. Nothing animates.",
+        keys: &[],
         flow: Flow::Fill,
-        body: Body::Fixture,
+        build: |ui, _| pages::frame_bench::build(ui),
     },
 ];
 
@@ -284,14 +313,7 @@ const PAGES: &[Page] = &[
 #[derive(Debug)]
 pub(crate) struct State {
     active: usize,
-    app: pages::state::AppState,
-    /// Persistent renderer for the `gpu view` page — its GPU resources
-    /// build lazily on first paint (no device at construction).
-    cube: Rc<RefCell<pages::gpu_view::Cube>>,
-    /// Backing values for the `frame bench` page. Held across frames for
-    /// the same reason the benches hold it: the tree binds `&mut` to these
-    /// fields, so a fresh one each frame would reset every control.
-    fixture: FrameFixture,
+    app: AppState,
 }
 
 impl State {
@@ -303,21 +325,21 @@ impl State {
         ui.set_theme(theme);
         State {
             active: 0,
-            app: pages::state::AppState { counter: 0 },
-            cube: Rc::new(RefCell::new(pages::gpu_view::Cube::new())),
-            fixture: FrameFixture::default(),
+            app: AppState { counter: 0 },
         }
     }
 
     fn build(&mut self, ui: &mut Ui) {
         handle_shortcuts(ui);
+        // The focus page sets its own policy after this; every other page
+        // gets the default back, so the choice made there stays there.
+        ui.set_focus_policy(FocusPolicy::default());
 
         Panel::hstack()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 self.rail(ui);
                 Block::new()
-                    .id_salt("rail-divider")
                     .size((Sizing::fixed(1.0), Sizing::FILL))
                     .background(Background::fill(support::HAIRLINE))
                     .show(ui);
@@ -327,12 +349,14 @@ impl State {
         pages::dialogs::intercept(ui, MAIN_WINDOW);
     }
 
-    /// The nav rail: brand, grouped page list, debug-overlay footer.
+    /// The nav rail: brand, grouped page list, debug-overlay footer. The
+    /// list is an arrow group: one Tab lands in it, and ↑ / ↓ walk the
+    /// pages from there.
     fn rail(&mut self, ui: &mut Ui) {
-        let idle = nav_style(false);
-        let selected = nav_style(true);
+        let idle = nav_style(NavLook::Idle);
+        let quiet = nav_style(NavLook::Quiet);
+        let selected = nav_style(NavLook::Selected);
         Panel::vstack()
-            .id_salt("rail")
             .size((Sizing::fixed(SIDEBAR_W), Sizing::FILL))
             .padding((12.0, 16.0, 12.0, 12.0))
             .gap(14.0)
@@ -340,16 +364,22 @@ impl State {
             .show(ui, |ui| {
                 brand(ui);
                 Scroll::vertical()
-                    .id_salt("rail-scroll")
                     .size((Sizing::FILL, Sizing::FILL))
                     .overlay_bars()
                     .gap(2.0)
+                    .arrow_focus(Axis::Y)
                     .show(ui, |ui| {
                         for (i, page) in PAGES.iter().enumerate() {
                             if i == 0 || PAGES[i - 1].group != page.group {
                                 group_heading(ui, page.group, i == 0);
                             }
-                            let style = if i == self.active { &selected } else { &idle };
+                            let style = if i == self.active {
+                                &selected
+                            } else if page.group.is_quiet() {
+                                &quiet
+                            } else {
+                                &idle
+                            };
                             let hit = Button::new()
                                 .id_salt(page.label)
                                 .label(page.label)
@@ -357,7 +387,6 @@ impl State {
                                 .text_align(Align::LEFT)
                                 .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui)
-                                .left
                                 .clicked();
                             if hit {
                                 self.active = i;
@@ -368,54 +397,49 @@ impl State {
             });
     }
 
-    /// The page card: title, blurb, rule, then the active page's body.
+    /// The page card: title, blurb, key hints, rule, then the active
+    /// page's body.
     fn card(&mut self, ui: &mut Ui) {
         let page = PAGES[self.active];
         Panel::vstack()
-            .id_salt("card-gutter")
             .size((Sizing::FILL, Sizing::FILL))
             .padding(16.0)
             .show(ui, |ui| {
                 Panel::vstack()
-                    .id_salt("card")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .padding(20.0)
-                    .gap(16.0)
+                    .padding(24.0)
+                    .gap(20.0)
                     .background(
                         Background::rounded(support::CARD, Corners::all(10.0))
                             .with_border(Stroke::new(support::BORDER, 1.0)),
                     )
                     .clip_rounded()
                     .show(ui, |ui| {
-                        page_header(ui, page.label, page.blurb);
+                        page_header(ui, &page);
+                        // Keyed by page, so one page's scroll offset never
+                        // carries over to the next.
                         match page.flow {
                             Flow::Scroll => {
                                 Scroll::vertical()
-                                    .id_salt("page-scroll")
+                                    .id_salt(page.label)
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .overlay_bars()
                                     .gap(support::PAGE_GAP)
-                                    .show(ui, |ui| self.body(ui));
+                                    // Room for the overlay bar, so it never
+                                    // sits over a page's right edge.
+                                    .padding((0.0, 0.0, 14.0, 0.0))
+                                    .show(ui, |ui| (page.build)(ui, &mut self.app));
                             }
                             Flow::Fill => {
                                 Panel::vstack()
-                                    .id_salt("page-fill")
+                                    .id_salt(page.label)
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .gap(support::PAGE_GAP)
-                                    .show(ui, |ui| self.body(ui));
+                                    .show(ui, |ui| (page.build)(ui, &mut self.app));
                             }
                         }
                     });
             });
-    }
-
-    fn body(&mut self, ui: &mut Ui) {
-        match PAGES[self.active].body {
-            Body::Simple(build) => build(ui),
-            Body::State => pages::state::build(ui, &mut self.app),
-            Body::GpuView => pages::gpu_view::build(ui, &self.cube),
-            Body::Fixture => pages::frame_bench::build(ui, &mut self.fixture),
-        }
     }
 }
 
@@ -436,12 +460,10 @@ impl App for State {
 
 fn brand(ui: &mut Ui) {
     Panel::vstack()
-        .id_salt("brand")
         .size((Sizing::FILL, Sizing::HUG))
         .gap(1.0)
         .show(ui, |ui| {
             Text::new("palantir")
-                .id_salt("brand-name")
                 .style(
                     &TextStyle::default()
                         .with_font_size(17.0)
@@ -450,7 +472,6 @@ fn brand(ui: &mut Ui) {
                 )
                 .show(ui);
             Text::new("widget tour")
-                .id_salt("brand-sub")
                 .style(
                     &TextStyle::default()
                         .with_font_size(11.0)
@@ -460,23 +481,21 @@ fn brand(ui: &mut Ui) {
         });
 }
 
-fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
-    Block::new()
-        .id_salt(("group-space", name))
-        .size((
-            Sizing::fixed(1.0),
-            Sizing::fixed(if first { 2.0 } else { 14.0 }),
-        ))
-        .show(ui);
-    Text::new(name)
-        .id_salt(("group", name))
+fn group_heading(ui: &mut Ui, group: Group, first: bool) {
+    let ink = if group.is_quiet() {
+        support::INK_DISABLED
+    } else {
+        support::INK_FAINT
+    };
+    Text::new(group.heading())
+        .id_salt(group.heading())
         .style(
             &TextStyle::default()
                 .with_font_size(10.0)
                 .with_weight(FontWeight::BOLD)
-                .with_color(support::INK_FAINT),
+                .with_color(ink),
         )
-        .margin((10.0, 0.0, 0.0, 4.0))
+        .margin((10.0, if first { 2.0 } else { 16.0 }, 0.0, 4.0))
         .show(ui);
 }
 
@@ -484,35 +503,27 @@ fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
 /// are discoverable instead of living only in a comment.
 fn debug_toggles(ui: &mut Ui) {
     Block::new()
-        .id_salt("footer-rule")
         .size((Sizing::FILL, Sizing::fixed(1.0)))
         .background(Background::fill(support::HAIRLINE))
         .show(ui);
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
     Panel::vstack()
-        .id_salt("debug-toggles")
         .size((Sizing::FILL, Sizing::HUG))
         .gap(6.0)
         .show(ui, |ui| {
             Checkbox::new(&mut overlay.damage_rect)
-                .id_salt("dbg-damage")
                 .label("damage rects  F12")
                 .show(ui);
             Checkbox::new(&mut overlay.dim_undamaged)
-                .id_salt("dbg-dim")
                 .label("dim undamaged  F10")
                 .show(ui);
             Checkbox::new(&mut overlay.frame_stats)
-                .id_salt("dbg-stats")
                 .label("frame stats  F9")
                 .show(ui);
             // Paired with `frame stats` on purpose: turning vsync off is
             // visible there as the frame rate coming off the refresh cap.
-            Checkbox::new(&mut vsync_on)
-                .id_salt("dbg-vsync")
-                .label("vsync")
-                .show(ui);
+            Checkbox::new(&mut vsync_on).label("vsync").show(ui);
             ui_scale_row(ui);
         });
     ui.set_vsync(if vsync_on { Vsync::On } else { Vsync::Off });
@@ -523,7 +534,7 @@ fn debug_toggles(ui: &mut Ui) {
 ///
 /// The two signs walk [`UserScale`]'s ladder, and the readout only reads.
 /// A scrubbable value belongs to a setting that does not move its own
-/// widget: this one relaids the row out from under the pointer mid-drag,
+/// widget: this one lays the row out again under the pointer mid-drag,
 /// so the gesture chased itself off the number it had hold of.
 fn ui_scale_row(ui: &mut Ui) {
     let scale = ui.user_scale();
@@ -531,39 +542,26 @@ fn ui_scale_row(ui: &mut Ui) {
 
     let mut next = scale;
     Panel::hstack()
-        .id_salt("ui-scale")
         .size((Sizing::FILL, Sizing::HUG))
         .margin(Spacing::new(0.0, 6.0, 0.0, 0.0))
         .justify(Justify::Center)
         .child_align(Align::v(VAlign::Center))
         .gap(4.0)
         .show(ui, |ui| {
-            if Button::new()
-                .id_salt("ui-scale-down")
-                .style(&step)
-                .label("−")
-                .show(ui)
-                .left
-                .clicked()
-            {
+            if Button::new().style(&step).label("−").show(ui).clicked() {
                 next = scale.stepped_down();
             }
             // Fixed width, mono face: the readout is three characters at
             // 90% and four at 100%, and the signs must not shuffle sideways
             // as it steps between them.
             Text::new(fmt!(ui, "{}%", scale.percent()))
-                .id_salt("ui-scale-readout")
                 .family(FontFamily::MONO)
                 .font_size(12.0)
                 .color(support::INK)
                 .size((Sizing::fixed(34.0), Sizing::HUG))
                 .text_align(Align::CENTER)
                 .show(ui);
-            let up = Button::new()
-                .id_salt("ui-scale-up")
-                .style(&step)
-                .label("+")
-                .show(ui);
+            let up = Button::new().style(&step).label("+").show(ui);
             let clicked = up.clicked();
             let up = up.snapshot();
             if clicked {
@@ -578,7 +576,7 @@ fn ui_scale_row(ui: &mut Ui) {
 /// marks rather than words, and at the nav items' label size they read as
 /// specks beside the readout.
 fn scale_step_style() -> ButtonTheme {
-    let mut style = nav_style(false);
+    let mut style = nav_style(NavLook::Idle);
     let grow = |look: &mut WidgetLook| {
         look.text.font_size = Some(15.0);
     };
@@ -589,24 +587,23 @@ fn scale_step_style() -> ButtonTheme {
     style
 }
 
-fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
+fn page_header(ui: &mut Ui, page: &Page) {
     Panel::vstack()
-        .id_salt("page-header")
         .size((Sizing::FILL, Sizing::HUG))
-        .gap(4.0)
+        .gap(6.0)
         .show(ui, |ui| {
-            Text::new(title)
-                .id_salt(("page-title", title))
+            Text::new(page.label)
                 .style(&support::title_style())
                 .show(ui);
-            Text::new(blurb)
-                .id_salt(("page-blurb", title))
+            Text::new(page.blurb)
                 .style(&support::blurb_style())
                 .size((Sizing::FILL, Sizing::HUG))
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
+            if !page.keys.is_empty() {
+                support::keys(ui, page.keys);
+            }
             Block::new()
-                .id_salt("header-rule")
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .margin((0.0, 10.0, 0.0, 0.0))
                 .background(Background::fill(support::HAIRLINE))
@@ -616,7 +613,7 @@ fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
 
 /// Cool-neutral recolor of the stock palette so widget chrome and the
 /// showcase's own surfaces come from one ladder.
-const fn showcase_palette() -> Palette {
+pub(crate) const fn showcase_palette() -> Palette {
     Palette {
         text: support::INK,
         text_muted: support::INK_DIM,
@@ -630,20 +627,25 @@ const fn showcase_palette() -> Palette {
     }
 }
 
+/// The three ways a rail item can look.
+#[derive(Clone, Copy, Debug)]
+enum NavLook {
+    Idle,
+    /// An item of a [`Group::is_quiet`] group.
+    Quiet,
+    /// The open page.
+    Selected,
+}
+
 /// Flat rail button: transparent at rest, accent-washed when it's the
 /// open page. Worn by the nav items and by the UI-scale stepper.
-fn nav_style(selected: bool) -> ButtonTheme {
+fn nav_style(look: NavLook) -> ButtonTheme {
     let label = |c: RgbaF32| TextStyleOverrides::NONE.with_font_size(12.0).with_color(c);
     let wash = |alpha: f32, c: RgbaF32| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
-    let (rest, hover, press, ink) = if selected {
-        (0.16, 0.22, 0.28, support::ACCENT)
-    } else {
-        (0.0, 0.06, 0.10, support::INK_DIM)
-    };
-    let tint = if selected {
-        support::ACCENT
-    } else {
-        RgbaF32::WHITE
+    let (rest, hover, press, ink, tint) = match look {
+        NavLook::Idle => (0.0, 0.06, 0.10, support::INK_DIM, RgbaF32::WHITE),
+        NavLook::Quiet => (0.0, 0.06, 0.10, support::INK_FAINT, RgbaF32::WHITE),
+        NavLook::Selected => (0.16, 0.22, 0.28, support::ACCENT, support::ACCENT),
     };
     ButtonTheme {
         looks: StatefulLook {
