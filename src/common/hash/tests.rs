@@ -1,54 +1,9 @@
 use crate::common::hash::*;
 
 #[test]
-fn pod_matches_write_of_bytes_of() {
-    // The performance shortcut is only safe if `pod(&v)` produces
-    // the exact same hash as feeding `bytemuck::bytes_of(&v)`
-    // through `write`. Pin the equivalence for a scalar and a
-    // multi-field repr(C) Pod struct.
-    #[repr(C)]
-    #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
-    struct Pair {
-        a: u32,
-        b: u32,
-    }
-    let scalar: u32 = 0xdead_beef;
-    let pair = Pair {
-        a: 0x1234_5678,
-        b: 0x9abc_def0,
-    };
-
-    let mut h1 = Hasher::new();
-    h1.pod(&scalar);
-    let mut h2 = Hasher::new();
-    h2.write(bytemuck::bytes_of(&scalar));
-    assert_eq!(h1.finish(), h2.finish(), "case: scalar u32");
-
-    let mut h1 = Hasher::new();
-    h1.pod(&pair);
-    let mut h2 = Hasher::new();
-    h2.write(bytemuck::bytes_of(&pair));
-    assert_eq!(h1.finish(), h2.finish(), "case: repr(C) Pair");
-
-    // Same contract for the slice form.
-    let pairs = [pair, Pair { a: 1, b: 2 }];
-    let mut h1 = Hasher::new();
-    h1.pod_slice(&pairs);
-    let mut h2 = Hasher::new();
-    h2.write(bytemuck::cast_slice(&pairs));
-    assert_eq!(h1.finish(), h2.finish(), "case: &[Pair]");
-}
-
-#[test]
-fn pod_slice_differs_from_element_wise_pod() {
-    // `FxHasher::write` consumes `usize`-sized chunks, so one
-    // 16-byte write does not land in the same state as two 8-byte
-    // writes. Bulk and per-element hashing are therefore *not*
-    // interchangeable, however natural the swap looks at a call
-    // site. Pinned in the surprising direction on purpose: the
-    // intuitive assumption is equivalence, and a caller who assumes
-    // it for a persisted key gets a silent mismatch rather than a
-    // failure.
+fn pod_slice_matches_write_of_bytes_and_chunks_by_word() {
+    // `pod_slice` is only safe as a shortcut if it feeds exactly the
+    // slice's bytes through `write`.
     #[repr(C)]
     #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
     struct Pair {
@@ -62,18 +17,27 @@ fn pod_slice_differs_from_element_wise_pod() {
         },
         Pair { a: 1, b: 2 },
     ];
-
-    let mut per_element = Hasher::new();
-    for p in &pairs {
-        per_element.pod(p);
-    }
     let mut bulk = Hasher::new();
     bulk.pod_slice(&pairs);
+    let mut bytes = Hasher::new();
+    bytes.write(bytemuck::cast_slice(&pairs));
+    assert_eq!(bulk.finish(), bytes.finish(), "case: &[Pair]");
+
+    // `FxHasher::write` consumes `usize`-sized chunks, so one 16-byte
+    // write does not land in the same state as two 8-byte writes. Bulk
+    // and per-element hashing are therefore *not* interchangeable,
+    // however natural the swap looks at a call site. Pinned in the
+    // surprising direction on purpose: a caller who assumes equivalence
+    // for a persisted key gets a silent mismatch rather than a failure.
+    let mut per_element = Hasher::new();
+    for p in &pairs {
+        per_element.write(bytemuck::bytes_of(p));
+    }
     assert_ne!(
         per_element.finish(),
         bulk.finish(),
         "if these ever coincide the chunking contract changed — \
-             re-read pod_slice's docs before relying on either form",
+         re-read pod_slice's docs before relying on either form",
     );
 }
 

@@ -651,16 +651,11 @@ fn compute_node_paint(ctx: PaintRectCtx<'_>, invisible: bool, arena: &mut PaintA
 }
 
 /// Ancestor-derived portion of the `cascade_input` hash — folded once
-/// per stack frame at push time (32 B) and cloned per descendant. Split
-/// out from the per-node suffix (`layout_rect`) so a tree-shaped UI
-/// avoids re-hashing the parent context on every node.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::NoUninit)]
-pub(super) struct CascadePrefixBits {
-    transform: [u32; 4],
-    clip: [u32; 4],
-}
-
+/// per stack frame at push time and cloned per descendant. Split out
+/// from the per-node suffix (`layout_rect`) so a tree-shaped UI avoids
+/// re-hashing the parent context on every node. Fed as words straight
+/// from registers: a struct stored and then hashed as bytes reads its
+/// stores back across their seams, which cannot be forwarded.
 #[inline]
 pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
     let (clip, clip_present) = match parent.clip {
@@ -670,17 +665,18 @@ pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
     let flags = u32::from(clip_present)
         | (u32::from(parent.disabled) << 1)
         | (u32::from(parent.invisible) << 2);
-    let packed = CascadePrefixBits {
-        transform: [
-            float_hash::canon_bits(parent.transform.translation.x),
-            float_hash::canon_bits(parent.transform.translation.y),
-            float_hash::canon_bits(parent.transform.scale - 1.0),
-            flags,
-        ],
-        clip,
-    };
+    let word = |lo: u32, hi: u32| u64::from(lo) | (u64::from(hi) << 32);
     let mut h = Hasher::new();
-    h.pod(&packed);
+    h.write_u64(word(
+        float_hash::canon_bits(parent.transform.translation.x),
+        float_hash::canon_bits(parent.transform.translation.y),
+    ));
+    h.write_u64(word(
+        float_hash::canon_bits(parent.transform.scale - 1.0),
+        flags,
+    ));
+    h.write_u64(word(clip[0], clip[1]));
+    h.write_u64(word(clip[2], clip[3]));
     h
 }
 
