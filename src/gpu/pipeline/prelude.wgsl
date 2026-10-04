@@ -71,7 +71,6 @@ fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
 // `width` texels wide. The bake puts texel `i` at `t = i / (width - 1)`,
 // so `t = 0` and `t = 1` must land on the first and last texel centres
 // and everything between on the matching point between two centres.
-// Sampling at `u = t` instead read each texel half a texel late.
 fn lut_u(t: f32, width: f32) -> f32 {
     return (t * (width - 1.0) + 0.5) / width;
 }

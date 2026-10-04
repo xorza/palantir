@@ -218,9 +218,9 @@ fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
 // radius from the caller rounds all three corners uniformly.
 //
 // A degenerate triangle — collinear corners, or coincident ones — has no
-// inside. Its winding sign is 0, so `d.y` is 0 everywhere, and the
-// original `sign(d.y)` made the distance 0 everywhere: a radius then
-// filled the whole quad. Here `d.y == 0` reads as outside, which on a
+// inside. Its winding sign is 0, so `d.y` is 0 everywhere; a sign taken
+// from `d.y` would make the distance 0 everywhere, and a radius would
+// then fill the whole quad. So `d.y == 0` reads as outside, which on a
 // proper triangle happens only on an edge, where the distance is 0
 // either way. A zero-length edge divides 0 by 0 in its projection; the
 // floor keeps that finite, and the edge's zero vector then makes the
@@ -256,7 +256,7 @@ fn apply_spread(t: f32, mode: u32) -> f32 {
 }
 
 // Resolve the fill colour at a given fragment. Solid path returns
-// `in.fill` verbatim — byte-identical to the pre-brush behaviour.
+// `in.fill` verbatim.
 // Linear path projects `in.local` onto `fill_axis.xy` (object-local
 // 0..1 axis), maps to 0..1 via `(t0, t1)`, applies spread, samples
 // the LUT row at `fill_lut_row`.

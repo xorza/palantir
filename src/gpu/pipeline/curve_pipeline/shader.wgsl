@@ -180,9 +180,8 @@ fn perp_dot(a: vec2<f32>, b: vec2<f32>) -> f32 {
 }
 
 // Fused cubic position + tangent at `t`. Shares `u*u`, `u*t`, `t*t`
-// across both expressions — the standalone `cubic` / `cubic_tangent`
-// pair recomputed them independently and relied on the compiler to
-// CSE, which isn't guaranteed through the WGSL→SPIR-V→native chain.
+// across both expressions rather than trusting the compiler to CSE
+// them, which isn't guaranteed through the WGSL→SPIR-V→native chain.
 fn cubic_pos_tan(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: f32) -> PosTan {
     let u = 1.0 - t;
     let uu = u * u;
