@@ -67,10 +67,10 @@ pub(crate) struct QuadPipeline {
 impl QuadPipeline {
     /// Bind a pipeline, the shared gradient group, and the buffer whose
     /// instances the draws index. The whole of binding a quad pipeline —
-    /// the colour draws, the pre-clear quad and the two mask variants
-    /// differ only in which pipeline and which buffer, never in the
-    /// steps.
-    fn bind_buffer<'a>(
+    /// the colour draws, the pre-clear quad, the two mask variants and the
+    /// debug overlay's quads differ only in which pipeline and which
+    /// buffer, never in the steps.
+    pub(crate) fn bind_buffer<'a>(
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,

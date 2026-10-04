@@ -14,6 +14,7 @@
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::surface::viewport::ViewportPush;
@@ -187,10 +188,9 @@ impl DebugOverlay {
 
 /// Shared draw tail of [`DebugOverlay::draw_dim`] /
 /// [`DebugOverlay::draw_overlays`]: bind the supplied quad pipeline's
-/// no-stencil base + gradient group 0, push the shared viewport
-/// immediate (both overlay passes run standalone, so no inherited
-/// immediate state — and wgpu rejects `set_immediates` before a
-/// pipeline is bound), then draw `count` instances of `buffer`.
+/// no-stencil base the way every quad draw binds, push the viewport
+/// (wgpu rejects `set_immediates` before a pipeline is bound), then draw
+/// `count` instances of `buffer`.
 fn draw_quads<'a>(
     pass: &mut wgpu::RenderPass<'a>,
     quad_base: &'a wgpu::RenderPipeline,
@@ -199,9 +199,7 @@ fn draw_quads<'a>(
     buffer: &'a wgpu::Buffer,
     count: u32,
 ) {
-    pass.set_pipeline(quad_base);
-    pass.set_bind_group(0, gradient_bg, &[]);
+    QuadPipeline::bind_buffer(pass, quad_base, gradient_bg, buffer);
     viewport.push_into(pass);
-    pass.set_vertex_buffer(0, buffer.slice(..));
     pass.draw(0..4, 0..count);
 }
