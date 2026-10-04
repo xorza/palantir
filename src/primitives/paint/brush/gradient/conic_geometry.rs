@@ -11,7 +11,9 @@ use glam::Vec2;
 use std::hash;
 
 /// Geometry of a conic (sweep) gradient: the parametric axis 0..1 sweeps
-/// around `center` starting at `start_angle` radians, counter-clockwise.
+/// around `center` starting at `start_angle` radians, clockwise on screen:
+/// angles grow from the positive x-axis toward the positive y-axis, which
+/// points down.
 /// Object-space `center` is in 0..1 coordinates. The shader projects each
 /// fragment to `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`,
 /// applies `Spread`, samples the LUT.
@@ -76,7 +78,7 @@ impl ConicGradient {
     }
 
     /// Centred shorthand — `center = (0.5, 0.5)`, starts at angle 0
-    /// (positive x-axis, sweeping CCW). 2 stops at offsets 0/1.
+    /// (positive x-axis, sweeping clockwise). 2 stops at offsets 0/1.
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

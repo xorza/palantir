@@ -1,5 +1,6 @@
-//! GPU side of native parametric strokes (cubic beziers + circular
-//! arcs — see `CurveInstance::kind`). One `draw_indexed` per scissor
+//! GPU side of native parametric strokes — cubic beziers, circular arcs,
+//! polyline segments and the chrome at their joints (see
+//! `CurveInstance::kind`). One `draw_indexed` per scissor
 //! group covers every `CurveInstance` in the group's `GroupBatch` —
 //! an immutable index buffer subdivides each instance into
 //! [`SEGMENTS_PER_INSTANCE`]

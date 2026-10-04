@@ -65,7 +65,7 @@ impl FillKind {
         self.0 & Self::TAG_MASK
     }
 
-    /// Solid-fill marker; `Quad.fill: RgbaF32` carries the colour, the
+    /// Solid-fill marker; `Quad.fill` carries the colour, the
     /// LUT / axis / row fields are ignored by the shader.
     pub(crate) const SOLID: Self = Self(Self::TAG_SOLID);
 
@@ -89,19 +89,19 @@ impl FillKind {
         Self::gradient(Self::TAG_CONIC, spread)
     }
 
-    /// A gradient tag with its spread in bits 8..16 — the one place the
-    /// two halves are packed together.
+    /// A gradient tag with its spread [`Self::SPREAD_SHIFT`] up — the one
+    /// place the two halves are packed together.
     #[inline]
     const fn gradient(tag: u32, spread: Spread) -> Self {
         Self(tag | ((spread as u32) << Self::SPREAD_SHIFT))
     }
 
-    /// Drop-shadow marker. `fill: RgbaF32` carries the shadow colour,
-    /// `fill_axis = (0, 0, sigma, spread)`,
-    /// `radius` carries the *source* shape's corner radii (the shadow
-    /// wraps the source rect centered in its shifted paint bbox). The
-    /// shader runs `shadow_coverage` and multiplies
-    /// `fill.rgb * fill.a * cov`.
+    /// Drop-shadow marker. `fill` carries the shadow colour,
+    /// `fill_axis = (offset.x, offset.y, sigma, spread)`, and `corners` the
+    /// *source* shape's radii. The quad is the source moved by the offset
+    /// and grown by the halo, so the shader finds the source `offset` back
+    /// from the quad's centre and the shadow box at it; it paints
+    /// `fill.rgb * fill.a * coverage`, clipped inside the source.
     pub(crate) const SHADOW_DROP: Self = Self(Self::TAG_SHADOW_DROP);
 
     /// Inset-shadow marker. `fill_axis = (offset.x, offset.y, sigma,
@@ -109,7 +109,7 @@ impl FillKind {
     /// source rect.
     pub(crate) const SHADOW_INSET: Self = Self(Self::TAG_SHADOW_INSET);
 
-    /// Rounded-triangle SDF marker. `fill: RgbaF32` is the solid fill; the
+    /// Rounded-triangle SDF marker. `fill` is the solid fill; the
     /// three corner points (packed into the reused `corners` + `fill_axis`
     /// lanes as `(a.x,a.y,b.x,b.y)` / `(c.x,c.y,radius,_)`) and the corner
     /// radius drive `sdf_triangle - radius` in the shader. Stroke rides the

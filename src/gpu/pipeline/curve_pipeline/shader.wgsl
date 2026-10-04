@@ -13,8 +13,8 @@
 // polyline segment `p0 → p3` whose joint ends are butt-faced and
 // fragment-clipped at the composer-supplied bisector planes riding
 // `p1`/`p2`; KIND_JOIN_* expand to one billboard quad and fill the
-// wedge between two segment end faces per fragment. The Rust-side
-// tags are pinned in `curve_pipeline/mod.rs`.
+// wedge between two segment end faces per fragment. The tags are
+// `CurveKind`'s, substituted by `ShaderBody`.
 //
 // Polyline joint model ("clip partition"). Adjacent segment strips
 // are plain rectangles that geometrically stop at their own
@@ -32,10 +32,10 @@
 // equals the strip's lateral distance, so chrome↔strip seams carry
 // identical coverage on both sides.
 //
-// Lockstep contract: `SEGMENTS_PER_INSTANCE` here matches the const of
-// the same name in `renderer/render_buffer/curve.rs` — the composer derives
-// the adaptive sub-instance count assuming the shader subdivides each
-// instance into exactly this many chords. Bump together.
+// `SEGMENTS_PER_INSTANCE` is the const of the same name in
+// `renderer/render_buffer/curve.rs`: the composer derives the adaptive
+// sub-instance count assuming the shader subdivides each instance into
+// exactly this many chords.
 //
 // Caps. `caps` holds the stroke's one cap in its `CAP_MASK` bits, and
 // `CAP_AT_START` / `CAP_AT_END` name the ends of this instance that are
@@ -53,15 +53,13 @@
 // PREMULTIPLIED_ALPHA_BLENDING.
 
 // Gradient LUT atlas, shared with the quad pipeline. Sampled per
-// fragment for a ramp fill. Same `Rgba16Float` (linear) format + linear
-// filter / clamp-to-edge sampler as quad_pipeline/shader.wgsl — the curve's `t` is
-// already in [0, 1] by construction, so a ramp has no spread.
+// fragment for a ramp fill. Same premultiplied linear `Rgba16Float`
+// format + linear filter / clamp-to-edge sampler as
+// quad_pipeline/shader.wgsl — the curve's `t` is already in [0, 1] by
+// construction, so a ramp has no spread.
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
 
-// `SEGMENTS_PER_INSTANCE` is substituted at shader-module construction
-// from the Rust const of the same name (see `curve_pipeline/mod.rs`). Don't
-// change the placeholder syntax without updating the substitution.
 const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/;
 const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
 
@@ -146,7 +144,7 @@ struct VsOut {
     // for strips (constant when both lanes are equal). Multiplies the
     // ramp sample under `FLAG_RAMP_FILL`, once both are straight.
     @location(3) color: vec4<f32>,
-    // `FLAG_*` bits (+ join metric in bits 4..6).
+    // `FLAG_*` bits.
     @location(4) @interpolate(flat) flags: u32,
     // Gradient LUT atlas row; ignored without `FLAG_RAMP_FILL`.
     // Carried as the row rather than a resolved `v` because deriving

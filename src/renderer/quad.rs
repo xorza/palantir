@@ -17,7 +17,7 @@ use bytemuck::{Pod, Zeroable};
 /// offsets, which is the only thing constraining the field order. No tail padding: vertex buffer strides only need
 /// 4-byte alignment, unlike std140 uniforms.
 ///
-/// **Solid fill:** `fill_kind = 0`, `fill: RgbaF32` carries the colour,
+/// **Solid fill:** `fill_kind = 0`, `fill` carries the colour,
 /// `fill_lut_row` / `fill_axis` ignored.
 ///
 /// **Linear-gradient fill:** `fill_kind` low byte = 1, bits 8..16 carry

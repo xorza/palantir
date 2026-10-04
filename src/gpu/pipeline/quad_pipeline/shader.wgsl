@@ -1,8 +1,8 @@
 // Gradient LUT atlas: rows of baked 256-texel gradients, sampled at
-// fragment time for `Brush::Linear`. Format is `Rgba16Float` storing
-// straight-alpha linear-RGB, so the sampler returns linear directly on
-// read (f16 precision keeps dark gradients band-free); matches the rest
-// of the pipeline.
+// fragment time for the gradient brushes. Format is `Rgba16Float` storing
+// premultiplied linear RGB, so the filter between two texels blends
+// premultiplied and `eval_fill` unpremultiplies the sample (f16 precision
+// keeps dark gradients band-free).
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
 
@@ -289,7 +289,8 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         t01 = length(d);
     } else if (kind == BRUSH_KIND_CONIC) {
         // Conic: sweep around `center`, starting at `start_angle`
-        // (radians, CCW). atan2 returns -π..π; the +1.0 then fract
+        // (radians, clockwise on screen: y points down). atan2 returns
+        // -π..π; the +1.0 then fract
         // wraps to 0..1 in a single step regardless of sign.
         let center      = in.fill_axis.xy;
         let start_angle = in.fill_axis.z;
