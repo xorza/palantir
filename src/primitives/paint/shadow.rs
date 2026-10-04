@@ -21,8 +21,8 @@ use palantir_anim_derive::Animatable;
 /// componentwise through it.
 ///
 /// `offset` shifts in logical px (CSS `box-shadow` x/y). `blur` is
-/// the Gaussian σ in logical px (CSS `blur-radius / 2`); 0 collapses
-/// to a sharp SDF. `spread` inflates (drop) or deflates (inset) the
+/// the Gaussian σ in logical px (CSS `blur-radius / 2`); 0 paints the
+/// box with a sharp, antialiased edge. `spread` inflates (drop) or deflates (inset) the
 /// source rect. `inset = true` paints inside the chrome boundary;
 /// `false` paints outside it: as CSS clips an outer `box-shadow`, a drop
 /// shadow is clipped inside the box that casts it, so it does not show

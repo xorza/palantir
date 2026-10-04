@@ -11,11 +11,23 @@
 // meaningful direction" — the gradient collapses to a fallback.
 const ZERO_EPS: f32 = 1e-6;
 
-// Cutoff below which `blurred_rect_coverage` short-circuits to the
-// sharp SDF coverage. Below this, the erf-based Gaussian is
-// numerically indistinguishable from `clamp(AA_RADIUS - d, 0, 1)` but
-// risks divide-by-near-zero in `1/(√2 σ)`.
+// σ below which `filter_cdf` takes its σ = 0 limit, the bare pixel box.
+// The two differ by about σ there, far under an 8-bit step, and the
+// limit keeps `1/σ` out of the arithmetic.
 const BLUR_EPS: f32 = 1e-4;
+
+// How far past the pixel box the Gaussian is followed, in σ. The tail
+// left out is Φ(−4) ≈ 3e-5 of the kernel's weight.
+const BLUR_REACH_SIGMAS: f32 = 4.0;
+
+// Slices per half of a blurred corner arc. Midpoint slices with exact
+// weights err as 1/N²: 12 keeps the worst corner pixel within 0.002 of
+// the exact integral (σ = 0.5 px against a 30 px radius), under half an
+// 8-bit step.
+const BLUR_ARC_SLICES: u32 = 12u;
+
+const SQRT_HALF: f32 = 0.70710678;
+const INV_SQRT_TAU: f32 = 0.39894228;
 
 // Half-width of the SDF antialiasing transition in physical pixels.
 const AA_RADIUS: f32 = /*{AA_RADIUS}*/;
@@ -312,21 +324,110 @@ fn erf_approx(x: f32) -> f32 {
     return s * y;
 }
 
-// Closed-form coverage of a Gaussian-blurred rounded box. For σ → 0
-// the result is `clamp(AA_RADIUS - d, 0, 1)` — same shape as the existing
-// non-blurred SDF coverage, so the path collapses cleanly to a sharp
-// shadow. For σ > 0 we use the SDF distance as the input to an erf,
-// which is exact for an axis-aligned half-plane and a smooth
-// approximation for a rounded rect (the same trick Evan Wallace's
-// shader uses).
-fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
+fn normal_cdf(v: f32) -> f32 {
+    return 0.5 + 0.5 * erf_approx(v * SQRT_HALF);
+}
+
+// ∫ Φ from −∞ to `v`: `v·Φ(v) + φ(v)`.
+fn normal_cdf_integral(v: f32) -> f32 {
+    return v * normal_cdf(v) + INV_SQRT_TAU * exp(-0.5 * v * v);
+}
+
+// The CDF at `u` of what one pixel sees of a blurred edge: a Gaussian of
+// `sigma` convolved with the pixel box of half-width `AA_RADIUS`. So
+// `filter_cdf(e - x, σ)` is the coverage, at a pixel centred on `x`, of
+// the blurred half-line below `e`. At σ = 0 it is the box alone, the same
+// ramp the unblurred shapes are drawn with.
+fn filter_cdf(u: f32, sigma: f32) -> f32 {
+    let box_width = 2.0 * AA_RADIUS;
     if (sigma <= BLUR_EPS) {
-        return clamp(AA_RADIUS - d, 0.0, 1.0);
+        return clamp((u + AA_RADIUS) / box_width, 0.0, 1.0);
     }
-    // d < 0 inside the shape → coverage ≈ 1; d > 0 outside → 0.
-    // `erf(-d / (√2 σ))` smoothly transitions, mapped to 0..1.
-    let inv = 1.0 / (1.41421356 * sigma);
-    return 0.5 - 0.5 * erf_approx(d * inv);
+    let inv = 1.0 / sigma;
+    return sigma / box_width
+        * (normal_cdf_integral((u + AA_RADIUS) * inv) - normal_cdf_integral((u - AA_RADIUS) * inv));
+}
+
+// One half of a corner arc's share of `blurred_box_coverage`, integrated
+// along one axis over `[e0, e1]` (either order): the sum of
+// `filter_cdf` across the arc, at each slice's midpoint, times the
+// slice's exact weight along. `p` and `centre` are given `(along,
+// across)`; the arc is `across = centre.y + side·√(r² − (along −
+// centre.x)²)`. Only the part of the range the kernel reaches is sliced:
+// outside it the weight is zero.
+fn arc_half(p: vec2<f32>, centre: vec2<f32>, side: f32, r: f32, e0: f32, e1: f32, sigma: f32, reach: f32) -> f32 {
+    let lo = max(min(e0, e1), p.x - reach);
+    let hi = min(max(e0, e1), p.x + reach);
+    if (lo >= hi) {
+        return 0.0;
+    }
+    let step = (hi - lo) / f32(BLUR_ARC_SLICES);
+    var prev = filter_cdf(lo - p.x, sigma);
+    var sum = 0.0;
+    for (var i = 1u; i <= BLUR_ARC_SLICES; i++) {
+        let at = lo + f32(i) * step;
+        let next = filter_cdf(at - p.x, sigma);
+        let along = at - 0.5 * step - centre.x;
+        let across = centre.y + side * sqrt(max(r * r - along * along, 0.0));
+        sum += filter_cdf(across - p.y, sigma) * (next - prev);
+        prev = next;
+    }
+    return sum;
+}
+
+// One rounded corner's share of `blurred_box_coverage`. The arc is the
+// quarter circle of radius `r` about `centre`, bulging toward `side`.
+//
+// Green's theorem turns the coverage integral into one along the outline,
+// in either of two forms: by rows, `∮ C(x)·dC(y)`, or by columns,
+// `−∮ C(y)·dC(x)` (C being `filter_cdf` about the pixel). They differ by
+// the exact differential of `C(x)·C(y)`, so the outline may switch forms
+// at any point for the cost of that product at the switch. The steep half
+// of the arc goes by rows and the shallow half by columns, so the
+// variable sliced is always the one the arc moves along fastest.
+fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigma: f32, reach: f32) -> f32 {
+    if (r <= 0.0) {
+        return 0.0;
+    }
+    let far = centre + side * r;
+    let lo = min(centre, far);
+    let hi = max(centre, far);
+    let gap = abs(p - clamp(p, lo, hi));
+    // Rows and columns cancel exactly when the kernel misses the corner
+    // vertically; horizontally, it sees the corner as a straight side.
+    if (gap.y > reach) {
+        return 0.0;
+    }
+    if (gap.x > reach) {
+        return side.x * filter_cdf(centre.x - p.x, sigma)
+            * (filter_cdf(hi.y - p.y, sigma) - filter_cdf(lo.y - p.y, sigma));
+    }
+    let diagonal = centre + side * (r * SQRT_HALF);
+    let rows = arc_half(p.yx, centre.yx, side.x, r, centre.y, diagonal.y, sigma, reach);
+    let columns = arc_half(p, centre, side.y, r, centre.x, diagonal.x, sigma, reach);
+    let switch_terms = filter_cdf(centre.x - p.x, sigma) * filter_cdf(far.y - p.y, sigma)
+        - filter_cdf(diagonal.x - p.x, sigma) * filter_cdf(diagonal.y - p.y, sigma);
+    return side.x * rows + side.y * columns + side.x * side.y * switch_terms;
+}
+
+// Coverage, at the pixel centred on `p`, of the rounded box of half-extents
+// `half` centred at the origin, blurred by a Gaussian of `sigma`: the
+// integral of the pixel's filter (`filter_cdf`) over the box. The kernel
+// is separable, so the straight sides are closed form; only the corner
+// arcs are sliced (`blurred_corner`). A sharp box is the exact product of
+// its two edge pairs, an empty box covers nothing, and σ = 0 is the box's
+// exact pixel coverage. `radius` is `(tl, tr, br, bl)`, fitted to the box.
+fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32) -> f32 {
+    let reach = BLUR_REACH_SIGMAS * sigma + AA_RADIUS;
+    let right = filter_cdf(half.x - p.x, sigma)
+        * (filter_cdf(half.y - radius.z - p.y, sigma) - filter_cdf(radius.y - half.y - p.y, sigma));
+    let left = filter_cdf(-half.x - p.x, sigma)
+        * (filter_cdf(radius.x - half.y - p.y, sigma) - filter_cdf(half.y - radius.w - p.y, sigma));
+    let corners = blurred_corner(p, half - radius.zz, radius.z, vec2<f32>(1.0, 1.0), sigma, reach)
+        + blurred_corner(p, vec2<f32>(radius.w - half.x, half.y - radius.w), radius.w, vec2<f32>(-1.0, 1.0), sigma, reach)
+        + blurred_corner(p, radius.xx - half, radius.x, vec2<f32>(-1.0, -1.0), sigma, reach)
+        + blurred_corner(p, vec2<f32>(half.x - radius.y, radius.y - half.y), radius.y, vec2<f32>(1.0, -1.0), sigma, reach);
+    return clamp(right + left + corners, 0.0, 1.0);
 }
 
 // Composite an SDF shape's fill + inner-edge stroke into premultiplied linear
@@ -401,8 +502,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // to the shadow's own box, as the inset hole's are.
         let shadow_half = max(source_half + vec2<f32>(spread), vec2<f32>(0.0));
         let shadow_radius = fit_radii(spread_radius(in.radius, spread), shadow_half);
-        let d = sdf_rounded_box_centered(in.local - half, shadow_half, shadow_radius);
-        let cov = blurred_rect_coverage(d, sigma);
+        let cov = blurred_box_coverage(in.local - half, shadow_half, shadow_radius, sigma);
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);
     }
@@ -431,9 +531,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // negative — then fit the hole's own box.
         let hole_radius = fit_radii(spread_radius(in.radius, -spread), hole_half);
         let p_hole = in.local - half - offset;
-        let d_hole = sdf_rounded_box_centered(p_hole, hole_half, hole_radius);
-        let cov_hole = blurred_rect_coverage(d_hole, sigma);
-        let cov = clamp(1.0 - cov_hole, 0.0, 1.0);
+        let cov = 1.0 - blurred_box_coverage(p_hole, hole_half, hole_radius, sigma);
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);
     }
