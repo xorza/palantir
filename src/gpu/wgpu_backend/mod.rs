@@ -118,6 +118,7 @@ use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
+use crate::gpu::resource::image_binding::ImageBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
@@ -997,20 +998,17 @@ impl WgpuBackend {
         );
     }
 
-    /// The device every window's per-window attachment is built against
-    /// — the one thing a host needs off the shared backend to size its
-    /// own [`Backbuffer`] and [`Stencil`].
+    /// The device every window's per-window attachment is built against,
+    /// for a host to size its own [`Backbuffer`] and [`Stencil`].
     pub(crate) const fn device(&self) -> &wgpu::Device {
         &self.device
     }
 
-    /// A per-window [`Backbuffer`]'s group-0 binding, built through the one
-    /// layout every sampled texture here shares rather than a second one that
-    /// would have to agree with it.
-    pub(crate) fn backbuffer_bind_group(&self, view: &wgpu::TextureView) -> wgpu::BindGroup {
-        self.image_store
-            .binding()
-            .bind_group(&self.device, view, "palantir.renderer.backbuffer.bg")
+    /// The binding every sampled texture here shares, for a host to build
+    /// its [`Backbuffer`] through rather than a second layout that would
+    /// have to agree with it.
+    pub(crate) fn image_binding(&self) -> &ImageBinding {
+        self.image_store.binding()
     }
 
     /// Skip path: the host's damage compute returned `None`, but the
