@@ -1,5 +1,5 @@
 //! GPU image-pipeline benchmark. Every workload paints the same stack of
-//! full-viewport images; they differ in the `IMG_FLAG_*` bits they ship and,
+//! full-viewport images; they differ in the `ImageFlags` they ship and,
 //! for the tap cases, in how large a source those bits are applied to:
 //!
 //! - `bilinear` sends zero flags — the common case (every plain image and

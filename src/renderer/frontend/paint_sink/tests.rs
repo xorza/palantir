@@ -12,6 +12,7 @@ use crate::renderer::frontend::payload::draw_image_payload::{
 };
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use glam::Vec2;
 
 #[test]
@@ -144,7 +145,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                     uv_size: Vec2::ONE,
                     tint: RgbaF16::from(RgbaF32::WHITE),
                     handle,
-                    flags: 0,
+                    flags: ImageFlags::NONE,
                 },
                 view: has_paint.then_some(ViewPaint {
                     paint: &paint,
@@ -176,7 +177,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
         assert_eq!(payload.handle, handle, "case {label}");
         assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
         assert_eq!(payload.uv_size, Vec2::ONE, "case {label}");
-        assert_eq!(payload.flags, 0, "case {label}");
+        assert_eq!(payload.flags, ImageFlags::NONE, "case {label}");
         assert_eq!(payload.tint, RgbaF16::from(RgbaF32::WHITE), "case {label}");
     }
 }
@@ -198,7 +199,7 @@ fn the_gate_sees_the_faded_payload() {
             uv_size: Vec2::ONE,
             tint: RgbaF16::from(RgbaF32::WHITE),
             handle: TextureId(7),
-            flags: 0,
+            flags: ImageFlags::NONE,
         },
         view: None,
     };

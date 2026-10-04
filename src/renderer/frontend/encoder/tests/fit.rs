@@ -24,15 +24,13 @@ use glam::{UVec2, Vec2};
 #[test]
 fn downsample_modes_encode_to_distinct_tap_flags() {
     use crate::primitives::paint::image::{Image, ImageDownsample};
-    use crate::renderer::render_buffer::image::{
-        IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
-    };
+    use crate::renderer::render_buffer::image_flags::ImageFlags;
     use crate::shape::Shape;
 
     let modes = [
-        ("Single", ImageDownsample::Single, 0),
-        ("Mean", ImageDownsample::Mean, IMG_FLAG_TAPS_MEAN),
-        ("Peak", ImageDownsample::Peak, IMG_FLAG_TAPS_PEAK),
+        ("Single", ImageDownsample::Single, ImageFlags::NONE),
+        ("Mean", ImageDownsample::Mean, ImageFlags::TAPS_MEAN),
+        ("Peak", ImageDownsample::Peak, ImageFlags::TAPS_PEAK),
     ];
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -58,8 +56,9 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     let flags = cmds.calls.iter().map(|call| call.as_image().unwrap().flags);
     for ((label, _, expected), actual) in modes.into_iter().zip(flags) {
         assert_eq!(actual, expected, "{label} encoded the wrong tap flags");
+        let filters = ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST);
         assert_eq!(
-            actual & (IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST),
+            actual.bits() & filters.bits(),
             0,
             "{label} must not collide with the filter bits",
         );

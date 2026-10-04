@@ -20,10 +20,8 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::render_buffer::image::{
-    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
-    IMG_FLAG_TILED, ImageInstance,
-};
+use crate::renderer::render_buffer::image::ImageInstance;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use rustc_hash::FxHashMap;
 
 /// One batch of image draws: the frame's whole per-draw texture column,
@@ -55,11 +53,11 @@ impl ImagePipeline {
         // Rust owns the flag bits; the shader declares them as markers so the
         // two cannot drift (`specialize` panics on an unsubstituted one).
         let wgsl = ShaderBody::Image.specialize(&[
-            ShaderConstant::uint("IMG_FLAG_TILED", IMG_FLAG_TILED),
-            ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", IMG_FLAG_MIN_NEAREST),
-            ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", IMG_FLAG_MAG_NEAREST),
-            ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", IMG_FLAG_TAPS_MEAN),
-            ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", IMG_FLAG_TAPS_PEAK),
+            ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
+            ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
+            ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),
+            ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
+            ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
         ]);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.image.shader"),
@@ -205,7 +203,7 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array
     // Tint is linear straight-alpha; the shader multiplies it by the
     // sampled texel and premultiplies at write.
     4 => Float16x4, // tint
-    5 => Uint32,    // flags (IMG_FLAG_* bits: tile wrap, nearest)
+    5 => Uint32,    // flags (`ImageFlags`)
 ];
 
 // Compile-time guard: attribute offsets must match the `ImageInstance`

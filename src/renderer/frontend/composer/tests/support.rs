@@ -31,6 +31,7 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::record_store::RecordStore;
 use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -148,7 +149,7 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayloa
         uv_size: Vec2::ONE,
         tint: RgbaF32::WHITE.into(),
         handle,
-        flags: 0,
+        flags: ImageFlags::NONE,
     }
 }
 
@@ -287,7 +288,7 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
                 uv_size: Vec2::ONE,
                 tint: RgbaF32::WHITE.into(),
                 handle: TextureId(1),
-                flags: 0,
+                flags: ImageFlags::NONE,
             },
             view: None,
         },

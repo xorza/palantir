@@ -23,6 +23,7 @@ use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, I
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
@@ -177,7 +178,7 @@ fn compose_emits_image_batch_for_drawimage() {
                         uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(0xc0ffee),
-                        flags: 0,
+                        flags: ImageFlags::NONE,
                     },
                     view: None,
                 },
@@ -443,7 +444,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                         uv_size: Vec2::new(0.5, 1.0),
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(1),
-                        flags: 0,
+                        flags: ImageFlags::NONE,
                     },
                     view: None,
                 },
@@ -460,12 +461,9 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 /// (a `GpuView` ships full UV from the encoder — see `gpu_view` tests).
 #[test]
 fn compose_forwards_flags_and_repeat_uv() {
-    use crate::renderer::render_buffer::image::{
-        IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
-    };
     let buf = run(
         |b, _arena| {
-            // Plain draw: flags stay 0.
+            // Plain draw: no flags.
             b.draw_image(
                 ImageDraw {
                     payload: DrawImagePayload {
@@ -474,7 +472,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(1),
-                        flags: 0,
+                        flags: ImageFlags::NONE,
                     },
                     view: None,
                 },
@@ -489,7 +487,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         uv_size: Vec2::new(3.0, 2.0),
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(2),
-                        flags: IMG_FLAG_TILED,
+                        flags: ImageFlags::TILED,
                     },
                     view: None,
                 },
@@ -504,7 +502,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.into(),
                         handle: TextureId(3),
-                        flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
+                        flags: ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST),
                     },
                     view: None,
                 },
@@ -513,12 +511,12 @@ fn compose_forwards_flags_and_repeat_uv() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.instance()[0].flags, 0);
-    assert_eq!(buf.images.instance()[1].flags, IMG_FLAG_TILED);
+    assert_eq!(buf.images.instance()[0].flags, ImageFlags::NONE);
+    assert_eq!(buf.images.instance()[1].flags, ImageFlags::TILED);
     assert_eq!(buf.images.instance()[1].uv_size, Vec2::new(3.0, 2.0));
     assert_eq!(
         buf.images.instance()[2].flags,
-        IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST
+        ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST)
     );
 }
 

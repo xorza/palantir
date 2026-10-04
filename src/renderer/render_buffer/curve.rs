@@ -3,42 +3,17 @@
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_kind::CurveKind;
 use glam::Vec2;
 
 /// Chord-subdivisions per curve sub-instance. The shader expands one
 /// instance into this many quads (= 2× this many triangles = 6× this
-/// many indices). Has to stay in lockstep with the constant of the
-/// same name in `curve_pipeline/shader.wgsl` (the curve pipeline stamps this value
-/// into the shader source at module creation). Lives here, next to
+/// many indices), and takes the value as a substituted constant. Lives here, next to
 /// [`CurveInstance`], because it's part of the composer↔backend wire
 /// contract: the composer's sub-instance math and the backend's
 /// per-instance vertex count both derive from it.
 pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
-
-/// Basis tags for [`CurveInstance::kind`]. Pinned against the
-/// `KIND_*` constants in `curve_pipeline/shader.wgsl` — bump together.
-pub(crate) const CURVE_KIND_CUBIC: u32 = 0;
-pub(crate) const CURVE_KIND_ARC: u32 = 1;
-/// Straight polyline segment with bisector-clipped joint ends.
-pub(crate) const CURVE_KIND_SEGMENT: u32 = 2;
-/// Joint chrome billboards — the three `LineJoin` looks. They sit above
-/// every basis kind, which is the one thing the shader reads off their
-/// numbering: `kind >= KIND_JOIN_ROUND` is how `vs` takes the billboard
-/// path. Which look to paint rides a flag bit the vertex stage sets by
-/// comparing against each kind, so their order among themselves is free.
-pub(crate) const CURVE_KIND_JOIN_ROUND: u32 = 3;
-pub(crate) const CURVE_KIND_JOIN_BEVEL: u32 = 4;
-pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
-
-// `curve_pipeline/shader.wgsl` splits on `kind >= KIND_JOIN_ROUND`: every basis below it,
-// every join at or above it.
-const _: () = assert!(
-    CURVE_KIND_CUBIC < CURVE_KIND_JOIN_ROUND
-        && CURVE_KIND_ARC < CURVE_KIND_JOIN_ROUND
-        && CURVE_KIND_SEGMENT < CURVE_KIND_JOIN_ROUND
-        && CURVE_KIND_JOIN_BEVEL >= CURVE_KIND_JOIN_ROUND
-        && CURVE_KIND_JOIN_MITER >= CURVE_KIND_JOIN_ROUND
-);
 
 /// Per-curve-sub-instance GPU state, uploaded to a
 /// `step_mode: Instance` vertex buffer. For the strip kinds the
@@ -51,13 +26,13 @@ const _: () = assert!(
 /// straight-alpha; the fragment shader premultiplies at output.
 ///
 /// Lane meaning by `kind`:
-/// - [`CURVE_KIND_CUBIC`] — `p0..p3` are the cubic control points.
-/// - [`CURVE_KIND_ARC`] — `p0` = center, `p1.x` = radius,
+/// - [`CurveKind::CUBIC`] — `p0..p3` are the cubic control points.
+/// - [`CurveKind::ARC`] — `p0` = center, `p1.x` = radius,
 ///   `p2 = (a0, a1)` start/end angle in radians (screen convention:
 ///   0 = +x, y-down ⇒ increasing = clockwise); `p1.y`/`p3` unused.
 ///   The angle at `t` is `mix(a0, a1, t)` — exact circle, no cubic
 ///   approximation error, and ramp `t` tracks the sweep linearly.
-/// - [`CURVE_KIND_SEGMENT`] — `p0`/`p3` are the segment endpoints;
+/// - [`CurveKind::SEGMENT`] — `p0`/`p3` are the segment endpoints;
 ///   `p1`/`p2` carry the pre-oriented bisector clip-plane normals
 ///   for the start/end joint (zero = cap end, no clip; "keep" is
 ///   `dot(x - endpoint, n) <= 0`). Joint ends are butt-faced and
@@ -66,7 +41,7 @@ const _: () = assert!(
 ///   their concave overlap exactly (no double blend on translucent
 ///   strokes), and the convex wedge is filled by a join-chrome
 ///   instance.
-/// - `CURVE_KIND_JOIN_*` — `p0` = joint point; `p1 = -d_a`,
+/// - `CurveKind::JOIN_*` — `p0` = joint point; `p1 = -d_a`,
 ///   `p2 = d_b` (unit segment directions into/out of the joint,
 ///   pre-oriented as the face-plane keep normals). Expands to one
 ///   billboard quad; the fragment fills the wedge between the two
@@ -95,15 +70,11 @@ pub(crate) struct CurveInstance {
     /// along `t` (straight-alpha, like a polyline's per-point colours).
     /// Equal to `color0` for single-colour strokes.
     pub(crate) color1: RgbaF16,
-    /// Cap kind per end, packed: bits 0..8 = start cap, 8..16 = end
-    /// cap, each a [`LineCap`](crate::shape::style::LineCap)
-    /// discriminant the curve pipeline substitutes into its shader.
-    /// Only the leading
-    /// sub-instance (`t0 ≈ 0`) and trailing sub-instance (`t1 ≈ 1`)
-    /// actually extend their geometry; interior sub-instances see
-    /// this lane and skip cap extension. Polyline segments carry the
-    /// user cap on true ends and Butt on joint ends.
-    pub(crate) cap: u32,
+    /// The stroke's cap and the ends of this instance that are the
+    /// stroke's ends. Of those, only the leading sub-instance (`t0 ≈ 0`)
+    /// and the trailing one (`t1 ≈ 1`) extend their geometry. A polyline
+    /// segment names only the true ends among its own.
+    pub(crate) caps: CurveCaps,
     /// Fill kind tag: [`FillKind::SOLID`] or [`FillKind::RAMP`], the two
     /// [`GpuFill::curve`] can make. A curve's `t` is already in [0, 1]
     /// by construction, so no spread rides here. `#[repr(transparent)]`
@@ -114,16 +85,6 @@ pub(crate) struct CurveInstance {
     pub(crate) fill_kind: FillKind,
     /// Atlas row when `fill_kind` is a gradient, else ignored.
     pub(crate) fill_lut_row: LutRow,
-    /// Basis tag — one of the `CURVE_KIND_*` constants. Selects how
-    /// the vertex shader interprets the geometry lanes (see struct
-    /// docs).
-    pub(crate) kind: u32,
-}
-
-impl CurveInstance {
-    /// Pack per-end cap kinds into the [`Self::cap`] lane.
-    #[inline]
-    pub(crate) const fn cap_lanes(start: u32, end: u32) -> u32 {
-        start | (end << 8)
-    }
+    /// How the vertex shader reads the geometry lanes (see struct docs).
+    pub(crate) kind: CurveKind,
 }

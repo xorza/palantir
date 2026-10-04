@@ -25,10 +25,9 @@ use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_ARC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND,
-    CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,
-};
+use crate::renderer::render_buffer::curve::{CurveInstance, SEGMENTS_PER_INSTANCE};
+use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
 use wgpu::util::DeviceExt;
@@ -78,13 +77,16 @@ impl CurvePipeline {
         let wgsl = ShaderBody::Curve.specialize(&[
             ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
             ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+            ShaderConstant::uint("CAP_MASK", CurveCaps::CAP_MASK),
+            ShaderConstant::uint("CAP_AT_START", CurveCaps::AT_START),
+            ShaderConstant::uint("CAP_AT_END", CurveCaps::AT_END),
             ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
             ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
-            ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
-            ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
-            ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
-            ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
-            ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
+            ShaderConstant::uint("KIND_ARC", CurveKind::ARC.bits()),
+            ShaderConstant::uint("KIND_SEGMENT", CurveKind::SEGMENT.bits()),
+            ShaderConstant::uint("KIND_JOIN_ROUND", CurveKind::JOIN_ROUND.bits()),
+            ShaderConstant::uint("KIND_JOIN_BEVEL", CurveKind::JOIN_BEVEL.bits()),
+            ShaderConstant::uint("KIND_JOIN_MITER", CurveKind::JOIN_MITER.bits()),
             ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
             ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
         ]);
@@ -207,7 +209,7 @@ const _: () = {
     assert!(CURVE_INSTANCE_ATTRS[5].offset == offset_of!(CurveInstance, width) as u64);
     assert!(CURVE_INSTANCE_ATTRS[6].offset == offset_of!(CurveInstance, color0) as u64);
     assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, color1) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, cap) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, caps) as u64);
     assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_kind) as u64);
     assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
     assert!(CURVE_INSTANCE_ATTRS[11].offset == offset_of!(CurveInstance, kind) as u64);

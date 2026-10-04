@@ -20,6 +20,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::text::key::TextShapeKey;
@@ -263,7 +264,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 uv_size: Vec2::ONE,
                 tint: RgbaF32::WHITE.into(),
                 handle: TextureId(1),
-                flags: 0,
+                flags: ImageFlags::NONE,
             },
             view: None,
         },

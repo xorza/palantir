@@ -9,9 +9,8 @@ use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
-use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, SEGMENTS_PER_INSTANCE,
-};
+use crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE;
+use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::stroke_bounds::{self, MITER_LIMIT};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
@@ -59,22 +58,22 @@ pub(super) const POLYLINE_COINCIDENT_EPS_SQ: f32 = 1e-12;
 /// downgrades to bevel past [`MITER_LIMIT`] — the SVG convention; an
 /// antiparallel fold (180°, bisector undefined) renders round — the
 /// only join whose shape is well-defined there.
-pub(super) fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> u32 {
+pub(super) fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> CurveKind {
     let sum = d_a + d_b;
     let len_sq = sum.length_squared();
     if len_sq < 1e-6 {
-        return CURVE_KIND_JOIN_ROUND;
+        return CurveKind::JOIN_ROUND;
     }
     match join {
-        LineJoin::Round => CURVE_KIND_JOIN_ROUND,
-        LineJoin::Bevel => CURVE_KIND_JOIN_BEVEL,
+        LineJoin::Round => CurveKind::JOIN_ROUND,
+        LineJoin::Bevel => CurveKind::JOIN_BEVEL,
         LineJoin::Miter => {
             // |d_a + d_b| = 2·cos(half turn angle) for unit inputs.
             let cos_half = 0.5 * len_sq.sqrt();
             if cos_half < 1.0 / MITER_LIMIT {
-                CURVE_KIND_JOIN_BEVEL
+                CurveKind::JOIN_BEVEL
             } else {
-                CURVE_KIND_JOIN_MITER
+                CurveKind::JOIN_MITER
             }
         }
     }

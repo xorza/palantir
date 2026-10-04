@@ -86,9 +86,8 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
 /// kind, all in the curve stream.
 #[test]
 fn compose_polyline_emits_segments_and_join_chrome() {
-    use crate::renderer::render_buffer::curve::{
-        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance,
-    };
+    use crate::renderer::render_buffer::curve_caps::CurveCaps;
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
     let pts = [
         Vec2::new(10.0, 10.0),
         Vec2::new(60.0, 40.0),
@@ -114,42 +113,41 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         .out
         .curves
         .iter()
-        .filter(|c| c.kind == CURVE_KIND_SEGMENT)
+        .filter(|c| c.kind == CurveKind::SEGMENT)
         .collect();
     let joins: Vec<_> = rig
         .out
         .curves
         .iter()
-        .filter(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .filter(|c| c.kind == CurveKind::JOIN_ROUND)
         .collect();
     assert_eq!(segs.len(), 3);
     assert_eq!(joins.len(), 2);
     assert_eq!(rig.out.curves.len(), 5, "nothing else in the stream");
 
-    let round = LineCap::Round as u32;
     let d0 = (pts[1] - pts[0]).normalize();
     let d1 = (pts[2] - pts[1]).normalize();
     let d2 = (pts[3] - pts[2]).normalize();
     assert_eq!(rig.composer.polyline.directions, [d0, d1, d2]);
-    // First segment: user cap at start, butt at joint end; the start
+    // First segment: the cap at its start only; the start
     // plane lane is zero (cap end, no clip) and the end lane carries
     // the pre-oriented bisector normal.
     assert_eq!(segs[0].p0, pts[0]);
     assert_eq!(segs[0].p3, pts[1]);
     assert_eq!(segs[0].p1, Vec2::ZERO, "no clip plane at a cap end");
     assert_eq!(segs[0].p2, d0 + d1, "end bisector plane rides p2");
-    assert_eq!(segs[0].cap, CurveInstance::cap_lanes(round, 0));
-    // Interior segment: butt both ends, planes on both lanes. The
+    assert_eq!(segs[0].caps, CurveCaps::new(LineCap::Round, true, false));
+    // Interior segment: no cap at either end, planes on both lanes. The
     // start plane must be the bit-exact negation of the previous
     // segment's end plane — the overlap-partition contract.
-    assert_eq!(segs[1].cap, CurveInstance::cap_lanes(0, 0));
+    assert_eq!(segs[1].caps, CurveCaps::new(LineCap::Round, false, false));
     assert_eq!(
         segs[1].p1, -segs[0].p2,
         "shared joint planes negate exactly"
     );
     assert_eq!(segs[1].p2, d1 + d2);
-    // Last segment: butt at joint, user cap at the true end.
-    assert_eq!(segs[2].cap, CurveInstance::cap_lanes(0, round));
+    // Last segment: the cap at the true end only.
+    assert_eq!(segs[2].caps, CurveCaps::new(LineCap::Round, false, true));
     assert_eq!(
         segs[2].p1, -segs[1].p2,
         "shared joint planes negate exactly"
@@ -172,7 +170,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
 #[test]
 fn a_join_between_colours_averages_them_premultiplied() {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::renderer::render_buffer::curve::CURVE_KIND_JOIN_ROUND;
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
 
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let mut commands = PaintCapture::default();
@@ -199,7 +197,7 @@ fn a_join_between_colours_averages_them_premultiplied() {
         .out
         .curves
         .iter()
-        .filter(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .filter(|c| c.kind == CurveKind::JOIN_ROUND)
         .map(|c| c.color0)
         .collect();
     let half_red = RgbaF16::from(RgbaF32::new(1.0, 0.0, 0.0, 0.5));
@@ -210,7 +208,7 @@ fn a_join_between_colours_averages_them_premultiplied() {
 /// bends), keep miter chrome on gentle ones — the SVG convention.
 #[test]
 fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
-    use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
     let emit = |pts: [Vec2; 3]| {
         run(
             |b, store| {
@@ -238,7 +236,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
         gentle
             .curves
             .iter()
-            .filter(|c| c.kind == CURVE_KIND_JOIN_MITER)
+            .filter(|c| c.kind == CurveKind::JOIN_MITER)
             .count(),
         1,
     );
@@ -252,7 +250,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
         sharp
             .curves
             .iter()
-            .filter(|c| c.kind == CURVE_KIND_JOIN_BEVEL)
+            .filter(|c| c.kind == CurveKind::JOIN_BEVEL)
             .count(),
         1,
         "sharp miter must downgrade to bevel chrome",
@@ -266,7 +264,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
 /// walker's kept-point discipline.
 #[test]
 fn compose_polyline_color_modes_and_coincident_skip() {
-    use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT};
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
     let red = RgbaF32::srgb(1.0, 0.0, 0.0);
     let green = RgbaF32::srgb(0.0, 1.0, 0.0);
     let blue = RgbaF32::srgb(0.0, 0.0, 1.0);
@@ -301,7 +299,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let segs: Vec<_> = buf
         .curves
         .iter()
-        .filter(|c| c.kind == CURVE_KIND_SEGMENT)
+        .filter(|c| c.kind == CurveKind::SEGMENT)
         .collect();
     assert_eq!(segs.len(), 2, "duplicate point contributes no segment");
     assert_eq!((segs[0].color0, segs[0].color1), (red16, green16));
@@ -309,7 +307,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let join = buf
         .curves
         .iter()
-        .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .find(|c| c.kind == CurveKind::JOIN_ROUND)
         .unwrap();
     assert_eq!(join.color0, green16, "PerPoint chrome = the joint color");
 
@@ -334,7 +332,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let segs: Vec<_> = buf
         .curves
         .iter()
-        .filter(|c| c.kind == CURVE_KIND_SEGMENT)
+        .filter(|c| c.kind == CurveKind::SEGMENT)
         .collect();
     assert_eq!(segs.len(), 2);
     assert_eq!((segs[0].color0, segs[0].color1), (red16, red16));
@@ -342,7 +340,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let join = buf
         .curves
         .iter()
-        .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .find(|c| c.kind == CurveKind::JOIN_ROUND)
         .unwrap();
     // Linear red (1, 0, 0) and blue (0, 0, 1) average to (0.5, 0, 0.5),
     // which f16 holds exactly.
@@ -527,7 +525,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 #[test]
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::renderer::render_buffer::curve::CURVE_KIND_ARC;
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
     use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::PI;
     // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
@@ -560,7 +558,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     // ⌈188.5 / 1.5⌉ = 126; instances = ⌈126 / 16⌉ = 8.
     assert_eq!(buf.curves.len(), 8, "exact-length subdivision");
     for (i, ci) in buf.curves.iter().enumerate() {
-        assert_eq!(ci.kind, CURVE_KIND_ARC);
+        assert_eq!(ci.kind, CurveKind::ARC);
         // Center → physical px (DPI 2), radius scaled, angles verbatim.
         assert_eq!(ci.p0, Vec2::new(100.0, 100.0), "center at DPI 2");
         assert_eq!(ci.p1.x, 40.0, "radius at DPI 2");
@@ -741,7 +739,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::renderer::render_buffer::curve::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
     use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
@@ -795,8 +793,8 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
         buf.batches(PaintTier::Curve)[0].items.len as usize,
         buf.curves.len()
     );
-    assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_ARC));
-    assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
+    assert!(buf.curves.iter().any(|c| c.kind == CurveKind::ARC));
+    assert!(buf.curves.iter().any(|c| c.kind == CurveKind::CUBIC));
 }
 
 /// The backend replays a group's higher kinds in fixed tier order —
