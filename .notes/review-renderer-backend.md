@@ -5,17 +5,6 @@ Whoever addresses an item deletes it.
 Scope: `src/gpu` (`WgpuBackend` and everything it draws through), the
 backend half of the renderer. Test code is out of scope.
 
-## A per-type rule checked at run time, and an alignment rule not checked
-
-- [ ] `src/gpu/resource/dynamic_buffer.rs:57-68` — `DynamicBuffer::new`
-  asserts `size_of::<T>() != 0` at run time, although it is a property of
-  `T`. The belt write also requires the byte count to be a multiple of
-  `COPY_BUFFER_ALIGNMENT` (4), and nothing checks that. A `T` with an odd
-  size panics in `StagingBelt::write_buffer` on the first upload of an odd
-  count. Target: `const { assert!(size_of::<T>() != 0 &&
-  size_of::<T>() % wgpu::COPY_BUFFER_ALIGNMENT as usize == 0) }`, which
-  fails when the type is instantiated.
-
 ## Docs that still describe the raster sampler and the atlas-size immediates
 
 These were removed on the `shaders` branch, but the text below still
