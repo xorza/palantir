@@ -59,6 +59,39 @@ Loads of 50 cycles or more (`mem-loads,ldlat=50`), `cached_cpu` at 10×:
 `open_node` 32 %, `Widget::resolve` 13 %, `Shapes::push` 11 %,
 `Text::show` 11 %, `HashSet<WidgetId>::insert` 7.6 %.
 
+### Ryzen 7 6800U
+
+Measured again on `c5a4b44c` (Zen3+, core 2 pinned, `performance`
+governor, a quiet host). Back-to-back A/B runs of the same binary differ
+by up to 1.5 %, so a smaller change needs a repeat before it counts.
+
+| Arm | Default fixture | 10× fixture |
+|---|---|---|
+| `frame/cached_cpu` | 164 µs | 1.30 ms |
+| `frame/partial_cpu` | 175 µs | 1.42 ms |
+| `frame/scrolling_cpu` | 247 µs | 2.03 ms |
+| `frame/resizing_cpu` | 331 µs | 2.60 ms |
+
+IPC is 3.31 at default size and 3.22 at 10×. The L1 load miss rate is
+2.9 %. IBS self-time on `cached_cpu` has the same order as the table
+above: `open_node` 22 %, `post_record` 9.5 %, `Widget::resolve` 5.6–6 %,
+`Shapes::push` 3.2–3.8 %, `HashMap<WidgetId, ()>::insert` 2.2 %. At 10×,
+62 % of the load latency (IBS weight) hits L2 and 20 % hits DRAM.
+
+On AMD, the Intel commands below map to `perf record -e ibs_op//` for
+self-time and `perf mem record` for the load sources. Zen3 has no TMA and
+no `ldlat` filter.
+
+## Done
+
+- **Item 1, the cascade refresh** (6800U, A/B against `c5a4b44c`):
+  `scrolling_cpu` −7 to −9 % at both sizes, `resizing_cpu` −5 % at 10×,
+  the other arms inside the noise. The fixture's scroll transform sits on
+  the body panel, which holds nearly every node, so the refresh still
+  recomputes nearly every row: `cascade/run/transform` stays at 56 µs,
+  about 50 ns a node. A pan gets cheaper than that only when the rows
+  under a transform stop holding screen space.
+
 ## How to measure
 
 Read `benches/AGENTS.md` and `benches/profiling.md` first. The commands below
@@ -109,27 +142,6 @@ Locality changes show at 10× and hide in the noise at the default size, so
 measure both.
 
 ## Plan, highest value first
-
-### 1. A transform change rebuilds the whole cascade
-
-`Tree::compute_rollups` folds each node's layout hash into
-`fingerprint.cascade_static`. That hash includes `PanelExtras::transform`.
-A scroll therefore changes `LayerKey::structure`, so
-`CascadeKey::differs_only_in_paint` fails and `CascadeEngine::run_full`
-rebuilds every layer. The rebuild writes `entries`, `cascade_inputs`,
-`subtree_paint_rects`, `subtree_ends`, every paint row, `arena_hashes`, and
-refills `by_id` from `seen.curr` for every node.
-
-- Cost: `scrolling_cpu` − `cached_cpu` = +66 µs (+55 %) at default size and
-  +770 µs (+76 %) at 10×.
-- Change: keep transforms out of the structure fingerprint. Give the cascade a
-  third path between repair and rebuild, which walks again only under a panel
-  whose transform changed. That walk rewrites the subtree's `entries`,
-  `cascade_inputs`, `subtree_paint_rects` and paint rows. `HitRow`s carry
-  screen rects, so the walk must also rewrite the subtree's hit rows, or the
-  hit table must hold rows that it can patch by node.
-- Check: `frame/scrolling_cpu`, `cascade` driver, the `full_rebuild` counter in
-  `CascadeCounters`, and the damage tests for moved subtrees.
 
 ### 2. Five hash probes in two widget-id tables for each node
 
@@ -240,6 +252,6 @@ Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
 
 ## Order
 
-Start with items 1 and 2: they give the largest saving, and each is a
+Start with item 2: it gives the largest saving left, and it is a
 contained change. Item 3 needs its confirmation capture first. Items 4–6 are
 small and independent, and each one is worth more at 10× than at default size.
