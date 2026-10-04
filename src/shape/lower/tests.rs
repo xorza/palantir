@@ -143,6 +143,100 @@ fn background_lowering_keeps_an_authored_field() {
         clear.hash, kept.hash,
         "the border's width must reach the chrome hash"
     );
+
+    // Every other field, one at a time off the same base: each must
+    // land on a hash of its own.
+    let shadow = Shadow {
+        color: RgbaF32::BLACK,
+        offset: glam::Vec2::new(1.0, 2.0),
+        blur: 3.0,
+        spread: 1.0,
+        inset: false,
+    };
+    let base = Background {
+        border: Stroke::new(RgbaF32::WHITE, 1.0),
+        shadow,
+        ..with_corners(sane)
+    };
+    let with_shadow = |shadow| Background {
+        shadow,
+        ..base.clone()
+    };
+    let gradient = Brush::Linear(LinearGradient::new(
+        0.0,
+        [
+            Stop::new(0.0, RgbaF32::BLACK),
+            Stop::new(1.0, RgbaF32::WHITE),
+        ],
+    ));
+    let variants = [
+        ("base", base.clone()),
+        (
+            "border colour",
+            Background {
+                border: Stroke::new(RgbaF32::BLACK, 1.0),
+                ..base.clone()
+            },
+        ),
+        (
+            "fill colour",
+            Background {
+                fill: RgbaF32::BLACK.into(),
+                ..base.clone()
+            },
+        ),
+        (
+            "gradient fill",
+            Background {
+                fill: gradient,
+                ..base.clone()
+            },
+        ),
+        (
+            "shadow colour",
+            with_shadow(Shadow {
+                color: RgbaF32::WHITE,
+                ..shadow
+            }),
+        ),
+        (
+            "shadow offset",
+            with_shadow(Shadow {
+                offset: glam::Vec2::new(2.0, 1.0),
+                ..shadow
+            }),
+        ),
+        (
+            "shadow blur",
+            with_shadow(Shadow {
+                blur: 4.0,
+                ..shadow
+            }),
+        ),
+        (
+            "shadow spread",
+            with_shadow(Shadow {
+                spread: 2.0,
+                ..shadow
+            }),
+        ),
+        (
+            "shadow inset",
+            with_shadow(Shadow {
+                inset: true,
+                ..shadow
+            }),
+        ),
+    ];
+    let hashes: Vec<_> = variants
+        .iter()
+        .map(|(label, bg)| (*label, background(&mut store, bg, Stroke::NONE).hash))
+        .collect();
+    for (i, (a, ha)) in hashes.iter().enumerate() {
+        for (b, hb) in &hashes[i + 1..] {
+            assert_ne!(ha, hb, "`{a}` and `{b}` must hash apart");
+        }
+    }
 }
 
 /// Chrome is the paint path `Shapes::add` never sees, so `background`

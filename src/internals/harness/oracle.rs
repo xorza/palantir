@@ -180,7 +180,7 @@ fn assert_cascade_matches_cold(h: &UiHarness) {
     h.ui.cascade().assert_same_as(&cold, h.ui.forest());
     assert_eq!(
         h.ui.cascade().by_id,
-        *h.ui.forest().ids.last_frame(),
+        h.ui.forest().ids.last_frame(),
         "id lookup"
     );
 }

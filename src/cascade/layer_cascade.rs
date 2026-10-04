@@ -13,8 +13,8 @@ use crate::primitives::geometry::rect::Rect;
 ///
 /// ## Columnar split
 ///
-/// The per-node data is deliberately divided five ways, driven by
-/// who reads what together:
+/// The per-node data is deliberately divided by who reads what
+/// together:
 ///
 /// - [`Self::cascade_inputs`] is the only datum on the per-node hot
 ///   path: the encoder reads `cascade_input.invisible()` for every
@@ -37,6 +37,10 @@ use crate::primitives::geometry::rect::Rect;
 /// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with
 ///   the authoring rollup they were built from — provenance, not a
 ///   walked column.
+/// - [`Self::paint_rects`] and [`Self::hit_rows`] are read only by the
+///   incremental walk, to refresh a node in place: the first stands in
+///   for a node it need not repaint, the second finds the hit row it
+///   moves.
 #[derive(Debug, Default)]
 pub(crate) struct LayerCascade {
     /// Per-node `cascade_input` fingerprint, indexed the same way as
@@ -78,9 +82,10 @@ pub(crate) struct LayerCascade {
     /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
     /// rows were built from — the per-node half of the validity gate
     /// whose whole-layer half is [`Cascade::key`](crate::cascade::Cascade::key). An
-    /// incremental repair descends exactly where this disagrees with the
-    /// live rollup and re-stamps what it repaired. Dirty ancestors
-    /// recompute their own paint rows, so no separate per-node paint hash
+    /// incremental repair recomputes a node where this disagrees with the
+    /// live rollup, or where its `cascade_input` moved, and re-stamps what
+    /// it repaired. Dirty ancestors recompute their own paint rows, so no
+    /// separate per-node paint hash
     /// or own extent is retained.
     ///
     /// **Not the damage engine's snapshot of the same rollup.** The two hold
@@ -92,10 +97,21 @@ pub(crate) struct LayerCascade {
     /// column, so neither reader can answer from the other's copy without a
     /// per-node hash probe on the repair path.
     pub(super) arena_hashes: Vec<ContentHash>,
+    /// Per-node own paint extent — the seed [`Self::subtree_paint_rects`]
+    /// rolls up from. The incremental walk reads it for a node whose
+    /// inputs held while something under it moved, so the node's rollup
+    /// is rebuilt without recomputing its rows.
+    pub(super) paint_rects: Vec<Rect>,
+    /// Per-node index of the node's row in
+    /// [`Cascade::hits`](crate::cascade::Cascade::hits), or
+    /// [`Self::NO_HIT_ROW`]. Which nodes hold a row is structural, so the
+    /// incremental walk rewrites a moved node's row through this rather
+    /// than rebuilding the table.
+    pub(super) hit_rows: Vec<u32>,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries) — fixed
     /// for the layer's run, set at `reset_for` time. A full rebuild pushes one
-    /// entry per node; paint-only runs retain the block. The entry index is
+    /// entry per node; incremental runs rewrite the block in place. The entry index is
     /// therefore always `entries_base + node.0`. Combined with the per-pass
     /// [`Cascade::by_id`](crate::cascade::Cascade::by_id) snapshot this
     /// gives O(1) `WidgetId → entry` without a per-widget `WidgetId → u32`
@@ -104,6 +120,9 @@ pub(crate) struct LayerCascade {
 }
 
 impl LayerCascade {
+    /// The [`Self::hit_rows`] entry of a node that holds no hit row.
+    pub(super) const NO_HIT_ROW: u32 = u32::MAX;
+
     /// Reset all per-node columns for `n_nodes` and stamp the layer's
     /// `entries_base` in one call — both prep this
     /// layer for the upcoming `run_tree`, splitting them invites a
@@ -119,6 +138,8 @@ impl LayerCascade {
         self.subtree_ends.resize(n_nodes, 0);
         self.paint_arena.reset_for(n_nodes);
         self.arena_hashes.resize(n_nodes, ContentHash::default());
+        self.paint_rects.resize(n_nodes, Rect::ZERO);
+        self.hit_rows.resize(n_nodes, Self::NO_HIT_ROW);
         self.entries_base = entries_base;
     }
 }

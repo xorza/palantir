@@ -4,15 +4,10 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
+use std::hash::Hasher;
 
 /// Lowered stroke: a straight-alpha colour and a logical-px width.
-///
-/// `width` leads so the `#[repr(C)]` layout has no interior padding —
-/// which is what keeps the type `Pod`, and so hashable in one
-/// `Hasher::pod` call by both `compute_record_hash` and
-/// `lower::background`.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct ShapeStroke {
     pub(crate) width: f32,
     pub(crate) color: RgbaF16,
@@ -34,6 +29,14 @@ impl ShapeStroke {
         width: 0.0,
         color: RgbaF16::TRANSPARENT,
     };
+
+    /// Feed the colour and the width's raw bits, as two words straight
+    /// from registers.
+    #[inline]
+    pub(crate) fn hash_into<H: Hasher>(self, h: &mut H) {
+        h.write_u64(self.color.as_u64());
+        h.write_u32(self.width.to_bits());
+    }
 
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {

@@ -5,13 +5,14 @@ use crate::common::hash::Hasher;
 use crate::display::Display;
 use crate::layout::Layout;
 use crate::scene::forest::Forest;
+use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use std::hash::Hasher as _;
 
 /// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run)
 /// reads, in one place. Two frames with equal keys produce the same cascade,
-/// so the run skips. Two frames whose keys agree on everything but paint
-/// produce the same non-paint columns, so the run repairs paint in place.
+/// so the run skips. Two frames whose keys agree on structure produce the
+/// same structural tables, so the run refreshes geometry and paint in place.
 ///
 /// The skip is sound only while this struct names every input the walk
 /// reads. A new cascade input goes here, or the cascade goes stale.
@@ -31,16 +32,17 @@ pub(crate) struct CascadeKey {
 /// One layer's part of a [`CascadeKey`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct LayerKey {
-    /// `TreeFingerprint::cascade_static`: identity, nesting and the
-    /// layout half of every node.
+    /// `TreeFingerprint::cascade_static`: what the structural tables are
+    /// built from.
     structure: ContentHash,
     /// `TreeFingerprint::paint_counts`. The incremental walk repairs paint
     /// rows in place, so a row count that moved is a full rebuild.
     paint_counts: ContentHash,
-    /// `LayerLayout::rect_hash`: the arranged geometry.
+    /// `LayerLayout::rect_hash`: the arranged geometry. While it holds,
+    /// the incremental walk skips every subtree whose own inputs held.
     rects: ContentHash,
-    /// Every root's full subtree hash, in order — the paint half the
-    /// incremental walk repairs.
+    /// Every root's full subtree hash, in order: every node's authoring,
+    /// layout half and transform included.
     paint: ContentHash,
 }
 
@@ -66,14 +68,22 @@ impl CascadeKey {
         }
     }
 
-    /// Whether a cascade built from `self` keeps every non-paint column
-    /// valid under `live`: only paint differs, which the incremental walk
-    /// repairs.
-    pub(crate) fn differs_only_in_paint(&self, live: &Self) -> bool {
+    /// Whether a cascade built from `self` keeps every structural table
+    /// valid under `live`, so the incremental walk can refresh the rest
+    /// in place.
+    pub(crate) fn keeps_structure(&self, live: &Self) -> bool {
         self.scale == live.scale
             && self.font_epoch == live.font_epoch
-            && self.layers.iter().zip(live.layers.iter()).all(|(a, b)| {
-                a.structure == b.structure && a.paint_counts == b.paint_counts && a.rects == b.rects
-            })
+            && self
+                .layers
+                .iter()
+                .zip(live.layers.iter())
+                .all(|(a, b)| a.structure == b.structure && a.paint_counts == b.paint_counts)
+    }
+
+    /// Whether `layer` arranged every node where it did when `self` was
+    /// built.
+    pub(crate) fn keeps_rects(&self, live: &Self, layer: Layer) -> bool {
+        self.layers[layer].rects == live.layers[layer].rects
     }
 }
