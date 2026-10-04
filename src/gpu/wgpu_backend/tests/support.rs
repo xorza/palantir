@@ -42,11 +42,10 @@ pub(super) enum DrawOp {
 pub(super) fn collect(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
-    masks: &MaskPlan,
-    use_stencil: bool,
+    masks: Option<&MaskPlan>,
 ) -> Vec<RenderStep> {
     let mut steps = Vec::new();
-    for_each_step(buffer, damage_scissor, masks, use_stencil, &mut |s| {
+    for_each_step(buffer, damage_scissor, masks, &mut |s| {
         steps.push(s);
     });
     steps
@@ -55,7 +54,7 @@ pub(super) fn collect(
 /// The steps with no damage scissor, no mask plan and no stencil — the
 /// schedule a test of plain group order reads.
 pub(super) fn plain_steps(buffer: &RenderBuffer) -> Vec<RenderStep> {
-    collect(buffer, None, &MaskPlan::default(), false)
+    collect(buffer, None, None)
 }
 
 pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {

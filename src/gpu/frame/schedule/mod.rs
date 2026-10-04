@@ -99,8 +99,8 @@ pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks:
 
 /// One conceptual step of the per-frame render schedule. Variants
 /// describe *what* to do, not *how*; the consumer holds context
-/// (`use_stencil`, the actual `RenderPass`) to translate each into
-/// wgpu calls.
+/// (whether the pass has a stencil, the actual `RenderPass`) to
+/// translate each into wgpu calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RenderStep {
     /// Pre-clear quad inside the damage scissor: paints the clear
@@ -163,9 +163,9 @@ pub(crate) enum RenderStep {
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
 /// `emit`. Pure logic — no GPU calls.
 ///
-/// `masks` holds the per-group and per-text-batch mask-quad chains
-/// (see [`MaskPlan`]), built during quad mask staging.
-/// Ignored when `use_stencil` is `false`.
+/// `masks` is the frame's [`MaskPlan`] when the pass has a stencil
+/// attachment, and `None` when it has none — a frame without one has
+/// no chains to establish.
 ///
 /// Per-frame ordering invariants pinned by the emitted sequence:
 ///
@@ -210,8 +210,7 @@ pub(crate) enum RenderStep {
 pub(crate) fn for_each_step(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
-    masks: &MaskPlan,
-    use_stencil: bool,
+    masks: Option<&MaskPlan>,
     // `&mut dyn` rather than `impl FnMut`: [`PassState`] is the single
     // emit point and holds the callback for the whole walk, so a generic
     // parameter would be erased there anyway — buying a monomorphisation
@@ -221,7 +220,7 @@ pub(crate) fn for_each_step(
     let full_viewport = URect::new(0, 0, buffer.display.physical.x, buffer.display.physical.y);
     let mut state = PassState {
         emit,
-        use_stencil,
+        masks,
         cur_scissor: None,
         cur_ref: 0,
         active: None,
@@ -278,14 +277,7 @@ pub(crate) fn for_each_step(
         // Drained first so a batch sharing the still-stamped chain
         // elides its stamp; the group establish below then clears /
         // restamps as its own chain requires.
-        drain_text_batches(
-            buffer,
-            damage_scissor,
-            i,
-            &mut cursors.text,
-            masks,
-            &mut state,
-        );
+        drain_text_batches(buffer, damage_scissor, i, &mut cursors.text, &mut state);
 
         // A group can be content-less at walk time — its only text
         // coalesced into a batch draining at a later group. Skip the
@@ -299,13 +291,12 @@ pub(crate) fn for_each_step(
                 .iter()
                 .any(|&t| pending_at(buffer.batches(t), cursors.higher[t.idx()], i));
         if has_content {
-            state.narrow(&masks.groups, i, effective);
+            state.narrow(|masks| masks.groups[i], effective);
             emit_group_body(
                 buffer,
                 damage_scissor,
                 i,
                 effective,
-                masks,
                 &mut cursors,
                 &mut state,
             );
@@ -319,7 +310,6 @@ pub(crate) fn for_each_step(
         damage_scissor,
         usize::MAX,
         &mut cursors.text,
-        masks,
         &mut state,
     );
     // Tail clear: never let a stamped chain survive the walk. The pass
@@ -362,7 +352,9 @@ struct ActiveMask {
 /// lets those walks share a pass that clears the stencil once.
 struct PassState<'a> {
     emit: &'a mut dyn FnMut(RenderStep),
-    use_stencil: bool,
+    /// The frame's mask chains, `Some` exactly when the pass has a
+    /// stencil attachment to stamp them into.
+    masks: Option<&'a MaskPlan>,
     cur_scissor: Option<URect>,
     cur_ref: u32,
     active: Option<ActiveMask>,
@@ -372,7 +364,7 @@ struct PassState<'a> {
 impl fmt::Debug for PassState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PassState")
-            .field("use_stencil", &self.use_stencil)
+            .field("masks", &self.masks)
             .field("cur_scissor", &self.cur_scissor)
             .field("cur_ref", &self.cur_ref)
             .field("active", &self.active)
@@ -399,14 +391,13 @@ impl PassState<'_> {
         }
     }
 
-    /// Bring the pass to "ready to draw the content of `chains[idx]`
-    /// inside `scissor`". `chains` is indexed only on the stencil path —
-    /// the non-stencil path runs with an empty [`MaskPlan`].
-    fn narrow(&mut self, chains: &[Span], idx: usize, scissor: URect) {
-        if self.use_stencil {
-            self.establish(chains[idx], scissor);
-        } else {
-            self.scissor(scissor);
+    /// Bring the pass to "ready to draw the content of the chain
+    /// `chain` picks out of the plan, inside `scissor`". Without a
+    /// stencil there is no plan, and only the scissor moves.
+    fn narrow(&mut self, chain: impl FnOnce(&MaskPlan) -> Span, scissor: URect) {
+        match self.masks {
+            Some(masks) => self.establish(chain(masks), scissor),
+            None => self.scissor(scissor),
         }
     }
 
@@ -524,7 +515,6 @@ fn drain_text_batches(
     damage_scissor: Option<URect>,
     target: usize,
     cursor: &mut usize,
-    masks: &MaskPlan,
     state: &mut PassState<'_>,
 ) {
     while *cursor < buffer.text_batches.len() && buffer.text_batches[*cursor].last_group() < target
@@ -537,7 +527,8 @@ fn drain_text_batches(
             None => buffer.text_batches[*cursor].scissor,
         };
         if !s.is_paint_empty() {
-            state.narrow(&masks.batches, *cursor, s);
+            let batch = *cursor;
+            state.narrow(|masks| masks.batches[batch], s);
             state.push(RenderStep::Text { batch: *cursor });
         }
         *cursor += 1;
@@ -557,7 +548,6 @@ fn emit_group_body(
     damage_scissor: Option<URect>,
     i: usize,
     effective: URect,
-    masks: &MaskPlan,
     cursors: &mut ScheduleCursors,
     state: &mut PassState<'_>,
 ) {
@@ -565,14 +555,7 @@ fn emit_group_body(
     if quads.len != 0 {
         state.push(RenderStep::Quads { range: quads });
     }
-    drain_text_batches(
-        buffer,
-        damage_scissor,
-        i + 1,
-        &mut cursors.text,
-        masks,
-        state,
-    );
+    drain_text_batches(buffer, damage_scissor, i + 1, &mut cursors.text, state);
     if !PaintTier::ALL
         .iter()
         .any(|&t| pending_at(buffer.batches(t), cursors.higher[t.idx()], i))
@@ -583,7 +566,7 @@ fn emit_group_body(
     // widened the scissor or restamped a different chain. Both requests
     // collapse to nothing when it didn't — the common case, since most
     // groups with a higher-kind batch carry no text at all.
-    state.narrow(&masks.groups, i, effective);
+    state.narrow(|masks| masks.groups[i], effective);
     // Paint order is `PaintTier::ALL`'s order, which is `Ord`'s — the
     // property the composer's flush arbitration rests on.
     for tier in PaintTier::ALL {
@@ -636,7 +619,8 @@ pub(crate) mod internals {
             use_stencil: bool,
         ) -> WalkCounts {
             let mut counts = WalkCounts::default();
-            for_each_step(buffer, damage, &self.plan, use_stencil, &mut |step| {
+            let masks = use_stencil.then_some(&self.plan);
+            for_each_step(buffer, damage, masks, &mut |step| {
                 counts.steps += 1;
                 match step {
                     RenderStep::SetScissor(_) => counts.scissors += 1,

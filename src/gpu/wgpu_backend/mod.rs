@@ -104,7 +104,7 @@ use crate::gpu::device::requested_gpu::Gpu;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::frame::overlay_pass::DebugOverlay;
-use crate::gpu::frame::schedule::{RenderStep, for_each_step};
+use crate::gpu::frame::schedule::{MaskPlan, RenderStep, for_each_step};
 use crate::gpu::frame::submission::{Submission, SubmissionTargets};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
@@ -665,7 +665,9 @@ impl WgpuBackend {
             stencil_view,
             clear,
         } = target;
-        let use_stencil = stencil_view.is_some();
+        // The mask chains go with the stencil attachment they stamp into:
+        // a pass without one has no plan to read.
+        let masks = stencil_view.map(|_| &self.quad.mask_indices);
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
                 view,
@@ -717,7 +719,7 @@ impl WgpuBackend {
             }
             match repaint_scissors {
                 RepaintScissors::Full => {
-                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil, viewport);
+                    self.render_groups(fmt, &mut pass, buffer, None, masks, viewport);
                 }
                 RepaintScissors::Partial(rects) => {
                     let rect_count = rects.len();
@@ -728,7 +730,7 @@ impl WgpuBackend {
                             scissor = ?r,
                             "wgpu_backend.submit.pass.partial_rect"
                         );
-                        self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil, viewport);
+                        self.render_groups(fmt, &mut pass, buffer, Some(r), masks, viewport);
                     }
                 }
             }
@@ -747,13 +749,16 @@ impl WgpuBackend {
     /// this method is purely the wgpu translation layer for each
     /// `RenderStep`. Tests reuse the same schedule emitter to assert
     /// on the sequence without GPU.
+    ///
+    /// `masks` is `Some` exactly when the pass has a stencil attachment,
+    /// which is also what picks each kind's stencil-test pipeline.
     fn render_groups<'a>(
         &'a self,
         fmt: &'a FormatPipelines,
         pass: &mut wgpu::RenderPass<'a>,
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
-        use_stencil: bool,
+        masks: Option<&MaskPlan>,
         viewport: ViewportPush,
     ) {
         // Track what pipeline + vertex buffer is currently bound so we
@@ -816,6 +821,7 @@ impl WgpuBackend {
         tracy::zone!();
         let images = self.image_store.read();
         let mut bound = Bound::None;
+        let use_stencil = masks.is_some();
         let raster_pipeline = fmt.raster.select(use_stencil);
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
@@ -828,132 +834,126 @@ impl WgpuBackend {
             }
         };
 
-        for_each_step(
-            buffer,
-            damage_scissor,
-            &self.quad.mask_indices,
-            use_stencil,
-            &mut |step| match step {
-                RenderStep::PreClear => {
-                    mark(pass, BatchKind::PreClear);
-                    debug_marker::push(pass, "preclear");
-                    // bind → push viewport → draw. Pushing after the
-                    // draw (or skipping it) leaves the clear quad
-                    // reading whatever's in the immediate region —
-                    // zero on the first PreClear of a partial pass,
-                    // which lands the quad at garbage NDC and skips
-                    // the damage-region clear.
+        for_each_step(buffer, damage_scissor, masks, &mut |step| match step {
+            RenderStep::PreClear => {
+                mark(pass, BatchKind::PreClear);
+                debug_marker::push(pass, "preclear");
+                // bind → push viewport → draw. Pushing after the
+                // draw (or skipping it) leaves the clear quad
+                // reading whatever's in the immediate region —
+                // zero on the first PreClear of a partial pass,
+                // which lands the quad at garbage NDC and skips
+                // the damage-region clear.
+                self.quad
+                    .bind_clear(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                viewport.push_into(pass);
+                pass.draw(0..4, 0..1);
+                // Distinct vertex buffer (clear_buffer); next
+                // non-clear step re-binds.
+                bound = Bound::None;
+                debug_marker::pop(pass);
+            }
+            RenderStep::SetScissor(r) => {
+                pass.set_scissor_rect(r.min.x, r.min.y, r.size.x, r.size.y);
+            }
+            RenderStep::SetStencilRef(v) => {
+                pass.set_stencil_reference(v);
+            }
+            RenderStep::MaskStamp(mi) => {
+                mark(pass, BatchKind::Mask);
+                debug_marker::push(pass, "mask_stamp");
+                rebind(&mut bound, Bound::MaskStamp, pass, viewport, |pass| {
                     self.quad
-                        .bind_clear(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
-                    viewport.push_into(pass);
-                    pass.draw(0..4, 0..1);
-                    // Distinct vertex buffer (clear_buffer); next
-                    // non-clear step re-binds.
-                    bound = Bound::None;
-                    debug_marker::pop(pass);
-                }
-                RenderStep::SetScissor(r) => {
-                    pass.set_scissor_rect(r.min.x, r.min.y, r.size.x, r.size.y);
-                }
-                RenderStep::SetStencilRef(v) => {
-                    pass.set_stencil_reference(v);
-                }
-                RenderStep::MaskStamp(mi) => {
-                    mark(pass, BatchKind::Mask);
-                    debug_marker::push(pass, "mask_stamp");
-                    rebind(&mut bound, Bound::MaskStamp, pass, viewport, |pass| {
-                        self.quad
-                            .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg);
-                    });
-                    self.quad.draw_mask(pass, mi);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::MaskClear(mi) => {
-                    mark(pass, BatchKind::Mask);
-                    debug_marker::push(pass, "mask_clear");
-                    rebind(&mut bound, Bound::MaskClear, pass, viewport, |pass| {
-                        self.quad
-                            .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg);
-                    });
-                    self.quad.draw_mask(pass, mi);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::Quads { range } => {
-                    mark(pass, BatchKind::Quads);
-                    debug_marker::push(pass, "quads");
-                    rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
-                        self.quad
-                            .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
-                    });
-                    self.quad.draw(pass, range);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::Text { batch } => {
-                    mark(pass, BatchKind::Text);
-                    debug_marker::push(pass, "text");
-                    rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
-                        pass.set_pipeline(raster_pipeline);
-                    });
-                    self.text.render_batch(batch, pass);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::TierBatch { tier, batch } => {
-                    // Timing bucket and debug label both come off the tier,
-                    // so a new one cannot land in the pass untimed or
-                    // unlabelled the way a forgotten `mark` call would.
-                    let kind = batch_kind(tier);
-                    mark(pass, kind);
-                    debug_marker::push(pass, kind.label());
-                    // Lazy: the icon tier draws off the batch index alone.
-                    let items = || buffer.batches(tier)[batch].items;
-                    match tier {
-                        PaintTier::Mesh => {
-                            rebind(&mut bound, Bound::Mesh, pass, viewport, |pass| {
-                                self.mesh.bind(pass, &fmt.mesh, use_stencil);
-                            });
-                            self.mesh.draw(
-                                pass,
-                                MeshBatch {
-                                    draws: buffer.meshes.draw(),
-                                    items: items(),
-                                },
-                            );
-                        }
-                        PaintTier::Image => {
-                            rebind(&mut bound, Bound::Image, pass, viewport, |pass| {
-                                self.image.bind(pass, &fmt.image, use_stencil);
-                            });
-                            self.image.draw(
-                                pass,
-                                ImageBatch {
-                                    ids: buffer.images.id(),
-                                    items: items(),
-                                },
-                                &images,
-                                &self.gpu_view_targets,
-                            );
-                        }
-                        PaintTier::Icon => {
-                            // The pipeline text draws through, so a text
-                            // step followed by an icon one rebinds
-                            // nothing — see [`Bound::Raster`].
-                            rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
-                                pass.set_pipeline(raster_pipeline);
-                            });
-                            self.icon.render_batch(batch, pass);
-                        }
-                        PaintTier::Curve => {
-                            rebind(&mut bound, Bound::Curve, pass, viewport, |pass| {
-                                self.curve
-                                    .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg);
-                            });
-                            self.curve.draw(pass, items());
-                        }
+                        .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg);
+                });
+                self.quad.draw_mask(pass, mi);
+                debug_marker::pop(pass);
+            }
+            RenderStep::MaskClear(mi) => {
+                mark(pass, BatchKind::Mask);
+                debug_marker::push(pass, "mask_clear");
+                rebind(&mut bound, Bound::MaskClear, pass, viewport, |pass| {
+                    self.quad
+                        .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg);
+                });
+                self.quad.draw_mask(pass, mi);
+                debug_marker::pop(pass);
+            }
+            RenderStep::Quads { range } => {
+                mark(pass, BatchKind::Quads);
+                debug_marker::push(pass, "quads");
+                rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
+                    self.quad
+                        .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                });
+                self.quad.draw(pass, range);
+                debug_marker::pop(pass);
+            }
+            RenderStep::Text { batch } => {
+                mark(pass, BatchKind::Text);
+                debug_marker::push(pass, "text");
+                rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
+                    pass.set_pipeline(raster_pipeline);
+                });
+                self.text.render_batch(batch, pass);
+                debug_marker::pop(pass);
+            }
+            RenderStep::TierBatch { tier, batch } => {
+                // Timing bucket and debug label both come off the tier,
+                // so a new one cannot land in the pass untimed or
+                // unlabelled the way a forgotten `mark` call would.
+                let kind = batch_kind(tier);
+                mark(pass, kind);
+                debug_marker::push(pass, kind.label());
+                // Lazy: the icon tier draws off the batch index alone.
+                let items = || buffer.batches(tier)[batch].items;
+                match tier {
+                    PaintTier::Mesh => {
+                        rebind(&mut bound, Bound::Mesh, pass, viewport, |pass| {
+                            self.mesh.bind(pass, &fmt.mesh, use_stencil);
+                        });
+                        self.mesh.draw(
+                            pass,
+                            MeshBatch {
+                                draws: buffer.meshes.draw(),
+                                items: items(),
+                            },
+                        );
                     }
-                    debug_marker::pop(pass);
+                    PaintTier::Image => {
+                        rebind(&mut bound, Bound::Image, pass, viewport, |pass| {
+                            self.image.bind(pass, &fmt.image, use_stencil);
+                        });
+                        self.image.draw(
+                            pass,
+                            ImageBatch {
+                                ids: buffer.images.id(),
+                                items: items(),
+                            },
+                            &images,
+                            &self.gpu_view_targets,
+                        );
+                    }
+                    PaintTier::Icon => {
+                        // The pipeline text draws through, so a text
+                        // step followed by an icon one rebinds
+                        // nothing — see [`Bound::Raster`].
+                        rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
+                            pass.set_pipeline(raster_pipeline);
+                        });
+                        self.icon.render_batch(batch, pass);
+                    }
+                    PaintTier::Curve => {
+                        rebind(&mut bound, Bound::Curve, pass, viewport, |pass| {
+                            self.curve
+                                .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg);
+                        });
+                        self.curve.draw(pass, items());
+                    }
                 }
-            },
-        );
+                debug_marker::pop(pass);
+            }
+        });
     }
 
     /// Draw the damage-rect debug overlay onto the swapchain texture

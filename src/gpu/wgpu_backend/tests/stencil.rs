@@ -46,7 +46,7 @@ fn stencil_group_brackets_draws_with_mask_write() {
     assert_eq!(mi.groups, vec![Span::new(0, 1)]);
     assert_eq!(mi.batches, vec![Span::new(0, 1)]);
     assert_eq!(masks.len(), 1);
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -119,7 +119,7 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     let mi = mask_ix(&buf, &mut masks);
     assert_eq!(mi.groups, vec![Span::new(0, 1), Span::default()]);
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &mi, true)),
+        simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![
             // Rounded bracket
             DrawOp::MaskWrite(0),
@@ -173,7 +173,7 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
     );
     assert_eq!(masks.len(), 2);
 
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -239,7 +239,7 @@ fn stencil_same_mask_wider_scissor_restamps() {
     // ...but the schedule re-brackets: clear under the stamp's
     // (0,0,50,100), re-stamp mask 0 under (0,0,100,100), tail clear.
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &mi, true)),
+        simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![
             DrawOp::MaskWrite(0),
             DrawOp::Quads(0),
@@ -273,7 +273,7 @@ fn stencil_text_only_group_still_writes_mask() {
     let mut masks = Vec::new();
     let mi = mask_ix(&buf, &mut masks);
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &mi, true)),
+        simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![DrawOp::MaskWrite(0), DrawOp::Text(0), DrawOp::MaskClear(0)],
     );
 }
@@ -309,7 +309,7 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
         mi.groups,
         vec![Span::new(0, 1), Span::new(1, 1), Span::default()]
     );
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         steps,
         vec![
@@ -382,7 +382,7 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     ]);
     buf.rounded_clips = clips;
     let mi = mask_ix(&buf, &mut masks);
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         &steps[steps.len() - 2..],
         &[RenderStep::SetStencilRef(0), RenderStep::MaskClear(1)],
@@ -431,7 +431,7 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
         vec![Span::new(0, 2), Span::new(0, 2), Span::default()]
     );
     assert_eq!(masks.len(), 2);
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         steps,
         vec![
@@ -470,7 +470,7 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     ]);
     buf.rounded_clips = vec![outer, inner, outer, inner];
     let mi = mask_ix(&buf, &mut masks);
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         &steps[steps.len() - 2..],
         &[RenderStep::SetStencilRef(0), RenderStep::MaskClear(0)],
@@ -527,7 +527,7 @@ fn stencil_drained_batch_stamps_own_mask_before_text() {
     // Batch scissor ∩ damage = (60,0,30,40) — the damage rect itself,
     // so the batch's scissor request is already satisfied.
     let s = URect::new(60, 0, 30, 40);
-    let steps = collect(&buf, Some(damage), &mi, true);
+    let steps = collect(&buf, Some(damage), Some(&mi));
     assert_eq!(
         steps,
         vec![
@@ -599,7 +599,7 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
     let damage = URect::new(0, 0, 100, 40);
     // Batch scissor ∩ damage = (0,0,40,40) = group 0's stamp scissor.
     assert_eq!(
-        collect(&buf, Some(damage), &mi, true),
+        collect(&buf, Some(damage), Some(&mi)),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
@@ -658,7 +658,7 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
     let mi = mask_ix(&buf, &mut masks);
     let damage = URect::new(0, 0, 45, 45);
     assert_eq!(
-        collect(&buf, Some(damage), &mi, true),
+        collect(&buf, Some(damage), Some(&mi)),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
@@ -711,7 +711,7 @@ fn stencil_dedups_a_chain_seen_before_the_previous_group() {
     );
     assert_eq!(masks.len(), 2, "the repeated chain staged a second copy");
 
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -769,7 +769,7 @@ fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
         vec![Span::new(0, 1), Span::new(1, 1), Span::new(0, 1)]
     );
 
-    let steps = collect(&buf, Some(e), &mi, true);
+    let steps = collect(&buf, Some(e), Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
