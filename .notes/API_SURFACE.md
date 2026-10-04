@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `7c1fc1e3`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `43fbbe41`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -561,7 +561,7 @@ struct           KeyText
     fn is_empty(self)
     traits: Clone, Copy, Debug, Default, Eq, PartialEq, StructuralPartialEq
 struct           Modifiers
-    fields: ctrl, shift, alt, mac_ctrl
+    fields: ctrl, shift, alt, mac_ctrl, meta
     assoc_const NONE
     assoc_const SHIFT
     assoc_const CTRL
@@ -608,7 +608,7 @@ struct           Shortcut
     fn matches(self, kp)
     traits: Clone, Copy, Debug, Display, Eq, Hash, PartialEq, StructuralPartialEq
 struct           ShortcutMods
-    fields: ctrl, shift, alt
+    fields: ctrl, shift, alt, meta
     const fn any_command(self)
     assoc_const NONE
     assoc_const SHIFT

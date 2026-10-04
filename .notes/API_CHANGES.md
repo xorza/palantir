@@ -16,18 +16,9 @@ Line numbers are against `50b34a49`.
 
 ---
 
-## A10. Super modifier
-
-**Findings.** REVIEW "Platform key events": `Modifiers` has no super bit, so Super+L arrives as
-bare `l`. REDESIGN D2 clears the text in the host, which fixes the typing without this item.
-
-**Recommendation.** Add a `meta` field to `Modifiers` and `ShortcutMods` alike, after A33 has made
-the two types convert, so apps can bind Super chords. `super` is a keyword, so the field takes the
-W3C `KeyboardEvent.metaKey` name; winit reads it from `ModifiersState::super_key()`. On macOS
-Command already lands in `ctrl`, so `meta` is the Windows / Super key elsewhere. `Shortcut`'s
-display gets the platform glyph. Low priority.
-
 ## A19. Features the docs imply: IME and focus traversal
+
+**Blocked** on `QUESTIONS.md` Q2.
 
 **Findings.** REVIEW "Stale input docs": docs mention IME text, but winit `Ime` is never enabled
 or translated, and there is no Tab focus traversal. REDESIGN D16 fixes the docs.

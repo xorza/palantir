@@ -151,6 +151,7 @@ fn modifier_order_is_canonical() {
             ctrl: true,
             shift: true,
             alt: true,
+            meta: false,
         },
         Key::Char('K'),
     );
@@ -180,4 +181,32 @@ fn named_modifier_sets_convert_to_their_twins() {
         ..Modifiers::SHIFT
     };
     assert_eq!(ShortcutMods::from(mac_control), ShortcutMods::SHIFT);
+}
+
+/// A Super chord converts to its shortcut twin, a bare-key shortcut does
+/// not fire under a held Super, and the display names the key the way the
+/// platform does: Win on Windows, Super on Linux.
+#[test]
+fn the_meta_modifier_reaches_matching_and_display() {
+    let held = Modifiers {
+        meta: true,
+        ..Modifiers::NONE
+    };
+    let declared = ShortcutMods {
+        meta: true,
+        ..ShortcutMods::NONE
+    };
+    assert_eq!(ShortcutMods::from(held), declared);
+    assert!(declared.any_command());
+    let super_l = Shortcut::new(declared, Key::Char('L'));
+    assert!(super_l.matches(kp(held, Key::Char('l'))));
+    assert!(!Shortcut::key(Key::Char('L')).matches(kp(held, Key::Char('l'))));
+    let expected = match PLATFORM {
+        Platform::Win => "Win+L",
+        Platform::Linux => "Super+L",
+        Platform::Mac => "L",
+    };
+    if !matches!(PLATFORM, Platform::Mac) {
+        assert_eq!(super_l.to_string(), expected);
+    }
 }

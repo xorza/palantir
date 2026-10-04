@@ -333,6 +333,7 @@ fn normalize_modifiers(modifiers: ModifiersState, platform: Platform) -> Modifie
         },
         alt: modifiers.alt_key(),
         mac_ctrl: mac && modifiers.control_key(),
+        meta: !mac && modifiers.super_key(),
     }
 }
 
