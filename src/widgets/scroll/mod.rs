@@ -364,7 +364,7 @@ impl<'a> Scroll<'a> {
         self.zoom_config(ZoomConfig::default())
     }
 
-    /// Let the viewport zoom under `cfg`'s range, step, modifier and pivot.
+    /// Let the viewport zoom under `config`'s range, step, modifier and pivot.
     ///
     /// # Panics
     ///
@@ -373,12 +373,12 @@ impl<'a> Scroll<'a> {
     /// clean answer, since content that escapes across the axis has no way
     /// back into the viewport.
     #[track_caller]
-    pub fn zoom_config(mut self, cfg: ZoomConfig) -> Self {
+    pub fn zoom_config(mut self, config: ZoomConfig) -> Self {
         assert!(
             self.axes.pans(Axis::X) && self.axes.pans(Axis::Y),
             "a zoomable scroll must pan on both axes",
         );
-        self.zoom = Some(cfg);
+        self.zoom = Some(config);
         self.add_sense(Sense::PINCH)
     }
 
@@ -637,7 +637,7 @@ impl<'a> Scroll<'a> {
             // cascade or layout answer — both are frozen for the pass — so
             // the only field worth re-reading is `focused`, which the body
             // may have taken.
-            response: Response::eager(
+            response: Response::new(
                 id,
                 ui,
                 ResponseState {
@@ -651,7 +651,7 @@ impl<'a> Scroll<'a> {
 }
 
 impl Scroll<'_> {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// Chrome for the inner scroll surface — painted under the children,
     /// before the scrollbar overlay. Unlike the other containers
@@ -661,15 +661,15 @@ impl Scroll<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn background(mut self, bg: Background) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
         self
     }
 
-    /// Paint `bg` as this widget's background unless the caller set one —
+    /// Paint `background` as this widget's background unless the caller set one —
     /// the chrome peer of
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
@@ -677,12 +677,12 @@ impl Scroll<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn default_background(mut self, bg: Background) -> Self {
-        bg.validate();
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(background);
         }
         self
     }

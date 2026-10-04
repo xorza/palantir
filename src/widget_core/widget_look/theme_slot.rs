@@ -1,7 +1,7 @@
 //! The bundle a widget wears whole: its per-state looks, and the rule that
 //! picks one of them from a response.
 
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::widget_core::widget_look::WidgetLook;
@@ -87,5 +87,5 @@ pub struct SlotDefaults {
     /// animation is opt-in. Round-trips through serde, so a theme file
     /// configures motion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
+    pub animation: Option<AnimationSpec>,
 }

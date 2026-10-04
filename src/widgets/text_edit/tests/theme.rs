@@ -118,9 +118,9 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(UVec2::new(600, 200));
-    h.ui.theme_mut().text.line_height_mult = 2.0;
+    h.ui.theme_mut().text.line_height_factor = 2.0;
     h.ui.theme_mut().text_edit.looks.normal.text =
-        TextStyleOverrides::NONE.with_line_height_mult(3.0);
+        TextStyleOverrides::NONE.with_line_height_factor(3.0);
     let mut buf = String::from("hi");
 
     let [btn_node, txt_node, ed_node] = h.frame_value(|ui| {
@@ -188,10 +188,10 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         ("infinite line height", 16.0, f32::INFINITY),
     ];
 
-    for (label, font_size, line_height_mult) in cases {
+    for (label, font_size, line_height_factor) in cases {
         let style = TextStyle {
             font_size,
-            line_height_mult,
+            line_height_factor,
             ..TextStyle::default()
         };
         let editor_id = WidgetId::from_hash("invalid editor");
@@ -216,7 +216,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
 
         h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE
             .with_font_size(font_size)
-            .with_line_height_mult(line_height_mult);
+            .with_line_height_factor(line_height_factor);
         let calls = h.ui.shaper().measure_calls();
 
         let nodes = h.frame_value(|ui| {
@@ -270,7 +270,7 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
-    for (label, mult, expected_lh) in [
+    for (label, factor, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
         ("mult_2x_override", 2.0_f32, 32.0_f32),
     ] {
@@ -279,7 +279,7 @@ fn textedit_style_override_replaces_default_theme() {
         let style = TextEditTheme {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    text: TextStyleOverrides::NONE.with_line_height_mult(mult),
+                    text: TextStyleOverrides::NONE.with_line_height_factor(factor),
                     ..TextEditTheme::default().looks.normal
                 },
                 ..TextEditTheme::default().looks
@@ -542,7 +542,7 @@ fn line_height_override_changes_caret_rect_height() {
     let doubled = caret_height(Some(&TextEditTheme {
         looks: StatefulLook {
             active: WidgetLook {
-                text: TextStyleOverrides::NONE.with_line_height_mult(2.0),
+                text: TextStyleOverrides::NONE.with_line_height_factor(2.0),
                 ..TextEditTheme::default().looks.active
             },
             ..TextEditTheme::default().looks

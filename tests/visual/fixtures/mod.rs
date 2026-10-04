@@ -36,7 +36,7 @@ use std::fmt;
 /// `Harness::clear`'s default, which every frame writes over
 /// `Theme::window_clear`, so a fixture wanting harder contrast sets
 /// `RgbaF32::BLACK` there instead.
-pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.window_bg;
+pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.window_background;
 
 /// How far a probed channel may sit from the 8-bit value its fixture
 /// derived: a colour written as linear `f32`, carried as an `f16` tint and

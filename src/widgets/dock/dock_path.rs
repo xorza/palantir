@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Like any address into the tree it is only stable between structural
 /// changes; a stale path that no longer lands on a split is ignored by
-/// the op it feeds.
+/// the operation it feeds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[must_use]
 pub struct DockPath(u8);

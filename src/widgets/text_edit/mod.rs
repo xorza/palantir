@@ -211,15 +211,15 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
-    /// look's `line_height_mult`. Sets the caret's height with it. `mult`:
+    /// look's `line_height_factor`. Sets the caret's height with it. `factor`:
     /// *positive*, as a theme file's is.
     ///
     /// # Panics
     ///
-    /// Panics unless `mult` is [positive](crate::widget::domain::positive).
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
     #[track_caller]
-    pub const fn line_height_mult(mut self, mult: f32) -> Self {
-        self.overrides.line_height_mult = Some(domain::positive(mult));
+    pub const fn line_height_factor(mut self, factor: f32) -> Self {
+        self.overrides.line_height_factor = Some(domain::positive(factor));
         self
     }
 
@@ -338,7 +338,7 @@ impl<'a> TextEdit<'a> {
             // The pass already probed this id and tracked the one field that
             // can move under it mid-pass (focus), so it hands the state back
             // rather than paying a second cascade + layout lookup here.
-            response: Response::eager(id, ui, signals.state),
+            response: Response::new(id, ui, signals.state),
             changed: signals.changed,
             submitted: signals.submitted,
             cancelled: signals.cancelled,
@@ -600,7 +600,7 @@ struct EditSignals {
     lost_focus: bool,
     /// The response the pass probed — disabled already folded in — with
     /// `focused` as the pass left it. What `show` hands to
-    /// [`Response::eager`] instead of re-probing. Every other field is
+    /// [`Response::new`] instead of re-probing. Every other field is
     /// frozen for the pass, so this is the same answer a second probe
     /// would give.
     state: ResponseState,

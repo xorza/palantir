@@ -5,8 +5,8 @@ use std::time::Duration;
 /// Caret is the only rounded rect with `local_rect: Some(...)` on a
 /// focused, unselected editor — `Background` routes through `chrome`
 /// (no shape), selection wash is absent without a selection.
-/// Post-`PaintAnim`-migration the rect is always present when focused;
-/// the encoder hides it via the attached `PaintAnim`. "Painted" means
+/// Post-`PaintAnimation`-migration the rect is always present when focused;
+/// the encoder hides it via the attached `PaintAnimation`. "Painted" means
 /// "rect present AND its anim (if any) samples to visible at the
 /// current time".
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {

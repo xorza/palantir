@@ -109,7 +109,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                                 .style(
                                     &TextStyle::default()
                                         .with_font_size(16.0)
-                                        .with_line_height_mult(1.0),
+                                        .with_line_height_factor(1.0),
                                 )
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .grid_cell(GridCell::at(0, 0).with_span(1, case.span))

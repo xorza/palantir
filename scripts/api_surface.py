@@ -25,6 +25,7 @@ not know, so a missed item is reported rather than dropped.
 
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -35,13 +36,15 @@ OUT = ROOT / ".notes" / "API_SURFACE.md"
 FORMAT_VERSION = 61
 # Public features. `internals` and `bench` are the crate's own test surface.
 FEATURES = ["winit", "system-clipboard", "golden", "gpu-debug-markers", "profile-with-tracy"]
-# Traits every type gets from the compiler or a std blanket impl; they say
-# nothing about this crate's API.
+# Traits the compiler implements, or a derive implements beside the trait it
+# names; they say nothing about this crate's API. The std blanket impls
+# (`From<T> for T`, `Into`, `ToOwned`, ..) are dropped by their blanket flag,
+# not by name, so a real `impl<T: Num> From<T> for Size` stays.
 NOISE_TRAITS = {
     "Send", "Sync", "Unpin", "UnwindSafe", "RefUnwindSafe", "Freeze",
-    "StructuralPartialEq", "Any", "Borrow", "BorrowMut", "From<T>", "Into<U>",
-    "TryFrom<U>", "TryInto<U>", "ToOwned", "CloneToUninit", "Same", "ToString",
+    "StructuralPartialEq", "TrivialClone",
 }
+RECEIVER = re.compile(r"(&('\w+ )?(mut )?)?Self")
 ITEM_KINDS = {
     "module", "struct", "enum", "union", "trait", "trait_alias", "function",
     "type_alias", "constant", "static", "macro", "proc_macro", "use",
@@ -60,6 +63,17 @@ def build(features):
         sys.exit(f"rustdoc JSON format {doc['format_version']}, this script reads "
                  f"{FORMAT_VERSION}: check the renderer against the new format")
     return doc
+
+
+def anon(text):
+    """`text` with every lifetime named `'_`, so `Button<'a>` matches `Button<'_>`."""
+    return re.sub(r"'\w+", "'_", text)
+
+
+def unbound(generics):
+    """A generics list without its lifetimes: `impl Menu<'_>` elides what
+    `struct Menu<'a>` declares, and narrows nothing."""
+    return re.sub(r"'_(, )?", "", anon(generics)).replace("<>", "")
 
 
 class Renderer:
@@ -125,8 +139,11 @@ class Renderer:
             return f"fn({ins})" + (f" -> {self.ty(out)}" if out else "")
         if k == "qualified_path":
             trait = v.get("trait")
-            tr = f" as {trait['path'].rsplit('::', 1)[-1]}{self.args(trait.get('args'))}" if trait else ""
-            return f"<{self.ty(v['self_type'])}{tr}>::{v['name']}"
+            # `Self::Tab` comes with the trait but an empty path.
+            if not trait or not trait["path"]:
+                return f"{self.ty(v['self_type'])}::{v['name']}"
+            tr = trait["path"].rsplit("::", 1)[-1] + self.args(trait.get("args"))
+            return f"<{self.ty(v['self_type'])} as {tr}>::{v['name']}"
         if k == "infer":
             return "_"
         if k == "pat":
@@ -224,8 +241,9 @@ class Renderer:
         ins = []
         for pname, t in sig["inputs"]:
             if pname == "self":
-                ins.append({"Self": "self", "&Self": "&self", "&mut Self": "&mut self"}
-                           .get(self.ty(t), f"self: {self.ty(t)}"))
+                shown = self.ty(t)
+                # `self`, `&self`, `&'a mut self`: the receiver shorthands.
+                ins.append(shown[:-4] + "self" if RECEIVER.fullmatch(shown) else f"self: {shown}")
             else:
                 ins.append(f"{pname}: {self.ty(t)}")
         out = sig.get("output")
@@ -288,24 +306,25 @@ class Renderer:
         elif kind == "struct":
             lines.append(f"struct {name}{self.generics(g)}{self.where_clause(g)}")
             lines += self.struct_fields(inner["kind"])
-            lines += self.members(inner["impls"])
+            lines += self.members(name, g, inner["impls"])
         elif kind == "union":
             lines.append(f"union {name}{self.generics(g)}")
             lines += self.field_lines(inner["fields"], inner.get("has_stripped_fields"))
-            lines += self.members(inner["impls"])
+            lines += self.members(name, g, inner["impls"])
         elif kind == "enum":
             lines.append(f"enum {name}{self.generics(g)}{self.where_clause(g)}")
             for vid in inner["variants"]:
                 lines.append("    " + self.variant(self.item(vid)))
             if inner.get("has_stripped_variants"):
                 lines.append("    // and private variants")
-            lines += self.members(inner["impls"])
+            lines += self.members(name, g, inner["impls"])
         elif kind == "trait":
             supers = f": {self.bounds(inner['bounds'])}" if inner["bounds"] else ""
             unsafe = "unsafe " if inner["is_unsafe"] else ""
             lines.append(f"{unsafe}trait {name}{self.generics(g)}{supers}{self.where_clause(g)}")
             for iid in inner["items"]:
                 lines.append("    " + self.trait_item(self.item(iid)))
+            lines += self.blanket_impls(name, inner["implementations"])
         elif kind == "type_alias":
             lines.append(f"type {name}{self.generics(g)} = {self.ty(inner['type'])}")
         elif kind == "constant":
@@ -391,44 +410,87 @@ class Renderer:
         summary = self.paths.get(str(trait["id"]))
         return summary is not None and summary["crate_id"] == 0
 
-    def members(self, impl_ids):
-        lines, traits = [], set()
+    def members(self, owner, g, impl_ids):
+        """The inherent members and trait impls of the type `owner`.
+
+        `impls` also holds impls that only name the type in an argument
+        (`impl From<RgbaF32> for Brush`), so an impl prints its self type
+        whenever that is not the owner. An inherent impl on a narrower self
+        type (`impl Gradient<LinearGeometry>`) heads its own members.
+        """
+        plain = anon(owner + self.param_names(g))
+        decl = unbound(self.generics(g))
+        lines, traits, head_shown = [], set(), None
         for id_ in impl_ids:
             impl = self.item(id_)["inner"]["impl"]
             if impl["is_synthetic"]:
                 continue
             trait = impl["trait"]
-            # A blanket impl from another crate (`impl<T> From<T> for T`)
-            # says nothing about this one; a blanket impl of this crate's
-            # own trait is part of its API.
-            if impl["blanket_impl"] is not None and not (trait and self.local_trait(trait)):
+            for_ = self.ty(impl["for"])
+            generics = self.generics(impl["generics"])
+            where = self.where_clause(impl["generics"])
+            if impl["blanket_impl"] is not None:
+                # A std blanket impl (`impl<T> From<T> for T`) says nothing
+                # about this type. This crate's own blanket impl does: it is
+                # how the type gets `DockTab` or `Lower`, and the trait's
+                # block shows the impl itself.
+                if trait and self.local_trait(trait):
+                    traits.add(f"impl {self.trait_name(trait)}  (blanket)")
                 continue
             if trait is not None:
-                name = trait["path"].rsplit("::", 1)[-1] + self.args(trait.get("args"))
-                if name in NOISE_TRAITS or trait["path"].rsplit("::", 1)[-1] in NOISE_TRAITS:
+                name = self.trait_name(trait)
+                if trait["path"].rsplit("::", 1)[-1] in NOISE_TRAITS:
                     continue
                 neg = "!" if impl.get("is_negative") else ""
-                generics = self.generics(impl["generics"])
-                where = self.where_clause(impl["generics"])
                 head = f"impl{generics} {neg}{name}"
-                if generics:
-                    head += f" for {self.ty(impl['for'])}"
+                if generics or anon(for_) != plain:
+                    head += f" for {for_}"
                 traits.add(head + where)
                 continue
+            # Members of an impl that narrows the type or bounds its
+            # parameters sit under that impl's head.
+            indent = "    "
+            if anon(for_) != plain or unbound(generics) != decl or where:
+                head = f"    impl{generics} {for_}{where}"
+                if head != head_shown:
+                    lines.append(head)
+                    head_shown = head
+                indent = "        "
+            else:
+                head_shown = None
             for mid in impl["items"]:
                 m = self.item(mid)
                 if m is None or not self.public(m):
                     continue
                 mk = self.kind(m)
                 if mk == "function":
-                    lines.append("    pub " + self.signature(m["name"], m["inner"]["function"]))
+                    lines.append(f"{indent}pub " + self.signature(m["name"], m["inner"]["function"]))
                 elif mk == "assoc_const":
                     c = m["inner"]["assoc_const"]
-                    lines.append(f"    pub const {m['name']}: {self.ty(c['type'])}")
+                    lines.append(f"{indent}pub const {m['name']}: {self.ty(c['type'])}")
                 else:
                     self.unknown.add(f"inherent item {mk}")
         lines += [f"    {t}" for t in sorted(traits)]
         return lines
+
+    def trait_name(self, trait):
+        return trait["path"].rsplit("::", 1)[-1] + self.args(trait.get("args"))
+
+    @staticmethod
+    def param_names(g):
+        names = [p["name"] for p in g["params"]
+                 if not next(iter(p["kind"].values())).get("is_synthetic")]
+        return f"<{', '.join(names)}>" if names else ""
+
+    def blanket_impls(self, name, implementations):
+        """This trait's impls for a bare type parameter: `impl<T: ..> Tr for T`."""
+        out = []
+        for id_ in implementations:
+            impl = self.item(id_)["inner"]["impl"]
+            if "generic" in impl["for"]:
+                out.append(f"    impl{self.generics(impl['generics'])} {name} for "
+                           f"{self.ty(impl['for'])}{self.where_clause(impl['generics'])}")
+        return out
 
     def render(self):
         self.walk(self.item(self.root), "")

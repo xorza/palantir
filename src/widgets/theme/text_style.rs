@@ -9,7 +9,7 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::widgets::theme::palette::Palette;
 
-/// Default [`TextStyle::line_height_mult`]: the leading widgets resolve
+/// Default [`TextStyle::line_height_factor`]: the leading widgets resolve
 /// into the `line_height` they record, and so also the y-range a caret
 /// spans.
 ///
@@ -23,7 +23,7 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 /// [`crate::Theme`].
 ///
 /// `Animatable` derived: `color` interpolates; `font_size` and
-/// `line_height_mult` are `#[animate(snap)]` because animating font
+/// `line_height_factor` are `#[animate(snap)]` because animating font
 /// size invalidates the text-shape cache every frame and animating
 /// leading doesn't read meaningfully.
 #[derive(
@@ -55,7 +55,7 @@ pub struct TextStyle {
     /// natural leading (1.2). A widget look and a caller both override it
     /// alone, through [`TextStyleOverrides`].
     #[animate(snap)]
-    pub line_height_mult: f32,
+    pub line_height_factor: f32,
     /// Font family used for shaping. Default
     /// [`FontFamily::SANS`] resolves to bundled Inter; the debug
     /// `frame_stats` overlay overrides to [`FontFamily::MONO`].
@@ -79,7 +79,7 @@ impl Default for TextStyle {
         Self {
             font_size: 16.0,
             color: Palette::DEFAULT.text,
-            line_height_mult: LINE_HEIGHT_MULT,
+            line_height_factor: LINE_HEIGHT_MULT,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
@@ -116,9 +116,9 @@ pub struct TextStyleOverrides {
     /// Replaces [`TextStyle::font_size`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_size: Option<f32>,
-    /// Replaces [`TextStyle::line_height_mult`].
+    /// Replaces [`TextStyle::line_height_factor`].
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub line_height_mult: Option<f32>,
+    pub line_height_factor: Option<f32>,
     /// Replaces [`TextStyle::family`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub family: Option<FontFamily>,
@@ -135,7 +135,7 @@ impl TextStyleOverrides {
     pub const NONE: Self = Self {
         color: None,
         font_size: None,
-        line_height_mult: None,
+        line_height_factor: None,
         family: None,
         weight: None,
         slant: None,
@@ -147,7 +147,7 @@ impl TextStyleOverrides {
         TextStyle {
             font_size: self.font_size.unwrap_or(base.font_size),
             color: self.color.unwrap_or(base.color),
-            line_height_mult: self.line_height_mult.unwrap_or(base.line_height_mult),
+            line_height_factor: self.line_height_factor.unwrap_or(base.line_height_factor),
             family: self.family.unwrap_or(base.family),
             weight: self.weight.unwrap_or(base.weight),
             slant: self.slant.unwrap_or(base.slant),
@@ -173,8 +173,8 @@ impl TextStyleOverrides {
 
     /// [`Self::with_font_size`] for the line-height axis.
     #[inline]
-    pub const fn with_line_height_mult(mut self, mult: f32) -> Self {
-        self.line_height_mult = Some(mult);
+    pub const fn with_line_height_factor(mut self, factor: f32) -> Self {
+        self.line_height_factor = Some(factor);
         self
     }
 
@@ -203,7 +203,7 @@ impl TextStyleOverrides {
     pub(crate) const fn is_empty(&self) -> bool {
         self.color.is_none()
             && self.font_size.is_none()
-            && self.line_height_mult.is_none()
+            && self.line_height_factor.is_none()
             && self.family.is_none()
             && self.weight.is_none()
             && self.slant.is_none()
@@ -214,10 +214,10 @@ impl TextStyleOverrides {
     /// alone. With both named, the base cannot change the line height,
     /// so the whole face is checked.
     fn metrics_valid(&self) -> bool {
-        match (self.font_size, self.line_height_mult) {
+        match (self.font_size, self.line_height_factor) {
             (Some(_), Some(_)) => self.apply(&TextStyle::default()).metrics_valid(),
             (Some(px), None) => GlyphFont::length_is_valid(px),
-            (None, Some(mult)) => mult.is_finite() && mult > 0.0,
+            (None, Some(factor)) => factor.is_finite() && factor > 0.0,
             (None, None) => true,
         }
     }
@@ -252,8 +252,8 @@ impl TextStyle {
 
     /// Resolve the absolute line-height-in-px the shaper will use for
     /// text rendered at `font_size`. Single call site that owns the
-    /// `line_height_mult` formula; widgets call this instead of doing
-    /// `font_size * line_height_mult` inline so the formula can evolve
+    /// `line_height_factor` formula; widgets call this instead of doing
+    /// `font_size * line_height_factor` inline so the formula can evolve
     /// (font-dependent leading, etc.) without a sweep through every
     /// text-rendering widget.
     ///
@@ -262,7 +262,7 @@ impl TextStyle {
     /// 19.2, and five lines of it measure 96.015625 px.
     #[inline]
     pub fn line_height_for(&self, font_size: f32) -> f32 {
-        TextShapeKey::leading_on_grid(font_size * self.line_height_mult)
+        TextShapeKey::leading_on_grid(font_size * self.line_height_factor)
     }
 
     /// Chainable single-axis tweak. Lets callers write
@@ -285,8 +285,8 @@ impl TextStyle {
 
     /// [`Self::with_font_size`] for the line-height axis.
     #[inline]
-    pub const fn with_line_height_mult(mut self, mult: f32) -> Self {
-        self.line_height_mult = mult;
+    pub const fn with_line_height_factor(mut self, factor: f32) -> Self {
+        self.line_height_factor = factor;
         self
     }
 
@@ -335,7 +335,7 @@ impl TextStyle {
 struct UncheckedTextStyle {
     font_size: f32,
     color: RgbaF32,
-    line_height_mult: f32,
+    line_height_factor: f32,
     family: FontFamily,
     weight: FontWeight,
     slant: FontSlant,
@@ -348,7 +348,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
         let style = Self {
             font_size: style.font_size,
             color: style.color,
-            line_height_mult: style.line_height_mult,
+            line_height_factor: style.line_height_factor,
             family: style.family,
             weight: style.weight,
             slant: style.slant,
@@ -367,7 +367,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
 struct UncheckedTextStyleOverrides {
     color: Option<RgbaF32>,
     font_size: Option<f32>,
-    line_height_mult: Option<f32>,
+    line_height_factor: Option<f32>,
     family: Option<FontFamily>,
     weight: Option<FontWeight>,
     slant: Option<FontSlant>,
@@ -380,7 +380,7 @@ impl TryFrom<UncheckedTextStyleOverrides> for TextStyleOverrides {
         let overrides = Self {
             color: overrides.color,
             font_size: overrides.font_size,
-            line_height_mult: overrides.line_height_mult,
+            line_height_factor: overrides.line_height_factor,
             family: overrides.family,
             weight: overrides.weight,
             slant: overrides.slant,

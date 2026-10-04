@@ -27,7 +27,7 @@ pub(crate) trait TypedStore: Any {
 /// The shared half of `StateMap` and `AnimMap`. Both hold per-widget
 /// rows in a store whose *shape* is their own — one a dense `Vec`
 /// indexed by `WidgetId`, the other a row list keyed by
-/// `(WidgetId, AnimSlot)` — but both reach that store through the same
+/// `(WidgetId, AnimationSlot)` — but both reach that store through the same
 /// `TypeId` probe and the same downcast, and both fan the same
 /// end-of-frame sweep across it. That half is written here once instead
 /// of twice, which is what keeps the two from drifting on the downcast's

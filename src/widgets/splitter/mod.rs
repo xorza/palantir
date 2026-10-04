@@ -23,7 +23,7 @@ use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider. [`Splitter::row`] lays the panes
 /// side by side (vertical divider bar); [`Splitter::column`] stacks them
-/// (horizontal bar) — the words [`SplitDir`](crate::SplitDir) uses. The caller owns the split as `ratio` —
+/// (horizontal bar) — the words [`SplitDirection`](crate::SplitDirection) uses. The caller owns the split as `ratio` —
 /// the first pane's share of the free space, `0..1`. While dragging,
 /// the current pointer target feeds layout immediately; the widget writes
 /// the resulting content-constrained share back on the following record.
@@ -159,7 +159,7 @@ impl<'a> Splitter<'a> {
         if !response.disabled {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
-            if divider.left.drag.dragging()
+            if divider.left.drag.is_live()
                 && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
             {
                 layout_ratio = pointer_to_ratio(
@@ -195,7 +195,7 @@ impl<'a> Splitter<'a> {
             *ui.state_or_default::<SplitterState>(id) = next;
         }
 
-        let bar_fill = if divider.left.drag.dragging() {
+        let bar_fill = if divider.left.drag.is_live() {
             Some(active_color)
         } else if divider.hovered() && !response.disabled {
             Some(hovered_color)
@@ -247,7 +247,7 @@ impl<'a> Splitter<'a> {
         });
 
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }

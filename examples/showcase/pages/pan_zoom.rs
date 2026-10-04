@@ -17,9 +17,10 @@ use crate::support::note_style;
 use palantir::SlotDefaults;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
-    AnimSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Grid,
-    LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
-    Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
+    AnimationSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners,
+    Grid, LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook,
+    Stroke, Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook,
+    fmt,
 };
 use std::array;
 
@@ -376,7 +377,7 @@ fn cell_theme() -> ButtonTheme {
         defaults: SlotDefaults {
             padding: Spacing::xy(6.0, 4.0),
             margin: Spacing::ZERO,
-            anim: Some(AnimSpec::FAST),
+            animation: Some(AnimationSpec::FAST),
         },
     }
 }

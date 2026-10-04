@@ -395,7 +395,7 @@ impl TextShaper {
     /// would ask this `RefCell` for a second borrow and panic, so a view takes
     /// one inside its own paint and drops it there.
     ///
-    /// Reached through [`GpuInitCtx`](crate::GpuInitCtx), which hands a view the
+    /// Reached through [`GpuInitContext`](crate::GpuInitContext), which hands a view the
     /// shaper the rest of the window is already drawing with — so a label in a
     /// scene is in the same faces as the UI around it without anyone arranging
     /// for that.

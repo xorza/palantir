@@ -272,7 +272,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 });
         });
         TabbedViewResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             action,
         }
     }

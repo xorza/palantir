@@ -34,8 +34,8 @@ pub struct ButtonTheme {
 
 impl ButtonTheme {
     /// The standard button recipe over `p`: clickable-surface family
-    /// `elem` / `elem_mid` / `elem_strong`, resting one rung up at
-    /// `elem_mid`. Disabled keeps the `elem` fill but swaps
+    /// `element` / `element_mid` / `element_strong`, resting one rung up at
+    /// `element_mid`. Disabled keeps the `element` fill but swaps
     /// text to `text_disabled`. `text: None` on active states means
     /// "inherit `Theme::text`" — bumping `theme.text.color` recolors
     /// active button labels. The historical 4 px radius is retained.
@@ -45,16 +45,16 @@ impl ButtonTheme {
                 .with_border(Stroke::new(p.border_soft(), 1.0))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
-        let pressed_bg = Background::rounded(p.elem_strong, Corners::all(4.0))
+        let pressed_bg = Background::rounded(p.element_strong, Corners::all(4.0))
             .with_border(Stroke::new(p.border_focused, 1.0));
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    background: bg(p.elem_mid),
+                    background: bg(p.element_mid),
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
-                    background: bg(p.elem_strong),
+                    background: bg(p.element_strong),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
@@ -62,14 +62,14 @@ impl ButtonTheme {
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    background: bg(p.elem),
+                    background: bg(p.element),
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },
             defaults: SlotDefaults {
                 padding: Spacing::xy(12.0, 6.0),
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }
@@ -107,14 +107,14 @@ impl ButtonTheme {
         Self {
             looks: StatefulLook {
                 normal: flat(Brush::TRANSPARENT),
-                hovered: flat(p.elem_mid.into()),
-                active: flat(p.elem_strong.into()),
+                hovered: flat(p.element_mid.into()),
+                active: flat(p.element_strong.into()),
                 disabled: flat(Brush::TRANSPARENT),
             },
             defaults: SlotDefaults {
                 padding: Spacing::xy(8.0, 4.0),
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

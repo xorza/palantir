@@ -12,36 +12,36 @@ use std::time::Duration;
 /// How a value moves toward its target. Animation itself is opt-in
 /// at the call site — pass `None` to [`crate::Ui::animate`] (or omit
 /// the field on a theme) when you want snap-to-target behavior.
-/// `AnimSpec` only describes what motion looks like *when there is
-/// motion*; "no animation" lives in `Option<AnimSpec>`, not as a
+/// `AnimationSpec` only describes what motion looks like *when there is
+/// motion*; "no animation" lives in `Option<AnimationSpec>`, not as a
 /// variant here.
 ///
 /// Wire format is internally tagged on `kind` (snake_case), so theme
 /// files read cleanly:
 ///
 /// ```toml
-/// [theme.button.anim]
+/// [theme.button.defaults.animation]
 /// kind = "duration"
 /// secs = 0.12
 /// ease = "out_cubic"
 ///
-/// [theme.button.anim]
+/// [theme.button.defaults.animation]
 /// kind = "spring"
 /// stiffness = 170.0
 /// damping = 26.0
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AnimSpec {
+pub struct AnimationSpec {
     pub(super) motion: AnimMotion,
 }
 
 /// The motion model a spec was authored under, plus its
 /// parameters. Kept private to the module: the public surface is
-/// [`AnimSpec`]'s constructors, and every reader is an animation-row
+/// [`AnimationSpec`]'s constructors, and every reader is an animation-row
 /// step that matches on it.
 ///
 /// Also the wire shape — every field here is authored, so
-/// [`AnimSpec`]'s hand-written impls delegate to this one and spend
+/// [`AnimationSpec`]'s hand-written impls delegate to this one and spend
 /// themselves on validation alone.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -50,7 +50,7 @@ pub(super) enum AnimMotion {
     Spring { stiffness: f32, damping: f32 },
 }
 
-impl AnimSpec {
+impl AnimationSpec {
     /// 120 ms ease-out-cubic. Snappy hover/press default.
     pub const FAST: Self = Self {
         motion: AnimMotion::Duration {
@@ -142,7 +142,7 @@ impl AnimSpec {
     }
 }
 
-impl Serialize for AnimSpec {
+impl Serialize for AnimationSpec {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -152,11 +152,11 @@ impl Serialize for AnimSpec {
 }
 
 /// Validating, so a hand-written impl rather than `#[serde(transparent)]`:
-/// a theme file is untrusted input, and the bounds [`AnimSpec::duration`]
-/// and [`AnimSpec::spring`] assert on have to hold for a spec that arrived
+/// a theme file is untrusted input, and the bounds [`AnimationSpec::duration`]
+/// and [`AnimationSpec::spring`] assert on have to hold for a spec that arrived
 /// over the wire too. Bad data is an `Err` here rather than the panic those
 /// two raise.
-impl<'de> Deserialize<'de> for AnimSpec {
+impl<'de> Deserialize<'de> for AnimationSpec {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -22,7 +22,7 @@ use std::ops;
 ///
 /// Widgets that already had to call `ui.response_for(id)` for their
 /// own theme-picking / interaction logic (Button, Checkbox, …) hand
-/// the already-paid-for state to [`Response::eager`] so callers
+/// the already-paid-for state to [`Response::new`] so callers
 /// inherit the cached result without a second probe.
 ///
 /// To detach from the `&Ui` borrow (e.g. before calling another
@@ -84,7 +84,7 @@ impl<'a> Response<'a> {
     /// hands it back here rather than letting the caller re-probe. `Widget::show` packages
     /// the lazy path for widgets that need none of that.
     #[inline]
-    pub fn eager(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
+    pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
         Self {
             id,
             ui,

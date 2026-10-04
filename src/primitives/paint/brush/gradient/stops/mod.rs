@@ -119,7 +119,7 @@ impl<'de> Deserialize<'de> for Stop {
 ///
 /// A `u8` count beside a fixed array rather than a `tinyvec::ArrayVec`,
 /// whose `u16` count aligns the value to two bytes. At 41 B and align 1,
-/// a [`ColorRamp`](crate::ColorRamp) adds its interp byte with no tail
+/// a [`ColorRamp`](crate::ColorRamp) adds its interpolation byte with no tail
 /// padding, so a gradient's spread byte packs beside it and
 /// `LinearGradient` stays 48 B. Slots past `len` always hold
 /// `Stop::default()`, so the derived `Eq` agrees with the `Hash` below,

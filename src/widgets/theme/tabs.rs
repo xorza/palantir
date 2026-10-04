@@ -52,16 +52,16 @@ pub struct TabsTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Hairline under the band, drawn only when
-    /// [`Self::hline_thickness`] is set.
-    pub hline: RgbaF32,
+    /// [`Self::rule_thickness`] is set.
+    pub rule: RgbaF32,
     /// Hairline breadth in logical px. `0.0` — the default — records no
     /// rule at all, so the chips meet the content below them directly.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub hline_thickness: f32,
+    pub rule_thickness: f32,
     /// Chip corner radius. Applied to the top corners only — a chip
     /// meets the content below it square.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub corner: f32,
+    pub radius: f32,
     /// Inset between a chip's edges and its label. Named apart from
     /// [`SlotDefaults::padding`], which this bundle flattens: that one
     /// is the box default the strip node takes, this one is the chip's
@@ -117,9 +117,9 @@ impl TabsTheme {
             strip: _,
             strip_padding: _,
             gap: _,
-            hline: _,
-            hline_thickness: _,
-            corner: _,
+            rule: _,
+            rule_thickness: _,
+            radius: _,
             chip_padding: _,
             trailing_inset: _,
             min_width: _,
@@ -147,8 +147,8 @@ impl TabsTheme {
     /// Chips rounded at the top only, so the active one reads as continuous
     /// with the page below it.
     pub fn from_palette(p: &Palette) -> Self {
-        let corner = 4.0;
-        let top = Corners::top(corner);
+        let radius = 4.0;
+        let top = Corners::top(radius);
         let inactive_text = TextStyleOverrides::NONE.with_color(p.text_muted);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let chip = |fill: RgbaF32, text: TextStyleOverrides| WidgetLook {
@@ -157,26 +157,26 @@ impl TabsTheme {
         };
         Self {
             active: StatefulLook {
-                normal: chip(p.window_bg, TextStyleOverrides::NONE),
-                hovered: chip(p.window_bg, TextStyleOverrides::NONE),
-                active: chip(p.window_bg, TextStyleOverrides::NONE),
-                disabled: chip(p.window_bg, disabled_text),
+                normal: chip(p.window_background, TextStyleOverrides::NONE),
+                hovered: chip(p.window_background, TextStyleOverrides::NONE),
+                active: chip(p.window_background, TextStyleOverrides::NONE),
+                disabled: chip(p.window_background, disabled_text),
             },
             inactive: StatefulLook {
-                normal: chip(p.elem_mid, inactive_text),
-                hovered: chip(p.elem_strong, inactive_text),
-                active: chip(p.elem_strong, TextStyleOverrides::NONE),
-                disabled: chip(p.elem, disabled_text),
+                normal: chip(p.element_mid, inactive_text),
+                hovered: chip(p.element_strong, inactive_text),
+                active: chip(p.element_strong, TextStyleOverrides::NONE),
+                disabled: chip(p.element, disabled_text),
             },
             accent: p.accent,
-            accent_idle: p.elem_strong,
+            accent_idle: p.element_strong,
             accent_thickness: 2.0,
             strip: Background::NONE,
             strip_padding: Spacing::new(6.0, 4.0, 6.0, 0.0),
             gap: 3.0,
-            hline: p.border_soft(),
-            hline_thickness: 0.0,
-            corner,
+            rule: p.border_soft(),
+            rule_thickness: 0.0,
+            radius,
             chip_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),
             trailing_inset: 4.0,
             min_width: 48.0,
@@ -187,11 +187,11 @@ impl TabsTheme {
                     text: inactive_text,
                 },
                 hovered: WidgetLook {
-                    background: Background::rounded(p.elem_strong, Corners::all(3.0)),
+                    background: Background::rounded(p.element_strong, Corners::all(3.0)),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    background: Background::rounded(p.elem_strong, Corners::all(3.0))
+                    background: Background::rounded(p.element_strong, Corners::all(3.0))
                         .with_border(Stroke::new(p.border_focused, 1.0)),
                     text: TextStyleOverrides::NONE,
                 },
@@ -207,7 +207,7 @@ impl TabsTheme {
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

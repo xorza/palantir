@@ -16,7 +16,7 @@
 //! not restated here as prose: a widget can silently drop out of a
 //! sentence, which is exactly what the check exists to prevent.
 //!
-//! **Nothing animated belongs in here.** `Spinner` — and any `PaintAnim` —
+//! **Nothing animated belongs in here.** `Spinner` — and any `PaintAnimation` —
 //! wakes the host every frame by design, so `frame/cached_*` could never
 //! settle to no damage and `frame/partial_*` would grow past the single
 //! footer-counter rect both arms exist to measure. That, and the three other

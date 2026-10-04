@@ -4,8 +4,8 @@
 use crate::support;
 use crate::support::{body_style, note_style, well_bg};
 use palantir::{
-    Button, Configure, DockDrop, DockOp, DockState, DockTabMenu, DockTabs, DockView, InternedStr,
-    MenuItem, Panel, Size, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
+    Button, Configure, DockDrop, DockOperation, DockState, DockTabMenu, DockTabs, DockView,
+    InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
 };
 
 /// The showcase's own tab key: a small `Copy` value, which is all the
@@ -43,10 +43,10 @@ impl Tab {
 #[derive(Debug)]
 struct State {
     dock: DockState<Tab>,
-    /// The frame's op sink, cleared and refilled by the two calls
+    /// The frame's operation sink, cleared and refilled by the two calls
     /// below. A field rather than a local so the page allocates once
     /// rather than once a frame.
-    ops: Vec<DockOp<Tab>>,
+    operations: Vec<DockOperation<Tab>>,
 }
 
 impl Default for State {
@@ -56,17 +56,17 @@ impl Default for State {
         for tab in OPENABLE {
             dock.find_or_insert(tab, primary);
         }
-        dock.apply(DockOp::MoveTab {
+        dock.apply(DockOperation::MoveTab {
             tab: Tab::Console,
             to: DockDrop::Split {
                 group: primary,
                 side: SplitSide::Bottom,
             },
         });
-        dock.apply(DockOp::ActivateTab { tab: Tab::Canvas });
+        dock.apply(DockOperation::ActivateTab { tab: Tab::Canvas });
         Self {
             dock,
-            ops: Vec::new(),
+            operations: Vec::new(),
         }
     }
 }
@@ -137,7 +137,7 @@ impl DockTabs for Panes {
             side = Some(SplitSide::Bottom);
         }
         if let Some(side) = side {
-            menu.ops.push(DockOp::MoveTab {
+            menu.operations.push(DockOperation::MoveTab {
                 tab: menu.tab,
                 to: DockDrop::Split {
                     group: menu.group,
@@ -160,17 +160,17 @@ pub(crate) fn build(ui: &mut Ui) {
                 // The two-call surface, spelled out: the scan settles the
                 // arrangement before the record walks it, so a click draws
                 // on the frame it lands.
-                s.ops.clear();
-                DockView::scan(&s.dock, ui, &mut s.ops);
-                for op in s.ops.drain(..) {
-                    s.dock.apply(op);
+                s.operations.clear();
+                DockView::scan(&s.dock, ui, &mut s.operations);
+                for operation in s.operations.drain(..) {
+                    s.dock.apply(operation);
                 }
-                DockView::new(&s.dock, &mut s.ops)
+                DockView::new(&s.dock, &mut s.operations)
                     .id_salt("dock")
                     .min_pane(140.0)
                     .show(ui, &mut panes);
-                for op in s.ops.drain(..) {
-                    s.dock.apply(op);
+                for operation in s.operations.drain(..) {
+                    s.dock.apply(operation);
                 }
             });
     });
@@ -201,7 +201,7 @@ fn reopen_row(ui: &mut Ui, s: &mut State) {
                 .left
                 .clicked()
             {
-                s.dock.apply(DockOp::OpenTab { tab });
+                s.dock.apply(DockOperation::OpenTab { tab });
             }
         }
     });

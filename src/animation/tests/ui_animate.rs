@@ -1,6 +1,6 @@
 //! `Ui::animate` end to end: the repaint it requests and the rows it drops.
 
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
 use crate::internals::harness::UiHarness;
 use crate::primitives::paint::color::RgbaF32;
@@ -18,7 +18,7 @@ fn animate_drives_repaint_until_settle() {
 
     let repaint = h
         .frame(|ui| {
-            let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
+            let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimationSpec::FAST));
             Block::new().id(id).show(ui);
         })
         .repaint_requested;
@@ -30,7 +30,7 @@ fn animate_drives_repaint_until_settle() {
     let repaint = h
         .at(Duration::from_millis(16))
         .frame(|ui| {
-            let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+            let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
             Block::new().id(id).show(ui);
         })
         .repaint_requested;
@@ -39,7 +39,7 @@ fn animate_drives_repaint_until_settle() {
     // FAST is 120 ms. The retarget frame spent nothing, so frame `n`
     // after it has spent n × 16 ms: 112 ms at 7, 128 ms at 8.
     let frames = h.frames_until_idle(100, Duration::from_millis(16), |ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
         Block::new().id(id).show(ui);
     });
     assert_eq!(frames, Some(8), "the 8th 16 ms frame passes 120 ms");
@@ -49,12 +49,12 @@ fn animate_drives_repaint_until_settle() {
 /// allocate a row, never request a repaint. `None` is the API-level
 /// signal "this caller didn't ask for motion."
 ///
-/// [`AnimSpec::SNAP`] is the named spelling of the same answer, so it is
+/// [`AnimationSpec::SNAP`] is the named spelling of the same answer, so it is
 /// swept here rather than pinned apart — a caller reaching for the name
 /// must not get different behaviour from the one passing `None`.
 #[test]
 fn animate_with_none_spec_snaps_and_skips_repaint() {
-    for (label, spec) in [("none", None), ("snap", Some(AnimSpec::SNAP))] {
+    for (label, spec) in [("none", None), ("snap", Some(AnimationSpec::SNAP))] {
         let AnimUi { mut h, id } = setup_anim_ui("anim-none");
         let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
             let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
@@ -82,11 +82,11 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
 fn animate_some_then_none_drops_stale_row() {
     let AnimUi { mut h, id } = setup_anim_ui("anim-toggle");
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
+        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimationSpec::FAST));
         Block::new().id(id).show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
         Block::new().id(id).show(ui);
     });
     assert_eq!(
@@ -172,7 +172,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     };
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
-        let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimSpec::FAST));
+        let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimationSpec::FAST));
         Block::new().id(id).show(ui);
     });
     assert_eq!(
@@ -189,7 +189,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let ambient = TextStyle {
         font_size: fallback.font_size + 99.0,
         color: RgbaF32::hex(0xff00ff),
-        line_height_mult: fallback.line_height_mult + 9.0,
+        line_height_factor: fallback.line_height_factor + 9.0,
         ..fallback
     };
     let look3 = WidgetLook {
@@ -221,7 +221,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     );
 }
 
-/// `AnimSpec::FAST` from rest after a second of idle: the frame of the
+/// `AnimationSpec::FAST` from rest after a second of idle: the frame of the
 /// change shows the start value, though the clamp would have handed it
 /// 0.1 s — 83 % of a 120 ms curve, 99.5 % eased. The next frame, 16 ms
 /// later, shows `OutCubic(16 / 120)`.
@@ -232,7 +232,7 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     let record = |h: &mut UiHarness, at: Duration, target: f32| {
         let value = cell::Cell::new(f32::NAN);
         h.at(at).frame(|ui| {
-            value.set(ui.animate(id, SLOT, target, Some(AnimSpec::FAST)));
+            value.set(ui.animate(id, SLOT, target, Some(AnimationSpec::FAST)));
             Block::new().id(id).show(ui);
         });
         value.get()

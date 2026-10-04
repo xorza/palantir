@@ -66,7 +66,7 @@ use std::str;
 /// per channel, unclamped. Storage is linear and straight-alpha, so a
 /// straight component blend is the correct one, and **alpha travels with the
 /// colour**: a caller that wants to keep its own opacity follows up with
-/// [`Self::with_alpha`]. [`Interp::Oklab`](crate::Interp) blends in a
+/// [`Self::with_alpha`]. [`Interpolation::Oklab`](crate::Interpolation) blends in a
 /// perceptual space instead, for gradients.
 #[must_use]
 pub struct RgbaF32 {

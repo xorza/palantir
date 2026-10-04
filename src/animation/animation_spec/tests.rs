@@ -1,4 +1,4 @@
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
@@ -9,19 +9,19 @@ use std::time::Duration;
 #[test]
 fn anim_spec_construction_validates_and_canonicalizes() {
     // EPS is 1e-4 s: half of it snaps, all of it animates.
-    let instant_zero = AnimSpec::duration(Duration::ZERO, Easing::Linear);
-    let instant_sub_eps = AnimSpec::duration(Duration::from_micros(50), Easing::Linear);
+    let instant_zero = AnimationSpec::duration(Duration::ZERO, Easing::Linear);
+    let instant_sub_eps = AnimationSpec::duration(Duration::from_micros(50), Easing::Linear);
     assert!(instant_zero.is_instant());
     assert!(instant_sub_eps.is_instant());
-    assert!(!AnimSpec::duration(Duration::from_micros(100), Easing::Linear).is_instant());
-    assert!(!AnimSpec::duration(Duration::from_secs(60), Easing::Linear).is_instant());
-    assert!(!AnimSpec::FAST.is_instant());
-    assert!(!AnimSpec::SPRING.is_instant());
+    assert!(!AnimationSpec::duration(Duration::from_micros(100), Easing::Linear).is_instant());
+    assert!(!AnimationSpec::duration(Duration::from_secs(60), Easing::Linear).is_instant());
+    assert!(!AnimationSpec::FAST.is_instant());
+    assert!(!AnimationSpec::SPRING.is_instant());
 
     // One nanosecond past the bound panics: the check is exact, where a
     // conversion to `f32` seconds would round 60 s + 1 ns down to 60 s.
     panic_probe::assert_panics_with(DURATION_ERROR, || {
-        AnimSpec::duration(
+        AnimationSpec::duration(
             Duration::from_secs(60) + Duration::from_nanos(1),
             Easing::Linear,
         )
@@ -43,35 +43,35 @@ fn anim_spec_construction_validates_and_canonicalizes() {
         (1_000_000.0, 100.0),
         (f32::MAX, 2.0),
     ] {
-        panic_probe::assert_panics_with(SPRING_ERROR, || AnimSpec::spring(stiffness, damping));
+        panic_probe::assert_panics_with(SPRING_ERROR, || AnimationSpec::spring(stiffness, damping));
     }
 
-    assert!(!AnimSpec::spring(1.0, 2.0).is_instant());
+    assert!(!AnimationSpec::spring(1.0, 2.0).is_instant());
     // The swing bound's other side, √35 499 ≈ 188.4 rad/s, under 60π.
-    assert!(!AnimSpec::spring(35_500.0, 2.0).is_instant());
+    assert!(!AnimationSpec::spring(35_500.0, 2.0).is_instant());
     // No stiffness is too stiff when the spring does not swing: critically
     // damped at `h² = k`, overdamped past it.
-    assert!(!AnimSpec::spring(1_000_000.0, 2_000.0).is_instant());
-    assert!(!AnimSpec::spring(f32::MAX, 4.0e19).is_instant());
+    assert!(!AnimationSpec::spring(1_000_000.0, 2_000.0).is_instant());
+    assert!(!AnimationSpec::spring(f32::MAX, 4.0e19).is_instant());
 }
 
 #[test]
-fn anim_spec_serde_validates_and_roundtrips() {
+fn animation_spec_serde_validates_and_roundtrips() {
     #[derive(::serde::Serialize, ::serde::Deserialize, PartialEq, Debug)]
     struct Holder {
-        spec: AnimSpec,
+        spec: AnimationSpec,
     }
     let cases = [
-        AnimSpec::FAST,
-        AnimSpec::MEDIUM,
-        AnimSpec::SPRING,
-        AnimSpec::duration(Duration::from_millis(100), Easing::Linear),
-        AnimSpec::duration(Duration::from_millis(200), Easing::InOutCubic),
-        AnimSpec::duration(Duration::from_millis(300), Easing::OutQuart),
-        AnimSpec::duration(Duration::from_millis(400), Easing::OutBack),
-        AnimSpec::spring(100.0, 15.0),
-        AnimSpec::spring(1_000_000.0, 2_000.0),
-        AnimSpec::spring(f32::MAX, 4.0e19),
+        AnimationSpec::FAST,
+        AnimationSpec::MEDIUM,
+        AnimationSpec::SPRING,
+        AnimationSpec::duration(Duration::from_millis(100), Easing::Linear),
+        AnimationSpec::duration(Duration::from_millis(200), Easing::InOutCubic),
+        AnimationSpec::duration(Duration::from_millis(300), Easing::OutQuart),
+        AnimationSpec::duration(Duration::from_millis(400), Easing::OutBack),
+        AnimationSpec::spring(100.0, 15.0),
+        AnimationSpec::spring(1_000_000.0, 2_000.0),
+        AnimationSpec::spring(f32::MAX, 4.0e19),
     ];
     for spec in cases {
         let h = Holder { spec };

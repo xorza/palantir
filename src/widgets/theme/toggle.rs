@@ -2,7 +2,7 @@
 //! because a checkbox, a radio and a switch differ in what they draw
 //! rather than in what they can be told.
 
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -42,14 +42,14 @@ pub struct ToggleTheme {
     pub box_size: f32,
     /// Stroke width of the check polyline (Checkbox).
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub indicator_stroke: f32,
+    pub indicator_width: f32,
     /// The check polyline's three points (Checkbox only), as fractions
     /// of [`Self::box_size`] — origin top-left, `1.0` the far edge. Unit
     /// space rather than pixels so the tick keeps its proportions at any
     /// box size, and so the shape carries no reference size of its own
     /// to fall out of step with `box_size`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset_points3")]
-    pub check_pts: [Vec2; 3],
+    pub check_points: [Vec2; 3],
     /// Inset of the filled dot inside the pip (RadioButton).
     /// Dot side = `box_size - 2 * indicator_inset`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -77,8 +77,8 @@ impl ToggleTheme {
             checked,
             indicator: _,
             box_size: _,
-            indicator_stroke: _,
-            check_pts: _,
+            indicator_width: _,
+            check_points: _,
             indicator_inset: _,
             gap: _,
             track_aspect: _,
@@ -88,14 +88,14 @@ impl ToggleTheme {
         checked.for_each_text(f);
     }
 
-    /// [`Self::check_pts`] scaled to [`Self::box_size`] — the polyline
+    /// [`Self::check_points`] scaled to [`Self::box_size`] — the polyline
     /// [`crate::Checkbox`] draws, in box-local pixels.
     pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
-        self.check_pts.map(|p| p * self.box_size)
+        self.check_points.map(|p| p * self.box_size)
     }
 
     /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
-    /// corner radius and a `window_bg` check.
+    /// corner radius and a `window_background` check.
     pub fn checkbox(p: &Palette) -> Self {
         Self::built(
             ToggleGeometry {
@@ -103,13 +103,13 @@ impl ToggleTheme {
                 box_size: 16.0,
                 indicator_inset: 4.0,
             },
-            p.window_bg,
+            p.window_background,
             p,
         )
     }
 
     /// Defaults sized for [`crate::RadioButton`] — 16 px pip with pill
-    /// radius (`box_size * 0.5`) and a `window_bg` dot.
+    /// radius (`box_size * 0.5`) and a `window_background` dot.
     pub fn radio(p: &Palette) -> Self {
         Self::built(
             ToggleGeometry {
@@ -117,7 +117,7 @@ impl ToggleTheme {
                 box_size: 16.0,
                 indicator_inset: 4.0,
             },
-            p.window_bg,
+            p.window_background,
             p,
         )
     }
@@ -138,7 +138,7 @@ impl ToggleTheme {
             p,
         );
         t.track_aspect = 1.75;
-        t.defaults.anim = Some(AnimSpec::SPRING);
+        t.defaults.animation = Some(AnimationSpec::SPRING);
         t
     }
 
@@ -155,19 +155,19 @@ impl ToggleTheme {
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                background: bg(p.elem_mid, Stroke::new(edge, 1.0)),
+                background: bg(p.element_mid, Stroke::new(edge, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                background: bg(p.elem_strong, Stroke::new(edge, 1.0)),
+                background: bg(p.element_strong, Stroke::new(edge, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                background: bg(p.elem_strong, Stroke::new(p.border_focused, 1.0)),
+                background: bg(p.element_strong, Stroke::new(p.border_focused, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                background: bg(p.elem, Stroke::new(p.border_soft(), 1.0)),
+                background: bg(p.element, Stroke::new(p.border_soft(), 1.0)),
                 text: disabled_text,
             },
         };
@@ -195,9 +195,9 @@ impl ToggleTheme {
             checked,
             indicator,
             box_size,
-            indicator_stroke: 2.0,
+            indicator_width: 2.0,
             indicator_inset,
-            check_pts: [
+            check_points: [
                 Vec2::new(3.5 / 16.0, 8.5 / 16.0),
                 Vec2::new(7.0 / 16.0, 12.0 / 16.0),
                 Vec2::new(12.5 / 16.0, 4.5 / 16.0),
@@ -207,7 +207,7 @@ impl ToggleTheme {
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

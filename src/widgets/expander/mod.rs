@@ -1,6 +1,6 @@
 //! The disclosure control: a header that reveals or hides a body.
 
-use crate::animation::anim_slot::AnimSlot;
+use crate::animation::animation_slot::AnimationSlot;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
@@ -62,7 +62,7 @@ pub struct Expander<'a> {
 }
 
 /// The reveal's `0..1` tween, on the header's id.
-const SLOT_OPEN: AnimSlot = AnimSlot::new("open");
+const SLOT_OPEN: AnimationSlot = AnimationSlot::new("open");
 
 impl<'a> Expander<'a> {
     /// A header labelled `label`, closed on its first frame. The widget
@@ -174,7 +174,7 @@ impl<'a> Expander<'a> {
             let spec = if now_open && height.is_none() {
                 None
             } else {
-                t.defaults.anim
+                t.defaults.animation
             };
             let openness = ui.animate(header_id, SLOT_OPEN, f32::from(now_open), spec);
             let showing = openness > 0.0;
@@ -261,7 +261,7 @@ impl<'a> Expander<'a> {
         }
 
         ExpanderResponse {
-            response: Response::eager(header_id, ui, pass.header),
+            response: Response::new(header_id, ui, pass.header),
             inner: pass.inner,
             changed: pass.toggled,
             openness: pass.openness,

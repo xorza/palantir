@@ -61,7 +61,7 @@ against it.
   (`Mesh::with_capacity`, `TextShaper::with_fonts`).
 - **Plain data** — public fields and no invariant: `Rect`, `Size`, `Spacing`,
   `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Background`, `Brush` and the
-  gradients, `GlyphFont`, `TextStyle`, `PaintAnim`, the theme structs.
+  gradients, `GlyphFont`, `TextStyle`, `PaintAnimation`, the theme structs.
   Arithmetic may pass through values no widget takes, so the check runs where
   the value enters (**Input validation**).
 - **Checked value** — a consumer relies on an invariant, so the fields are
@@ -83,15 +83,24 @@ against it.
 
 ### Names
 
-- **Spelling.** American (`center`, `color`), whole words, and only the
-  abbreviations the domain already uses (`id`, `rgba`, `hsv`).
+- **Spelling.** American (`center`, `color`) and whole words
+  (`AnimationSpec`, `Interpolation`, `SplitDirection`, `saturation`). The
+  abbreviations allowed are the ones geometry, colour and input already use:
+  `id`, `x` `y` `w` `h`, `min` `max`, `pos`, `dt`, `bbox`, `col` (beside
+  `row`), `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab` `hex`,
+  `ctrl` `alt` `mods`, `vsync`, `gpu` `cpu`, `svg`, `fmt` after
+  `format_args!`, and the words `config`, `spec` and `stats`. Parameter names
+  follow the rule too (`press`, `shortcut`, `context`, `top_left`), except a
+  single letter for a setter's one argument when its type names it
+  (`padding(p)`, `style(s)`), and `px` for a length.
 - **Constructors.** `new` is the primary one. A named constructor names the
   kind or the arrangement it builds (`Panel::hstack`, `Sizing::fixed`,
   `Popup::below`, `Splitter::row`, `Shape::rect`, `Background::rounded`).
   `from_*` converts another representation (`Image::from_srgba8`,
   `Rect::from_min_max`, `ButtonTheme::from_palette`). `on(&snapshot)` attaches
   an overlay to a trigger, with the snapshot first and required text second;
-  `for_id(id)` attaches by id. No constructor takes `ui`.
+  `for_id(id)` attaches by id. No widget constructor takes `ui`; a
+  `Response` borrows the `Ui`, so `Response::new` does.
 - **Setters.** Named for the setting, not the act (`padding`, not
   `set_padding`). A boolean setting takes a `bool`, so a caller can bind it to
   state. A setting with more than two values takes its enum or its config, and
@@ -100,12 +109,20 @@ against it.
   `zoomable`, `weight` / `bold`). `default_*` is a fallback used only where the
   caller set nothing (`ThemeDefaults`, `default_background`). `start_*` is a
   first-frame state the widget owns after that (`Expander::start_open`).
+  Placement is the one setting named by a preposition: `at(rect)` on a shape,
+  `at_origin(point)` for text, `fixed_at(point)` on a layer; its anchored
+  form is `anchor(anchor)` (`Popup`, `LayerScope`).
 - **Getters.** The noun of what they return, never `get_*`. State on `Ui`
   reads through `x()` and writes through `set_x(v)`, and the pair shares its
-  noun (`theme` / `set_theme`, `focus` / `set_focus`). An action is a verb
-  (`open_window`, `request_repaint`, `clear_focus`). A read that also wakes the
-  next frame on a change has a `peek_*` twin that does not (`pointer_pos` /
+  noun (`theme` / `set_theme`, `focus` / `set_focus`); a value that mutates in
+  place pairs them the same way (`ColorCoords::hue` / `set_hue`,
+  `Clipboard::text` / `set_text`). An action is a verb (`open_window`,
+  `request_repaint`, `clear_focus`). A read that also wakes the next frame on
+  a change has a `peek_*` twin that does not (`pointer_pos` /
   `peek_pointer_pos`).
+- **Conversions** follow std: `as_*` is a free view (`as_str`, `as_solid`),
+  `to_*` computes a new value (`to_color`, `to_srgba_u8`, `to_animated`), and
+  `from_*` is the constructor that goes the other way.
 - **Predicates.** A property of a value, or of `Ui` state, is `is_*`, `has_*`
   or `can_*` (`is_noop`, `is_approx_zero`, `is_window_open`,
   `is_focus_within`, `has_font`, `can_split`). A relation to the argument is a
@@ -113,10 +130,12 @@ against it.
   `allows`, `passes`, `approx_eq`).
 - **Edges and derived values.** What happened this frame is a past participle:
   response fields and methods (`clicked`, `changed`, `committed`, `dismissed`,
-  `repaint_requested`). A value derived from another is a past participle too
-  (`inflated`, `scaled_by`, `stepped_up`, `anchored_at`). Algebra on values is
-  a verb, as std names it (`union`, `intersect`, `min`, `max`, `clamp_to`,
-  `compose`, `combine`).
+  `repaint_requested`). The pointer's state on a widget reads the same way, as
+  a level (`hovered`, `held`, `pressed`, `focused`); a state with no
+  participle is a predicate (`Drag::is_live`). A value derived from another
+  is a past participle too (`inflated`, `scaled_by`, `stepped_up`,
+  `anchored_at`). Algebra on values is a verb, as std names it (`union`,
+  `intersect`, `min`, `max`, `clamp_to`, `compose`, `combine`).
 - **Ids.** A widget's derived ids are `*_id` associated functions on the
   widget type (`TabStrip::chip_id`, `DockView::pane_id`). A part's id is its
   owner's `id.with("part")`, documented on the owner.
@@ -128,25 +147,35 @@ against it.
   `ALL` is a full set, and `EMPTY` is empty text.
 - **Units.** A length is in logical pixels, and its name carries no unit
   (`font_size`, `thickness`, `min_thumb`). A device-pixel quantity says
-  `physical` (`Display::physical`, `GpuFrameCtx::physical_size`). An angle is
-  in radians. A fraction of a full circle is a *turn*, named `turn` or `hue`.
+  `physical` (`Display::physical`, `GpuFrameContext::physical_size`). An angle
+  is in radians. A fraction of a full circle is a *turn*, named `turn` or
+  `hue`.
   Time is `std::time::Duration`, never a float of seconds or milliseconds. Any
   other unit is named in full in the identifier (`refresh_millihertz`,
-  `percent`). A colour is linear `RgbaF32`; `SrgbaU8` is for bytes in and out.
+  `percent`). A multiplier is a `factor` (`line_height_factor`,
+  `scaled_by(factor)`), and a share of a whole is a `ratio` or a `fraction`
+  (`DockSplit::ratio`, `thickness_ratio`, `ProgressBar::new(fraction)`). A
+  colour is linear `RgbaF32`; `SrgbaU8` is for bytes in and out.
+- **Lines and corners.** The width of a line — a stroke, a border, a caret — is
+  `width` or `*_width` (`Stroke::width`, `border_width`, `caret_width`,
+  `arrow_width`). The cross size of a bar, a track or a band is `thickness` or
+  `*_thickness` (`Separator::thickness`, `track_thickness`,
+  `rule_thickness`). One corner rounding is `radius` or `*_radius`
+  (`TabsTheme::radius`, `preview_radius`), and four are `Corners`.
 
 ### Argument shapes
 
 - **Concrete types**, so a setter can be `const`. `impl Into<T>` only where
   `T` has shorthand spellings a call site wants: numbers and tuples for
-  `Spacing`, `Corners`, `Size`, `SizeSpec` and `GridCell`; a colour or a
-  gradient for `Brush`; text for `TextInput` (borrowed, owned, interned, or
-  `fmt!` output) and for `String` where the text outlives the frame (window
+  `Spacing`, `Corners`, `Size`, `Sizing`, `SizeSpec` and `GridCell`; a colour
+  or a gradient for `Brush`; text for `TextInput` (borrowed, owned, interned,
+  or `fmt!` output) and for `String` where the text outlives the frame (window
   titles); `Option<T>` for an optional argument (`style`,
-  `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme`); a
-  pair or array for `Vec2` (`Configure::position`); `SrgbaU8` where a colour
-  is stored as bytes, so a linear `RgbaF32` encodes once at the boundary
-  (`Mesh` vertices); a `&'static str` for a name (`AnimSlot`); and a source
-  enum (`FontSource`, `DragNum`, `PathBuf`).
+  `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme`,
+  `Ui::load_icons`); a pair or array for `Vec2` (`Configure::position`);
+  `SrgbaU8` where a colour is stored as bytes, so a linear `RgbaF32` encodes
+  once at the boundary (`Mesh` vertices); a `&'static str` for a name
+  (`AnimationSlot`); and a source enum (`FontSource`, `DragNum`, `PathBuf`).
 - **Required input goes in the constructor**: the bound value (`&'a mut T`),
   the options, required text. Optional input goes through setters. An
   optional binding takes `&'a mut T` in a setter named for what it binds

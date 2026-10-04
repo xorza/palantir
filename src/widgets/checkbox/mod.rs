@@ -82,7 +82,7 @@ impl<'a> Checkbox<'a> {
         let slot = self.style.unwrap_or(&theme.checkbox);
         let box_size = domain::length_at_least(slot.box_size, 1.0);
         let indicator = slot.indicator;
-        let indicator_stroke = domain::length_at_least(slot.indicator_stroke, 0.0);
+        let indicator_width = domain::length_at_least(slot.indicator_width, 0.0);
         let check = slot.check_polyline();
         let chrome = ToggleChrome {
             plan: slot.plan(&response, checked, theme.text),
@@ -94,7 +94,7 @@ impl<'a> Checkbox<'a> {
         let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
-                    Shape::polyline(&check, Stroke::new(indicator, indicator_stroke))
+                    Shape::polyline(&check, Stroke::new(indicator, indicator_width))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );

@@ -17,15 +17,15 @@ use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::dock::dock_node::{DockNode, NodeIdx};
-use crate::widgets::dock::dock_op::DockOp;
+use crate::widgets::dock::dock_node::{DockNode, NodeIndex};
+use crate::widgets::dock::dock_operation::DockOperation;
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_state::DockState;
 use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::pane_geometry::DropTarget;
 use crate::widgets::dock::pane_geometry::PaneGeometry;
-use crate::widgets::dock::split_side::SplitDir;
+use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_drag::TabDrag;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::dock::tab_group::TabGroupId;
@@ -52,49 +52,49 @@ use std::rc::Rc;
 /// on the frame it lands.
 ///
 /// ```no_run
-/// # use palantir::{DockOp, DockState, DockTabs, DockView, Ui};
+/// # use palantir::{DockOperation, DockState, DockTabs, DockView, Ui};
 /// # #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// # enum Tab { Main }
 /// # fn demo<D: DockTabs<Tab = Tab>>(ui: &mut Ui, dock: &mut DockState<Tab>, tabs: &mut D) {
-/// let mut ops: Vec<DockOp<Tab>> = Vec::new();
-/// DockView::scan(dock, ui, &mut ops);
-/// for op in ops.drain(..) {
-///     dock.apply(op);
+/// let mut operations: Vec<DockOperation<Tab>> = Vec::new();
+/// DockView::scan(dock, ui, &mut operations);
+/// for operation in operations.drain(..) {
+///     dock.apply(operation);
 /// }
-/// DockView::new(dock, &mut ops).min_pane(220.0).show(ui, tabs);
-/// for op in ops.drain(..) {
-///     dock.apply(op);
+/// DockView::new(dock, &mut operations).min_pane(220.0).show(ui, tabs);
+/// for operation in operations.drain(..) {
+///     dock.apply(operation);
 /// }
 /// # }
 /// ```
 ///
 /// [`Self::run`] does all of that in one call, for an application with
-/// no queue of its own to route the ops through.
+/// no queue of its own to route the operations through.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct DockView<'a, T> {
     widget: Widget,
     state: &'a DockState<T>,
-    ops: &'a mut Vec<DockOp<T>>,
+    operations: &'a mut Vec<DockOperation<T>>,
     min_pane: f32,
     overflow: TabOverflow,
     style: Option<&'a DockTheme>,
 }
 
 impl<'a, T: DockTab> DockView<'a, T> {
-    /// A view over `state`, emitting into `ops`.
+    /// A view over `state`, emitting into `operations`.
     ///
     /// The widget never mutates the tree. Everything it decides arrives
-    /// as an op, so an application can route dock changes through the
+    /// as an operation, so an application can route dock changes through the
     /// same queue as its own edits and keep them out of undo.
     #[track_caller]
-    pub fn new(state: &'a DockState<T>, ops: &'a mut Vec<DockOp<T>>) -> Self {
+    pub fn new(state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self {
         Self {
             widget: Widget::zstack()
                 .id(Self::dock_id(state))
                 .size((Sizing::FILL, Sizing::FILL)),
             state,
-            ops,
+            operations,
             min_pane: 0.0,
             overflow: TabOverflow::default(),
             style: None,
@@ -138,7 +138,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         let Self {
             mut widget,
             state,
-            ops,
+            operations,
             min_pane,
             overflow,
             style: _,
@@ -147,7 +147,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         let response = widget.response(ui);
         let mut cx = DockCtx {
             state,
-            ops,
+            operations,
             tabs,
             min_pane,
             overflow,
@@ -160,33 +160,33 @@ impl<'a, T: DockTab> DockView<'a, T> {
                 cx.drag_feedback(ui, tab);
             }
         });
-        Response::eager(id, ui, response)
+        Response::new(id, ui, response)
     }
 }
 
 impl<T: DockTab> DockView<'_, T> {
     /// Scan, apply, record, apply — the whole frame in one call, for an
-    /// application with no op queue of its own.
+    /// application with no operation queue of its own.
     ///
-    /// The two-call surface exists so dock ops can travel through an
+    /// The two-call surface exists so dock operations can travel through an
     /// application's own pipeline beside its other edits. An application
     /// with no such pipeline pays one line here instead.
     pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D) {
         let id = DockView::dock_id(state);
-        let mut ops = ui
+        let mut operations = ui
             .state_mut::<DockOpBuf<T>>(id)
-            .map(|buf| mem::take(&mut buf.ops))
+            .map(|buf| mem::take(&mut buf.operations))
             .unwrap_or_default();
-        ops.clear();
-        DockView::scan(state, ui, &mut ops);
-        for op in ops.drain(..) {
-            state.apply(op);
+        operations.clear();
+        DockView::scan(state, ui, &mut operations);
+        for operation in operations.drain(..) {
+            state.apply(operation);
         }
-        DockView::new(&*state, &mut ops).show(ui, tabs);
-        for op in ops.drain(..) {
-            state.apply(op);
+        DockView::new(&*state, &mut operations).show(ui, tabs);
+        for operation in operations.drain(..) {
+            state.apply(operation);
         }
-        ui.state_or_default::<DockOpBuf<T>>(id).ops = ops;
+        ui.state_or_default::<DockOpBuf<T>>(id).operations = operations;
     }
 }
 
@@ -249,7 +249,7 @@ impl<T: DockTab> DockView<'_, T> {
     /// replaced. Scanning a phase earlier settles the new arrangement
     /// first, so a switch — or a committed drop — draws on the frame it
     /// lands rather than the one after.
-    pub fn scan(state: &DockState<T>, ui: &mut Ui, ops: &mut Vec<DockOp<T>>) {
+    pub fn scan(state: &DockState<T>, ui: &mut Ui, operations: &mut Vec<DockOperation<T>>) {
         // Ahead of the chip pass: a read-only focus query that only ever
         // moves `focused`, so it composes with an activation from the
         // same scan rather than racing it.
@@ -257,7 +257,7 @@ impl<T: DockTab> DockView<'_, T> {
             .groups()
             .find(|g| g.id != state.focused() && ui.is_focus_within(Self::pane_id(state, g.id)))
         {
-            ops.push(DockOp::FocusPane { group: group.id });
+            operations.push(DockOperation::FocusPane { group: group.id });
         }
         let mut dragged = Self::drag(state, ui);
         for group in state.groups() {
@@ -269,12 +269,12 @@ impl<T: DockTab> DockView<'_, T> {
                     .left
                     .clicked()
                 {
-                    ops.push(DockOp::CloseTab { tab });
+                    operations.push(DockOperation::CloseTab { tab });
                     continue;
                 }
                 let chip = ui.response_for(TabStrip::chip_id(strip, key));
                 if chip.clicked() {
-                    ops.push(DockOp::ActivateTab { tab });
+                    operations.push(DockOperation::ActivateTab { tab });
                 }
                 if dragged.is_none() && chip.left.drag.started() {
                     dragged = Some(tab);
@@ -297,7 +297,7 @@ impl<T: DockTab> DockView<'_, T> {
         let chip = TabStrip::chip_id(Self::strip_id(state, address.group), Self::tab_key(tab));
         if ui.response_for(chip).left.drag.stopped() {
             if let Some(target) = Self::drop_target(state, ui) {
-                ops.push(DockOp::MoveTab {
+                operations.push(DockOperation::MoveTab {
                     tab,
                     to: target.drop,
                 });
@@ -386,18 +386,20 @@ impl<T> Configure for DockView<'_, T> {
 }
 
 /// The scratch [`DockView::run`] keeps between frames, so an application
-/// that never spells the op vocabulary still allocates once rather than
+/// that never spells the operation vocabulary still allocates once rather than
 /// once a frame.
 #[derive(Debug)]
 struct DockOpBuf<T> {
-    ops: Vec<DockOp<T>>,
+    operations: Vec<DockOperation<T>>,
 }
 
 /// Hand-written rather than derived: a derive would demand `T: Default`,
 /// and a tab key is an application enum with no meaningful default.
 impl<T> Default for DockOpBuf<T> {
     fn default() -> Self {
-        Self { ops: Vec::new() }
+        Self {
+            operations: Vec::new(),
+        }
     }
 }
 
@@ -415,7 +417,7 @@ struct ChipRects {
 #[derive(Debug)]
 struct DockCtx<'c, T, D> {
     state: &'c DockState<T>,
-    ops: &'c mut Vec<DockOp<T>>,
+    operations: &'c mut Vec<DockOperation<T>>,
     tabs: &'c mut D,
     min_pane: f32,
     overflow: TabOverflow,
@@ -426,17 +428,21 @@ struct DockCtx<'c, T, D> {
 
 impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
     /// One node: a split onto a [`Splitter`], a leaf onto a pane.
-    fn node(&mut self, ui: &mut Ui, idx: NodeIdx, path: DockPath) {
+    fn node(&mut self, ui: &mut Ui, idx: NodeIndex, path: DockPath) {
         let state = self.state;
         match state.node(idx) {
             DockNode::Group(group) => self.group(ui, group),
             DockNode::Split(split) => {
-                let (dir, ratio, first, second) =
-                    (split.dir(), split.ratio(), split.first(), split.second());
+                let (dir, ratio, first, second) = (
+                    split.direction(),
+                    split.ratio(),
+                    split.first(),
+                    split.second(),
+                );
                 let mut live = ratio;
                 let splitter = match dir {
-                    SplitDir::Row => Splitter::row(&mut live),
-                    SplitDir::Column => Splitter::column(&mut live),
+                    SplitDirection::Row => Splitter::row(&mut live),
+                    SplitDirection::Column => Splitter::column(&mut live),
                 };
                 let hit = splitter
                     .id(DockView::splitter_id(state, path))
@@ -449,9 +455,9 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                         self.node(ui, child, child_path);
                     });
                 // The widget wrote the divider drag into `live`; the
-                // tree itself only changes through the recorded op.
+                // tree itself only changes through the recorded operation.
                 if hit.changed {
-                    self.ops.push(DockOp::SetRatio {
+                    self.operations.push(DockOperation::SetRatio {
                         split: path,
                         ratio: live,
                     });
@@ -513,8 +519,8 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             hit.keyed.or(hit.menu_picked)
         });
         // Everything the scan a phase earlier could not see. A pointer
-        // click on a chip was already turned into an op there, and
-        // pushing it again here would put the same op in the queue
+        // click on a chip was already turned into an operation there, and
+        // pushing it again here would put the same operation in the queue
         // twice — but that scan reads chip and close-button ids, and
         // neither a keyboard move nor a popup entry has one.
         //
@@ -526,7 +532,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         if let Some(slot) = activated
             && let Some(&tab) = group.tabs.get(slot)
         {
-            self.ops.push(DockOp::ActivateTab { tab });
+            self.operations.push(DockOperation::ActivateTab { tab });
         }
         for &tab in &group.tabs {
             let key = DockView::tab_key(tab);
@@ -539,7 +545,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             {
                 ContextMenu::open(ui, menu_id, p);
             }
-            let ops = &mut *self.ops;
+            let operations = &mut *self.operations;
             let tabs = &mut *self.tabs;
             ContextMenu::for_id(menu_id)
                 .size((Sizing::HUG, Sizing::HUG))
@@ -549,7 +555,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                         DockTabMenu {
                             tab,
                             group: group.id,
-                            ops,
+                            operations,
                             close,
                         },
                     );
@@ -571,7 +577,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             let r = target.highlight;
             let preview = Background::rounded(
                 self.theme.preview_fill,
-                Corners::all(self.theme.preview_corner),
+                Corners::all(self.theme.preview_radius),
             )
             .with_border(self.theme.preview_stroke);
             ui.layer(Layer::Tooltip)

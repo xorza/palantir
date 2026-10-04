@@ -233,8 +233,8 @@ impl<'a> TabStrip<'a> {
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_bg = t.strip.clone();
-        let rule = Background::fill(t.hline);
-        let rule_thickness = t.hline_thickness;
+        let rule = Background::fill(t.rule);
+        let rule_thickness = t.rule_thickness;
 
         let mut hits = StripHits::default();
         widget.record(ui, Some(&strip_bg), |ui| {
@@ -292,7 +292,7 @@ impl<'a> TabStrip<'a> {
             drag_stopped,
         } = hits;
         TabStripResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             clicked,
             keyed,
             menu_picked,
@@ -415,12 +415,12 @@ impl ChipCtx<'_> {
             .plan(&state, selected, self.ambient)
             .apply(ui, &mut widget);
         let cap_bg = if selected {
-            Background::rounded(t.cap(self.focused), Corners::top(t.corner))
+            Background::rounded(t.cap(self.focused), Corners::top(t.radius))
         } else {
             Background::NONE
         };
         let inner_bg = Background {
-            corners: Corners::top((t.corner - cap).max(0.0)),
+            corners: Corners::top((t.radius - cap).max(0.0)),
             ..look.background
         };
         // The selected chip lifts its inner top inset by the cap, so the
@@ -538,7 +538,7 @@ impl GlyphButton {
         Self {
             background: look.background.clone(),
             text: TextStyle {
-                line_height_mult: 1.0,
+                line_height_factor: 1.0,
                 ..look.text.apply(&ambient)
             },
             state,

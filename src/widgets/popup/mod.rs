@@ -63,7 +63,7 @@ impl Popup {
     /// of a rect, and the gap off it — so this is the one constructor and
     /// the four below are sugar for the shapes a dropdown takes. An
     /// application holding an anchor already (from
-    /// [`LayerScope::anchored`](crate::LayerScope::anchored), or one it
+    /// [`LayerScope::anchor`](crate::LayerScope::anchor), or one it
     /// computed) hands it straight over:
     /// `Popup::new(Anchor::at_point(p).with_gap(4.0))`.
     #[track_caller]
@@ -139,7 +139,7 @@ impl Popup {
     /// but doesn't learn where the menu was opened until `show` reads the
     /// state map. The constructors stay the canonical way in; this is for
     /// a wrapper that cannot use them.
-    pub const fn anchored(mut self, anchor: Anchor) -> Self {
+    pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }
@@ -194,7 +194,7 @@ impl Popup {
 }
 
 impl Popup {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
@@ -202,15 +202,15 @@ impl Popup {
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn background(mut self, bg: Background) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
         self
     }
 
-    /// Paint `bg` as this widget's background unless the caller set one —
+    /// Paint `background` as this widget's background unless the caller set one —
     /// the chrome peer of
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
@@ -218,12 +218,12 @@ impl Popup {
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn default_background(mut self, bg: Background) -> Self {
-        bg.validate();
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(background);
         }
         self
     }

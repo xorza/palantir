@@ -130,7 +130,7 @@ impl TextBackend {
     }
 
     /// The shaper this backend encodes against, for lending to a `GpuView`
-    /// through [`GpuInitCtx`](crate::GpuInitCtx) — the one the whole window is
+    /// through [`GpuInitContext`](crate::GpuInitContext) — the one the whole window is
     /// already drawing text with.
     pub(crate) const fn shaper(&self) -> &TextShaper {
         &self.shaper

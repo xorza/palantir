@@ -173,7 +173,7 @@ fn a_drag_survives_the_pointer_leaving_the_surface() {
     // 90 - 40 = 50 px of travel, held across the leave.
     let r = h.response_in(id(), build_clickable);
     assert_eq!(r.left.drag.delta(), Some(Vec2::new(50.0, 0.0)));
-    assert!(r.left.drag.dragging(), "the capture is still latched");
+    assert!(r.left.drag.is_live(), "the capture is still latched");
     assert!(
         !r.left.drag.stopped(),
         "pointer-left is not a release; the stop edge must wait for it",
@@ -201,13 +201,13 @@ fn drag_stopped_edge_fires_once_on_release() {
 
     // Mid-drag: no stop edge, drag observable.
     let r = h.response_in(id(), build_draggable);
-    assert!(r.middle.drag.dragging() && !r.middle.drag.stopped());
+    assert!(r.middle.drag.is_live() && !r.middle.drag.stopped());
 
     // Release frame: the drag itself is gone, only the edge remains,
     // and it carries the button.
     h.release_button(PointerButton::Middle);
     let r = h.response_in(id(), build_draggable);
-    assert!(!r.middle.drag.dragging(), "release destroys the drag state");
+    assert!(!r.middle.drag.is_live(), "release destroys the drag state");
     assert!(r.middle.drag.stopped());
     assert!(!r.left.drag.stopped(), "edge is button-filtered");
 
@@ -265,7 +265,7 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
         r.middle.drag.started(),
         "drag-start edge must fire on the threshold-crossing move",
     );
-    assert!(r.middle.drag.dragging());
+    assert!(r.middle.drag.is_live());
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
     let r = h.response_in(id(), build_draggable);
     assert_eq!(r.middle.drag.delta(), None);
     assert!(!r.middle.drag.started());
-    assert!(!r.middle.drag.dragging());
+    assert!(!r.middle.drag.is_live());
 }
 
 #[test]
@@ -344,9 +344,9 @@ fn left_wins_over_simultaneously_latched_middle() {
     let d = r.left.drag.delta().expect("a drag must be active");
     // Left was pressed at (20, 20); current pointer (100, 60).
     assert_eq!(d, Vec2::new(80.0, 40.0));
-    assert!(r.left.drag.dragging());
+    assert!(r.left.drag.is_live());
     assert!(
-        !r.middle.drag.dragging(),
+        !r.middle.drag.is_live(),
         "left has priority: middle is captured but not the active drag",
     );
 }
@@ -363,15 +363,15 @@ fn releasing_priority_button_promotes_lower_priority() {
     h.press_button(PointerButton::Middle);
     h.drag_to(Vec2::new(80.0, 60.0)); // both latch
 
-    assert!(h.response_in(id(), build_draggable).left.drag.dragging());
+    assert!(h.response_in(id(), build_draggable).left.drag.is_live());
 
     h.release();
     let r = h.response_in(id(), build_draggable);
     assert!(
-        r.middle.drag.dragging(),
+        r.middle.drag.is_live(),
         "releasing left must promote middle to the active drag",
     );
-    assert!(!r.left.drag.dragging());
+    assert!(!r.left.drag.is_live());
     // Middle's anchor is the middle press position (same frame as
     // left's, so (20, 20)); delta = current (80, 60) - press (20, 20).
     assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
@@ -393,7 +393,7 @@ fn drag_zero_state_for_uncaptured_widget() {
     });
     assert!(target.started(), "control: the captured widget latched");
     assert_eq!(other.delta(), None);
-    assert!(!other.dragging());
+    assert!(!other.is_live());
     assert!(!other.started());
 }
 
@@ -673,7 +673,7 @@ fn a_capture_evicted_mid_drag_still_ends_with_its_stop_edge() {
     h.press_at(Vec2::new(40.0, 40.0));
     h.drag_to(Vec2::new(90.0, 40.0));
     assert!(
-        h.response_in(id(), build_clickable).left.drag.dragging(),
+        h.response_in(id(), build_clickable).left.drag.is_live(),
         "the drag is live before the widget goes away",
     );
 
@@ -683,7 +683,7 @@ fn a_capture_evicted_mid_drag_still_ends_with_its_stop_edge() {
     // It comes back, and reads the edge its gesture owed it.
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.drag.stopped(), "eviction owes the stop edge");
-    assert!(!r.left.drag.dragging(), "and the drag itself is over");
+    assert!(!r.left.drag.is_live(), "and the drag itself is over");
     assert_eq!(
         r.left.click_count(),
         0,

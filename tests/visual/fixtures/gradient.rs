@@ -257,7 +257,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
 /// Pins the radial + conic shader paths end-to-end. Two side-by-side
 /// frames: a centred radial (yellow core fading to navy) and a 4-stop
 /// conic colour wheel. Mismatch flags drift in `eval_fill`'s radial /
-/// conic branches, the atlas (stops, interp) keying, or the
+/// conic branches, the atlas (stops, interpolation) keying, or the
 /// `fill_axis` payload packing.
 #[test]
 fn radial_and_conic_gradient_matches_golden() {

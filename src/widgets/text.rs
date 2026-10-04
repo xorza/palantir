@@ -36,7 +36,7 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 /// global [`crate::TextStyle`] from [`crate::Theme::text`]. Each axis also
 /// has a setter of its own — [`Self::color`], [`Self::font_size`],
 /// [`Self::family`], [`Self::weight`], [`Self::slant`],
-/// [`Self::line_height_mult`] — which overrides that one axis of whatever the
+/// [`Self::line_height_factor`] — which overrides that one axis of whatever the
 /// bundle resolved to:
 ///
 /// ```
@@ -118,15 +118,15 @@ impl<'a> Text<'a> {
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
-    /// style's `line_height_mult`. `1.0` sets the lines solid. `mult`:
+    /// style's `line_height_factor`. `1.0` sets the lines solid. `factor`:
     /// *positive*, as a theme file's is.
     ///
     /// # Panics
     ///
-    /// Panics unless `mult` is [positive](crate::widget::domain::positive).
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
     #[track_caller]
-    pub const fn line_height_mult(mut self, mult: f32) -> Self {
-        self.overrides.line_height_mult = Some(domain::positive(mult));
+    pub const fn line_height_factor(mut self, factor: f32) -> Self {
+        self.overrides.line_height_factor = Some(domain::positive(factor));
         self
     }
 
@@ -191,7 +191,7 @@ impl<'a> Text<'a> {
     /// otherwise.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         // Folded back into a `TextStyle` rather than a `GlyphFont`, so the
-        // `line_height_mult` formula keeps its one owner.
+        // `line_height_factor` formula keeps its one owner.
         let style = self.overrides.apply(self.style.unwrap_or(&ui.theme().text));
         let color = style.color;
         let font = style.font();

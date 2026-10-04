@@ -65,7 +65,7 @@ const EXCLUDED: &[(&str, &str)] = &[
     ),
     (
         "spinner",
-        "animates — a PaintAnim wakes the host every frame, so `frame/cached_*` \
+        "animates — a PaintAnimation wakes the host every frame, so `frame/cached_*` \
              could never settle to no damage",
     ),
     (

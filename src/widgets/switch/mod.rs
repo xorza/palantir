@@ -82,7 +82,7 @@ impl<'a> Switch<'a> {
         let inset = domain::length_at_least(slot.indicator_inset, 0.0);
         let aspect = slot.track_aspect;
         let knob_color = slot.indicator;
-        let anim = slot.defaults.anim;
+        let anim = slot.defaults.animation;
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
             plan: slot.plan(&response, on, theme.text),

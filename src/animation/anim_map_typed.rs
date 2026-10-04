@@ -1,9 +1,9 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::common::typed_stores::TypedStore;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use rustc_hash::FxHashMap;
@@ -14,7 +14,7 @@ use std::collections::hash_map::Entry;
 /// `Ui::animate::<T>` call.
 #[derive(Debug)]
 pub(crate) struct AnimMapTyped<T: Animatable> {
-    pub(super) rows: FxHashMap<(WidgetId, AnimSlot), AnimRow<T>>,
+    pub(super) rows: FxHashMap<(WidgetId, AnimationSlot), AnimRow<T>>,
 }
 
 impl<T: Animatable> Default for AnimMapTyped<T> {
@@ -35,7 +35,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// Forget `id`'s `slot`, so a later animated call starts fresh from
     /// whatever target it is given. The key shape is this table's own,
     /// which is why no caller spells it.
-    pub(super) fn drop_row(&mut self, id: WidgetId, slot: AnimSlot) {
+    pub(super) fn drop_row(&mut self, id: WidgetId, slot: AnimationSlot) {
         self.rows.remove(&(id, slot));
     }
 
@@ -48,19 +48,19 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// frame**, as a CSS transition shows its start value on the frame of
     /// the change: the `dt` before it is time that passed while the row was
     /// at rest — after an idle window, the whole 0.1 s clamp, and spending
-    /// it would use up 99.5 % of `AnimSpec::FAST` before anything was
+    /// it would use up 99.5 % of `AnimationSpec::FAST` before anything was
     /// painted. A row already in flight spends `dt` as usual, so a target
     /// that moves every frame keeps moving.
     ///
     /// Caller (`Ui::animate`) is responsible for filtering instant
-    /// specs (`AnimSpec::is_instant()`) before calling this — tick
+    /// specs (`AnimationSpec::is_instant()`) before calling this — tick
     /// itself assumes a real motion spec, no degenerate cases.
     pub(crate) fn tick(
         &mut self,
         id: WidgetId,
-        slot: AnimSlot,
+        slot: AnimationSlot,
         target: T,
-        spec: AnimSpec,
+        spec: AnimationSpec,
         dt: f32,
         render_frame_id: u64,
     ) -> TickResult<T> {
@@ -211,9 +211,9 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
-    use crate::animation::anim_slot::AnimSlot;
-    use crate::animation::anim_spec::AnimSpec;
     use crate::animation::animatable::Animatable;
+    use crate::animation::animation_slot::AnimationSlot;
+    use crate::animation::animation_spec::AnimationSpec;
     use crate::primitives::identity::widget_id::WidgetId;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -235,9 +235,9 @@ pub(crate) mod internals {
         pub(crate) fn step(
             &mut self,
             id: WidgetId,
-            slot: AnimSlot,
+            slot: AnimationSlot,
             target: T,
-            spec: AnimSpec,
+            spec: AnimationSpec,
             dt: f32,
         ) -> TickResult<T> {
             self.tick(id, slot, target, spec, dt, next_frame())

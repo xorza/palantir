@@ -75,13 +75,13 @@ impl<T: 'static> fmt::Debug for HostHandle<T> {
 }
 
 impl<T: 'static> HostHandle<T> {
-    /// Request the host paint one frame of the window named by `win`.
+    /// Request the host paint one frame of the window named by `window`.
     /// Cheap and lock-free; safe to call from any thread. Drops silently
     /// if the event loop has already exited or the window is gone —
     /// nothing is owned by the poke, so an undelivered repaint against a
     /// closing loop costs nothing. Contrast [`Self::run_on_main`].
-    pub fn request_repaint(&self, win: WindowToken) {
-        let _ = self.proxy.send_event(UserEvent::Repaint(win));
+    pub fn request_repaint(&self, window: WindowToken) {
+        let _ = self.proxy.send_event(UserEvent::Repaint(window));
     }
 
     /// Schedule `f` to run on the main (event-loop) thread with `&mut`

@@ -12,8 +12,8 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::scene::layer::Layer;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
 use crate::shape::Shape;
 use crate::shape::record::ShapeRecord;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
@@ -282,7 +282,7 @@ fn blinking_text(ui: &mut Ui, text: &str) {
             .align(Align::default())
             .family(FontFamily::SANS)
             .weight(FontWeight::REGULAR),
-            PaintAnim::alpha(0.0, 1.0)
+            PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(HALF)
                 .with_period(HALF * 2)
                 .with_steps(2)

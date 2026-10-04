@@ -1,4 +1,4 @@
-//! Per-`(WidgetId, AnimSlot)` animation rows, generic over
+//! Per-`(WidgetId, AnimationSlot)` animation rows, generic over
 //! [`Animatable`].
 //!
 //! Storage is type-erased: [`AnimMap`] holds one boxed
@@ -10,9 +10,9 @@
 
 pub(crate) mod anim_map_typed;
 pub(crate) mod anim_row;
-pub(crate) mod anim_slot;
-pub(crate) mod anim_spec;
 pub(crate) mod animatable;
+pub(crate) mod animation_slot;
+pub(crate) mod animation_spec;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod duration;
@@ -20,9 +20,9 @@ pub(crate) mod easing;
 mod spring;
 
 use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::common::typed_stores::{Drained, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 
@@ -54,13 +54,13 @@ impl AnimMap {
     pub(crate) fn animate<T: Animatable>(
         &mut self,
         id: WidgetId,
-        slot: impl Into<AnimSlot>,
+        slot: impl Into<AnimationSlot>,
         target: T,
-        spec: Option<AnimSpec>,
+        spec: Option<AnimationSpec>,
         dt: f32,
         frame: u64,
     ) -> TickResult<T> {
-        if self.is_empty() && spec.is_none_or(AnimSpec::is_instant) {
+        if self.is_empty() && spec.is_none_or(AnimationSpec::is_instant) {
             return TickResult {
                 current: target,
                 settled: true,
@@ -103,7 +103,7 @@ impl AnimMap {
     /// poked this frame, then clear the `touched` flags on the rows
     /// that survive. Called from `FrameCycle::finalize_frame` once per frame; the
     /// `removed` set is the same one that drives `StateMap` / text /
-    /// layout sweeps. A `(WidgetId, AnimSlot)` row goes away if
+    /// layout sweeps. A `(WidgetId, AnimationSlot)` row goes away if
     /// either (a) the widget itself disappeared or (b) the call site
     /// that owns the slot stopped reaching for it — without (b),
     /// abandoned slots would accumulate forever for any widget

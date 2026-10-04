@@ -159,7 +159,7 @@ impl<'a> ColorButton<'a> {
         let (changed, committed) = opened.inner.unwrap_or_default();
 
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }

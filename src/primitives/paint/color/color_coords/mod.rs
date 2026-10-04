@@ -92,7 +92,7 @@ impl ColorCoords {
 
     /// Saturation, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
     /// the model holds as non-finite.
-    pub const fn sat(self) -> f32 {
+    pub const fn saturation(self) -> f32 {
         domain::fraction(match self {
             Self::Okhsv(c) => c.s,
             Self::Hsv(c) => c.s,
@@ -101,7 +101,7 @@ impl ColorCoords {
 
     /// Value, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
     /// the model holds as non-finite.
-    pub const fn val(self) -> f32 {
+    pub const fn value(self) -> f32 {
         domain::fraction(match self {
             Self::Okhsv(c) => c.v,
             Self::Hsv(c) => c.v,
@@ -122,7 +122,7 @@ impl ColorCoords {
     }
 
     /// Set the saturation, as a *fraction*.
-    pub const fn set_sat(&mut self, s: f32) {
+    pub const fn set_saturation(&mut self, s: f32) {
         let s = domain::fraction(s);
         match self {
             Self::Okhsv(c) => c.s = s,
@@ -131,7 +131,7 @@ impl ColorCoords {
     }
 
     /// Set the value, as a *fraction*.
-    pub const fn set_val(&mut self, v: f32) {
+    pub const fn set_value(&mut self, v: f32) {
         let v = domain::fraction(v);
         match self {
             Self::Okhsv(c) => c.v = v,

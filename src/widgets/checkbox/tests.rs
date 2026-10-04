@@ -6,7 +6,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::theme::palette::Palette;
 use glam::{UVec2, Vec2};
 
-/// The tick is themed, not baked in: `ToggleTheme::check_pts` holds it
+/// The tick is themed, not baked in: `ToggleTheme::check_points` holds it
 /// in unit space and `check_polyline` scales it by `box_size`, so the
 /// drawn polyline tracks both.
 ///
@@ -75,7 +75,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
 
     // Retheme the shape itself: a straight diagonal, not a tick.
     let diagonal = ToggleTheme {
-        check_pts: [
+        check_points: [
             Vec2::new(0.0, 0.0),
             Vec2::new(0.5, 0.5),
             Vec2::new(1.0, 1.0),

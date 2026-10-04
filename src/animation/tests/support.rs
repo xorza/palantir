@@ -2,9 +2,9 @@
 //! asserts on.
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -15,7 +15,7 @@ use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);
 
-pub(super) const SLOT: AnimSlot = AnimSlot::new("test");
+pub(super) const SLOT: AnimationSlot = AnimationSlot::new("test");
 
 pub(super) fn wid(s: &'static str) -> WidgetId {
     WidgetId::from_hash(s)
@@ -112,6 +112,6 @@ pub(super) fn closed_form_settle_step(
         .unwrap()
 }
 
-pub(super) fn linear_100ms() -> AnimSpec {
-    AnimSpec::duration(Duration::from_millis(100), Easing::Linear)
+pub(super) fn linear_100ms() -> AnimationSpec {
+    AnimationSpec::duration(Duration::from_millis(100), Easing::Linear)
 }

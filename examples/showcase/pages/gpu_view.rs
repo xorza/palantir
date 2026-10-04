@@ -15,7 +15,7 @@ use std::rc::Rc;
 use crate::support;
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
-use palantir::{Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Ui};
+use palantir::{Configure, GpuFrameContext, GpuInitContext, GpuPaint, GpuView, Sense, Sizing, Ui};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -120,7 +120,7 @@ impl Cube {
 }
 
 impl GpuPaint for Cube {
-    fn init(&mut self, ctx: &GpuInitCtx<'_>) {
+    fn init(&mut self, ctx: &GpuInitContext<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("showcase.cube.shader"),
@@ -216,7 +216,7 @@ impl GpuPaint for Cube {
         });
     }
 
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
         // Slow auto-rotation, framerate-independent via real `dt`
         // (~34°/s). `dt` is ZERO on the first paint, so the cube simply
         // holds its initial pose that frame.

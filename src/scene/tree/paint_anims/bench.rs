@@ -1,6 +1,6 @@
 use crate::bench::Run;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
+use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::scene::tree::paint_anims::{PaintAnimEntry, PaintAnims, curves};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
@@ -12,7 +12,7 @@ const NOW: Duration = Duration::from_millis(250);
 fn last_shape_registry() -> PaintAnims {
     let mut anims = PaintAnims::default();
     anims.push_entry(PaintAnimEntry {
-        anim: PaintAnim::alpha(0.0, 1.0)
+        anim: PaintAnimation::alpha(0.0, 1.0)
             .with_period(Duration::from_secs(1))
             .with_steps(2)
             .with_repeat(PaintRepeat::Settle(Duration::MAX))

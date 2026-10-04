@@ -158,7 +158,7 @@ impl<'a> MenuItem<'a> {
         }
         // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
-        let resp = Response::eager(id, ui, response);
+        let resp = Response::new(id, ui, response);
         if resp.clicked() {
             popup.close();
         }

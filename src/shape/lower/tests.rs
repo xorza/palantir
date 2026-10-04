@@ -12,7 +12,7 @@ use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Interp, Spread};
+use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradients::GradientId;
@@ -184,10 +184,14 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
 
     let mut mode_ids = HashSet::new();
     for spread in [Spread::Pad, Spread::Repeat, Spread::Reflect] {
-        for interp in [Interp::Oklab, Interp::Linear] {
+        for interpolation in [Interpolation::Oklab, Interpolation::Linear] {
             let id = gradient_id(
                 &mut store,
-                &Brush::Linear(base.clone().with_spread(spread).with_interp(interp)),
+                &Brush::Linear(
+                    base.clone()
+                        .with_spread(spread)
+                        .with_interpolation(interpolation),
+                ),
             );
             assert!(
                 mode_ids.insert(id),

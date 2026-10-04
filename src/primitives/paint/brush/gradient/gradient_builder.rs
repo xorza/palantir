@@ -3,7 +3,9 @@
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::{GradientStopsBuilder, Stop};
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
+use crate::primitives::paint::brush::gradient::{
+    Gradient, GradientGeometry, Interpolation, Spread,
+};
 use crate::primitives::paint::color::RgbaF32;
 
 /// Chainable, allocation-free authoring builder for [`Gradient`].
@@ -12,7 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// [`Self::build`] and implicit conversions panic if fewer than two were
 /// added.
 ///
-/// `with_spread` / `with_interp` are spelled the same here as on the
+/// `with_spread` / `with_interpolation` are spelled the same here as on the
 /// finished [`Gradient`] on purpose, so a caller needn't know which side
 /// of the build it is holding.
 #[derive(Clone, Debug)]
@@ -21,7 +23,7 @@ pub struct GradientBuilder<G> {
     geometry: G,
     stops: GradientStopsBuilder,
     spread: Spread,
-    interp: Interp,
+    interpolation: Interpolation,
 }
 
 impl<G: GradientGeometry> GradientBuilder<G> {
@@ -30,7 +32,7 @@ impl<G: GradientGeometry> GradientBuilder<G> {
             geometry,
             stops: GradientStopsBuilder::default(),
             spread: Spread::default(),
-            interp: G::DEFAULT_INTERP,
+            interpolation: G::DEFAULT_INTERPOLATION,
         }
     }
 
@@ -50,8 +52,8 @@ impl<G: GradientGeometry> GradientBuilder<G> {
 
     /// Override the colour space interpolation runs in.
     /// Builder-style.
-    pub const fn interp(mut self, interp: Interp) -> Self {
-        self.interp = interp;
+    pub const fn interpolation(mut self, interpolation: Interpolation) -> Self {
+        self.interpolation = interpolation;
         self
     }
 
@@ -61,7 +63,7 @@ impl<G: GradientGeometry> GradientBuilder<G> {
             geometry: self.geometry,
             ramp: ColorRamp {
                 stops: self.stops.build(),
-                interp: self.interp,
+                interpolation: self.interpolation,
             },
             spread: self.spread,
         }

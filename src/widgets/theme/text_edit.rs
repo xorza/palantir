@@ -115,12 +115,12 @@ impl TextEditTheme {
         // lands. Picking 1.5 px gives focused its emphasis without
         // the layout shift.
         let stroke_w = 1.5;
-        let normal_bg = Background::rounded(p.elem_mid, radius)
+        let normal_bg = Background::rounded(p.element_mid, radius)
             .with_border(Stroke::new(p.border_soft(), stroke_w));
-        let focused_bg = Background::rounded(p.elem_mid, radius)
+        let focused_bg = Background::rounded(p.element_mid, radius)
             .with_border(Stroke::new(p.border_focused, stroke_w));
-        let disabled_bg =
-            Background::rounded(p.elem, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
+        let disabled_bg = Background::rounded(p.element, radius)
+            .with_border(Stroke::new(p.border_soft(), stroke_w));
         // Selection = accent at ~25% alpha — readable wash that doesn't
         // obscure the glyphs underneath.
         let selection = p.accent.with_alpha(0.25);
@@ -151,7 +151,7 @@ impl TextEditTheme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(5.0, 3.0),
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

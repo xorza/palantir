@@ -27,7 +27,7 @@ pub(crate) enum Origin {
 /// the layout engine reads [`Self::available`] and [`Self::origin`] off it
 /// two passes after the record that set it, and the measure cache keys the
 /// root on the available size it derives. [`LayerScope`](crate::LayerScope)
-/// is its public face — `fixed_at` and `anchored` write [`Self::origin`],
+/// is its public face — `fixed_at` and `anchor` write [`Self::origin`],
 /// `max_size` writes the other field — which is why nothing publishes this
 /// type as a value. [`Anchor`] is one of the two origin rules it holds, and the
 /// only one with enough parameters to need a name of its own.

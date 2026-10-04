@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnim, PaintRepeat, Shape, curves};
+use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
     Background, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RgbaF32, Sizing,
     Stroke, Text,
@@ -83,7 +83,7 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
                     if k.spin {
                         ui.add_shape_animated(
                             line,
-                            PaintAnim::turn(0.0, 1.0)
+                            PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs(4))
                                 .with_repeat(PaintRepeat::Forever)

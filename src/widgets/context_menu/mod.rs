@@ -83,7 +83,7 @@ pub struct ContextMenu<'a> {
     /// so the caller's [`Configure`] calls land on the node that
     /// actually records — there is no second node to keep in sync or
     /// swap in at `show`. Its anchor is a placeholder until `show`
-    /// re-anchors it (see [`Popup::anchored`]); a closed menu returns
+    /// re-anchors it (see [`Popup::anchor`]); a closed menu returns
     /// before recording, so the placeholder never places anything.
     ///
     /// It owns the chrome too, so `.background(..)` and the theme
@@ -176,7 +176,7 @@ impl<'a> ContextMenu<'a> {
         let resp = self
             .popup
             .layer(Layer::Menu)
-            .anchored(Anchor::at_point(open_at))
+            .anchor(Anchor::at_point(open_at))
             .default_background(ctx.panel.clone())
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
@@ -217,7 +217,7 @@ impl<'a> ContextMenu<'a> {
 }
 
 impl ContextMenu<'_> {
-    /// Paint `bg` as the menu panel's background.
+    /// Paint `background` as the menu panel's background.
     ///
     /// Unset is the default; the theme fallback in [`Self::show`] fills
     /// it in from the resolved theme's `panel`. Pass
@@ -225,14 +225,14 @@ impl ContextMenu<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.popup = self.popup.background(bg);
+    pub const fn background(mut self, background: Background) -> Self {
+        self.popup = self.popup.background(background);
         self
     }
 
-    /// Paint `bg` as this widget's background unless the caller set one —
+    /// Paint `background` as this widget's background unless the caller set one —
     /// the chrome peer of
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
@@ -240,10 +240,10 @@ impl ContextMenu<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn default_background(mut self, bg: Background) -> Self {
-        self.popup = self.popup.default_background(bg);
+    pub const fn default_background(mut self, background: Background) -> Self {
+        self.popup = self.popup.default_background(background);
         self
     }
 }

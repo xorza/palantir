@@ -135,33 +135,33 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
         ("infinite font", "font_size: 16.0", "font_size: inf"),
         (
             "zero line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: 0.0",
+            "line_height_factor: 1.2",
+            "line_height_factor: 0.0",
         ),
         (
             "negative line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: -1.0",
+            "line_height_factor: 1.2",
+            "line_height_factor: -1.0",
         ),
         (
             "sub-epsilon line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: 0.000001",
+            "line_height_factor: 1.2",
+            "line_height_factor: 0.000001",
         ),
         (
             "epsilon line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: 0.00000625",
+            "line_height_factor: 1.2",
+            "line_height_factor: 0.00000625",
         ),
         (
             "NaN line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: NaN",
+            "line_height_factor: 1.2",
+            "line_height_factor: NaN",
         ),
         (
             "infinite line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: inf",
+            "line_height_factor: 1.2",
+            "line_height_factor: inf",
         ),
         (
             "zero override font",
@@ -200,7 +200,7 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
         theme.button.looks.normal.text.font_size = Some(f32::MAX / 2.0);
     };
     let tight_override = |theme: &mut Theme| {
-        theme.button.looks.normal.text.line_height_mult = Some(0.001);
+        theme.button.looks.normal.text.line_height_factor = Some(0.001);
     };
     let untouched = |_: &mut Theme| {};
     for (label, setup, factor, expected) in [

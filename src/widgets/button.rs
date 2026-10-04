@@ -109,7 +109,7 @@ impl<'a> Button<'a> {
         });
         // Eager: theme picking already paid for `response_for`, so
         // hand the cached response to the caller.
-        Response::eager(id, ui, response)
+        Response::new(id, ui, response)
     }
 }
 
