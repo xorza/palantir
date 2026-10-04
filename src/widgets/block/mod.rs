@@ -46,6 +46,10 @@ impl Block {
     ///
     /// `Block` is unthemed: there is no slot to fall back to, so an unset
     /// background paints nothing.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn background(mut self, bg: Background) -> Self {
         bg.validate();
@@ -58,6 +62,10 @@ impl Block {
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
     /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn default_background(mut self, bg: Background) -> Self {
         bg.validate();

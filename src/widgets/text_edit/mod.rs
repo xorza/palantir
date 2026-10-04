@@ -181,16 +181,24 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Fill colour for the buffer, overriding the resolved look's.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(domain::color(color));
         self
     }
 
-    /// Font size in logical px, overriding the resolved look's.
+    /// Font size in logical px, a *length*, overriding the resolved look's.
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
         self.overrides.font_size_px = Some(domain::length(px));
@@ -198,9 +206,15 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
-    /// look's `line_height_mult`. Sets the caret's height with it.
+    /// look's `line_height_mult`. Sets the caret's height with it. `mult`:
+    /// *positive*, as a theme file's is.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `mult` is [positive](crate::widget::domain::positive).
+    #[track_caller]
     pub const fn line_height_mult(mut self, mult: f32) -> Self {
-        self.overrides.line_height_mult = Some(mult);
+        self.overrides.line_height_mult = Some(domain::positive(mult));
         self
     }
 

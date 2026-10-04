@@ -293,6 +293,7 @@ fn widget_setters_check_their_kinds() {
     use crate::widgets::separator::Separator;
     use crate::widgets::spinner::Spinner;
     use crate::widgets::text::Text;
+    use crate::widgets::text_edit::TextEdit;
 
     const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
     let length_cases: [fn(f32); 4] = [
@@ -305,6 +306,21 @@ fn widget_setters_check_their_kinds() {
         set(0.0);
         for bad in [f32::NAN, f32::INFINITY, -1.0] {
             panic_probe::assert_panics_with(domain::LENGTH_RULE, || set(bad));
+        }
+    }
+    // A line height is positive, as a theme file states it: zero leading
+    // stacks every line on the first.
+    let positive_cases: [fn(f32); 2] = [
+        |v| drop(Text::new("t").line_height_mult(v)),
+        |v| {
+            let mut buf = String::new();
+            drop(TextEdit::new(&mut buf).line_height_mult(v));
+        },
+    ];
+    for set in positive_cases {
+        set(f32::MIN_POSITIVE);
+        for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            panic_probe::assert_panics_with(domain::POSITIVE_RULE, || set(bad));
         }
     }
     let color_cases: [fn(RgbaF32); 4] = [

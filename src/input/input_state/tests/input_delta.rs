@@ -67,7 +67,7 @@ fn move_within_same_hovered_widget_does_not_request_repaint() {
 }
 
 #[test]
-fn move_from_inert_into_hover_target_repaint_requested() {
+fn move_from_inert_into_hover_target_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     h.move_to(Vec2::new(300.0, 300.0));
@@ -76,7 +76,7 @@ fn move_from_inert_into_hover_target_repaint_requested() {
 }
 
 #[test]
-fn move_between_two_hover_targets_repaint_requested() {
+fn move_between_two_hover_targets_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(build_two_hover_targets);
     h.move_to(Vec2::new(20.0, 20.0));
@@ -85,7 +85,7 @@ fn move_between_two_hover_targets_repaint_requested() {
 }
 
 #[test]
-fn move_during_active_capture_repaint_requested() {
+fn move_during_active_capture_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -106,7 +106,7 @@ fn move_during_active_capture_repaint_requested() {
 }
 
 #[test]
-fn pointer_left_after_hover_repaint_requested() {
+fn pointer_left_after_hover_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     h.move_to(Vec2::new(50.0, 50.0));
@@ -225,7 +225,7 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
 /// press must request repaint even though it didn't hit anything
 /// clickable.
 #[test]
-fn press_on_inert_clears_focus_and_repaint_requested() {
+fn press_on_inert_clears_focus_and_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Forge a focused widget — emulating a prior TextEdit interaction.

@@ -146,8 +146,9 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics for a zero dimension or an unrepresentable byte length, as
-    /// [`Self::from_srgba8`] does.
+    /// Panics for a zero dimension or an unrepresentable byte length — the
+    /// size errors [`Self::from_srgba8`] returns. A blank image is sized by
+    /// the caller's own code, not read from data.
     pub fn blank(size: UVec2) -> Self {
         Self {
             size,

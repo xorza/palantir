@@ -477,6 +477,21 @@ fn set_ratio_clamps_and_survives_stale_paths() {
         "the ratio clamps to the floor"
     );
 
+    // A non-finite ratio names no split, so it centres one rather than
+    // landing NaN, or an infinity's end, in the tree.
+    for ratio in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        d.apply(DockOp::SetRatio {
+            split: DockPath::ROOT,
+            ratio,
+        });
+        assert_eq!(root_split(&d).split.ratio(), 0.5, "{ratio}");
+        d.validate().unwrap();
+    }
+    d.apply(DockOp::SetRatio {
+        split: DockPath::ROOT,
+        ratio: 0.01,
+    });
+
     // Paths landing on a group, or walking past a leaf, are ignored.
     d.apply(DockOp::SetRatio {
         split: DockPath::ROOT.first(),

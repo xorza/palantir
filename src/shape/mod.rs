@@ -185,6 +185,10 @@ impl Shape {
     /// A polyline through `points` in `stroke` (`Butt` cap, `Miter`
     /// join). Chain [`PolylineShape::per_point`] or
     /// [`PolylineShape::per_segment`] to vary the colour along it.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::line`].
     #[track_caller]
     pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_> {
         stroke.validate();
@@ -193,6 +197,10 @@ impl Shape {
 
     /// A cubic Bézier through control points `p0..=p3` in `stroke`
     /// (`Butt` cap).
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::line`].
     #[track_caller]
     pub const fn cubic_bezier(
         p0: Vec2,
@@ -207,6 +215,10 @@ impl Shape {
 
     /// A quadratic Bézier through `p0`/`p1`/`p2`. See
     /// [`Self::cubic_bezier`].
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::line`].
     #[track_caller]
     pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
         stroke.validate();

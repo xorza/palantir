@@ -38,6 +38,11 @@ impl ShadowShape {
     }
 
     /// Corner radii of the shape casting the shadow.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every radius is a [length](crate::widget::domain::length) of at most
+    /// 65504, one f16 lane.
     #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
         let corners = corners.into();

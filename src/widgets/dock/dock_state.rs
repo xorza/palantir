@@ -23,6 +23,7 @@ use std::hash::Hash;
 use serde::{Deserialize, Serialize};
 
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::math::domain;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_op::{DockDrop, DockOp};
@@ -434,8 +435,9 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Set the ratio of the split at `path`, clamped to the ratio
-    /// bounds. A path that does not land on a split — the tree changed
-    /// under a stale intent — is ignored.
+    /// bounds, and centred when it is not finite. A path that does not
+    /// land on a split — the tree changed under a stale intent — is
+    /// ignored.
     fn set_ratio(&mut self, path: DockPath, ratio: f32) {
         // A sentinel-less byte is a corrupt address, not the root —
         // ignore it like any other stale path.
@@ -450,7 +452,7 @@ impl<T: DockTab> DockState<T> {
             idx = if second { s.second } else { s.first };
         }
         if let DockNode::Split(s) = &mut self.nodes[idx.usize()] {
-            s.ratio = ratio.clamp(RATIO_MIN, RATIO_MAX);
+            s.ratio = domain::fraction_or(ratio, 0.5).clamp(RATIO_MIN, RATIO_MAX);
         }
     }
 

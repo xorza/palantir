@@ -75,13 +75,19 @@ impl ColorCoords {
         Self::new(model, self.to_color(), self.hue())
     }
 
-    /// Hue, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
-    /// the model holds as non-finite.
+    /// Hue, read as the *turn* [`Self::to_color`] paints: a hue outside
+    /// `0..=1` wraps, and a non-finite one reads as `0`. A hue of `1` stays
+    /// `1`, for the reason [`Self::set_hue`] keeps it.
     pub const fn hue(self) -> f32 {
-        domain::fraction(match self {
+        let h = match self {
             Self::Okhsv(c) => c.h,
             Self::Hsv(c) => c.h,
-        })
+        };
+        if domain::is_fraction(h) {
+            h
+        } else {
+            domain::turn(h)
+        }
     }
 
     /// Saturation, read as a *fraction*: clamped to `0..=1`, and `0` for an axis

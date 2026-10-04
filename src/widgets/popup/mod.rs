@@ -199,6 +199,10 @@ impl Popup {
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this popup.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn background(mut self, bg: Background) -> Self {
         bg.validate();
@@ -211,6 +215,10 @@ impl Popup {
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
     /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn default_background(mut self, bg: Background) -> Self {
         bg.validate();

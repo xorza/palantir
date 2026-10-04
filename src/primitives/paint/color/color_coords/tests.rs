@@ -74,7 +74,9 @@ fn setters_clamp() {
 /// Both models read raw axes the same way when they convert: the hue as a
 /// turn and the rest as fractions, so an out-of-range or non-finite axis
 /// paints what its coerced value paints, never NaN. `1.25` wraps to
-/// `0.25`, `1.7` clamps to `1`, and NaN or an infinity reads as `0`.
+/// `0.25`, `1.7` clamps to `1`, and NaN or an infinity reads as `0`. The
+/// getters read the axes the same way, so a field or a bar built from
+/// them paints the colour the swatch does.
 #[test]
 fn raw_axes_coerce_on_conversion() {
     let cases = [
@@ -90,12 +92,11 @@ fn raw_axes_coerce_on_conversion() {
             assert_eq!(got, want, "{model:?} ({h}, {s}, {v})");
             assert!(domain::is_color(got), "{model:?}: {got:?}");
             let read = axes(model, h, s, v);
-            for axis in [read.hue(), read.sat(), read.val()] {
-                assert!(
-                    domain::is_fraction(axis),
-                    "{model:?}: the getters read {axis}"
-                );
-            }
+            assert_eq!(
+                (read.hue(), read.sat(), read.val()),
+                (ch, cs, cv),
+                "{model:?} ({h}, {s}, {v}): the getters read the painted axes",
+            );
         }
     }
 }
