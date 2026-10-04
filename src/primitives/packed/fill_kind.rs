@@ -37,10 +37,18 @@ use bytemuck::{Pod, Zeroable};
 pub(crate) struct FillKind(pub(crate) u32);
 
 impl FillKind {
-    /// The family tags, low byte. Each is substituted into the shader
-    /// that branches on it as a `BRUSH_KIND_*` and compared there
-    /// against `fill_kind & 0xFF`, so these are the numbers both sides
-    /// agree on — and the only place any of them is written.
+    /// The bits of the family tag: the low byte.
+    pub(crate) const TAG_MASK: u32 = 0xFF;
+    /// Where the `Spread` discriminant starts.
+    pub(crate) const SPREAD_SHIFT: u32 = 8;
+    /// The bits of the `Spread` discriminant, once shifted down by
+    /// [`Self::SPREAD_SHIFT`].
+    pub(crate) const SPREAD_MASK: u32 = 0xFF;
+
+    /// The family tags. Each is substituted into the shader that branches
+    /// on it as a `BRUSH_KIND_*` and compared there against the
+    /// [`Self::TAG_MASK`] bits, so these are the numbers both sides agree
+    /// on — and the only place any of them is written.
     pub(crate) const TAG_SOLID: u32 = 0;
     pub(crate) const TAG_LINEAR: u32 = 1;
     pub(crate) const TAG_RADIAL: u32 = 2;
@@ -54,7 +62,7 @@ impl FillKind {
     /// every predicate below and the shader's `eval_fill` branch on.
     #[inline]
     pub(crate) const fn tag(self) -> u32 {
-        self.0 & 0xFF
+        self.0 & Self::TAG_MASK
     }
 
     /// Solid-fill marker; `Quad.fill: RgbaF32` carries the colour, the
@@ -85,7 +93,7 @@ impl FillKind {
     /// two halves are packed together.
     #[inline]
     const fn gradient(tag: u32, spread: Spread) -> Self {
-        Self(tag | ((spread as u32) << 8))
+        Self(tag | ((spread as u32) << Self::SPREAD_SHIFT))
     }
 
     /// Drop-shadow marker. `fill: RgbaF32` carries the shadow colour,
@@ -117,8 +125,8 @@ impl FillKind {
     /// sharp, stroke-less quad whose physical rect is pixel-aligned —
     /// every rasterized fragment is then interior (SDF coverage exactly
     /// 1.0), so the shader returns the premultiplied fill directly and
-    /// skips the SDF + composite path, bitwise-identically. Kept in
-    /// lockstep with `FILL_FLAG_FAST` in `quad_pipeline/shader.wgsl`.
+    /// skips the SDF + composite path, bitwise-identically. The shader
+    /// reads it as `FILL_FLAG_FAST`.
     pub(crate) const FAST_BIT: u32 = 1 << 16;
 
     /// Bit 17: windowed rect — the fill coverage is inverted, painting
@@ -126,8 +134,8 @@ impl FillKind {
     /// to the quad edge) while the interior stays transparent; the
     /// stroke keeps its usual inner-edge annulus. Set at
     /// `draw_rect_window` time so it rides the payload into the `Quad`
-    /// untouched. Kept in lockstep with `FILL_FLAG_WINDOW` in
-    /// `quad_pipeline/shader.wgsl`. Load-bearing side effect: the composer's
+    /// untouched. The shader reads it as `FILL_FLAG_WINDOW`. Load-bearing
+    /// side effect: the composer's
     /// opaque-cover checks (clear fold, fast path, occlusion prune) all
     /// compare `fill_kind == FillKind::SOLID` *exactly*, so this bit
     /// disqualifies windowed quads from being treated as opaque covers
@@ -156,3 +164,14 @@ impl FillKind {
         matches!(self.tag(), Self::TAG_SHADOW_DROP | Self::TAG_SHADOW_INSET)
     }
 }
+
+// The fields tile the word without overlapping, and every value fits its
+// field: the shader masks each one out by these same numbers.
+const _: () = {
+    assert!(FillKind::TAG_MASK < 1 << FillKind::SPREAD_SHIFT);
+    assert!(FillKind::TAG_RAMP <= FillKind::TAG_MASK);
+    assert!(Spread::Reflect as u32 <= FillKind::SPREAD_MASK);
+    let spread_bits = FillKind::SPREAD_MASK << FillKind::SPREAD_SHIFT;
+    assert!(spread_bits & (FillKind::FAST_BIT | FillKind::WINDOW_BIT) == 0);
+    assert!(FillKind::FAST_BIT & FillKind::WINDOW_BIT == 0);
+};
