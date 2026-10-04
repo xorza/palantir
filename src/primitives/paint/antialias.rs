@@ -7,3 +7,9 @@
 /// edge, uncovered from this far outside it, and nothing an edge paints
 /// reaches further out. The shaders take it through the shared prelude.
 pub(crate) const AA_HALF_WIDTH: f32 = 0.5;
+
+// The quad shader grows each quad to the pixel centres within
+// `AA_HALF_WIDTH` of its rect, and the composer culls and tracks the quad
+// by the whole pixels that cover the rect alone. Those hold every such
+// centre only while the ramp reaches no further than half a pixel.
+const _: () = assert!(AA_HALF_WIDTH <= 0.5);

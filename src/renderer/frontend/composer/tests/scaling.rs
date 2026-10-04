@@ -417,6 +417,10 @@ fn icons_batch_together_and_respect_tier_order() {
 /// quad that covers it, so a 3000 px triangle decodes, the way `quad_pipeline/shader.wgsl`
 /// does it — `min + bits / 65535 · size` — to within `3000 / 65535 / 2`
 /// ≈ 0.023 px of each point. As f16 lanes they stepped 2 px past 2048.
+///
+/// The covering quad is the points' bounds grown by the corner radius
+/// alone, since the shader grows every quad by its AA ramp: (13.3, 7.1) to
+/// (3013.7, 2950.6), less and plus 2.
 #[test]
 fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let points = [
@@ -441,6 +445,10 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     );
     assert_eq!(buf.quads.len(), 1);
     let quad = buf.quads[0];
+    assert_eq!(
+        quad.rect,
+        Rect::from_min_max(Vec2::new(11.3, 5.1), Vec2::new(3015.7, 2952.6)),
+    );
     let [ax, ay, bx, by]: [u16; 4] = bytemuck::cast(quad.corners);
     let [cx, cy, radius, _]: [u16; 4] = bytemuck::cast(quad.fill_axis);
     let decode = |x: u16, y: u16| {
@@ -491,8 +499,8 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
 /// the offset and grown by the halo, both in physical px. At 1.5× the
 /// source (10.25, 10.75, 20.5, 5.25) snaps to (15, 16, 31, 8), as in
 /// `compose_snaps_quad_edges_only_under_pixel_snap`. The lanes scale to
-/// offset (3, −1.5), σ 3, spread 1.5, so the halo is 3·3 + 1.5 = 10.5:
-/// min (15 + 3 − 10.5, 16 − 1.5 − 10.5) = (7.5, 4), size (31 + 21, 8 + 21).
+/// offset (3, −1.5), σ 3, spread 1.5, so the halo is 4·3 + 1.5 = 13.5:
+/// min (15 + 3 − 13.5, 16 − 1.5 − 13.5) = (4.5, 1), size (31 + 27, 8 + 27).
 /// The radii fit the source: 4 × 1.5 = 6 per corner, 12 over its 8 px
 /// sides, so f = 8 / 12 and each is 4.
 ///
@@ -528,7 +536,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.rect, Rect::new(7.5, 4.0, 52.0, 29.0));
+    assert_eq!(q.rect, Rect::new(4.5, 1.0, 58.0, 35.0));
     assert_eq!(q.corners, Corners::all(4.0));
     assert_eq!(q.fill_axis.lanes(), [3.0, -1.5, 3.0, 1.5]);
 

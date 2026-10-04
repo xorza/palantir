@@ -5,6 +5,11 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 
+/// A drop shadow is its source moved by the offset and grown by the halo,
+/// `4σ + max(spread, 0)`. The source (10, 20, 30, 40) moved by (12, 7) and
+/// grown by 18 is (4, 9, 66, 76); moved by (−9, −11) and grown by 17,
+/// (−16, −8, 64, 74); moved by (4, −3) and grown by 8, since a negative
+/// spread adds nothing, (6, 9, 46, 56).
 #[test]
 fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
     #[derive(Debug)]
@@ -21,19 +26,19 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
             offset: Vec2::new(12.0, 7.0),
             blur: 4.0,
             spread: 2.0,
-            expected: Rect::new(8.0, 13.0, 58.0, 68.0),
+            expected: Rect::new(4.0, 9.0, 66.0, 76.0),
         },
         DropCase {
             offset: Vec2::new(-9.0, -11.0),
             blur: 3.0,
             spread: 5.0,
-            expected: Rect::new(-13.0, -5.0, 58.0, 68.0),
+            expected: Rect::new(-16.0, -8.0, 64.0, 74.0),
         },
         DropCase {
             offset: Vec2::new(4.0, -3.0),
             blur: 2.0,
             spread: -5.0,
-            expected: Rect::new(8.0, 11.0, 42.0, 52.0),
+            expected: Rect::new(6.0, 9.0, 46.0, 56.0),
         },
     ];
 

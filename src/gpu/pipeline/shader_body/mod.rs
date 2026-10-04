@@ -81,7 +81,7 @@ impl ShaderBody {
                 // does not know, so nothing there compares against it.
                 ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-                ShaderConstant::float("SHADOW_HALO_SIGMAS", ShadowGeom::HALO_SIGMAS),
+                ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeom::REACH_SIGMAS),
             ],
             Self::Curve => vec![
                 ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),

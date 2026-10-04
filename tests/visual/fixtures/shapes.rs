@@ -623,3 +623,56 @@ fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
     assert!(dark(44, 44), "the disc's quad corner");
     assert!(dark(55, 55), "the disc's other quad corner");
 }
+
+/// A rect off the pixel grid covers, on each side, the pixel its edge
+/// crosses — also where that pixel's centre is outside the rect, which the
+/// quad drawn at the rect itself never shaded. With the snap off, the rect
+/// (40.75, 20.75)..(100.25, 60.25) puts every edge a quarter pixel into
+/// the pixel outside it: column 40 and row 20 are covered 0.25 from the
+/// left and top, column 100 and row 60 0.25 from the right and bottom, and
+/// the pixels just inside them are covered in full. Black over white
+/// leaves `1 − coverage` linear.
+#[test]
+fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
+    let mut h = Harness::new_with_pixel_snap(false);
+    let img = h
+        .size(UVec2::new(140, 80))
+        .clear(RgbaF32::WHITE)
+        .frame(|ui| {
+            Panel::canvas()
+                .id_salt("unsnapped")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::rect(Rect::new(40.75, 20.75, 59.5, 39.5)).fill(RgbaF32::BLACK),
+                    );
+                });
+        })
+        .image;
+    let encode = |coverage: f32| {
+        RgbaF32::new(1.0 - coverage, 1.0 - coverage, 1.0 - coverage, 1.0)
+            .to_srgba_u8()
+            .r
+    };
+    for (x, y, coverage) in [
+        (39, 40, 0.0),
+        (40, 40, 0.25),
+        (41, 40, 1.0),
+        (99, 40, 1.0),
+        (100, 40, 0.25),
+        (101, 40, 0.0),
+        (70, 19, 0.0),
+        (70, 20, 0.25),
+        (70, 21, 1.0),
+        (70, 59, 1.0),
+        (70, 60, 0.25),
+        (70, 61, 0.0),
+    ] {
+        let got = img.get_pixel(x, y).0[0];
+        let want = encode(coverage);
+        assert!(
+            got.abs_diff(want) <= 1,
+            "({x}, {y}) is covered {coverage}: got {got}, want {want}",
+        );
+    }
+}

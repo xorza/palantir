@@ -86,7 +86,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     use crate::Shadow;
 
     let frame_size = 50.0;
-    let expected_paint_size = frame_size + 2.0 * (3.0 * 8.0 + 2.0);
+    let expected_paint_size = frame_size + 2.0 * (4.0 * 8.0 + 2.0);
 
     let cases: &[(&str, Build)] = &[
         ("shape", |ui| {
