@@ -196,3 +196,31 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
         }
     }
 }
+
+/// Space activates a focused toggle as a click does: a checkbox and a
+/// switch flip, a radio selects, and each reports a committed change. An
+/// unfocused toggle ignores the key.
+#[test]
+fn space_activates_a_focused_toggle() {
+    use crate::input::keyboard::key::Key;
+
+    for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {
+        for focused in [true, false] {
+            let mut h = UiHarness::new(UVec2::new(300, 100));
+            let mut value = false;
+            h.frame(|ui| {
+                record_toggle(ui, kind, &mut value, false);
+            });
+            if focused {
+                h.set_focus(WidgetId::from_hash("toggle"));
+            }
+            h.key(Key::Char(' '));
+            let [_, changed] = h.frame_value(|ui| record_toggle(ui, kind, &mut value, false));
+            assert_eq!(
+                (value, changed),
+                (focused, focused),
+                "{kind:?} focused {focused}"
+            );
+        }
+    }
+}

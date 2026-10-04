@@ -72,7 +72,10 @@ impl<'a> Checkbox<'a> {
         let response = self.widget.response(ui);
 
         let before = *self.value;
-        let checked = ToggleChrome::toggled(&response, self.value);
+        let checked = ToggleChrome::toggled(
+            ToggleChrome::activated(ui, &mut self.widget, &response),
+            self.value,
+        );
         let changed = checked != before;
 
         let theme = ui.theme();

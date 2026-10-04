@@ -70,7 +70,10 @@ impl<'a> Switch<'a> {
         let id = self.widget.resolve(ui);
 
         let before = *self.value;
-        let on = ToggleChrome::toggled(&response, self.value);
+        let on = ToggleChrome::toggled(
+            ToggleChrome::activated(ui, &mut self.widget, &response),
+            self.value,
+        );
         let changed = on != before;
 
         let theme = ui.theme();
