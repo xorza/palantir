@@ -9,6 +9,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use glam::{UVec2, Vec2};
 use soa_rs::Soars;
 
@@ -106,23 +107,6 @@ pub(crate) struct ImageDrawRow {
     pub(crate) instance: ImageInstance,
 }
 
-/// Bit in [`ImageInstance::flags`]: wrap UVs with `fract` in the shader
-/// (`ImageFit::Tile`).
-pub(crate) const IMG_FLAG_TILED: u32 = 1 << 0;
-/// Bit in [`ImageInstance::flags`]: nearest-neighbour minification.
-pub(crate) const IMG_FLAG_MIN_NEAREST: u32 = 1 << 1;
-/// Bit in [`ImageInstance::flags`]: nearest-neighbour magnification.
-pub(crate) const IMG_FLAG_MAG_NEAREST: u32 = 1 << 2;
-/// Bit in [`ImageInstance::flags`]: where this image minifies, spread a grid
-/// of taps over the fragment's source footprint and average them
-/// ([`ImageDownsample::Mean`](crate::ImageDownsample::Mean)).
-pub(crate) const IMG_FLAG_TAPS_MEAN: u32 = 1 << 3;
-/// Bit in [`ImageInstance::flags`]: as [`IMG_FLAG_TAPS_MEAN`], but the
-/// brightest tap wins instead of the average
-/// ([`ImageDownsample::Peak`](crate::ImageDownsample::Peak)). Mutually
-/// exclusive with it — the encoder sets at most one.
-pub(crate) const IMG_FLAG_TAPS_PEAK: u32 = 1 << 4;
-
 /// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
 /// buffer. Shader interpolates `uv_min + corner * uv_size` per fragment
 /// (where `corner` is the four-corner `vertex_index`), samples the
@@ -144,7 +128,6 @@ pub(crate) struct ImageInstance {
     pub(crate) uv_size: Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: RgbaF16,
-    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling, minification
-    /// tap mode). `u32` for a clean `Uint32` vertex attr.
-    pub(crate) flags: u32,
+    /// Tile wrap, min/mag nearest sampling and minification tap mode.
+    pub(crate) flags: ImageFlags,
 }

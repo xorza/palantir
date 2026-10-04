@@ -36,10 +36,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
-use crate::renderer::render_buffer::image::{
-    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
-    IMG_FLAG_TILED,
-};
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
@@ -375,22 +372,22 @@ impl LayerCtx<'_, '_> {
                     uv_min,
                     uv_size,
                 } = fit.resolve(base, source.intrinsic());
-                let mut flags = 0;
+                let mut flags = ImageFlags::NONE;
                 if matches!(*fit, ImageFit::Tile { .. }) {
-                    flags |= IMG_FLAG_TILED;
+                    flags = flags.union(ImageFlags::TILED);
                 }
                 if *min_filter == ImageFilter::Nearest {
-                    flags |= IMG_FLAG_MIN_NEAREST;
+                    flags = flags.union(ImageFlags::MIN_NEAREST);
                 }
                 if *mag_filter == ImageFilter::Nearest {
-                    flags |= IMG_FLAG_MAG_NEAREST;
+                    flags = flags.union(ImageFlags::MAG_NEAREST);
                 }
                 // At most one tap bit: the shader reads them as a mode, not a set.
-                match *downsample {
-                    ImageDownsample::Single => {}
-                    ImageDownsample::Mean => flags |= IMG_FLAG_TAPS_MEAN,
-                    ImageDownsample::Peak => flags |= IMG_FLAG_TAPS_PEAK,
-                }
+                flags = flags.union(match *downsample {
+                    ImageDownsample::Single => ImageFlags::NONE,
+                    ImageDownsample::Mean => ImageFlags::TAPS_MEAN,
+                    ImageDownsample::Peak => ImageFlags::TAPS_PEAK,
+                });
                 out.draw_image(
                     ImageDraw {
                         payload: DrawImagePayload {

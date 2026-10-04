@@ -26,9 +26,9 @@ use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance,
-};
+use crate::renderer::render_buffer::curve::CurveInstance;
+use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::icon::IconDrawRow;
@@ -42,7 +42,6 @@ use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::record::ColorMode;
-use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use glam::{U16Vec2, UVec2, Vec2};
 
@@ -543,7 +542,7 @@ impl PaintSink for ComposeSession<'_> {
             width: width_phys,
             color0: p.fill.color,
             color1: p.fill.color,
-            cap: CurveInstance::cap_lanes(cap as u32, cap as u32),
+            caps: CurveCaps::new(cap, true, true),
             fill_kind: p.fill.kind,
             fill_lut_row: p.fill.lut_row,
             ..bytemuck::Zeroable::zeroed()
@@ -578,7 +577,7 @@ impl PaintSink for ComposeSession<'_> {
                     p1,
                     p2,
                     p3,
-                    kind: CURVE_KIND_CUBIC,
+                    kind: CurveKind::CUBIC,
                     ..proto
                 };
                 (proto, n)
@@ -611,7 +610,7 @@ impl PaintSink for ComposeSession<'_> {
                     p1: Vec2::new(radius_phys, 0.0),
                     p2: Vec2::new(a0, a1),
                     p3: Vec2::ZERO,
-                    kind: CURVE_KIND_ARC,
+                    kind: CurveKind::ARC,
                     ..proto
                 };
                 (proto, n)
@@ -749,7 +748,6 @@ impl PaintSink for ComposeSession<'_> {
                 (a.faded(p.alpha), b.faded(p.alpha))
             }
         };
-        let user_cap = cap as u32;
         let n_segs = directions.len();
         for k in 0..n_segs {
             // Pre-oriented bisector clip planes for the
@@ -766,9 +764,6 @@ impl PaintSink for ComposeSession<'_> {
             } else {
                 Vec2::ZERO
             };
-            let butt = LineCap::Butt as u32;
-            let start_cap = if k == 0 { user_cap } else { butt };
-            let end_cap = if k + 1 == n_segs { user_cap } else { butt };
             let (color, color1) = seg_colors(k);
             self.out.curves.push(CurveInstance {
                 p0: pt(k),
@@ -780,8 +775,8 @@ impl PaintSink for ComposeSession<'_> {
                 width: width_phys,
                 color0: color,
                 color1,
-                cap: CurveInstance::cap_lanes(start_cap, end_cap),
-                kind: CURVE_KIND_SEGMENT,
+                caps: CurveCaps::new(cap, k == 0, k + 1 == n_segs),
+                kind: CurveKind::SEGMENT,
                 ..bytemuck::Zeroable::zeroed()
             });
         }

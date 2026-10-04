@@ -7,26 +7,6 @@ the pipeline modules that build and feed them, and the wire types they read
 
 Whoever addresses an item deletes it.
 
-## Wire layouts: the shaders restate numbers that Rust says it owns
-
-- [ ] Wire tags have three different shapes. `FillKind` is a
-  `repr(transparent)` newtype with named constructors. The curve basis is
-  loose `u32` constants (`src/renderer/render_buffer/curve.rs:20-31`,
-  `CurveInstance::kind: u32`). Image flags are loose `u32` bits
-  (`src/renderer/render_buffer/image.rs:111-124`, `ImageInstance::flags:
-  u32`). `CurveInstance::cap_lanes(start: u32, end: u32)` (`curve.rs:126`)
-  takes raw discriminants, not `LineCap`. Target: a `repr(transparent)`
-  newtype for each, after the `FillKind` model (`CurveKind`, `ImageFlags`,
-  a cap-pair type built from two `LineCap`s).
-- [ ] The cap lane can hold a state that the shader draws incorrectly. It
-  holds a cap for each end (`curve.rs:98-106`), but the shader makes one
-  `FLAG_ROUND_CAP` if either end is Round (`curve_pipeline/shader.wgsl:293-295`)
-  and rounds every `cap_t > 0` zone (`:406`). Start Round with end Square
-  gives two round caps. The composer emits only `(user cap, Butt)` pairs
-  today (`composer/session.rs:770-771`), so no frame shows it. Target: either
-  a round flag for each end, or a lane that models the real data (one cap,
-  plus which ends get it).
-
 ## Shader-module construction is repeated at each pipeline
 
 - [ ] `quad_pipeline/mod.rs:201-225`, `curve_pipeline/mod.rs:78-94`,

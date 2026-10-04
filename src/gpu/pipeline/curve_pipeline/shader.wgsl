@@ -37,8 +37,9 @@
 // the adaptive sub-instance count assuming the shader subdivides each
 // instance into exactly this many chords. Bump together.
 //
-// Caps. Encoded per end in `cap` (bits 0..8 start, 8..16 end; 0 =
-// Butt, 1 = Square, 2 = Round). The leading sub-instance
+// Caps. `caps` holds the stroke's one cap in its `CAP_MASK` bits, and
+// `CAP_AT_START` / `CAP_AT_END` name the ends of this instance that are
+// the stroke's ends (`CurveCaps`). The leading sub-instance
 // (`t_range.x ≈ 0`) and trailing sub-instance (`t_range.y ≈ 1`) shift
 // their outermost vertices by `half_w` along the tangent for non-Butt
 // caps; interior sub-instances don't extend. `cap_t` (signed
@@ -69,6 +70,9 @@ const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
 // billboard extent).
 const MITER_LIMIT: f32 = /*{MITER_LIMIT}*/;
 
+const CAP_MASK: u32 = /*{CAP_MASK}*/;
+const CAP_AT_START: u32 = /*{CAP_AT_START}*/;
+const CAP_AT_END: u32 = /*{CAP_AT_END}*/;
 // `Square` is not a constant of its own: it is what a cap that is
 // neither Butt nor Round means, so nothing here compares against it.
 const CAP_BUTT: u32 = /*{CAP_BUTT}*/;
@@ -117,7 +121,7 @@ struct VsIn {
     @location(5) width: f32,
     @location(6) color0: vec4<f32>,
     @location(7) color1: vec4<f32>,
-    @location(8) cap: u32,
+    @location(8) caps: u32,
     @location(9) fill_kind: u32,
     @location(10) fill_lut_row: u32,
     // Basis tag: one of the KIND_* constants. Constant per instance.
@@ -288,23 +292,20 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         let tan_n = normalize(pt.tan);
         let normal = perp(tan_n);
 
-        let cap_start = in.cap & 0xFFu;
-        let cap_end = (in.cap >> 8u) & 0xFFu;
-        if (cap_start == CAP_ROUND || cap_end == CAP_ROUND) {
+        let cap = in.caps & CAP_MASK;
+        if (cap == CAP_ROUND) {
             flags |= FLAG_ROUND_CAP;
         }
-        let has_start_cap = in.t_range.x < T_END_EPS;
-        let has_end_cap = in.t_range.y > 1.0 - T_END_EPS;
+        let extended = cap != CAP_BUTT;
+        let has_start_cap = extended && (in.caps & CAP_AT_START) != 0u && in.t_range.x < T_END_EPS;
+        let has_end_cap = extended && (in.caps & CAP_AT_END) != 0u && in.t_range.y > 1.0 - T_END_EPS;
         var cap_shift: f32 = 0.0;
         // `cap_t` must lerp to zero exactly at the endpoint cross-
-        // section, so a cap segment's body edge carries -chord (not
-        // 0): the linear function -s is then exact across the fused
-        // cap+body quad. With 0 at the body edge the zero landed at
-        // the segment's far edge and the round-cap SDF over-estimated
-        // r through the whole segment, visibly necking thin caps
-        // (~chord^2 / stroke width).
+        // section, so a cap segment's body edge carries -chord: the
+        // linear function -s is then exact across the fused cap+body
+        // quad, and the round-cap SDF meets the body at the endpoint.
         var cap_t: f32 = 0.0;
-        if (cap_start != CAP_BUTT && has_start_cap) {
+        if (has_start_cap) {
             if (section == 0u) {
                 cap_shift = -half_w;
                 cap_t = half_w;
@@ -313,7 +314,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
                 cap_t = -distance(pos, lead.pos);
             }
         }
-        if (cap_end != CAP_BUTT && has_end_cap) {
+        if (has_end_cap) {
             if (section == SEGMENTS_PER_INSTANCE) {
                 cap_shift = half_w;
                 cap_t = half_w;

@@ -25,10 +25,13 @@ use soa_rs::Soa;
 use std::time::Duration;
 
 pub(crate) mod curve;
+pub(crate) mod curve_caps;
+pub(crate) mod curve_kind;
 pub(crate) mod draw_group;
 pub(crate) mod group_batch;
 pub(crate) mod icon;
 pub(crate) mod image;
+pub(crate) mod image_flags;
 pub(crate) mod mesh;
 pub(crate) mod paint_tier;
 pub(crate) mod per_group_batch;

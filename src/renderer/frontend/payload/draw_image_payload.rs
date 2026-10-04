@@ -4,6 +4,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 
 /// Image draw payload. `rect` is the logical-px paint rect (encoder
 /// already folded in `local_rect`, `fit`, and the image's intrinsic
@@ -24,12 +25,12 @@ pub(crate) struct DrawImagePayload {
     /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
     pub(crate) handle: TextureId,
-    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling, minification
-    /// tap mode), forwarded
-    /// verbatim into [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
-    /// `0` (the common case, including a `GpuView`) takes one bilinear tap at
-    /// the UV.
-    pub(crate) flags: u32,
+    /// Tile wrap, min/mag nearest sampling and minification tap mode,
+    /// forwarded verbatim into
+    /// [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
+    /// [`ImageFlags::NONE`] (the common case, including a `GpuView`) takes
+    /// one bilinear tap at the UV.
+    pub(crate) flags: ImageFlags,
 }
 
 /// One image draw as [`PaintSink::image`] takes it: the payload plus, for
