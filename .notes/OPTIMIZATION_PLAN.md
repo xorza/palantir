@@ -96,6 +96,20 @@ no `ldlat` filter.
   10×. The reserved set held about one id at a time, so the merge saved
   small-table work only. `resolve` and `record_endpoint` still probe the
   large table once each.
+- **Item 3, blocked store forwarding** (6800U): confirmed.
+  `ls_bad_status2.stli_other` (the Zen counter for a load that cannot
+  forward from an older store) counts 2.5 G on `cached_cpu`, as many as
+  the successful forwards (`ls_stlf`). The events follow self-time:
+  `open_node` 22 %, `Widget::resolve` 15 %, `Text::show` 8 %. The hottest
+  single site was the chrome hash, which built a 64-byte struct and read
+  it back through `hash_bytes`. Every byte hash of a fresh value now
+  feeds register words (`cached_cpu` −0.45 %, `partial_cpu` −1.0 % over
+  three alternating rounds). The `Node` packing was not done. A setter
+  still writes one field, and `columns` still reads the packed column in
+  wider loads, so the seams stay. `Node::columns` is about 10 % of the
+  events in `open_node`, and the background reads in `lower::background`
+  about 18 %. The rest is the builder pattern: a widget writes a value
+  field by field and the next pass reads it whole.
 
 ## How to measure
 
@@ -147,28 +161,6 @@ Locality changes show at 10× and hide in the noise at the default size, so
 measure both.
 
 ## Plan, highest value first
-
-### 3. Blocked store forwarding when `Node::columns` reads the node
-
-At 10×, the slow loads inside `open_node` land on reads of the 104-byte
-`Node` in `Node::columns` and `LayoutCore::from_node`. An example is a
-16-byte `vpshufd` over `0xc(%rbx)`. The builder writes those fields with
-narrow stores just before. `store_fwd_blk` is 33 % of L1-bound.
-
-- This is a hypothesis. Confirm it before you change code:
-
-  ```sh
-  taskset -c 2 perf record -e cpu_core/LD_BLOCKS.STORE_FORWARD/ppp \
-      -o tmp/stfwd.data -- "$BIN" --bench -d frame --arms cpu --note audit \
-      --profile-time 4 'frame/cached_cpu$'
-  perf annotate -i tmp/stfwd.data -M intel '<palantir::ui::Ui>::open_node'
-  ```
-
-- Change, if it holds: let `Node` keep `LayoutCore` and `NodeFlags` in their
-  packed form, written as whole fields by the setters. `columns` then copies
-  whole fields and does not repack `Option`s. Alternatively, make the setters
-  write the same widths that `columns` reads.
-- Check: `frame/cached_cpu`, and the `LD_BLOCKS.STORE_FORWARD` count.
 
 ### 4. The child walks read `LayoutCore` only to get visibility
 
@@ -233,5 +225,4 @@ Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
 
 ## Order
 
-Item 3 needs its confirmation capture first. Items 4–6 are
-small and independent, and each one is worth more at 10× than at default size.
+Items 4–6 are small and independent, and each one is worth more at 10× than at default size.
