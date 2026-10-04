@@ -5,9 +5,7 @@
 //! [`ViewportPush`](crate::gpu::surface::viewport::ViewportPush).
 
 use crate::common::span::Span;
-use crate::common::tracy;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::schedule::{MaskPlan, build_mask_plan};
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
@@ -19,7 +17,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::RenderBuffer;
 use glam::Vec2;
 use std::slice;
 
@@ -51,19 +48,10 @@ pub(crate) struct QuadPipeline {
     /// and passed to every `bind*` call.
     instance_buffer: DynamicBuffer<Quad>,
     /// Lazy buffer holding one `Quad` per deduped rounded clip in the
-    /// current frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
-    /// across frames; capacity grows monotonically. `None` until the
-    /// first stencil frame.
+    /// current frame; uploaded by `upload_masks`, drawn by `draw_mask`.
+    /// Reused across frames; capacity grows monotonically. `None` until
+    /// the first stencil frame.
     mask_buffer: Option<DynamicBuffer<Quad>>,
-    /// Retained scratch for the stencil-mask sweep, populated by
-    /// [`Self::stage_masks`] and read by the render schedule. Stale on
-    /// non-stencil frames, which hand the schedule no plan at all.
-    pub(crate) mask_indices: MaskPlan,
-    /// Retained scratch for stencil-mask quads: one entry per chain
-    /// level per run of consecutive groups sharing a chain (see
-    /// [`build_mask_plan`]); uploaded to `mask_buffer`. Cleared at
-    /// the start of each stencil frame; capacity retained.
-    masks: Vec<Quad>,
     /// The partial-repaint pre-clear quad (full-viewport, opaque, clear
     /// color). Drawn before regular groups inside the damage scissor so
     /// `LoadOp::Load` doesn't leak last frame's AA-fringe pixels into
@@ -151,15 +139,10 @@ impl QuadPipeline {
         );
     }
 
-    /// Build the per-group / per-text-batch mask-index maps for the
-    /// schedule ([`build_mask_plan`]) and upload the deduped mask
-    /// quads. After this call, `self.mask_indices.groups` parallels
-    /// `buffer.groups` and `.batches` parallels `buffer.text_batches`,
-    /// each entry the mask-quad span for that chain.
-    pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, buffer: &RenderBuffer) {
-        tracy::zone!();
-        build_mask_plan(buffer, &mut self.mask_indices, &mut self.masks);
-        if self.masks.is_empty() {
+    /// Upload the frame's deduped mask quads, which the schedule's mask
+    /// plan indexes by [`Self::draw_mask`].
+    pub(crate) fn upload_masks(&mut self, ctx: &mut GpuCtx<'_>, masks: &[Quad]) {
+        if masks.is_empty() {
             return;
         }
         // Lazy-create the mask buffer on the first stencil frame, then
@@ -168,7 +151,7 @@ impl QuadPipeline {
         let buf = self.mask_buffer.get_or_insert_with(|| {
             DynamicBuffer::<Quad>::vertex(ctx.device, "palantir.quad.masks", 8)
         });
-        buf.upload_instances(ctx, &self.masks);
+        buf.upload_instances(ctx, masks);
     }
 
     /// Bind a mask pipeline (stamp or clear — the schedule picks) +
@@ -182,7 +165,7 @@ impl QuadPipeline {
         mask_pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        let buf = self.mask_buffer.as_ref().expect("stage_masks first");
+        let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         Self::bind_buffer(pass, mask_pipeline, gradient_bg, &buf.buffer);
     }
 
@@ -203,8 +186,6 @@ impl QuadPipeline {
         Self {
             instance_buffer,
             mask_buffer: None,
-            mask_indices: MaskPlan::default(),
-            masks: Vec::new(),
             clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
             shader,
             // Gradient atlas at group 0 (viewport rides the shared
