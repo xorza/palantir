@@ -155,6 +155,12 @@ impl FillKind {
         Self(self.0 | Self::WINDOW_BIT)
     }
 
+    /// Whether [`Self::WINDOW_BIT`] is set.
+    #[inline]
+    pub(crate) const fn is_window(self) -> bool {
+        self.0 & Self::WINDOW_BIT != 0
+    }
+
     /// True iff this `FillKind` marks a shadow draw. Shadow blur
     /// extends visually past the stored rect, so shadows are never
     /// safe to drop in the occlusion-prune sweep — checked at

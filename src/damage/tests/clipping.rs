@@ -74,7 +74,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 }
 
 /// Pin: a node that paints a drop shadow contributes its **inflated**
-/// paint bounds (`rect + offset`, then `3σ + max(spread, 0)` on each side) to the
+/// paint bounds (`rect + offset`, then `4σ + max(spread, 0)` on each side) to the
 /// damage region, not just the arranged rect. Both routes — direct
 /// `Shape::Shadow` push and `Background::shadow` chrome — must reach
 /// the same `paint_rect` so a tab swap clears the full halo, not just

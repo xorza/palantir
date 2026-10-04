@@ -36,8 +36,19 @@ fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
     );
 }
 
+/// The occluder (10.25, 10.25)..(110.25, 110.25) is unsnapped, so its
+/// cover is inset by its half-pixel ramp to (10.75, 10.75)..(109.75,
+/// 109.75). An under quad goes only when every pixel it shades is inside
+/// that cover, and it shades the pixels its own ramp reaches past its
+/// rect:
+/// - the same rect shades 10..111, past the cover on every side;
+/// - (10.75, 10.75)..(109.75, 109.75) is the cover itself, but its ramp
+///   covers column 10 a quarter, where the occluder covers it only three
+///   quarters, so it shades 10..110 and stays;
+/// - (11.25, 11.25)..(108.75, 108.75) shades 11..109, inside the cover;
+/// - (11.25, 11.25)..(109.85, 108.75) shades out to 110, past it.
 #[test]
-fn prune_non_fast_cover_insets_exact_half_pixel_aa_fringe() {
+fn prune_non_fast_cover_holds_every_pixel_the_under_shades() {
     #[derive(Debug)]
     struct Case {
         label: &'static str,
@@ -52,13 +63,18 @@ fn prune_non_fast_cover_insets_exact_half_pixel_aa_fringe() {
             expected_quads: 2,
         },
         Case {
-            label: "touches_full_coverage_boundary",
+            label: "rect_on_full_coverage_boundary",
             under: Rect::new(10.75, 10.75, 99.0, 99.0),
+            expected_quads: 2,
+        },
+        Case {
+            label: "shaded_pixels_inside_full_coverage",
+            under: Rect::new(11.25, 11.25, 97.5, 97.5),
             expected_quads: 1,
         },
         Case {
-            label: "crosses_full_coverage_boundary",
-            under: Rect::new(10.74, 10.75, 99.0, 99.0),
+            label: "shaded_pixels_past_full_coverage",
+            under: Rect::new(11.25, 11.25, 98.6, 97.5),
             expected_quads: 2,
         },
     ];

@@ -70,7 +70,7 @@ const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
 // `fill` is the shadow colour, `radius` is the source rect's corner
 // radii, `size` is the paint bbox, and
 // `fill_axis = (offset.x, offset.y, sigma, spread)` for both.
-//   - Drop:  paint bbox = (source + offset).inflated(3σ + max(spread, 0)).
+//   - Drop:  paint bbox = (source + offset).inflated(SHADOW_REACH_SIGMAS·σ + max(spread, 0)).
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
 //            inside the shader.
 const BRUSH_KIND_SHADOW_DROP:  u32 = /*{BRUSH_KIND_SHADOW_DROP}*/;
@@ -143,7 +143,8 @@ fn vs(
     // every pixel centre within `AA_HALF_WIDTH` of the rect, out to whole
     // pixels. A rect on pixel boundaries does not grow. A windowed rect is
     // a mask over content of its own extent and paints its fill outside
-    // the shape, so it stays at its rect.
+    // the shape, so it stays at its rect. `Quad::shaded_rect` is the same
+    // extent on the CPU.
     var lo = pos;
     var hi = pos + size;
     if ((fill_kind & FILL_FLAG_WINDOW) == 0u) {

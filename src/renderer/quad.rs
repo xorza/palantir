@@ -7,9 +7,11 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
+use glam::Vec2;
 
 /// Per-instance quad data (60 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see
@@ -57,8 +59,52 @@ pub(crate) struct Quad {
     pub(crate) fill_axis: FillAxis,
 }
 
+impl Quad {
+    /// The whole pixels the quad shader shades for this quad: `vs` in
+    /// `quad_pipeline/shader.wgsl` grows the rect to every pixel centre
+    /// within [`AA_HALF_WIDTH`] of it, since its coverage reaches that far.
+    /// A windowed rect is drawn at its rect.
+    pub(crate) fn shaded_rect(&self) -> Rect {
+        if self.fill_kind.is_window() {
+            return self.rect;
+        }
+        let grow = Vec2::splat(AA_HALF_WIDTH - 0.5);
+        Rect::from_min_max(
+            (self.rect.min - grow).floor(),
+            (self.rect.max() + grow).ceil(),
+        )
+    }
+}
+
 // Layout guards live where the layout is consumed: the compile-time
 // `offset_of!` asserts beside `QUAD_INSTANCE_ATTRS` in
 // `gpu/pipeline/quad_pipeline/mod.rs` pin every field against its vertex
 // attribute, and the `hot_struct_sizes_are_pinned` inventory in
 // `lib.rs` pins the 60/4 footprint.
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::renderer::quad::Quad;
+
+    /// A rect on pixel boundaries shades itself. One off them shades every
+    /// pixel its edges cross: (10.25, 3)..(20.5, 8) is columns 10..21 and
+    /// rows 3..8. A windowed rect is drawn at its rect.
+    #[test]
+    fn a_quad_shades_the_pixels_its_edges_cross() {
+        let shaded = |rect: Rect, fill_kind: FillKind| {
+            Quad {
+                rect,
+                fill_kind,
+                ..Quad::default()
+            }
+            .shaded_rect()
+        };
+        let aligned = Rect::new(10.0, 3.0, 11.0, 5.0);
+        let off_grid = Rect::new(10.25, 3.0, 10.25, 5.0);
+        assert_eq!(shaded(aligned, FillKind::SOLID), aligned);
+        assert_eq!(shaded(off_grid, FillKind::SOLID), aligned);
+        assert_eq!(shaded(off_grid, FillKind::SOLID.with_window()), off_grid,);
+    }
+}

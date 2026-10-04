@@ -124,10 +124,11 @@ impl OcclusionPruner {
     ///   corner, stroke, and AA rules, in push order (ascending `idx`).
     ///
     /// Behaviour:
-    /// - For each quad at slice index `i`, its painted extent is `q.rect`:
-    ///   a quad's border is an inner-edge annulus, so it adds nothing
-    ///   outside the rect. Drop it if some occluder with `idx > i` (drawn
-    ///   on top) has `cover.contains_rect(q.rect)`.
+    /// - For each quad at slice index `i`, its painted extent is
+    ///   [`Quad::shaded_rect`](crate::renderer::quad::Quad::shaded_rect): the pixels its edge ramp reaches past the
+    ///   rect, since a quad's border is an inner-edge annulus and adds
+    ///   nothing outside it. Drop the quad if some occluder with `idx > i`
+    ///   (drawn on top) has `cover.contains_rect` of that extent.
     /// - Shadows (`FillKind::is_shadow`) are never dropped — their visual
     ///   blur extends past the stored rect.
     /// - Compacts in place via copy-down; preserves survivor order.
@@ -161,13 +162,11 @@ impl OcclusionPruner {
             if cursor >= occluders {
                 break;
             }
-            // `q.rect` is the painted extent: quad_pipeline/shader.wgsl borders are
-            // inner-edge, and the shared ½px AA fringe is what every
-            // cover's AA inset answers.
+            let shaded = q.shaded_rect();
             let covered = if indexed {
-                self.indexed_covers(q.rect, cursor)
+                self.indexed_covers(shaded, cursor)
             } else {
-                (cursor..occluders).any(|at| self.covers(at, q.rect))
+                (cursor..occluders).any(|at| self.covers(at, shaded))
             };
             if covered {
                 self.drop_indices.push(i as u32);

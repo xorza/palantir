@@ -180,7 +180,7 @@ fn compose_flushes_when_later_quad_overlaps_prior_text() {
 #[test]
 fn compose_shadow_outer_halo_after_text_splits_group() {
     let sigma = 4.0;
-    // The composer grows the source by 3σ = 12, to x = 38: past the text's 39.
+    // The composer grows the source by 4σ = 16, to x = 34: past the text's 39.
     let source = Rect::new(50.0, 50.0, 50.0, 50.0);
     let buf = run(
         |b, _arena| {
