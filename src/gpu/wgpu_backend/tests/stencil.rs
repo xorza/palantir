@@ -134,7 +134,7 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
 }
 
 /// End-to-end pin of the same-mask elision: `build_mask_plan` (the
-/// CPU half of `stage_masks`) dedups consecutive value-equal chains
+/// CPU half of mask staging) dedups consecutive value-equal chains
 /// onto one shared mask-quad run (common: a rect clip nested in a
 /// rounded ancestor inherits the ancestor's chain verbatim, and
 /// quad-budget flushes split groups without changing clip), and the

@@ -5,15 +5,6 @@ Whoever addresses an item deletes it.
 Scope: `src/gpu` (`WgpuBackend` and everything it draws through), the
 backend half of the renderer. Test code is out of scope.
 
-## One fact, "this frame has a stencil", has two sources
-
-- [ ] `src/gpu/pipeline/quad_pipeline/mod.rs:62`, `:160` — the `MaskPlan`
-  is the schedule's data, but it is a `pub(crate)` field of `QuadPipeline`,
-  and the backend reads it there (`self.quad.mask_indices`). The quad
-  pipeline only has to upload the mask quads. Target: the backend (or the
-  schedule) owns the `MaskPlan` and the mask-quad scratch, and
-  `QuadPipeline::stage_masks` takes the built quads to upload.
-
 ## Dependency cycle between the surface and the backend
 
 - [ ] `src/gpu/surface/backbuffer.rs:4`, `:53`, `:105` — `Backbuffer::ensure`
