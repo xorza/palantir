@@ -178,7 +178,7 @@ impl QuadPipeline {
     /// pipelines are built separately by
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, texture_bgl: &wgpu::BindGroupLayout) -> Self {
         let shader = ShaderBody::Quad.module(device);
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
@@ -195,7 +195,7 @@ impl QuadPipeline {
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.quad.pl",
-                &[Some(gradient_bgl)],
+                &[Some(texture_bgl)],
             ),
         }
     }

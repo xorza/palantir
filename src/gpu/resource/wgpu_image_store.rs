@@ -1,7 +1,7 @@
 //! The GPU side of registered images: their textures and bind groups,
 //! created, rewritten and freed the moment the registry asks.
 
-use crate::gpu::resource::image_binding::ImageBinding;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::texture_region::TextureRegion;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
@@ -29,7 +29,7 @@ pub(crate) struct WgpuImageStore {
     /// against. The `GpuView` targets clone it, so a composite of a view
     /// binds exactly like an image, and each format's image pipeline
     /// composes over its layout.
-    binding: ImageBinding,
+    binding: TextureBinding,
     textures: RefCell<FxHashMap<TextureId, ImageTexture>>,
     /// Where [`premultiply_into`] stages a write, kept so a refilled
     /// image allocates once rather than once per update. An image with
@@ -48,19 +48,15 @@ pub(crate) struct ImageTexture {
 }
 
 impl WgpuImageStore {
-    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue, binding: TextureBinding) -> Self {
         Self {
-            binding: ImageBinding::new(&device),
+            binding,
             device,
             queue,
             textures: RefCell::default(),
             staged: RefCell::default(),
             premultiply: premultiplied_bytes(),
         }
-    }
-
-    pub(crate) const fn binding(&self) -> &ImageBinding {
-        &self.binding
     }
 
     /// One borrow for a render traversal, so a draw pays neither a
@@ -244,6 +240,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::resource::wgpu_image_store::{
         WgpuImageStore, premultiplied_bytes, premultiply_into,
     };
@@ -296,7 +293,11 @@ mod tests {
     #[test]
     fn a_gpu_texture_lives_exactly_as_long_as_its_handle() {
         let gpu = test_gpu::headless_test_gpu();
-        let store = Rc::new(WgpuImageStore::new(gpu.device.clone(), gpu.queue.clone()));
+        let store = Rc::new(WgpuImageStore::new(
+            gpu.device.clone(),
+            gpu.queue.clone(),
+            TextureBinding::new(&gpu.device),
+        ));
         let weak = Rc::downgrade(&store);
         let registry = ImageRegistry::default();
         registry.attach(Rc::clone(&store));
