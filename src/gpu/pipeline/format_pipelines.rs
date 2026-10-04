@@ -20,8 +20,9 @@ use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::raster::raster_program::RasterProgram;
 
 /// All render pipelines built against one swapchain color format. Keyed
-/// by [`wgpu::TextureFormat`] in the backend so windows on different-format
-/// outputs each bind the right set while sharing every other resource.
+/// by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat)
+/// in the backend so windows on different-format outputs each bind the
+/// right set while sharing every other resource.
 #[derive(Debug)]
 pub(crate) struct FormatPipelines {
     pub(crate) quad: QuadVariants,

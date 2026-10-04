@@ -189,7 +189,7 @@ pub(crate) struct WgpuBackend {
     /// sharing every format-independent resource above. The only state
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
-    pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
+    pipelines: FxHashMap<TargetFormat, FormatPipelines>,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation and the device was created with `TIMESTAMP_QUERY`
     /// enabled. Publishes into the host's shared `GpuPassStats` handle;
@@ -301,21 +301,15 @@ impl WgpuBackend {
     /// shared resource structs, so a new format costs only a handful of
     /// pipeline compiles — **no image re-upload or glyph re-rasterization**.
     /// Windows on different-format outputs each get (and keep) their own set.
-    fn ensure_format(&mut self, format: wgpu::TextureFormat) {
+    fn ensure_format(&mut self, format: TargetFormat) {
         // Split borrow: the resource structs the builder reads are
         // disjoint from `self.pipelines`, but the borrow checker can't see
         // that through `entry().or_insert_with(closure)`, so build first
         // then insert.
         if !self.pipelines.contains_key(&format) {
-            // Every format arrives through `TargetFormat::new`, which
-            // checks this in release.
-            debug_assert!(
-                TargetFormat::encodes_linear(format),
-                "{format:?} reached the backend unchecked",
-            );
             let built = FormatPipelines::new(
                 &self.device,
-                format,
+                format.get(),
                 PipelineSources {
                     quad: &self.quad,
                     mesh: &self.mesh,
@@ -372,7 +366,7 @@ impl WgpuBackend {
         // format. Read back as `&self.pipelines[&format]` after the
         // `&mut self` upload phase so the borrows don't collide.
         let surface_tex = target.texture();
-        let format = surface_tex.format();
+        let format = target.format();
         self.ensure_format(format);
 
         let viewport = ViewportPush::for_buffer(buffer);
@@ -1036,7 +1030,7 @@ impl WgpuBackend {
         } else {
             let fmt = self
                 .pipelines
-                .get(&surface_tex.format())
+                .get(&target.format())
                 .expect("a skip implies a prior submit built this format's pipelines");
             let view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
@@ -1121,7 +1115,7 @@ pub(crate) mod internals {
     impl WgpuBackend {
         /// Whether a pipeline set has been built for `format`.
         pub(crate) fn has_format_pipelines(&self, format: TargetFormat) -> bool {
-            self.pipelines.contains_key(&format.get())
+            self.pipelines.contains_key(&format)
         }
 
         /// Registered images resident on the GPU — what the surface-format
