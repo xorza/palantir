@@ -24,6 +24,9 @@ pub struct HeadlessTestGpuLease {
     pub queue: wgpu::Queue,
     /// The leased device.
     pub device: wgpu::Device,
+    /// The adapter the device opened on — its name, backend and driver —
+    /// which a golden suite records beside its goldens.
+    pub adapter: String,
 }
 
 impl HeadlessTestGpuLease {
@@ -109,9 +112,11 @@ impl HeadlessTestGpuLease {
                 }
             }
         };
+        let info = gpu.adapter.get_info();
         Ok(Self {
             queue: gpu.gpu.queue,
             device: gpu.gpu.device,
+            adapter: adapter_identity(&info),
         })
     }
 }
@@ -137,6 +142,7 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
         Ok(gpu) => HeadlessTestGpuLease {
             queue: gpu.queue.clone(),
             device: gpu.device.clone(),
+            adapter: gpu.adapter.clone(),
         },
         Err(why) => panic!("{why}"),
     }
@@ -151,6 +157,21 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
 /// [`headless_test_gpu`].
 pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
     HeadlessTestGpuLease::request().unwrap_or_else(|why| panic!("{why}"))
+}
+
+/// `name (backend, driver driver_info)`, leaving out the driver fields a
+/// backend does not report — Metal reports neither.
+fn adapter_identity(info: &wgpu::AdapterInfo) -> String {
+    let driver = [info.driver.as_str(), info.driver_info.as_str()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if driver.is_empty() {
+        format!("{} ({:?})", info.name, info.backend)
+    } else {
+        format!("{} ({:?}, {driver})", info.name, info.backend)
+    }
 }
 
 fn lock_gpu_process() -> File {

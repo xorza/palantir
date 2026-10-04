@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use glam::UVec2;
-use image::RgbaImage;
+use palantir::golden::image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
 use palantir::{

@@ -5,22 +5,26 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `5de4b168`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `7c1fc1e3`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
 ```text
 module           golden
+extern-reexport  golden::image  -> image
 struct           golden::Tolerance
-    fields: per_channel, max_ratio
+    fields: max_delta, max_pixels
+    assoc_const EXACT
     fn diff(self, actual, expected)
-    traits: Clone, Copy, Debug, Default
+    traits: Clone, Copy, Debug, Default, Eq, PartialEq, StructuralPartialEq
 struct           golden::DiffReport
-    fields: max_channel_delta, differing_pixels, differing_ratio, diff_image, tolerance
+    fields: max_channel_delta, differing_pixels, diff_image, tolerance
     const fn passes(self)
     traits: Debug
 struct           golden::Goldens
     fn new(root)
+    fn with_adapter(self, adapter)
+    fn orphans(self, names)
     const fn with_tolerance(self, tolerance)
     fn assert_matches(self, name, actual)
     fn assert_same(self, name, actual, expected)

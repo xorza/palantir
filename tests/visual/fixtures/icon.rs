@@ -10,6 +10,7 @@
 )]
 
 use glam::{UVec2, Vec2};
+use palantir::golden::image::RgbaImage;
 use palantir::widget::IconFit;
 use palantir::{Configure, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
 use std::rc::Rc;
@@ -54,7 +55,7 @@ pub(crate) fn atlas() -> Rc<IconTable> {
 /// `RgbaF32::srgb` takes sRGB components and the sRGB render target encodes
 /// them back on write, so the expected bytes are the authored ones — the
 /// same round trip the clear-colour smoke test pins.
-fn assert_pane_interior(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
+fn assert_pane_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     let expected = tint.map(|c| (c * 255.0f32).round() as u8);
     for dy in 1..19 {
@@ -74,7 +75,7 @@ fn assert_pane_interior(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
 /// [`assert_pane_interior`] plus one pixel outside each side, which proves
 /// the raster is the size of the box rather than rounded up into its
 /// neighbour. Only for panes with nothing drawn near them.
-fn assert_solid_pane(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
+fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     assert_pane_interior(img, at, tint);
     let (ox, oy) = (at.x as u32, at.y as u32);
     for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {

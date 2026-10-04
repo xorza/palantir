@@ -1,7 +1,7 @@
 //! Pixel-level shadow fixtures.
 
 use glam::{IVec2, UVec2, Vec2};
-use image::RgbaImage;
+use palantir::golden::image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{Configure, Panel, Rect, RgbaF32, Shadow, Sizing};
 
