@@ -122,7 +122,7 @@ impl Forest {
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         let layer = self.current_layer();
-        let Some(viewport) = self.ids.curr.get(&def.content) else {
+        let Some(viewport) = self.ids.endpoint(def.content) else {
             panic!(
                 "scrollbar overlay names viewport {:?}, which was not recorded earlier this frame",
                 def.content,

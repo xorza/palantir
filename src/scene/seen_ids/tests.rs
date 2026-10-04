@@ -56,11 +56,11 @@ fn resolve_skips_occupied_occurrence_ids() {
         let final_id = open(&mut ids, x, true, node);
         assert_eq!(final_id, x.with(occupied_slots + 1));
         assert_eq!(ids.curr.len(), (occupied_slots + 2) as usize);
-        assert_eq!(ids.curr[&x], ep(0));
+        assert_eq!(ids.endpoint(x), Some(ep(0)));
         for slot in 1..=occupied_slots {
-            assert_eq!(ids.curr[&x.with(slot)], ep(slot));
+            assert_eq!(ids.endpoint(x.with(slot)), Some(ep(slot)));
         }
-        assert_eq!(ids.curr[&final_id], ep(node));
+        assert_eq!(ids.endpoint(final_id), Some(ep(node)));
         assert!(ids.pending.is_empty());
     }
 }
@@ -122,7 +122,7 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
     panic_probe::assert_panics_with("record_endpoint called twice", || {
         ids.record_endpoint(x, ep(2))
     });
-    assert_eq!(ids.curr[&x], ep(1));
+    assert_eq!(ids.endpoint(x), Some(ep(1)));
 }
 
 /// Two widgets resolve the same raw auto id before either records — the
@@ -151,6 +151,20 @@ fn resolving_twice_before_recording_disambiguates() {
     // A reservation lasts one pass.
     ids.pre_record();
     assert_eq!(ids.resolve(x, false), x);
+
+    // And it is no recording: an id resolved and never shown has no
+    // endpoint, is in no frame's recording, and so is never reported
+    // removed either.
+    let mut ids = SeenIds::default();
+    let y = WidgetId::from_hash("y");
+    open(&mut ids, x, false, 1);
+    assert_eq!(ids.resolve(y, false), y);
+    assert_eq!(ids.endpoint(y), None);
+    assert!(ids.rollover().is_empty());
+    assert_eq!(ids.last_frame().keys().copied().collect::<Vec<_>>(), [x]);
+    ids.pre_record();
+    open(&mut ids, x, false, 1);
+    assert!(ids.rollover().is_empty(), "y was never recorded");
 }
 
 #[test]

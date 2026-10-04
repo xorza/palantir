@@ -62,11 +62,11 @@ pub(crate) struct Cascade {
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
     /// ([`crate::input::input_state::InputState::response_for`], capture / focus
-    /// eviction). **Invariant: equals `SeenIds.curr` as observed at
-    /// the end of the most recent `CascadeEngine::run`** — a full
-    /// rebuild refills it from `seen.curr`, and incremental runs and
-    /// skips retain it because [`Self::key`] includes every widget
-    /// identity. The snapshot is required (rather than reading
+    /// eviction). **Invariant: equals the recorded entries of
+    /// `SeenIds.curr` as observed at the end of the most recent
+    /// `CascadeEngine::run`** — a full rebuild refills it from
+    /// `seen.curr`, and incremental runs and skips retain it because
+    /// [`Self::key`] includes every widget identity. The snapshot is required (rather than reading
     /// `seen.curr` directly) because `response_for` is called during
     /// recording, and `SeenIds::pre_record` clears `curr` at the top
     /// of every record pass — `request_relayout`'s second pass needs
