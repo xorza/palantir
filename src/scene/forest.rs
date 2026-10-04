@@ -242,7 +242,7 @@ impl Forest {
         });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
-        let node_id = tree.open_node(scratch, resolved.id, node, chrome);
+        let node_id = tree.open_node(scratch, resolved.id(), node, chrome);
         let endpoint = Endpoint {
             layer,
             node: node_id,

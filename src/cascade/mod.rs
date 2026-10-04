@@ -66,8 +66,9 @@ pub(crate) struct Cascade {
     /// `SeenIds.curr` as observed at the end of the most recent
     /// `CascadeEngine::run`** — a full rebuild refills it from
     /// `seen.curr`, and incremental runs and skips retain it because
-    /// [`Self::key`] includes every widget identity. The snapshot is required (rather than reading
-    /// `seen.curr` directly) because `response_for` is called during
+    /// [`Self::key`] includes every widget identity. The snapshot is
+    /// required (rather than reading `seen.curr` directly) because
+    /// `response_for` is called during
     /// recording, and `SeenIds::pre_record` clears `curr` at the top
     /// of every record pass — `request_relayout`'s second pass needs
     /// to see pass A's entries while its own widgets are still being

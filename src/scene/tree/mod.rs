@@ -310,6 +310,12 @@ impl Tree {
             // the same nodes nested differently collide. The flag word
             // and visibility share the end's word, and its top bit says
             // whether a Tab key follows.
+            const {
+                assert!(
+                    32 + NodeFlags::WIDTH + u8::BITS <= 63,
+                    "the flag word and visibility overrun the Tab bit",
+                );
+            }
             cascade_static_hasher.write_u64(widget_ids[i].0);
             cascade_static_hasher.write_u64(
                 u64::from(subtree_ends[i].end())

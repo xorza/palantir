@@ -170,10 +170,9 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke)
     let ring = ShapeStroke::from(ring);
     let has_ring = !ring.is_noop();
     // Canonical authoring hash, fed as whole words straight from
-    // registers. Packing the fields into a struct for one byte-slice
-    // `write` stored it field by field and read it back in wider
-    // chunks, and a load spanning several in-flight stores cannot be
-    // forwarded: the reads stalled until the stores retired.
+    // registers. A struct packed for one byte-slice `write` is stored
+    // field by field and read back in wider chunks, a load the CPU
+    // cannot forward from the stores still in flight.
     let brush = fill.hash_parts();
     let mut h = Hasher::new();
     h.write_u64(brush.payload);

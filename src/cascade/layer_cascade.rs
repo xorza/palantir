@@ -81,12 +81,11 @@ pub(crate) struct LayerCascade {
     pub(crate) paint_arena: PaintArena,
     /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
     /// rows were built from — the per-node half of the validity gate
-    /// whose whole-layer half is [`Cascade::key`](crate::cascade::Cascade::key). An
-    /// incremental repair recomputes a node where this disagrees with the
-    /// live rollup, or where its `cascade_input` moved, and re-stamps what
-    /// it repaired. Dirty ancestors recompute their own paint rows, so no
-    /// separate per-node paint hash
-    /// or own extent is retained.
+    /// whose whole-layer half is [`Cascade::key`](crate::cascade::Cascade::key).
+    /// An incremental repair recomputes a node where this disagrees with
+    /// the live rollup, or where its `cascade_input` moved, and re-stamps
+    /// what it repaired. Dirty ancestors recompute their own paint rows,
+    /// so no separate per-node paint hash is retained.
     ///
     /// **Not the damage engine's snapshot of the same rollup.** The two hold
     /// equal values and cannot be merged: this one is node-indexed, and
@@ -110,9 +109,10 @@ pub(crate) struct LayerCascade {
     pub(super) hit_rows: Vec<u32>,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries) — fixed
-    /// for the layer's run, set at `reset_for` time. A full rebuild pushes one
-    /// entry per node; incremental runs rewrite the block in place. The entry index is
-    /// therefore always `entries_base + node.0`. Combined with the per-pass
+    /// for the layer's run, set at `reset_for` time. A full rebuild pushes
+    /// one entry per node; incremental runs rewrite the block in place. The
+    /// entry index is therefore always `entries_base + node.0`. Combined
+    /// with the per-pass
     /// [`Cascade::by_id`](crate::cascade::Cascade::by_id) snapshot this
     /// gives O(1) `WidgetId → entry` without a per-widget `WidgetId → u32`
     /// hashmap fill.

@@ -55,12 +55,9 @@ pub(crate) struct CollisionRecord {
 
 /// What one id holds in [`SeenIds::curr`] this pass.
 ///
-/// One table for both states rather than a recorded map beside a reserved
-/// set: every widget resolves then records, so the two-table form paid
-/// five probes a node — a lookup, a set lookup and a set insert at
-/// resolve, an insert and a set remove at record. Now resolve pays one
-/// probe, and record none: it writes through the index the
-/// [`ResolvedId`] carries.
+/// One table for both states, because every widget resolves then
+/// records: resolve pays one probe, and record none — it writes through
+/// the index the [`ResolvedId`] carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IdSlot {
     /// Handed out by [`SeenIds::resolve`], not yet recorded. A widget may
@@ -89,10 +86,23 @@ impl IdSlot {
 /// always names that entry; [`SeenIds::record_endpoint`] checks the id
 /// against it all the same, since a stale value from an earlier pass
 /// would otherwise write another widget's entry.
+///
+/// Packed to 4-byte alignment so it fits the 8 bytes beside
+/// [`Ident`](crate::scene::node::ident::Ident)'s tag, which every
+/// widget carries: aligned to 8 it is 16 bytes, and each widget grows by
+/// 8.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(Rust, packed(4))]
 pub(crate) struct ResolvedId {
-    pub(crate) id: WidgetId,
+    id: WidgetId,
     entry: u32,
+}
+
+impl ResolvedId {
+    #[inline]
+    pub(crate) const fn id(self) -> WidgetId {
+        self.id
+    }
 }
 
 /// One id handed out this pass, and what it holds.
@@ -335,7 +345,7 @@ impl SeenIds {
         resolved: ResolvedId,
         endpoint: Endpoint,
     ) -> Option<CollisionRecord> {
-        let final_id = resolved.id;
+        let final_id = resolved.id();
         let entry = self
             .curr
             .entries
