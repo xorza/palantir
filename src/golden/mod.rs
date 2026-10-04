@@ -21,6 +21,8 @@ use image::RgbaImage;
 use std::env;
 use std::fs;
 use std::io;
+use std::process;
+use std::thread;
 
 /// How far an image may stray from what it is compared against, in the
 /// shape of a WPT fuzzy match: at most `max_pixels` pixels may differ at
@@ -313,10 +315,20 @@ impl Goldens {
         }
     }
 
+    /// Written beside and renamed into place, because a suite's tests
+    /// compare in parallel: a plain write truncates the file first, and a
+    /// test reading it then sees an empty adapter and fails on a mismatch
+    /// that is not there.
     fn write_sidecar(sidecar: &Path, adapter: &str) {
-        fs::create_dir_all(sidecar.parent().expect("sidecar has a directory"))
-            .expect("create golden directory");
-        fs::write(sidecar, adapter).expect("write the adapter sidecar");
+        let dir = sidecar.parent().expect("sidecar has a directory");
+        fs::create_dir_all(dir).expect("create golden directory");
+        let staged = dir.join(format!(
+            "{ADAPTER_FILE}.{}.{:?}.tmp",
+            process::id(),
+            thread::current().id()
+        ));
+        fs::write(&staged, adapter).expect("stage the adapter sidecar");
+        fs::rename(&staged, sidecar).expect("move the adapter sidecar into place");
     }
 
     /// Leave a failure's artifacts in `output` — what the test got, what it

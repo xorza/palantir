@@ -2,7 +2,6 @@
 //! `Spacing` and `RgbaF16` use, with corner names on the lanes.
 
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::domain;
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
@@ -28,15 +27,18 @@ pub struct Corners(F16x4);
 f16x4_lanes!(Corners, [tl, tr, br, bl]);
 
 impl Corners {
-    /// Panics unless every radius is a [length](domain::length) — the
-    /// check a radius faces where it enters a shape or a node.
+    /// Panics unless every radius is a [length](crate::widget::domain::length) the f16
+    /// lanes hold, at most 65504 — the check a radius faces where it
+    /// enters a shape or a node, under the rule a theme file's radius is
+    /// read by. A larger one packed to infinity, so the length rule's
+    /// "finite" would blame a value the caller never passed.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {
         assert!(
             !self.0.any_lane_non_finite() && !self.0.any_lane_negative(),
             "{}",
-            domain::LENGTH_RULE,
+            <Self as LaneCodec>::LANE_RULE,
         );
     }
 

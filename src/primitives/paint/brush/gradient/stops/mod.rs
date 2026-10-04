@@ -90,8 +90,12 @@ impl<'de> Deserialize<'de> for Stop {
         }
 
         let raw = RawStop::deserialize(deserializer)?;
-        if !raw.offset.is_finite() {
-            return Err(D::Error::custom("gradient stop offset must be finite"));
+        if !domain::is_fraction(raw.offset) {
+            return Err(D::Error::custom(format_args!(
+                "{}, got {}",
+                domain::FRACTION_RULE,
+                raw.offset
+            )));
         }
         if !domain::is_color(raw.color) {
             return Err(D::Error::custom(domain::COLOR_RULE));

@@ -10,6 +10,8 @@ use crate::internals::panic_probe;
 use std::env;
 use std::fs;
 use std::process;
+use std::sync::Barrier;
+use std::thread;
 
 /// A pair covering no pixels differs nowhere, so the verdict is a pass.
 /// A zero *width* would panic inside `chunks_exact`, which rejects a
@@ -201,6 +203,41 @@ fn goldens_record_and_hold_their_adapter() {
     );
 
     Goldens::new(&dir.0).check("g", &image, false);
+
+    // Tests compare in parallel, so a run that finds no sidecar has many
+    // writers and many readers at once. Each reader sees the whole adapter
+    // or no file, never a write half done.
+    let names: Vec<String> = (0..8).map(|i| format!("t{i}")).collect();
+    let racing = Goldens::new(&dir.0).with_adapter("GPU C");
+    for name in &names {
+        racing.check(name, &image, true);
+    }
+    let sidecar_dir = sidecar.parent().unwrap();
+    for _ in 0..200 {
+        fs::remove_file(&sidecar).unwrap();
+        let start = Barrier::new(names.len());
+        thread::scope(|scope| {
+            for name in &names {
+                scope.spawn(|| {
+                    start.wait();
+                    racing.check(name, &image, false);
+                });
+            }
+        });
+        assert_eq!(fs::read_to_string(&sidecar).unwrap(), "GPU C");
+    }
+    let staged = fs::read_dir(sidecar_dir)
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|e| e == "tmp")
+        })
+        .count();
+    assert_eq!(staged, 0, "every staged sidecar is renamed into place");
 }
 
 /// Every golden no name claims is an orphan, in name order; the adapter

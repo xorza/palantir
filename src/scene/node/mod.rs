@@ -102,7 +102,7 @@ pub(crate) struct Node {
 }
 
 impl Node {
-    /// Set the lower size bound, checking it against the upper one.
+    /// Set the lower size bound.
     ///
     /// The four `set_*` writers below own every check an authored field
     /// owes, and everything that writes one goes through them: the
@@ -138,10 +138,13 @@ impl Node {
     /// unbounded maximum.
     #[inline]
     #[track_caller]
-    pub(crate) fn set_max_size(&mut self, value: Size) {
+    pub(crate) const fn set_max_size(&mut self, value: Size) {
         domain::extent(value.w);
         domain::extent(value.h);
-        let min = self.min_size.unwrap_or(Size::ZERO);
+        let min = match self.min_size {
+            Some(min) => min,
+            None => Size::ZERO,
+        };
         self.max_size = Some(Size::new(value.w.max(min.w), value.h.max(min.h)));
     }
 
@@ -195,7 +198,7 @@ impl Node {
     /// minimum above an authored maximum is clamped down to it, because a
     /// default means "when the caller said nothing" and must never
     /// contradict what the caller did say. Two authored bounds that
-    /// conflict still panic in [`Self::set_min_size`].
+    /// conflict resolve as [`Self::set_min_size`] says: the minimum wins.
     #[inline]
     #[track_caller]
     pub(crate) const fn fill_min_size(&mut self, value: Size) {
@@ -209,15 +212,12 @@ impl Node {
     }
 
     /// The mirror of [`Self::fill_min_size`]: a themed maximum below an
-    /// authored minimum is raised to it.
+    /// authored minimum is raised to it, which [`Self::set_max_size`]
+    /// already does for any maximum.
     #[inline]
     #[track_caller]
-    pub(crate) fn fill_max_size(&mut self, value: Size) {
+    pub(crate) const fn fill_max_size(&mut self, value: Size) {
         if self.max_size.is_none() {
-            let value = match self.min_size {
-                Some(min) => Size::new(at_least(value.w, min.w), at_least(value.h, min.h)),
-                None => value,
-            };
             self.set_max_size(value);
         }
     }
@@ -408,11 +408,6 @@ impl Node {
 /// that follows still sees it — `f32::min` would drop it.
 const fn at_most(value: f32, cap: f32) -> f32 {
     if value > cap { cap } else { value }
-}
-
-/// `value` raised to `floor`, keeping a NaN `value` for the same reason.
-const fn at_least(value: f32, floor: f32) -> f32 {
-    if value < floor { floor } else { value }
 }
 
 #[cfg(test)]

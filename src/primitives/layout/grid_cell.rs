@@ -51,7 +51,8 @@ impl GridCell {
     /// Panics unless both spans are [counts](crate::widget::domain::count).
     #[track_caller]
     pub const fn with_span(self, row_span: u16, col_span: u16) -> Self {
-        assert!(row_span >= 1 && col_span >= 1, "{}", domain::COUNT_RULE);
+        domain::count(row_span as u32);
+        domain::count(col_span as u32);
         Self {
             row_span,
             col_span,
