@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::{IVec2, UVec2, Vec2};
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::keyboard::ModifiersState;
 use winit::window::Window as WinitWindow;
 
@@ -18,6 +19,7 @@ use crate::host::winit::input::PointerTrace;
 use crate::host::winit::native;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
+use crate::primitives::geometry::rect::Rect;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
@@ -105,6 +107,11 @@ pub(super) struct Window {
     pub(super) next: FramePresent,
     pub(super) close_requested: bool,
     cursor: CursorIcon,
+    /// The IME caret area in force, in physical px, or `None` while IME is
+    /// off — what the last frame's level was applied as, so a frame applies
+    /// only a change. Physical, so a scale change re-places the candidate
+    /// list even when the logical caret stands still.
+    ime_area: Option<Rect>,
     /// Time at which the window became hidden. The render core remains
     /// untouched while hidden, then its clock skips the elapsed gap on resume.
     occluded_at: Option<Instant>,
@@ -175,6 +182,7 @@ impl Window {
             next: FramePresent::Immediate,
             close_requested: false,
             cursor: CursorIcon::default(),
+            ime_area: None,
             occluded_at: None,
             occluded: false,
             minimized: false,
@@ -189,7 +197,7 @@ impl Window {
         }
     }
 
-    pub(super) fn on_input(&mut self, event: InputEvent) -> InputDelta {
+    pub(super) fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         // Stamped here, where the event actually arrived: the frame clock
         // it would otherwise carry stands still between frames, and an
         // event-driven host can idle for seconds between two of them.
@@ -503,7 +511,30 @@ impl Window {
             self.cursor = output.cursor;
         }
         self.set_vsync(output.vsync);
+        self.set_ime_area(output.ime);
         self.close_requested = false;
+    }
+
+    /// Turn the platform's input method on with its candidate list beside
+    /// `caret` (logical px), or off for `None` — only on a change.
+    fn set_ime_area(&mut self, caret: Option<Rect>) {
+        let physical = caret.map(|rect| physical_rect(rect, self.effective_scale()));
+        if physical == self.ime_area {
+            return;
+        }
+        match physical {
+            Some(rect) => {
+                if self.ime_area.is_none() {
+                    self.window.set_ime_allowed(true);
+                }
+                self.window.set_ime_cursor_area(
+                    PhysicalPosition::new(f64::from(rect.min.x), f64::from(rect.min.y)),
+                    PhysicalSize::new(f64::from(rect.size.w), f64::from(rect.size.h)),
+                );
+            }
+            None => self.window.set_ime_allowed(false),
+        }
+        self.ime_area = physical;
     }
 
     /// Point the swapchain config at `vsync`, if it isn't already paced that
@@ -545,6 +576,15 @@ impl FramePresent {
             Self::At(t) if t <= now => Self::Immediate,
             other => other,
         }
+    }
+}
+
+/// `rect` in logical px as physical px at `scale` — the space a window's
+/// platform calls take.
+fn physical_rect(rect: Rect, scale: f32) -> Rect {
+    Rect {
+        min: rect.min * scale,
+        size: rect.size.scaled_by(scale),
     }
 }
 

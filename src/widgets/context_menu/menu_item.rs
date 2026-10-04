@@ -1,6 +1,8 @@
 //! One activatable row inside a context menu.
 
 use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::layout::align::{Align, HAlign};
@@ -48,7 +50,12 @@ impl<'a> MenuItem<'a> {
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
-            widget: Widget::hstack().sense(Sense::CLICK),
+            // A Tab stop that a focused Enter or Space activates, as
+            // WAI-ARIA's menu item does; both keys are `KeyClass::Text`.
+            widget: Widget::hstack()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT),
             label: label.into(),
             shortcut: MenuShortcut::None,
             style: None,
@@ -130,6 +137,13 @@ impl<'a> MenuItem<'a> {
                 Some(shortcut)
             }
         };
+        if !disabled && ui.is_focus_within(id) {
+            // Both sampled: `key_pressed` also keeps each chord subscribed
+            // for the wake gate.
+            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
+            shortcut_fired |= enter || space;
+        }
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));
 
         // Label + optional right-aligned shortcut hint as `Text` leaves;
@@ -151,8 +165,9 @@ impl<'a> MenuItem<'a> {
         };
         self.widget.record(ui, Some(&look.background), body);
 
-        // A shortcut is a click the pointer pipeline never saw. Callers
-        // read `.clicked()` and must not care which device produced it.
+        // A shortcut or an activation key is a click the pointer pipeline
+        // never saw. Callers read `.clicked()` and must not care which
+        // device produced it.
         if shortcut_fired {
             response.left.phase = ButtonPhase::Up { click: Some(1) };
         }

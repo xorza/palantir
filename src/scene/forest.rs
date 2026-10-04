@@ -10,6 +10,7 @@ use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::background::Background;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -224,12 +225,19 @@ impl Forest {
         widget_id: WidgetId,
         node: &Node,
         chrome: Option<&Background>,
+        ring: Stroke,
     ) {
         let layer = self.current_layer();
         // Disjoint borrow: record storage, `trees`, and `scratch` are separate
         // fields, so all three can be borrowed for the same call.
         let store = &mut self.record_store;
-        let chrome = chrome.map(|bg| ChromeInput { bg, store });
+        // A ring with no background rides an empty one, which paints
+        // nothing and widens no padding.
+        let chrome = (chrome.is_some() || !ring.is_noop()).then(|| ChromeInput {
+            bg: chrome.unwrap_or(&Background::NONE),
+            ring,
+            store,
+        });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
         let node_id = tree.open_node(scratch, widget_id, node, chrome);

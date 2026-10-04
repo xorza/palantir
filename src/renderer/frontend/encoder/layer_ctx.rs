@@ -16,6 +16,7 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::encoder::GradientPass;
@@ -488,6 +489,13 @@ impl LayerCtx<'_, '_> {
             emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
             let src = self.brush_source(bg.fill);
             out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.border), 1.0);
+            // The focus ring, over the chrome on the same edge, and before
+            // the clip like the border it shares the edge with.
+            if bg.ring {
+                let clear = self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT));
+                let ring = self.tree.focus_ring;
+                out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, clear, ring), 1.0);
+            }
         }
 
         if clip {

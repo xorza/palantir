@@ -17,6 +17,8 @@ impl NodeFlags {
     const FOCUSABLE: u32 = 1 << 9;
     const SCOPE_SHIFT: u32 = 10;
     const SCOPE_MASK: u32 = 0xff << Self::SCOPE_SHIFT;
+    /// Set when the node is *not* a Tab stop, so the zero default is one.
+    const NOT_TAB_STOP: u32 = 1 << 18;
 
     /// The whole bitset, for callers that fold it into a hash rather
     /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
@@ -54,6 +56,11 @@ impl NodeFlags {
         self.bits & Self::FOCUSABLE != 0
     }
 
+    #[inline]
+    pub(crate) const fn is_tab_stop(self) -> bool {
+        self.bits & Self::NOT_TAB_STOP == 0
+    }
+
     /// The key classes this node's input scope takes, or
     /// [`KeyFilter::NONE`] when it declares no scope — the empty filter
     /// doubles as "not a scope", which is what lets this ride spare bits
@@ -81,6 +88,11 @@ impl NodeFlags {
     #[inline]
     pub(crate) const fn set_focusable(&mut self, v: bool) {
         self.bits = (self.bits & !Self::FOCUSABLE) | (if v { Self::FOCUSABLE } else { 0 });
+    }
+
+    #[inline]
+    pub(crate) const fn set_tab_stop(&mut self, v: bool) {
+        self.bits = (self.bits & !Self::NOT_TAB_STOP) | (if v { 0 } else { Self::NOT_TAB_STOP });
     }
 
     #[inline]

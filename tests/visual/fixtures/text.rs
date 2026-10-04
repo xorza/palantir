@@ -3,6 +3,7 @@
 use glam::UVec2;
 use palantir::{Background, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -47,7 +48,7 @@ fn text_paragraph_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("text_paragraph", &img);
+    assert_matches_golden(GoldenName::TextParagraph, &img);
 }
 
 /// Row list with many labels under per-row backgrounds. Exercises
@@ -97,5 +98,5 @@ fn text_row_list_batches_into_one_render() {
                 });
         })
         .image;
-    assert_matches_golden("text_row_list_batched", &img);
+    assert_matches_golden(GoldenName::TextRowListBatched, &img);
 }

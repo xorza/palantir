@@ -12,6 +12,7 @@ pub(crate) mod context_menu;
 pub(crate) mod dock;
 pub(crate) mod drag_value;
 pub(crate) mod expander;
+pub(crate) mod focus_ring;
 pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
@@ -37,6 +38,7 @@ use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::dock::DockTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::expander::ExpanderTheme;
+use crate::widgets::theme::focus_ring::FocusRingTheme;
 use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
@@ -148,6 +150,9 @@ pub struct Theme {
     /// What [`crate::Expander`]'s header wears, and how far its body is
     /// inset.
     pub expander: ExpanderTheme,
+    /// The ring around the widget that holds keyboard focus, drawn by
+    /// the framework on every focusable widget alike.
+    pub focus_ring: FocusRingTheme,
     /// Ambient text style — size, colour, family, leading — that every
     /// [`Text`](crate::Text) falls back to when its builder didn't
     /// override the axis. Every other text slot in the theme — each widget
@@ -284,6 +289,7 @@ impl Theme {
             slider: _,
             spinner: _,
             splitter: _,
+            focus_ring: _,
             window_clear: _,
             panel_background: _,
             panel_clip: _,
@@ -331,6 +337,7 @@ impl Theme {
             tabs: TabsTheme::from_palette(p),
             dock: DockTheme::from_palette(p),
             expander: ExpanderTheme::from_palette(p),
+            focus_ring: FocusRingTheme::from_palette(p),
             text: TextStyle::default().with_color(p.text),
             window_clear: p.window_background,
             panel_background: None,

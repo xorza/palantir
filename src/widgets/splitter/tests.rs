@@ -503,3 +503,41 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         );
     }
 }
+
+/// A focused divider takes the window splitter's keys, each placed through
+/// the drag's mapping and so held by `min_pane`. On the 400 px span with a
+/// 1 px rule, a seam at ratio `r` sits at `400 r + 0.5`: an arrow moves it
+/// 10 px, so `r` moves by `10 / 400 = 0.025`; End asks for x = 401, held at
+/// `1 − 50 / 400 = 0.875`; Home for x = 0, held at `0.125`. Each key commits
+/// once, on the frame the arranged ratio comes back.
+#[test]
+fn a_focused_divider_moves_by_the_keys_within_the_floors() {
+    use crate::input::keyboard::key::Key;
+    use crate::primitives::math::domain;
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut ratio = 0.5;
+    frame_with(&mut h, &mut ratio);
+    frame_with(&mut h, &mut ratio);
+    h.set_focus(split_id().with("divider"));
+    frame_with(&mut h, &mut ratio);
+    for (key, want) in [
+        (Key::ArrowRight, 0.525),
+        (Key::ArrowLeft, 0.5),
+        (Key::ArrowDown, 0.5),
+        (Key::End, 0.875),
+        (Key::Home, 0.125),
+    ] {
+        h.key(key);
+        let first = frame_with(&mut h, &mut ratio);
+        let second = frame_with(&mut h, &mut ratio);
+        assert!(domain::approx_eq(ratio, want), "{key:?}: {ratio} != {want}");
+        // Over every pass: the sync that commits may be a frame's second.
+        let commits = [&first, &second]
+            .iter()
+            .map(|passes| passes.count_where(|edges| edges.committed))
+            .sum::<usize>();
+        let moved = key != Key::ArrowDown;
+        assert_eq!(commits, usize::from(moved), "{key:?}: commits");
+    }
+}

@@ -8,6 +8,7 @@
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
 use crate::damage::Damage;
+use crate::primitives::geometry::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use std::time::Duration;
 
@@ -65,6 +66,12 @@ pub struct FrameReport {
     /// against this report's own paint outcome, and the crate's tests
     /// read it to pin which short-circuit fired.
     pub(crate) processing: FrameProcessing,
+    /// Where IME text goes this frame — the caret a widget asked for with
+    /// [`Ui::request_ime`](crate::Ui::request_ime), in logical px — or
+    /// `None` when nothing asked. A host that embeds the UI enables its
+    /// platform's input method while this is `Some`, and places the
+    /// candidate list beside the rect; the winit host does both itself.
+    pub ime_area: Option<Rect>,
 }
 
 impl FrameReport {
@@ -121,6 +128,7 @@ mod tests {
                 repaint_after: None,
                 plan,
                 processing: FrameProcessing::SingleLayout,
+                ime_area: None,
             };
             assert_eq!(report.paint(), expected);
         }

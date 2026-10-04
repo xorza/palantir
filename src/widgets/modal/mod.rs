@@ -122,6 +122,7 @@ impl<'a> Modal<'a> {
             })
         });
         let response = OverlayResponse {
+            id: root_id,
             dismissed: turn.outside || turn.escape,
             close_requested: handle.requested(),
             inner: turn.inner,

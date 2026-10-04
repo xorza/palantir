@@ -89,3 +89,50 @@ fn open_close_and_a_disabled_trigger() {
     PopupTrigger::close(&mut h.ui, trigger_id());
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
 }
+
+/// A popup the keyboard opened takes focus on its first stop, and gives
+/// it back to the trigger when Escape closes it; one a click opened leaves
+/// focus on the trigger it clicked.
+#[test]
+fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
+    use crate::input::keyboard::key::Key;
+    use crate::widgets::block::Block;
+
+    let item = WidgetId::from_hash("popup-item");
+    let record = |ui: &mut Ui| {
+        let trigger = Button::new()
+            .id(trigger_id())
+            .label("open")
+            .show(ui)
+            .snapshot();
+        PopupTrigger::on(&trigger).show(ui, |ui, _| {
+            Block::new().id(item).size(20.0).focusable(true).show(ui);
+        });
+    };
+
+    // Tab to the trigger, Enter opens: focus moves in, Escape gives it back.
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(record);
+    h.key(Key::Tab);
+    h.frame(record);
+    assert_eq!(h.focus(), Some(trigger_id()));
+    h.key(Key::Enter);
+    h.frame(record);
+    assert!(PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert_eq!(h.focus(), Some(item), "the keyboard's open moves focus in");
+    h.key(Key::Escape);
+    h.frame(record);
+    h.frame(record);
+    assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert_eq!(h.focus(), Some(trigger_id()), "closing gives it back");
+
+    // A click opens it and focus stays on the trigger the click focused.
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(record);
+    let at = trigger_centre(&h);
+    h.click_at(at);
+    h.frame(record);
+    assert!(PopupTrigger::is_open(&h.ui, trigger_id()));
+    h.frame(record);
+    assert_eq!(h.focus(), Some(trigger_id()), "a click's open leaves focus");
+}

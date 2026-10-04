@@ -11,6 +11,7 @@
 //! 1.87). [`InputQueue`] is that rule here: an event that would make a
 //! frame ambiguous waits, with every event after it, for the next frame.
 
+use crate::common::span::Span;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
@@ -34,12 +35,21 @@ pub(crate) struct InputQueue {
     /// This frame's command key — a key press that typed nothing and is
     /// not a bare modifier. A frame takes one; repeats of it ride along.
     command_key: Option<Key>,
+    /// The text of every held IME event, end to end; each holds its span.
+    /// Cleared when a new hold starts on an empty queue, so it never
+    /// outgrows one burst of held events, and its capacity is retained.
+    text: String,
 }
 
 /// An event held for a later frame, with the time it arrived.
+///
+/// An IME event's text is copied into the queue, because the host's
+/// string does not outlive the call: `event` holds it empty, and `text`
+/// is where it went.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct HeldEvent {
-    pub(super) event: InputEvent,
+    pub(super) event: InputEvent<'static>,
+    pub(super) text: Span,
     pub(super) at: Duration,
 }
 
@@ -57,7 +67,7 @@ impl InputQueue {
     /// applying the event — [`Self::note_button`] and
     /// [`Self::note_command_key`] — because only then is it known whether
     /// the press latched a capture or the key reached a reader.
-    pub(super) fn admits(&self, event: &InputEvent) -> bool {
+    pub(super) fn admits(&self, event: &InputEvent<'_>) -> bool {
         match *event {
             InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
                 !self.buttons[button.idx()]
@@ -72,7 +82,9 @@ impl InputQueue {
             | InputEvent::ScrollLines(_)
             | InputEvent::Zoom(_)
             | InputEvent::ModifiersChanged(_)
-            | InputEvent::SurfaceFocusLost => true,
+            | InputEvent::SurfaceFocusLost
+            | InputEvent::ImePreedit { .. }
+            | InputEvent::ImeCommit(_) => true,
         }
     }
 
@@ -91,8 +103,24 @@ impl InputQueue {
     }
 
     /// Hold `event` for a later frame.
-    pub(super) fn defer(&mut self, event: InputEvent, now: Duration) {
-        self.pending.push_back(HeldEvent { event, at: now });
+    pub(super) fn defer(&mut self, event: InputEvent<'_>, now: Duration) {
+        if self.pending.is_empty() {
+            self.text.clear();
+        }
+        let start = self.text.len();
+        if let Some(text) = event.text() {
+            self.text.push_str(text);
+        }
+        self.pending.push_back(HeldEvent {
+            event: event.with_text(""),
+            text: Span::from(start..self.text.len()),
+            at: now,
+        });
+    }
+
+    /// The text a held event's `span` names.
+    pub(super) fn text(&self, span: Span) -> &str {
+        &self.text[span.range()]
     }
 
     /// Start the next frame: forget what this one changed.

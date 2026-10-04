@@ -138,25 +138,19 @@ fn modifier_normalization_translates_each_bit() {
 
 #[test]
 fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
+    let lines = wheel(MouseScrollDelta::LineDelta(2.0, 1.0));
+    let pixels = wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+        60.0, -120.0,
+    )));
     let mut got = Vec::new();
-    translate(
-        &wheel(MouseScrollDelta::LineDelta(2.0, 1.0)),
-        at(1.0),
-        |event| got.push(event),
-    );
+    translate(&lines, at(1.0), |event| got.push(event));
     assert!(matches!(
         got.as_slice(),
         [InputEvent::ScrollLines(delta)] if *delta == Vec2::new(-2.0, -1.0)
     ));
     got.clear();
 
-    translate(
-        &wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
-            60.0, -120.0,
-        ))),
-        at(2.0),
-        |event| got.push(event),
-    );
+    translate(&pixels, at(2.0), |event| got.push(event));
     assert!(matches!(
         got.as_slice(),
         [InputEvent::ScrollPixels(delta)] if *delta == Vec2::new(-30.0, 60.0)
@@ -170,14 +164,16 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
 /// through.
 #[test]
 fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
+    let half = pinch(0.5);
     let mut emitted = Vec::new();
-    translate(&pinch(0.5), at(1.0), |event| emitted.push(event));
+    translate(&half, at(1.0), |event| emitted.push(event));
     assert!(matches!(emitted.as_slice(), [InputEvent::Zoom(1.5)]));
     assert!(emitted[0].is_valid());
 
     for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let event = pinch(delta);
         let mut emitted = Vec::new();
-        translate(&pinch(delta), at(1.0), |event| emitted.push(event));
+        translate(&event, at(1.0), |event| emitted.push(event));
         let [event] = emitted.as_slice() else {
             panic!("translation emits exactly one event, got {emitted:?}");
         };
@@ -250,8 +246,9 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
 /// division would otherwise destroy.
 #[test]
 fn a_move_emits_logical_and_traces_physical() {
+    let moved = cursor_moved(300.0, 120.0);
     let mut emitted = Vec::new();
-    let trace = translate(&cursor_moved(300.0, 120.0), at(2.5), |event| {
+    let trace = translate(&moved, at(2.5), |event| {
         emitted.push(event);
     });
 
@@ -358,5 +355,36 @@ fn shift_wheel_turns_vertical_into_horizontal_off_macos() {
             expected,
             "{delta} {modifiers:?} on {platform:?}",
         );
+    }
+}
+
+/// Each IME event as the crate's: a preedit with its cursor ordered (the
+/// platform may report its ends either way), a commit, a disable as the
+/// empty preedit that ends a composition, and an enable as nothing.
+#[test]
+fn ime_events_translate_and_a_disable_ends_the_composition() {
+    use winit::event::Ime;
+
+    let rows = [
+        (
+            Ime::Preedit("かな".into(), Some((6, 3))),
+            Some("ImePreedit { text: \"かな\", cursor: Some(Span { start: 3, len: 3 }) }"),
+        ),
+        (
+            Ime::Preedit("か".into(), None),
+            Some("ImePreedit { text: \"か\", cursor: None }"),
+        ),
+        (Ime::Commit("仮名".into()), Some("ImeCommit(\"仮名\")")),
+        (
+            Ime::Disabled,
+            Some("ImePreedit { text: \"\", cursor: None }"),
+        ),
+        (Ime::Enabled, None),
+    ];
+    for (ime, want) in rows {
+        let event = WindowEvent::Ime(ime);
+        let mut emitted = Vec::new();
+        translate(&event, at(1.0), |event| emitted.push(format!("{event:?}")));
+        assert_eq!(emitted, want.into_iter().collect::<Vec<_>>(), "{event:?}");
     }
 }

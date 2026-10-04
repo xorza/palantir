@@ -1,7 +1,11 @@
 //! The drop-down selector: a trigger that opens a popup list, and the
 //! open/closed flag one trigger site keeps between frames.
 
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
@@ -77,7 +81,13 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
-            widget: Widget::hstack().sense(Sense::CLICK),
+            // A Tab stop: Space, Enter and Alt+Down open it, and the
+            // arrows step the pick while it is closed — `TEXT` and `CARET`
+            // are the classes those keys fall in.
+            widget: Widget::hstack()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
             selected,
             options,
             label,
@@ -113,9 +123,41 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     /// The [`ValueResponse`]'s own `response` is the trigger's — read
     /// `changed` for the pick, which commits at once. See [`ValueResponse`]
     /// for why the two differ.
+    ///
+    /// Focused, it takes the keys of WAI-ARIA's select-only combobox: Space,
+    /// Enter and Alt+Down open the dropdown, and while it is closed the Up
+    /// and Down arrows step the pick, stopping at the ends.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
-        let response = self.widget.response(ui);
+        let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
+        let mut stepped = false;
+        if !response.disabled && ui.is_focus_within(id) {
+            // Every chord sampled: `key_pressed` also keeps it subscribed
+            // for the wake gate.
+            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
+            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+            let alt_down = ui.key_pressed(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
+            let up = ui.key_pressed(Shortcut::key(Key::ArrowUp));
+            let down = ui.key_pressed(Shortcut::key(Key::ArrowDown));
+            if space || enter || alt_down {
+                response.left.phase = ButtonPhase::Up { click: Some(1) };
+            } else if !PopupTrigger::is_open(ui, id)
+                && let Some(shown) = domain::index(*self.selected, self.options.len())
+            {
+                let last = self.options.len() - 1;
+                let next = if down {
+                    (shown + 1).min(last)
+                } else if up {
+                    shown.saturating_sub(1)
+                } else {
+                    shown
+                };
+                if (up || down) && next != *self.selected {
+                    *self.selected = next;
+                    stepped = true;
+                }
+            }
+        }
 
         // Trigger chrome from the button theme (same flow as `Button`).
         // One handle covers both reads: the geometry is read again inside
@@ -192,7 +234,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 }
                 picked
             });
-        let changed = resp.inner.unwrap_or(false);
+        let changed = resp.inner.unwrap_or(false) || stepped;
 
         ValueResponse {
             response: Response::new(id, ui, response),

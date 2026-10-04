@@ -407,9 +407,9 @@ fn travel_needs_focus_inside_the_strip() {
 }
 
 /// A focused strip takes Ctrl+Tab, which it cycles on, and lets bare Tab
-/// walk past to an app root that declares a scope of its own — the strip
-/// has no use for traversal, so claiming it would cut the app's traversal
-/// off at the chips.
+/// walk past to an app root that takes `FOCUS` itself — the strip has no
+/// use for traversal, so claiming it would cut the app's traversal off at
+/// the chips.
 #[test]
 fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     use crate::KeyFilter;
@@ -418,7 +418,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     let scene = |ui: &mut Ui, probe: Shortcut| {
         Panel::vstack()
             .id(WidgetId::from_hash("app-root"))
-            .input_scope(KeyFilter::ACCEL)
+            .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
                 let at_root = ui.key_pressed(probe);
                 let items = items(ui, TabBadge::None);

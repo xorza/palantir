@@ -7,6 +7,7 @@ use palantir::{
     Stroke, Text, TextStyle, Track,
 };
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -175,5 +176,5 @@ fn dashboard_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("dashboard_hidpi", &img);
+    assert_matches_golden(GoldenName::DashboardHidpi, &img);
 }

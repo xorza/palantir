@@ -99,6 +99,9 @@ pub(crate) struct Node {
     /// is the top-left of the panel's logical-rect — the caller
     /// composes its own pivot by pre/post-translation.
     pub(crate) transform: TranslateScale,
+    /// The Tab order key, `0` unless set — see
+    /// [`Configure::tab_index`](crate::Configure::tab_index).
+    pub(crate) tab_index: i16,
 }
 
 impl Node {
@@ -265,8 +268,9 @@ impl Node {
         self.align = Align::new(h, v);
     }
 
-    /// Take over `from`'s placement — where the node sits in its parent,
-    /// and nothing about what it contains or how it behaves.
+    /// Take over `from`'s placement — where the node sits in its parent
+    /// and in the Tab order, and nothing about what it contains or how it
+    /// behaves.
     ///
     /// For a widget that hands its slot to a second node partway through
     /// a gesture: [`crate::DragValue`] swaps its scrub chip for an inline
@@ -305,16 +309,20 @@ impl Node {
             gaps: _,
             justify: _,
             child_align: _,
-            flags: _,
+            // All but the Tab stop bit, which is the node's place in the
+            // Tab order and is taken below.
+            flags,
             // A render transform over the node's body, which is content
             // rather than placement.
             transform: _,
-            // Everything below places the node inside its parent.
+            // Everything below places the node inside its parent, or in
+            // the Tab order.
             margin,
             align,
             position,
             grid,
             visibility,
+            tab_index,
         } = from;
 
         if let Some(margin) = margin {
@@ -324,6 +332,8 @@ impl Node {
         self.position = position;
         self.grid = grid;
         self.visibility = visibility;
+        self.flags.set_tab_stop(flags.is_tab_stop());
+        self.tab_index = tab_index;
     }
 
     /// Install this node's layout mode, once the payload a builder chain
@@ -362,6 +372,7 @@ impl Node {
             flags: NodeFlags::default(),
             visibility: Visibility::Visible,
             transform: TranslateScale::IDENTITY,
+            tab_index: 0,
         }
     }
 
@@ -393,6 +404,7 @@ impl Node {
                 grid: self.grid,
                 min_size: self.min_size.unwrap_or(Size::ZERO),
                 max_size: self.max_size.unwrap_or(Size::INF),
+                tab_index: self.tab_index,
             },
             panel: PanelExtras {
                 gaps: self.gaps.resolve(),

@@ -115,12 +115,20 @@ fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
 fn background_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
     let sane = Corners::all(6.0);
-    let kept = background(&mut store, &with_corners(sane));
+    let kept = background(&mut store, &with_corners(sane), Stroke::NONE);
     assert_eq!(kept.corners, sane);
     assert_ne!(
         kept.hash,
-        background(&mut store, &with_corners(Corners::ZERO)).hash,
+        background(&mut store, &with_corners(Corners::ZERO), Stroke::NONE).hash,
         "corners must still reach the chrome hash",
+    );
+    let ring = Stroke::new(RgbaF32::WHITE, 2.0);
+    let ringed = background(&mut store, &with_corners(sane), ring);
+    assert!(ringed.ring, "a ring is flagged on the row");
+    assert!(!kept.ring, "no ring unless one is passed");
+    assert_ne!(
+        ringed.hash, kept.hash,
+        "the ring must reach the chrome hash"
     );
 }
 
@@ -140,7 +148,7 @@ fn a_nan_background_field_never_reaches_the_row() {
     let mut store = RecordStore::default();
     for (label, authored) in nan_backgrounds() {
         let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            background(&mut store, &authored)
+            background(&mut store, &authored, Stroke::NONE)
         })) else {
             // The gate asserted, which is the loudest form of "did
             // not reach the row".
@@ -162,6 +170,7 @@ fn a_nan_background_field_never_reaches_the_row() {
         background(
             &mut store,
             &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
+            Stroke::NONE,
         )
     })) {
         assert!(row.corners.is_approx_zero(), "a radius collapses to none");

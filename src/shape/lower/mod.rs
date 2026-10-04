@@ -115,7 +115,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
 /// reference — the recording chain threads it through four functions
 /// and [`Background`] is deliberately not `Copy`; the per-field reads
 /// below copy the small fields locally as needed.
-pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow {
+pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke) -> ChromeRow {
     // **Chrome's NaN gate**, and the second of the crate's two — the
     // shape path's is `Shapes::add`. It runs here for the same reason
     // that one runs before lowering: `fill` interns its gradient into the
@@ -161,6 +161,8 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     } else {
         bg.shadow.into()
     };
+    let ring = ShapeStroke::from(ring);
+    let has_ring = !ring.is_noop();
     // Canonical authoring hash: fold all inputs into one
     // `Hasher::pod` call. Five separate `Hasher::write*` calls pay
     // `hash_bytes` setup + final `add_to_hash` five times — ~40 cycles
@@ -176,6 +178,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         fill_payload: u64, // RgbaF16-as-u64 (Solid) or content hash (Gradient)
         corners_u64: u64,
         border: ShapeStroke,   // 12 B align 4
+        ring: ShapeStroke,     // 12 B align 4
         shadow: LoweredShadow, // 18 B align 2
         fill_tag: u8,
     }
@@ -184,6 +187,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         fill_payload: brush.payload,
         corners_u64: corners.as_u64(),
         border,
+        ring,
         shadow,
         fill_tag: brush.tag,
         ..bytemuck::Zeroable::zeroed()
@@ -197,6 +201,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         corners,
         shadow,
         hash,
+        ring: has_ring,
     }
 }
 

@@ -1,7 +1,11 @@
 //! The push button: a labelled, themed leaf that reports what each pointer
 //! button did to it.
 
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::layout::align::Align;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -39,7 +43,13 @@ impl<'a> Button<'a> {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            widget: Widget::leaf().sense(Sense::CLICK),
+            // A Tab stop, and a focused button takes Space and Enter —
+            // which classify as `KeyClass::Text`, so it claims that class,
+            // as a focused toggle does.
+            widget: Widget::leaf()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT),
             style: None,
             label: TextInput::default(),
             label_align: Align::CENTER,
@@ -84,9 +94,22 @@ impl<'a> Button<'a> {
     }
 
     /// Record the button. Read the click off the [`Response`].
+    ///
+    /// Space and Enter on a focused button click it: the response reports
+    /// a single left click, as WAI-ARIA's button pattern asks, so a caller
+    /// reads keyboard and pointer alike through `clicked()`.
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let response = self.widget.response(ui);
+        let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
+        if !response.disabled && ui.is_focus_within(id) {
+            // Both sampled: `key_pressed` also keeps each chord subscribed
+            // for the wake gate.
+            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
+            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+            if space || enter {
+                response.left.phase = ButtonPhase::Up { click: Some(1) };
+            }
+        }
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.button);
         let look = slot
@@ -121,49 +144,4 @@ impl Configure for Button<'_> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::internals::harness::UiHarness;
-
-    use crate::primitives::geometry::spacing::Spacing;
-    use crate::primitives::paint::background::Background;
-    use crate::scene::layer::Layer;
-    use crate::widget_core::configure::Configure;
-    use crate::widget_core::widget_look::theme_slot::SlotDefaults;
-    use crate::widgets::button::Button;
-    use crate::widgets::theme::button::ButtonTheme;
-    use glam::UVec2;
-
-    #[test]
-    fn explicit_zero_spacing_overrides_theme_spacing() {
-        let mut theme = ButtonTheme {
-            defaults: SlotDefaults {
-                padding: Spacing::all(8.0),
-                margin: Spacing::all(4.0),
-                ..ButtonTheme::default().defaults
-            },
-            ..ButtonTheme::default()
-        };
-        theme.looks.normal.background = Background::NONE;
-
-        let mut h = UiHarness::new(UVec2::new(200, 120));
-        let [explicit, inherited] = h.frame_value(|ui| {
-            [
-                Button::new()
-                    .style(&theme)
-                    .padding(Spacing::ZERO)
-                    .margin(Spacing::ZERO)
-                    .show(ui)
-                    .node(),
-                Button::new().style(&theme).show(ui).node(),
-            ]
-        });
-
-        let layouts = h.ui.tree(Layer::Main).records.layout();
-        let explicit = layouts[explicit.idx()];
-        let inherited = layouts[inherited.idx()];
-        assert_eq!(explicit.padding, Spacing::ZERO);
-        assert_eq!(explicit.margin, Spacing::ZERO);
-        assert_eq!(inherited.padding, Spacing::all(8.0));
-        assert_eq!(inherited.margin, Spacing::all(4.0));
-    }
-}
+mod tests;

@@ -43,7 +43,7 @@ use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::text_edit::caret_paint::CaretPaint;
-use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::edit_state::{EditKind, EditState};
 use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
 use crate::widgets::text_edit::paint_input::PaintInput;
@@ -53,6 +53,7 @@ use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInp
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
+use std::ops::Range;
 
 #[derive(Clone, Default, Debug)]
 struct TextEditState {
@@ -75,6 +76,17 @@ struct TextEditState {
     /// arrives and on every edit, cleared by the commit or the cancel that
     /// ends it. What keeps a blur after Enter from committing twice.
     commit_pending: bool,
+    /// The input method's live composition, copied out of `Ui` so the
+    /// pass can hold it beside `&mut Ui`, and its cursor; empty when
+    /// nothing is composing. Retained.
+    preedit: String,
+    preedit_cursor: Option<Range<usize>>,
+    /// What the field shows while composing — the buffer with the
+    /// preedit spliced in at the caret. The bound `String` changes only
+    /// when the composition commits. Retained.
+    display: String,
+    /// A composition was live last pass, so this pass's is not its start.
+    composing: bool,
 }
 
 /// One pass's inputs to [`TextEditState::roll_commit`].
@@ -110,6 +122,12 @@ impl TextEditState {
 /// see [`KeyText`](crate::KeyText)), backspace/delete, left/right
 /// (+ shift / home / end), drag-select, multi-line, cut/copy/paste, undo+redo
 /// (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z), escape-to-blur, click-to-place-caret.
+///
+/// While focused it asks for IME text ([`Ui::request_ime`]), so an input
+/// method composes in place: the composition shows at the caret,
+/// underlined, and the bound `String` changes only when it commits. A
+/// commit types as keys would, so its control characters — a newline
+/// among them — are dropped, as a key's are.
 ///
 /// Borrows `&'a mut String` for the buffer — host owns the storage and
 /// the widget retains only semantic and view state. Host-side buffer
@@ -338,7 +356,7 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Switch to multi-line mode. Enter inserts `\n` (instead of
-    /// blurring), paste / IME-text preserve newlines, text soft-wraps
+    /// blurring), paste preserves newlines, text soft-wraps
     /// to the editor's inner width, and click/caret/selection all
     /// route through cosmic-text's 2D layout.
     pub const fn multiline(mut self, on: bool) -> Self {
@@ -538,7 +556,30 @@ impl<'a> TextEdit<'a> {
             let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
             editor.show_menu(ui, &snapshot, filter)
         };
-        let changed = edited || menu_edited;
+        // A composition shows in place and types nothing until it commits.
+        // Starting one over a selection deletes the selection first, as a
+        // browser's field does — that delete is an edit like any other.
+        let composing = is_focused
+            && !response.disabled
+            && match ui.ime_preedit() {
+                Some(preedit) => {
+                    state.preedit.clear();
+                    state.preedit.push_str(preedit.text);
+                    state.preedit_cursor = preedit.cursor;
+                    true
+                }
+                None => false,
+            };
+        let cleared = composing && !state.composing && {
+            let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
+            let had_selection = editor.has_selection();
+            if had_selection {
+                editor.replace_selection("", EditKind::Delete);
+            }
+            had_selection
+        };
+        state.composing = composing;
+        let changed = edited || menu_edited || cleared;
         let committed = state.roll_commit(CommitPass {
             focus,
             changed,
@@ -568,18 +609,70 @@ impl<'a> TextEdit<'a> {
                 &state.placeholder
             }
         };
+        // While composing, the run shaped is the buffer with the preedit
+        // spliced in at the caret; the caret sits at the input method's
+        // cursor inside it, and the range the wash covers is the
+        // composition, which paint underlines instead of washing.
+        let (text, caret_byte, wash) = if composing {
+            state.display.clear();
+            state.display.push_str(&self.text[..caret_byte]);
+            state.display.push_str(&state.preedit);
+            state.display.push_str(&self.text[caret_byte..]);
+            let end = caret_byte + state.preedit.len();
+            let cursor = state
+                .preedit_cursor
+                .as_ref()
+                .map_or(state.preedit.len(), |cursor| cursor.end);
+            (
+                state.display.as_str(),
+                caret_byte + cursor,
+                Some(caret_byte..end),
+            )
+        } else {
+            (
+                self.text.as_str(),
+                caret_byte,
+                is_focused.then_some(selection).flatten(),
+            )
+        };
         let geometry = TextGeometry::resolve(
             ui,
             GeometryInput {
                 layout,
-                text: self.text,
+                text,
                 placeholder,
                 caret: caret_byte,
-                selection: is_focused.then_some(selection).flatten(),
+                selection: wash,
             },
             &mut state.selection_rects,
         );
-        state.edit.observe_text_hash(geometry.text_hash);
+        // The probe hashed what is on show, which is not the buffer while
+        // composing — and the buffer's identity is what the edit history
+        // reconciles against.
+        state.edit.observe_text_hash(if composing {
+            Some(EditState::text_hash(self.text))
+        } else {
+            geometry.text_hash
+        });
+        if is_focused
+            && !response.disabled
+            && let Some(layout_rect) = response.layout_rect
+        {
+            // The caret in screen space, for the platform's candidate
+            // list: block-local, slid by the field's scroll, placed by the
+            // block's offset in the padded box, then carried by the
+            // transform the field records under. The box and the block's
+            // offset are last arrange's, which is all a record pass has.
+            let caret = geometry.caret_pos;
+            let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
+            let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
+            let [left, top, _, _] = ctx.padding.as_array();
+            let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
+            ui.request_ime(response.transform.apply_rect(Rect {
+                min: scrolled.min + origin,
+                size: scrolled.size,
+            }));
+        }
         let now = ui.now();
         let caret_anim = state.view.update(ViewUpdateInput {
             geometry,
@@ -602,7 +695,8 @@ impl<'a> TextEdit<'a> {
         PaintInput {
             chrome: look.background,
             block_id: id.with("text-block"),
-            text: self.text,
+            text,
+            preedit_underline: composing.then_some(caret_width),
             placeholder,
             geometry,
             selection_rects: &state.selection_rects,

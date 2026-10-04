@@ -1,10 +1,11 @@
 //! Translation from winit events into Palantir's native input vocabulary.
 
 use glam::Vec2;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
 use crate::common::platform::Platform;
+use crate::common::span::Span;
 use crate::display;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
@@ -40,10 +41,10 @@ pub(super) struct Translation {
 
 /// Returns what the event said about the pointer's physical position, for
 /// `Window::resync_pointer` to re-divide when that space moves.
-pub(super) fn translate(
-    event: &WindowEvent,
+pub(super) fn translate<'e>(
+    event: &'e WindowEvent,
     at: Translation,
-    mut emit: impl FnMut(InputEvent),
+    mut emit: impl FnMut(InputEvent<'e>),
 ) -> PointerTrace {
     let Translation {
         scale_factor,
@@ -134,6 +135,11 @@ pub(super) fn translate(
         // Only the loss is forwarded: regaining focus tells the state
         // machine nothing it does not already learn from the next event.
         WindowEvent::Focused(false) => emit(InputEvent::SurfaceFocusLost),
+        WindowEvent::Ime(ime) => {
+            if let Some(event) = ime_event(ime) {
+                emit(event);
+            }
+        }
         _ => {}
     }
     PointerTrace::Unchanged
@@ -292,6 +298,24 @@ struct KeyDownFacts<'a> {
     is_synthetic: bool,
 }
 
+/// An IME event as the crate's. A disabled input method ends whatever it
+/// was composing, which is the empty preedit; enabling one says nothing a
+/// widget acts on. A cursor arrives as two byte offsets, in either order.
+fn ime_event(ime: &Ime) -> Option<InputEvent<'_>> {
+    match ime {
+        Ime::Preedit(text, cursor) => Some(InputEvent::ImePreedit {
+            text,
+            cursor: cursor.map(|(a, b)| Span::from(a.min(b)..a.max(b))),
+        }),
+        Ime::Commit(text) => Some(InputEvent::ImeCommit(text)),
+        Ime::Disabled => Some(InputEvent::ImePreedit {
+            text: "",
+            cursor: None,
+        }),
+        Ime::Enabled => None,
+    }
+}
+
 /// The `KeyDown` a press becomes, or `None` for one that is not input.
 ///
 /// - A synthetic press is dropped. winit sends one on X11 and Windows for
@@ -302,7 +326,7 @@ struct KeyDownFacts<'a> {
 ///   on every platform (Cmd on macOS reaches `Modifiers::ctrl`, which the
 ///   text rule already reads), and `Modifiers` has no bit for it on
 ///   Windows and Linux, so this is the one place that can drop it.
-fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent> {
+fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent<'static>> {
     if facts.is_synthetic {
         return None;
     }

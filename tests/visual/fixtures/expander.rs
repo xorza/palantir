@@ -4,6 +4,7 @@
 use glam::UVec2;
 use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -41,5 +42,5 @@ fn expander_open_and_closed_matches_golden() {
 
     let mut h = Harness::new();
     let img = h.size(UVec2::new(280, 124)).settled_frame(2, scene).image;
-    assert_matches_golden("expander_open_and_closed", &img);
+    assert_matches_golden(GoldenName::ExpanderOpenAndClosed, &img);
 }
