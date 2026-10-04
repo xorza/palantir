@@ -6,6 +6,7 @@ pub(crate) mod menu_separator;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -190,8 +191,13 @@ impl<'a> ContextMenu<'a> {
 
     /// Open the context menu keyed off `for_id` at surface-space
     /// `point`. Idempotent — repeated calls move an open menu.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
-        ui.state_or_default::<ContextMenuState>(for_id).open_at = Some(point);
+        ui.state_or_default::<ContextMenuState>(for_id).open_at = Some(vec2::offset(point));
     }
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.

@@ -4,6 +4,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -53,7 +54,13 @@ impl<'a> PolylineShape<'a> {
     /// gradient along the line. Each multiplies the stroke colour,
     /// channel by channel — the rule a mesh tint follows. `colors.len()`
     /// must equal the number of points.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every colour is a [colour](crate::widget::domain::color).
+    #[track_caller]
     pub const fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
+        check_colors(colors);
         self.colors = PolylineColors::PerPoint(colors);
         self
     }
@@ -62,20 +69,26 @@ impl<'a> PolylineShape<'a> {
     /// two neighbours), multiplying the stroke colour like
     /// [`Self::per_point`]. `colors.len()` must be one less than the
     /// number of points.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::per_point`].
+    #[track_caller]
     pub const fn per_segment(mut self, colors: &'a [RgbaF32]) -> Self {
+        check_colors(colors);
         self.colors = PolylineColors::PerSegment(colors);
         self
     }
 
     /// How the two open ends are finished.
-    pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
-        self.cap = cap.into();
+    pub const fn cap(mut self, cap: LineCap) -> Self {
+        self.cap = cap;
         self
     }
 
     /// How interior corners are finished.
-    pub fn join(mut self, join: impl Into<LineJoin>) -> Self {
-        self.join = join.into();
+    pub const fn join(mut self, join: LineJoin) -> Self {
+        self.join = join;
         self
     }
 }
@@ -91,6 +104,16 @@ pub(crate) enum PolylineColors<'a> {
     /// One multiplier per segment; `len()` equals `points.len() - 1`.
     /// No colour bleeds across a joint.
     PerSegment(&'a [RgbaF32]),
+}
+
+/// Every colour of a per-point or per-segment slice is a colour.
+#[track_caller]
+const fn check_colors(colors: &[RgbaF32]) {
+    let mut i = 0;
+    while i < colors.len() {
+        let _ = domain::color(colors[i]);
+        i += 1;
+    }
 }
 
 impl PolylineColors<'_> {

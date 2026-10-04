@@ -369,7 +369,7 @@ fn focus_policy_routing() {
         h.ui.set_focus_policy(*policy);
         h.frame(build);
         h.click_on(editable_id);
-        assert_eq!(h.focused_id(), Some(editable_id), "{label}: initial focus");
+        assert_eq!(h.focus(), Some(editable_id), "{label}: initial focus");
 
         h.frame(build);
         let miss = glam::Vec2::new(180.0, 5.0);
@@ -381,7 +381,7 @@ fn focus_policy_routing() {
         } else {
             None
         };
-        assert_eq!(h.focused_id(), expected, "{label}: after outside press");
+        assert_eq!(h.focus(), expected, "{label}: after outside press");
     }
     // Default policy is ClearOnMiss.
     assert_eq!(
@@ -405,13 +405,13 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     };
     h.frame(build);
     h.click_on(WidgetId::from_hash("editable"));
-    assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editable")));
+    assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(build);
     // Checked: a click that missed `plain` would keep focus too.
     h.click_on(WidgetId::from_hash("plain"));
     assert_eq!(
-        h.focused_id(),
+        h.focus(),
         Some(WidgetId::from_hash("editable")),
         "click on non-focusable widget must not steal focus",
     );
@@ -428,13 +428,13 @@ fn focus_is_evicted_when_widget_disappears() {
         });
     });
     h.click_at(glam::Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editable")));
+    assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});
     });
     assert_eq!(
-        h.focused_id(),
+        h.focus(),
         None,
         "focused widget removed from tree must drop focus",
     );
@@ -445,9 +445,9 @@ fn set_focus_bypasses_policy() {
     let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("manual");
     h.set_focus(id);
-    assert_eq!(h.focused_id(), Some(id));
+    assert_eq!(h.focus(), Some(id));
     h.clear_focus();
-    assert_eq!(h.focused_id(), None);
+    assert_eq!(h.focus(), None);
 }
 
 #[test]
@@ -481,7 +481,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
             });
         });
         h.click_at(glam::Vec2::new(50.0, 20.0));
-        assert_eq!(h.focused_id(), *expected, "case {label}");
+        assert_eq!(h.focus(), *expected, "case {label}");
     }
 }
 

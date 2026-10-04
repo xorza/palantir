@@ -3,33 +3,29 @@ use crate::animation::duration::DURATION_ERROR;
 use crate::animation::easing::Easing;
 use crate::animation::spring::SPRING_ERROR;
 use crate::internals::panic_probe;
-use crate::primitives::math::domain::EPS;
 use ron::ser;
+use std::time::Duration;
 
 #[test]
 fn anim_spec_construction_validates_and_canonicalizes() {
-    let instant_zero = AnimSpec::duration(0.0, Easing::Linear);
-    let instant_negative_zero = AnimSpec::duration(-0.0, Easing::Linear);
-    let instant_sub_eps = AnimSpec::duration(EPS * 0.5, Easing::Linear);
+    // EPS is 1e-4 s: half of it snaps, all of it animates.
+    let instant_zero = AnimSpec::duration(Duration::ZERO, Easing::Linear);
+    let instant_sub_eps = AnimSpec::duration(Duration::from_micros(50), Easing::Linear);
     assert!(instant_zero.is_instant());
-    assert!(instant_negative_zero.is_instant());
     assert!(instant_sub_eps.is_instant());
-    assert!(!AnimSpec::duration(EPS, Easing::Linear).is_instant());
-    assert!(!AnimSpec::duration(60.0, Easing::Linear).is_instant());
+    assert!(!AnimSpec::duration(Duration::from_micros(100), Easing::Linear).is_instant());
+    assert!(!AnimSpec::duration(Duration::from_secs(60), Easing::Linear).is_instant());
     assert!(!AnimSpec::FAST.is_instant());
     assert!(!AnimSpec::SPRING.is_instant());
 
-    for secs in [
-        -1.0,
-        60.0 + f32::EPSILON * 64.0,
-        f32::NAN,
-        f32::INFINITY,
-        f32::NEG_INFINITY,
-    ] {
-        panic_probe::assert_panics_with(DURATION_ERROR, || {
-            AnimSpec::duration(secs, Easing::Linear)
-        });
-    }
+    // One nanosecond past the bound panics: the check is exact, where a
+    // conversion to `f32` seconds would round 60 s + 1 ns down to 60 s.
+    panic_probe::assert_panics_with(DURATION_ERROR, || {
+        AnimSpec::duration(
+            Duration::from_secs(60) + Duration::from_nanos(1),
+            Easing::Linear,
+        )
+    });
 
     for (stiffness, damping) in [
         (0.0, 1.0),
@@ -69,10 +65,10 @@ fn anim_spec_serde_validates_and_roundtrips() {
         AnimSpec::FAST,
         AnimSpec::MEDIUM,
         AnimSpec::SPRING,
-        AnimSpec::duration(0.1, Easing::Linear),
-        AnimSpec::duration(0.2, Easing::InOutCubic),
-        AnimSpec::duration(0.3, Easing::OutQuart),
-        AnimSpec::duration(0.4, Easing::OutBack),
+        AnimSpec::duration(Duration::from_millis(100), Easing::Linear),
+        AnimSpec::duration(Duration::from_millis(200), Easing::InOutCubic),
+        AnimSpec::duration(Duration::from_millis(300), Easing::OutQuart),
+        AnimSpec::duration(Duration::from_millis(400), Easing::OutBack),
         AnimSpec::spring(100.0, 15.0),
         AnimSpec::spring(1_000_000.0, 2_000.0),
         AnimSpec::spring(f32::MAX, 4.0e19),

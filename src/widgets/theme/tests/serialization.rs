@@ -75,10 +75,10 @@ fn text_overrides_reject_invalid_metrics_on_load() {
     for (label, ron, ok) in [
         ("empty", "()", true),
         ("colour only", "(color: Some(\"#ff0000\"))", true),
-        ("size", "(font_size_px: Some(13.0))", true),
-        ("zero size", "(font_size_px: Some(0.0))", false),
-        ("NaN size", "(font_size_px: Some(NaN))", false),
-        ("sub-epsilon size", "(font_size_px: Some(0.00005))", false),
+        ("size", "(font_size: Some(13.0))", true),
+        ("zero size", "(font_size: Some(0.0))", false),
+        ("NaN size", "(font_size: Some(NaN))", false),
+        ("sub-epsilon size", "(font_size: Some(0.00005))", false),
         ("leading", "(line_height_mult: Some(0.5))", true),
         (
             "tiny leading alone",
@@ -90,12 +90,12 @@ fn text_overrides_reject_invalid_metrics_on_load() {
         ("infinite leading", "(line_height_mult: Some(inf))", false),
         (
             "sub-epsilon face",
-            "(font_size_px: Some(16.0), line_height_mult: Some(0.000001))",
+            "(font_size: Some(16.0), line_height_mult: Some(0.000001))",
             false,
         ),
         (
             "valid face",
-            "(font_size_px: Some(16.0), line_height_mult: Some(1.5))",
+            "(font_size: Some(16.0), line_height_mult: Some(1.5))",
             true,
         ),
     ] {

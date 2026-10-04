@@ -5,6 +5,7 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{SLOT, duration_motion, linear_100ms, spring_velocity, wid};
 use crate::primitives::math::domain::internals::assert_close;
+use std::time::Duration;
 
 #[test]
 fn retarget_mid_flight_starts_new_segment_from_current() {
@@ -59,7 +60,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
         "test setup: spring should have built up velocity by now; got {velocity}",
     );
 
-    let dur = AnimSpec::duration(0.1, Easing::Linear);
+    let dur = AnimSpec::duration(Duration::from_millis(100), Easing::Linear);
     let dt = 0.02;
     let result = map.step(id, SLOT, 1.0_f32, dur, dt);
     let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
@@ -75,7 +76,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
 fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("round-trip-spec-switch");
-    let duration = AnimSpec::duration(1.0, Easing::Linear);
+    let duration = AnimSpec::duration(Duration::from_secs(1), Easing::Linear);
     let _ = map.step(id, SLOT, 0.0, duration, 0.016);
     let _ = map.step(id, SLOT, 1.0, duration, 0.016);
     let duration_result = map.step(id, SLOT, 1.0, duration, 0.4);

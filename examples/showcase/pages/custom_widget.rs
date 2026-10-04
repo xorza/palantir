@@ -269,7 +269,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     };
     let chrome = Background {
         fill: fill.into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(support::RADIUS),
         shadow: Shadow::NONE,
     };

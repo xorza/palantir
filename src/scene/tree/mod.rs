@@ -477,7 +477,9 @@ impl Tree {
         // this is the only hop that sees both the node's request and the
         // chrome supplying the radius.
         if cols.attrs.clip_mode() == ClipMode::Rounded
-            && chrome.as_ref().is_none_or(|c| c.bg.corners.approx_zero())
+            && chrome
+                .as_ref()
+                .is_none_or(|c| c.bg.corners.is_approx_zero())
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }

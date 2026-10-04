@@ -102,7 +102,7 @@ impl FontFamily {
     ///
     /// Cold: one lock, and a leak the first time a name appears. Naming
     /// a family no face answers to is not an error here — it resolves at
-    /// shaping time, and [`Ui::font_available`](crate::Ui::font_available)
+    /// shaping time, and [`Ui::has_font`](crate::Ui::has_font)
     /// is what asks in advance.
     ///
     /// `None` when 65 536 families are interned already and `name` is not

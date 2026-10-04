@@ -407,8 +407,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     // The face is one argument now, so a case that varies a metric says
     // so with a struct update instead of restating the other three.
     let face = GlyphFont {
-        size_px: 12.0,
-        line_height_px: 14.0,
+        size: 12.0,
+        line_height: 14.0,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
         slant: FontSlant::Normal,
@@ -466,29 +466,26 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Text.font.size_px",
+        "Text.font.size",
         &base,
         &text(
             None,
             recorded(1),
             white,
-            GlyphFont {
-                size_px: 13.0,
-                ..face
-            },
+            GlyphFont { size: 13.0, ..face },
             TextWrap::SingleLine,
             Align::CENTER,
         ),
     );
     moves(
-        "Text.font.line_height_px",
+        "Text.font.line_height",
         &base,
         &text(
             None,
             recorded(1),
             white,
             GlyphFont {
-                line_height_px: 15.0,
+                line_height: 15.0,
                 ..face
             },
             TextWrap::SingleLine,

@@ -148,7 +148,7 @@ impl<'a> ColorStrip<'a> {
         if let Some(at) = response.press_fraction(0.0) {
             changed |= kind.write(at.x);
         }
-        let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, &mut kind);
+        let keyed = !response.disabled && ui.is_focus_within(id) && keyboard_travel(ui, &mut kind);
         changed |= keyed;
         let committed = !response.disabled && (response.left.released() || keyed);
 

@@ -53,7 +53,7 @@ pub struct TextRun<'a> {
     /// a mistake, just inert. A non-finite width is inert the same way —
     /// it names no width to wrap at, so the run keeps its unbounded
     /// shape rather than binding to one.
-    pub max_width_px: Option<f32>,
+    pub max_width: Option<f32>,
 }
 
 impl<'a> TextRun<'a> {
@@ -86,13 +86,13 @@ impl<'a> TextRun<'a> {
 
     /// The width this run binds to, or `None` where it binds to none.
     ///
-    /// [`Self::max_width_px`] is a public field a caller fills from its
+    /// [`Self::max_width`] is a public field a caller fills from its
     /// own arithmetic, so "no width" arrives spelled two ways: the absent
     /// one it declares, and a value that names no width at all. Both mean
     /// the run keeps its unbounded shape, and answering that here is what
     /// keeps a non-finite width out of `WrapBound`'s quantization — where
     /// it would commit the run to a wrap grid nothing can wrap to.
     pub(crate) fn wrap_width(&self) -> Option<f32> {
-        self.max_width_px.filter(|width| width.is_finite())
+        self.max_width.filter(|width| width.is_finite())
     }
 }

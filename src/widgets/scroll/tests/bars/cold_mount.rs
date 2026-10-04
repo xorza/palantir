@@ -51,7 +51,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
     // `viewport/content * track` with track == viewport: 200/800*200.
     let theme = theme();
     let track: f32 = 200.0;
-    let expected = (track / 800.0 * track).max(theme.min_thumb_px);
+    let expected = (track / 800.0 * track).max(theme.min_thumb);
     assert_eq!(expected, 50.0, "arithmetic guard on the expectation");
     let thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(thumbs.len(), 1, "one vertical thumb, no collapsed peers");

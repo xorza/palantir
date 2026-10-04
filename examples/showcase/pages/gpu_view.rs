@@ -222,7 +222,7 @@ impl GpuPaint for Cube {
         // holds its initial pose that frame.
         self.spin += 0.6 * ctx.dt.as_secs_f32();
         let mvp = {
-            let size = ctx.size_px.max(UVec2::ONE);
+            let size = ctx.physical_size.max(UVec2::ONE);
             let aspect = size.x as f32 / size.y as f32;
             // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the
             // `directx` RH perspective — the non-deprecated peer of the old
@@ -236,15 +236,15 @@ impl GpuPaint for Cube {
 
         let gpu = self.gpu.as_mut().expect("init ran before paint");
         // Depth matches the color target's size; recreate it when the target
-        // is reallocated (i.e. when `size_px` changes — every frame the view
+        // is reallocated (i.e. when `physical_size` changes — every frame the view
         // is resized).
-        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.size_px);
+        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.physical_size);
         if need_depth {
             let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("showcase.cube.depth"),
                 size: wgpu::Extent3d {
-                    width: ctx.size_px.x.max(1),
-                    height: ctx.size_px.y.max(1),
+                    width: ctx.physical_size.x.max(1),
+                    height: ctx.physical_size.y.max(1),
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -255,7 +255,7 @@ impl GpuPaint for Cube {
                 view_formats: &[],
             });
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-            gpu.depth = Some((view, ctx.size_px));
+            gpu.depth = Some((view, ctx.physical_size));
         }
         let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
 
@@ -292,7 +292,7 @@ impl GpuPaint for Cube {
         });
         // Render into the actual target resolution supplied for the view.
         // Viewport sets the NDC→pixel transform; scissor is belt-and-braces.
-        let (w, h) = (ctx.size_px.x.max(1), ctx.size_px.y.max(1));
+        let (w, h) = (ctx.physical_size.x.max(1), ctx.physical_size.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
         pass.set_scissor_rect(0, 0, w, h);
         pass.set_pipeline(&gpu.pipeline);

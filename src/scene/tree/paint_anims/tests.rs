@@ -1,6 +1,6 @@
 use crate::common::hash::Hasher;
 use crate::primitives::math::domain::internals::assert_close;
-use crate::scene::tree::paint_anims::paint_anim::{PaintChannel, PaintRepeat};
+use crate::scene::tree::paint_anims::paint_anim::{PaintChannel, PaintCurve, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
 use std::f32::consts::TAU;
 use std::hash::Hasher as _;
@@ -272,6 +272,35 @@ fn blink_settles_solid_after_stop_and_stops_waking() {
 /// - at 1.0 s the pass is over. `Once` holds the end: alpha 1.0, turn a
 ///   half, which is `TAU / 2`.
 ///
+/// A sample is coerced where it is read: an alpha past either end
+/// clamps to it, a NaN alpha end or a curve that answers NaN reads as no
+/// opacity, and a turn that is not finite reads as no turn. Halfway along
+/// a linear curve, `-1 → 3` is `1` and `0 → 4` is `2`; past `1` it is
+/// clamped there.
+#[test]
+fn samples_are_coerced_where_they_are_read() {
+    let half = START + Duration::from_millis(500);
+    let linear = |alpha: (f32, f32), turn: (f32, f32), curve: PaintCurve| {
+        PaintAnim::alpha(alpha.0, alpha.1)
+            .with_turn(turn.0, turn.1)
+            .with_started_at(START)
+            .with_period(Duration::from_secs(1))
+            .with_curve(curve)
+            .sample(half)
+    };
+    let fine = linear((-1.0, 3.0), (0.0, 0.5), curves::linear);
+    assert_eq!((fine.alpha, fine.rotation), (1.0, 0.25 * TAU));
+    let nan_end = linear((f32::NAN, 1.0), (f32::NAN, 1.0), curves::linear);
+    assert_eq!((nan_end.alpha, nan_end.rotation), (0.0, 0.0));
+    let nan_curve = linear((0.0, 1.0), (0.0, 1.0), |_| f32::NAN);
+    assert_eq!((nan_curve.alpha, nan_curve.rotation), (0.0, 0.0));
+    let huge = linear((0.0, 1.0), (0.0, f32::MAX), curves::linear);
+    assert_eq!(
+        huge.rotation, 0.0,
+        "a turn whose radians overflow is no turn"
+    );
+}
+
 /// A fractional alpha is the whole point — the two shipped animations
 /// only ever answered 0 or 1, so nothing before this could produce one.
 #[test]

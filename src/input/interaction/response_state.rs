@@ -21,7 +21,7 @@ use glam::Vec2;
 /// without waiting for the cascade.
 ///
 /// `focused` is `true` when this widget currently holds keyboard focus
-/// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
+/// (`Ui::focus() == Some(id)`). Updated synchronously with focus
 /// changes, so unlike `hovered`/`left.held` it isn't one-frame stale —
 /// a widget that just called `ui.set_focus(id)` reads `true` on
 /// the same frame.

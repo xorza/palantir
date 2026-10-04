@@ -87,10 +87,15 @@ impl<'a> Splitter<'a> {
         }
     }
 
-    /// Floor either pane's split-axis extent at `px` while dragging.
-    /// Default `0.0` (panes can collapse to nothing).
+    /// Floor either pane's split-axis extent at `px`, a *length*, while
+    /// dragging. Default `0.0` (panes can collapse to nothing).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn min_pane(mut self, px: f32) -> Self {
-        self.min_pane = px.max(0.0);
+        self.min_pane = domain::length(px);
         self
     }
 
@@ -174,7 +179,7 @@ impl<'a> Splitter<'a> {
         *self.ratio = ratio;
         // Approximate, because a ratio re-derived from arranged extents
         // carries last-bit noise an exact compare would report every frame.
-        let changed = !domain::approx_zero(ratio - input);
+        let changed = !domain::is_approx_zero(ratio - input);
         let synced = synced_ratio.is_some();
         let committed =
             !response.disabled && (divider.left.drag.stopped() || (state.commit_on_sync && synced));
@@ -280,7 +285,7 @@ fn arranged_pane_ratio(
     let first_extent = axis.main(first.size);
     let second_extent = axis.main(second.size);
     let span = first_extent + second_extent;
-    (!domain::paints_nothing(span)).then(|| sanitize_ratio(first_extent / span))
+    (!domain::is_invisible(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
 /// A caller-supplied ratio, made safe to use as a `Fill` weight. The
@@ -299,7 +304,7 @@ const fn sanitize_ratio(r: f32) -> f32 {
 /// extents pin to `0.5`.
 fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
     let span = extent - reserved;
-    if domain::paints_nothing(span) {
+    if domain::is_invisible(span) {
         return 0.5;
     }
     // `floor <= 0.5` by construction, so the clamp can't invert even

@@ -144,9 +144,9 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
         render(gpu, &mut host, &target, workload, &mut phase);
         gpu.poll();
         if frame >= 4
-            && let Some(ms) = host.gpu_pass_stats().last_kind_ms(BatchKind::Curve)
+            && let Some(ms) = host.gpu_pass_stats().last_kind(BatchKind::Curve)
         {
-            curve_ms.push(ms);
+            curve_ms.push(ms.as_secs_f32() * 1e3);
         }
     }
     let stats = host.gpu_pass_stats().last_pipeline_stats();

@@ -159,8 +159,8 @@ mod tests {
     }
 
     const FACE: GlyphFont = GlyphFont {
-        size_px: 16.0,
-        line_height_px: 19.2,
+        size: 16.0,
+        line_height: 19.2,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
         slant: FontSlant::Normal,

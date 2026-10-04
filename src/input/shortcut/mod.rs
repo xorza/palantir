@@ -32,7 +32,7 @@ use std::fmt;
 /// Distinct from event-state [`Modifiers`] on purpose: that type also
 /// carries `mac_ctrl` (the raw macOS Control), which no chord declares.
 /// A held macOS Control is ignored by a chord that declares a command
-/// modifier and rejects every other one, as [`Modifiers::any_command`]
+/// modifier and rejects every other one, as [`Modifiers::has_command`]
 /// classes it — so it cannot break ⌘Z, and a bare `Z` does not fire on
 /// Control+Z.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -52,14 +52,14 @@ pub struct ShortcutMods {
 /// combination is a struct literal, which is all `ShortcutMods` is.
 impl ShortcutMods {
     /// True if this chord declares any command modifier — the same
-    /// question [`Modifiers::any_command`](crate::Modifiers::any_command)
+    /// question [`Modifiers::has_command`](crate::Modifiers::has_command)
     /// asks of what is *held*, on the side that declares it. Shift alone
     /// does not count: `Shift+Z` is a capital Z, not a chord.
     ///
     /// No `mac_ctrl` here because a chord is declared once and matched on
     /// every platform: `ctrl` *is* Cmd on macOS, and raw Control is a
     /// thing a keyboard reports rather than a thing an app asks for.
-    pub const fn any_command(self) -> bool {
+    pub const fn has_command(self) -> bool {
         self.ctrl || self.alt || self.meta
     }
 
@@ -180,13 +180,13 @@ impl Shortcut {
     /// non-ASCII gate leaves Dvorak / AZERTY untouched — their keys still
     /// produce ASCII letters, in their own intended positions.
     pub fn matches(self, kp: KeyPress) -> bool {
-        if kp.mods.mac_ctrl && !self.mods.any_command() {
+        if kp.mods.mac_ctrl && !self.mods.has_command() {
             return false;
         }
         if self.matches_key(kp.key, kp.mods) {
             return true;
         }
-        self.mods.any_command()
+        self.mods.has_command()
             && kp
                 .layout_retry()
                 .is_some_and(|physical| self.matches_key(physical, kp.mods))

@@ -15,7 +15,7 @@ use palantir_anim_derive::Animatable;
 /// overhang formula and the one `emit_shadow` path.
 ///
 /// `Shadow::NONE` (also `Default`) is the "no shadow" sentinel —
-/// matches the `Stroke::ZERO` convention so consumers can store a
+/// matches the `Stroke::NONE` convention so consumers can store a
 /// plain `Shadow` field instead of `Option<Shadow>` and animate
 /// componentwise through it.
 ///

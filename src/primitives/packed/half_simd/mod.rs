@@ -39,7 +39,7 @@ use std::hash;
 ///
 /// **A wrapper forwards what it has a caller for, and no more.** The three
 /// surfaces differ — only two forward `as_u64`, only `Corners` answers
-/// `approx_zero` or scales itself — and each gap is an absent caller
+/// `is_approx_zero` or scales itself — and each gap is an absent caller
 /// rather than an oversight. Adding the missing side of one is a change
 /// to make when something asks.
 #[repr(transparent)]

@@ -8,6 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -100,10 +101,15 @@ impl<'a, T: DockTab> DockView<'a, T> {
         }
     }
 
-    /// Floor either pane's extent on the split axis while a divider is
-    /// dragged. Default `0.0`.
+    /// Floor either pane's extent on the split axis at `px`, a *length*,
+    /// while a divider is dragged. Default `0.0`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn min_pane(mut self, px: f32) -> Self {
-        self.min_pane = px.max(0.0);
+        self.min_pane = domain::length(px);
         self
     }
 
@@ -249,7 +255,7 @@ impl<T: DockTab> DockView<'_, T> {
         // same scan rather than racing it.
         if let Some(group) = state
             .groups()
-            .find(|g| g.id != state.focused() && ui.focus_within(Self::pane_id(state, g.id)))
+            .find(|g| g.id != state.focused() && ui.is_focus_within(Self::pane_id(state, g.id)))
         {
             ops.push(DockOp::FocusPane { group: group.id });
         }

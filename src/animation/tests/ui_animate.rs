@@ -184,10 +184,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // The other half of the contract: the axes a look names win, and only
     // the rest come from the ambient style. Ambient and override differ on
     // every axis involved, so a value from the wrong source shows up.
-    let own_size = fallback.font_size_px + 7.0;
+    let own_size = fallback.font_size + 7.0;
     let own_color = RgbaF32::hex(0x00ff00);
     let ambient = TextStyle {
-        font_size_px: fallback.font_size_px + 99.0,
+        font_size: fallback.font_size + 99.0,
         color: RgbaF32::hex(0xff00ff),
         line_height_mult: fallback.line_height_mult + 9.0,
         ..fallback
@@ -213,7 +213,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     assert_eq!(
         snap.text,
         TextStyle {
-            font_size_px: own_size,
+            font_size: own_size,
             color: own_color,
             ..ambient
         },

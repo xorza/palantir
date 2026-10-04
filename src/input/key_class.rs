@@ -115,13 +115,13 @@ impl KeyClass {
             | Key::Home
             | Key::End => Self::Caret,
             Key::PageUp | Key::PageDown => Self::Page,
-            Key::Tab if press.mods.any_command() => Self::Cycle,
+            Key::Tab if press.mods.has_command() => Self::Cycle,
             Key::Tab => Self::Focus,
             Key::Backspace | Key::Delete => Self::Edit,
             // A command modifier is what turns a typed key into a chord:
             // bare `z` is Text, Ctrl+Z is Edit. Shift is not a command —
             // Shift+Z is still typing.
-            Key::Char(_) | Key::Enter if !press.mods.any_command() => Self::Text,
+            Key::Char(_) | Key::Enter if !press.mods.has_command() => Self::Text,
             Key::Char(_) if is_edit_chord(press) => Self::Edit,
             Key::Char(_) | Key::Enter => Self::Accel,
             Key::F1

@@ -73,7 +73,7 @@ impl Modifiers {
     /// or the Windows / Super key) is held — the canonical "this is a
     /// shortcut, not text" predicate. Shift alone doesn't count
     /// (shift+letter is just the capitalized letter).
-    pub const fn any_command(self) -> bool {
+    pub const fn has_command(self) -> bool {
         self.ctrl || self.alt || self.mac_ctrl || self.meta
     }
 

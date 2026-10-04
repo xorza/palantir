@@ -1,7 +1,7 @@
 //! A line's colour and width, as a border or as a path's stroke.
 
 use crate::primitives::math::domain;
-use crate::primitives::math::domain::paints_nothing;
+use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_anim_derive::Animatable;
@@ -38,7 +38,7 @@ impl Stroke {
     /// to `Stroke::default()` but `const`, so callers can use it in
     /// const contexts and read it as the sentinel "this background
     /// has no border" without needing `Option<Stroke>` in the type.
-    pub const ZERO: Self = Self {
+    pub const NONE: Self = Self {
         color: RgbaF32::TRANSPARENT,
         width: 0.0,
     };
@@ -46,16 +46,16 @@ impl Stroke {
     /// True when this stroke would paint nothing visible — width is
     /// sub-UI-tolerance (including negative, treated as zero), or
     /// the color is fully transparent. The animation pipeline lerps
-    /// `Stroke` directly through `Stroke::ZERO`, so a "bordered →
+    /// `Stroke` directly through `Stroke::NONE`, so a "bordered →
     /// borderless" transition settles at `is_noop()` and the encoder
     /// filters it out without any `Option` collapse step.
     /// `&self` where the crate's other `Copy` paint predicates take
     /// `self`: `Background`'s `skip_serializing_if` names this, and
-    /// serde requires an `fn(&T) -> bool` there. `Corners::approx_zero`
+    /// serde requires an `fn(&T) -> bool` there. `Corners::is_approx_zero`
     /// takes `&self` for the same reason.
     #[inline]
     pub const fn is_noop(&self) -> bool {
-        paints_nothing(self.width) || self.color.is_noop()
+        is_invisible(self.width) || self.color.is_noop()
     }
 
     /// Construct a stroke with `color` and `width`.

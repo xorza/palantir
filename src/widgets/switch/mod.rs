@@ -107,7 +107,7 @@ impl<'a> Switch<'a> {
             // theme: the border animates between the on and off looks,
             // and a mid-transition knob has to track it.
             let border = track.border.width;
-            let border_inset = if domain::paints_nothing(border) {
+            let border_inset = if domain::is_invisible(border) {
                 0.0
             } else {
                 border

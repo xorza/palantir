@@ -31,7 +31,7 @@ fn vertical_def(offset: f32) -> ScrollbarsDef {
         reserve: Spacing::ZERO,
         padding: Spacing::ZERO,
         bar_thickness: 8.0,
-        min_thumb: theme().min_thumb_px,
+        min_thumb: theme().min_thumb,
     }
 }
 
@@ -92,7 +92,7 @@ fn thumb_size_and_offset_cases() {
         ),
         (
             // 100² / 10000 = 1 px, floored up to the theme minimum.
-            "clamped_up_to_min_thumb_px",
+            "clamped_up_to_min_thumb",
             100.0,
             10_000.0,
             0.0,

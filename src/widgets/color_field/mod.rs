@@ -147,7 +147,7 @@ impl<'a> ColorField<'a> {
         if let Some(at) = response.press_fraction(0.0) {
             changed |= write_axes(coords, at.x, 1.0 - at.y);
         }
-        let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, coords);
+        let keyed = !response.disabled && ui.is_focus_within(id) && keyboard_travel(ui, coords);
         changed |= keyed;
         let committed = !response.disabled && (response.left.released() || keyed);
 

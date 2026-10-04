@@ -41,27 +41,33 @@ impl ImageShape {
 impl ImageShape {
     /// Paint into `rect`, in owner-relative coords, instead of the
     /// owner's whole arranged rect.
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.local_rect = Some(rect);
         self
     }
 
     /// How the image is placed inside the paint rect.
-    pub fn fit(mut self, fit: impl Into<ImageFit>) -> Self {
-        self.fit = fit.into();
+    pub const fn fit(mut self, fit: ImageFit) -> Self {
+        self.fit = fit;
         self
     }
 
     /// Filtering while the image is drawn smaller than its intrinsic size.
-    pub fn min_filter(mut self, min_filter: impl Into<ImageFilter>) -> Self {
-        self.min_filter = min_filter.into();
+    pub const fn min_filter(mut self, min_filter: ImageFilter) -> Self {
+        self.min_filter = min_filter;
         self
     }
 
     /// Filtering while it is drawn larger. [`ImageFilter::Nearest`] is what
     /// keeps pixel art crisp.
-    pub fn mag_filter(mut self, mag_filter: impl Into<ImageFilter>) -> Self {
-        self.mag_filter = mag_filter.into();
+    pub const fn mag_filter(mut self, mag_filter: ImageFilter) -> Self {
+        self.mag_filter = mag_filter;
         self
     }
 
@@ -69,8 +75,8 @@ impl ImageShape {
     /// lone bilinear one — see [`ImageDownsample`] for what that buys and
     /// what it costs. Off by default; only worth setting on an image that
     /// actually shrinks, and that has detail fine enough to alias.
-    pub fn downsample(mut self, downsample: impl Into<ImageDownsample>) -> Self {
-        self.downsample = downsample.into();
+    pub const fn downsample(mut self, downsample: ImageDownsample) -> Self {
+        self.downsample = downsample;
         self
     }
 
@@ -80,8 +86,8 @@ impl ImageShape {
     ///
     /// Panics unless `tint` is a [colour](crate::widget::domain::color).
     #[track_caller]
-    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
-        self.tint = domain::color(tint.into());
+    pub const fn tint(mut self, tint: RgbaF32) -> Self {
+        self.tint = domain::color(tint);
         self
     }
 }

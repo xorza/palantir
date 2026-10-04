@@ -41,10 +41,10 @@ impl BoundsExtras {
 
     #[inline]
     pub(crate) fn is_default(&self) -> bool {
-        domain::approx_zero(self.position.x)
-            && domain::approx_zero(self.position.y)
+        domain::is_approx_zero(self.position.x)
+            && domain::is_approx_zero(self.position.y)
             && self.grid == Self::DEFAULT.grid
-            && self.min_size.approx_zero()
+            && self.min_size.is_approx_zero()
             && self.max_size == Self::DEFAULT.max_size
     }
 }

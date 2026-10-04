@@ -94,6 +94,12 @@ impl TextStore {
         text
     }
 
+    /// The characters of a handle minted by this pass.
+    pub(super) fn text(&self, text: InternedStr) -> &str {
+        self.assert_current(text);
+        &self.bytes[text.span.range()]
+    }
+
     /// Lower a handle minted by this pass. Zero-copy — the bytes are
     /// already in place, so this is a bounds-checked slice and a hash.
     pub(super) fn record(&self, text: InternedStr) -> RecordedText {

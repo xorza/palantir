@@ -102,6 +102,7 @@ impl InputPass<'_> {
             // Filled by the geometry pass after this one, and read only by the
             // painter — the input pass has no business in it.
             selection_rects: _,
+            placeholder: _,
         } = state;
         let was_focused = view.was_focused();
         // Repair persisted byte offsets before any range/slice operation.
@@ -181,7 +182,7 @@ impl InputPass<'_> {
             // Single-line Enter is a *submit* signal, not an edit: the buffer
             // is left untouched (multi-line handles `\n` in `apply_key`), but
             // the caller learns the user accepted the value.
-            if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
+            if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
                 submitted = true;
                 assert_only_repeats_after(ui.keyboard_events(), i);
                 break;

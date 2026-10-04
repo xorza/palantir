@@ -73,7 +73,7 @@ impl ToggleChrome {
         let id = widget.resolve(ui);
         response.clicked()
             || (!response.disabled
-                && ui.focus_within(id)
+                && ui.is_focus_within(id)
                 && ui.key_pressed(Shortcut::key(Key::Char(' '))))
     }
 

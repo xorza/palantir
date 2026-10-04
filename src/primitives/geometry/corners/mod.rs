@@ -143,7 +143,7 @@ impl Corners {
     /// `skip_serializing_if` requires `fn(&T) -> bool`, and
     /// [`Background::corners`](crate::Background) uses this as one.
     #[inline]
-    pub const fn approx_zero(&self) -> bool {
+    pub const fn is_approx_zero(&self) -> bool {
         // A NaN radius reports non-zero and so cannot take the
         // sharp-corner fast path this gates. The shape-level NaN gate is
         // what drops such a shape.

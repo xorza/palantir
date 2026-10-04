@@ -40,7 +40,7 @@ fn with_corners(corners: Corners) -> Background {
 ///
 /// All four are covered because no no-op predicate owns the question
 /// for any of them: "the radius is NaN" is not a reason the
-/// background paints nothing, and `approx_zero` reports NaN as
+/// background paints nothing, and `is_approx_zero` reports NaN as
 /// non-zero by design so a NaN cannot take the sharp-corner fast
 /// path.
 fn nan_backgrounds() -> [(&'static str, Background); 4] {
@@ -164,7 +164,7 @@ fn a_nan_background_field_never_reaches_the_row() {
             &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
         )
     })) {
-        assert!(row.corners.approx_zero(), "a radius collapses to none");
+        assert!(row.corners.is_approx_zero(), "a radius collapses to none");
     }
 }
 

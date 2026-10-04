@@ -128,7 +128,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         let lower_offset = stops[upper - 1].offset();
         let upper_offset = stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if domain::approx_zero(denominator) {
+        if domain::is_approx_zero(denominator) {
             return linear[upper];
         }
         RgbaF32::lerp(

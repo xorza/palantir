@@ -45,7 +45,7 @@
 //! and no timestamp writes land inside the pass being measured — the
 //! numbers would otherwise include the commands the measurement added.
 //! Each arm renders `WARMUP_FRAMES` frames, then samples
-//! `last_main_pass_cpu_ms` over `EVIDENCE_FRAMES` and reports min /
+//! `last_main_pass_cpu` over `EVIDENCE_FRAMES` and reports min /
 //! median. Min is the keep-or-revert signal (the upper half measures
 //! interference from the rest of the machine, not recording). Criterion
 //! measures the same window through `iter_custom`, which keeps saved
@@ -352,19 +352,17 @@ impl Fixture {
         }
     }
 
+    /// The sample in milliseconds, the unit the evidence report prints.
     fn record_ms(&self) -> f32 {
-        self.host
-            .gpu_pass_stats()
-            .last_main_pass_cpu_ms()
-            .expect("run_main_pass publishes its CPU time on every submitted frame")
+        self.record_time().as_secs_f32() * 1e3
     }
 
-    /// The same sample as [`Self::record_ms`], in the form criterion's
-    /// `iter_custom` accumulates. f32 milliseconds hold a microsecond-scale
-    /// value to ~11 significant digits, so the conversion is lossless at
-    /// the magnitudes here.
+    /// The sample as criterion's `iter_custom` accumulates it.
     fn record_time(&self) -> Duration {
-        Duration::from_secs_f32(self.record_ms() / 1_000.0)
+        self.host
+            .gpu_pass_stats()
+            .last_main_pass_cpu()
+            .expect("run_main_pass publishes its CPU time on every submitted frame")
     }
 }
 

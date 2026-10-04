@@ -56,27 +56,27 @@ impl TextRig {
         }
     }
 
-    /// A row drawing `text` at 14 px on `line_height_px` lines, from
+    /// A row drawing `text` at 14 px on `line_height` lines, from
     /// `origin`, bounded by [`PHYSICAL`] at scale 1 in near-white.
     ///
     /// Shaped through the run first, so the key stamped into the row is
     /// the one the shaped buffer landed under: no width and a
     /// non-binding policy, the unbounded root and nothing else.
-    pub(super) fn row(&mut self, text: &str, line_height_px: f32, origin: Vec2) -> TextDrawRow {
+    pub(super) fn row(&mut self, text: &str, line_height: f32, origin: Vec2) -> TextDrawRow {
         let interned = self.store.intern(text);
         let recorded = self.store.record_text(interned);
         let run = TextRun {
             text,
             font: GlyphFont {
-                size_px: FONT_PX,
-                line_height_px,
+                size: FONT_PX,
+                line_height,
                 family: FontFamily::SANS,
                 weight: FontWeight::REGULAR,
                 slant: FontSlant::Normal,
             },
             wrap: TextWrap::SingleLine,
             align: Align::default(),
-            max_width_px: None,
+            max_width: None,
         };
         let key = run
             .unbounded_key()

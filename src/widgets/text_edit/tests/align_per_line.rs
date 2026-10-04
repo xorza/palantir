@@ -27,8 +27,8 @@ fn cosmic_ui() -> UiHarness {
 
 fn shape(wrap: f32, halign: HAlign) -> TestShape {
     TestShape::new(GlyphFont {
-        size_px: FS,
-        line_height_px: LH,
+        size: FS,
+        line_height: LH,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
         slant: FontSlant::Normal,
@@ -163,13 +163,13 @@ fn cache_key_distinguishes_halign() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size_px: 16.0,
-                    line_height_px: 19.2,
+                    size: 16.0,
+                    line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
                     slant: FontSlant::Normal,
                 },
-                max_width_px: Some(100.0),
+                max_width: Some(100.0),
                 halign: HAlign::Left,
             },
         )
@@ -179,13 +179,13 @@ fn cache_key_distinguishes_halign() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size_px: 16.0,
-                    line_height_px: 19.2,
+                    size: 16.0,
+                    line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
                     slant: FontSlant::Normal,
                 },
-                max_width_px: Some(100.0),
+                max_width: Some(100.0),
                 halign: HAlign::Right,
             },
         )
@@ -201,7 +201,7 @@ fn cache_key_distinguishes_halign() {
 #[test]
 fn unbounded_halign_collapses_to_auto_in_key() {
     // Without a wrap target cosmic can't apply per-line align,
-    // so every halign value at `max_width_px = None` shapes the
+    // so every halign value at `max_width = None` shapes the
     // same buffer. Key construction collapses `halign_q` to `Auto`'s
     // discriminant on that path so single-line callers don't
     // pay an N-way cache split for identical glyph positions.
@@ -211,13 +211,13 @@ fn unbounded_halign_collapses_to_auto_in_key() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size_px: 16.0,
-                    line_height_px: 19.2,
+                    size: 16.0,
+                    line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
                     slant: FontSlant::Normal,
                 },
-                max_width_px: None,
+                max_width: None,
                 halign: HAlign::Left,
             },
         )
@@ -227,13 +227,13 @@ fn unbounded_halign_collapses_to_auto_in_key() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size_px: 16.0,
-                    line_height_px: 19.2,
+                    size: 16.0,
+                    line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
                     slant: FontSlant::Normal,
                 },
-                max_width_px: None,
+                max_width: None,
                 halign: HAlign::Right,
             },
         )
@@ -297,7 +297,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     // Also check the wrap-target axis is set — without a committed
     // width cosmic applies no per-line align at all.
     assert!(
-        key.max_width_px().is_some(),
+        key.max_width().is_some(),
         "rendered buffer must have a finite wrap target so cosmic per-line align fires",
     );
 }
@@ -410,7 +410,7 @@ fn placeholder_per_line_aligns_under_wrap() {
         "placeholder buffer must carry the user's halign in its cache key",
     );
     assert!(
-        key.max_width_px().is_some(),
+        key.max_width().is_some(),
         "placeholder buffer must have a finite wrap target so cosmic per-line align fires",
     );
 }

@@ -193,7 +193,7 @@ fn a_key_after_escape_reaches_the_next_focus_owner() {
         record_field(ui, &mut buffer);
     });
     assert_eq!(buffer, "hello", "the blurred field typed nothing");
-    assert_eq!(h.focused_id(), None);
+    assert_eq!(h.focus(), None);
 }
 
 /// `[Enter, 'x']` fed together: the caller reads the submitted value in

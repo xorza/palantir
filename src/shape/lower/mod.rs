@@ -139,7 +139,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     // A background that paints nothing is kept only for a rounded clip's
     // corners. Its fill lowers to transparent rather than interning a
     // gradient no pass draws, which is also what lets
-    // `ChromeRow::paints_nothing` answer from the row alone.
+    // `ChromeRow::is_invisible` answer from the row alone.
     let fill_brush = if bg.fill.has_nan() || bg.is_noop() {
         &Brush::TRANSPARENT
     } else {
@@ -147,7 +147,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     };
     let fill = brush(store, fill_brush);
     let border = ShapeStroke::from(if bg.border.has_nan() {
-        Stroke::ZERO
+        Stroke::NONE
     } else {
         bg.border
     });

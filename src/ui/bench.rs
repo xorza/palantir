@@ -397,9 +397,10 @@ fn report_write_stats(surface: &Surface) {
             // previous one.
             g.poll();
             let stats = host.gpu_pass_stats();
-            let gpu = stats
-                .last_pass_ms()
-                .map_or_else(|| "  n/a   ".into(), |ms| format!("{ms:>5.2} ms"));
+            let gpu = stats.last_pass().map_or_else(
+                || "  n/a   ".into(),
+                |d| format!("{:>5.2} ms", d.as_secs_f64() * 1e3),
+            );
             eprintln!(
                 "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}",
                 s.texture_calls, s.texture_bytes,
@@ -410,8 +411,8 @@ fn report_write_stats(surface: &Surface) {
             // the feature stay quiet.
             let per_kind: Vec<String> = BatchKind::ALL
                 .into_iter()
-                .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))
-                .map(|(k, ms)| format!("{}={ms:.2}", k.label()))
+                .filter_map(|k| stats.last_kind(k).map(|d| (k, d)))
+                .map(|(k, d)| format!("{}={:.2}", k.label(), d.as_secs_f64() * 1e3))
                 .collect();
             if !per_kind.is_empty() {
                 eprintln!("           kinds: {}", per_kind.join(" "));

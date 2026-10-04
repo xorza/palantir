@@ -37,7 +37,7 @@ impl RectShape {
             local_rect,
             corners: Corners::ZERO,
             fill: Brush::TRANSPARENT,
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
         }
     }
 }
@@ -66,8 +66,7 @@ impl RectShape {
     /// Panics unless the width is a [length](crate::widget::domain::length) and
     /// the colour a [colour](crate::widget::domain::color).
     #[track_caller]
-    pub fn border(mut self, border: impl Into<Stroke>) -> Self {
-        let border = border.into();
+    pub const fn border(mut self, border: Stroke) -> Self {
         border.validate();
         self.border = border;
         self

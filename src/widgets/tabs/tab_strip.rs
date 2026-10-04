@@ -428,7 +428,7 @@ impl ChipCtx<'_> {
         // chip carrying a badge or a close button trades its right inset
         // for that glyph's own box — see `TabsTheme::trailing_inset`.
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
-        let trailing = if item.badge.reserved() || item.closable {
+        let trailing = if item.badge.is_reserved() || item.closable {
             t.trailing_inset
         } else {
             pad_r
@@ -456,7 +456,7 @@ impl ChipCtx<'_> {
         widget.record(ui, Some(&cap_bg), |ui| {
             inner.record(ui, Some(&inner_bg), |ui| {
                 if let Some(handle) = icon {
-                    let side = text.font_size_px;
+                    let side = text.font_size;
                     let art = Widget::leaf()
                         .id(chip_id.with("icon"))
                         .size((Sizing::fixed(side), Sizing::fixed(side)));
@@ -472,8 +472,8 @@ impl ChipCtx<'_> {
                     .style(&text)
                     .text_wrap(TextWrap::Ellipsis)
                     .show(ui);
-                if badge.reserved() {
-                    let fill = if badge.inked() {
+                if badge.is_reserved() {
+                    let fill = if badge.is_inked() {
                         Background::rounded(t.badge, Corners::all(t.badge_size * 0.5))
                     } else {
                         // Not a transparent fill: the default paints no
@@ -645,7 +645,7 @@ fn keyboard_travel(
     selected: Option<usize>,
     hits: &mut StripHits,
 ) {
-    if len == 0 || !ui.focus_within(strip) {
+    if len == 0 || !ui.is_focus_within(strip) {
         return;
     }
     // With nothing selected, a step lands on the end it moves from: Right

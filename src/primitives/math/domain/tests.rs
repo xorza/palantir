@@ -1,6 +1,6 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::domain::{self, EPS, approx_zero, paints_nothing, share_of, vec2};
+use crate::primitives::math::domain::{self, EPS, is_approx_zero, is_invisible, share_of, vec2};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 
@@ -10,8 +10,8 @@ use glam::Vec2;
 /// bbox, a damage rect, or a shader lane, and does it silently.
 ///
 /// Deliberately excluded are the predicates that ask a *different*
-/// question: `approx_zero`, `Size::approx_zero`, `Rect::approx_zero`,
-/// `Corners::approx_zero`, and `TranslateScale::is_identity` all mean "is
+/// question: `is_approx_zero`, `Size::is_approx_zero`, `Rect::is_approx_zero`,
+/// `Corners::is_approx_zero`, and `TranslateScale::is_identity` all mean "is
 /// this value ≈ this constant", and they gate **fast paths**, not
 /// paint. Answering `true` there would route a NaN *into* the sharp /
 /// identity shortcut instead of away from it — the opposite of safe.
@@ -19,7 +19,7 @@ use glam::Vec2;
 /// NaN before any of them is ever reached.
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
-    use crate::primitives::geometry::mesh::Mesh;
+    use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::color::RgbaF32;
@@ -32,14 +32,16 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
 
     const N: f32 = f32::NAN;
     let nan_color = RgbaF32::srgba(0.0, 0.0, 0.0, N);
+    // `Mesh::vertex` refuses a non-finite position, so the NaN vertex goes
+    // in through the crate's own list: the predicate is what this pins.
     let mut nan_mesh = Mesh::new();
-    nan_mesh.vertex(Vec2::new(N, 0.0), RgbaF32::WHITE);
-    nan_mesh.vertex(Vec2::ZERO, RgbaF32::WHITE);
-    nan_mesh.vertex(Vec2::X, RgbaF32::WHITE);
+    for pos in [Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X] {
+        nan_mesh.vertices.push(MeshVertex::new(pos, RgbaF32::WHITE));
+    }
     nan_mesh.triangle(0, 1, 2);
 
     let cases: &[(&str, bool)] = &[
-        ("paints_nothing", paints_nothing(N)),
+        ("is_invisible", is_invisible(N)),
         ("Size::is_paint_empty/w", Size::new(N, 4.0).is_paint_empty()),
         ("Size::is_paint_empty/h", Size::new(4.0, N).is_paint_empty()),
         (
@@ -105,22 +107,6 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             .is_noop(),
         ),
         ("Mesh::is_noop", nan_mesh.is_noop()),
-        // The convenience constructors pre-cache their own bbox
-        // instead of routing through `Mesh::vertex`, so they need
-        // covering separately — a bare fold there is how a NaN
-        // vertex reaches the shader with a finite box.
-        (
-            "Mesh::filled_triangle/is_noop",
-            Mesh::filled_triangle(Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, RgbaF32::WHITE).is_noop(),
-        ),
-        (
-            "Mesh::filled_polygon/is_noop",
-            Mesh::filled_polygon(
-                &[Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Vec2::Y],
-                RgbaF32::WHITE,
-            )
-            .is_noop(),
-        ),
         // Chrome has no record-level gate to fall back on — it does
         // not pass through `Shapes::add` — so these four are the
         // only thing standing between a NaN `Background` and the
@@ -176,7 +162,7 @@ fn approx_zero_handles_boundary_sign_and_nan() {
         ("nan", f32::NAN, false),
     ];
     for (label, v, want) in cases {
-        assert_eq!(approx_zero(*v), *want, "case: {label}");
+        assert_eq!(is_approx_zero(*v), *want, "case: {label}");
     }
 }
 

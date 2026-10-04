@@ -9,7 +9,7 @@ use palantir_anim_derive::Animatable;
 /// by [`WidgetLook::to_animated`](crate::WidgetLook::to_animated). Widgets read `background` and `text`
 /// directly; both fields are already-animated.
 ///
-/// `text.color` is the animated color; `text.font_size_px` and
+/// `text.color` is the animated color; `text.font_size` and
 /// `text.line_height_mult` are snap-carried from the picked
 /// `WidgetLook`'s overrides folded onto the ambient style — see
 /// `TextStyle`'s `#[animate(snap)]` markings.

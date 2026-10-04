@@ -24,6 +24,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 /// Categories of work the per-batch timestamp marker distinguishes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -143,19 +144,19 @@ pub struct GpuPassStats {
 }
 
 impl GpuPassStats {
-    /// Whole-pass duration in milliseconds, or `None` until the first
-    /// frame's resolve has landed (or always `None` on adapters
-    /// without `TIMESTAMP_QUERY` or when collection is disabled).
-    pub fn last_pass_ms(&self) -> Option<f32> {
-        self.inner.borrow().pass_ns.map(ns_to_ms)
+    /// Whole-pass duration, or `None` until the first frame's resolve has
+    /// landed (or always `None` on adapters without `TIMESTAMP_QUERY` or
+    /// when collection is disabled).
+    pub fn last_pass(&self) -> Option<Duration> {
+        self.inner.borrow().pass_ns.map(Duration::from_nanos)
     }
 
-    /// Per-category duration in milliseconds. `None` when
+    /// Per-category duration. `None` when
     /// `TIMESTAMP_QUERY_INSIDE_PASSES` is unavailable / disabled, or
     /// when the named category didn't run in the most recent measured
     /// frame.
-    pub fn last_kind_ms(&self, kind: BatchKind) -> Option<f32> {
-        self.inner.borrow().kind_ns[kind.idx()].map(ns_to_ms)
+    pub fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
+        self.inner.borrow().kind_ns[kind.idx()].map(Duration::from_nanos)
     }
 
     /// Pipeline-statistics counters around the main pass. `None` when
@@ -174,8 +175,11 @@ impl GpuPassStats {
     /// This is what scales with the *number* of draw steps rather than the
     /// number of pixels, which makes it the metric for bind/draw-count
     /// work (batch coalescing, bind-state deduplication).
-    pub fn last_main_pass_cpu_ms(&self) -> Option<f32> {
-        self.inner.borrow().main_pass_cpu_ns.map(ns_to_ms)
+    pub fn last_main_pass_cpu(&self) -> Option<Duration> {
+        self.inner
+            .borrow()
+            .main_pass_cpu_ns
+            .map(Duration::from_nanos)
     }
 
     pub(crate) fn record_pass_ns(&self, ns: u64) {
@@ -203,10 +207,6 @@ impl GpuPassStats {
     }
 }
 
-fn ns_to_ms(ns: u64) -> f32 {
-    ns as f32 / 1_000_000.0
-}
-
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::gpu_pass_stats::*;
@@ -214,22 +214,20 @@ mod tests {
     #[test]
     fn starts_uninit() {
         let s = GpuPassStats::default();
-        assert_eq!(s.last_pass_ms(), None);
-        assert_eq!(s.last_kind_ms(BatchKind::Quads), None);
+        assert_eq!(s.last_pass(), None);
+        assert_eq!(s.last_kind(BatchKind::Quads), None);
         assert_eq!(s.last_pipeline_stats(), None);
-        assert_eq!(s.last_main_pass_cpu_ms(), None);
+        assert_eq!(s.last_main_pass_cpu(), None);
     }
 
-    /// `ns as f32 / 1e6` is one correctly rounded division, so each
-    /// reading is the f32 nearest the exact quotient — the literal itself.
     #[test]
     fn handle_clones_share_state() {
         let a = GpuPassStats::default();
         let b = a.clone();
         a.record_pass_ns(3_500_000);
         a.record_main_pass_cpu_ns(250_000);
-        assert_eq!(b.last_pass_ms().unwrap(), 3.5);
-        assert_eq!(b.last_main_pass_cpu_ms().unwrap(), 0.25);
+        assert_eq!(b.last_pass(), Some(Duration::from_micros(3500)));
+        assert_eq!(b.last_main_pass_cpu(), Some(Duration::from_micros(250)));
     }
 
     #[test]
@@ -240,10 +238,10 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_pass_ns(1_000_000);
         s.record_pass_ns(5_000_000);
-        assert_eq!(s.last_pass_ms().unwrap(), 5.0);
+        assert_eq!(s.last_pass(), Some(Duration::from_millis(5)));
         s.record_main_pass_cpu_ns(80_000);
         s.record_main_pass_cpu_ns(20_000);
-        assert_eq!(s.last_main_pass_cpu_ms().unwrap(), 0.02);
+        assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(20)));
     }
 
     #[test]
@@ -251,14 +249,20 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_kind_ns(BatchKind::Quads, 1_500_000);
         s.record_kind_ns(BatchKind::Text, 500_000);
-        assert_eq!(s.last_kind_ms(BatchKind::Quads).unwrap(), 1.5);
-        assert_eq!(s.last_kind_ms(BatchKind::Text).unwrap(), 0.5);
-        assert_eq!(s.last_kind_ms(BatchKind::Mesh), None);
+        assert_eq!(
+            s.last_kind(BatchKind::Quads),
+            Some(Duration::from_micros(1500))
+        );
+        assert_eq!(
+            s.last_kind(BatchKind::Text),
+            Some(Duration::from_micros(500))
+        );
+        assert_eq!(s.last_kind(BatchKind::Mesh), None);
         // Total isn't auto-populated from per-kind.
-        assert_eq!(s.last_pass_ms(), None);
+        assert_eq!(s.last_pass(), None);
         // Nor is the CPU record time — it has a separate producer, and a
         // device with no timestamp support publishes only that one.
-        assert_eq!(s.last_main_pass_cpu_ms(), None);
+        assert_eq!(s.last_main_pass_cpu(), None);
     }
 
     #[test]
@@ -282,10 +286,10 @@ mod tests {
         s.record_pipeline_stats(stats);
         s.clear_kinds();
         for kind in BatchKind::ALL {
-            assert_eq!(s.last_kind_ms(kind), None, "{kind:?}");
+            assert_eq!(s.last_kind(kind), None, "{kind:?}");
         }
-        assert_eq!(s.last_pass_ms(), Some(3.0));
-        assert_eq!(s.last_main_pass_cpu_ms(), Some(0.5));
+        assert_eq!(s.last_pass(), Some(Duration::from_millis(3)));
+        assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(500)));
         assert_eq!(s.last_pipeline_stats(), Some(stats));
     }
 

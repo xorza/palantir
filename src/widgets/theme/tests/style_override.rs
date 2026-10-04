@@ -161,28 +161,28 @@ fn per_axis_setters_outrank_the_style_bundle() {
     // Unset axes keep the ambient style's value; a set axis replaces it,
     // whatever the bundle under it said.
     let face = face_of(&h, plain);
-    assert_eq!(face.font.size_px, AMBIENT);
+    assert_eq!(face.font.size, AMBIENT);
     assert_eq!(face.font.weight, FontWeight::REGULAR);
     assert_eq!(face.color, ambient_color.into());
 
     let face = face_of(&h, axes);
-    assert_eq!(face.font.size_px, PER_AXIS);
+    assert_eq!(face.font.size, PER_AXIS);
     // `line_height_mult(2.0)` is a multiple of the *overridden* size.
-    assert_eq!(face.font.line_height_px, PER_AXIS * 2.0);
+    assert_eq!(face.font.line_height, PER_AXIS * 2.0);
     assert_eq!(face.font.weight, FontWeight::BOLD);
     assert_eq!(face.font.slant, FontSlant::Italic);
     assert_eq!(face.color, axis_color.into());
 
     assert_eq!(
-        face_of(&h, over_bundle).font.size_px,
+        face_of(&h, over_bundle).font.size,
         PER_AXIS,
         "a per-axis setter wins over the bundle `style` supplied",
     );
 
     let plain_face = face_of(&h, edit_plain.with("text-block"));
-    assert_eq!(plain_face.font.size_px, AMBIENT);
+    assert_eq!(plain_face.font.size, AMBIENT);
     let axes_face = face_of(&h, edit_axes.with("text-block"));
-    assert_eq!(axes_face.font.size_px, PER_AXIS);
+    assert_eq!(axes_face.font.size, PER_AXIS);
     assert_eq!(axes_face.color, axis_color.into());
 }
 
@@ -202,14 +202,14 @@ fn with_family_sets_only_the_family_axis() {
     assert_eq!(base.family, FontFamily::SANS);
     let mono = base.with_family(FontFamily::MONO);
     assert_eq!(mono.family, FontFamily::MONO);
-    assert_eq!(mono.font_size_px, base.font_size_px);
+    assert_eq!(mono.font_size, base.font_size);
 
     let over = TextStyleOverrides::NONE.with_family(FontFamily::MONO);
     assert_eq!(over.family, Some(FontFamily::MONO));
-    assert_eq!(over.font_size_px, None);
+    assert_eq!(over.font_size, None);
     let applied = over.apply(&base);
     assert_eq!(applied.family, FontFamily::MONO);
-    assert_eq!(applied.font_size_px, base.font_size_px);
+    assert_eq!(applied.font_size, base.font_size);
 }
 
 fn face_of(h: &UiHarness, id: WidgetId) -> RecordedFace {

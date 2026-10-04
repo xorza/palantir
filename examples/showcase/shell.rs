@@ -580,7 +580,7 @@ fn ui_scale_row(ui: &mut Ui) {
 fn scale_step_style() -> ButtonTheme {
     let mut style = nav_style(false);
     let grow = |look: &mut WidgetLook| {
-        look.text.font_size_px = Some(15.0);
+        look.text.font_size = Some(15.0);
     };
     grow(&mut style.looks.normal);
     grow(&mut style.looks.hovered);

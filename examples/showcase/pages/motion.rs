@@ -12,6 +12,7 @@ use palantir::{
     AnimSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense, Sizing,
     Stroke, Text, Ui, Vec2, WidgetId,
 };
+use std::time::Duration;
 
 #[derive(Default, Debug)]
 struct Bars {
@@ -58,17 +59,17 @@ fn easing(ui: &mut Ui) {
                 (
                     "linear-200",
                     "linear 200 ms",
-                    AnimSpec::duration(0.2, Easing::Linear),
+                    AnimSpec::duration(Duration::from_millis(200), Easing::Linear),
                 ),
                 (
                     "out-cubic-200",
                     "out-cubic 200 ms",
-                    AnimSpec::duration(0.2, Easing::OutCubic),
+                    AnimSpec::duration(Duration::from_millis(200), Easing::OutCubic),
                 ),
                 (
                     "out-back-300",
                     "out-back 300 ms — overshoots",
-                    AnimSpec::duration(0.3, Easing::OutBack),
+                    AnimSpec::duration(Duration::from_millis(300), Easing::OutBack),
                 ),
                 ("spring-soft", "soft spring", AnimSpec::SPRING),
             ] {

@@ -85,7 +85,10 @@ fn frames_until_idle_counts_the_frames_a_motion_takes() {
     // then 16, 32 and 48 ms are in flight and 64 ms passes the end, so
     // the fourth frame after it is idle.
     let slot = AnimSlot::new("idle-count");
-    let tween = Some(AnimSpec::duration(0.05, Easing::Linear));
+    let tween = Some(AnimSpec::duration(
+        Duration::from_millis(50),
+        Easing::Linear,
+    ));
     let mut harness = UiHarness::new(SURFACE);
     let to = cell::Cell::new(0.0_f32);
     let mut record = |ui: &mut Ui| {

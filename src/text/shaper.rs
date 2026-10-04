@@ -232,8 +232,8 @@ impl TextShaper {
     }
 
     /// Whether a face answers to `family`.
-    pub fn font_available(&self, family: FontFamily) -> bool {
-        self.shared.inner.borrow_mut().cosmic.font_available(family)
+    pub fn has_font(&self, family: FontFamily) -> bool {
+        self.shared.inner.borrow_mut().cosmic.has_font(family)
     }
 
     /// Every family the database knows, system fonts included.
@@ -425,7 +425,7 @@ pub(crate) mod internals {
     /// What the integration suites reach through `UiHarness`.
     impl TextShaper {
         /// Deterministic mono-fallback shaper for tests and headless
-        /// tools: every glyph measures `font_size_px * 0.5` wide, so a
+        /// tools: every glyph measures `font_size * 0.5` wide, so a
         /// layout case states the width it expects as arithmetic rather
         /// than as whatever the bundled face happens to advance to.
         ///
@@ -489,7 +489,7 @@ pub(crate) mod internals {
                 font: shape.font,
                 wrap: TextWrap::Wrap,
                 align: Align::h(shape.halign),
-                max_width_px: shape.max_width_px,
+                max_width: shape.max_width,
             }))
         }
 

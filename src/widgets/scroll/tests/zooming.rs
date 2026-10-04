@@ -339,7 +339,7 @@ fn wheel_zoom_step_is_font_independent() {
         use crate::input::keyboard::modifiers::Modifiers;
 
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme_mut().text.font_size_px = font_size;
+        h.ui.theme_mut().text.font_size = font_size;
         let build_zoom = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -384,7 +384,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
     for (label, font_size, line_height_mult, expected_px) in cases {
         let mut h = UiHarness::new(SURFACE);
         let text = &mut h.ui.theme_mut().text;
-        text.font_size_px = *font_size;
+        text.font_size = *font_size;
         text.line_height_mult = *line_height_mult;
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
         h.frame(build_v);
@@ -465,6 +465,16 @@ fn zoom_by_rejects_a_factor_that_cannot_scale() {
             let _ = Scroll::both().zoom_by(bad);
         });
     }
+    // A single-axis scroll has no zoom: it panics where the zoom is asked
+    // for, in every build, through either setter.
+    for scroll in [Scroll::vertical, Scroll::horizontal] {
+        panic_probe::assert_panics_with("a zoomable scroll must pan on both axes", || {
+            let _ = scroll().zoomable();
+        });
+        panic_probe::assert_panics_with("a zoomable scroll must pan on both axes", || {
+            let _ = scroll().zoom_config(ZoomConfig::default());
+        });
+    }
 }
 
 /// The offset band reaches both ends of zoomed content inside padding.
@@ -514,11 +524,11 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
     }
 }
 
-/// `zoomable_with` carries its range to the zoom: one 0.25× pinch lands
+/// `zoom_config` carries its range to the zoom: one 0.25× pinch lands
 /// at 0.25 under the default 0.1..=10 range, and clamps to the floor of a
 /// 0.5..=2 one.
 #[test]
-fn zoomable_with_clamps_to_its_own_range() {
+fn zoom_config_clamps_to_its_own_range() {
     let id = WidgetId::from_hash("ranged");
     for (config, want) in [
         (ZoomConfig::default(), 0.25),
@@ -528,7 +538,7 @@ fn zoomable_with_clamps_to_its_own_range() {
         let build = |ui: &mut Ui| {
             Scroll::both()
                 .id(id)
-                .zoomable_with(config.clone())
+                .zoom_config(config.clone())
                 .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .show(ui, |ui| {
                     fixed_block(ui, WidgetId::from_hash("ranged-content"), 100.0, 100.0);
@@ -563,7 +573,7 @@ fn zoom_modifier_picks_which_wheel_zooms() {
             let build = |ui: &mut Ui| {
                 Scroll::both()
                     .id(id)
-                    .zoomable_with(config.clone())
+                    .zoom_config(config.clone())
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         fixed_block(ui, WidgetId::from_hash("modded-content"), 800.0, 800.0);
@@ -600,7 +610,7 @@ fn zoom_pivot_picks_the_point_a_step_holds() {
         let build = |ui: &mut Ui| {
             Scroll::both()
                 .id(id)
-                .zoomable_with(config.clone())
+                .zoom_config(config.clone())
                 .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .show(ui, |ui| {
                     fixed_block(ui, WidgetId::from_hash("pivoted-content"), 800.0, 800.0);

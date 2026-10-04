@@ -273,7 +273,7 @@ fn blinking_text(ui: &mut Ui, text: &str) {
             Shape::text(
                 text,
                 GlyphFont {
-                    line_height_px: 19.2,
+                    line_height: 19.2,
                     ..GlyphFont::new(16.0)
                 },
             )

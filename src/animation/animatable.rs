@@ -144,7 +144,7 @@ impl Animatable for Vec2 {
 // sum-of-squared-component magnitude_squared, all-zeros for `zero()`.
 //
 // No `Option<T>` blanket: when a struct's field is "absent or value"
-// (e.g. a stroke), use a sentinel value (`Stroke::ZERO`) rather
+// (e.g. a stroke), use a sentinel value (`Stroke::NONE`) rather
 // than `Option<Stroke>` and let the paint-time `is_noop` filter
 // handle the absent case. A blanket impl can only return `Some(...)`
 // from arithmetic, which forces every consumer to scrub the no-op

@@ -28,7 +28,7 @@ fn spring_snap_fields_carry_target_immediately() {
     let id = wid("snap-carry");
     let start = Background {
         fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
     };
@@ -41,7 +41,7 @@ fn spring_snap_fields_carry_target_immediately() {
     // snap field included.
     let target = Background {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };

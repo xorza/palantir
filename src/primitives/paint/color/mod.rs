@@ -147,7 +147,7 @@ impl RgbaF32 {
         // Alpha decides visibility; the colour channels are screened
         // for NaN only. See `RgbaF16::is_noop` for why a NaN in a
         // non-alpha lane has to count as invisible.
-        domain::paints_nothing(self.a) || self.has_nan()
+        domain::is_invisible(self.a) || self.has_nan()
     }
 
     /// True if any channel is NaN. `const`, so [`Self::is_noop`] can

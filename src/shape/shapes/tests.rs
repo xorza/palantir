@@ -242,76 +242,97 @@ fn the_nan_gate_drops_every_shape_kind() {
         );
     }
 
-    use crate::primitives::geometry::mesh::Mesh;
+    use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::{Lower, Shape};
-    use glam::Vec2;
+    use crate::shape::Lower;
+    use crate::shape::curve::{CurveGeometry, CurveShape};
+    use crate::shape::mesh::MeshShape;
+    use crate::shape::polyline::PolylineColors;
+    use crate::shape::rect::{RectKind, RectShape};
+    use crate::shape::triangle::TriangleShape;
 
+    // Every public builder refuses a non-finite input (see
+    // `builders_refuse_what_they_check`), so the tainted shapes here come
+    // through the crate's own constructors: the gate is the backstop for
+    // a crate path that skipped a builder, and this pins that it holds.
     const N: f32 = f32::NAN;
     let nan_pt = Vec2::new(1.0, N);
     let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
     let white = RgbaF32::WHITE;
+    let stroke = Stroke::new(white, 2.0);
     let mesh = |pos| {
         let mut m = Mesh::new();
-        m.vertex(pos, white);
-        m.vertex(Vec2::new(4.0, 0.0), white);
-        m.vertex(Vec2::new(0.0, 4.0), white);
+        m.vertices.push(MeshVertex::new(pos, white));
+        m.vertices.push(MeshVertex::new(Vec2::new(4.0, 0.0), white));
+        m.vertices.push(MeshVertex::new(Vec2::new(0.0, 4.0), white));
         m.triangle(0, 1, 2);
         m
     };
     let (mesh_nan, mesh_ok) = (mesh(nan_pt), mesh(Vec2::ZERO));
     let pts_nan = [Vec2::ZERO, nan_pt, Vec2::new(4.0, 4.0)];
     let pts_ok = [Vec2::ZERO, Vec2::new(2.0, 2.0), Vec2::new(4.0, 4.0)];
-
-    let tri = |c, r: f32| {
-        Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), c)
-            .fill(white)
-            .radius(r)
+    let tri = |c| TriangleShape::new(Vec2::ZERO, Vec2::new(4.0, 0.0), c).fill(white);
+    let rect = |r| RectShape::new(RectKind::Rounded, Some(r)).fill(white);
+    let line = |b| CurveShape::new(CurveGeometry::Line { a: Vec2::ZERO, b }, stroke);
+    let arc = |center| {
+        CurveShape::new(
+            CurveGeometry::Arc {
+                center,
+                radius: 4.0,
+                start_angle: 0.0,
+                sweep: 1.0,
+            },
+            stroke,
+        )
     };
     gate(
         "rect_local_rect",
-        Shape::rect(Rect::new(0.0, N, 8.0, 8.0)).fill(white),
-        Shape::rect(ok_rect).fill(white),
+        rect(Rect::new(0.0, N, 8.0, 8.0)),
+        rect(ok_rect),
     );
-    gate(
-        "triangle_corner",
-        tri(nan_pt, 0.0),
-        tri(Vec2::new(0.0, 4.0), 0.0),
-    );
+    gate("triangle_corner", tri(nan_pt), tri(Vec2::new(0.0, 4.0)));
     gate(
         "curve_control_point",
-        Shape::line(Vec2::ZERO, nan_pt, Stroke::new(white, 2.0)),
-        Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), Stroke::new(white, 2.0)),
+        line(nan_pt),
+        line(Vec2::new(4.0, 4.0)),
     );
-    gate(
-        "arc_centre",
-        Shape::arc(nan_pt, 4.0, 0.0, 1.0, Stroke::new(white, 2.0)),
-        Shape::arc(Vec2::ZERO, 4.0, 0.0, 1.0, Stroke::new(white, 2.0)),
-    );
+    gate("arc_centre", arc(nan_pt), arc(Vec2::ZERO));
     gate(
         "polyline_point",
-        Shape::polyline(&pts_nan, Stroke::new(white, 2.0)),
-        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)),
+        PolylineShape::new(&pts_nan, stroke),
+        PolylineShape::new(&pts_ok, stroke),
     );
     // A NaN channel in one colour of three: the rest are visible, so the
     // no-op gate passes it and only the colour scan can catch it.
     let nan_red = RgbaF32::new(N, 0.0, 0.0, 1.0);
     let colors_nan = [white, nan_red, white];
+    let colors_ok = [white; 3];
+    let colored = |colors| PolylineShape {
+        colors,
+        ..PolylineShape::new(&pts_ok, stroke)
+    };
     gate(
         "polyline_point_colour",
-        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_point(&colors_nan),
-        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_point(&[white; 3]),
+        colored(PolylineColors::PerPoint(&colors_nan)),
+        colored(PolylineColors::PerPoint(&colors_ok)),
     );
     gate(
         "polyline_segment_colour",
-        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_segment(&colors_nan[1..]),
-        Shape::polyline(&pts_ok, Stroke::new(white, 2.0)).per_segment(&[white; 2]),
+        colored(PolylineColors::PerSegment(&colors_nan[1..])),
+        colored(PolylineColors::PerSegment(&colors_ok[1..])),
     );
-    gate("mesh_vertex", Shape::mesh(&mesh_nan), Shape::mesh(&mesh_ok));
+    gate(
+        "mesh_vertex",
+        MeshShape::new(&mesh_nan),
+        MeshShape::new(&mesh_ok),
+    );
     gate(
         "mesh_local_rect",
-        Shape::mesh(&mesh_ok).at(Rect::new(0.0, N, 8.0, 8.0)),
-        Shape::mesh(&mesh_ok).at(ok_rect),
+        MeshShape {
+            local_rect: Some(Rect::new(0.0, N, 8.0, 8.0)),
+            ..MeshShape::new(&mesh_ok)
+        },
+        MeshShape::new(&mesh_ok).at(ok_rect),
     );
 }
 
@@ -322,15 +343,15 @@ fn the_nan_gate_drops_every_shape_kind() {
 /// `GradientId` that a record gate could not see.
 #[test]
 fn builders_refuse_what_they_check() {
+    use crate::internals::harness::UiHarness;
     use crate::internals::panic_probe;
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::geometry::mesh::Mesh;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::Shape;
-    use glam::Vec2;
+    use crate::text::glyph_font::GlyphFont;
 
     const N: f32 = f32::NAN;
     let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
@@ -362,4 +383,69 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
         Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(white, -1.0))
     });
+
+    // Geometry is checked as offsets at every door a caller has: a rect, a
+    // corner, a control point, a centre, a polyline point, a mesh vertex,
+    // a shape's box and a text origin. A colour of a polyline that varies
+    // along it is checked as a colour.
+    let geometry: [fn(); 11] = [
+        || drop(Shape::rect(Rect::new(0.0, N, 8.0, 8.0))),
+        || {
+            drop(Shape::windowed_rect(Rect::new(
+                f32::INFINITY,
+                0.0,
+                8.0,
+                8.0,
+            )));
+        },
+        || drop(Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(N, 0.0))),
+        || drop(Shape::line(Vec2::ZERO, Vec2::new(0.0, N), thin())),
+        || {
+            drop(Shape::cubic_bezier(
+                Vec2::ZERO,
+                Vec2::new(N, 0.0),
+                Vec2::X,
+                Vec2::Y,
+                thin(),
+            ));
+        },
+        || {
+            drop(Shape::quadratic_bezier(
+                Vec2::ZERO,
+                Vec2::X,
+                Vec2::new(0.0, f32::INFINITY),
+                thin(),
+            ));
+        },
+        || drop(Shape::circle(Vec2::new(N, 0.0), 4.0, thin())),
+        || drop(Shape::polyline(&[Vec2::ZERO, Vec2::new(N, 1.0)], thin())),
+        || {
+            drop(Mesh::filled_triangle(
+                Vec2::new(N, 0.0),
+                Vec2::X,
+                Vec2::Y,
+                RgbaF32::WHITE,
+            ));
+        },
+        || drop(Shape::shadow(Shadow::NONE).at(Rect::new(0.0, 0.0, N, 8.0))),
+        || {
+            let mut h = UiHarness::arena();
+            let text = h.ui().intern("t");
+            drop(Shape::text(text, GlyphFont::new(16.0)).at_origin(Vec2::new(N, 0.0)));
+        },
+    ];
+    for build in geometry {
+        panic_probe::assert_panics_with(domain::OFFSET_RULE, build);
+    }
+    panic_probe::assert_panics_with(domain::COLOR_RULE, || {
+        let colors = [white, RgbaF32::new(N, 0.0, 0.0, 1.0)];
+        drop(Shape::polyline(&[Vec2::ZERO, Vec2::X], thin()).per_point(&colors));
+    });
+    // A negative size is finite: it is taken, and paints nothing.
+    let _ = Shape::rect(Rect::new(0.0, 0.0, -4.0, 8.0));
+}
+
+/// A one-pixel white stroke, for the geometry cases above.
+fn thin() -> Stroke {
+    Stroke::new(RgbaF32::WHITE, 1.0)
 }

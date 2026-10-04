@@ -50,7 +50,7 @@ pub struct TextProbe<'a> {
     ///
     /// `None` only for a face the shaper cannot be asked for. That face
     /// names no metrics either, so the answers below fall back to a
-    /// zero-height band — see [`Self::line_height_px`].
+    /// zero-height band — see [`Self::line_height`].
     key: Option<TextShapeKey>,
     /// The run's authored horizontal alignment.
     ///
@@ -120,8 +120,8 @@ impl<'a> TextProbe<'a> {
 
     /// The band every unshaped answer below reports on: the leading this
     /// run was asked for, quantized, or zero where its face named none.
-    fn line_height_px(&self) -> f32 {
-        self.key.map_or(0.0, TextShapeKey::line_height_px)
+    fn line_height(&self) -> f32 {
+        self.key.map_or(0.0, TextShapeKey::line_height)
     }
 
     /// Shaped run behind this layout; `None` on the gated mono metric,
@@ -191,11 +191,7 @@ impl<'a> TextProbe<'a> {
             reason = "a gated statement names the path inline instead of a cfg'd import"
         )]
         if let Some(key) = self.key.filter(|_| self.inner.is_mono()) {
-            return crate::text::mono::single_line_caret_x(
-                self.text,
-                byte_offset,
-                key.font_size_px(),
-            );
+            return crate::text::mono::single_line_caret_x(self.text, byte_offset, key.font_size());
         }
         assert!(
             self.shapes_nothing(),
@@ -215,7 +211,7 @@ impl<'a> TextProbe<'a> {
             reason = "a gated statement names the path inline instead of a cfg'd import"
         )]
         if let Some(key) = self.key.filter(|_| self.inner.is_mono()) {
-            return crate::text::mono::nearest_byte(self.text, target_x, key.font_size_px());
+            return crate::text::mono::nearest_byte(self.text, target_x, key.font_size());
         }
         assert!(
             self.shapes_nothing(),
@@ -241,7 +237,7 @@ impl<'a> TextProbe<'a> {
     /// `byte_offset` is clamped to the run, the way
     /// [`Self::byte_at`] clamps a point: past the end answers the end.
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
-        let line_height_px = self.line_height_px();
+        let line_height = self.line_height();
         let halign = self.halign;
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
             // No shaped buffer means empty text (block-local x is 0, and
@@ -249,7 +245,7 @@ impl<'a> TextProbe<'a> {
             return Caret {
                 x: self.unshaped_caret_x(byte_offset),
                 y_top: 0.0,
-                line_height: line_height_px,
+                line_height,
             };
         };
         let target = LineMap::new(buffer, self.text).cursor(byte_offset);
@@ -287,7 +283,7 @@ impl<'a> TextProbe<'a> {
         last_in_line.unwrap_or(Caret {
             x: 0.0,
             y_top: 0.0,
-            line_height: line_height_px,
+            line_height,
         })
     }
 
@@ -334,7 +330,7 @@ impl<'a> TextProbe<'a> {
             // empty text collapses it to nothing.
             let x0 = self.unshaped_caret_x(range.start);
             let x1 = self.unshaped_caret_x(range.end);
-            out(Rect::new(x0, 0.0, x1 - x0, self.line_height_px()));
+            out(Rect::new(x0, 0.0, x1 - x0, self.line_height()));
             return;
         };
         let lines = LineMap::new(buffer, self.text);
@@ -349,7 +345,7 @@ impl<'a> TextProbe<'a> {
 /// the height of the visual line it landed on.
 ///
 /// That height is what the line was actually laid out at, which is not
-/// always the requested `line_height_px` — font fallback shifts ascent
+/// always the requested `line_height` — font fallback shifts ascent
 /// and descent — so a caret sized from this matches the glyphs beside it
 /// rather than the metric that was asked for.
 #[derive(Clone, Copy, Debug, PartialEq)]

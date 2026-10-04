@@ -64,13 +64,13 @@ pub enum TabBadge {
 
 impl TabBadge {
     /// Whether the chip reserves the dot's box.
-    pub fn reserved(self) -> bool {
-        self != Self::None
+    pub const fn is_reserved(self) -> bool {
+        !matches!(self, Self::None)
     }
 
     /// Whether the reserved box is inked.
-    pub fn inked(self) -> bool {
-        self == Self::On
+    pub const fn is_inked(self) -> bool {
+        matches!(self, Self::On)
     }
 }
 

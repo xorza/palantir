@@ -142,17 +142,17 @@ fn sanitize_system_scale_keeps_a_usable_scale_or_falls_back_to_one() {
     }
 }
 
-/// A display built by hand takes a positive system scale and panics on
-/// any other.
+/// A display built by hand takes the scale rule every door applies —
+/// finite and at least 1e-4 — so a scale the frame would refuse is refused
+/// where it is named. 5e-5 is positive and still refused; 1e-4 is taken.
 #[test]
 fn from_physical_checks_its_scale() {
+    use crate::display::SCALE_RULE;
     use crate::internals::panic_probe;
-    use crate::primitives::math::domain;
 
     assert_eq!(Display::from_physical(UVec2::ONE, 2.0).system_scale, 2.0);
-    for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
-            Display::from_physical(UVec2::ONE, bad)
-        });
+    assert_eq!(Display::from_physical(UVec2::ONE, 1e-4).system_scale, 1e-4);
+    for bad in [0.0, 5e-5, -1.0, f32::NAN, f32::INFINITY] {
+        panic_probe::assert_panics_with(SCALE_RULE, || Display::from_physical(UVec2::ONE, bad));
     }
 }

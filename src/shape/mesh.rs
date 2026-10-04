@@ -33,8 +33,14 @@ impl<'a> MeshShape<'a> {
 impl MeshShape<'_> {
     /// Paint into `rect`, in owner-relative coords, instead of the
     /// owner's whole arranged rect.
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.local_rect = Some(rect);
         self
     }
 
@@ -44,8 +50,8 @@ impl MeshShape<'_> {
     ///
     /// Panics unless `tint` is a [colour](crate::widget::domain::color).
     #[track_caller]
-    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
-        self.tint = domain::color(tint.into());
+    pub const fn tint(mut self, tint: RgbaF32) -> Self {
+        self.tint = domain::color(tint);
         self
     }
 }

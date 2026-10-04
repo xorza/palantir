@@ -197,7 +197,7 @@ fn the_meta_modifier_reaches_matching_and_display() {
         ..ShortcutMods::NONE
     };
     assert_eq!(ShortcutMods::from(held), declared);
-    assert!(declared.any_command());
+    assert!(declared.has_command());
     let super_l = Shortcut::new(declared, Key::Char('L'));
     assert!(super_l.matches(kp(held, Key::Char('l'))));
     assert!(!Shortcut::key(Key::Char('L')).matches(kp(held, Key::Char('l'))));

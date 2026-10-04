@@ -176,7 +176,7 @@ fn decay_rate(stiffness: f64, half_damping: f64) -> f64 {
 /// A critically damped or overdamped spring does not swing, so any
 /// stiffness passes that half. A swing that would die within one frame
 /// is refused all the same: it would read as a snap, which
-/// `AnimSpec::duration(0.0, ..)` already spells.
+/// `AnimSpec::duration(Duration::ZERO, ..)` already spells.
 ///
 /// **Not a stability bound.** The step is exact at any parameters and
 /// any `dt`, so nothing here is about the arithmetic surviving. And no

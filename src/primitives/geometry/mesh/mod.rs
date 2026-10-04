@@ -5,6 +5,7 @@
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use bytemuck::{Pod, Zeroable};
@@ -154,11 +155,14 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// Panics if the new vertex index cannot be represented by `u32`.
+    /// Panics unless `pos` is an [offset](crate::widget::domain::offset), or
+    /// if the new vertex index cannot be represented by `u32`.
     #[inline]
+    #[track_caller]
     pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32 {
         let index = checked_vertex_index(self.vertices.len());
-        self.vertices.push(MeshVertex::new(pos, color));
+        self.vertices
+            .push(MeshVertex::new(vec2::offset(pos), color));
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
         index
@@ -239,6 +243,11 @@ impl Mesh {
     /// Convenience: filled triangle in a single color (`RgbaF32` or
     /// `SrgbaU8`). Bbox falls out of the three known vertices —
     /// pre-cached so the first `bbox()` call is free.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::vertex`].
+    #[track_caller]
     pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<SrgbaU8>) -> Self {
         let color = color.into();
         let mut m = Self::with_capacity(3, 3);
@@ -258,6 +267,11 @@ impl Mesh {
     /// wrong — caller's responsibility. `color` accepts `RgbaF32` or
     /// `SrgbaU8`. Bbox is pre-cached, so the first `bbox()` call is
     /// free.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::vertex`].
+    #[track_caller]
     pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self {
         if points.len() < 3 {
             return Self::new();

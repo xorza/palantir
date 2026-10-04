@@ -10,7 +10,7 @@ fn typing_inserts_text_when_focused() {
 
     h.frame(editor_only(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id));
+    assert_eq!(h.focus(), Some(id));
 
     h.type_text("hi");
 
@@ -32,7 +32,7 @@ fn a_field_types_the_text_a_press_produced() {
 
     h.frame(editor_only(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id));
+    assert_eq!(h.focus(), Some(id));
 
     // A dead-key fallback: two characters from one press, and the key
     // that carried them names only the first.
@@ -67,7 +67,7 @@ fn a_command_chord_types_nothing_it_reports() {
 
     h.frame(editor_only(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id));
+    assert_eq!(h.focus(), Some(id));
 
     h.set_modifiers(Modifiers::CTRL);
     h.on_input(InputEvent::KeyDown {
@@ -89,7 +89,7 @@ fn keystrokes_ignored_when_not_focused() {
 
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
-    assert!(h.focused_id().is_none());
+    assert!(h.focus().is_none());
 }
 
 #[test]
@@ -99,17 +99,17 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     let id = WidgetId::from_hash("editor");
 
     h.frame(editor_only(&mut buf));
-    assert!(h.focused_id().is_none());
+    assert!(h.focus().is_none());
     assert!(!h.key(Key::Escape).repaint_requested);
     assert!(!h.key(Key::Char('s')).repaint_requested);
 
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id));
+    assert_eq!(h.focus(), Some(id));
     h.frame(editor_only(&mut buf));
 
     assert_eq!(buf, "seed", "unfocused text must be discarded on arrival");
     assert_eq!(
-        h.focused_id(),
+        h.focus(),
         Some(id),
         "unfocused Escape must not blur a later focus target",
     );
@@ -123,11 +123,11 @@ fn escape_blurs_focus() {
 
     h.frame(editor_only(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id));
+    assert_eq!(h.focus(), Some(id));
 
     h.key(Key::Escape);
     h.frame(editor_only(&mut buf));
-    assert_eq!(h.focused_id(), None);
+    assert_eq!(h.focus(), None);
 }
 
 #[test]
@@ -188,12 +188,12 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 
     h.frame(editor_and_button(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editor")));
+    assert_eq!(h.focus(), Some(WidgetId::from_hash("editor")));
 
     h.frame(editor_and_button(&mut buf));
     h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
     assert_eq!(
-        h.focused_id(),
+        h.focus(),
         None,
         "default ClearOnMiss drops focus when clicking a non-focusable Button",
     );
@@ -410,7 +410,7 @@ fn two_textedits_only_one_focused_at_a_time() {
 
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.click_in(id_a, Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id_a));
+    assert_eq!(h.focus(), Some(id_a));
 
     h.key(Key::Char('1'));
     h.frame(|ui| body(ui, &mut a, &mut b));
@@ -418,7 +418,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     assert_eq!(b, "");
 
     h.click_in(id_b, Vec2::new(70.0, 20.0));
-    assert_eq!(h.focused_id(), Some(id_b));
+    assert_eq!(h.focus(), Some(id_b));
 
     h.key(Key::Char('2'));
     h.frame(|ui| body(ui, &mut a, &mut b));
@@ -441,7 +441,7 @@ fn select_all_on_focus_gates_on_the_flag() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(on)
                 .id(on_id)
-                .select_all_on_focus()
+                .select_all_on_focus(true)
                 .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui);
             TextEdit::new(off)
@@ -549,18 +549,18 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
 
     h.frame(&mut record);
     assert!(
-        !h.focus_within(holder),
+        !h.is_focus_within(holder),
         "nothing focused → no ancestor owns focus"
     );
 
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    assert_eq!(h.focused_id(), Some(editor));
+    assert_eq!(h.focus(), Some(editor));
     // The focused editor is within itself and its ancestor, not
     // within a sibling or an id that was never recorded.
-    assert!(h.focus_within(editor), "self-inclusive");
-    assert!(h.focus_within(holder));
-    assert!(!h.focus_within(bystander));
-    assert!(!h.focus_within(WidgetId::from_hash("unrecorded")));
+    assert!(h.is_focus_within(editor), "self-inclusive");
+    assert!(h.is_focus_within(holder));
+    assert!(!h.is_focus_within(bystander));
+    assert!(!h.is_focus_within(WidgetId::from_hash("unrecorded")));
 }
 
 /// A tap — press and release fed together, as a touchpad's tap-to-click

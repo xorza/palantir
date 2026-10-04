@@ -48,7 +48,6 @@ use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::primitives::math::domain::EPS;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -307,8 +306,8 @@ impl OffscreenHost {
     ) -> FrameReport {
         assert!(
             display::scale_factor_is_valid(system_scale),
-            "offscreen system scale must be finite and at least {EPS}, got \
-             {system_scale}"
+            "{}, got {system_scale}",
+            display::SCALE_RULE,
         );
 
         let key = TargetKey::of(target);

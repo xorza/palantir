@@ -217,7 +217,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
     };
 
     match tree.chrome(node) {
-        Some(bg) if bg.paints_nothing() => {
+        Some(bg) if bg.is_invisible() => {
             // Kept for a rounded clip and nothing else: a row with an empty
             // screen, so it damages nothing, and the owner rect in the cull
             // rollup, as for a chromeless clip below.

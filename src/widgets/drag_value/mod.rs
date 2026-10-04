@@ -9,6 +9,8 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
+use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -109,7 +111,7 @@ pub struct DragValue<'a> {
     min: f64,
     max: f64,
     decimals: usize,
-    suffix: &'a str,
+    suffix: TextInput<'a>,
     editable: bool,
     style: Option<&'a DragValueTheme>,
 }
@@ -126,7 +128,7 @@ impl<'a> DragValue<'a> {
             min: f64::NEG_INFINITY,
             max: f64::INFINITY,
             decimals: 2,
-            suffix: "",
+            suffix: TextInput::Borrowed(""),
             editable: false,
             style: None,
         }
@@ -140,12 +142,7 @@ impl<'a> DragValue<'a> {
     /// Panics unless `speed` is finite and above zero.
     #[track_caller]
     pub const fn speed(mut self, speed: f64) -> Self {
-        assert!(
-            speed.is_finite() && speed > 0.0,
-            "{}",
-            domain::POSITIVE_RULE
-        );
-        self.speed = speed;
+        self.speed = domain::f64::positive(speed);
         self
     }
 
@@ -181,10 +178,10 @@ impl<'a> DragValue<'a> {
     }
 
     /// Text appended after the number — a unit (`"px"`, `"%"`), or
-    /// whatever a locale table hands over. Borrowed for the frame, so it
-    /// need not be `'static`.
-    pub const fn suffix(mut self, s: &'a str) -> Self {
-        self.suffix = s;
+    /// whatever a locale table hands over: borrowed, owned, interned or
+    /// `fmt!` output, as every widget's text.
+    pub fn suffix(mut self, text: impl Into<TextInput<'a>>) -> Self {
+        self.suffix = text.into();
         self
     }
 
@@ -237,7 +234,7 @@ impl<'a> DragValue<'a> {
         // `rect` is post-zoom and would mismatch the sizing units under a
         // scaled canvas. Disabled mid-edit falls through to the chip path,
         // which kicks focus out and discards the pending draft below.
-        if self.editable && ui.focused_id() == Some(id) {
+        if self.editable && ui.focus() == Some(id) {
             if response.disabled {
                 ui.clear_focus();
             } else {
@@ -328,9 +325,19 @@ impl<'a> DragValue<'a> {
             response.focused = true;
         }
 
-        let text = match &self.value {
-            DragNum::I64(v) => ui.fmt(format_args!("{}{}", **v, self.suffix)),
-            DragNum::F64(v) => ui.fmt(format_args!("{:.*}{}", self.decimals, **v, self.suffix)),
+        let text = match &self.suffix {
+            TextInput::Borrowed(suffix) => label(ui, &self.value, self.decimals, suffix),
+            TextInput::Owned(suffix) => label(ui, &self.value, self.decimals, suffix),
+            // The arena cannot be read while it is written, so an interned
+            // suffix goes through a retained copy.
+            TextInput::Interned(suffix) => {
+                let (suffix, value, decimals) = (*suffix, &self.value, self.decimals);
+                ui.with_state::<SuffixScratch, _>(id.with("suffix"), |ui, scratch| {
+                    scratch.0.clear();
+                    scratch.0.push_str(ui.text(suffix));
+                    label(ui, value, decimals, &scratch.0)
+                })
+            }
         };
 
         // The chip half of the bundle — the same one the edit mode's editor
@@ -409,7 +416,7 @@ impl<'a> DragValue<'a> {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
                 .text_align(Align::CENTER)
-                .select_all_on_focus()
+                .select_all_on_focus(true)
                 .style(editor)
                 .size((width, sizes.h()))
                 .min_size(min_size)
@@ -453,6 +460,19 @@ impl Configure for DragValue<'_> {
         self.widget.configure()
     }
 }
+
+/// The chip's text: `value` at `decimals` places, then `suffix`.
+fn label(ui: &mut Ui, value: &DragNum<'_>, decimals: usize, suffix: &str) -> InternedStr {
+    match value {
+        DragNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
+        DragNum::F64(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
+    }
+}
+
+/// An interned suffix's characters, copied out of the arena so the label
+/// can be formatted into it. Retained, so a steady suffix allocates once.
+#[derive(Debug, Default)]
+struct SuffixScratch(String);
 
 #[cfg(test)]
 mod tests;

@@ -20,9 +20,12 @@ pub(crate) mod user_scale;
 use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
 use glam::{UVec2, Vec2};
+
+/// What every door a scale factor enters by says when
+/// [`scale_factor_is_valid`] fails.
+pub(crate) const SCALE_RULE: &str = "a scale factor must be finite and at least 1e-4";
 
 #[inline]
 pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
@@ -125,17 +128,20 @@ impl Display {
     /// so both hosts mint theirs through the `WindowDriver` that owns both,
     /// and that is the only place either reaches a frame.
     ///
-    /// `system_scale`: *positive*.
+    /// `system_scale`: finite and at least `1e-4`, the rule the hosts and
+    /// the frame apply to every scale factor.
     ///
     /// # Panics
     ///
-    /// Panics unless `system_scale` is
-    /// [positive](crate::widget::domain::positive).
+    /// Panics unless `system_scale` is finite and at least `1e-4`.
     #[track_caller]
     pub const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
         Self {
             physical,
-            system_scale: domain::positive(system_scale),
+            system_scale: {
+                assert!(scale_factor_is_valid(system_scale), "{}", SCALE_RULE);
+                system_scale
+            },
             user_scale: UserScale::ONE,
             pixel_snap: true,
             refresh_millihertz: None,

@@ -72,7 +72,7 @@ fn escape_reverts_the_draft_without_a_commit() {
         );
     }
     assert_eq!(canonical, 5.0);
-    assert!(h.ui.focused_id().is_none(), "Escape blurs");
+    assert!(h.ui.focus().is_none(), "Escape blurs");
 
     let live_id = WidgetId::from_hash("dv-escape-live");
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -221,7 +221,7 @@ fn disabling_mid_edit_discards_the_draft() {
     // draft is discarded — a locked control must not emit an edit.
     let s = deferred_frame(&mut h, id, &mut canonical, true, true);
     assert!(!s.a().committed, "locked control emits no commit");
-    assert_eq!(h.focused_id(), None, "disable kicks the editor's focus");
+    assert_eq!(h.focus(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
         h.state::<DragValueState>(id),
