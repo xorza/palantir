@@ -37,7 +37,7 @@ impl SlotPlacement {
     /// and the tint is the slot's: the extents, the atlas origin, the
     /// side to sample.
     pub(crate) fn quad(self, pen: IVec2, color: RgbaF16) -> RasterQuad {
-        let dim = RasterQuad::dim(self.size.x, self.size.y);
+        let dim = self.size.to_array();
         RasterQuad {
             // `y` up in the rasterizer's sense, `y` down on screen.
             pos: [
@@ -56,7 +56,7 @@ impl SlotPlacement {
     /// exact band, which rasterizes near its box rather than at it.
     pub(crate) fn quad_sized(self, pen: IVec2, size: U16Vec2, color: RgbaF16) -> RasterQuad {
         RasterQuad {
-            size: RasterQuad::dim(size.x, size.y),
+            size: size.to_array(),
             ..self.quad(pen, color)
         }
     }

@@ -9,13 +9,6 @@ Whoever addresses an item deletes it.
 
 ## Wire layouts: the shaders restate numbers that Rust says it owns
 
-- [ ] `src/gpu/raster/raster_atlas/shader.wgsl:34-35` says that Rust owns
-  every number. But the `v` shift `16u`, the masks `0xFFFFu` and `0x3u`
-  (`:54-64`), and `FLAG_RESAMPLE = 4u` (`:43`) are literals. A compile-time
-  assert in `raster_quad.rs:120-131` holds the two flags at 1 and 2, but
-  nothing holds the shader's `0x3u` or `16u` to `KIND_SHIFT` or the `v` field.
-  Target: substitute the `v` shift and the flag-field mask, or say in the
-  comment which numbers the shader keeps as its own.
 - [ ] Wire tags have three different shapes. `FillKind` is a
   `repr(transparent)` newtype with named constructors. The curve basis is
   loose `u32` constants (`src/renderer/render_buffer/curve.rs:20-31`,

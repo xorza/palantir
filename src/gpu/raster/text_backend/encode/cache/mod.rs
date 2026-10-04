@@ -52,8 +52,8 @@ impl BlockSlot for EncodedGlyph {
         Self {
             instance: RasterQuad {
                 pos: [0, 0],
-                dim: 0,
-                size: 0,
+                dim: [0; 2],
+                size: [0; 2],
                 uv_and_kind: 0,
                 color: RgbaF16::TRANSPARENT,
             },
@@ -440,8 +440,8 @@ pub(crate) mod internals {
                     self.cache.stage(EncodedGlyph {
                         instance: RasterQuad {
                             pos: [glyph as i32, run as i32],
-                            dim: 0,
-                            size: 0,
+                            dim: [0; 2],
+                            size: [0; 2],
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },
@@ -519,8 +519,8 @@ pub(crate) mod internals {
                     cache.stage(EncodedGlyph {
                         instance: RasterQuad {
                             pos: [glyph as i32, row as i32],
-                            dim: 0,
-                            size: 0,
+                            dim: [0; 2],
+                            size: [0; 2],
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },

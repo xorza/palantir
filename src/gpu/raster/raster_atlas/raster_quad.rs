@@ -17,13 +17,12 @@ use crate::primitives::paint::content_type::ContentType;
 pub(crate) struct RasterQuad {
     /// Top-left in physical px.
     pub(crate) pos: [i32; 2],
-    /// The raster's extents in atlas texels, packed by [`Self::dim`].
-    pub(crate) dim: u32,
-    /// The extents the quad is drawn at in physical px, packed the same
-    /// way. Equal to `dim` for every glyph and for an icon in the exact
-    /// band, which the shader samples texel for texel; any other icon is
-    /// resampled to its box.
-    pub(crate) size: u32,
+    /// The raster's extents in atlas texels.
+    pub(crate) dim: [u16; 2],
+    /// The extents the quad is drawn at in physical px. Equal to `dim` for
+    /// every glyph and for an icon in the exact band, which the shader
+    /// reads texel for texel; any other icon is resampled to its box.
+    pub(crate) size: [u16; 2],
     /// Atlas origin plus content type, packed by [`Self::pack_uv`].
     pub(crate) uv_and_kind: u32,
     /// Straight-alpha linear RGBA; the shader premultiplies at output.
@@ -40,21 +39,15 @@ impl RasterQuad {
     /// outright.
     pub(crate) const DESATURATE: u32 = 1 << U_BITS;
 
-    /// Pack a slot's extents the way the vertex shader reads them: width in
-    /// the low half, height in the high half.
-    pub(crate) fn dim(width: u16, height: u16) -> u32 {
-        u32::from(width) | (u32::from(height) << 16)
-    }
-
     /// Pack an atlas slot's origin plus its content type into the one `u32` the
     /// vertex shader unpacks: `u` in the low [`U_BITS`], [`Self::DESATURATE`]
-    /// above it, the content type above that, `v` in the high 16.
+    /// above it, the content type above that, `v` from [`V_SHIFT`] up.
     pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
         debug_assert!(
             u32::from(u) <= U_MAX,
             "u must fit {U_BITS} bits; the rest carry the content type and DESATURATE",
         );
-        u32::from(u) | ((kind as u32) << KIND_SHIFT) | (u32::from(v) << 16)
+        u32::from(u) | ((kind as u32) << KIND_SHIFT) | (u32::from(v) << V_SHIFT)
     }
 
     /// The vertex layout the instance stream is read through.
@@ -68,13 +61,15 @@ impl RasterQuad {
 
     /// The shader both passes build their pipelines from.
     ///
-    /// Rust owns the `uv_and_kind` bit layout; the shader declares the three
-    /// numbers it needs as markers so the two cannot drift (`specialize` panics
-    /// on an unsubstituted one). The flags arrive already shifted down by
-    /// [`U_BITS`], which is how the shader reads them.
+    /// Rust owns the `uv_and_kind` bit layout; the shader declares the
+    /// numbers it needs as markers so the two cannot drift (`specialize`
+    /// panics on an unsubstituted one). The flags arrive already shifted
+    /// down by [`U_BITS`], which is how the shader reads them.
     pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
         let wgsl = ShaderBody::RasterAtlas.specialize(&[
             ShaderConstant::uint("U_BITS", U_BITS),
+            ShaderConstant::uint("V_SHIFT", V_SHIFT),
+            ShaderConstant::uint("FLAG_MASK", FLAG_MASK),
             ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),
             ShaderConstant::uint(
                 "FLAG_COLOR",
@@ -102,27 +97,29 @@ const U_MAX: u32 = (1 << U_BITS) - 1;
 /// Where the content type sits: straight above [`RasterQuad::DESATURATE`].
 const KIND_SHIFT: u32 = U_BITS + 1;
 
+/// Where `v` starts: the upper half, which holds any `u16`.
+const V_SHIFT: u32 = 16;
+
+/// The carried flags — [`RasterQuad::DESATURATE`] and the content type —
+/// once shifted down by [`U_BITS`]: every bit between `u` and `v`.
+const FLAG_MASK: u32 = (1 << (V_SHIFT - U_BITS)) - 1;
+
 // Compile-time guard on the layout: the three fields must tile the `u32`
-// without overlapping, and the shader reads the flags as a two-bit field
-// directly above `u` — so the values substituted into the WGSL have to come
-// out as exactly 1 and 2. Same shape as the vertex-attribute guard below.
+// without overlapping, so both carried flags fall inside `FLAG_MASK`.
 const _: () = {
+    let flags = (RasterQuad::DESATURATE | (ContentType::Color as u32) << KIND_SHIFT) >> U_BITS;
+    assert!(flags & !FLAG_MASK == 0, "a flag reaches `v`");
     assert!(
-        RasterQuad::DESATURATE >> U_BITS == 1,
-        "shader's FLAG_DESATURATE"
+        (RasterQuad::DESATURATE >> U_BITS) & ((ContentType::Color as u32) << (KIND_SHIFT - U_BITS))
+            == 0,
+        "the two flags overlap",
     );
-    assert!(
-        (ContentType::Color as u32) << (KIND_SHIFT - U_BITS) == 2,
-        "shader's FLAG_COLOR",
-    );
-    // `v` starts at bit 16, so neither flag may reach it.
-    assert!(KIND_SHIFT < 16);
 };
 
 const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Sint32x2,
-    1 => Uint32,
-    2 => Uint32,
+    1 => Uint16x2,
+    2 => Uint16x2,
     3 => Uint32,
     4 => Float16x4,
 ];
@@ -142,7 +139,7 @@ const _: () = {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::raster::raster_atlas::raster_quad::{RasterQuad, U_MAX};
+    use crate::gpu::raster::raster_atlas::raster_quad::{FLAG_MASK, RasterQuad, U_BITS, U_MAX};
     use crate::primitives::paint::content_type::ContentType;
     use std::mem::offset_of;
 
@@ -174,6 +171,11 @@ mod tests {
             "not desaturated unless asked"
         );
 
+        // What the shader reads: the two flag bits between `u` (14 bits)
+        // and `v` (from bit 16), content type the upper one.
+        assert_eq!(FLAG_MASK, 0b11);
+        assert_eq!((p >> U_BITS) & FLAG_MASK, 0b10);
+
         let p = RasterQuad::pack_uv(12345, 54321, ContentType::Mask);
         assert_eq!((p >> 15) & 1, 0);
         assert_eq!(p & U_MAX, 12345);
@@ -186,11 +188,5 @@ mod tests {
         assert_eq!((p >> 15) & 1, 1);
         assert_eq!(p >> 16, 54321);
         assert_ne!(p & RasterQuad::DESATURATE, 0);
-    }
-
-    /// `dim` is a packed pair, so a swapped shift shows up as a swapped box.
-    #[test]
-    fn dim_packs_width_low_height_high() {
-        assert_eq!(RasterQuad::dim(7, 9), 7 | (9 << 16));
     }
 }
