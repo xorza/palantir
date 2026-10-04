@@ -3,7 +3,6 @@
 //! appear without re-serving the delay.
 
 use crate::input::sense::Sense;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::primitives::text::text_input::TextInput;
@@ -36,14 +35,6 @@ struct TooltipState {
 #[derive(Default, Clone, Copy, Debug)]
 struct TooltipGlobal {
     last_visible_at: Option<Duration>,
-}
-
-/// Row key for the process-wide warmup state shared by every tooltip.
-/// Hashed on call rather than held in a `LazyLock`: hashing a short
-/// literal costs less than the lazy cell's init check, and only a
-/// hovered trigger asks for it at all.
-fn global_state_id() -> WidgetId {
-    WidgetId::from_hash("palantir.tooltip.global")
 }
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
@@ -173,7 +164,7 @@ impl<'a> Tooltip<'a> {
 
         if active_trigger {
             let warmup_active = ui
-                .state::<TooltipGlobal>(global_state_id())
+                .singleton::<TooltipGlobal>()
                 .and_then(|global| global.last_visible_at)
                 .is_some_and(|t| now.saturating_sub(t) < warmup);
             let started = if let Some(t) = state.hover_started_at {
@@ -198,8 +189,7 @@ impl<'a> Tooltip<'a> {
         if state.visible
             && let Some(trigger_rect) = trigger_rect
         {
-            ui.state_or_default::<TooltipGlobal>(global_state_id())
-                .last_visible_at = Some(now);
+            ui.singleton_or_default::<TooltipGlobal>().last_visible_at = Some(now);
             let anchor = Anchor::below(trigger_rect).with_gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);

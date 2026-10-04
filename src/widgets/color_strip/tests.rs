@@ -198,3 +198,21 @@ fn page_keys_step_the_alpha_bar() {
         assert_eq!(color.a, alpha, "{key:?}");
     }
 }
+
+/// The bar's surface — its texture and the image behind it — lives on the
+/// bar's own id, so it leaves with the bar rather than outliving it.
+#[test]
+fn the_surface_leaves_with_the_bar() {
+    use crate::widgets::color_surface::ColorSurface;
+
+    let id = WidgetId::from_hash("leaving-bar");
+    let mut coords = ColorCoords::default();
+    let mut h = harness();
+    h.frame(|ui| {
+        ColorStrip::for_hue(&mut coords).id(id).show(ui);
+    });
+    let surface = |h: &UiHarness| h.ui.state::<ColorSurface<StripPaint>>(id).is_some();
+    assert!(surface(&h), "built while the bar records");
+    h.frame(|_| {});
+    assert!(!surface(&h), "swept with the bar");
+}

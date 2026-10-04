@@ -160,12 +160,11 @@ impl<'a> ColorStrip<'a> {
             if paint.wants_checker() {
                 checker.paint(ui, size);
             }
-            let image =
-                ui.with_state::<ColorSurface<StripPaint>, _>(id.with("surface"), |ui, surface| {
-                    surface
-                        .ensure(ui, texels, paint, |image| paint.fill(image))
-                        .clone()
-                });
+            let image = ui.with_state::<ColorSurface<StripPaint>, _>(id, |ui, surface| {
+                surface
+                    .ensure(ui, texels, paint, |image| paint.fill(image))
+                    .clone()
+            });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             let top = Vec2::new(marker, 0.0);
             let bottom = Vec2::new(marker, size.h);

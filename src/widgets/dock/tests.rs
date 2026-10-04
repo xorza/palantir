@@ -1058,9 +1058,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     h.click_on(chevron);
     frame(&mut h, &mut d, &mut tabs);
 
-    let entry = strip
-        .with("overflow_menu")
-        .with(DockView::tab_key(viewer(1)));
+    let entry = strip.with("overflow").with(DockView::tab_key(viewer(1)));
     assert!(h.rect(entry).is_some(), "the menu lists every tab");
     h.click_on(entry);
     frame(&mut h, &mut d, &mut tabs);
@@ -1096,4 +1094,34 @@ fn a_layout_deeper_than_the_default_cap_loads() {
         "the default cap applies to new splits on the loaded state",
     );
     assert!(loaded.clone().with_max_depth(6).can_split(group));
+}
+
+/// The tab a drag carries is the dock's state, kept on the dock's own id:
+/// it is there while a chip drag is live, and it leaves with the dock.
+#[test]
+fn a_carried_tab_leaves_with_the_dock() {
+    use crate::widgets::dock::tab_drag::TabDrag;
+    use crate::widgets::tabs::tab_strip::TabStrip;
+
+    let mut d = seeded();
+    let mut tabs = Labels;
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let record = |h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels| {
+        h.frame(|ui| DockView::run(ui, d, tabs));
+    };
+    for _ in 0..2 {
+        record(&mut h, &mut d, &mut tabs);
+    }
+    let dock = DockView::dock_id(&d);
+    let strip = DockView::strip_id(&d, d.primary().id);
+    let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
+    let at = h.center_of(chip);
+    h.press_at(at);
+    record(&mut h, &mut d, &mut tabs);
+    h.drag_to(at + Vec2::new(0.0, 60.0));
+    record(&mut h, &mut d, &mut tabs);
+    let carried = |h: &UiHarness| h.ui.state::<TabDrag<Tab>>(dock).and_then(|drag| drag.tab);
+    assert_eq!(carried(&h), Some(Tab::Prefs), "the drag carries the tab");
+    h.frame(|_| {});
+    assert_eq!(carried(&h), None, "and leaves with the dock");
 }

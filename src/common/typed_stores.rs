@@ -5,11 +5,12 @@ use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::fmt;
 
-/// Spelled once rather than at each of the three downcast sites: the
-/// argument is the same one every time — the entry is keyed by
-/// `TypeId::of::<S>()`, so nothing but an `S` can be behind it — and
-/// three copies of it are three chances to weaken one.
-const DOWNCAST_ERROR: &str = "TypeId keys the entry, so the stored type is S";
+/// Spelled once rather than at each downcast site — here and in
+/// [`Singletons`](crate::ui::singletons::Singletons): the argument is the
+/// same one every time — the entry is keyed by `TypeId::of::<S>()`, so
+/// nothing but an `S` can be behind it — and each copy is a chance to
+/// weaken one.
+pub(crate) const DOWNCAST_ERROR: &str = "TypeId keys the entry, so the stored type is S";
 
 /// What a typed store owes the container holding it: the end-of-frame
 /// sweep, and an emptiness probe for the tables that drop drained

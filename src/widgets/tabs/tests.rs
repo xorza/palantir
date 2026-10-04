@@ -13,6 +13,7 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
+use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -765,7 +766,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // with a click and a keyboard move.
     h.click_on(chevron);
     h.frame(build(half_way));
-    h.click_on(strip_id().with("overflow_menu").with(30u64));
+    h.click_on(strip_id().with("overflow").with(30u64));
     let picked = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items)
@@ -777,4 +778,19 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         (r.menu_picked, r.clicked, r.activated())
     });
     assert_eq!(picked, (Some(2), None, Some(2)));
+
+    // The menu's state is the chevron's: a strip that leaves while its
+    // menu is open takes the menu with it, and comes back closed.
+    h.click_on(chevron);
+    h.frame(build(half_way));
+    assert!(
+        ContextMenu::is_open(&h.ui, chevron),
+        "premise: the menu is open"
+    );
+    h.frame(|_| {});
+    h.frame(build(half_way));
+    assert!(
+        !ContextMenu::is_open(&h.ui, chevron),
+        "the strip came back with its menu closed"
+    );
 }

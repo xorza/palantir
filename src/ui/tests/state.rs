@@ -101,3 +101,34 @@ fn with_state_returns_the_body_value() {
     assert_eq!(out, 15);
     assert_eq!(h.ui.state::<u32>(id), Some(&5));
 }
+
+/// A singleton is one value per type for the life of the `Ui`: a probe
+/// stores nothing, `with_singleton` lends it across widget calls and puts
+/// back every write, and it outlives frames that record nothing for it —
+/// no id owns it, so no sweep reaches it.
+#[test]
+fn a_singleton_is_lent_across_widget_calls_and_kept() {
+    #[derive(Default, Debug, PartialEq)]
+    struct Shared(u32);
+
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        assert_eq!(ui.singleton_mut::<Shared>(), None, "a probe stores nothing");
+        ui.with_singleton::<Shared, _>(|ui, shared| {
+            shared.0 += 1;
+            Button::new().label("a").show(ui);
+            shared.0 += 10;
+        });
+    });
+    assert_eq!(h.ui.singleton::<Shared>(), Some(&Shared(11)));
+    h.frame(|_| {});
+    h.frame(|_| {});
+    if let Some(shared) = h.ui.singleton_mut::<Shared>() {
+        shared.0 += 100;
+    }
+    assert_eq!(
+        h.ui.singleton::<Shared>(),
+        Some(&Shared(111)),
+        "kept across frames"
+    );
+}

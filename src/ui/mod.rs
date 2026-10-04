@@ -16,6 +16,7 @@ pub(crate) mod frame_runtime;
 pub(crate) mod frame_stamp;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
+pub(crate) mod singletons;
 pub(crate) mod state;
 
 use crate::animation::AnimMap;
@@ -82,6 +83,7 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
+use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::cursor_icon::CursorIcon;
@@ -137,6 +139,9 @@ pub struct Ui {
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
     state: StateMap,
+    /// State shared across every instance of a kind of widget — see
+    /// [`Singletons`].
+    singletons: Singletons,
     /// Live `GpuView`s — the only `GpuView` bookkeeping on the `Ui`. The
     /// shape records only the redraw epoch, and the encoder looks the view
     /// up here by the node's `WidgetId`. Swept by the same `removed` set
@@ -195,6 +200,7 @@ impl Ui {
             forest: Forest::default(),
             theme: Rc::default(),
             state: StateMap::default(),
+            singletons: Singletons::default(),
             gpu_views: GpuViews::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
@@ -1193,12 +1199,18 @@ impl Ui {
     /// exist yet. [`Self::state`] and [`Self::state_mut`] insert nothing,
     /// which is why they answer `Option`.
     ///
-    /// Rows for `WidgetId`s not recorded this frame are
-    /// evicted in `finalize_frame`, once per `Ui::frame` after the
-    /// final record pass. Type collisions at one `id` are NOT
-    /// detected — each `T` lives in its own store, so two call sites
-    /// using different types at the same id silently coexist (see the
-    /// `state` module doc).
+    /// **A row lives as long as a node records under `id`.** When a frame
+    /// that recorded `id` is followed by one that does not, the row is
+    /// dropped, once per `Ui::frame` after its final record pass. A row
+    /// under an id no node ever records is therefore never dropped: it
+    /// lives as long as the `Ui`, which is what an application wants for
+    /// a page's state and what a widget must not do — a widget keys its
+    /// state by its own id, and keeps state that no instance owns in
+    /// [`Self::singleton_or_default`].
+    ///
+    /// Each type lives in its own store, so one widget keeps several
+    /// kinds of state under its one id. Two call sites storing the *same*
+    /// type at one id share a row, which nothing detects.
     ///
     /// The returned borrow is out of `&mut Ui`, so it ends at the next
     /// widget call — fine for a single read or write, useless for state a
@@ -1267,6 +1279,47 @@ impl Ui {
     /// inserts no default row.
     pub fn state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S> {
         self.state.try_get_mut::<S>(id)
+    }
+
+    /// The one `S` this `Ui` holds, or `None` until something stores it.
+    ///
+    /// For state a kind of widget shares across all its instances rather
+    /// than state one widget owns — the clock that lets one tooltip after
+    /// another show at once. Keyed by type, so a widget's private type
+    /// cannot collide with anyone else's, and never swept: it lives as
+    /// long as the `Ui`. A widget's own state belongs under its id, in
+    /// [`Self::state_or_default`].
+    pub fn singleton<S: 'static>(&self) -> Option<&S> {
+        self.singletons.get::<S>()
+    }
+
+    /// [`Self::singleton`], mutably. `None` until something stores one —
+    /// unlike [`Self::singleton_or_default`], this stores nothing.
+    pub fn singleton_mut<S: 'static>(&mut self) -> Option<&mut S> {
+        self.singletons.get_mut::<S>()
+    }
+
+    /// The one `S` this `Ui` holds, stored as `S::default()` on first use.
+    /// See [`Self::singleton`].
+    pub fn singleton_or_default<S: Default + 'static>(&mut self) -> &mut S {
+        self.singletons.get_or_default::<S>()
+    }
+
+    /// Lend the one `S` to `body` beside the `Ui`, as
+    /// [`Self::with_state`] lends a widget's row: the value is moved out,
+    /// `body` runs with both, and the value is moved back. Stored as
+    /// `S::default()` on first use.
+    ///
+    /// A nested call for the same `S` sees the default, and its writes
+    /// are lost when the outer one restores.
+    pub fn with_singleton<S: Default + 'static, R>(
+        &mut self,
+        body: impl FnOnce(&mut Self, &mut S) -> R,
+    ) -> R {
+        let mut value = mem::take(self.singletons.get_or_default::<S>());
+        let out = body(self, &mut value);
+        *self.singletons.get_or_default::<S>() = value;
+        out
     }
 
     /// Advance an animation row keyed by `(id, slot)` and return the

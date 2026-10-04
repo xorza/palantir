@@ -343,3 +343,23 @@ fn texel_size_four_tracks_the_exact_colour() {
         );
     }
 }
+
+/// The field's surface — its texture and the image behind it — lives on
+/// the field's own id, so it leaves with the field rather than outliving
+/// it.
+#[test]
+fn the_surface_leaves_with_the_field() {
+    use crate::primitives::paint::color::color_model::ColorModel;
+    use crate::widgets::color_surface::ColorSurface;
+
+    let id = WidgetId::from_hash("leaving-field");
+    let mut coords = ColorCoords::default();
+    let mut h = UiHarness::new(UVec2::new(300, 300));
+    h.frame(|ui| {
+        ColorField::new(&mut coords).id(id).show(ui);
+    });
+    let surface = |h: &UiHarness| h.ui.state::<ColorSurface<(ColorModel, f32)>>(id).is_some();
+    assert!(surface(&h), "built while the field records");
+    h.frame(|_| {});
+    assert!(!surface(&h), "swept with the field");
+}

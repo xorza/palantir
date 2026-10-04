@@ -98,7 +98,7 @@ fn panel_settings_reach_the_picker() {
         );
         let field = h.rect(picker.with("field")).expect("the field").size;
         let built =
-            h.ui.state::<ColorSurface<(ColorModel, f32)>>(picker.with("field").with("surface"))
+            h.ui.state::<ColorSurface<(ColorModel, f32)>>(picker.with("field"))
                 .and_then(ColorSurface::built_size)
                 .expect("the field built its texture");
         let want = UVec2::new(

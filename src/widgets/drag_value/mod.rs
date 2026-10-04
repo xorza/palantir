@@ -390,7 +390,7 @@ impl<'a> DragValue<'a> {
             // suffix goes through a retained copy.
             TextInput::Interned(suffix) => {
                 let (suffix, value, decimals) = (*suffix, &self.value, self.decimals);
-                ui.with_state::<SuffixScratch, _>(id.with("suffix"), |ui, scratch| {
+                ui.with_state::<SuffixScratch, _>(id, |ui, scratch| {
                     scratch.0.clear();
                     scratch.0.push_str(ui.text(suffix));
                     label(ui, value, decimals, &scratch.0)
