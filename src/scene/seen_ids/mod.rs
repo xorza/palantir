@@ -62,7 +62,7 @@ pub(crate) struct CollisionRecord {
 /// probe, and record none: it writes through the index the
 /// [`ResolvedId`] carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum IdSlot {
+enum IdSlot {
     /// Handed out by [`SeenIds::resolve`], not yet recorded. A widget may
     /// resolve before it records, and another may resolve the same raw id
     /// in between — `.state(ui)` on two auto-id buttons from one call
@@ -76,7 +76,7 @@ pub(crate) enum IdSlot {
 
 impl IdSlot {
     #[inline]
-    pub(crate) const fn endpoint(self) -> Option<Endpoint> {
+    const fn endpoint(self) -> Option<Endpoint> {
         match self {
             Self::Reserved => None,
             Self::Recorded(endpoint) => Some(endpoint),
