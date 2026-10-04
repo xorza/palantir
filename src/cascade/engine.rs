@@ -7,7 +7,7 @@ use crate::cascade::Cascade;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::counters::CascadeCounters;
-use crate::cascade::entry::{EntryRow, HitRow, ScopeRow};
+use crate::cascade::entry::{EntryRow, HitRow, RootRow, ScopeRow, TabStopRow};
 use crate::cascade::layer_cascade::LayerCascade;
 use crate::cascade::paint::PaintArena;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
@@ -21,6 +21,7 @@ use crate::layout::Layout;
 use crate::layout::layer_layout::LayerLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -42,7 +43,11 @@ struct TreeSink<'a> {
     entries: &'a mut Vec<EntryRow>,
     hits: &'a mut Vec<HitRow>,
     scopes: &'a mut Vec<ScopeRow>,
+    tab_stops: &'a mut Vec<TabStopRow>,
+    roots: &'a mut Vec<RootRow>,
     layer: Layer,
+    /// The root the walk is under, set as each one opens.
+    root: WidgetId,
 }
 
 /// The four values a node hands its descendants, and the only inputs
@@ -195,6 +200,8 @@ impl CascadeEngine {
         cascade.entries.reserve_exact(total);
         cascade.hits.clear();
         cascade.scopes.clear();
+        cascade.tab_stops.clear();
+        cascade.roots.clear();
 
         for (layer, tree) in forest.trees.iter_paint_order() {
             let n = tree.records.len();
@@ -209,7 +216,10 @@ impl CascadeEngine {
                     entries: &mut cascade.entries,
                     hits: &mut cascade.hits,
                     scopes: &mut cascade.scopes,
+                    tab_stops: &mut cascade.tab_stops,
+                    roots: &mut cascade.roots,
                     layer,
+                    root: WidgetId::default(),
                 }),
                 display.scale_factor(),
             );
@@ -405,6 +415,13 @@ impl CascadeEngine {
             // twice and left a panic path on every node of a rebuild.
             if let Some(sink) = sink.as_mut() {
                 let layer = sink.layer;
+                if self.stack.is_empty() {
+                    sink.root = widget_ids[iu];
+                    sink.roots.push(RootRow {
+                        layer,
+                        id: sink.root,
+                    });
+                }
                 // Names the keyboard half alone: the pointer half below
                 // keeps routing to a disabled row, and only `invisible`
                 // takes a node out of it.
@@ -425,6 +442,14 @@ impl CascadeEngine {
                 // widget absorbs it, but *focusing* one would put the
                 // keyboard somewhere that answers no key.
                 let focusable = !keyboard_off && attrs.is_focusable();
+                if focusable && attrs.is_tab_stop() {
+                    sink.tab_stops.push(TabStopRow {
+                        layer,
+                        root: sink.root,
+                        id: widget_ids[iu],
+                        index: tree.bounds(id).tab_index,
+                    });
+                }
                 if sense != Sense::NONE || focusable {
                     sink.hits.push(HitRow {
                         rect: visible_rect,

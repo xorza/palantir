@@ -651,6 +651,48 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     );
 }
 
+/// The focus ring arriving on a node damages that node and nothing else:
+/// it rides the node's chrome row, and the row's hash carries it, so a
+/// chromeless stop gains a row whose rect is its own, and its unfocused
+/// neighbour is untouched.
+#[test]
+fn a_focus_ring_damages_only_its_node() {
+    use crate::input::keyboard::key::Key;
+    use crate::widgets::block::Block;
+
+    let [a, b] = ["a", "b"].map(WidgetId::from_hash);
+    let mut h = UiHarness::new(DISPLAY.physical);
+    let build = |ui: &mut Ui| {
+        Panel::hstack().auto_id().gap(20.0).show(ui, |ui| {
+            for id in [a, b] {
+                Block::new()
+                    .id(id)
+                    .size((Sizing::fixed(40.0), Sizing::fixed(30.0)))
+                    .focusable(true)
+                    .show(ui);
+            }
+        });
+    };
+    frame(&mut h, build);
+    frame(&mut h, build); // settle
+    h.key(Key::Tab);
+    frame(&mut h, build);
+    assert_eq!(h.ui.focus(), Some(a));
+    let a_rect = h.engines.damage.prev_paint_rows(a)[0].screen;
+    let b_rect = h.ui.response_for(b).rect.expect("b arranged");
+    let region = h.damage_region();
+    let rects: Vec<_> = region.iter_rects().collect();
+    assert!(!rects.is_empty(), "the ring damages something");
+    assert!(
+        rects.iter().all(|r| a_rect.contains_rect(*r)),
+        "every damage rect lies in the ringed node {a_rect:?}: {rects:?}",
+    );
+    assert!(
+        rects.iter().all(|r| !r.intersects(b_rect)),
+        "the neighbour {b_rect:?} is not damaged: {rects:?}",
+    );
+}
+
 /// Painting-only invariant: every `DamageEngine.prev` entry covers
 /// at least one Paint row. A chrome-only owner used to land in `prev`
 /// with `shape_span.len == 0` (chrome was tracked in a separate

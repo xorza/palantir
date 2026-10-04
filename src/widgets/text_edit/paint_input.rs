@@ -25,6 +25,10 @@ pub(super) struct PaintInput<'a> {
     /// field's own id, so it is as stable across frames as the field is.
     pub(super) block_id: WidgetId,
     pub(super) text: &'a str,
+    /// `Some(width)` while an input method composes: the wash rects then
+    /// cover the composition, and paint as underlines `width` thick in the
+    /// text colour rather than as a selection.
+    pub(super) preedit_underline: Option<f32>,
     pub(super) placeholder: &'a str,
     pub(super) geometry: TextGeometry,
     pub(super) selection_rects: &'a [Rect],
@@ -64,7 +68,17 @@ impl PaintInput<'_> {
         widget.record(ui, Some(&self.chrome), |ui| {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
-                    ui.add_shape(Shape::rect(*rect).fill(self.selection_color));
+                    let shape = match self.preedit_underline {
+                        None => Shape::rect(*rect).fill(self.selection_color),
+                        Some(width) => Shape::rect(Rect::new(
+                            rect.min.x,
+                            rect.min.y + rect.size.h - width,
+                            rect.size.w,
+                            width,
+                        ))
+                        .fill(self.text_color),
+                    };
+                    ui.add_shape(shape);
                 }
 
                 let (display, color) = if self.text.is_empty() {

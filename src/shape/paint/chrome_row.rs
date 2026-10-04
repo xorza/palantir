@@ -13,6 +13,15 @@ pub(crate) struct ChromeRow {
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
     pub(crate) hash: ContentHash,
+    /// Whether the focus ring draws over this chrome, along the same edge
+    /// and corners: set on the one node per tree that holds focus that
+    /// came from the keyboard. A flag rather than the stroke, which the
+    /// tree holds once as [`Tree::focus_ring`](crate::scene::tree::Tree),
+    /// so the ring costs every other chrome row nothing; it is folded
+    /// into `hash`, so damage sees it come and go. Kept apart from
+    /// `border` because a border widens the padding and a ring must not
+    /// move the layout.
+    pub(crate) ring: bool,
 }
 
 impl ChromeRow {
@@ -24,5 +33,6 @@ impl ChromeRow {
         matches!(self.fill, ShapeBrush::Solid(color) if color.is_noop())
             && self.border.is_noop()
             && self.shadow.is_noop()
+            && !self.ring
     }
 }

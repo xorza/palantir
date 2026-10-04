@@ -286,7 +286,8 @@ fn every_edit_action_chord_is_edit_class() {
 /// End move its caret, so an app root reading them misses; Tab, Shift+Tab,
 /// the page keys and Ctrl+Tab do nothing in a field, so they reach the
 /// root's own scope. The root declares one — without it, the root would
-/// read as the layer's outermost scope, the field's, and see every key.
+/// read as the layer's outermost scope, the field's, and see every key —
+/// and takes `FOCUS`, without which bare Tab would move focus instead.
 #[test]
 fn a_focused_field_yields_the_keys_it_does_not_act_on() {
     use crate::KeyFilter;
@@ -296,7 +297,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
     let scene = |ui: &mut Ui, buf: &mut String, probe: Shortcut| {
         Panel::vstack()
             .id(WidgetId::from_hash("app-root"))
-            .input_scope(KeyFilter::ACCEL)
+            .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
                 let at_root = ui.key_pressed(probe);
                 TextEdit::new(buf)

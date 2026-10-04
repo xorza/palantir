@@ -1,4 +1,5 @@
-//! The per-node placement column: explicit position, cell, and size bounds.
+//! The per-node placement column: explicit position, cell, size bounds,
+//! and the node's place in the Tab order.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -14,6 +15,8 @@ pub(crate) struct BoundsExtras {
     pub(crate) grid: GridCell,
     pub(crate) min_size: Size,
     pub(crate) max_size: Size,
+    /// The Tab order key — see [`Configure::tab_index`](crate::Configure::tab_index).
+    pub(crate) tab_index: i16,
 }
 
 impl Hash for BoundsExtras {
@@ -23,6 +26,7 @@ impl Hash for BoundsExtras {
         self.grid.hash(h);
         self.min_size.hash_visual(h);
         self.max_size.hash_visual(h);
+        self.tab_index.hash(h);
     }
 }
 
@@ -37,6 +41,7 @@ impl BoundsExtras {
         },
         min_size: Size::ZERO,
         max_size: Size::INF,
+        tab_index: 0,
     };
 
     #[inline]
@@ -46,6 +51,7 @@ impl BoundsExtras {
             && self.grid == Self::DEFAULT.grid
             && self.min_size.is_approx_zero()
             && self.max_size == Self::DEFAULT.max_size
+            && self.tab_index == 0
     }
 }
 

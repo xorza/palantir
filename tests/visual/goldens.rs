@@ -11,6 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::golden_name::GoldenName;
 use palantir::Rect;
 use palantir::golden::Goldens;
 use palantir::golden::image::{RgbaImage, imageops};
@@ -33,12 +34,12 @@ fn output_dir(name: &str) -> PathBuf {
 /// the adapter that compares against them, so an unchanged tree diffs at
 /// zero; a run on another adapter fails with that reason rather than with
 /// pixel diffs across the suite.
-fn goldens() -> Goldens {
+pub(crate) fn goldens() -> Goldens {
     Goldens::new(ROOT).with_adapter(headless_test_gpu().adapter.clone())
 }
 
-pub(crate) fn assert_matches_golden(name: &str, actual: &RgbaImage) {
-    goldens().assert_matches(name, actual);
+pub(crate) fn assert_matches_golden(golden: GoldenName, actual: &RgbaImage) {
+    goldens().assert_matches(golden.name(), actual);
 }
 
 /// `actual` and `expected` agree in every pixel — `name` is a file name,

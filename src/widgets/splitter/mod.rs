@@ -3,7 +3,10 @@
 
 pub(crate) mod split_half;
 
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -175,6 +178,39 @@ impl<'a> Splitter<'a> {
                 resizing = true;
                 reset = true;
             }
+            // The keys of WAI-ARIA's window splitter on a focused divider:
+            // the arrows along the split move the seam a step, Home and End
+            // to either end — each placed through the drag's own mapping,
+            // so the keyboard obeys the same floors, and each committed on
+            // the next sync, as a reset is.
+            if ui.is_focus_within(divider_id)
+                && let Some(rect) = response.layout_rect
+            {
+                let extent = axis.main(rect.size);
+                let seam = ratio * (extent - rule_thickness) + rule_thickness * 0.5;
+                let (less, more) = match axis {
+                    Axis::X => (Key::ArrowLeft, Key::ArrowRight),
+                    Axis::Y => (Key::ArrowUp, Key::ArrowDown),
+                };
+                let target = [
+                    (less, seam - KEY_STEP),
+                    (more, seam + KEY_STEP),
+                    (Key::Home, 0.0),
+                    (Key::End, extent),
+                ]
+                .into_iter()
+                // Every chord sampled: `key_pressed` also keeps it
+                // subscribed for the wake gate.
+                .fold(None, |target, (key, pos)| {
+                    let pressed = ui.key_pressed(Shortcut::key(key));
+                    if pressed { Some(pos) } else { target }
+                });
+                if let Some(pos) = target {
+                    layout_ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
+                    resizing = true;
+                    reset = true;
+                }
+            }
         }
         *self.ratio = ratio;
         // Approximate, because a ratio re-derived from arranged extents
@@ -240,6 +276,10 @@ impl<'a> Splitter<'a> {
             Widget::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)
+                // A Tab stop taking the arrows, Home and End — the `CARET`
+                // class — as WAI-ARIA's window splitter does.
+                .focusable(true)
+                .input_scope(KeyFilter::CARET)
                 .size((Sizing::FILL, Sizing::FILL))
                 .margin(axis.compose_spacing(inset, 0.0))
                 .grid_cell(GridCell::along(axis, 1))
@@ -295,6 +335,10 @@ fn arranged_pane_ratio(
 const fn sanitize_ratio(r: f32) -> f32 {
     domain::fraction_or(r, 0.5)
 }
+
+/// How far one arrow press moves the seam, in logical px: a step the eye
+/// sees at any size, and fine enough that a few presses reach any place.
+const KEY_STEP: f32 = 10.0;
 
 /// Map a container-local pointer coordinate on the split axis to the
 /// first pane's share of the free space (`extent − reserved`, where

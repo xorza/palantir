@@ -292,6 +292,7 @@ mod output_validity_tests {
             repaint_after: None,
             plan,
             processing: FrameProcessing::SingleLayout,
+            ime_area: None,
         }
     }
 

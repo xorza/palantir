@@ -342,3 +342,58 @@ fn disabling_an_open_trigger_closes_its_list() {
     record(&mut h, true, &mut selected);
     assert_eq!(selected, 0, "a click where a row was picks nothing");
 }
+
+/// A focused, closed combo box steps its pick with the arrows, stopping at
+/// the ends, and reports each step as a committed change; Enter, Space and
+/// Alt+Down open it, and the arrows step nothing while it is open.
+#[test]
+fn the_keys_step_a_closed_pick_and_open_the_list() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    const OPTIONS: [&str; 3] = ["A", "B", "C"];
+    let id = WidgetId::from_hash("combo-keys");
+    let mut selected = 1usize;
+    let mut h = UiHarness::new(SURFACE);
+    let frame = |h: &mut UiHarness, selected: &mut usize| {
+        h.frame_value(|ui| {
+            let r = ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+            (r.changed, r.committed)
+        })
+    };
+    frame(&mut h, &mut selected);
+    h.set_focus(id);
+    frame(&mut h, &mut selected);
+    for (key, want, moved) in [
+        (Key::ArrowDown, 2, true),
+        (Key::ArrowDown, 2, false),
+        (Key::ArrowUp, 1, true),
+        (Key::ArrowUp, 0, true),
+        (Key::ArrowUp, 0, false),
+    ] {
+        h.key(key);
+        assert_eq!(frame(&mut h, &mut selected), (moved, moved), "{key:?}");
+        assert_eq!(selected, want, "{key:?}");
+    }
+    for (mods, key) in [
+        (Modifiers::NONE, Key::Enter),
+        (Modifiers::NONE, Key::Char(' ')),
+        (Modifiers::ALT, Key::ArrowDown),
+    ] {
+        h.set_modifiers(mods);
+        h.key(key);
+        frame(&mut h, &mut selected);
+        h.set_modifiers(Modifiers::NONE);
+        assert!(
+            PopupTrigger::is_open(&h.ui, id),
+            "{mods:?} {key:?} opens it"
+        );
+        h.key(Key::ArrowDown);
+        frame(&mut h, &mut selected);
+        assert_eq!(selected, 0, "an open list steps nothing");
+        PopupTrigger::close(&mut h.ui, id);
+        frame(&mut h, &mut selected);
+        h.set_focus(id);
+        frame(&mut h, &mut selected);
+    }
+}

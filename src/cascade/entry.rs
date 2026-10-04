@@ -110,6 +110,57 @@ pub(crate) struct ScopeRow {
     pub(crate) filter: KeyFilter,
 }
 
+/// One Tab stop, in record order across every layer — the table Tab
+/// traversal sorts. A node is a stop when it is focusable, kept its
+/// [`Configure::tab_stop`](crate::Configure::tab_stop), and is neither
+/// disabled nor invisible: the rule [`HitRow::focusable`] applies to a
+/// press. Same lifecycle as [`ScopeRow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TabStopRow {
+    pub(crate) layer: Layer,
+    /// The root of the tree the stop was recorded under — what a trap
+    /// domain is named by.
+    pub(crate) root: WidgetId,
+    pub(crate) id: WidgetId,
+    pub(crate) index: i16,
+}
+
+/// Which way a Tab press moves focus: Tab forward, Shift+Tab back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabDirection {
+    Next,
+    Previous,
+}
+
+/// The stops one Tab press may reach — see
+/// [`Cascade::next_tab_stop`](super::Cascade::next_tab_stop) for the rule
+/// that picks it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabDomain {
+    /// The stops recorded under one overlay root.
+    Root(WidgetId),
+    /// Every stop of one layer.
+    Layer(Layer),
+}
+
+impl TabDomain {
+    pub(crate) fn contains(self, row: &TabStopRow) -> bool {
+        match self {
+            Self::Root(root) => row.root == root,
+            Self::Layer(layer) => row.layer == layer,
+        }
+    }
+}
+
+/// One root a layer recorded, in record order across every layer — how
+/// Tab traversal finds the topmost open modal when it holds no stop.
+/// Same lifecycle as [`ScopeRow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RootRow {
+    pub(crate) layer: Layer,
+    pub(crate) id: WidgetId,
+}
+
 /// What a press lands on: the topmost clickable row under the point and
 /// the topmost focusable one, from a single reverse scan.
 ///

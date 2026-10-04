@@ -363,6 +363,7 @@ pub use host::winit::{
 /// The event a host feeds a `Ui`. Toolkit-independent, so a host of your
 /// own translates its platform's events into these — see
 /// [`OffscreenHost::on_input`].
+pub use input::ime_preedit::ImePreedit;
 pub use input::input_event::InputEvent;
 pub use input::interaction::button_phase::ButtonPhase;
 pub use input::interaction::button_state::ButtonState;
@@ -529,6 +530,7 @@ pub use widgets::theme::context_menu::menu_item::MenuItemTheme;
 pub use widgets::theme::dock::DockTheme;
 pub use widgets::theme::drag_value::DragValueTheme;
 pub use widgets::theme::expander::ExpanderTheme;
+pub use widgets::theme::focus_ring::FocusRingTheme;
 pub use widgets::theme::modal::ModalTheme;
 pub use widgets::theme::palette::Palette;
 pub use widgets::theme::progress_bar::ProgressBarTheme;

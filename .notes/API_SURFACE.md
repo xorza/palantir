@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `302aba30` (plus the working tree).
+Generated on top of `24d0fe66` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -534,6 +534,8 @@ Configure
         fn add_sense(self, s: Sense) -> Self { .. }
         fn disabled(self, d: bool) -> Self { .. }
         fn focusable(self, f: bool) -> Self { .. }
+        fn tab_stop(self, stop: bool) -> Self { .. }
+        fn tab_index(self, index: i16) -> Self { .. }
         fn input_scope(self, takes: KeyFilter) -> Self { .. }
         fn visibility(self, v: Visibility) -> Self { .. }
         fn hidden(self) -> Self { .. }
@@ -1002,6 +1004,17 @@ FocusPolicy
         impl Eq
         impl PartialEq
 
+FocusRingTheme
+    struct FocusRingTheme
+        pub color: RgbaF32
+        pub width: f32
+        pub const fn from_palette(p: &Palette) -> Self
+        impl Clone
+        impl Debug
+        impl Default
+        impl Serialize
+        impl<'de> Deserialize<'de> for FocusRingTheme
+
 FontFamily
     struct FontFamily
         (_)
@@ -1110,6 +1123,7 @@ FrameReport
     struct FrameReport
         pub repaint_requested: bool
         pub repaint_after: Option<Duration>
+        pub ime_area: Option<Rect>
         // and private fields
         pub const fn paint(&self) -> FramePaint
         impl Debug
@@ -1483,6 +1497,15 @@ ImageTooLarge
         impl Error
         impl PartialEq
 
+ImePreedit
+    struct ImePreedit<'a>
+        pub text: &'a str
+        pub cursor: Option<Range<usize>>
+        impl<'a> Clone for ImePreedit<'a>
+        impl<'a> Debug for ImePreedit<'a>
+        impl<'a> Eq for ImePreedit<'a>
+        impl<'a> PartialEq for ImePreedit<'a>
+
 InnerResponse
     struct InnerResponse<'a, R>
         pub response: Response<'a>
@@ -1500,7 +1523,7 @@ InputDelta
         impl PartialEq
 
 InputEvent
-    enum InputEvent
+    enum InputEvent<'a>
         PointerMoved(Vec2)
         PointerLeft
         PointerPressed(PointerButton)
@@ -1510,10 +1533,12 @@ InputEvent
         Zoom(f32)
         KeyDown { key: Key, repeat: bool, physical: Key, text: KeyText }
         ModifiersChanged(Modifiers)
+        ImePreedit { text: &'a str, cursor: Option<Span> }
+        ImeCommit(&'a str)
         SurfaceFocusLost
-        impl Clone
-        impl Copy
-        impl Debug
+        impl<'a> Clone for InputEvent<'a>
+        impl<'a> Copy for InputEvent<'a>
+        impl<'a> Debug for InputEvent<'a>
 
 InputPolicy
     enum InputPolicy
@@ -1859,7 +1884,7 @@ OffscreenHost
         pub const WINDOW: WindowToken
         pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder
         pub const fn ui(&mut self) -> &mut Ui
-        pub fn on_input(&mut self, event: InputEvent) -> InputDelta
+        pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn frame<T: App>(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut T) -> FrameReport
         pub const fn gpu_pass_stats(&self) -> &GpuPassStats
         impl Debug
@@ -1901,6 +1926,7 @@ OkhsvSlice
 
 OverlayResponse
     struct OverlayResponse<R>
+        pub id: WidgetId
         pub dismissed: bool
         pub close_requested: bool
         pub inner: R
@@ -3150,6 +3176,7 @@ Theme
         pub tabs: TabsTheme
         pub dock: DockTheme
         pub expander: ExpanderTheme
+        pub focus_ring: FocusRingTheme
         pub text: TextStyle
         pub window_clear: RgbaF32
         pub panel_background: Option<Background>
@@ -3320,6 +3347,10 @@ Ui
         pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_
         pub const fn set_focus(&mut self, id: WidgetId)
         pub const fn clear_focus(&mut self)
+        pub const fn request_ime(&mut self, caret: Rect)
+        pub fn ime_preedit(&self) -> Option<ImePreedit<'_>>
+        pub const fn is_focus_visible(&self) -> bool
+        pub const fn focus_first_within(&mut self, ancestor: WidgetId)
         pub const fn pointer_pos(&mut self) -> Option<Vec2>
         pub fn pointer_local(&mut self, id: WidgetId) -> Option<Vec2>
         pub const fn modifiers(&mut self) -> Modifiers
@@ -3684,6 +3715,8 @@ widget::ConfigureWidget
         pub fn add_sense(&mut self, s: Sense) -> &mut Self
         pub const fn disabled(&mut self, d: bool) -> &mut Self
         pub const fn focusable(&mut self, f: bool) -> &mut Self
+        pub const fn tab_stop(&mut self, stop: bool) -> &mut Self
+        pub const fn tab_index(&mut self, index: i16) -> &mut Self
         pub const fn input_scope(&mut self, takes: KeyFilter) -> &mut Self
         pub const fn visibility(&mut self, v: Visibility) -> &mut Self
         pub const fn hidden(&mut self) -> &mut Self
@@ -4115,6 +4148,8 @@ widget::Widget
         pub const fn authored_sense(&self) -> Sense
         pub const fn authored_disabled(&self) -> bool
         pub const fn authored_focusable(&self) -> bool
+        pub const fn authored_tab_stop(&self) -> bool
+        pub const fn authored_tab_index(&self) -> i16
         pub const fn authored_input_scope(&self) -> KeyFilter
         pub const fn authored_visibility(&self) -> Visibility
         pub const fn authored_clip(&self) -> Option<ClipMode>

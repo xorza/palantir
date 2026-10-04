@@ -208,6 +208,20 @@ impl ConfigureWidget<'_> {
         self
     }
 
+    /// Borrowing form of [`Configure::tab_stop`].
+    #[inline]
+    pub const fn tab_stop(&mut self, stop: bool) -> &mut Self {
+        self.widget.node.flags.set_tab_stop(stop);
+        self
+    }
+
+    /// Borrowing form of [`Configure::tab_index`].
+    #[inline]
+    pub const fn tab_index(&mut self, index: i16) -> &mut Self {
+        self.widget.node.tab_index = index;
+        self
+    }
+
     /// Borrowing form of [`Configure::input_scope`].
     #[inline]
     pub const fn input_scope(&mut self, takes: KeyFilter) -> &mut Self {
@@ -688,8 +702,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Mark this node as eligible to take keyboard focus on press.
-    /// Default `false`. Only editable widgets (TextEdit) opt in.
+    /// Mark this node as eligible to take keyboard focus, on a press and
+    /// as a Tab stop. Default `false`; a widget that acts on keys opts in.
     ///
     /// Disabled or invisible nodes are excluded from focus regardless of
     /// this flag. Unlike [`Sense`], which a disabled node keeps: it
@@ -698,6 +712,30 @@ pub trait Configure: Sized {
     #[must_use]
     fn focusable(mut self, f: bool) -> Self {
         self.configure().focusable(f);
+        self
+    }
+
+    /// Whether Tab and Shift+Tab stop on this node when it is
+    /// [`focusable`](Self::focusable). Default `true`. `false` keeps the
+    /// focus a press gives — a dock pane, a canvas — and takes the node
+    /// out of the Tab order, as WPF's `IsTabStop` does.
+    #[inline]
+    #[must_use]
+    fn tab_stop(mut self, stop: bool) -> Self {
+        self.configure().tab_stop(stop);
+        self
+    }
+
+    /// This node's key in the Tab order. Default `0`.
+    ///
+    /// Tab visits the stops of its domain in ascending `index`, and stops
+    /// with equal indices in record order — so a negative index moves a
+    /// node ahead of the unindexed ones and a positive index behind
+    /// them, as WPF's `TabIndex` does.
+    #[inline]
+    #[must_use]
+    fn tab_index(mut self, index: i16) -> Self {
+        self.configure().tab_index(index);
         self
     }
 

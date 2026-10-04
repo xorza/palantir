@@ -25,8 +25,8 @@ const CAPACITY: usize = 14;
 /// **Inline and `Copy`**, so `InputEvent` stays `Copy` and the per-frame
 /// queue stays one flat vector. A key press
 /// produces one grapheme or two, which [`Self::CAPACITY`] holds several times
-/// over; text longer than that is an IME commit, and this vocabulary
-/// does not carry one.
+/// over. Text longer than that is an IME commit, which the input state
+/// splits into as many presses as it needs, between characters.
 ///
 /// **Control characters never enter.** They are keys rather than text —
 /// Enter reports `"\r"` on Windows, Tab `"\t"`, Ctrl+A `"\u{1}"` — and a
@@ -55,15 +55,28 @@ impl KeyText {
     /// characters once [`Self::CAPACITY`] is full.
     pub fn new(text: &str) -> Self {
         let mut out = Self::EMPTY;
-        for c in text.chars().filter(|c| !c.is_control()) {
-            let mut buf = [0u8; 4];
-            let encoded = c.encode_utf8(&mut buf).as_bytes();
-            if out.utf8.len() + encoded.len() > CAPACITY {
+        for c in text.chars() {
+            if !out.push(c) {
                 break;
             }
-            out.utf8.extend_from_slice(encoded);
         }
         out
+    }
+
+    /// Append `c` unless it is a control character, which is dropped.
+    /// `false`, appending nothing, when `c` does not fit — the point an
+    /// IME commit splits at.
+    pub(crate) fn push(&mut self, c: char) -> bool {
+        if c.is_control() {
+            return true;
+        }
+        let mut buf = [0u8; 4];
+        let encoded = c.encode_utf8(&mut buf).as_bytes();
+        if self.utf8.len() + encoded.len() > CAPACITY {
+            return false;
+        }
+        self.utf8.extend_from_slice(encoded);
+        true
     }
 
     /// One character as its own text — the press a keyboard mostly

@@ -12,6 +12,7 @@ use palantir::{
 
 use crate::fixtures::{DARK_BG, SRGB_ROUND_TRIP, assert_px};
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 
 use crate::harness::{FIXTURE_PALETTE, Harness};
@@ -29,7 +30,7 @@ fn button_hello_matches_golden() {
                 .show(ui);
         })
         .image;
-    assert_matches_golden("button_hello", &img);
+    assert_matches_golden(GoldenName::ButtonHello, &img);
 }
 
 /// Exercises the rounded-rect SDF AA path: solid fill, visible border,
@@ -58,7 +59,7 @@ fn frame_filled_with_border_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("frame_filled_with_border", &img);
+    assert_matches_golden(GoldenName::FrameFilledWithBorder, &img);
 }
 
 /// A border paints inside its rect: the border's outer edge is the
@@ -146,7 +147,7 @@ fn surface_rounded_clips_full_fill_child() {
                 });
         })
         .image;
-    assert_matches_golden("surface_rounded_clips_full_fill_child", &img);
+    assert_matches_golden(GoldenName::SurfaceRoundedClipsFullFillChild, &img);
 }
 
 /// Regression: rounded clip whose rect extends off-screen on every
@@ -238,7 +239,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
         centre.0,
     );
 
-    assert_matches_golden("rounded_clip_partially_offscreen", &img);
+    assert_matches_golden(GoldenName::RoundedClipPartiallyOffscreen, &img);
 }
 
 /// Pin the backbuffer-rebuild invariant: when the surface texture
@@ -311,7 +312,7 @@ fn progress_bar_half_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("progress_bar_half", &img);
+    assert_matches_golden(GoldenName::ProgressBarHalf, &img);
 }
 
 /// Switch on + off with animation disabled: pins the knob at each
@@ -346,7 +347,7 @@ fn toggle_switch_states_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("toggle_switch_states", &img);
+    assert_matches_golden(GoldenName::ToggleSwitchStates, &img);
 }
 
 /// Spinner at t=0 (phase 0): the comet arc renders as a round-capped
@@ -366,7 +367,7 @@ fn spinner_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("spinner", &img);
+    assert_matches_golden(GoldenName::Spinner, &img);
 }
 
 /// Slider at 30%: the two-tone track (accent left, grey right) splits at
@@ -387,7 +388,7 @@ fn slider_thirty_percent_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("slider_thirty_percent", &img);
+    assert_matches_golden(GoldenName::SliderThirtyPercent, &img);
 }
 
 /// DragValue renders its formatted number + suffix inside button chrome.
@@ -412,7 +413,7 @@ fn drag_value_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("drag_value", &img);
+    assert_matches_golden(GoldenName::DragValue, &img);
 }
 
 /// ComboBox (closed): button-styled trigger showing the current choice
@@ -438,7 +439,7 @@ fn combo_box_closed_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("combo_box_closed", &img);
+    assert_matches_golden(GoldenName::ComboBoxClosed, &img);
 }
 
 /// Modal: a centered card over the dim backdrop, recorded into
@@ -465,7 +466,7 @@ fn modal_dialog_matches_golden() {
             });
         })
         .image;
-    assert_matches_golden("modal_dialog", &img);
+    assert_matches_golden(GoldenName::ModalDialog, &img);
 }
 
 /// The colour field and both bars at one hue, in each model.
@@ -502,7 +503,7 @@ fn color_field_and_bars_match_golden() {
                 });
         })
         .image;
-    assert_matches_golden("color_field_and_bars", &img);
+    assert_matches_golden(GoldenName::ColorFieldAndBars, &img);
 }
 
 /// The whole panel: field, bars, preview chip over its checker, the channel
@@ -527,5 +528,49 @@ fn color_picker_panel_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("color_picker_panel", &img);
+    assert_matches_golden(GoldenName::ColorPickerPanel, &img);
+}
+
+/// The focus ring after a Tab press: on the first card, along its own
+/// rounded edge and over its border, and on no other card. The second card
+/// has no chrome, so its edge is the one the ring would paint on its own.
+#[test]
+fn focus_ring_matches_golden() {
+    use palantir::{InputEvent, Key, KeyText, Ui};
+
+    let mut h = Harness::new();
+    let scene = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .padding(16.0)
+            .gap(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Block::new()
+                    .id_salt("ringed")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .focusable(true)
+                    .background(Background {
+                        fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
+                        border: Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 1.0),
+                        corners: Corners::all(10.0),
+                        shadow: Shadow::NONE,
+                    })
+                    .show(ui);
+                Block::new()
+                    .id_salt("plain")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .focusable(true)
+                    .show(ui);
+            });
+    };
+    h.size(UVec2::new(220, 100)).frame(scene);
+    h.host.on_input(InputEvent::KeyDown {
+        key: Key::Tab,
+        repeat: false,
+        physical: Key::Tab,
+        text: KeyText::EMPTY,
+    });
+    let img = h.frame(scene).image;
+    assert_matches_golden(GoldenName::FocusRing, &img);
 }

@@ -104,6 +104,10 @@ impl InputPass<'_> {
             selection_rects: _,
             placeholder: _,
             commit_pending: _,
+            preedit: _,
+            preedit_cursor: _,
+            display: _,
+            composing: _,
         } = state;
         let was_focused = view.was_focused();
         // Repair persisted byte offsets before any range/slice operation.

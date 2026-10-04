@@ -1,7 +1,11 @@
 //! The chip that opens a picker: a swatch-styled trigger, and the popup it
 //! drops.
 
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -49,7 +53,11 @@ impl<'a> ColorButton<'a> {
     #[track_caller]
     pub fn new(color: &'a mut RgbaF32) -> Self {
         Self {
-            widget: Widget::leaf().sense(Sense::CLICK),
+            // A Tab stop that opens on Space and Enter, as a button does.
+            widget: Widget::leaf()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT),
             color,
             alpha: false,
             model: None,
@@ -117,8 +125,15 @@ impl<'a> ColorButton<'a> {
         let mut widget = self
             .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        let response = widget.response(ui);
+        let mut response = widget.response(ui);
         let id = widget.resolve(ui);
+        if !response.disabled && ui.is_focus_within(id) {
+            let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
+            let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+            if space || enter {
+                response.left.phase = ButtonPhase::Up { click: Some(1) };
+            }
+        }
         let size = response
             .layout_rect
             .map_or(Size::new(side, side), |r| r.size);

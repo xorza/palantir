@@ -182,3 +182,28 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
         "and the platform hears the unscaled one",
     );
 }
+
+/// IME is a level asked for each pass, like the cursor: the frame that
+/// asks reports its caret, the next frame that does not turns it off, and
+/// a caret that is not an offset panics where it was passed.
+#[test]
+fn request_ime_is_a_per_pass_level() {
+    use crate::internals::panic_probe;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::math::domain;
+
+    let caret = Rect::new(10.0, 20.0, 2.0, 16.0);
+    let mut h = UiHarness::new(SURFACE);
+    let report = h.frame(|ui| ui.request_ime(caret));
+    assert_eq!(report.ime_area, Some(caret));
+    let report = h.frame(|_| {});
+    assert_eq!(
+        report.ime_area, None,
+        "a pass that does not ask turns it off"
+    );
+
+    panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| ui.request_ime(Rect::new(f32::NAN, 0.0, 2.0, 16.0)));
+    });
+}

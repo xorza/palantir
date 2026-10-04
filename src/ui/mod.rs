@@ -31,6 +31,7 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::interaction::input_delta::InputDelta;
@@ -45,12 +46,15 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::layout::Layout;
 use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageTooLarge;
@@ -281,7 +285,7 @@ impl Ui {
     /// wants reproducible input timing hands over a clock it controls,
     /// exactly as it does for frames.
     #[inline]
-    pub(crate) fn on_input(&mut self, event: InputEvent, now: Duration) -> InputDelta {
+    pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
         self.input.on_input(event, &self.cascade, now)
     }
 
@@ -1082,8 +1086,9 @@ impl Ui {
         self.forest.widget_id(ident)
     }
 
-    /// Open `node` under `id`, painting `chrome` behind it. Pairs with
-    /// [`Self::close_node`].
+    /// Open `node` under `id`, painting `chrome` behind it, and the
+    /// theme's focus ring over that when `id` holds focus that came from
+    /// the keyboard. Pairs with [`Self::close_node`].
     ///
     /// Two callers, and no third: [`Widget::record`], which is how every
     /// widget in the crate reaches the tree, and `FrameCycle`'s synthetic
@@ -1092,8 +1097,15 @@ impl Ui {
     ///
     /// [`Widget::record`]: crate::widget::Widget::record
     #[inline]
+    #[track_caller]
     pub(crate) fn open_node(&mut self, id: WidgetId, node: &Node, chrome: Option<&Background>) {
-        self.forest.open_node(id, node, chrome);
+        let ring = if self.input.focused() == Some(id) && self.input.focus_visible() {
+            let theme = &self.theme.focus_ring;
+            Stroke::new(domain::color(theme.color), domain::length(theme.width))
+        } else {
+            Stroke::NONE
+        };
+        self.forest.open_node(id, node, chrome, ring);
     }
 
     #[inline]
@@ -1480,6 +1492,70 @@ impl Ui {
     #[inline]
     pub const fn clear_focus(&mut self) {
         self.input.set_focus(None);
+    }
+
+    /// Ask for IME text this frame, with `caret` — in the frame's logical
+    /// px, as [`ResponseState::rect`](crate::ResponseState) is — where the
+    /// platform places its candidate list.
+    ///
+    /// A level asked for on every frame it is wanted, like
+    /// [`Self::set_cursor`]: a frame with no call turns IME off, so a
+    /// widget that loses focus, or stops recording, releases it without
+    /// saying so. The focused text widget calls it; while it does, an
+    /// input method's composition arrives through [`Self::ime_preedit`]
+    /// and its commits among [`Self::keyboard_events`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `caret` is an
+    /// [offset](crate::widget::domain::offset).
+    #[inline]
+    #[track_caller]
+    pub const fn request_ime(&mut self, caret: Rect) {
+        caret.validate();
+        self.window_requests.levels.ime = Some(caret);
+    }
+
+    /// The input method's uncommitted text, for the focused widget to draw
+    /// at its caret — `None` when no composition is live, or when it
+    /// belongs to a widget that has since lost focus.
+    ///
+    /// A widget receives it only while it asks for IME text with
+    /// [`Self::request_ime`]. The committed text arrives separately, among
+    /// [`Self::keyboard_events`], typed in place.
+    #[inline]
+    pub fn ime_preedit(&self) -> Option<ImePreedit<'_>> {
+        self.input.ime_preedit()
+    }
+
+    /// Whether the focus came from the keyboard — the focus ring is
+    /// showing — rather than from a press: CSS's `:focus-visible`. A Tab
+    /// move sets it and a left press clears it; [`Self::set_focus`] keeps
+    /// whichever the last input chose.
+    ///
+    /// What an opener reads to tell a keyboard open from a click, so that
+    /// only the keyboard's moves focus into what it opened.
+    #[inline]
+    pub const fn is_focus_visible(&self) -> bool {
+        self.input.focus_visible()
+    }
+
+    /// Move keyboard focus to the first Tab stop recorded under
+    /// `ancestor`, as a popup opened from the keyboard does — the twin of
+    /// [`Self::is_focus_within`]. A dialog needs no call: focus moves into
+    /// every [`Layer::Modal`] root on the frame it appears.
+    ///
+    /// Takes effect at the end of this frame, against the tree this frame
+    /// recorded, so an overlay that opens and asks on the same frame is
+    /// found. Nothing moves when `ancestor` holds no stop or was not
+    /// recorded.
+    ///
+    /// Focus goes back to the widget that held it when `ancestor` leaves
+    /// the tree, as an overlay does when it closes — the framework keeps
+    /// that, so the overlay does not have to.
+    #[inline]
+    pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
+        self.input.focus_first_within(ancestor);
     }
 
     /// Current pointer position in logical pixels (surface space), or

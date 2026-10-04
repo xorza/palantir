@@ -124,9 +124,12 @@ fn editor_and_button(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
                 .id(WidgetId::from_hash("editor"))
                 .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
+            // Not focusable: these tests are about a press on a widget a
+            // click does not focus, and a `Button` is focusable by default.
             Button::new()
                 .id(WidgetId::from_hash("plain"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .focusable(false)
                 .show(ui);
         });
     }
@@ -170,6 +173,7 @@ mod blink;
 mod click;
 mod context_menu;
 mod grapheme;
+mod ime;
 mod measure;
 mod multi_click;
 mod multiline;

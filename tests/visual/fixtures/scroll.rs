@@ -8,6 +8,7 @@ use palantir::{
     Sizing,
 };
 
+use crate::golden_name::GoldenName;
 use crate::goldens::{assert_matches_golden, assert_same};
 use crate::harness::Harness;
 
@@ -62,7 +63,7 @@ fn scroll_vertical_overflow_matches_golden() {
     let mut h = Harness::new();
     let size = UVec2::new(180, 200);
     let img = h.size(size).settled_frame(1, scene).image;
-    assert_matches_golden("scroll_vertical_overflow", &img);
+    assert_matches_golden(GoldenName::ScrollVerticalOverflow, &img);
 }
 
 /// Wide content in a fixed-width horizontal scroll. Bar lands at the
@@ -99,7 +100,7 @@ fn scroll_horizontal_overflow_matches_golden() {
     let mut h = Harness::new();
     let size = UVec2::new(220, 80);
     let img = h.size(size).settled_frame(1, scene).image;
-    assert_matches_golden("scroll_horizontal_overflow", &img);
+    assert_matches_golden(GoldenName::ScrollHorizontalOverflow, &img);
 }
 
 /// Both-axis scroll over a content larger than the viewport on both
@@ -134,7 +135,7 @@ fn scroll_xy_overflow_matches_golden() {
     let mut h = Harness::new();
     let size = UVec2::new(160, 160);
     let img = h.size(size).settled_frame(1, scene).image;
-    assert_matches_golden("scroll_xy_overflow", &img);
+    assert_matches_golden(GoldenName::ScrollXyOverflow, &img);
 }
 
 /// Content fits inside the viewport — no overflow, no bar, no
@@ -169,7 +170,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
     let mut h = Harness::new();
     let size = UVec2::new(160, 160);
     let img = h.size(size).settled_frame(1, scene).image;
-    assert_matches_golden("scroll_no_bar_when_fits", &img);
+    assert_matches_golden(GoldenName::ScrollNoBarWhenFits, &img);
 }
 
 /// Scroll with user-set padding. The bar must land in the reserved
@@ -209,7 +210,7 @@ fn scroll_with_user_padding_matches_golden() {
     let mut h = Harness::new();
     let size = UVec2::new(180, 180);
     let img = h.size(size).settled_frame(1, scene).image;
-    assert_matches_golden("scroll_with_user_padding", &img);
+    assert_matches_golden(GoldenName::ScrollWithUserPadding, &img);
 }
 
 /// Warm-cache parity: render the same scene three times. Frame 1 has

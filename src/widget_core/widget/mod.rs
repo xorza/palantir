@@ -391,6 +391,19 @@ impl Widget {
         self.node.flags.is_focusable()
     }
 
+    /// Whether the caller kept this widget a Tab stop. See
+    /// [`Configure::tab_stop`].
+    #[inline]
+    pub const fn authored_tab_stop(&self) -> bool {
+        self.node.flags.is_tab_stop()
+    }
+
+    /// The caller's Tab order key. See [`Configure::tab_index`].
+    #[inline]
+    pub const fn authored_tab_index(&self) -> i16 {
+        self.node.tab_index
+    }
+
     /// The input scope the caller declared, empty where they declared
     /// none. See [`Configure::input_scope`].
     #[inline]

@@ -99,10 +99,13 @@ impl OverlayScope {
     /// is the root's own resolved id, so a caller-set id on the root is
     /// the owner too — not an id the caller derived beside it.
     ///
-    /// [`KeyFilter::ALL`] rather than something narrower because an
-    /// overlay *owns* input while it is up: it does not merely outrank
-    /// the layers below it, it cuts them off. That is what stops a popup
-    /// underneath a modal from dismissing alongside it on one Escape.
+    /// Every class but [`KeyFilter::FOCUS`], because an overlay *owns*
+    /// input while it is up: it does not merely outrank the layers below
+    /// it, it cuts them off. That is what stops a popup underneath a modal
+    /// from dismissing alongside it on one Escape. `FOCUS` stays out so
+    /// Tab walks the overlay's own stops: a claimed class is one the
+    /// framework's traversal leaves alone, and the layers below are cut
+    /// off by layer, whatever the class.
     pub(crate) fn claim(
         ui: &mut Ui,
         layer: Layer,
@@ -111,7 +114,8 @@ impl OverlayScope {
         root: &mut Widget,
     ) -> Self {
         if backdrop.owns_input() {
-            root.configure().input_scope(KeyFilter::ALL);
+            root.configure()
+                .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS));
         }
         let owner = root.resolve(ui);
         Self {

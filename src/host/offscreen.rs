@@ -276,7 +276,7 @@ impl OffscreenHost {
     /// host's own clock — the one that also stamps its frames — so a press
     /// between two frames is timed against the other presses rather than
     /// against the frame that carried it.
-    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+    pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         let now = self.driver.now();
         self.driver.ui.on_input(event, now)
     }

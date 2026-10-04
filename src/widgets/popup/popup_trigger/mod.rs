@@ -54,10 +54,13 @@ pub struct PopupTrigger {
     popup: Popup,
 }
 
-/// Open/closed flag for one trigger, keyed off the trigger's id.
-#[derive(Default, Clone, Copy, Debug)]
+/// One trigger's popup, keyed off the trigger's id: whether it is open,
+/// and whether it was on show last frame — so the frame it first shows is
+/// known, however it was opened.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 struct PopupTriggerState {
     open: bool,
+    shown: bool,
 }
 
 impl PopupTrigger {
@@ -101,13 +104,22 @@ impl PopupTrigger {
     /// [`ContextMenu::show`](crate::ContextMenu::show) returns it: its
     /// `inner` is `None` on a frame the popup is closed and the body does
     /// not run.
+    ///
+    /// A popup opened from the keyboard — Space or Enter on a focused
+    /// trigger, or [`Self::open`] while focus came from the keyboard —
+    /// takes focus on its first stop as it shows, as WAI-ARIA's menu
+    /// button does; one opened by a click leaves focus on the trigger.
+    /// Focus goes back to the trigger when it closes.
     pub fn show<R>(
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
-        let was_open = Self::is_open(ui, self.for_id);
-        let mut open = was_open;
+        let state = ui
+            .state::<PopupTriggerState>(self.for_id)
+            .copied()
+            .unwrap_or_default();
+        let mut open = state.open;
         if self.trigger.clicked() {
             open = !open;
         }
@@ -115,17 +127,26 @@ impl PopupTrigger {
             open = false;
         }
         let mut resp = OverlayResponse::default();
+        let mut shown = false;
         if open && let Some(rect) = self.trigger.rect {
+            shown = true;
             resp = self
                 .popup
                 .anchor(Anchor::below(rect))
                 .show(ui, |ui, handle| Some(body(ui, handle)));
+            if !state.shown && ui.is_focus_visible() {
+                ui.focus_first_within(resp.id);
+            }
             if resp.closed() {
                 open = false;
             }
         }
-        if open != was_open {
-            ui.state_or_default::<PopupTriggerState>(self.for_id).open = open;
+        let next = PopupTriggerState {
+            open,
+            shown: shown && open,
+        };
+        if next != state {
+            *ui.state_or_default::<PopupTriggerState>(self.for_id) = next;
         }
         resp
     }

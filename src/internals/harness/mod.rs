@@ -471,7 +471,7 @@ impl UiHarness {
     /// press-origin, modifier, and threshold rules, and a helper that
     /// emits exactly one event hands back that event's [`InputDelta`] so
     /// nothing is given up by using it.
-    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+    pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         match event {
             InputEvent::PointerPressed(button) => {
                 assert!(

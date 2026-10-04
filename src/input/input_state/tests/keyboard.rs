@@ -400,7 +400,9 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
             fixed_button(WidgetId::from_hash("editable"))
                 .focusable(true)
                 .show(ui);
-            fixed_button(WidgetId::from_hash("plain")).show(ui);
+            fixed_button(WidgetId::from_hash("plain"))
+                .focusable(false)
+                .show(ui);
         });
     };
     h.frame(build);

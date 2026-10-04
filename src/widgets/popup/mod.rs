@@ -161,7 +161,8 @@ impl Popup {
         // Resolved before the layer switch below, so the body id — and the
         // eater derived from it — is parent-scoped to the trigger's site the
         // way any other widget is, not to the side layer's empty root.
-        let eater_id = widget.resolve(ui).with("eater");
+        let id = widget.resolve(ui);
+        let eater_id = id.with("eater");
         // The two captures are one decision: an overlay either takes the
         // pointer *and* the keys from the layers below, or neither. Taking
         // one without the other leaves a host that is half-dead in a way
@@ -180,6 +181,7 @@ impl Popup {
         let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
+            id,
             // A `Dismiss` popup closes on an eaten outside-press OR an Esc
             // press — so overlay hosts (ComboBox / ContextMenu) read one
             // `closed()` signal instead of each re-deriving Esc. (`Block`
