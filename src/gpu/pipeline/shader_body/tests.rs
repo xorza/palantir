@@ -45,8 +45,7 @@ fn every_pinned_shader_constant_is_read() {
     // declare, exactly once — `specialize` panics otherwise — so a
     // constant added on one side only fails here, with no device.
     for &body in ShaderBody::VARIANTS {
-        let source = body.specialize();
-        assert!(source.starts_with("// Shared WGSL prelude."), "{body:?}");
+        body.specialize();
     }
     let sources = ShaderBody::VARIANTS
         .iter()

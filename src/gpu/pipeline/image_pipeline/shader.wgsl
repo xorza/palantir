@@ -12,9 +12,9 @@
 @group(0) @binding(0) var tex:     texture_2d<f32>;
 @group(0) @binding(1) var tex_smp: sampler;
 
-// Bits of `flags`, substituted from the `IMG_FLAG_*` constants in
-// `render_buffer::image` — see `ImagePipeline::new`. Rust owns the values, so
-// there is no second definition here to drift out of step with them.
+// Bits of `flags`, substituted from `ImageFlags` by `ShaderBody`. Rust owns
+// the values, so there is no second definition here to drift out of step
+// with them.
 const FLAG_TILED:       u32 = /*{IMG_FLAG_TILED}*/;
 const FLAG_MIN_NEAREST: u32 = /*{IMG_FLAG_MIN_NEAREST}*/;
 const FLAG_MAG_NEAREST: u32 = /*{IMG_FLAG_MAG_NEAREST}*/;
