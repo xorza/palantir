@@ -172,7 +172,7 @@ pub(crate) struct WgpuBackend {
     /// than inside it, so `paint_gpu_views` and `retire_owner` are reached
     /// without a forwarder and `draw` is handed the store it binds from.
     gpu_view_targets: GpuViewTargets,
-    /// The one shader, group-0 layout and sampler both raster tenants
+    /// The one shader and group-0 layout both raster tenants
     /// draw through, and so the one pipeline pair per format they
     /// share — see [`RasterProgram`].
     raster: RasterProgram,
@@ -575,10 +575,7 @@ impl WgpuBackend {
         // Text prepare: per-batch glyph encoding. Routes its
         // vertex/atlas-staging writes through the same ctx so
         // every text-backend write lands as
-        // `copy_buffer_to_buffer` on the main encoder. The
-        // atlas-size params ride the shared immediate region,
-        // pushed per batch by `RasterPass::render_batch` — no
-        // per-frame sync from here.
+        // `copy_buffer_to_buffer` on the main encoder.
         {
             tracy::zone!(
                 "text.prepare_batches",
@@ -801,8 +798,8 @@ impl WgpuBackend {
             MaskClear,
             /// Text and icons both draw through it: one shader and one
             /// group-0 layout, so one pipeline pair. Only the bind
-            /// group, the atlas extents and the vertex buffer differ,
-            /// and `RasterPass::render_batch` sets those per step.
+            /// group and the vertex buffer differ, and
+            /// `RasterPass::render_batch` sets those per step.
             ///
             /// One state for two tenants holds only while they name one
             /// pipeline, which is why both arms bind `raster_pipeline`

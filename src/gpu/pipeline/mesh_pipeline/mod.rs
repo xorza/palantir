@@ -133,7 +133,7 @@ impl MeshPipeline {
     /// Bind pipeline + vertex/instance/index buffers once per batch;
     /// [`Self::draw`] then issues the draws. Mesh binds no groups —
     /// the viewport rides the shared immediate region, re-pushed by
-    /// the backend's `rebind!` after every pipeline switch.
+    /// the backend's `rebind` after every pipeline switch.
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,

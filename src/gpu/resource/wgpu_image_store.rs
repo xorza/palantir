@@ -154,9 +154,10 @@ impl ImageStore for WgpuImageStore {
 /// it, magnified here and snapped to its texels there. So the caller
 /// tests the alpha, and this converts whatever it is handed. The raster
 /// atlases are the textures that *can* answer the first, and they answer
-/// it the other way: one texel per pixel with `Nearest`, and straight
-/// alpha kept, which is what lets the icon rasterizer hand them
-/// demultiplied pixels.
+/// it the other way: the shader reads one texel per pixel by index, and
+/// the one path that blends texels — an icon drawn off its raster's size
+/// — premultiplies its taps itself. So they keep straight alpha, which is
+/// what lets the icon rasterizer hand them demultiplied pixels.
 ///
 /// Paid once per upload rather than per fragment, which suits an image
 /// registered once and sampled for as long as it is shown. An
