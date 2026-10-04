@@ -206,6 +206,7 @@ fn every_edit_action_chord_is_edit_class() {
                 shift: shortcut.mods.shift,
                 alt: shortcut.mods.alt,
                 mac_ctrl: false,
+                meta: shortcut.mods.meta,
             },
             repeat: false,
             physical: shortcut.key,

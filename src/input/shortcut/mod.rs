@@ -43,6 +43,9 @@ pub struct ShortcutMods {
     pub shift: bool,
     /// Alt / Option, literally.
     pub alt: bool,
+    /// The Windows / Super key — never set by a chord meant for macOS,
+    /// where Command is [`Self::ctrl`].
+    pub meta: bool,
 }
 
 /// The named sets are the ones [`Modifiers`] names too; any other
@@ -57,7 +60,7 @@ impl ShortcutMods {
     /// every platform: `ctrl` *is* Cmd on macOS, and raw Control is a
     /// thing a keyboard reports rather than a thing an app asks for.
     pub const fn any_command(self) -> bool {
-        self.ctrl || self.alt
+        self.ctrl || self.alt || self.meta
     }
 
     /// No modifiers — a bare key.
@@ -65,30 +68,35 @@ impl ShortcutMods {
         ctrl: false,
         shift: false,
         alt: false,
+        meta: false,
     };
     /// Shift alone.
     pub const SHIFT: Self = Self {
         ctrl: false,
         shift: true,
         alt: false,
+        meta: false,
     };
     /// Primary command key alone.
     pub const CTRL: Self = Self {
         ctrl: true,
         shift: false,
         alt: false,
+        meta: false,
     };
     /// Alt / Option alone.
     pub const ALT: Self = Self {
         ctrl: false,
         shift: false,
         alt: true,
+        meta: false,
     };
     /// Primary command key plus Shift.
     pub const CTRL_SHIFT: Self = Self {
         ctrl: true,
         shift: true,
         alt: false,
+        meta: false,
     };
 }
 
@@ -108,8 +116,14 @@ impl From<Modifiers> for ShortcutMods {
             shift,
             alt,
             mac_ctrl: _,
+            meta,
         } = m;
-        Self { ctrl, shift, alt }
+        Self {
+            ctrl,
+            shift,
+            alt,
+            meta,
+        }
     }
 }
 
@@ -233,6 +247,14 @@ impl fmt::Display for Shortcut {
         if self.mods.alt {
             sep(f, &mut first)?;
             f.write_str("Alt")?;
+        }
+        if self.mods.meta {
+            sep(f, &mut first)?;
+            f.write_str(if matches!(PLATFORM, Platform::Win) {
+                "Win"
+            } else {
+                "Super"
+            })?;
         }
         sep(f, &mut first)?;
         write_key(f, self.key)

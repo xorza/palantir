@@ -32,6 +32,10 @@ pub struct Modifiers {
     /// the physical Ctrl is the primary and lands in [`Self::ctrl`]. Only
     /// for Mac-specific bindings; most code should ignore it.
     pub mac_ctrl: bool,
+    /// The Windows / Super key is held — the W3C `KeyboardEvent.metaKey`
+    /// name, since `super` is a Rust keyword. Always `false` on macOS, where
+    /// Command is the primary and lands in [`Self::ctrl`].
+    pub meta: bool,
 }
 
 impl Modifiers {
@@ -41,6 +45,7 @@ impl Modifiers {
         shift: false,
         alt: false,
         mac_ctrl: false,
+        meta: false,
     };
     /// Shift alone.
     pub const SHIFT: Self = Self {
@@ -64,12 +69,12 @@ impl Modifiers {
         ..Self::NONE
     };
 
-    /// True if any command modifier (primary ctrl, alt, or raw macOS
-    /// Control) is held — the canonical "this is a shortcut, not text"
-    /// predicate. Shift alone doesn't count (shift+letter is just the
-    /// capitalized letter).
+    /// True if any command modifier (primary ctrl, alt, raw macOS Control,
+    /// or the Windows / Super key) is held — the canonical "this is a
+    /// shortcut, not text" predicate. Shift alone doesn't count
+    /// (shift+letter is just the capitalized letter).
     pub const fn any_command(self) -> bool {
-        self.ctrl || self.alt || self.mac_ctrl
+        self.ctrl || self.alt || self.mac_ctrl || self.meta
     }
 
     /// Whether a press under these modifiers on `platform` composes text
@@ -79,11 +84,12 @@ impl Modifiers {
     /// - macOS: Option composes (`@` is Option+L on a German layout), so
     ///   only Cmd (`ctrl` here) and raw Control make a command.
     /// - Windows and Linux: Ctrl+Alt is AltGr, which composes; Ctrl alone
-    ///   or Alt alone is a command (a shortcut, a menu mnemonic).
+    ///   or Alt alone is a command (a shortcut, a menu mnemonic), and so is
+    ///   anything with the Windows / Super key.
     pub(crate) const fn compose_text(self, platform: Platform) -> bool {
         match platform {
             Platform::Mac => !self.ctrl && !self.mac_ctrl,
-            Platform::Win | Platform::Linux => self.ctrl == self.alt,
+            Platform::Win | Platform::Linux => self.ctrl == self.alt && !self.meta,
         }
     }
 }

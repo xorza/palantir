@@ -98,7 +98,7 @@ fn physical_keys_map_layout_independent_identities() {
 
 /// Each winit modifier on each platform: on macOS Cmd (Super) is the
 /// primary command bit and raw Control is `mac_ctrl`; elsewhere Control
-/// is the command bit and Super maps to nothing.
+/// is the command bit and Super is `meta`.
 #[test]
 fn modifier_normalization_translates_each_bit() {
     let none = Modifiers::NONE;
@@ -116,7 +116,11 @@ fn modifier_normalization_translates_each_bit() {
             },
         ),
         (ModifiersState::CONTROL, Platform::Win, Modifiers::CTRL),
-        (ModifiersState::SUPER, Platform::Linux, none),
+        (
+            ModifiersState::SUPER,
+            Platform::Linux,
+            Modifiers { meta: true, ..none },
+        ),
         (
             ModifiersState::SHIFT | ModifiersState::CONTROL,
             Platform::Linux,
