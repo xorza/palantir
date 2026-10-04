@@ -73,6 +73,10 @@ impl TextShape {
 impl TextShape {
     /// Ink colour. Straight-alpha linear RGB, like every other colour
     /// on the CPU side.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
     #[track_caller]
     pub fn color(mut self, color: impl Into<RgbaF32>) -> Self {
         self.color = domain::color(color.into());

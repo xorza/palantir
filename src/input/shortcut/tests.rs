@@ -201,12 +201,12 @@ fn the_meta_modifier_reaches_matching_and_display() {
     let super_l = Shortcut::new(declared, Key::Char('L'));
     assert!(super_l.matches(kp(held, Key::Char('l'))));
     assert!(!Shortcut::key(Key::Char('L')).matches(kp(held, Key::Char('l'))));
-    let expected = match PLATFORM {
-        Platform::Win => "Win+L",
-        Platform::Linux => "Super+L",
-        Platform::Mac => "L",
-    };
-    if !matches!(PLATFORM, Platform::Mac) {
-        assert_eq!(super_l.to_string(), expected);
+    let shown = super_l.to_string();
+    match PLATFORM {
+        Platform::Win => assert_eq!(shown, "Win+L"),
+        Platform::Linux => assert_eq!(shown, "Super+L"),
+        // macOS reports no Super key: Command is `ctrl` there, so a Super
+        // chord is never held and its name is never read.
+        Platform::Mac => {}
     }
 }

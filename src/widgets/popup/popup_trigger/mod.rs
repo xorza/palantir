@@ -72,6 +72,10 @@ impl PopupTrigger {
     }
 
     /// Paint `bg` as the popup's background. See [`Popup::background`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn background(mut self, bg: Background) -> Self {
         self.popup = self.popup.background(bg);
@@ -80,6 +84,10 @@ impl PopupTrigger {
 
     /// Paint `bg` as the popup's background unless the caller set one. See
     /// [`Popup::default_background`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn default_background(mut self, bg: Background) -> Self {
         self.popup = self.popup.default_background(bg);

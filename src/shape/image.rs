@@ -75,6 +75,10 @@ impl ImageShape {
     }
 
     /// Multiplied onto every texel. White leaves the image alone.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `tint` is a [colour](crate::widget::domain::color).
     #[track_caller]
     pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
         self.tint = domain::color(tint.into());

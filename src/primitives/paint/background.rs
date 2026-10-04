@@ -25,6 +25,17 @@ use palantir_anim_derive::Animatable;
 /// — there is no `Option<Stroke>` here. The animation pipeline lerps
 /// `Stroke` directly through `Stroke::ZERO`; paint-time `is_noop`
 /// filtering catches both authored and animation-decayed no-ops.
+///
+/// Plain data, so arithmetic may pass through values no widget takes. A
+/// widget's `background` and `default_background` check it where it
+/// enters, and panic unless every colour is a
+/// [colour](crate::widget::domain::color); a gradient fill's angles are
+/// [angles](crate::widget::domain::angle), its centre an
+/// [offset](crate::widget::domain::offset) and a radial radius a
+/// [length](crate::widget::domain::length) on each axis; the border's width
+/// is a length; each corner radius is a length of at most 65504, one f16
+/// lane; and the shadow's offset and spread are offsets and its blur a
+/// length.
 // `Background` is intentionally **not `Copy`**: the recording chain
 // (`Widget::record` → `Forest::open_node` → `Tree::open_node` →
 // `shapes::lower::background`) takes it by reference. It is the largest

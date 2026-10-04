@@ -41,6 +41,10 @@ impl TriangleShape {
 
 impl TriangleShape {
     /// Interior paint.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `fill` is a [colour](crate::widget::domain::color).
     #[track_caller]
     pub fn fill(mut self, fill: impl Into<RgbaF32>) -> Self {
         self.fill = domain::color(fill.into());
@@ -48,6 +52,11 @@ impl TriangleShape {
     }
 
     /// Edge paint, inside the boundary like every area shape's.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the width is a [length](crate::widget::domain::length) and
+    /// the colour a [colour](crate::widget::domain::color).
     #[track_caller]
     pub fn border(mut self, border: impl Into<Stroke>) -> Self {
         let border = border.into();
@@ -57,6 +66,10 @@ impl TriangleShape {
     }
 
     /// Round all three corners by this radius.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `radius` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub fn radius(mut self, radius: impl Into<f32>) -> Self {
         self.radius = domain::length(radius.into());

@@ -75,7 +75,8 @@ pub enum DockOp<T> {
     SetRatio {
         /// Packed root path of the split to move.
         split: DockPath,
-        /// Fraction of the pane the leading half takes.
+        /// Fraction of the pane the leading half takes, coerced into the
+        /// split clamp; a non-finite one centres the split.
         ratio: f32,
     },
     /// Move focus onto `group`, because a press landed inside its pane.

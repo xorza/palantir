@@ -63,6 +63,10 @@ impl<'a> Modal<'a> {
 
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c` is a [colour](crate::widget::domain::color).
     #[track_caller]
     pub const fn backdrop(mut self, c: RgbaF32) -> Self {
         self.backdrop = Some(domain::color(c));
@@ -133,6 +137,10 @@ impl Modal<'_> {
     ///
     /// The panel chrome. Pass [`Background::NONE`] to suppress the themed
     /// panel chrome for this modal.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn background(mut self, bg: Background) -> Self {
         bg.validate();
@@ -145,6 +153,10 @@ impl Modal<'_> {
     /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
     /// for a wrapper that themes a widget it holds after the caller's own
     /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub const fn default_background(mut self, bg: Background) -> Self {
         bg.validate();
