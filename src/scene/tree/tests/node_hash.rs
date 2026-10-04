@@ -152,9 +152,13 @@ fn widget_id_only_affects_cascade_static_hash() {
 fn changing_layout_property_changes_hash() {
     use crate::primitives::layout::visibility::Visibility;
     type Build = fn(&mut Ui) -> NodeId;
-    let cases: &[(&str, Build, Build)] = &[
+    // `structural`: the case changes what the cascade's structural tables
+    // hold, so it must reach `cascade_static`. The rest only move rects,
+    // which the cascade refreshes in place, so they must not.
+    let cases: &[(&str, bool, Build, Build)] = &[
         (
             "size",
+            false,
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
@@ -174,6 +178,7 @@ fn changing_layout_property_changes_hash() {
         ),
         (
             "padding",
+            false,
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
@@ -193,6 +198,7 @@ fn changing_layout_property_changes_hash() {
         ),
         (
             "visibility",
+            true,
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
@@ -212,6 +218,7 @@ fn changing_layout_property_changes_hash() {
         ),
         (
             "justify",
+            false,
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
@@ -231,6 +238,7 @@ fn changing_layout_property_changes_hash() {
         ),
         (
             "focusable",
+            true,
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
@@ -250,6 +258,7 @@ fn changing_layout_property_changes_hash() {
         ),
         (
             "disabled",
+            true,
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
@@ -268,12 +277,14 @@ fn changing_layout_property_changes_hash() {
             },
         ),
     ];
-    for (label, a, b) in cases {
-        let (a, b) = (record(*a), record(*b));
+    for &(label, structural, a, b) in cases {
+        let (a, b) = (record(a), record(b));
         assert_ne!(a.node, b.node, "case: {label}");
-        assert_ne!(
-            a.cascade_static, b.cascade_static,
-            "cascade-static hash missed layout case: {label}"
+        assert_ne!(a.layout_subtree, b.layout_subtree, "case: {label}");
+        assert_eq!(
+            a.cascade_static != b.cascade_static,
+            structural,
+            "cascade-static hash, case: {label}"
         );
     }
 }

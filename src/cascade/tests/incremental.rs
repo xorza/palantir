@@ -236,8 +236,15 @@ fn incremental_scroll_matches_full() {
     let mut h = UiHarness::new(UVec2::splat(300));
     h.frame(build);
     h.ui.with_state::<ScrollState, _>(WidgetId::from_hash("scroll"), |_, s| s.offset.y = 40.0);
+    let rebuilds = h.engines.cascade.counters.full_rebuilds();
     h.frame(build);
 
+    // A scroll moves the thumb and the content, never the structure.
+    assert_eq!(
+        h.engines.cascade.counters.full_rebuilds(),
+        rebuilds,
+        "a scroll must refresh the cascade in place",
+    );
     assert_cascades_match_full(&h.ui, "scroll");
 }
 
@@ -295,23 +302,39 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
     );
 }
 
-/// Pin: every cascade input busts **both** gates.
+/// Pin: every cascade input moves the key, and each takes the path its
+/// kind calls for.
 ///
 /// One `CascadeKey` decides two reuses: an equal key skips the run and
-/// keeps last frame's `Cascade` verbatim, and a key equal in all but paint
-/// repairs paint in place. Both fail silently: the skip by serving a stale
-/// cascade, the repair by keeping `entries` / `hits` / `cascade_inputs`
+/// keeps last frame's `Cascade` verbatim, and a key equal in structure
+/// refreshes geometry and paint in place over the retained structural
+/// tables. Both fail silently: the skip by serving a stale cascade, the
+/// refresh by keeping `entries` / `hits` / `scopes` / `tab_stops` / `by_id`
 /// that no longer describe the frame.
 ///
-/// So for each input, assert it moves the key *and* forces a full
-/// rebuild. The control case at the end is what stops this passing
-/// vacuously — an unchanged frame must move neither.
+/// So for each input, assert it moves the key, takes the path named, and
+/// ends in the cascade a cold rebuild makes. The control case at the end
+/// is what stops this passing vacuously — an unchanged frame must move
+/// nothing.
 #[test]
-fn every_cascade_input_busts_both_reuse_gates() {
-    fn scene(ui: &mut Ui, size: f32, transformed: bool) {
+fn every_cascade_input_moves_the_key_and_takes_its_path() {
+    #[derive(Clone, Copy, Debug)]
+    struct Scene {
+        size: f32,
+        transformed: bool,
+        disabled: bool,
+        tab_index: i16,
+    }
+    const BASE: Scene = Scene {
+        size: 100.0,
+        transformed: false,
+        disabled: false,
+        tab_index: 0,
+    };
+    fn scene(ui: &mut Ui, s: Scene) {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .transform(if transformed {
+            .transform(if s.transformed {
                 TranslateScale::from_translation(Vec2::new(7.0, 0.0))
             } else {
                 TranslateScale::IDENTITY
@@ -319,39 +342,73 @@ fn every_cascade_input_busts_both_reuse_gates() {
             .show(ui, |ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("body"))
-                    .size((Sizing::fixed(size), Sizing::fixed(40.0)))
+                    .size((Sizing::fixed(s.size), Sizing::fixed(40.0)))
                     .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .focusable(true)
+                    .tab_index(s.tab_index)
+                    .disabled(s.disabled)
                     .show(ui, |_| {});
             });
     }
 
-    /// `(label, apply the mutation to a harness already showing the base
-    /// scene)`.
-    type Mutation = (&'static str, fn(&mut UiHarness));
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Path {
+        /// A structural table changed: everything is rebuilt.
+        Rebuild,
+        /// Only geometry or paint changed: rows are rewritten in place.
+        Refresh,
+    }
+    /// `(label, the path it must take, apply the mutation to a harness
+    /// already showing the base scene)`.
+    type Mutation = (&'static str, Path, fn(&mut UiHarness));
+    const RESIZED: Scene = Scene {
+        size: 120.0,
+        ..BASE
+    };
+    const TRANSFORMED: Scene = Scene {
+        transformed: true,
+        ..BASE
+    };
+    const DISABLED: Scene = Scene {
+        disabled: true,
+        ..BASE
+    };
+    const TAB_INDEXED: Scene = Scene {
+        tab_index: 3,
+        ..BASE
+    };
     let mutations: &[Mutation] = &[
-        // Authoring: reaches the key through `cascade_static`.
-        ("resized child", |h| {
-            h.frame(|ui| scene(ui, 120.0, false));
+        // Authoring that moves rects: the rows move, the tables hold.
+        ("resized child", Path::Refresh, |h| {
+            h.frame(|ui| scene(ui, RESIZED));
         }),
-        // Ancestor transform: same two columns, different field.
-        ("root transform", |h| {
-            h.frame(|ui| scene(ui, 100.0, true));
+        // An ancestor transform moves no rect, only what inherits it.
+        ("root transform", Path::Refresh, |h| {
+            h.frame(|ui| scene(ui, TRANSFORMED));
         }),
         // Surface: reaches the key through the arranged rects.
-        ("surface resize", |h| {
+        ("surface resize", Path::Refresh, |h| {
             h.resize(UVec2::new(260, 200));
-            h.frame(|ui| scene(ui, 100.0, false));
+            h.frame(|ui| scene(ui, BASE));
+        }),
+        // A disabled widget leaves the Tab order and the focusable hits.
+        ("disabled", Path::Rebuild, |h| {
+            h.frame(|ui| scene(ui, DISABLED));
+        }),
+        // The Tab order key lives on the stop row.
+        ("tab index", Path::Rebuild, |h| {
+            h.frame(|ui| scene(ui, TAB_INDEXED));
         }),
         // A face loaded between frames: moves no rect and no authoring.
-        ("font load", |h| {
+        ("font load", Path::Rebuild, |h| {
             h.ui.load_font(INTER).expect("the bundled Inter loads");
-            h.frame(|ui| scene(ui, 100.0, false));
+            h.frame(|ui| scene(ui, BASE));
         }),
     ];
 
-    for &(label, mutate) in mutations {
+    for &(label, path, mutate) in mutations {
         let mut h = UiHarness::new(UVec2::new(200, 200));
-        h.frame(|ui| scene(ui, 100.0, false));
+        h.frame(|ui| scene(ui, BASE));
         let base_key = h.ui.cascade().key;
         let rebuilds = h.engines.cascade.counters.full_rebuilds();
         let abandoned = h.engines.cascade.counters.abandoned_incrementals();
@@ -363,25 +420,31 @@ fn every_cascade_input_busts_both_reuse_gates() {
             h.ui.cascade().key,
             "`{label}` left the key unmoved — the frame would reuse a stale cascade",
         );
-        assert!(
-            h.engines.cascade.counters.full_rebuilds() > rebuilds,
-            "`{label}` did not force a full rebuild — `can_update` kept columns \
-             that no longer describe the frame",
+        let rebuilt = h.engines.cascade.counters.full_rebuilds() > rebuilds;
+        assert_eq!(
+            if rebuilt {
+                Path::Rebuild
+            } else {
+                Path::Refresh
+            },
+            path,
+            "`{label}` took the wrong path",
         );
         assert_eq!(
             h.engines.cascade.counters.abandoned_incrementals(),
             abandoned,
             "`{label}` should be caught by `can_update`, not discovered mid-walk",
         );
+        assert_cascades_match_full(&h.ui, label);
     }
 
     // Control: an identical frame must move neither gate, or the
     // assertions above would hold for any frame at all.
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    h.frame(|ui| scene(ui, 100.0, false));
+    h.frame(|ui| scene(ui, BASE));
     let base_key = h.ui.cascade().key;
     let rebuilds = h.engines.cascade.counters.full_rebuilds();
-    h.frame(|ui| scene(ui, 100.0, false));
+    h.frame(|ui| scene(ui, BASE));
     assert_eq!(
         base_key,
         h.ui.cascade().key,
@@ -393,6 +456,76 @@ fn every_cascade_input_busts_both_reuse_gates() {
         rebuilds,
         "an unchanged frame must not rebuild",
     );
+}
+
+/// Pin: a refresh recomputes exactly the nodes whose inputs moved.
+///
+/// Two sibling canvases of three blocks each under a fixed root, which
+/// sits under the main layer's synthetic viewport root:
+///
+/// - Transforming `a` moves no rect, so the walk skips clean subtrees.
+///   It recomputes the viewport, the root and `a` (their rollups
+///   changed) and the three blocks under `a` (their inherited transform
+///   changed): 6. All of `b` is skipped.
+/// - Growing `a0` moves a rect, so the walk visits every node, but
+///   recomputes only the viewport, the root and `a` (rollups) and `a0`
+///   (rect): 4. `a1`, `a2` and all of `b` keep their rows.
+#[test]
+fn refresh_recomputes_only_what_moved() {
+    use crate::widgets::block::Block;
+
+    fn scene(ui: &mut Ui, transformed: bool, a0_size: f32) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size(Sizing::fixed(200.0))
+            .show(ui, |ui| {
+                for name in ["a", "b"] {
+                    let transform = if transformed && name == "a" {
+                        TranslateScale::from_translation(Vec2::new(5.0, 3.0))
+                    } else {
+                        TranslateScale::IDENTITY
+                    };
+                    Panel::canvas()
+                        .id(WidgetId::from_hash(name))
+                        .size(Sizing::fixed(100.0))
+                        .transform(transform)
+                        .show(ui, |ui| {
+                            for k in 0..3u8 {
+                                let size = if name == "a" && k == 0 { a0_size } else { 10.0 };
+                                Block::new()
+                                    .id_salt((name, k))
+                                    .size(size)
+                                    .position((f32::from(k) * 30.0, 0.0))
+                                    .background(Background::fill(RgbaF32::WHITE))
+                                    .show(ui);
+                            }
+                        });
+                }
+            });
+    }
+
+    for (label, transformed, a0_size, refreshed) in
+        [("transform", true, 10.0, 6), ("resize", false, 20.0, 4)]
+    {
+        let mut h = UiHarness::new(UVec2::splat(300));
+        h.frame(|ui| scene(ui, false, 10.0));
+        let rebuilds = h.engines.cascade.counters.full_rebuilds();
+        let before = h.engines.cascade.counters.refreshed_nodes();
+
+        h.frame(|ui| scene(ui, transformed, a0_size));
+
+        assert_eq!(
+            h.engines.cascade.counters.full_rebuilds(),
+            rebuilds,
+            "{label}: rebuilt",
+        );
+        assert_eq!(
+            h.engines.cascade.counters.refreshed_nodes() - before,
+            refreshed,
+            "{label}: recomputed nodes",
+        );
+        assert_cascades_match_full(&h.ui, label);
+    }
 }
 
 fn assert_cascades_match_full(ui: &Ui, label: &str) {
@@ -455,6 +588,14 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
         assert_eq!(
             actual.subtree_ends, expected.subtree_ends,
             "{label}: {layer:?} subtree ends"
+        );
+        assert_eq!(
+            actual.paint_rects, expected.paint_rects,
+            "{label}: {layer:?} own paint rects"
+        );
+        assert_eq!(
+            actual.hit_rows, expected.hit_rows,
+            "{label}: {layer:?} hit rows"
         );
         assert_eq!(
             actual.paint_arena.node_spans, expected.paint_arena.node_spans,

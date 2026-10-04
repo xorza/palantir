@@ -11,10 +11,11 @@ use crate::common::content_hash::ContentHash;
 /// incremental-update gate.
 #[derive(Debug, Default)]
 pub(crate) struct TreeFingerprint {
-    /// Tree-wide hash of widget identity, layout, flags, bounds, and
-    /// panel inputs, excluding chrome and direct shapes. The cascade
-    /// engine pairs it with retained structure and layout-rect
-    /// comparisons to identify paint-only changes.
+    /// Tree-wide hash of what the cascade's structural tables are built
+    /// from: each node's widget id, nesting, flag word, visibility and
+    /// Tab order key. Geometry and paint stay out — the cascade
+    /// refreshes those in place — so a change here is the one that
+    /// forces a full rebuild.
     pub(crate) cascade_static: ContentHash,
     /// Three counts folded together — stored shapes, chrome rows, and
     /// nodes — so that any move in how many paint rows this tree's
