@@ -154,7 +154,10 @@ impl<'a> ColorField<'a> {
         let texels = color_surface::texture_size(size, self.texel_size, ui);
         let model = coords.model();
         let hue = coords.hue();
-        let marker = Vec2::new(coords.sat() * size.w, (1.0 - coords.val()) * size.h);
+        let marker = Vec2::new(
+            coords.saturation() * size.w,
+            (1.0 - coords.value()) * size.h,
+        );
 
         widget.record(ui, None, |ui| {
             let image = ui.with_state::<ColorSurface<(ColorModel, f32)>, _>(
@@ -178,7 +181,7 @@ impl<'a> ColorField<'a> {
             ));
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }
@@ -194,14 +197,14 @@ impl Configure for ColorField<'_> {
 
 fn write_axes(coords: &mut ColorCoords, sat: f32, val: f32) -> bool {
     let before = *coords;
-    coords.set_sat(sat);
-    coords.set_val(val);
+    coords.set_saturation(sat);
+    coords.set_value(val);
     *coords != before
 }
 
 fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
-    let sat = ACROSS.travel(ui, coords.sat());
-    let val = UP.travel(ui, coords.val());
+    let sat = ACROSS.travel(ui, coords.saturation());
+    let val = UP.travel(ui, coords.value());
     write_axes(coords, sat.to, val.to)
 }
 

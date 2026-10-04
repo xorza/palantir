@@ -17,7 +17,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::layer::Layer;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
+use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::Shape;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
@@ -91,7 +91,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     if k.spin {
                         ui.add_shape_animated(
                             line,
-                            PaintAnim::turn(0.0, 1.0)
+                            PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs(4))
                                 .with_repeat(PaintRepeat::Forever)

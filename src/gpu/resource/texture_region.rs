@@ -14,12 +14,12 @@
 //! Deliberately not a wrapper around `wgpu::Queue`. One would have to
 //! publish `submit`, `get_timestamp_period` and `Clone` as passthroughs
 //! to carry the single method that does anything, and it could not make
-//! the seam unbypassable either: [`GpuFrameCtx`] hands app code the raw
+//! the seam unbypassable either: [`GpuFrameContext`] hands app code the raw
 //! `wgpu::Queue` on purpose, so the raw handle is reachable by design.
 //! What the call sites wanted was convenience over the *destination*,
 //! which is what this type is.
 //!
-//! [`GpuFrameCtx`]: crate::gpu::device::gpu_frame_ctx::GpuFrameCtx
+//! [`GpuFrameContext`]: crate::gpu::device::gpu_frame_context::GpuFrameContext
 
 use glam::UVec2;
 

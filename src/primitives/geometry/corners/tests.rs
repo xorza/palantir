@@ -165,8 +165,8 @@ fn convenience_ctors() {
         Corners::top_bottom(2.0, 8.0).as_array(),
         [2.0, 2.0, 8.0, 8.0]
     );
-    assert_eq!(Corners::diag_main(5.0).as_array(), [5.0, 0.0, 5.0, 0.0]);
-    assert_eq!(Corners::diag_anti(5.0).as_array(), [0.0, 5.0, 0.0, 5.0]);
+    assert_eq!(Corners::main_diagonal(5.0).as_array(), [5.0, 0.0, 5.0, 0.0]);
+    assert_eq!(Corners::anti_diagonal(5.0).as_array(), [0.0, 5.0, 0.0, 5.0]);
 }
 
 #[test]

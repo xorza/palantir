@@ -37,17 +37,17 @@
 //! Usage:
 //!
 //! ```no_run
-//! # use palantir::{AnimSpec, Theme, Ui, WindowToken, WinitHost, WinitHostError};
+//! # use palantir::{AnimationSpec, Theme, Ui, WindowToken, WinitHost, WinitHostError};
 //! # fn demo() -> Result<(), WinitHostError> {
 //! struct MyApp;
 //! impl palantir::App for MyApp {
-//!     fn record(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
+//!     fn record(&mut self, _window: WindowToken, ui: &mut Ui) { /* build ui */ }
 //! }
 //! WinitHost::builder(WindowToken(0))
 //!     .title("title")
 //!     .build(|ui, _handle| {
 //!         let mut theme = Theme::default();
-//!         theme.button.defaults.anim = Some(AnimSpec::SPRING);
+//!         theme.button.defaults.animation = Some(AnimationSpec::SPRING);
 //!         ui.set_theme(theme);
 //!         MyApp
 //!     })?
@@ -212,8 +212,8 @@ where
     /// waking the discrete one, while a bench or a golden test is worth
     /// little unless it runs on the adapter a user is looking at. An
     /// application that draws something heavier should say so here.
-    pub const fn power_preference(mut self, pref: PowerPreference) -> Self {
-        self.config.power_preference = pref;
+    pub const fn power_preference(mut self, preference: PowerPreference) -> Self {
+        self.config.power_preference = preference;
         self
     }
 

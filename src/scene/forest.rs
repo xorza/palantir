@@ -20,7 +20,7 @@ use crate::scene::seen_ids::{CollisionRecord, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_anims::PaintAnimEntry;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
@@ -322,14 +322,14 @@ impl Forest {
         });
     }
 
-    /// Same as [`Self::add_shape`], but registers a `PaintAnim` against
+    /// Same as [`Self::add_shape`], but registers a `PaintAnimation` against
     /// the freshly-pushed shape so the encoder applies the sampled
     /// `PaintMod` at paint time and [`Self::min_paint_anim_wake`] folds
     /// the anim's `next_wake` into the host's repaint queue. Drops silently
     /// (no entry pushed) if the shape itself was noop-collapsed.
     /// Effectively invisible shapes stay authored but omit their
     /// animation row until a visible record pass resumes them.
-    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
+    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnimation) {
         self.push_shape("add_shape_animated", |tree, store, frame| {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;

@@ -358,7 +358,7 @@ impl<'a> DragValue<'a> {
             );
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }

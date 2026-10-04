@@ -32,7 +32,7 @@ pub struct ModalTheme {
 impl ModalTheme {
     /// A raised panel over a half-opaque black scrim.
     pub fn from_palette(p: &Palette) -> Self {
-        let panel = Background::rounded(p.elem_mid, Corners::all(12.0))
+        let panel = Background::rounded(p.element_mid, Corners::all(12.0))
             .with_border(Stroke::new(p.border_mid(), 1.0));
         Self {
             panel,

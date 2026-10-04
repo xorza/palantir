@@ -5,7 +5,7 @@ use crate::text::shaper::TextShaper;
 /// Handed to [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init). Carries what's needed to build
 /// format-dependent pipelines, and the window's own text shaper.
 #[derive(Debug)]
-pub struct GpuInitCtx<'a> {
+pub struct GpuInitContext<'a> {
     /// The device to create pipelines and resources against.
     pub device: &'a wgpu::Device,
     /// The off-screen color target's format (sRGB `Rgba8UnormSrgb`). Match

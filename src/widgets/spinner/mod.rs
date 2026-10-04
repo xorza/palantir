@@ -7,8 +7,8 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
@@ -131,7 +131,7 @@ impl<'a> Spinner<'a> {
                     // One turn per `TAU / speed` seconds — the old
                     // radians-per-second spelling, in the period the
                     // schedule is written in.
-                    PaintAnim::turn(0.0, 1.0)
+                    PaintAnimation::turn(0.0, 1.0)
                         .with_period(Duration::from_secs_f32(TAU / speed))
                         .with_repeat(PaintRepeat::Forever)
                         .with_curve(curves::linear),

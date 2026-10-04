@@ -129,7 +129,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
 #[test]
 fn tooltip_text_inherits_the_ambient_leading() {
     let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().text.line_height_mult = 2.0;
+    h.ui.theme_mut().text.line_height_factor = 2.0;
     let snapshot = ResponseSnapshot {
         id: WidgetId::from_hash("leading-trigger"),
         state: ResponseState {

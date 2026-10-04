@@ -63,7 +63,7 @@ pub struct ExpanderTheme {
     /// fields of one name collide on the wire.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub body_padding: Spacing,
-    /// Spacing and transition spec — see [`SlotDefaults`]. `anim` is
+    /// Spacing and transition spec — see [`SlotDefaults`]. `animation` is
     /// `None` by default, so a reveal snaps until an application asks
     /// for the motion.
     #[serde(flatten)]
@@ -105,11 +105,11 @@ impl ExpanderTheme {
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
-                    background: Background::rounded(p.elem_mid, radius),
+                    background: Background::rounded(p.element_mid, radius),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    background: Background::rounded(p.elem_strong, radius),
+                    background: Background::rounded(p.element_strong, radius),
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
@@ -127,7 +127,7 @@ impl ExpanderTheme {
             defaults: SlotDefaults {
                 padding: Spacing::new(4.0, 4.0, 4.0, 4.0),
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

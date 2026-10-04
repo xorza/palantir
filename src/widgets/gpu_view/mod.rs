@@ -28,10 +28,10 @@ use std::rc::Rc;
 ///
 /// ```
 /// # use std::{cell::RefCell, rc::Rc};
-/// # use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Sizing, Ui};
+/// # use palantir::{Configure, GpuFrameContext, GpuPaint, GpuView, Sizing, Ui};
 /// # struct MyScene { camera: [f32; 3] }
 /// # impl GpuPaint for MyScene {
-/// #     fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
+/// #     fn paint(&mut self, _context: &mut GpuFrameContext<'_>) {}
 /// # }
 /// # struct App { scene: Rc<RefCell<MyScene>>, camera: [f32; 3] }
 /// # impl App {

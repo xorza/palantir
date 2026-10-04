@@ -7,19 +7,19 @@ use crate::window::window_token::WindowToken;
 /// Application lifecycle driven by a host for each window that records.
 pub trait App {
     /// Run once before the first record pass of a fully recorded frame for
-    /// `win`. Use this for unconditional application mutation, queue drains,
+    /// `window`. Use this for unconditional application mutation, queue drains,
     /// task submission, telemetry, and other work that must not replay.
     /// `ui` exposes the current frame's display, clock, and unsuppressed input,
     /// but is read-only so this phase cannot accidentally emit widgets.
     /// Paint-only animation frames reuse the retained tree and skip both app
     /// hooks.
-    fn update(&mut self, _win: WindowToken, _ui: &Ui) {}
+    fn update(&mut self, _window: WindowToken, _ui: &Ui) {}
 
-    /// Build the UI for window `win`. This hook may replay for cold-start
+    /// Build the UI for `window`. This hook may replay for cold-start
     /// warmup, action input, or `Ui::request_relayout`. Warmup and later passes
     /// receive no action input, so effects strictly gated by a widget action
     /// can run inline; unconditional external effects belong in
-    /// [`Self::update`]. Switch on `win` to drive different windows; open or
+    /// [`Self::update`]. Switch on `window` to drive different windows; open or
     /// close further windows via [`Ui::open_window`] and [`Ui::close_window`].
-    fn record(&mut self, win: WindowToken, ui: &mut Ui);
+    fn record(&mut self, window: WindowToken, ui: &mut Ui);
 }

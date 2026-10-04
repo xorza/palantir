@@ -191,7 +191,7 @@ const PINS: &[Pin] = &[
     // `LinearGradient` is stored inline on every `Brush::Linear`, so it
     // sets the floor for `Brush`, `Background.fill`, and every shape
     // carrying a brush. The stops are 1 (len) + `MAX_STOPS` × 5 (a `u8`
-    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interp) with
+    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interpolation) with
     // no padding; the gradient adds 4 (angle), 1 (spread) and 1 tail pad
     // to align 4.
     pin::<GradientStops>("brush::GradientStops", 1 + 5 * MAX_STOPS, 1),

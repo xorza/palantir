@@ -1,7 +1,7 @@
 //! A new target mid-flight, including one that switches spec mode.
 
 use crate::animation::anim_map_typed::AnimMapTyped;
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{SLOT, duration_motion, linear_100ms, spring_velocity, wid};
 use crate::primitives::math::domain::internals::assert_close;
@@ -48,9 +48,9 @@ fn a_target_that_moves_every_frame_moves_every_frame() {
 fn spring_to_duration_same_target_restarts_from_current() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("spec-switch");
-    let _ = map.step(id, SLOT, 0.0_f32, AnimSpec::SPRING, 0.016);
+    let _ = map.step(id, SLOT, 0.0_f32, AnimationSpec::SPRING, 0.016);
     for _ in 0..5 {
-        let _ = map.step(id, SLOT, 1.0_f32, AnimSpec::SPRING, 0.016);
+        let _ = map.step(id, SLOT, 1.0_f32, AnimationSpec::SPRING, 0.016);
     }
     let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
     let segment_start = row.current();
@@ -60,7 +60,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
         "test setup: spring should have built up velocity by now; got {velocity}",
     );
 
-    let dur = AnimSpec::duration(Duration::from_millis(100), Easing::Linear);
+    let dur = AnimationSpec::duration(Duration::from_millis(100), Easing::Linear);
     let dt = 0.02;
     let result = map.step(id, SLOT, 1.0_f32, dur, dt);
     let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
@@ -76,7 +76,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
 fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("round-trip-spec-switch");
-    let duration = AnimSpec::duration(Duration::from_secs(1), Easing::Linear);
+    let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
     let _ = map.step(id, SLOT, 0.0, duration, 0.016);
     let _ = map.step(id, SLOT, 1.0, duration, 0.016);
     let duration_result = map.step(id, SLOT, 1.0, duration, 0.4);
@@ -85,7 +85,7 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     // The spring takes over at rest from the duration's 0.4, 0.6 short of
     // the target: the default spring (k = 170, h = 13, ω = 1) is then at
     // `1 − 0.6·e^(-13t)(cos t + 13 sin t)` after t = 0.016.
-    let spring_result = map.step(id, SLOT, 1.0, AnimSpec::SPRING, 0.016);
+    let spring_result = map.step(id, SLOT, 1.0, AnimationSpec::SPRING, 0.016);
     let t = f64::from(0.016_f32);
     let from_point_four = 1.0 - 0.6 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
     assert_close(

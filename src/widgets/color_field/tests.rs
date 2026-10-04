@@ -28,8 +28,8 @@ fn harness() -> UiHarness {
 fn coords(hue: f32, sat: f32, val: f32) -> ColorCoords {
     let mut c = ColorCoords::default();
     c.set_hue(hue);
-    c.set_sat(sat);
-    c.set_val(val);
+    c.set_saturation(sat);
+    c.set_value(val);
     c
 }
 
@@ -63,8 +63,8 @@ fn the_pointer_maps_onto_the_axes() {
         frame(&mut h, id, &mut state);
         h.press_at(at);
         frame(&mut h, id, &mut state);
-        assert_eq!(state.sat(), sat, "saturation at {at:?}");
-        assert_eq!(state.val(), val, "value at {at:?}");
+        assert_eq!(state.saturation(), sat, "saturation at {at:?}");
+        assert_eq!(state.value(), val, "value at {at:?}");
     }
 }
 
@@ -82,8 +82,8 @@ fn a_drag_past_the_edge_clamps_to_it() {
     frame(&mut h, id, &mut state);
     h.drag_to(Vec2::new(400.0, 400.0));
     frame(&mut h, id, &mut state);
-    assert_eq!(state.sat(), 1.0, "dragged past the right edge");
-    assert_eq!(state.val(), 0.0, "dragged past the bottom edge");
+    assert_eq!(state.saturation(), 1.0, "dragged past the right edge");
+    assert_eq!(state.value(), 0.0, "dragged past the bottom edge");
 }
 
 #[test]
@@ -138,7 +138,11 @@ fn keys_walk_both_axes() {
         h.set_modifiers(mods);
         h.key(key);
         let EditEdges { changed, committed } = frame(&mut h, id, &mut state);
-        assert_eq!((state.sat(), state.val()), (sat, val), "{mods:?} {key:?}");
+        assert_eq!(
+            (state.saturation(), state.value()),
+            (sat, val),
+            "{mods:?} {key:?}"
+        );
         assert!(changed && committed, "{key:?} is a whole edit");
     }
 }

@@ -39,7 +39,7 @@ pub enum Spread {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
-pub enum Interp {
+pub enum Interpolation {
     /// Perceptually uniform; matches CSS RgbaF32 4 default. Avoids the
     /// muddy midpoint of complementary-colour pairs (red↔green,
     /// blue↔orange).
@@ -69,15 +69,15 @@ pub trait GradientGeometry: sealed::Geometry {}
 impl<T: sealed::Geometry> GradientGeometry for T {}
 
 pub(crate) mod sealed {
-    use crate::primitives::paint::brush::gradient::Interp;
+    use crate::primitives::paint::brush::gradient::Interpolation;
     use std::hash;
 
     /// The items behind [`GradientGeometry`](super::GradientGeometry): the
     /// renderer's view of one gradient kind.
     pub trait Geometry {
         /// Interpolation space a freshly authored gradient of this kind
-        /// starts in, before `Gradient::with_interp` overrides it.
-        const DEFAULT_INTERP: Interp;
+        /// starts in, before `Gradient::with_interpolation` overrides it.
+        const DEFAULT_INTERPOLATION: Interpolation;
 
         /// The four axis lanes the shader reads, before `FillAxis` packs
         /// them to f16. The layout is per-kind.
@@ -106,10 +106,10 @@ pub(crate) mod sealed {
 /// for the auto-`Copy` audit story. `.clone()` is cheap (one inline
 /// memcpy) — just explicit.
 // `repr(C)`, here and on `ColorRamp`, pins the two enum bytes last.
-// `Brush` stores its tag in values `interp` or `spread` never take, which
+// `Brush` stores its tag in values `interpolation` or `spread` never take, which
 // works only if that byte sits past the end of every smaller variant: in
 // the 60 B radial kind they are bytes 57 and 58, and the linear and conic
-// kinds are 48 B and 56 B. Free to reorder, rustc puts `interp` at byte
+// kinds are 48 B and 56 B. Free to reorder, rustc puts `interpolation` at byte
 // 16, and `Brush` needs 64 B.
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
@@ -135,8 +135,8 @@ impl<G> Gradient<G> {
 
     /// Override the colour space interpolation runs in.
     /// Builder-style.
-    pub const fn with_interp(mut self, interp: Interp) -> Self {
-        self.ramp.interp = interp;
+    pub const fn with_interpolation(mut self, interpolation: Interpolation) -> Self {
+        self.ramp.interpolation = interpolation;
         self
     }
 
@@ -155,7 +155,7 @@ impl<G: GradientGeometry> Gradient<G> {
             geometry,
             ramp: ColorRamp {
                 stops: GradientStops::new(stops),
-                interp: G::DEFAULT_INTERP,
+                interpolation: G::DEFAULT_INTERPOLATION,
             },
             spread: Spread::default(),
         }
@@ -175,7 +175,7 @@ impl<G: GradientGeometry> Gradient<G> {
 impl<G: GradientGeometry> hash::Hash for Gradient<G> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.geometry.hash_geometry(state);
-        state.write_u64(gradient_tag(self.spread, self.ramp.interp));
+        state.write_u64(gradient_tag(self.spread, self.ramp.interpolation));
         hash::Hash::hash(&self.ramp.stops, state);
     }
 }
@@ -190,6 +190,6 @@ impl<G: GradientGeometry> NanCheck for Gradient<G> {
 }
 
 #[inline]
-const fn gradient_tag(spread: Spread, interp: Interp) -> u64 {
-    ((spread as u64) << 8) | interp as u64
+const fn gradient_tag(spread: Spread, interpolation: Interpolation) -> u64 {
+    ((spread as u64) << 8) | interpolation as u64
 }

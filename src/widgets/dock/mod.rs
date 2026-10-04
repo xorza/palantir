@@ -1,10 +1,10 @@
-//! The dock: a split tree of tabbed panes, the ops that rearrange it,
+//! The dock: a split tree of tabbed panes, the operations that rearrange it,
 //! and the widget that records it.
 //!
 //! The model half ([`DockState`](dock_state::DockState) and its
-//! [`DockOp`](dock_op::DockOp) vocabulary) is pure data with no `Ui` in
+//! [`DockOperation`](dock_operation::DockOperation) vocabulary) is pure data with no `Ui` in
 //! sight. The view half ([`DockView`](dock_view::DockView)) reads it and
-//! emits ops, and never learns what a pane contains — the application
+//! emits operations, and never learns what a pane contains — the application
 //! answers that through [`DockTabs`](dock_tabs::DockTabs).
 //!
 //! Every pane's strip is the same [`TabStrip`](crate::TabStrip) a
@@ -13,7 +13,7 @@
 
 pub(crate) mod allowed_splits;
 pub(crate) mod dock_node;
-pub(crate) mod dock_op;
+pub(crate) mod dock_operation;
 pub(crate) mod dock_path;
 pub(crate) mod dock_state;
 pub(crate) mod dock_tab;

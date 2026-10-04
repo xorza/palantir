@@ -9,7 +9,7 @@
 use crate::support;
 use crate::support::{note_style, row, section};
 use palantir::{
-    Align, AnimSpec, Background, Button, ButtonTheme, Checkbox, Configure, Corners, DragValue,
+    Align, AnimationSpec, Background, Button, ButtonTheme, Checkbox, Configure, Corners, DragValue,
     Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator, Sizing, Slider,
     SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit, TextStyleOverrides,
     TextWrap, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
@@ -100,7 +100,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
     let base = ExpanderTheme::default();
     let animated = ExpanderTheme {
         defaults: SlotDefaults {
-            anim: Some(AnimSpec::MEDIUM),
+            animation: Some(AnimationSpec::MEDIUM),
             ..base.defaults
         },
         ..base
@@ -130,7 +130,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                     .style(&animated)
                     .show(ui, |ui| {
                         Text::new(
-                            "The same widget with an AnimSpec on its theme. The first                              open snaps — there is no measured height to tween against                              yet — and every one after it animates.",
+                            "The same widget with an AnimationSpec on its theme. The first                              open snaps — there is no measured height to tween against                              yet — and every one after it animates.",
                         )
                         .id_salt("animated-body")
                         .style(&note_style())
@@ -292,7 +292,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                 WidgetId::from_hash("showcase::controls::sync"),
                 "frac",
                 target,
-                Some(AnimSpec::SPRING),
+                Some(AnimationSpec::SPRING),
             );
             if s.syncing && frac > 0.995 {
                 s.syncing = false;

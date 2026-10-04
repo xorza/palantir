@@ -209,7 +209,7 @@ impl<'a> ColorPicker<'a> {
             });
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed: edit.changed,
             committed: edit.committed,
         }
@@ -451,8 +451,8 @@ fn values_grid(
     ];
     let mut opacity = (writes.alpha * 100.0).round() as i64;
     let mut hue = (state.coords.hue() * 360.0).round() as i64;
-    let mut sat = (state.coords.sat() * 100.0).round() as i64;
-    let mut val = (state.coords.val() * 100.0).round() as i64;
+    let mut sat = (state.coords.saturation() * 100.0).round() as i64;
+    let mut val = (state.coords.value() * 100.0).round() as i64;
 
     Grid::new()
         .id(id.with("values"))
@@ -506,7 +506,7 @@ fn values_grid(
             } else {
                 let r = value_cell(ui, id, theme, "V %", GridCell::at(0, 2), &mut val, 100.0);
                 if r.changed {
-                    state.coords.set_val(val as f32 / 100.0);
+                    state.coords.set_value(val as f32 / 100.0);
                     writes.axes = true;
                 }
                 writes.committed |= r.committed;
@@ -541,7 +541,7 @@ fn values_grid(
 
             let r = value_cell(ui, id, theme, "S %", GridCell::at(1, 3), &mut sat, 100.0);
             if r.changed {
-                state.coords.set_sat(sat as f32 / 100.0);
+                state.coords.set_saturation(sat as f32 / 100.0);
                 writes.axes = true;
             }
             writes.committed |= r.committed;

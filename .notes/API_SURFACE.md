@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `e827548d` (plus the working tree).
+Generated on top of `9f2a56d7` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -32,11 +32,10 @@ Align
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Align where T: Copy + Eq + Hash + Debug + 'static
 
 AllowedSplits
     enum AllowedSplits
@@ -51,7 +50,6 @@ AllowedSplits
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 Anchor
     struct Anchor
@@ -66,7 +64,6 @@ Anchor
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 AnchorAlign
     enum AnchorAlign
@@ -79,10 +76,19 @@ AnchorAlign
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
-AnimSpec
-    struct AnimSpec
+AnimatedLook
+    struct AnimatedLook
+        pub background: Background
+        pub text: TextStyle
+        impl Animatable
+        impl Clone
+        impl Debug
+        impl Default
+        impl PartialEq
+
+AnimationSpec
+    struct AnimationSpec
         // and private fields
         pub const FAST: Self
         pub const MEDIUM: Self
@@ -96,23 +102,12 @@ AnimSpec
         impl Debug
         impl PartialEq
         impl Serialize
-        impl TrivialClone
-        impl<'de> Deserialize<'de> for AnimSpec
-
-AnimatedLook
-    struct AnimatedLook
-        pub background: Background
-        pub text: TextStyle
-        impl Animatable
-        impl Clone
-        impl Debug
-        impl Default
-        impl PartialEq
+        impl<'de> Deserialize<'de> for AnimationSpec
 
 App
     trait App
-        fn update(&mut self, _win: WindowToken, _ui: &Ui) { .. }
-        fn record(&mut self, win: WindowToken, ui: &mut Ui)
+        fn update(&mut self, _window: WindowToken, _ui: &Ui) { .. }
+        fn record(&mut self, window: WindowToken, ui: &mut Ui)
 
 Axis
     enum Axis
@@ -121,11 +116,10 @@ Axis
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Axis where T: Copy + Eq + Hash + Debug + 'static
 
 Background
     struct Background
@@ -158,7 +152,6 @@ BarMode
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 BatchKind
     enum BatchKind
@@ -179,18 +172,17 @@ BatchKind
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 Block
     struct Block
         // and private fields
         pub fn new() -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
         impl Debug
-        impl<T> ThemeDefaults for Block where T: Configure
+        impl ThemeDefaults  (blanket)
 
 Brush
     enum Brush
@@ -227,8 +219,8 @@ Button
         pub const fn text_align(self, a: Align) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Button<'a>
-        impl<T> ThemeDefaults for Button<'a> where T: Configure
 
 ButtonPhase
     enum ButtonPhase
@@ -241,7 +233,6 @@ ButtonPhase
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 ButtonState
     struct ButtonState
@@ -258,7 +249,6 @@ ButtonState
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 ButtonTheme
     struct ButtonTheme
@@ -281,8 +271,8 @@ Checkbox
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Checkbox<'a>
-        impl<T> ThemeDefaults for Checkbox<'a> where T: Configure
 
 ClickOutside
     enum ClickOutside
@@ -294,7 +284,6 @@ ClickOutside
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 ClipMode
     enum ClipMode
@@ -306,15 +295,14 @@ ClipMode
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl Ord
         impl PartialEq
         impl PartialOrd
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for ClipMode
-        impl<T> DockTab for ClipMode where T: Copy + Eq + Hash + Debug + 'static
 
 Clipboard
     struct Clipboard
@@ -333,7 +321,6 @@ ClipboardUnavailable
         impl Eq
         impl Error
         impl PartialEq
-        impl TrivialClone
 
 Clock
     trait Clock: Debug
@@ -361,8 +348,8 @@ ColorButton
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ColorButton<'a>
-        impl<T> ThemeDefaults for ColorButton<'a> where T: Configure
 
 ColorCoords
     enum ColorCoords
@@ -373,17 +360,16 @@ ColorCoords
         pub fn to_color(self) -> RgbaF32
         pub fn with_model(self, model: ColorModel) -> Self
         pub const fn hue(self) -> f32
-        pub const fn sat(self) -> f32
-        pub const fn val(self) -> f32
+        pub const fn saturation(self) -> f32
+        pub const fn value(self) -> f32
         pub const fn set_hue(&mut self, h: f32)
-        pub const fn set_sat(&mut self, s: f32)
-        pub const fn set_val(&mut self, v: f32)
+        pub const fn set_saturation(&mut self, s: f32)
+        pub const fn set_value(&mut self, v: f32)
         impl Clone
         impl Copy
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 ColorField
     struct ColorField<'a>
@@ -393,8 +379,8 @@ ColorField
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ColorField<'a>
-        impl<T> ThemeDefaults for ColorField<'a> where T: Configure
 
 ColorModel
     enum ColorModel
@@ -407,13 +393,12 @@ ColorModel
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for ColorModel
-        impl<T> DockTab for ColorModel where T: Copy + Eq + Hash + Debug + 'static
 
 ColorPicker
     struct ColorPicker<'a>
@@ -427,8 +412,8 @@ ColorPicker
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ColorPicker<'a>
-        impl<T> ThemeDefaults for ColorPicker<'a> where T: Configure
 
 ColorPickerTheme
     struct ColorPickerTheme
@@ -462,21 +447,20 @@ ColorPickerTheme
 ColorRamp
     struct ColorRamp
         pub stops: GradientStops
-        pub interp: Interp
+        pub interpolation: Interpolation
         pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self
         pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
-        pub const fn with_interp(self, interp: Interp) -> Self
+        pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for ColorRamp
-        impl<T> DockTab for ColorRamp where T: Copy + Eq + Hash + Debug + 'static
 
 ColorStrip
     struct ColorStrip<'a>
@@ -487,8 +471,8 @@ ColorStrip
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ColorStrip<'a>
-        impl<T> ThemeDefaults for ColorStrip<'a> where T: Configure
 
 ColorSwatch
     struct ColorSwatch<'a>
@@ -497,26 +481,28 @@ ColorSwatch
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ColorSwatch<'a>
-        impl<T> ThemeDefaults for ColorSwatch<'a> where T: Configure
 
 ComboBox
     struct ComboBox<'a, S, L>
         // and private fields
-        pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
-        pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
-        pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
-        pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        impl<'a, S: AsRef<str>> ComboBox<'a, S, fn(&S) -> &str>
+            pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
+        impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L>
+            pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
+            pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
+            pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
+            pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        impl ThemeDefaults  (blanket)
         impl<'a, S: Debug, L: Debug> Debug for ComboBox<'a, S, L>
         impl<S, L> Configure for ComboBox<'_, S, L>
-        impl<T> ThemeDefaults for ComboBox<'a, S, L> where T: Configure
 
 ComboBoxTheme
     struct ComboBoxTheme
         pub gap: f32
         pub arrow_size: Vec2
-        pub arrow_stroke: f32
+        pub arrow_width: f32
         pub const fn from_palette(_p: &Palette) -> Self
         impl Clone
         impl Debug
@@ -563,11 +549,10 @@ ConicGeometry
         impl Clone
         impl Copy
         impl Debug
+        impl GradientGeometry  (blanket)
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for ConicGeometry
-        impl<T> GradientGeometry for ConicGeometry where T: Geometry
 
 ConicGradient
     type ConicGradient = Gradient<ConicGeometry>
@@ -585,11 +570,11 @@ ContextMenu
         pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ContextMenu<'a>
-        impl<T> ThemeDefaults for ContextMenu<'a> where T: Configure
 
 ContextMenuTheme
     struct ContextMenuTheme
@@ -614,30 +599,30 @@ Corners
         pub fn as_array(self) -> [f32; 4]
         pub fn from_array(v: [f32; 4]) -> Self
         pub fn all(r: f32) -> Self
-        pub fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self
+        pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self
         pub fn top(r: f32) -> Self
         pub fn bottom(r: f32) -> Self
         pub fn left(r: f32) -> Self
         pub fn right(r: f32) -> Self
         pub fn top_bottom(top: f32, bottom: f32) -> Self
-        pub fn diag_main(r: f32) -> Self
-        pub fn diag_anti(r: f32) -> Self
+        pub fn main_diagonal(r: f32) -> Self
+        pub fn anti_diagonal(r: f32) -> Self
         pub fn scaled_by(self, scale: f32) -> Self
         pub const fn is_approx_zero(&self) -> bool
         impl Clone
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Pod
         impl Serialize
-        impl TrivialClone
         impl Zeroable
         impl<'de> Deserialize<'de> for Corners
         impl<T: Num, B: Num> From<(T, B)> for Corners
-        impl<T> DockTab for Corners where T: Copy + Eq + Hash + Debug + 'static
+        impl<T: Num> From<T> for Corners
         impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners
 
 CursorIcon
@@ -658,7 +643,6 @@ CursorIcon
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 DebugOverlayConfig
     struct DebugOverlayConfig
@@ -671,7 +655,6 @@ DebugOverlayConfig
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 DeviceRequirements
     struct DeviceRequirements
@@ -702,7 +685,6 @@ Display
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 DockDrop
     enum DockDrop
@@ -714,7 +696,6 @@ DockDrop
         impl Eq
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for DockDrop
 
 DockError
@@ -748,20 +729,20 @@ DockNode
         impl<T: PartialEq> PartialEq for DockNode<T>
         impl<T> Serialize for DockNode<T> where T: Serialize
 
-DockOp
-    enum DockOp<T>
+DockOperation
+    enum DockOperation<T>
         ActivateTab { tab: T }
         OpenTab { tab: T }
         CloseTab { tab: T }
         MoveTab { tab: T, to: DockDrop }
         SetRatio { split: DockPath, ratio: f32 }
         FocusPane { group: TabGroupId }
-        impl<'de, T> Deserialize<'de> for DockOp<T> where T: Deserialize<'de>
-        impl<T: Clone> Clone for DockOp<T>
-        impl<T: Copy> Copy for DockOp<T>
-        impl<T: Debug> Debug for DockOp<T>
-        impl<T: PartialEq> PartialEq for DockOp<T>
-        impl<T> Serialize for DockOp<T> where T: Serialize
+        impl<'de, T> Deserialize<'de> for DockOperation<T> where T: Deserialize<'de>
+        impl<T: Clone> Clone for DockOperation<T>
+        impl<T: Copy> Copy for DockOperation<T>
+        impl<T: Debug> Debug for DockOperation<T>
+        impl<T: PartialEq> PartialEq for DockOperation<T>
+        impl<T> Serialize for DockOperation<T> where T: Serialize
 
 DockPath
     struct DockPath
@@ -773,53 +754,52 @@ DockPath
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for DockPath
-        impl<T> DockTab for DockPath where T: Copy + Eq + Hash + Debug + 'static
 
 DockSplit
     struct DockSplit
         // and private fields
-        pub const fn dir(self) -> SplitDir
+        pub const fn direction(self) -> SplitDirection
         pub const fn ratio(self) -> f32
-        pub const fn first(self) -> NodeIdx
-        pub const fn second(self) -> NodeIdx
+        pub const fn first(self) -> NodeIndex
+        pub const fn second(self) -> NodeIndex
         impl Clone
         impl Copy
         impl Debug
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for DockSplit
 
 DockState
     struct DockState<T>
         // and private fields
-        pub const ROOT: NodeIdx
-        pub const RATIO_MIN: f32
-        pub const RATIO_MAX: f32
-        pub fn new(seed: impl Hash, pinned: T) -> Self
-        pub fn with_max_depth(self, depth: u32) -> Self
-        pub const fn with_allowed_splits(self, allowed: AllowedSplits) -> Self
-        pub const fn pinned(&self) -> T
-        pub const fn seed(&self) -> u64
-        pub const fn allowed_splits(&self) -> AllowedSplits
-        pub const fn focused(&self) -> TabGroupId
-        pub fn node(&self, idx: NodeIdx) -> &DockNode<T>
-        pub fn groups(&self) -> impl Iterator<Item = &TabGroup<T>>
-        pub fn all_tabs(&self) -> impl Iterator<Item = T> + '_
-        pub fn active_tabs(&self) -> impl Iterator<Item = T> + '_
-        pub fn primary(&self) -> &TabGroup<T>
-        pub fn find_tab(&self, tab: T) -> Option<TabAddress>
-        pub fn group(&self, id: TabGroupId) -> Option<&TabGroup<T>>
-        pub fn apply(&mut self, op: DockOp<T>)
-        pub fn find_or_insert(&mut self, tab: T, group: TabGroupId)
-        pub fn retain_tabs(&mut self, keep: impl FnMut(T) -> bool)
-        pub fn can_split(&self, group: TabGroupId) -> bool
+        impl<T: DockTab> DockState<T>
+            pub const ROOT: NodeIndex
+            pub const RATIO_MIN: f32
+            pub const RATIO_MAX: f32
+            pub fn new(seed: impl Hash, pinned: T) -> Self
+            pub fn with_max_depth(self, depth: u32) -> Self
+            pub const fn with_allowed_splits(self, allowed: AllowedSplits) -> Self
+            pub const fn pinned(&self) -> T
+            pub const fn seed(&self) -> u64
+            pub const fn allowed_splits(&self) -> AllowedSplits
+            pub const fn focused(&self) -> TabGroupId
+            pub fn node(&self, index: NodeIndex) -> &DockNode<T>
+            pub fn groups(&self) -> impl Iterator<Item = &TabGroup<T>>
+            pub fn all_tabs(&self) -> impl Iterator<Item = T> + '_
+            pub fn active_tabs(&self) -> impl Iterator<Item = T> + '_
+            pub fn primary(&self) -> &TabGroup<T>
+            pub fn find_tab(&self, tab: T) -> Option<TabAddress>
+            pub fn group(&self, id: TabGroupId) -> Option<&TabGroup<T>>
+            pub fn apply(&mut self, operation: DockOperation<T>)
+            pub fn find_or_insert(&mut self, tab: T, group: TabGroupId)
+            pub fn retain_tabs(&mut self, keep: impl FnMut(T) -> bool)
+            pub fn can_split(&self, group: TabGroupId) -> bool
         impl<'de, T> Deserialize<'de> for DockState<T> where T: DockTab + Deserialize<'de>
         impl<T: Clone> Clone for DockState<T>
         impl<T: Debug> Debug for DockState<T>
@@ -828,31 +808,32 @@ DockState
 
 DockTab
     trait DockTab: Copy + Eq + Hash + Debug + 'static
+        impl<T: Copy + Eq + Hash + Debug + 'static> DockTab for T
 
 DockTabMenu
     struct DockTabMenu<'a, T>
         pub tab: T
         pub group: TabGroupId
-        pub ops: &'a mut Vec<DockOp<T>>
+        pub operations: &'a mut Vec<DockOperation<T>>
         pub close: &'a CloseHandle
         impl<'a, T: Debug> Debug for DockTabMenu<'a, T>
 
 DockTabs
     trait DockTabs
         type Tab: DockTab
-        fn title(&mut self, ui: &mut Ui, tab: <Self as >::Tab) -> InternedStr
-        fn content(&mut self, ui: &mut Ui, tab: <Self as >::Tab, size: Option<Size>)
-        fn closable(&mut self, _tab: <Self as >::Tab) -> bool { .. }
-        fn draggable(&mut self, _tab: <Self as >::Tab) -> bool { .. }
-        fn badge(&mut self, _tab: <Self as >::Tab) -> TabBadge { .. }
-        fn icon(&mut self, _tab: <Self as >::Tab) -> Option<IconHandle> { .. }
-        fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, <Self as >::Tab>) { .. }
+        fn title(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr
+        fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>)
+        fn closable(&mut self, _tab: Self::Tab) -> bool { .. }
+        fn draggable(&mut self, _tab: Self::Tab) -> bool { .. }
+        fn badge(&mut self, _tab: Self::Tab) -> TabBadge { .. }
+        fn icon(&mut self, _tab: Self::Tab) -> Option<IconHandle> { .. }
+        fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
 DockTheme
     struct DockTheme
         pub preview_fill: RgbaF32
         pub preview_stroke: Stroke
-        pub preview_corner: f32
+        pub preview_radius: f32
         pub caret_width: f32
         pub ghost: WidgetLook
         pub ghost_padding: Spacing
@@ -868,23 +849,25 @@ DockTheme
 DockView
     struct DockView<'a, T>
         // and private fields
-        pub fn new(state: &'a DockState<T>, ops: &'a mut Vec<DockOp<T>>) -> Self
-        pub const fn min_pane(self, px: f32) -> Self
-        pub const fn overflow(self, overflow: TabOverflow) -> Self
-        pub fn style(self, s: impl Into<Option<&'a DockTheme>>) -> Self
-        pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u>
-        pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D)
-        pub fn dock_id(state: &DockState<T>) -> WidgetId
-        pub fn pane_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
-        pub fn content_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
-        pub fn strip_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
-        pub fn splitter_id(state: &DockState<T>, path: DockPath) -> WidgetId
-        pub fn tab_key(tab: T) -> u64
-        pub fn scan(state: &DockState<T>, ui: &mut Ui, ops: &mut Vec<DockOp<T>>)
-        pub fn content_size(state: &DockState<T>, ui: &Ui, group: TabGroupId) -> Option<Size>
+        impl<'a, T: DockTab> DockView<'a, T>
+            pub fn new(state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self
+            pub const fn min_pane(self, px: f32) -> Self
+            pub const fn overflow(self, overflow: TabOverflow) -> Self
+            pub fn style(self, s: impl Into<Option<&'a DockTheme>>) -> Self
+            pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u>
+        impl<T: DockTab> DockView<'_, T>
+            pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D)
+            pub fn dock_id(state: &DockState<T>) -> WidgetId
+            pub fn pane_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
+            pub fn content_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
+            pub fn strip_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
+            pub fn splitter_id(state: &DockState<T>, path: DockPath) -> WidgetId
+            pub fn tab_key(tab: T) -> u64
+            pub fn scan(state: &DockState<T>, ui: &mut Ui, operations: &mut Vec<DockOperation<T>>)
+            pub fn content_size(state: &DockState<T>, ui: &Ui, group: TabGroupId) -> Option<Size>
+        impl ThemeDefaults  (blanket)
         impl<'a, T: Debug> Debug for DockView<'a, T>
         impl<T> Configure for DockView<'_, T>
-        impl<T> ThemeDefaults for DockView<'a, T> where T: Configure
 
 Drag
     enum Drag
@@ -893,7 +876,7 @@ Drag
         Active { delta: Vec2 }
         Stopped
         pub const fn delta(self) -> Option<Vec2>
-        pub const fn dragging(self) -> bool
+        pub const fn is_live(self) -> bool
         pub const fn started(self) -> bool
         pub const fn stopped(self) -> bool
         impl Clone
@@ -901,7 +884,6 @@ Drag
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 DragNum
     enum DragNum<'a>
@@ -923,8 +905,8 @@ DragValue
         pub fn style(self, s: impl Into<Option<&'a DragValueTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for DragValue<'a>
-        impl<T> ThemeDefaults for DragValue<'a> where T: Configure
 
 DragValueTheme
     struct DragValueTheme
@@ -958,7 +940,6 @@ Easing
         impl Debug
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for Easing
 
 Expander
@@ -971,8 +952,8 @@ Expander
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Expander<'a>
-        impl<T> ThemeDefaults for Expander<'a> where T: Configure
 
 ExpanderResponse
     struct ExpanderResponse<'a, R>
@@ -1020,7 +1001,6 @@ FocusPolicy
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 FontFamily
     struct FontFamily
@@ -1033,13 +1013,12 @@ FontFamily
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for FontFamily
-        impl<T> DockTab for FontFamily where T: Copy + Eq + Hash + Debug + 'static
 
 FontLoadError
     enum FontLoadError
@@ -1059,7 +1038,6 @@ FontScope
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 FontSlant
     enum FontSlant
@@ -1069,13 +1047,12 @@ FontSlant
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for FontSlant
-        impl<T> DockTab for FontSlant where T: Copy + Eq + Hash + Debug + 'static
 
 FontSource
     enum FontSource
@@ -1109,15 +1086,14 @@ FontWeight
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl Ord
         impl PartialEq
         impl PartialOrd
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for FontWeight
-        impl<T> DockTab for FontWeight where T: Copy + Eq + Hash + Debug + 'static
 
 FramePaint
     enum FramePaint
@@ -1129,7 +1105,6 @@ FramePaint
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 FrameReport
     struct FrameReport
@@ -1146,8 +1121,8 @@ Gpu
         impl Clone
         impl Debug
 
-GpuFrameCtx
-    struct GpuFrameCtx<'a>
+GpuFrameContext
+    struct GpuFrameContext<'a>
         pub device: &'a Device
         pub queue: &'a Queue
         pub encoder: &'a mut CommandEncoder
@@ -1160,17 +1135,17 @@ GpuFrameCtx
         pub dt: Duration
         impl Debug
 
-GpuInitCtx
-    struct GpuInitCtx<'a>
+GpuInitContext
+    struct GpuInitContext<'a>
         pub device: &'a Device
         pub target_format: TextureFormat
         pub text: &'a TextShaper
-        impl<'a> Debug for GpuInitCtx<'a>
+        impl<'a> Debug for GpuInitContext<'a>
 
 GpuPaint
     trait GpuPaint: 'static
-        fn init(&mut self, ctx: &GpuInitCtx<'_>) { .. }
-        fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>)
+        fn init(&mut self, context: &GpuInitContext<'_>) { .. }
+        fn paint(&mut self, context: &mut GpuFrameContext<'_>)
 
 GpuPassStats
     struct GpuPassStats
@@ -1202,28 +1177,31 @@ GpuView
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
         impl Debug
-        impl<T> ThemeDefaults for GpuView where T: Configure
+        impl ThemeDefaults  (blanket)
 
 Gradient
     struct Gradient<G>
         pub geometry: G
         pub ramp: ColorRamp
         pub spread: Spread
-        pub fn builder(center: Vec2, start_angle: f32) -> ConicGradientBuilder
-        pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
-        pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
-        pub fn builder(angle: f32) -> LinearGradientBuilder
-        pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
-        pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self
-        pub fn builder(center: Vec2, radius: Vec2) -> RadialGradientBuilder
-        pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self
-        pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
+        impl Gradient<ConicGeometry>
+            pub fn builder(center: Vec2, start_angle: f32) -> ConicGradientBuilder
+            pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
+            pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
+        impl Gradient<LinearGeometry>
+            pub fn builder(angle: f32) -> LinearGradientBuilder
+            pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
+            pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self
+        impl Gradient<RadialGeometry>
+            pub fn builder(center: Vec2, radius: Vec2) -> RadialGradientBuilder
+            pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self
+            pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
         pub const fn with_spread(self, spread: Spread) -> Self
-        pub const fn with_interp(self, interp: Interp) -> Self
+        pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
-        impl From<Gradient<ConicGeometry>>
-        impl From<Gradient<LinearGeometry>>
-        impl From<Gradient<RadialGeometry>>
+        impl From<Gradient<ConicGeometry>> for Brush
+        impl From<Gradient<LinearGeometry>> for Brush
+        impl From<Gradient<RadialGeometry>> for Brush
         impl<'de, G> Deserialize<'de> for Gradient<G> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
@@ -1235,19 +1213,21 @@ Gradient
 GradientBuilder
     struct GradientBuilder<G>
         // and private fields
-        pub fn stop(self, offset: f32, color: RgbaF32) -> Self
-        pub const fn spread(self, spread: Spread) -> Self
-        pub const fn interp(self, interp: Interp) -> Self
-        pub fn build(self) -> Gradient<G>
-        impl From<GradientBuilder<ConicGeometry>>
-        impl From<GradientBuilder<LinearGeometry>>
-        impl From<GradientBuilder<RadialGeometry>>
+        impl<G: GradientGeometry> GradientBuilder<G>
+            pub fn stop(self, offset: f32, color: RgbaF32) -> Self
+            pub const fn spread(self, spread: Spread) -> Self
+            pub const fn interpolation(self, interpolation: Interpolation) -> Self
+            pub fn build(self) -> Gradient<G>
+        impl From<GradientBuilder<ConicGeometry>> for Brush
+        impl From<GradientBuilder<LinearGeometry>> for Brush
+        impl From<GradientBuilder<RadialGeometry>> for Brush
         impl<G: Clone> Clone for GradientBuilder<G>
         impl<G: Debug> Debug for GradientBuilder<G>
         impl<G: GradientGeometry> From<GradientBuilder<G>> for Gradient<G>
 
 GradientGeometry
     trait GradientGeometry: Geometry
+        impl<T: Geometry> GradientGeometry for T
 
 GradientStops
     struct GradientStops
@@ -1257,26 +1237,27 @@ GradientStops
         impl Copy
         impl Debug
         impl Deref
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for GradientStops
-        impl<T> DockTab for GradientStops where T: Copy + Eq + Hash + Debug + 'static
 
 Grid
     struct Grid<Rows = [Track; 0], Cols = [Track; 0]>
         // and private fields
-        pub fn new() -> Self
-        pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols>
-        pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols>
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
+        impl Grid
+            pub fn new() -> Self
+        impl<Rows, Cols> Grid<Rows, Cols>
+            pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols>
+            pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols>
+            pub const fn background(self, background: Background) -> Self
+            pub const fn default_background(self, background: Background) -> Self
+            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
+        impl ThemeDefaults  (blanket)
         impl<Rows, Cols> Configure for Grid<Rows, Cols>
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
-        impl<T> ThemeDefaults for Grid<Rows, Cols> where T: Configure
 
 GridCell
     struct GridCell
@@ -1296,7 +1277,6 @@ GridCell
         impl Hash
         impl PartialEq
         impl Pod
-        impl TrivialClone
         impl Zeroable
 
 HAlign
@@ -1312,7 +1292,6 @@ HAlign
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 HostDisconnected  [feature: winit]
     struct HostDisconnected
@@ -1323,12 +1302,11 @@ HostDisconnected  [feature: winit]
         impl Eq
         impl Error
         impl PartialEq
-        impl TrivialClone
 
 HostHandle  [feature: winit]
     struct HostHandle<T: 'static>
         // and private fields
-        pub fn request_repaint(&self, win: WindowToken)
+        pub fn request_repaint(&self, window: WindowToken)
         pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
         impl<T: 'static> Clone for HostHandle<T>
@@ -1347,7 +1325,6 @@ Hsv
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 HueSlice
     enum HueSlice
@@ -1357,13 +1334,12 @@ HueSlice
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 IVec2
     pub use glam::IVec2 as IVec2
 
-IconDef
-    struct IconDef
+IconDefinition
+    struct IconDefinition
         pub name: Cow<'static, str>
         pub view_box: Vec2
         pub svg: Span
@@ -1380,7 +1356,6 @@ IconHandle
         impl Copy
         impl Debug
         impl PartialEq
-        impl TrivialClone
 
 IconId
     struct IconId
@@ -1388,11 +1363,10 @@ IconId
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for IconId where T: Copy + Eq + Hash + Debug + 'static
 
 IconSet
     struct IconSet
@@ -1406,7 +1380,7 @@ IconSet
 IconTable
     struct IconTable
         // and private fields
-        pub const fn baked(icons: &'static [IconDef], svg: &'static [u8]) -> Self
+        pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self
         pub fn from_svgs<'a, N: Into<Cow<'static, str>>>(sources: impl IntoIterator<Item = (N, &'a str)>) -> Result<Self, IconTableError>
         impl Debug
 
@@ -1450,7 +1424,6 @@ ImageDataError
         impl Eq
         impl Error
         impl PartialEq
-        impl TrivialClone
 
 ImageDownsample
     enum ImageDownsample
@@ -1463,7 +1436,6 @@ ImageDownsample
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 ImageFilter
     enum ImageFilter
@@ -1476,7 +1448,6 @@ ImageFilter
         impl Eq
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for ImageFilter
 
 ImageFit
@@ -1491,7 +1462,6 @@ ImageFit
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 ImageHandle
     struct ImageHandle
@@ -1512,7 +1482,6 @@ ImageLoadError
         impl Eq
         impl Error
         impl PartialEq
-        impl TrivialClone
 
 InnerResponse
     struct InnerResponse<'a, R>
@@ -1529,7 +1498,6 @@ InputDelta
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 InputEvent
     enum InputEvent
@@ -1546,7 +1514,6 @@ InputEvent
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 InputPolicy
     enum InputPolicy
@@ -1558,7 +1525,6 @@ InputPolicy
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 InternedStr
     struct InternedStr
@@ -1567,24 +1533,22 @@ InternedStr
         impl Clone
         impl Copy
         impl Debug
-        impl From<InternedStr>
-        impl TrivialClone
+        impl From<InternedStr> for TextInput<'_>
 
-Interp
-    enum Interp
+Interpolation
+    enum Interpolation
         Oklab
         Linear
         impl Clone
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
-        impl<'de> Deserialize<'de> for Interp
-        impl<T> DockTab for Interp where T: Copy + Eq + Hash + Debug + 'static
+        impl<'de> Deserialize<'de> for Interpolation
 
 Justify
     enum Justify
@@ -1597,11 +1561,10 @@ Justify
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Justify where T: Copy + Eq + Hash + Debug + 'static
 
 Key
     enum Key
@@ -1635,11 +1598,10 @@ Key
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Key where T: Copy + Eq + Hash + Debug + 'static
 
 KeyClass
     enum KeyClass
@@ -1655,11 +1617,10 @@ KeyClass
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for KeyClass where T: Copy + Eq + Hash + Debug + 'static
 
 KeyFilter
     struct KeyFilter
@@ -1690,11 +1651,10 @@ KeyFilter
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for KeyFilter where T: Copy + Eq + Hash + Debug + 'static
 
 KeyPress
     struct KeyPress
@@ -1708,7 +1668,6 @@ KeyPress
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 KeyText
     struct KeyText
@@ -1725,7 +1684,6 @@ KeyText
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 KeyboardWake
     struct KeyboardWake
@@ -1747,11 +1705,10 @@ KeyboardWake
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for KeyboardWake where T: Copy + Eq + Hash + Debug + 'static
 
 Layer
     enum Layer
@@ -1765,19 +1722,18 @@ Layer
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl Ord
         impl PartialEq
         impl PartialOrd
-        impl TrivialClone
-        impl<T> DockTab for Layer where T: Copy + Eq + Hash + Debug + 'static
 
 LayerScope
     struct LayerScope<'a>
         // and private fields
         pub const fn fixed_at(self, point: Vec2) -> Self
-        pub const fn anchored(self, anchor: Anchor) -> Self
+        pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn max_size(self, size: impl Into<Size>) -> Self
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
         impl<'a> Debug for LayerScope<'a>
@@ -1788,11 +1744,10 @@ LinearGeometry
         impl Clone
         impl Copy
         impl Debug
+        impl GradientGeometry  (blanket)
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for LinearGeometry
-        impl<T> GradientGeometry for LinearGeometry where T: Geometry
 
 LinearGradient
     type LinearGradient = Gradient<LinearGeometry>
@@ -1809,8 +1764,8 @@ MenuItem
         pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
         pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for MenuItem<'a>
-        impl<T> ThemeDefaults for MenuItem<'a> where T: Configure
 
 MenuItemTheme
     struct MenuItemTheme
@@ -1833,8 +1788,8 @@ MenuSeparator
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for MenuSeparator<'a>
-        impl<T> ThemeDefaults for MenuSeparator<'a> where T: Configure
 
 Modal
     struct Modal<'a>
@@ -1843,11 +1798,11 @@ Modal
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
         pub const fn backdrop(self, c: RgbaF32) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Modal<'a>
-        impl<T> ThemeDefaults for Modal<'a> where T: Configure
 
 ModalTheme
     struct ModalTheme
@@ -1879,26 +1834,24 @@ Modifiers
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
-        impl From<Modifiers>
+        impl From<Modifiers> for ShortcutMods
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Modifiers where T: Copy + Eq + Hash + Debug + 'static
 
-NodeIdx
-    struct NodeIdx
+NodeIndex
+    struct NodeIndex
         (_)
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
-        impl<'de> Deserialize<'de> for NodeIdx
-        impl<T> DockTab for NodeIdx where T: Copy + Eq + Hash + Debug + 'static
+        impl<'de> Deserialize<'de> for NodeIndex
 
 OffscreenHost
     struct OffscreenHost
@@ -1937,7 +1890,6 @@ Okhsv
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 OkhsvSlice
     struct OkhsvSlice
@@ -1946,7 +1898,6 @@ OkhsvSlice
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 OverlayResponse
     struct OverlayResponse<R>
@@ -1967,10 +1918,10 @@ Palette
         pub text: RgbaF32
         pub text_muted: RgbaF32
         pub text_disabled: RgbaF32
-        pub window_bg: RgbaF32
-        pub elem: RgbaF32
-        pub elem_mid: RgbaF32
-        pub elem_strong: RgbaF32
+        pub window_background: RgbaF32
+        pub element: RgbaF32
+        pub element_mid: RgbaF32
+        pub element_strong: RgbaF32
         pub border_focused: RgbaF32
         pub accent: RgbaF32
         pub const DEFAULT: Self
@@ -1996,11 +1947,11 @@ Panel
         pub fn wrap_vstack() -> Self
         pub fn zstack() -> Self
         pub fn canvas() -> Self
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
         impl Debug
-        impl<T> ThemeDefaults for Panel where T: Configure
+        impl ThemeDefaults  (blanket)
 
 PipelineStats
     struct PipelineStats
@@ -2015,7 +1966,6 @@ PipelineStats
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 Platform
     enum Platform
@@ -2025,11 +1975,10 @@ Platform
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Platform where T: Copy + Eq + Hash + Debug + 'static
 
 PointerAction
     struct PointerAction
@@ -2041,7 +1990,6 @@ PointerAction
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 PointerButton
     enum PointerButton
@@ -2051,11 +1999,10 @@ PointerButton
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for PointerButton where T: Copy + Eq + Hash + Debug + 'static
 
 PointerEdge
     enum PointerEdge
@@ -2068,7 +2015,6 @@ PointerEdge
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 PointerEvent
     enum PointerEvent
@@ -2082,7 +2028,6 @@ PointerEvent
         impl Copy
         impl Debug
         impl PartialEq
-        impl TrivialClone
 
 PointerWake
     struct PointerWake
@@ -2106,11 +2051,10 @@ PointerWake
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for PointerWake where T: Copy + Eq + Hash + Debug + 'static
 
 Popup
     struct Popup
@@ -2123,27 +2067,27 @@ Popup
         pub fn at_point(point: Vec2) -> Self
         pub const fn layer(self, layer: Layer) -> Self
         pub const fn click_outside(self, m: ClickOutside) -> Self
-        pub const fn anchored(self, anchor: Anchor) -> Self
+        pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
         impl Debug
-        impl<T> ThemeDefaults for Popup where T: Configure
+        impl ThemeDefaults  (blanket)
 
 PopupTrigger
     struct PopupTrigger
         // and private fields
         pub fn on(snapshot: &ResponseSnapshot) -> Self
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
         pub fn open(ui: &mut Ui, for_id: WidgetId)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
         impl Configure
         impl Debug
-        impl<T> ThemeDefaults for PopupTrigger where T: Configure
+        impl ThemeDefaults  (blanket)
 
 PowerPreference
     enum PowerPreference
@@ -2156,7 +2100,6 @@ PowerPreference
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 ProgressBar
     struct ProgressBar<'a>
@@ -2165,8 +2108,8 @@ ProgressBar
         pub fn style(self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for ProgressBar<'a>
-        impl<T> ThemeDefaults for ProgressBar<'a> where T: Configure
 
 ProgressBarTheme
     struct ProgressBarTheme
@@ -2187,11 +2130,10 @@ RadialGeometry
         impl Clone
         impl Copy
         impl Debug
+        impl GradientGeometry  (blanket)
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for RadialGeometry
-        impl<T> GradientGeometry for RadialGeometry where T: Geometry
 
 RadialGradient
     type RadialGradient = Gradient<RadialGeometry>
@@ -2206,9 +2148,9 @@ RadioButton
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        impl ThemeDefaults  (blanket)
         impl<'a, T: Debug + PartialEq> Debug for RadioButton<'a, T>
         impl<T: PartialEq> Configure for RadioButton<'_, T>
-        impl<T> ThemeDefaults for RadioButton<'a, T> where T: Configure
 
 RealtimeClock
     struct RealtimeClock
@@ -2247,7 +2189,6 @@ Rect
         impl Hash
         impl PartialEq
         impl Pod
-        impl TrivialClone
         impl Zeroable
 
 RenderTarget
@@ -2257,7 +2198,6 @@ RenderTarget
         impl<'a> Clone for RenderTarget<'a>
         impl<'a> Copy for RenderTarget<'a>
         impl<'a> Debug for RenderTarget<'a>
-        impl<'a> TrivialClone for RenderTarget<'a>
 
 RequestedGpu
     struct RequestedGpu
@@ -2270,7 +2210,7 @@ Response
     struct Response<'a>
         pub id: WidgetId
         // and private fields
-        pub fn eager(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self
+        pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self
         pub fn snapshot(&self) -> ResponseSnapshot
         impl Debug
         impl Deref
@@ -2283,7 +2223,6 @@ ResponseSnapshot
         impl Copy
         impl Debug
         impl Deref
-        impl TrivialClone
 
 ResponseState
     struct ResponseState
@@ -2309,7 +2248,6 @@ ResponseState
         impl Copy
         impl Debug
         impl Default
-        impl TrivialClone
 
 RgbaF32
     struct RgbaF32
@@ -2334,14 +2272,14 @@ RgbaF32
         impl Copy
         impl Debug
         impl Default
-        impl From<RgbaF32>
+        impl From<RgbaF32> for Brush
+        impl From<RgbaF32> for SrgbaU8
         impl From<SrgbaU8>
         impl FromStr
         impl Hash
         impl PartialEq
         impl Pod
         impl Serialize
-        impl TrivialClone
         impl Zeroable
         impl<'de> Deserialize<'de> for RgbaF32
 
@@ -2359,13 +2297,13 @@ Scroll
         pub const fn hide_bars(self) -> Self
         pub fn content_margin(self, m: impl Into<Spacing>) -> Self
         pub fn zoomable(self) -> Self
-        pub fn zoom_config(self, cfg: ZoomConfig) -> Self
+        pub fn zoom_config(self, config: ZoomConfig) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Scroll<'a>
-        impl<T> ThemeDefaults for Scroll<'a> where T: Configure
 
 ScrollDelta
     struct ScrollDelta
@@ -2378,7 +2316,6 @@ ScrollDelta
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 ScrollbarTheme
     struct ScrollbarTheme
@@ -2422,11 +2359,10 @@ Sense
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Sense where T: Copy + Eq + Hash + Debug + 'static
 
 Separator
     struct Separator<'a>
@@ -2438,8 +2374,8 @@ Separator
         pub const fn color(self, c: RgbaF32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Separator<'a>
-        impl<T> ThemeDefaults for Separator<'a> where T: Configure
 
 SeparatorTheme
     struct SeparatorTheme
@@ -2473,7 +2409,6 @@ Shadow
         impl Default
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for Shadow
 
 Shortcut
@@ -2484,16 +2419,15 @@ Shortcut
         pub const fn key(key: Key) -> Self
         pub const fn ctrl(c: char) -> Self
         pub const fn ctrl_shift(c: char) -> Self
-        pub fn matches(self, kp: KeyPress) -> bool
+        pub fn matches(self, press: KeyPress) -> bool
         impl Clone
         impl Copy
         impl Debug
         impl Display
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for Shortcut where T: Copy + Eq + Hash + Debug + 'static
 
 ShortcutMods
     struct ShortcutMods
@@ -2511,12 +2445,11 @@ ShortcutMods
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl From<Modifiers>
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for ShortcutMods where T: Copy + Eq + Hash + Debug + 'static
 
 Size
     struct Size
@@ -2534,14 +2467,15 @@ Size
         impl Copy
         impl Debug
         impl Default
-        impl From<Size>
+        impl From<Size> for SizeSpec
+        impl From<Size> for Vec2
         impl Hash
         impl PartialEq
         impl Pod
         impl Serialize
-        impl TrivialClone
         impl Zeroable
         impl<'de> Deserialize<'de> for Size
+        impl<T: Num> From<T> for Size
         impl<W: Num, H: Num> From<(W, H)> for Size
 
 SizeSpec
@@ -2558,7 +2492,7 @@ SizeSpec
         impl From<Sizing>
         impl Hash
         impl PartialEq
-        impl TrivialClone
+        impl<T: Num> From<T> for SizeSpec
         impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for SizeSpec
 
 Sizing
@@ -2577,10 +2511,11 @@ Sizing
         impl Copy
         impl Debug
         impl Default
-        impl From<Sizing>
+        impl From<Sizing> for SizeSpec
+        impl From<Sizing> for Track
         impl Hash
         impl PartialEq
-        impl TrivialClone
+        impl<T: Num> From<T> for Sizing
 
 Slider
     struct Slider<'a>
@@ -2591,8 +2526,8 @@ Slider
         pub fn style(self, s: impl Into<Option<&'a SliderTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Slider<'a>
-        impl<T> ThemeDefaults for Slider<'a> where T: Configure
 
 SliderTheme
     struct SliderTheme
@@ -2612,12 +2547,11 @@ SlotDefaults
     struct SlotDefaults
         pub padding: Spacing
         pub margin: Spacing
-        pub anim: Option<AnimSpec>
+        pub animation: Option<AnimationSpec>
         impl Clone
         impl Copy
         impl Debug
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for SlotDefaults
 
 Spacing
@@ -2637,16 +2571,16 @@ Spacing
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Pod
         impl Serialize
-        impl TrivialClone
         impl Zeroable
         impl<'de> Deserialize<'de> for Spacing
         impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing
-        impl<T> DockTab for Spacing where T: Copy + Eq + Hash + Debug + 'static
+        impl<T: Num> From<T> for Spacing
         impl<X: Num, Y: Num> From<(X, Y)> for Spacing
 
 Spinner
@@ -2659,8 +2593,8 @@ Spinner
         pub const fn thickness(self, px: f32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Spinner<'a>
-        impl<T> ThemeDefaults for Spinner<'a> where T: Configure
 
 SpinnerTheme
     struct SpinnerTheme
@@ -2677,8 +2611,8 @@ SpinnerTheme
         impl Serialize
         impl<'de> Deserialize<'de> for SpinnerTheme
 
-SplitDir
-    enum SplitDir
+SplitDirection
+    enum SplitDirection
         Row
         Column
         impl Clone
@@ -2687,8 +2621,7 @@ SplitDir
         impl Eq
         impl PartialEq
         impl Serialize
-        impl TrivialClone
-        impl<'de> Deserialize<'de> for SplitDir
+        impl<'de> Deserialize<'de> for SplitDirection
 
 SplitHalf
     enum SplitHalf
@@ -2699,7 +2632,6 @@ SplitHalf
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 SplitSide
     enum SplitSide
@@ -2707,14 +2639,13 @@ SplitSide
         Right
         Top
         Bottom
-        pub const fn dir(self) -> SplitDir
+        pub const fn direction(self) -> SplitDirection
         impl Clone
         impl Copy
         impl Debug
         impl Eq
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for SplitSide
 
 Splitter
@@ -2726,8 +2657,8 @@ Splitter
         pub fn style(self, s: impl Into<Option<&'a SplitterTheme>>) -> Self
         pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Splitter<'a>
-        impl<T> ThemeDefaults for Splitter<'a> where T: Configure
 
 SplitterTheme
     struct SplitterTheme
@@ -2752,13 +2683,12 @@ Spread
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for Spread
-        impl<T> DockTab for Spread where T: Copy + Eq + Hash + Debug + 'static
 
 SrgbaU8
     struct SrgbaU8
@@ -2774,15 +2704,15 @@ SrgbaU8
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl From<RgbaF32>
-        impl From<SrgbaU8>
+        impl From<SrgbaU8> for Brush
+        impl From<SrgbaU8> for RgbaF32
         impl Hash
         impl PartialEq
         impl Pod
-        impl TrivialClone
         impl Zeroable
-        impl<T> DockTab for SrgbaU8 where T: Copy + Eq + Hash + Debug + 'static
 
 StatefulLook
     struct StatefulLook
@@ -2811,7 +2741,6 @@ Stop
         impl Eq
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for Stop
 
 Stroke
@@ -2828,7 +2757,6 @@ Stroke
         impl Default
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for Stroke
 
 SurfaceError  [feature: winit]
@@ -2852,8 +2780,8 @@ Switch
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Switch<'a>
-        impl<T> ThemeDefaults for Switch<'a> where T: Configure
 
 TabAddress
     struct TabAddress
@@ -2864,7 +2792,6 @@ TabAddress
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 TabBadge
     enum TabBadge
@@ -2879,14 +2806,14 @@ TabBadge
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 TabGroup
     struct TabGroup<T>
         pub id: TabGroupId
         pub tabs: Vec<T>
         pub active: usize
-        pub fn active_tab(&self) -> T
+        impl<T: Copy> TabGroup<T>
+            pub fn active_tab(&self) -> T
         impl<'de, T> Deserialize<'de> for TabGroup<T> where T: Deserialize<'de>
         impl<T: Clone> Clone for TabGroup<T>
         impl<T: Debug> Debug for TabGroup<T>
@@ -2899,13 +2826,12 @@ TabGroupId
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for TabGroupId
-        impl<T> DockTab for TabGroupId where T: Copy + Eq + Hash + Debug + 'static
 
 TabItem
     struct TabItem
@@ -2919,7 +2845,6 @@ TabItem
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 TabOverflow
     enum TabOverflow
@@ -2931,7 +2856,6 @@ TabOverflow
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 TabStrip
     struct TabStrip<'a>
@@ -2945,8 +2869,8 @@ TabStrip
         pub fn close_id(strip: WidgetId, key: u64) -> WidgetId
         pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for TabStrip<'a>
-        impl<T> ThemeDefaults for TabStrip<'a> where T: Configure
 
 TabStripResponse
     struct TabStripResponse<'a>
@@ -2963,17 +2887,20 @@ TabStripResponse
 TabbedView
     struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64>
         // and private fields
-        pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
-        pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
-        pub fn keyed<H: Hash>(self, key: impl Fn(&S) -> H) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> u64>
-        pub const fn closable(self, closable: bool) -> Self
-        pub const fn reorderable(self, reorderable: bool) -> Self
-        pub const fn overflow(self, overflow: TabOverflow) -> Self
-        pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_>
+        impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str>
+            pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
+        impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L>
+            pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
+            pub fn keyed<H: Hash>(self, key: impl Fn(&S) -> H) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> u64>
+        impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K>
+            pub const fn closable(self, closable: bool) -> Self
+            pub const fn reorderable(self, reorderable: bool) -> Self
+            pub const fn overflow(self, overflow: TabOverflow) -> Self
+            pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
+            pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_>
+        impl ThemeDefaults  (blanket)
         impl<'a, S: Debug, L: Debug, K: Debug> Debug for TabbedView<'a, S, L, K>
         impl<S, L, K> Configure for TabbedView<'_, S, L, K>
-        impl<T> ThemeDefaults for TabbedView<'a, S, L, K> where T: Configure
 
 TabbedViewResponse
     struct TabbedViewResponse<'a>
@@ -2991,7 +2918,6 @@ TabsAction
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 TabsTheme
     struct TabsTheme
@@ -3003,9 +2929,9 @@ TabsTheme
         pub strip: Background
         pub strip_padding: Spacing
         pub gap: f32
-        pub hline: RgbaF32
-        pub hline_thickness: f32
-        pub corner: f32
+        pub rule: RgbaF32
+        pub rule_thickness: f32
+        pub radius: f32
         pub chip_padding: Spacing
         pub trailing_inset: f32
         pub min_width: f32
@@ -3032,11 +2958,10 @@ TargetFormat
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for TargetFormat where T: Copy + Eq + Hash + Debug + 'static
 
 Text
     struct Text<'a>
@@ -3045,7 +2970,7 @@ Text
         pub fn style(self, s: impl Into<Option<&'a TextStyle>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn font_size(self, px: f32) -> Self
-        pub const fn line_height_mult(self, mult: f32) -> Self
+        pub const fn line_height_factor(self, factor: f32) -> Self
         pub const fn family(self, family: FontFamily) -> Self
         pub const fn weight(self, weight: FontWeight) -> Self
         pub const fn slant(self, slant: FontSlant) -> Self
@@ -3055,8 +2980,8 @@ Text
         pub const fn text_align(self, a: Align) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Text<'a>
-        impl<T> ThemeDefaults for Text<'a> where T: Configure
 
 TextEdit
     struct TextEdit<'a>
@@ -3065,7 +2990,7 @@ TextEdit
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn font_size(self, px: f32) -> Self
-        pub const fn line_height_mult(self, mult: f32) -> Self
+        pub const fn line_height_factor(self, factor: f32) -> Self
         pub const fn family(self, family: FontFamily) -> Self
         pub const fn weight(self, weight: FontWeight) -> Self
         pub const fn slant(self, slant: FontSlant) -> Self
@@ -3079,8 +3004,8 @@ TextEdit
         pub fn placeholder(self, text: impl Into<TextInput<'a>>) -> Self
         pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_>
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for TextEdit<'a>
-        impl<T> ThemeDefaults for TextEdit<'a> where T: Configure
 
 TextEditResponse
     struct TextEditResponse<'a>
@@ -3138,7 +3063,7 @@ TextStyle
     struct TextStyle
         pub font_size: f32
         pub color: RgbaF32
-        pub line_height_mult: f32
+        pub line_height_factor: f32
         pub family: FontFamily
         pub weight: FontWeight
         pub slant: FontSlant
@@ -3146,7 +3071,7 @@ TextStyle
         pub fn line_height_for(&self, font_size: f32) -> f32
         pub const fn with_font_size(self, px: f32) -> Self
         pub const fn with_color(self, c: RgbaF32) -> Self
-        pub const fn with_line_height_mult(self, mult: f32) -> Self
+        pub const fn with_line_height_factor(self, factor: f32) -> Self
         pub const fn with_family(self, family: FontFamily) -> Self
         pub const fn with_weight(self, weight: FontWeight) -> Self
         pub const fn with_slant(self, slant: FontSlant) -> Self
@@ -3159,14 +3084,13 @@ TextStyle
         impl Default
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for TextStyle
 
 TextStyleOverrides
     struct TextStyleOverrides
         pub color: Option<RgbaF32>
         pub font_size: Option<f32>
-        pub line_height_mult: Option<f32>
+        pub line_height_factor: Option<f32>
         pub family: Option<FontFamily>
         pub weight: Option<FontWeight>
         pub slant: Option<FontSlant>
@@ -3174,7 +3098,7 @@ TextStyleOverrides
         pub fn apply(self, base: &TextStyle) -> TextStyle
         pub const fn with_font_size(self, px: f32) -> Self
         pub const fn with_color(self, c: RgbaF32) -> Self
-        pub const fn with_line_height_mult(self, mult: f32) -> Self
+        pub const fn with_line_height_factor(self, factor: f32) -> Self
         pub const fn with_family(self, family: FontFamily) -> Self
         pub const fn with_weight(self, weight: FontWeight) -> Self
         pub const fn with_slant(self, slant: FontSlant) -> Self
@@ -3184,7 +3108,6 @@ TextStyleOverrides
         impl Default
         impl PartialEq
         impl Serialize
-        impl TrivialClone
         impl<'de> Deserialize<'de> for TextStyleOverrides
 
 TextWrap
@@ -3199,11 +3122,10 @@ TextWrap
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for TextWrap where T: Copy + Eq + Hash + Debug + 'static
 
 Theme
     struct Theme
@@ -3245,8 +3167,8 @@ ToggleTheme
         pub checked: StatefulLook
         pub indicator: RgbaF32
         pub box_size: f32
-        pub indicator_stroke: f32
-        pub check_pts: [Vec2; 3]
+        pub indicator_width: f32
+        pub check_points: [Vec2; 3]
         pub indicator_inset: f32
         pub gap: f32
         pub track_aspect: f32
@@ -3268,11 +3190,11 @@ Tooltip
         pub const fn delay(self, delay: Duration) -> Self
         pub const fn when_disabled(self, yes: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> TooltipResponse
-        pub const fn background(self, bg: Background) -> Self
-        pub const fn default_background(self, bg: Background) -> Self
+        pub const fn background(self, background: Background) -> Self
+        pub const fn default_background(self, background: Background) -> Self
         impl Configure
+        impl ThemeDefaults  (blanket)
         impl<'a> Debug for Tooltip<'a>
-        impl<T> ThemeDefaults for Tooltip<'a> where T: Configure
 
 TooltipResponse
     struct TooltipResponse
@@ -3280,7 +3202,6 @@ TooltipResponse
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 TooltipTheme
     struct TooltipTheme
@@ -3314,7 +3235,6 @@ Track
         impl From<Sizing>
         impl Hash
         impl PartialEq
-        impl TrivialClone
 
 TranslateScale
     struct TranslateScale
@@ -3336,7 +3256,6 @@ TranslateScale
         impl Debug
         impl Default
         impl PartialEq
-        impl TrivialClone
 
 UVec2
     pub use glam::UVec2 as UVec2
@@ -3348,10 +3267,10 @@ Ui
         pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>)
         pub const fn watch_pointer(&mut self, flags: PointerWake)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
-        pub fn watch_key(&mut self, sc: Shortcut)
+        pub fn watch_key(&mut self, shortcut: Shortcut)
         pub fn pointer_events(&self) -> &[PointerEvent]
         pub fn keyboard_events(&self) -> &[KeyPress]
-        pub fn key_pressed(&mut self, sc: Shortcut) -> bool
+        pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool
         pub fn request_relayout(&mut self)
         pub const fn now(&self) -> Duration
         pub const fn set_cursor(&mut self, cursor: CursorIcon)
@@ -3369,7 +3288,7 @@ Ui
         pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig)
         pub fn is_window_open(&self, token: WindowToken) -> bool
         pub fn add_shape<S: Lower>(&mut self, shape: S)
-        pub fn load_icons(&self, table: Rc<IconTable>) -> IconSet
+        pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
         pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
         pub fn has_font(&self, family: FontFamily) -> bool
@@ -3379,7 +3298,7 @@ Ui
         pub fn fmt(&mut self, args: Arguments<'_>) -> InternedStr
         pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr
         pub fn text(&self, text: InternedStr) -> &str
-        pub fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim)
+        pub fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation)
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
         pub fn release_input_scope(&mut self, id: WidgetId)
         pub fn response_for(&self, id: WidgetId) -> ResponseState
@@ -3387,7 +3306,7 @@ Ui
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
         pub fn state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S>
-        pub fn animate<V: Animatable>(&mut self, id: WidgetId, slot: impl Into<AnimSlot>, target: V, spec: impl Into<Option<AnimSpec>>) -> V
+        pub fn animate<V: Animatable>(&mut self, id: WidgetId, slot: impl Into<AnimationSlot>, target: V, spec: impl Into<Option<AnimationSpec>>) -> V
         pub const fn focus(&self) -> Option<WidgetId>
         pub fn is_focus_within(&self, ancestor: WidgetId) -> bool
         pub fn is_hover_within(&self, ancestor: WidgetId) -> bool
@@ -3396,7 +3315,7 @@ Ui
         pub fn set_user_scale(&mut self, scale: UserScale)
         pub const fn frame_id(&self) -> u64
         pub const fn render_frame_id(&self) -> u64
-        pub fn probe_text<'a>(self: &'a mut Self, run: TextRun<'a>) -> TextProbe<'a>
+        pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a>
         pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_
         pub const fn set_focus(&mut self, id: WidgetId)
         pub const fn clear_focus(&mut self)
@@ -3442,7 +3361,6 @@ UserScale
         impl Default
         impl PartialEq
         impl PartialOrd
-        impl TrivialClone
 
 VAlign
     enum VAlign
@@ -3457,7 +3375,6 @@ VAlign
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 ValueResponse
     struct ValueResponse<'a>
@@ -3480,13 +3397,12 @@ Visibility
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl Ord
         impl PartialEq
         impl PartialOrd
-        impl TrivialClone
-        impl<T> DockTab for Visibility where T: Copy + Eq + Hash + Debug + 'static
 
 Vsync
     enum Vsync
@@ -3498,7 +3414,6 @@ Vsync
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 WidgetId
     struct WidgetId
@@ -3510,13 +3425,12 @@ WidgetId
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
         impl Pod
-        impl TrivialClone
         impl Zeroable
-        impl<T> DockTab for WidgetId where T: Copy + Eq + Hash + Debug + 'static
 
 WidgetLook
     struct WidgetLook
@@ -3558,7 +3472,6 @@ WindowGeometry
         impl Copy
         impl Debug
         impl Default
-        impl TrivialClone
 
 WindowPlacement
     struct WindowPlacement
@@ -3570,7 +3483,6 @@ WindowPlacement
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 WindowToken
     struct WindowToken
@@ -3578,31 +3490,32 @@ WindowToken
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for WindowToken where T: Copy + Eq + Hash + Debug + 'static
 
 WinitHost  [feature: winit]
     struct WinitHost<T: 'static>
         // and private fields
-        pub fn builder(first_token: WindowToken) -> WinitHostBuilder<T>
-        pub fn handle(&self) -> HostHandle<T>
-        pub fn run(self) -> Result<(), WinitHostError>
+        impl<T> WinitHost<T> where T: App + 'static
+            pub fn builder(first_token: WindowToken) -> WinitHostBuilder<T>
+            pub fn handle(&self) -> HostHandle<T>
+            pub fn run(self) -> Result<(), WinitHostError>
         impl<T: 'static> Debug for WinitHost<T>
 
 WinitHostBuilder  [feature: winit]
     struct WinitHostBuilder<T>
         // and private fields
-        pub fn window(self, window: WindowConfig) -> Self
-        pub fn title(self, title: impl Into<String>) -> Self
-        pub const fn fonts(self, scope: FontScope) -> Self
-        pub const fn vsync(self, vsync: Vsync) -> Self
-        pub const fn power_preference(self, pref: PowerPreference) -> Self
-        pub const fn collect_gpu_stats(self, collect: bool) -> Self
-        pub const fn pixel_snap(self, pixel_snap: bool) -> Self
-        pub fn build(self, create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> Result<WinitHost<T>, WinitHostError>
+        impl<T> WinitHostBuilder<T> where T: App + 'static
+            pub fn window(self, window: WindowConfig) -> Self
+            pub fn title(self, title: impl Into<String>) -> Self
+            pub const fn fonts(self, scope: FontScope) -> Self
+            pub const fn vsync(self, vsync: Vsync) -> Self
+            pub const fn power_preference(self, preference: PowerPreference) -> Self
+            pub const fn collect_gpu_stats(self, collect: bool) -> Self
+            pub const fn pixel_snap(self, pixel_snap: bool) -> Self
+            pub fn build(self, create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> Result<WinitHost<T>, WinitHostError>
         impl<T: Debug> Debug for WinitHostBuilder<T>
 
 WinitHostError  [feature: winit]
@@ -3640,7 +3553,6 @@ ZoomFactor
         impl Default
         impl PartialEq
         impl PartialOrd
-        impl TrivialClone
 
 ZoomModifier
     enum ZoomModifier
@@ -3652,7 +3564,6 @@ ZoomModifier
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 ZoomPivot
     enum ZoomPivot
@@ -3663,7 +3574,6 @@ ZoomPivot
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 fmt
     macro fmt!
@@ -3704,7 +3614,6 @@ golden::Tolerance  [feature: golden]
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 golden::image  [feature: golden]
     pub use image as image
@@ -3714,20 +3623,6 @@ wgpu
 
 widget
     mod
-
-widget::AnimSlot
-    struct AnimSlot
-        // and private fields
-        pub const fn new(name: &'static str) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl From<&'static str>
-        impl Hash
-        impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for AnimSlot where T: Copy + Eq + Hash + Debug + 'static
 
 widget::Animatable
     trait Animatable: Clone + PartialEq + 'static
@@ -3740,6 +3635,19 @@ widget::Animatable
         fn zero() -> Self
         fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) { .. }
 
+widget::AnimationSlot
+    struct AnimationSlot
+        // and private fields
+        pub const fn new(name: &'static str) -> Self
+        impl Clone
+        impl Copy
+        impl Debug
+        impl DockTab  (blanket)
+        impl Eq
+        impl From<&'static str>
+        impl Hash
+        impl PartialEq
+
 widget::Caret
     struct Caret
         pub x: f32
@@ -3749,7 +3657,6 @@ widget::Caret
         impl Copy
         impl Debug
         impl PartialEq
-        impl TrivialClone
 
 widget::ConfigureWidget
     struct ConfigureWidget<'a>
@@ -3802,7 +3709,6 @@ widget::ContentType
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 widget::CurveShape
     struct CurveShape
@@ -3811,7 +3717,7 @@ widget::CurveShape
         pub const fn cap(self, cap: LineCap) -> Self
         impl Clone
         impl Debug
-        impl<T> Lower for CurveShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::GlyphFont
     struct GlyphFont
@@ -3825,7 +3731,6 @@ widget::GlyphFont
         impl Copy
         impl Debug
         impl PartialEq
-        impl TrivialClone
 
 widget::GlyphRasterKey
     struct GlyphRasterKey
@@ -3833,11 +3738,10 @@ widget::GlyphRasterKey
         impl Clone
         impl Copy
         impl Debug
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for GlyphRasterKey where T: Copy + Eq + Hash + Debug + 'static
 
 widget::IconFit
     enum IconFit
@@ -3850,7 +3754,6 @@ widget::IconFit
         impl Default
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 widget::IconShape
     struct IconShape
@@ -3862,8 +3765,7 @@ widget::IconShape
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
-        impl<T> Lower for IconShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::ImageShape
     struct ImageShape
@@ -3876,7 +3778,7 @@ widget::ImageShape
         pub const fn tint(self, tint: RgbaF32) -> Self
         impl Clone
         impl Debug
-        impl<T> Lower for ImageShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::LineCap
     enum LineCap
@@ -3887,11 +3789,10 @@ widget::LineCap
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for LineCap where T: Copy + Eq + Hash + Debug + 'static
 
 widget::LineJoin
     enum LineJoin
@@ -3902,11 +3803,10 @@ widget::LineJoin
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
         impl Eq
         impl Hash
         impl PartialEq
-        impl TrivialClone
-        impl<T> DockTab for LineJoin where T: Copy + Eq + Hash + Debug + 'static
 
 widget::LookPlan
     struct LookPlan
@@ -3916,6 +3816,7 @@ widget::LookPlan
 
 widget::Lower
     trait Lower: LowerShape
+        impl<T: LowerShape> Lower for T
 
 widget::Mesh
     struct Mesh
@@ -3940,9 +3841,9 @@ widget::MeshShape
         // and private fields
         pub const fn at(self, rect: Rect) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
+        impl Lower  (blanket)
         impl<'a> Clone for MeshShape<'a>
         impl<'a> Debug for MeshShape<'a>
-        impl<T> Lower for MeshShape<'a> where T: LowerShape
 
 widget::MeshVertex
     struct MeshVertex
@@ -3955,11 +3856,10 @@ widget::MeshVertex
         impl Default
         impl PartialEq
         impl Pod
-        impl TrivialClone
         impl Zeroable
 
-widget::PaintAnim
-    struct PaintAnim
+widget::PaintAnimation
+    struct PaintAnimation
         pub channel: PaintChannel
         pub timing: PaintTiming
         pub curve: PaintCurve
@@ -3975,7 +3875,6 @@ widget::PaintAnim
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 widget::PaintChannel
     struct PaintChannel
@@ -3985,7 +3884,6 @@ widget::PaintChannel
         impl Copy
         impl Debug
         impl PartialEq
-        impl TrivialClone
 
 widget::PaintCurve
     type PaintCurve = fn(f32) -> f32
@@ -4000,7 +3898,6 @@ widget::PaintRepeat
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 widget::PaintSteps
     enum PaintSteps
@@ -4011,7 +3908,6 @@ widget::PaintSteps
         impl Debug
         impl Eq
         impl PartialEq
-        impl TrivialClone
 
 widget::PaintTiming
     struct PaintTiming
@@ -4023,7 +3919,6 @@ widget::PaintTiming
         impl Copy
         impl Debug
         impl PartialEq
-        impl TrivialClone
 
 widget::PlacedGlyph
     struct PlacedGlyph
@@ -4033,7 +3928,6 @@ widget::PlacedGlyph
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 widget::PolylineShape
     struct PolylineShape<'a>
@@ -4042,9 +3936,9 @@ widget::PolylineShape
         pub const fn per_segment(self, colors: &'a [RgbaF32]) -> Self
         pub const fn cap(self, cap: LineCap) -> Self
         pub const fn join(self, join: LineJoin) -> Self
+        impl Lower  (blanket)
         impl<'a> Clone for PolylineShape<'a>
         impl<'a> Debug for PolylineShape<'a>
-        impl<T> Lower for PolylineShape<'a> where T: LowerShape
 
 widget::RasterImage
     struct RasterImage<'a>
@@ -4055,7 +3949,6 @@ widget::RasterImage
         impl<'a> Clone for RasterImage<'a>
         impl<'a> Copy for RasterImage<'a>
         impl<'a> Debug for RasterImage<'a>
-        impl<'a> TrivialClone for RasterImage<'a>
 
 widget::RectShape
     struct RectShape
@@ -4065,7 +3958,7 @@ widget::RectShape
         pub fn corners(self, corners: impl Into<Corners>) -> Self
         impl Clone
         impl Debug
-        impl<T> Lower for RectShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::ShadowShape
     struct ShadowShape
@@ -4074,7 +3967,7 @@ widget::ShadowShape
         pub fn corners(self, corners: impl Into<Corners>) -> Self
         impl Clone
         impl Debug
-        impl<T> Lower for ShadowShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::Shape
     struct Shape
@@ -4097,7 +3990,6 @@ widget::Shape
         impl Clone
         impl Copy
         impl Debug
-        impl TrivialClone
 
 widget::Span
     struct Span
@@ -4110,10 +4002,10 @@ widget::Span
         impl Eq
         impl From<Range<u32>>
         impl From<Range<usize>>
-        impl From<Span>
+        impl From<Span> for Range<u32>
+        impl From<Span> for Range<usize>
         impl PartialEq
         impl Pod
-        impl TrivialClone
         impl Zeroable
 
 widget::TextGlyphs
@@ -4145,7 +4037,6 @@ widget::TextRun
         impl<'a> Clone for TextRun<'a>
         impl<'a> Copy for TextRun<'a>
         impl<'a> Debug for TextRun<'a>
-        impl<'a> TrivialClone for TextRun<'a>
 
 widget::TextShape
     struct TextShape
@@ -4159,7 +4050,7 @@ widget::TextShape
         pub const fn slant(self, slant: FontSlant) -> Self
         impl Clone
         impl Debug
-        impl<T> Lower for TextShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::ThemeDefaults
     trait ThemeDefaults: Configure
@@ -4172,13 +4063,14 @@ widget::ThemeDefaults
         fn default_min_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_max_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_clip(self, mode: ClipMode) -> Self { .. }
+        impl<T: Configure> ThemeDefaults for T
 
 widget::ThemeSlot
     trait ThemeSlot
         type Pick: Copy
-        fn look(&self, response: &ResponseState, pick: <Self as >::Pick) -> &WidgetLook
+        fn look(&self, response: &ResponseState, pick: Self::Pick) -> &WidgetLook
         fn defaults(&self) -> SlotDefaults
-        fn plan(&self, response: &ResponseState, pick: <Self as >::Pick, text: TextStyle) -> LookPlan { .. }
+        fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
 
 widget::TriangleShape
     struct TriangleShape
@@ -4188,7 +4080,7 @@ widget::TriangleShape
         pub const fn radius(self, radius: f32) -> Self
         impl Clone
         impl Debug
-        impl<T> Lower for TriangleShape where T: LowerShape
+        impl Lower  (blanket)
 
 widget::Widget
     struct Widget
@@ -4228,7 +4120,7 @@ widget::Widget
         pub fn grid_tracks(&mut self, ui: &mut Ui, rows: &[Track], cols: &[Track])
         impl Configure
         impl Debug
-        impl<T> ThemeDefaults for Widget where T: Configure
+        impl ThemeDefaults  (blanket)
 
 widget::curves
     mod

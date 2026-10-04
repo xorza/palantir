@@ -30,8 +30,8 @@
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;
 
-use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
-use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::device::gpu_frame_context::GpuFrameContext;
+use crate::gpu::device::gpu_init_context::GpuInitContext;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.
@@ -54,7 +54,7 @@ pub trait GpuPaint: 'static {
     /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) keeps its
     /// off-screen texture — and neither does a resize, since the resolved
     /// color target is framework-owned. Recreate your own depth / MSAA
-    /// attachments inside [`Self::paint`] when [`GpuFrameCtx::physical_size`]
+    /// attachments inside [`Self::paint`] when [`GpuFrameContext::physical_size`]
     /// changes.
     ///
     /// It runs again only after the view is genuinely gone and comes back:
@@ -62,12 +62,12 @@ pub trait GpuPaint: 'static {
     /// other per-widget cache), or its window closed. A renderer that outlives
     /// its widget — one parked in app state across a page switch — is handed
     /// a fresh target when it returns and is initialized into it.
-    fn init(&mut self, ctx: &GpuInitCtx<'_>) {
-        let _ = ctx;
+    fn init(&mut self, context: &GpuInitContext<'_>) {
+        let _ = context;
     }
 
     /// Render into the off-screen target. Open your own render pass(es) on
-    /// `ctx.encoder` against `ctx.target`; they ride palantir's main submit
+    /// `context.encoder` against `context.target`; they ride palantir's main submit
     /// and the result is composited into the UI at the widget's rect.
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>);
+    fn paint(&mut self, context: &mut GpuFrameContext<'_>);
 }

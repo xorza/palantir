@@ -374,18 +374,18 @@ fn wheel_zoom_step_is_font_independent() {
 #[test]
 fn line_wheel_step_scales_with_theme_font_size() {
     // Pin: a `ScrollLines(0, 1)` event lands one laid-out line of pan —
-    // `font_size * line_height_mult` on the shaper's 1/64-px grid — not
+    // `font_size * line_height_factor` on the shaper's 1/64-px grid — not
     // the legacy 40 px constant. 16 × 1.2 = 19.2 is 1228.8 64ths, which
     // rounds to 1229: 19.203125. 24 × 1.5 = 36 is on the grid.
     let cases: &[(&str, f32, f32, f32)] = &[
         ("default_16px_text", 16.0, 1.2, 1229.0 / 64.0),
         ("larger_24px_text", 24.0, 1.5, 36.0),
     ];
-    for (label, font_size, line_height_mult, expected_px) in cases {
+    for (label, font_size, line_height_factor, expected_px) in cases {
         let mut h = UiHarness::new(SURFACE);
         let text = &mut h.ui.theme_mut().text;
         text.font_size = *font_size;
-        text.line_height_mult = *line_height_mult;
+        text.line_height_factor = *line_height_factor;
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
         h.frame(build_v);
         h.scroll_lines_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 1.0));

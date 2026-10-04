@@ -7,14 +7,14 @@ use serde::{Deserialize, Serialize};
 /// Minted by [`DockState`](crate::DockState) from a counter it keeps, so
 /// two states built by the same sequence of calls carry the same ids and
 /// compare equal. Unlike a node index it survives the re-pack every
-/// structural op ends with.
+/// structural operation ends with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TabGroupId(pub(crate) u64);
 
 /// One pane's tab strip: the open tabs plus which one is visible.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TabGroup<T> {
-    /// Stable identity, which survives the re-pack every structural op
+    /// Stable identity, which survives the re-pack every structural operation
     /// ends with.
     pub id: TabGroupId,
     /// Non-empty; a group whose last tab closes collapses out of the

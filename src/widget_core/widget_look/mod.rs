@@ -20,7 +20,7 @@ pub(crate) mod look_plan;
 pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
 
-use crate::animation::anim_slot::AnimSlot;
+use crate::animation::animation_slot::AnimationSlot;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::ThemeText;
@@ -59,7 +59,7 @@ impl WidgetLook {
     /// Slot the resolved look reserves on the widget's id. One row
     /// per widget animates the whole look (background + text) — halves
     /// `Ui::animate` call traffic compared to per-component slots.
-    pub(crate) const SLOT_LOOK: AnimSlot = AnimSlot::new("look");
+    pub(crate) const SLOT_LOOK: AnimationSlot = AnimationSlot::new("look");
 
     /// Resolve the look into the target `Ui::animate` interpolates
     /// toward: `Background` (fill + stroke) animates, `TextStyle`

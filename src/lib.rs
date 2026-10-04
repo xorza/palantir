@@ -289,8 +289,8 @@ pub mod prelude {
 /// items with one canonical path each, and an application that draws its own
 /// geometry reaches for [`Shape`](widget::Shape) as readily as a widget does.
 pub mod widget {
-    pub use crate::animation::anim_slot::AnimSlot;
     pub use crate::animation::animatable::Animatable;
+    pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::common::span::Span;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     pub use crate::primitives::math::domain;
@@ -299,8 +299,8 @@ pub mod widget {
     /// The paint-time animation curves the crate ships. A caller's own curve
     /// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
     pub use crate::scene::tree::paint_anims::curves;
-    pub use crate::scene::tree::paint_anims::paint_anim::{
-        PaintAnim, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
+    pub use crate::scene::tree::paint_anims::paint_animation::{
+        PaintAnimation, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
     };
     /// The bound on [`Ui::add_shape`](crate::Ui::add_shape) — sealed, so it
     /// names the shape kinds the crate ships and nothing else.
@@ -330,7 +330,7 @@ pub mod widget {
     pub use palantir_anim_derive::Animatable;
 }
 
-pub use animation::anim_spec::AnimSpec;
+pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
 pub use app::App;
 pub use common::clipboard::{Clipboard, ClipboardUnavailable};
@@ -412,7 +412,7 @@ pub use primitives::paint::brush::gradient::radial_geometry::{
     RadialGeometry, RadialGradient, RadialGradientBuilder,
 };
 pub use primitives::paint::brush::gradient::stops::{GradientStops, Stop};
-pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
+pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interpolation, Spread};
 pub use primitives::paint::color::RgbaF32;
 pub use primitives::paint::color::color_coords::ColorCoords;
 pub use primitives::paint::color::color_model::{ColorModel, HueSlice};
@@ -439,11 +439,11 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
-pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
-pub use gpu::device::gpu_init_ctx::GpuInitCtx;
+pub use gpu::device::gpu_frame_context::GpuFrameContext;
+pub use gpu::device::gpu_init_context::GpuInitContext;
 pub use icons::error::IconTableError;
 pub use icons::icon_set::{IconHandle, IconSet};
-pub use icons::icon_table::{IconDef, IconId, IconTable};
+pub use icons::icon_table::{IconDefinition, IconId, IconTable};
 pub use primitives::geometry::translate_scale::TranslateScale;
 pub use primitives::identity::widget_id::WidgetId;
 pub use primitives::paint::stroke::Stroke;
@@ -483,15 +483,15 @@ pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;
 pub use widgets::dock::allowed_splits::AllowedSplits;
-pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
-pub use widgets::dock::dock_op::{DockDrop, DockOp};
+pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIndex};
+pub use widgets::dock::dock_operation::{DockDrop, DockOperation};
 pub use widgets::dock::dock_path::DockPath;
 pub use widgets::dock::dock_state::{DockState, TabAddress};
 pub use widgets::dock::dock_tab::DockTab;
 pub use widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 pub use widgets::dock::dock_view::DockView;
 pub use widgets::dock::error::DockError;
-pub use widgets::dock::split_side::{SplitDir, SplitSide};
+pub use widgets::dock::split_side::{SplitDirection, SplitSide};
 pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
 pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;

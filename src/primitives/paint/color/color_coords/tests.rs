@@ -53,11 +53,11 @@ fn setters_clamp() {
     coords.set_hue(1.0);
     assert_eq!(coords.hue(), 1.0);
     coords.set_hue(1.25);
-    coords.set_sat(2.0);
-    coords.set_val(-1.0);
+    coords.set_saturation(2.0);
+    coords.set_value(-1.0);
     assert_eq!(coords.hue(), 1.0);
-    assert_eq!(coords.sat(), 1.0);
-    assert_eq!(coords.val(), 0.0);
+    assert_eq!(coords.saturation(), 1.0);
+    assert_eq!(coords.value(), 0.0);
     assert_eq!(
         coords.to_color().to_srgba_u8(),
         ColorCoords::default().to_color().to_srgba_u8(),
@@ -66,9 +66,12 @@ fn setters_clamp() {
 
     // A non-finite axis is no value, so each setter reads it as 0.
     coords.set_hue(f32::NAN);
-    coords.set_sat(f32::INFINITY);
-    coords.set_val(f32::NAN);
-    assert_eq!((coords.hue(), coords.sat(), coords.val()), (0.0, 0.0, 0.0));
+    coords.set_saturation(f32::INFINITY);
+    coords.set_value(f32::NAN);
+    assert_eq!(
+        (coords.hue(), coords.saturation(), coords.value()),
+        (0.0, 0.0, 0.0)
+    );
 }
 
 /// Both models read raw axes the same way when they convert: the hue as a
@@ -93,7 +96,7 @@ fn raw_axes_coerce_on_conversion() {
             assert!(domain::is_color(got), "{model:?}: {got:?}");
             let read = axes(model, h, s, v);
             assert_eq!(
-                (read.hue(), read.sat(), read.val()),
+                (read.hue(), read.saturation(), read.value()),
                 (ch, cs, cv),
                 "{model:?} ({h}, {s}, {v}): the getters read the painted axes",
             );
@@ -132,8 +135,8 @@ fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
                     let back = ColorCoords::new(model, axes(model, h, s, v).to_color(), h);
                     worst = worst
                         .max(hue_gap(back.hue(), h))
-                        .max((back.sat() - s).abs())
-                        .max((back.val() - v).abs());
+                        .max((back.saturation() - s).abs())
+                        .max((back.value() - v).abs());
                 }
             }
         }
@@ -148,7 +151,7 @@ fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
             let grey = ColorCoords::new(model, RgbaF32::srgb(level, level, level), 0.618);
             assert_eq!(grey.hue(), 0.618, "{model:?}: grey at {level}");
             assert_close(
-                grey.sat(),
+                grey.saturation(),
                 0.0,
                 1e-3,
                 "grey's saturation, to the model's f32 rounding",

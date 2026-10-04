@@ -358,8 +358,8 @@ fn button_unhover_damage_covers_only_the_button() {
 #[test]
 fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+    use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
     use std::f32::consts::TAU;
     use std::time::Duration;
 
@@ -378,7 +378,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
                                 &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
                                 Stroke::new(RED, 1.0),
                             ),
-                            PaintAnim::turn(0.0, 1.0)
+                            PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs_f32(TAU / 1.0))
                                 .with_repeat(PaintRepeat::Forever)

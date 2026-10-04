@@ -13,7 +13,7 @@ use crate::harness::Harness;
 ///
 /// No settle loop past the second frame: the reveal snaps on a first
 /// open, so the golden would capture the same pixels either way — but a
-/// fixture that later gives its theme an `AnimSpec` would need one.
+/// fixture that later gives its theme an `AnimationSpec` would need one.
 #[test]
 fn expander_open_and_closed_matches_golden() {
     fn scene(ui: &mut Ui) {

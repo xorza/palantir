@@ -208,7 +208,7 @@ impl Widget {
     /// resolution, [`Self::record`], the body closure — needs
     /// `&mut Ui`, and a `Response` holds `&Ui` for its lazy cache.
     /// Owned state is what lets the probe outlive all of it and become
-    /// the widget's [`Response::eager`] at the end.
+    /// the widget's [`Response::new`] at the end.
     pub fn response(&mut self, ui: &mut Ui) -> ResponseState {
         let id = self.resolve(ui);
         let mut state = ui.response_for(id);
@@ -252,7 +252,7 @@ impl Widget {
     /// A convenience over the opener, not a second way to open: a widget
     /// that acts on input needs the state *before* it records — to pick
     /// chrome, to apply a click to a bound value — so it opens with
-    /// [`Self::response`] and closes with [`Response::eager`], with the
+    /// [`Self::response`] and closes with [`Response::new`], with the
     /// probe in hand throughout — including `ToggleChrome::record_row`,
     /// which takes it once on behalf of the three toggles. There is
     /// deliberately no helper for it: the response comes off the widget

@@ -321,7 +321,7 @@ fn progress_bar_half_matches_golden() {
 fn toggle_switch_states_matches_golden() {
     let mut h = Harness::new();
     let mut style = ToggleTheme::switch(&FIXTURE_PALETTE);
-    style.defaults.anim = None; // sit at the rest position, no first-frame transient
+    style.defaults.animation = None; // sit at the rest position, no first-frame transient
     let img = h
         .size(UVec2::new(220, 110))
         .frame(|ui| {

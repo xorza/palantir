@@ -490,10 +490,10 @@ fn nesting_alone_changes_cascade_static() {
 /// each read as a change, and the same animation twice reads the same.
 #[test]
 fn a_paint_animation_moves_the_node_hash() {
-    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
     use std::time::Duration;
 
-    fn build(ui: &mut Ui, anim: Option<PaintAnim>) -> NodeId {
+    fn build(ui: &mut Ui, anim: Option<PaintAnimation>) -> NodeId {
         Panel::canvas()
             .id(WidgetId::from_hash("spinner"))
             .show(ui, |ui| {
@@ -510,12 +510,12 @@ fn a_paint_animation_moves_the_node_hash() {
             .response
             .node()
     }
-    let turn = PaintAnim::turn(0.0, 1.0).with_period(Duration::from_secs(2));
+    let turn = PaintAnimation::turn(0.0, 1.0).with_period(Duration::from_secs(2));
     let still = record(|ui| build(ui, None)).node;
     let spun = record(|ui| build(ui, Some(turn))).node;
     let spun_again = record(|ui| build(ui, Some(turn))).node;
     let faster = record(|ui| build(ui, Some(turn.with_period(Duration::from_secs(1))))).node;
-    let fading = record(|ui| build(ui, Some(PaintAnim::alpha(1.0, 0.0)))).node;
+    let fading = record(|ui| build(ui, Some(PaintAnimation::alpha(1.0, 0.0)))).node;
     assert_ne!(still, spun, "adding an animation");
     assert_eq!(spun, spun_again, "the same animation");
     assert_ne!(spun, faster, "a different period");

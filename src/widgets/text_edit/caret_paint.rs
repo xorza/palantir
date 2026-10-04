@@ -1,7 +1,7 @@
 //! The caret as the painter draws it.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::text::probe::Caret;
 
 #[derive(Clone, Copy, Debug)]
@@ -9,5 +9,5 @@ pub(super) struct CaretPaint {
     pub(super) pos: Caret,
     pub(super) width: f32,
     pub(super) color: RgbaF32,
-    pub(super) anim: Option<PaintAnim>,
+    pub(super) anim: Option<PaintAnimation>,
 }

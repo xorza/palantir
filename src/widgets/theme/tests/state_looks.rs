@@ -179,7 +179,7 @@ fn animated_look_line_height_delegates_to_text_style() {
         text: TextStyle {
             font_size: 16.0,
             color: RgbaF32::TRANSPARENT,
-            line_height_mult: 1.5,
+            line_height_factor: 1.5,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,

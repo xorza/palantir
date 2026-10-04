@@ -71,7 +71,7 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     for &(anchor, gap, expected) in cases {
         let rect = placed(|ui| {
             ui.layer(Layer::Popup)
-                .anchored(Anchor::below(anchor).with_gap(gap))
+                .anchor(Anchor::below(anchor).with_gap(gap))
                 .show(body);
         });
         assert_eq!(rect.min, expected, "anchor {anchor:?} gap {gap}");
@@ -81,7 +81,7 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
 }
 
 /// `at` is the other origin form and it does not move. The same
-/// near-bottom point that made `anchored` flip leaves a fixed layer
+/// near-bottom point that made `anchor` flip leaves a fixed layer
 /// hanging off the surface, which is what makes the two distinct
 /// answers rather than one with a tolerance.
 #[test]

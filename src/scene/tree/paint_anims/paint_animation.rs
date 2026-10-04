@@ -118,15 +118,15 @@ pub struct PaintTiming {
 /// Hand one to [`Ui::add_shape_animated`](crate::Ui::add_shape_animated).
 ///
 /// ```
-/// # use palantir::widget::{PaintAnim, PaintRepeat, curves};
+/// # use palantir::widget::{PaintAnimation, PaintRepeat, curves};
 /// # use std::time::Duration;
 /// // Fade in over 240 ms and stay.
-/// let fade = PaintAnim::alpha(0.0, 1.0)
+/// let fade = PaintAnimation::alpha(0.0, 1.0)
 ///     .with_period(Duration::from_millis(240))
 ///     .with_curve(curves::linear);
 ///
 /// // Breathe, forever.
-/// let pulse = PaintAnim::alpha(0.4, 1.0)
+/// let pulse = PaintAnimation::alpha(0.4, 1.0)
 ///     .with_period(Duration::from_secs(2))
 ///     .with_repeat(PaintRepeat::Forever)
 ///     .with_curve(curves::sine);
@@ -137,7 +137,7 @@ pub struct PaintTiming {
 /// nothing. Compare [`Self::channel`] and [`Self::timing`] instead.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
-pub struct PaintAnim {
+pub struct PaintAnimation {
     /// What the animation drives, and over what range.
     pub channel: PaintChannel,
     /// When it runs, and how finely.
@@ -146,7 +146,7 @@ pub struct PaintAnim {
     pub curve: PaintCurve,
 }
 
-impl PaintAnim {
+impl PaintAnimation {
     /// Feed what this animation paints into `h`: the channel, the timing
     /// and the curve — everything the sampled modifier at a given time
     /// depends on.

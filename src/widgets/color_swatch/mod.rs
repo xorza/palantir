@@ -67,7 +67,7 @@ impl<'a> ColorSwatch<'a> {
         let color = self.color;
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, color, size));
-        Response::eager(id, ui, response)
+        Response::new(id, ui, response)
     }
 }
 

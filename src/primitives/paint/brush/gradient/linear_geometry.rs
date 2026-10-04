@@ -5,7 +5,7 @@ use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use std::hash;
 
@@ -26,7 +26,7 @@ pub type LinearGradient = Gradient<LinearGeometry>;
 pub type LinearGradientBuilder = GradientBuilder<LinearGeometry>;
 
 impl Geometry for LinearGeometry {
-    const DEFAULT_INTERP: Interp = Interp::Oklab;
+    const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
 
     /// `dir = (cos(angle), sin(angle))`; the shader projects each
     /// fragment's 0..1 object-local position onto `dir`, then maps the

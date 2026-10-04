@@ -71,26 +71,26 @@ impl PopupTrigger {
         }
     }
 
-    /// Paint `bg` as the popup's background. See [`Popup::background`].
+    /// Paint `background` as the popup's background. See [`Popup::background`].
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.popup = self.popup.background(bg);
+    pub const fn background(mut self, background: Background) -> Self {
+        self.popup = self.popup.background(background);
         self
     }
 
-    /// Paint `bg` as the popup's background unless the caller set one. See
+    /// Paint `background` as the popup's background unless the caller set one. See
     /// [`Popup::default_background`].
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
-    pub const fn default_background(mut self, bg: Background) -> Self {
-        self.popup = self.popup.default_background(bg);
+    pub const fn default_background(mut self, background: Background) -> Self {
+        self.popup = self.popup.default_background(background);
         self
     }
 
@@ -118,7 +118,7 @@ impl PopupTrigger {
         if open && let Some(rect) = self.trigger.rect {
             resp = self
                 .popup
-                .anchored(Anchor::below(rect))
+                .anchor(Anchor::below(rect))
                 .show(ui, |ui, handle| Some(body(ui, handle)));
             if resp.closed() {
                 open = false;

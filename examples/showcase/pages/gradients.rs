@@ -7,7 +7,7 @@
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
 use palantir::{
-    Background, Block, Brush, Configure, ConicGradient, Corners, Interp, LinearGradient,
+    Background, Block, Brush, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
     RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui, Vec2,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
@@ -59,7 +59,7 @@ pub(crate) fn build(ui: &mut Ui) {
             tiles(ui, |ui| {
                 demo_cell(ui, "Spread::Reflect — rings mirror out", reflect);
                 demo_cell(ui, "Spread::Repeat — rings", repeat);
-                demo_cell(ui, "Interp::Oklab — perceptual midpoint", oklab);
+                demo_cell(ui, "Interpolation::Oklab — perceptual midpoint", oklab);
             });
         },
     );
@@ -202,6 +202,6 @@ fn repeat(ui: &mut Ui) {
 /// Red to green in Oklab — no muddy grey through the middle the way a
 /// straight linear-RGB blend gives.
 fn oklab(ui: &mut Ui) {
-    let g = LinearGradient::two_stop(0.0, RED, GREEN).with_interp(Interp::Oklab);
+    let g = LinearGradient::two_stop(0.0, RED, GREEN).with_interpolation(Interpolation::Oklab);
     gradient_frame(ui, filled(Brush::Linear(g)));
 }

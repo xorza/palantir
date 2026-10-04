@@ -143,7 +143,7 @@ impl ToggleChrome {
             }
         });
 
-        Response::eager(id, ui, response)
+        Response::new(id, ui, response)
     }
 }
 

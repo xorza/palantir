@@ -5,8 +5,8 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
@@ -156,7 +156,7 @@ impl ViewState {
     /// The new scroll offset is read straight off [`Self::scroll`]: the
     /// caller holds this `ViewState`, so handing a copy back would be a
     /// second answer to a question it can already ask.
-    pub(super) fn update(&mut self, input: ViewUpdateInput) -> Option<PaintAnim> {
+    pub(super) fn update(&mut self, input: ViewUpdateInput) -> Option<PaintAnimation> {
         self.update_scroll(input);
         if input.focused && (input.caret_moved || input.changed || input.gained_focus) {
             self.last_caret_change = input.now;
@@ -167,7 +167,7 @@ impl ViewState {
         // recording, so this line would stop running long before the
         // cutoff arrived.
         input.focused.then_some(
-            PaintAnim::alpha(0.0, 1.0)
+            PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(self.last_caret_change)
                 .with_period(BLINK_HALF * 2)
                 .with_steps(2)

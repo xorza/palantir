@@ -155,7 +155,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             arrow.record(ui, None, |ui| {
                 let pts = geom.chevron_pts();
                 ui.add_shape(
-                    Shape::polyline(&pts, Stroke::new(arrow_color, geom.arrow_stroke))
+                    Shape::polyline(&pts, Stroke::new(arrow_color, geom.arrow_width))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
@@ -195,7 +195,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let changed = resp.inner.unwrap_or(false);
 
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed: changed,
         }

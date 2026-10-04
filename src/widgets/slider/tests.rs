@@ -35,7 +35,7 @@ fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passe
 /// The release frame re-writes the value, so a caller that re-seeds its
 /// draft from a canonical copy every frame and adopts it only on
 /// `committed` still observes the gesture's result. A release is neither
-/// `pressed()` nor `dragging()`, so without naming it the deferred
+/// `pressed()` nor `is_live()`, so without naming it the deferred
 /// caller would read its own seed back on the one frame it acts on.
 ///
 /// Geometry: 118 wide, knob 18, so travel is 100 px starting at x = 9 —

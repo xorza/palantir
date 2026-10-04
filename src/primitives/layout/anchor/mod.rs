@@ -70,7 +70,7 @@ impl AnchorAlign {
 
 /// Where a side layer lands next to the thing it belongs to.
 ///
-/// Hand one to [`LayerScope::anchored`](crate::LayerScope::anchored). The
+/// Hand one to [`LayerScope::anchor`](crate::LayerScope::anchor). The
 /// origin resolves *after* measure, from the body's own size against the
 /// surface: the body takes the side you asked for when it fits there,
 /// flips to the opposite side when it does not, and shifts back inside

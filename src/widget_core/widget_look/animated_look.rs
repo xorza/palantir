@@ -10,7 +10,7 @@ use palantir_anim_derive::Animatable;
 /// directly; both fields are already-animated.
 ///
 /// `text.color` is the animated color; `text.font_size` and
-/// `text.line_height_mult` are snap-carried from the picked
+/// `text.line_height_factor` are snap-carried from the picked
 /// `WidgetLook`'s overrides folded onto the ambient style — see
 /// `TextStyle`'s `#[animate(snap)]` markings.
 // **Not `Copy`** because `Background` isn't.

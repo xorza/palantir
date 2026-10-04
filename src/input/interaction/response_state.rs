@@ -263,7 +263,7 @@ impl ResponseState {
     /// a drag reaches an axis end.
     #[inline]
     pub fn press_fraction(&self, band: f32) -> Option<Vec2> {
-        let in_gesture = self.pressed() || self.left.drag.dragging() || self.left.released();
+        let in_gesture = self.pressed() || self.left.drag.is_live() || self.left.released();
         if self.disabled || !in_gesture {
             return None;
         }

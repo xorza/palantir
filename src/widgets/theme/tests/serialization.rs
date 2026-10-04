@@ -47,7 +47,7 @@ fn widget_look_serde_roundtrip() {
                 slant: Some(FontSlant::Italic),
                 ..TextStyleOverrides::NONE
                     .with_font_size(13.0)
-                    .with_line_height_mult(1.5)
+                    .with_line_height_factor(1.5)
             },
         },
     ];
@@ -79,23 +79,27 @@ fn text_overrides_reject_invalid_metrics_on_load() {
         ("zero size", "(font_size: Some(0.0))", false),
         ("NaN size", "(font_size: Some(NaN))", false),
         ("sub-epsilon size", "(font_size: Some(0.00005))", false),
-        ("leading", "(line_height_mult: Some(0.5))", true),
+        ("leading", "(line_height_factor: Some(0.5))", true),
         (
             "tiny leading alone",
-            "(line_height_mult: Some(0.000001))",
+            "(line_height_factor: Some(0.000001))",
             true,
         ),
-        ("zero leading", "(line_height_mult: Some(0.0))", false),
-        ("negative leading", "(line_height_mult: Some(-1.0))", false),
-        ("infinite leading", "(line_height_mult: Some(inf))", false),
+        ("zero leading", "(line_height_factor: Some(0.0))", false),
+        (
+            "negative leading",
+            "(line_height_factor: Some(-1.0))",
+            false,
+        ),
+        ("infinite leading", "(line_height_factor: Some(inf))", false),
         (
             "sub-epsilon face",
-            "(font_size: Some(16.0), line_height_mult: Some(0.000001))",
+            "(font_size: Some(16.0), line_height_factor: Some(0.000001))",
             false,
         ),
         (
             "valid face",
-            "(font_size: Some(16.0), line_height_mult: Some(1.5))",
+            "(font_size: Some(16.0), line_height_factor: Some(1.5))",
             true,
         ),
     ] {

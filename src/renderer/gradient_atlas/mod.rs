@@ -29,10 +29,10 @@
 //! before the 256-texel loop, so the inner loop never runs the transfer
 //! function.
 //!
-//! - [`Interp::Linear`](crate::primitives::paint::brush::gradient::Interp::Linear):
+//! - [`Interpolation::Linear`](crate::primitives::paint::brush::gradient::Interpolation::Linear):
 //!   physically correct linear blend. Shows the classic midpoint dip on
 //!   saturated complementary pairs (red↔green muddy brown).
-//! - [`Interp::Oklab`](crate::primitives::paint::brush::gradient::Interp::Oklab):
+//! - [`Interpolation::Oklab`](crate::primitives::paint::brush::gradient::Interpolation::Oklab):
 //!   pre-converts each stop's linear RGB to Oklab `L/a/b` triplets once at bake
 //!   time; the texel loop lerps the triplet and runs only `oklab::to_linear` per
 //!   texel. Perceptually uniform; the CSS Color 4 default.
@@ -271,8 +271,8 @@ impl CpuGradientAtlas {
     }
 
     /// Find-or-bake the row for the gradient identified by `(stops,
-    /// interp)`. Variant-agnostic: linear/radial/conic gradients with
-    /// matching stops + interp share one row (the geometry differs in
+    /// interpolation)`. Variant-agnostic: linear/radial/conic gradients with
+    /// matching stops + interpolation share one row (the geometry differs in
     /// per-fragment `t`, but the LUT only depends on the colour-stop
     /// sequence). Returns the row id in `1..capacity`.
     ///

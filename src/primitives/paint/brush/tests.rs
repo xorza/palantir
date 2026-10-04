@@ -6,7 +6,7 @@ use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
-use crate::primitives::paint::brush::gradient::{Gradient, Interp, Spread};
+use crate::primitives::paint::brush::gradient::{Gradient, Interpolation, Spread};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
@@ -191,14 +191,18 @@ fn two_stop_gradients_take_their_kind_defaults() {
     fn check<G: Clone + fmt::Debug + PartialEq>(
         kind: &str,
         two_stop: impl Fn(RgbaF32, RgbaF32) -> Gradient<G>,
-        interp: Interp,
+        interpolation: Interpolation,
     ) where
         Brush: From<Gradient<G>>,
     {
         let g = two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
         let offsets = [g.ramp.stops[0].offset(), g.ramp.stops[1].offset()];
         assert_eq!((g.ramp.stops.len(), offsets), (2, [0.0, 1.0]), "{kind}");
-        assert_eq!((g.spread, g.ramp.interp), (Spread::Pad, interp), "{kind}");
+        assert_eq!(
+            (g.spread, g.ramp.interpolation),
+            (Spread::Pad, interpolation),
+            "{kind}"
+        );
         let brush = Brush::from(g.clone());
         assert!(!brush.is_noop(), "{kind}");
         assert_eq!(brush.as_solid(), None, "{kind}");
@@ -206,13 +210,16 @@ fn two_stop_gradients_take_their_kind_defaults() {
         let clear = two_stop(RgbaF32::TRANSPARENT, RgbaF32::WHITE.with_alpha(0.0));
         assert!(Brush::from(clear).is_noop(), "{kind}: all transparent");
 
-        let other = match interp {
-            Interp::Linear => Interp::Oklab,
-            Interp::Oklab => Interp::Linear,
+        let other = match interpolation {
+            Interpolation::Linear => Interpolation::Oklab,
+            Interpolation::Oklab => Interpolation::Linear,
         };
-        let overridden = g.clone().with_spread(Spread::Repeat).with_interp(other);
+        let overridden = g
+            .clone()
+            .with_spread(Spread::Repeat)
+            .with_interpolation(other);
         assert_eq!(
-            (overridden.spread, overridden.ramp.interp),
+            (overridden.spread, overridden.ramp.interpolation),
             (Spread::Repeat, other),
             "{kind}"
         );
@@ -222,10 +229,10 @@ fn two_stop_gradients_take_their_kind_defaults() {
     check(
         "linear",
         |a, b| LinearGradient::two_stop(0.0, a, b),
-        Interp::Oklab,
+        Interpolation::Oklab,
     );
-    check("radial", RadialGradient::two_stop, Interp::Oklab);
-    check("conic", ConicGradient::two_stop, Interp::Linear);
+    check("radial", RadialGradient::two_stop, Interpolation::Oklab);
+    check("conic", ConicGradient::two_stop, Interpolation::Linear);
 
     // A radial gradient defaults to the centred circle: centre and
     // radius 0.5, both exact in f16.
@@ -297,7 +304,7 @@ fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
         assert_eq!(decoded, document);
     }
 
-    let stops = r##""stops":[(offset:0.0,color:"#000000"),(offset:1.0,color:"#ffffff")],"interp":Oklab,"spread":Pad"##;
+    let stops = r##""stops":[(offset:0.0,color:"#000000"),(offset:1.0,color:"#ffffff")],"interpolation":Oklab,"spread":Pad"##;
     for (geometry, rule) in [
         (r#"Linear({"angle":inf,"#, domain::ANGLE_RULE),
         (
@@ -330,7 +337,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .stop(0.5, RgbaF32::hex(0x808080))
         .stop(2.0, RgbaF32::hex(0xffffff))
         .spread(Spread::Reflect)
-        .interp(Interp::Linear)
+        .interpolation(Interpolation::Linear)
         .build();
     assert_eq!(linear.geometry.angle, PI / 2.0);
     assert_eq!(linear.ramp.stops.len(), 3);
@@ -338,7 +345,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
     assert_eq!(linear.ramp.stops[1].offset(), 128.0 / 255.0);
     assert_eq!(linear.ramp.stops[2].offset(), 1.0);
     assert_eq!(linear.spread, Spread::Reflect);
-    assert_eq!(linear.ramp.interp, Interp::Linear);
+    assert_eq!(linear.ramp.interpolation, Interpolation::Linear);
 
     let center = Vec2::new(0.25, 0.75);
     let radius = Vec2::new(0.4, 0.6);
@@ -348,7 +355,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(radial.geometry.center, center);
     assert_eq!(radial.geometry.radius, radius);
-    assert_eq!(radial.ramp.interp, Interp::Oklab);
+    assert_eq!(radial.ramp.interpolation, Interpolation::Oklab);
 
     let conic = ConicGradient::builder(center, FRAC_PI_4)
         .stop(0.0, RgbaF32::BLACK)
@@ -356,7 +363,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(conic.geometry.center, center);
     assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
-    assert_eq!(conic.ramp.interp, Interp::Linear);
+    assert_eq!(conic.ramp.interpolation, Interpolation::Linear);
 }
 
 #[test]

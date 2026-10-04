@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use glam::UVec2;
-use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
+use palantir::{Configure, GpuFrameContext, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 
 use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
@@ -26,7 +26,7 @@ use crate::harness::Harness;
 struct RedClear;
 
 impl GpuPaint for RedClear {
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
         let _pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("visual.gpu_view.red_clear"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -114,7 +114,7 @@ fn fs() -> @location(0) vec4<f32> {
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
-    fn init(&mut self, ctx: &palantir::GpuInitCtx<'_>) {
+    fn init(&mut self, ctx: &palantir::GpuInitContext<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("visual.gpu_view.tri.shader"),
@@ -160,7 +160,7 @@ impl GpuPaint for DepthTriangle {
         );
     }
 
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
         self.last_size = ctx.physical_size;
         self.last_display_scale = ctx.display_scale;
         self.last_raster_scale = ctx.raster_scale;

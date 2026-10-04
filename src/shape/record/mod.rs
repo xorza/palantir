@@ -106,7 +106,7 @@ pub(crate) enum ShapeRecord {
         ///
         /// `line_height` is a resolved logical-px leading, fed straight
         /// to the shaper's `Metrics::new`. Authoring-side widgets set it to
-        /// `size * line_height_mult` where the multiplier defaults to
+        /// `size * line_height_factor` where the multiplier defaults to
         /// [`LINE_HEIGHT_MULT`](crate::widgets::theme::text_style::LINE_HEIGHT_MULT)
         /// (1.2). Carrying the resolved px — instead of a multiplier the
         /// shaper would re-resolve — keeps widget conventions out of the

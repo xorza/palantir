@@ -143,7 +143,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
             .color(axis_color)
             .weight(FontWeight::BOLD)
             .slant(FontSlant::Italic)
-            .line_height_mult(2.0)
+            .line_height_factor(2.0)
             .show(ui);
         Text::new("m")
             .id(over_bundle)
@@ -167,7 +167,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
 
     let face = face_of(&h, axes);
     assert_eq!(face.font.size, PER_AXIS);
-    // `line_height_mult(2.0)` is a multiple of the *overridden* size.
+    // `line_height_factor(2.0)` is a multiple of the *overridden* size.
     assert_eq!(face.font.line_height, PER_AXIS * 2.0);
     assert_eq!(face.font.weight, FontWeight::BOLD);
     assert_eq!(face.font.slant, FontSlant::Italic);

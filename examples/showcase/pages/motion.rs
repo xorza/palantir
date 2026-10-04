@@ -9,8 +9,8 @@
 
 use crate::support;
 use palantir::{
-    AnimSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense, Sizing,
-    Stroke, Text, Ui, Vec2, WidgetId,
+    AnimationSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense,
+    Sizing, Stroke, Text, Ui, Vec2, WidgetId,
 };
 use std::time::Duration;
 
@@ -38,7 +38,7 @@ fn easing(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("motion::bars");
     support::section(
         ui,
-        "easing — Ui::animate; every bar retargets at once, one AnimSpec each",
+        "easing — Ui::animate; every bar retargets at once, one AnimationSpec each",
         |ui| {
             if Button::new()
                 .id_salt("anim-go")
@@ -59,19 +59,19 @@ fn easing(ui: &mut Ui) {
                 (
                     "linear-200",
                     "linear 200 ms",
-                    AnimSpec::duration(Duration::from_millis(200), Easing::Linear),
+                    AnimationSpec::duration(Duration::from_millis(200), Easing::Linear),
                 ),
                 (
                     "out-cubic-200",
                     "out-cubic 200 ms",
-                    AnimSpec::duration(Duration::from_millis(200), Easing::OutCubic),
+                    AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
                 ),
                 (
                     "out-back-300",
                     "out-back 300 ms — overshoots",
-                    AnimSpec::duration(Duration::from_millis(300), Easing::OutBack),
+                    AnimationSpec::duration(Duration::from_millis(300), Easing::OutBack),
                 ),
-                ("spring-soft", "soft spring", AnimSpec::SPRING),
+                ("spring-soft", "soft spring", AnimationSpec::SPRING),
             ] {
                 bar(ui, key, label, spec, target);
             }
@@ -79,7 +79,13 @@ fn easing(ui: &mut Ui) {
     );
 }
 
-fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
+fn bar(
+    ui: &mut Ui,
+    key: &'static str,
+    label: &'static str,
+    spec: AnimationSpec,
+    target_width: f32,
+) {
     let id = WidgetId::from_hash(("motion::bar", key));
     let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()

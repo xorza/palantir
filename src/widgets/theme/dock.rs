@@ -26,7 +26,7 @@ pub struct DockTheme {
     pub preview_stroke: Stroke,
     /// Corner radius of the preview.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub preview_corner: f32,
+    pub preview_radius: f32,
     /// Breadth of the insertion mark drawn between two chips.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub caret_width: f32,
@@ -53,7 +53,7 @@ impl DockTheme {
             ghost,
             preview_fill: _,
             preview_stroke: _,
-            preview_corner: _,
+            preview_radius: _,
             caret_width: _,
             ghost_padding: _,
             ghost_offset: _,
@@ -67,10 +67,10 @@ impl DockTheme {
         Self {
             preview_fill: p.accent.with_alpha(0.18),
             preview_stroke: Stroke::new(p.accent, 1.5),
-            preview_corner: 2.0,
+            preview_radius: 2.0,
             caret_width: 3.0,
             ghost: WidgetLook {
-                background: Background::rounded(p.elem, Corners::all(4.0))
+                background: Background::rounded(p.element, Corners::all(4.0))
                     .with_border(Stroke::new(p.accent, 1.0)),
                 text: TextStyleOverrides::NONE,
             },

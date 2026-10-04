@@ -318,10 +318,10 @@ fn widget_setters_check_their_kinds() {
     // A line height is positive, as a theme file states it: zero leading
     // stacks every line on the first.
     let positive_cases: [fn(f32); 2] = [
-        |v| drop(Text::new("t").line_height_mult(v)),
+        |v| drop(Text::new("t").line_height_factor(v)),
         |v| {
             let mut buf = String::new();
-            drop(TextEdit::new(&mut buf).line_height_mult(v));
+            drop(TextEdit::new(&mut buf).line_height_factor(v));
         },
     ];
     for set in positive_cases {
@@ -377,8 +377,8 @@ fn widget_setters_check_their_kinds() {
         },
         || {
             let state = DockState::new("kinds.dock", 0_u32);
-            let mut ops = Vec::new();
-            drop(DockView::new(&state, &mut ops).min_pane(f32::NAN));
+            let mut operations = Vec::new();
+            drop(DockView::new(&state, &mut operations).min_pane(f32::NAN));
         },
         || drop(Scroll::both().content_margin(Spacing::new(0.0, -1.0, 0.0, 0.0))),
         || {

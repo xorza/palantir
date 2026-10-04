@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// How a split arranges its children: `Row` side by side (vertical
 /// divider), `Column` stacked (horizontal divider).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SplitDir {
+pub enum SplitDirection {
     /// Children side by side, divided by a vertical rule.
     Row,
     /// Children stacked, divided by a horizontal rule.
@@ -13,8 +13,8 @@ pub enum SplitDir {
 }
 
 /// Which edge of a pane a split lands on — the new pane takes that
-/// edge's half. `Left` / `Right` split into a [`SplitDir::Row`],
-/// `Top` / `Bottom` into a [`SplitDir::Column`].
+/// edge's half. `Left` / `Right` split into a [`SplitDirection::Row`],
+/// `Top` / `Bottom` into a [`SplitDirection::Column`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitSide {
     /// The new pane takes the left half.
@@ -29,10 +29,10 @@ pub enum SplitSide {
 
 impl SplitSide {
     /// The split this side implies.
-    pub const fn dir(self) -> SplitDir {
+    pub const fn direction(self) -> SplitDirection {
         match self {
-            SplitSide::Left | SplitSide::Right => SplitDir::Row,
-            SplitSide::Top | SplitSide::Bottom => SplitDir::Column,
+            SplitSide::Left | SplitSide::Right => SplitDirection::Row,
+            SplitSide::Top | SplitSide::Bottom => SplitDirection::Column,
         }
     }
 

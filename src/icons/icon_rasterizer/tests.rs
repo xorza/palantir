@@ -3,7 +3,7 @@ use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
-use crate::icons::icon_table::{IconDef, IconId, IconTable};
+use crate::icons::icon_table::{IconDefinition, IconId, IconTable};
 use crate::icons::internals::BROKEN;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
@@ -139,7 +139,7 @@ fn colour_icon_rasterizes_to_straight_srgb_rgba() {
 /// rasterizer still has to fail *once* rather than once per frame.
 #[test]
 fn unparseable_icon_fails_once_and_is_not_retried() {
-    static BROKEN_ICONS: [IconDef; 1] = [IconDef {
+    static BROKEN_ICONS: [IconDefinition; 1] = [IconDefinition {
         name: Cow::Borrowed("broken"),
         view_box: Vec2::splat(8.0),
         svg: Span::new(0, BROKEN.len() as u32),

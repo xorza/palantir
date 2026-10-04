@@ -23,7 +23,7 @@ impl Span {
     ///
     /// `const` and public because the baked icon format is a flat blob with
     /// spans beside it: a generated set writes those spans into a `const` that
-    /// this crate then reads — see [`IconDef::svg`](crate::IconDef::svg).
+    /// this crate then reads — see [`IconDefinition::svg`](crate::IconDefinition::svg).
     #[inline]
     pub const fn new(start: u32, len: u32) -> Self {
         Self { start, len }

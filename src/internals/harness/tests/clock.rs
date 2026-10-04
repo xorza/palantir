@@ -77,15 +77,15 @@ fn advance_frames_rejects_a_step_that_would_be_clamped() {
 
 #[test]
 fn frames_until_idle_counts_the_frames_a_motion_takes() {
-    use crate::animation::anim_slot::AnimSlot;
-    use crate::animation::anim_spec::AnimSpec;
+    use crate::animation::animation_slot::AnimationSlot;
+    use crate::animation::animation_spec::AnimationSpec;
     use crate::animation::easing::Easing;
 
     // A 50 ms linear tween from rest: the retarget frame spends nothing,
     // then 16, 32 and 48 ms are in flight and 64 ms passes the end, so
     // the fourth frame after it is idle.
-    let slot = AnimSlot::new("idle-count");
-    let tween = Some(AnimSpec::duration(
+    let slot = AnimationSlot::new("idle-count");
+    let tween = Some(AnimationSpec::duration(
         Duration::from_millis(50),
         Easing::Linear,
     ));

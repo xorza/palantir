@@ -38,7 +38,7 @@ fn the_hue_bar_writes_only_the_hue() {
     let id = WidgetId::from_hash("strip-hue-writes");
     let mut h = harness();
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
-    let (sat, val) = (coords.sat(), coords.val());
+    let (sat, val) = (coords.saturation(), coords.value());
     h.frame(|ui| {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
@@ -47,8 +47,8 @@ fn the_hue_bar_writes_only_the_hue() {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
     assert_eq!(coords.hue(), 0.75, "three quarters along the bar");
-    assert_eq!(coords.sat(), sat);
-    assert_eq!(coords.val(), val);
+    assert_eq!(coords.saturation(), sat);
+    assert_eq!(coords.value(), val);
     assert_eq!(coords.model(), ColorModel::Okhsv);
 }
 

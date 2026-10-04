@@ -1,5 +1,5 @@
 //! The curves the crate ships, as plain `fn`s a
-//! [`PaintAnim`](crate::widget::PaintAnim) can take.
+//! [`PaintAnimation`](crate::widget::PaintAnimation) can take.
 //!
 //! Each maps a phase in `[0, 1)` to a unit value in `[0, 1]`. A caller's
 //! own curve is any function with that shape — there is nothing to
@@ -17,7 +17,7 @@ pub const fn linear(t: f32) -> f32 {
 /// One for the first half of the period, zero for the second — the caret
 /// blink.
 ///
-/// Pair it with [`PaintAnim::with_steps(2)`](crate::widget::PaintAnim::with_steps): the
+/// Pair it with [`PaintAnimation::with_steps(2)`](crate::widget::PaintAnimation::with_steps): the
 /// value changes twice a period, so a frame in between buys an identical
 /// picture.
 #[inline]

@@ -70,7 +70,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
             "{mode:?}: scroll lines"
         );
         assert_eq!(bg.scroll.zoom.get() != 1.0, leaks, "{mode:?}: pinch zoom");
-        assert_eq!(bg.middle.drag.dragging(), leaks, "{mode:?}: middle drag");
+        assert_eq!(bg.middle.drag.is_live(), leaks, "{mode:?}: middle drag");
         h.release_button(PointerButton::Middle);
     }
 }

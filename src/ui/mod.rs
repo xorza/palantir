@@ -19,9 +19,9 @@ pub(crate) mod resources;
 pub(crate) mod state;
 
 use crate::animation::AnimMap;
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::app::App;
 use crate::cascade::Cascade;
 use crate::common::clipboard::Clipboard;
@@ -63,7 +63,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
@@ -326,8 +326,8 @@ impl Ui {
     /// `Shortcut::key(Key::Escape)`, `Shortcut::ctrl('K')`).
     /// Duplicate watchers collapse.
     #[inline]
-    pub fn watch_key(&mut self, sc: Shortcut) {
-        self.input.watch_key(sc);
+    pub fn watch_key(&mut self, shortcut: Shortcut) {
+        self.input.watch_key(shortcut);
     }
 
     /// Unified pointer event stream captured this frame. Empty when
@@ -357,7 +357,7 @@ impl Ui {
     }
 
     /// `true` if any press this frame matches
-    /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
+    /// `shortcut`. Iterates [`Self::keyboard_events`]; for repeat or
     /// stateful logic, iterate directly instead.
     ///
     /// Side-effect: auto-watches the chord for wake-up. Without
@@ -366,10 +366,11 @@ impl Ui {
     /// Pair with the call-it-every-frame discipline that the
     /// watch system already requires.
     #[inline]
-    pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
+    pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
         let layer = self.forest.current_layer();
         let parent = self.forest.current_parent_id();
-        self.input.key_pressed(layer, parent, &self.cascade, sc)
+        self.input
+            .key_pressed(layer, parent, &self.cascade, shortcut)
     }
 
     /// Re-record this frame after measure runs, for authoring code that
@@ -407,7 +408,7 @@ impl Ui {
     /// queue. Use for time-driven animation that needs a continuous
     /// clock rather than a tween toward a fixed target; pair with
     /// [`Self::request_repaint`] to keep the host awake. (Shape-level
-    /// continuous motion like `Spinner`'s rides `PaintAnim` instead —
+    /// continuous motion like `Spinner`'s rides `PaintAnimation` instead —
     /// sampled at encode time, no record-time clock read.)
     #[inline]
     pub const fn now(&self) -> Duration {
@@ -779,8 +780,8 @@ impl Ui {
     /// no point here at which it could fail. A malformed icon is reported
     /// when it is first drawn.
     #[inline]
-    pub fn load_icons(&self, table: Rc<IconTable>) -> IconSet {
-        self.resources.icons().register(table)
+    pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet {
+        self.resources.icons().register(table.into())
     }
 
     /// Load an image and get back an owning [`ImageHandle`]. **Hold
@@ -997,7 +998,7 @@ impl Ui {
     /// time.
     ///
     /// The recorded shape is byte-identical every frame — the encoder
-    /// samples `anim` one pass later and folds the result into the
+    /// samples `animation` one pass later and folds the result into the
     /// brush — so the widget never re-records and its layout cache entry
     /// survives. [`Self::animate`] plus [`Self::request_repaint`] paint
     /// the same pixels at the cost of a record pass per frame.
@@ -1010,21 +1011,21 @@ impl Ui {
     /// shape paintable.
     ///
     /// ```
-    /// # use palantir::widget::{PaintAnim, PaintRepeat, Shape, curves};
+    /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
     /// # use palantir::{Rect, RgbaF32, Ui};
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
     /// ui.add_shape_animated(
     ///     Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
-    ///     PaintAnim::alpha(0.4, 1.0)
+    ///     PaintAnimation::alpha(0.4, 1.0)
     ///         .with_period(Duration::from_secs(2))
     ///         .with_repeat(PaintRepeat::Forever)
     ///         .with_curve(curves::sine),
     /// );
     /// # }
     /// ```
-    pub fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
-        self.forest.add_shape_animated(shape, anim);
+    pub fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation) {
+        self.forest.add_shape_animated(shape, animation);
     }
 
     /// Open a side layer — an arena that paints above the `Main` tree,
@@ -1244,9 +1245,9 @@ impl Ui {
     /// Advance an animation row keyed by `(id, slot)` and return the
     /// current value.
     ///
-    /// `spec` takes an [`AnimSpec`] as readily as an `Option<AnimSpec>`, so
+    /// `spec` takes an [`AnimationSpec`] as readily as an `Option<AnimationSpec>`, so
     /// a themed slot's `Option` goes straight in and a call site that means
-    /// one motion names it. [`AnimSpec::SNAP`] and `None` are the same
+    /// one motion names it. [`AnimationSpec::SNAP`] and `None` are the same
     /// answer — land on `target` this frame, drop any stale row, and
     /// request no repaint.
     // Generic and reached through cross-module widget helpers. Keep the
@@ -1256,9 +1257,9 @@ impl Ui {
     pub fn animate<V: Animatable>(
         &mut self,
         id: WidgetId,
-        slot: impl Into<AnimSlot>,
+        slot: impl Into<AnimationSlot>,
         target: V,
-        spec: impl Into<Option<AnimSpec>>,
+        spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
         let r = self.anim.animate(
             id,
@@ -1778,7 +1779,7 @@ pub(crate) mod internals {
 
     impl Ui {
         /// The active theme, for in-place edits
-        /// (`ui.theme_mut().button.anim = …`).
+        /// (`ui.theme_mut().button.defaults.animation = …`).
         ///
         /// Gated, because in-place mutation is a fixture affordance
         /// rather than how an app dresses a `Ui`: build the [`Theme`]

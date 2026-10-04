@@ -106,7 +106,7 @@ impl<'a> Slider<'a> {
     ///
     /// A [`ValueResponse`] rather than a bare [`Response`] because the
     /// widget writes through the caller's number: they have no other way to
-    /// tell whether the value moved this frame. `left.drag.dragging()`
+    /// tell whether the value moved this frame. `left.drag.is_live()`
     /// does not answer it — a drag pinned at `min`/`max` keeps reporting
     /// while the value stays put. The same type
     /// [`DragValue`](crate::DragValue) returns, so the two value-editing
@@ -190,7 +190,7 @@ impl<'a> Slider<'a> {
                 .record(ui, Some(&track_bg), |_| {});
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }

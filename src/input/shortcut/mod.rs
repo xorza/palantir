@@ -165,7 +165,7 @@ impl Shortcut {
         Self::new(ShortcutMods::CTRL_SHIFT, Key::Char(c))
     }
 
-    /// True iff `kp` matches this shortcut. Modifier comparison is
+    /// True iff `press` matches this shortcut. Modifier comparison is
     /// exact (`ctrl+a` ≠ `ctrl+shift+a`); `Char` keys compare
     /// ignore-case to absorb shift-layout effects. The `repeat` flag is
     /// ignored. A held macOS Control rejects a shortcut with no command
@@ -179,17 +179,17 @@ impl Shortcut {
     /// ([`KeyPress::physical`]) so `Cmd/Ctrl+Z` fires on any layout. The
     /// non-ASCII gate leaves Dvorak / AZERTY untouched — their keys still
     /// produce ASCII letters, in their own intended positions.
-    pub fn matches(self, kp: KeyPress) -> bool {
-        if kp.mods.mac_ctrl && !self.mods.has_command() {
+    pub fn matches(self, press: KeyPress) -> bool {
+        if press.mods.mac_ctrl && !self.mods.has_command() {
             return false;
         }
-        if self.matches_key(kp.key, kp.mods) {
+        if self.matches_key(press.key, press.mods) {
             return true;
         }
         self.mods.has_command()
-            && kp
+            && press
                 .layout_retry()
-                .is_some_and(|physical| self.matches_key(physical, kp.mods))
+                .is_some_and(|physical| self.matches_key(physical, press.mods))
     }
 
     /// Logical-key match: exact modifiers + ignore-case `Char`, with **no**

@@ -156,7 +156,7 @@ impl OverlayScope {
         let owns_input = self.backdrop.owns_input();
         let scope = ui.layer(self.layer);
         let scope = match self.anchor {
-            Some(anchor) => scope.anchored(anchor),
+            Some(anchor) => scope.anchor(anchor),
             None => scope,
         };
         let (inner, escape) = scope.show(|ui| {

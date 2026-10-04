@@ -1,10 +1,10 @@
 //! The dock's persisted arrangement: a binary split tree whose leaves
-//! are tab groups, plus the six ops that mutate it.
+//! are tab groups, plus the six operations that mutate it.
 //!
 //! **Flat storage.** The tree lives in one `Vec<DockNode<T>>` with
-//! [`NodeIdx`] children — no per-node box. The vector is kept
+//! [`NodeIndex`] children — no per-node box. The vector is kept
 //! *canonical*: pre-order from the root at slot 0, with no dead slots,
-//! because every structural op ends by re-packing. That makes `Vec`
+//! because every structural operation ends by re-packing. That makes `Vec`
 //! equality structural equality — which is what lets an undo layer diff
 //! two snapshots for a no-op — and makes group iteration a plain vector
 //! scan in left-to-right pane order.
@@ -25,8 +25,8 @@ use serde::{Deserialize, Serialize};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
-use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
-use crate::widgets::dock::dock_op::{DockDrop, DockOp};
+use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIndex};
+use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::error::DockError;
@@ -55,12 +55,12 @@ pub struct TabAddress {
 }
 
 /// The whole pane arrangement — the flat split tree, which group holds
-/// focus, and the policy the ops enforce.
+/// focus, and the policy the operations enforce.
 ///
 /// The application owns one of these per tab domain and persists it. The
 /// widget never mutates it: [`DockView`](crate::DockView) reads it and
-/// emits [`DockOp`]s, and [`Self::apply`] is the one place a mutation
-/// happens. That is what lets an application route dock ops through the
+/// emits [`DockOperation`]s, and [`Self::apply`] is the one place a mutation
+/// happens. That is what lets an application route dock operations through the
 /// same queue as its own edits and keep them out of undo.
 ///
 /// A layout read back from a file is untrusted, so deserializing checks
@@ -68,11 +68,11 @@ pub struct TabAddress {
 /// A `DockState` that exists is a valid one.
 ///
 /// ```
-/// # use palantir::{DockOp, DockState};
+/// # use palantir::{DockOperation, DockState};
 /// # #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// # enum Tab { Main, Console }
 /// let mut dock = DockState::new("app.dock", Tab::Main);
-/// dock.apply(DockOp::OpenTab { tab: Tab::Console });
+/// dock.apply(DockOperation::OpenTab { tab: Tab::Console });
 /// assert_eq!(dock.groups().count(), 1);
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -83,7 +83,7 @@ pub struct TabAddress {
 #[must_use]
 pub struct DockState<T> {
     /// Canonical pre-order — see the module doc. Private so every
-    /// structural mutation goes through an op that re-packs.
+    /// structural mutation goes through an operation that re-packs.
     nodes: Vec<DockNode<T>>,
     focused: TabGroupId,
     /// Next group id to mint. A counter rather than a random source, so
@@ -145,7 +145,7 @@ impl<T: DockTab> TryFrom<RawDockState<T>> for DockState<T> {
 
 impl<T: DockTab> DockState<T> {
     /// The root node's index — always slot 0 in the canonical order.
-    pub const ROOT: NodeIdx = NodeIdx(0);
+    pub const ROOT: NodeIndex = NodeIndex(0);
 
     /// Smallest share a split will give either pane, so a divider
     /// cannot be dragged into an unrecoverable sliver.
@@ -235,10 +235,10 @@ impl<T: DockTab> DockState<T> {
         self.focused
     }
 
-    /// The node at `idx` — the record walk follows [`DockSplit`]'s child
+    /// The node at `index` — the record walk follows [`DockSplit`]'s child
     /// indices through this.
-    pub fn node(&self, idx: NodeIdx) -> &DockNode<T> {
-        &self.nodes[idx.usize()]
+    pub fn node(&self, index: NodeIndex) -> &DockNode<T> {
+        &self.nodes[index.usize()]
     }
 
     /// The leaf groups in left-to-right, top-to-bottom pane order — in
@@ -291,22 +291,22 @@ impl<T: DockTab> DockState<T> {
         })
     }
 
-    /// Execute one [`DockOp`] — the dispatch behind every recorded
+    /// Execute one [`DockOperation`] — the dispatch behind every recorded
     /// mutation.
-    pub fn apply(&mut self, op: DockOp<T>) {
-        match op {
-            DockOp::ActivateTab { tab } => self.activate(tab),
-            DockOp::OpenTab { tab } => self.open_tab(tab),
-            DockOp::CloseTab { tab } => self.close_tab(tab),
-            DockOp::MoveTab { tab, to } => self.move_tab(tab, to),
-            DockOp::SetRatio { split, ratio } => self.set_ratio(split, ratio),
-            DockOp::FocusPane { group } => self.focus(group),
+    pub fn apply(&mut self, operation: DockOperation<T>) {
+        match operation {
+            DockOperation::ActivateTab { tab } => self.activate(tab),
+            DockOperation::OpenTab { tab } => self.open_tab(tab),
+            DockOperation::CloseTab { tab } => self.close_tab(tab),
+            DockOperation::MoveTab { tab, to } => self.move_tab(tab, to),
+            DockOperation::SetRatio { split, ratio } => self.set_ratio(split, ratio),
+            DockOperation::FocusPane { group } => self.focus(group),
         }
     }
 
     /// Move focus onto `group` — the pane a press landed in.
     ///
-    /// A group that has gone since the press no-ops, like every other op
+    /// A group that has gone since the press no-ops, like every other operation
     /// fed a stale address: storing a dead id would strand `focused` and
     /// fail [`Self::validate`] at the next load.
     fn focus(&mut self, group: TabGroupId) {
@@ -336,10 +336,10 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Append `tab` to `group`'s strip unless it is already open
-    /// somewhere — the half of [`DockOp::OpenTab`] that puts the tab in
+    /// somewhere — the half of [`DockOperation::OpenTab`] that puts the tab in
     /// the tree, without the activation that follows.
     ///
-    /// Unlike the queued ops this is a direct call whose callers name a
+    /// Unlike the queued operations this is a direct call whose callers name a
     /// group they hold live, so a dead id is a logic error rather than
     /// tolerable staleness.
     pub fn find_or_insert(&mut self, tab: T, group: TabGroupId) {
@@ -459,7 +459,7 @@ impl<T: DockTab> DockState<T> {
     /// Drop every tab failing `keep`, collapsing groups that empty.
     ///
     /// The pinned tab is never offered to `keep`. It is what holds the
-    /// tree non-empty, which is why [`DockOp::CloseTab`] refuses it and
+    /// tree non-empty, which is why [`DockOperation::CloseTab`] refuses it and
     /// the close button never appears on it. A filter allowed to take it
     /// would hand back a state that fails to load once saved, and that
     /// [`Self::primary`] panics on.
@@ -484,7 +484,12 @@ impl<T: DockTab> DockState<T> {
 
     /// Number of split ancestors above `id`'s group — what the cap caps.
     fn group_depth(&self, id: TabGroupId) -> Option<u32> {
-        fn walk<T>(nodes: &[DockNode<T>], idx: NodeIdx, id: TabGroupId, depth: u32) -> Option<u32> {
+        fn walk<T>(
+            nodes: &[DockNode<T>],
+            idx: NodeIndex,
+            id: TabGroupId,
+            depth: u32,
+        ) -> Option<u32> {
             match &nodes[idx.usize()] {
                 DockNode::Group(g) => (g.id == id).then_some(depth),
                 DockNode::Split(s) => walk(nodes, s.first, id, depth + 1)
@@ -505,8 +510,8 @@ impl<T: DockTab> DockState<T> {
         else {
             return;
         };
-        let existing_idx = NodeIdx(self.nodes.len() as u32);
-        let fresh_idx = NodeIdx(self.nodes.len() as u32 + 1);
+        let existing_idx = NodeIndex(self.nodes.len() as u32);
+        let fresh_idx = NodeIndex(self.nodes.len() as u32 + 1);
         let (first, second) = if side.new_pane_first() {
             (fresh_idx, existing_idx)
         } else {
@@ -515,7 +520,7 @@ impl<T: DockTab> DockState<T> {
         let existing = mem::replace(
             &mut self.nodes[slot],
             DockNode::Split(DockSplit {
-                dir: side.dir(),
+                direction: side.direction(),
                 ratio: 0.5,
                 first,
                 second,
@@ -533,7 +538,7 @@ impl<T: DockTab> DockState<T> {
     fn normalize(&mut self) {
         // Liveness per slot, bottom-up: a group lives while it has tabs,
         // a split while either child does.
-        fn alive<T>(nodes: &[DockNode<T>], idx: NodeIdx) -> bool {
+        fn alive<T>(nodes: &[DockNode<T>], idx: NodeIndex) -> bool {
             match &nodes[idx.usize()] {
                 DockNode::Group(g) => !g.tabs.is_empty(),
                 DockNode::Split(s) => alive(nodes, s.first) || alive(nodes, s.second),
@@ -543,13 +548,13 @@ impl<T: DockTab> DockState<T> {
         // dissolves into that child in place.
         fn copy<T: Clone>(
             src: &[DockNode<T>],
-            idx: NodeIdx,
+            idx: NodeIndex,
             out: &mut Vec<DockNode<T>>,
-        ) -> NodeIdx {
+        ) -> NodeIndex {
             match &src[idx.usize()] {
                 DockNode::Group(g) => {
                     out.push(DockNode::Group(g.clone()));
-                    NodeIdx(out.len() as u32 - 1)
+                    NodeIndex(out.len() as u32 - 1)
                 }
                 DockNode::Split(s) => match (alive(src, s.first), alive(src, s.second)) {
                     (true, true) => {
@@ -564,7 +569,7 @@ impl<T: DockTab> DockState<T> {
                             second,
                             ..*s
                         });
-                        NodeIdx(slot as u32)
+                        NodeIndex(slot as u32)
                     }
                     (true, false) => copy(src, s.first, out),
                     (false, true) => copy(src, s.second, out),
@@ -596,7 +601,7 @@ impl<T: DockTab> DockState<T> {
         // and acyclicity in one sweep.
         fn walk<T>(
             nodes: &[DockNode<T>],
-            idx: NodeIdx,
+            idx: NodeIndex,
             depth: u32,
             cap: u32,
             expect: &mut u32,
@@ -637,8 +642,8 @@ impl<T: DockTab> DockState<T> {
         let mut seen = Vec::new();
         let mut seen_groups = Vec::new();
         for g in self.groups() {
-            // Group ids address every op, and the lookups take the first
-            // match, so a duplicate silently retargets ops.
+            // Group ids address every operation, and the lookups take the first
+            // match, so a duplicate silently retargets operations.
             if seen_groups.contains(&g.id) {
                 return Err(DockError::DuplicateGroup { group: g.id });
             }
@@ -659,7 +664,7 @@ impl<T: DockTab> DockState<T> {
         // The id counter is document state like the rest, so a corrupt
         // one is caught here rather than at the split that would spend
         // it. It has to name an id no group holds — a repeat makes
-        // every op addressed to that group ambiguous — and it has to
+        // every operation addressed to that group ambiguous — and it has to
         // have somewhere left to count.
         if self.next_group == u64::MAX || seen_groups.iter().any(|g| g.0 >= self.next_group) {
             return Err(DockError::GroupAllocator {
@@ -684,7 +689,7 @@ mod internals {
 
     impl<T: DockTab> DockState<T> {
         /// Raw node access, so the validation suite can build the
-        /// corrupt trees no public op can produce.
+        /// corrupt trees no public operation can produce.
         ///
         /// Reached only from this module's own tests, which is why it is
         /// gated on `test` alone.
@@ -703,7 +708,7 @@ mod internals {
             TabGroupId(self.next_group + 1000)
         }
 
-        /// Park the id counter where no sequence of ops could — the
+        /// Park the id counter where no sequence of operations could — the
         /// corruption a hand-edited document carries.
         pub(crate) fn set_next_group_unchecked(&mut self, next: u64) {
             self.next_group = next;

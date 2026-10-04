@@ -18,7 +18,7 @@ pub struct IconId(pub u16);
 /// normalized SVG sits in the set's blob, and the two facts the renderer needs
 /// before it has parsed anything.
 #[derive(Clone, Debug)]
-pub struct IconDef {
+pub struct IconDefinition {
     /// Lowercase kebab-case, derived from the source filename. Unique within
     /// a set, and the key [`IconSet::by_name`](crate::IconSet::by_name)
     /// searches. Borrowed in a baked set, owned in one built at runtime, so
@@ -55,12 +55,12 @@ pub struct IconDef {
 /// so parses nothing at construction, while [`Self::from_svgs`] has to read
 /// each source to fill it.
 ///
-/// The table is sorted by [`IconDef::name`], which is what lets
+/// The table is sorted by [`IconDefinition::name`], which is what lets
 /// [`IconSet::by_name`](crate::IconSet::by_name) binary-search it.
 #[derive(Debug)]
 pub struct IconTable {
-    icons: Cow<'static, [IconDef]>,
-    /// Every icon's SVG, concatenated. Sliced by [`IconDef::svg`].
+    icons: Cow<'static, [IconDefinition]>,
+    /// Every icon's SVG, concatenated. Sliced by [`IconDefinition::svg`].
     svg: Cow<'static, [u8]>,
 }
 
@@ -69,11 +69,11 @@ impl IconTable {
     /// `icons.rs` calls. Borrows both halves, so it allocates nothing and
     /// parses nothing.
     ///
-    /// `icons` must be sorted by [`IconDef::name`] and each entry's
-    /// [`IconDef::svg`] must span its own slice of `svg` — the two invariants
+    /// `icons` must be sorted by [`IconDefinition::name`] and each entry's
+    /// [`IconDefinition::svg`] must span its own slice of `svg` — the two invariants
     /// name lookup and per-icon slicing rest on. Whatever generates the table
     /// owes them; [`Self::from_svgs`] establishes them itself.
-    pub const fn baked(icons: &'static [IconDef], svg: &'static [u8]) -> Self {
+    pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self {
         Self {
             icons: Cow::Borrowed(icons),
             svg: Cow::Borrowed(svg),
@@ -133,11 +133,11 @@ impl IconTable {
         }
 
         let mut blob: Vec<u8> = Vec::with_capacity(surveyed.iter().map(|(_, s, _)| s.len()).sum());
-        let mut icons: Vec<IconDef> = Vec::with_capacity(surveyed.len());
+        let mut icons: Vec<IconDefinition> = Vec::with_capacity(surveyed.len());
         for (name, svg, facts) in surveyed {
             let start = blob.len() as u32;
             blob.extend_from_slice(svg.as_bytes());
-            icons.push(IconDef {
+            icons.push(IconDefinition {
                 name,
                 view_box: facts.view_box,
                 svg: Span::new(start, svg.len() as u32),
@@ -154,7 +154,7 @@ impl IconTable {
     /// The name-sorted table, for the two places that walk the whole set —
     /// the prewarm pass and `by_name`. Everything else goes through an
     /// [`IconId`].
-    pub(crate) fn icons(&self) -> &[IconDef] {
+    pub(crate) fn icons(&self) -> &[IconDefinition] {
         &self.icons
     }
 
@@ -165,7 +165,7 @@ impl IconTable {
     /// Panics if `icon` is not from this set. Ids come from the generated
     /// constants or from [`IconSet::by_name`](crate::IconSet::by_name), so an
     /// out-of-range one means an id crossed between sets.
-    pub(crate) fn def(&self, icon: IconId) -> &IconDef {
+    pub(crate) fn def(&self, icon: IconId) -> &IconDefinition {
         let icons = &self.icons;
         assert!(
             (icon.0 as usize) < icons.len(),

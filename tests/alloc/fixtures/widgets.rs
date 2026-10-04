@@ -10,7 +10,7 @@ use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
 use palantir::{
-    AnimSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField, ColorPicker,
+    AnimationSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField, ColorPicker,
     ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid, MenuItem, Modal,
     Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
     SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
@@ -174,7 +174,10 @@ fn expander_mid_reveal_alloc_free() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            anim: Some(AnimSpec::duration(Duration::from_secs(60), Easing::Linear)),
+            animation: Some(AnimationSpec::duration(
+                Duration::from_secs(60),
+                Easing::Linear,
+            )),
             ..base.defaults
         },
         ..base

@@ -3,7 +3,7 @@
 
 use glam::{UVec2, Vec2};
 
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::keyboard::key::Key;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -246,7 +246,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            anim: Some(AnimSpec::MEDIUM),
+            animation: Some(AnimationSpec::MEDIUM),
             ..base.defaults
         },
         ..base
@@ -387,7 +387,7 @@ fn a_settling_reveal_stores_the_whole_height() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            anim: Some(AnimSpec::MEDIUM),
+            animation: Some(AnimationSpec::MEDIUM),
             ..base.defaults
         },
         ..base

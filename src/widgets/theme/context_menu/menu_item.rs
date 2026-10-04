@@ -57,7 +57,7 @@ impl MenuItemTheme {
     /// Rows transparent at rest, one surface step brighter on hover.
     pub fn from_palette(p: &Palette) -> Self {
         // Rows are transparent at rest; hover paints one surface-step
-        // brighter (`elem_mid`) — same delta a menu-bar trigger uses
+        // brighter (`element_mid`) — same delta a menu-bar trigger uses
         // (`ButtonTheme::menu_button`), so the bar and the popup that
         // drops out of it feel like one continuous surface. `active`
         // (pressed) keeps the hover look: the click auto-closes the
@@ -69,7 +69,7 @@ impl MenuItemTheme {
         // corners, and anything rounder than the panel itself reads as a
         // pill floating in a box.
         let hovered = WidgetLook {
-            background: Background::rounded(p.elem_mid, Corners::all(3.0)),
+            background: Background::rounded(p.element_mid, Corners::all(3.0)),
             text: TextStyleOverrides::NONE,
         };
         Self {
@@ -90,7 +90,7 @@ impl MenuItemTheme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(8.0, 5.0),
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

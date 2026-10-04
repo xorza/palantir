@@ -50,8 +50,13 @@ impl Corners {
 
     /// Four radii, clockwise from the top left.
     #[inline]
-    pub fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
-        Self(F16x4::from_lanes([tl, tr, br, bl]))
+    pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
+        Self(F16x4::from_lanes([
+            top_left,
+            top_right,
+            bottom_right,
+            bottom_left,
+        ]))
     }
 
     /// Round the top edge only — `tl == tr == r`, `br == bl == 0`.
@@ -86,13 +91,13 @@ impl Corners {
 
     /// Round the `tl`/`br` diagonal pair (e.g. asymmetric chat bubble).
     #[inline]
-    pub fn diag_main(r: f32) -> Self {
+    pub fn main_diagonal(r: f32) -> Self {
         Self(F16x4::from_lanes([r, 0.0, r, 0.0]))
     }
 
     /// Round the `tr`/`bl` diagonal pair.
     #[inline]
-    pub fn diag_anti(r: f32) -> Self {
+    pub fn anti_diagonal(r: f32) -> Self {
         Self(F16x4::from_lanes([0.0, r, 0.0, r]))
     }
 

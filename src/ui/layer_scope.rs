@@ -10,7 +10,7 @@ use glam::Vec2;
 
 /// A side layer being configured, terminated by [`Self::show`].
 ///
-/// [`Self::fixed_at`] pins the body's top-left. [`Self::anchored`]
+/// [`Self::fixed_at`] pins the body's top-left. [`Self::anchor`]
 /// resolves the origin from the body's measured size instead — that is
 /// what lets a popup flip above its anchor when it would not fit below,
 /// and it is why `Popup`, `ContextMenu` and `Tooltip` place themselves
@@ -39,7 +39,7 @@ impl<'a> LayerScope<'a> {
     /// Without a [`Self::max_size`] the available extent runs from here
     /// to the surface's bottom-right.
     ///
-    /// [`Self::anchored`] is the other form, and the one an overlay
+    /// [`Self::anchor`] is the other form, and the one an overlay
     /// wants: it moves the body to keep it on screen.
     ///
     /// # Panics
@@ -58,7 +58,7 @@ impl<'a> LayerScope<'a> {
     /// trigger, a menu at the pointer, a tooltip beside the thing it
     /// describes. Replaces an origin set by [`Self::fixed_at`] and keeps
     /// a cap set by [`Self::max_size`].
-    pub const fn anchored(mut self, anchor: Anchor) -> Self {
+    pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.placement = self.placement.with_anchored(anchor);
         self
     }

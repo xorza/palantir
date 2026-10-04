@@ -146,7 +146,7 @@ pub(crate) struct RenderBuffer {
     /// This frame's monotonic time (window-start `elapsed`), stamped by
     /// `Frontend::build` from the frame scene clock (not derivable from `Display`).
     /// The backend diffs it against each `GpuView`'s last paint to derive
-    /// `GpuFrameCtx::dt`.
+    /// `GpuFrameContext::dt`.
     pub(crate) time: Duration,
 }
 
