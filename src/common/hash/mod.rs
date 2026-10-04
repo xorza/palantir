@@ -56,24 +56,14 @@ impl Hasher {
         Self(FxHasher::default())
     }
 
-    /// Hash a value as its raw bytes in one `Hasher::write` call. The
-    /// `NoUninit` bound proves at compile time that `T` has no padding
-    /// so `bytes_of` is sound.
+    /// Hash a whole slice of pod values as one contiguous byte run. The
+    /// `NoUninit` bound proves at compile time that `T` has no padding,
+    /// so the byte view is well-defined and the cast is sound.
     ///
-    /// Why this is faster than per-field writes: `FxHasher::write(&[u8])`
-    /// consumes 8 bytes per loop iteration and amortizes the
-    /// rotate/multiply/xor cost across the whole slice. Replacing
-    /// N×`write_u32`/`write_u16` calls with one `write` cuts per-call
-    /// overhead and lets the compiler keep more state in registers.
-    #[inline]
-    pub(crate) fn pod<T: bytemuck::NoUninit>(&mut self, v: &T) {
-        self.0.write(bytemuck::bytes_of(v));
-    }
-
-    /// Hash a whole slice of pod values as one contiguous byte run —
-    /// the [`Self::pod`] counterpart for columns. Same `NoUninit`
-    /// bound, same reason: no padding means the byte view is
-    /// well-defined, so the cast is sound.
+    /// For a column written long before, not a value just built: a value
+    /// stored field by field and read straight back as bytes reads across
+    /// its own stores' seams, and the CPU cannot forward such a load —
+    /// it waits for the stores to retire. Feed a fresh value as words.
     ///
     /// This is where a bulk write actually pays. `FxHasher::write`
     /// consumes 8 bytes per iteration, so hashing an N-element column

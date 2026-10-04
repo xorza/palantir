@@ -11,11 +11,13 @@ use glam::UVec2;
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
 
 /// The hashes one recorded frame gives: the node `f` returns, its
-/// subtree, and the tree's cascade-static fingerprint.
+/// subtree and the subtree's layout half, and the tree's cascade-static
+/// fingerprint.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Hashes {
     pub(super) node: ContentHash,
     pub(super) subtree: ContentHash,
+    pub(super) layout_subtree: ContentHash,
     pub(super) cascade_static: ContentHash,
 }
 
@@ -28,6 +30,7 @@ pub(super) fn record(mut f: impl FnMut(&mut Ui) -> NodeId) -> Hashes {
     Hashes {
         node: tree.rollups.node[target.idx()],
         subtree: tree.rollups.subtree[target.idx()],
+        layout_subtree: tree.rollups.layout_subtree[target.idx()],
         cascade_static: tree.fingerprint.cascade_static,
     }
 }

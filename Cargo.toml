@@ -238,10 +238,13 @@ debug = "line-tables-only"
 debug = "line-tables-only"
 split-debuginfo = "off"
 
-# Inherits `release`.
+# Inherits `release`. Full debuginfo carries the inline records a fat-LTO
+# callgraph needs, and matches what `benches/bench-perf.sh` builds with, so
+# a bench run and a profile share one link.
 [profile.bench]
 lto = "fat"
 codegen-units = 1
+debug = "full"
 
 [profile.release-max]
 inherits = "release"

@@ -17,7 +17,7 @@ use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::per_layer::PerLayer;
 use crate::scene::record_store::RecordStore;
-use crate::scene::seen_ids::{CollisionRecord, SeenIds};
+use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_anims::PaintAnimEntry;
@@ -122,7 +122,7 @@ impl Forest {
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         let layer = self.current_layer();
-        let Some(viewport) = self.ids.curr.get(&def.content) else {
+        let Some(viewport) = self.ids.endpoint(def.content) else {
             panic!(
                 "scrollbar overlay names viewport {:?}, which was not recorded earlier this frame",
                 def.content,
@@ -150,7 +150,7 @@ impl Forest {
     /// order — so they resolve together here rather than being paired up
     /// again by every caller.
     #[inline]
-    pub(crate) fn widget_id(&mut self, ident: Ident) -> WidgetId {
+    pub(crate) fn widget_id(&mut self, ident: Ident) -> ResolvedId {
         let raw_id = ident.raw_id(self.current_parent_id());
         self.ids.resolve(raw_id, ident.is_explicit())
     }
@@ -209,9 +209,11 @@ impl Forest {
     /// upstream by [`crate::widget::Widget::resolve`] (which calls
     /// `SeenIds::resolve` eagerly so the returned id matches what the
     /// tree, cascade, and `response_for` see). This function takes
-    /// the id verbatim, opens the node in the active tree, and records
-    /// the endpoint the tree assigned via `SeenIds::record_endpoint`
-    /// (also emitting any pending explicit collision pair).
+    /// that resolution verbatim, opens the node in the active tree, and
+    /// records the endpoint the tree assigned via
+    /// `SeenIds::record_endpoint`, which writes the id's entry without a
+    /// second hash probe (also emitting any pending explicit collision
+    /// pair).
     ///
     /// `chrome` is `Some(Background { .. })` for nodes with a background
     /// paint and `None` otherwise. The `Background` is borrowed, not
@@ -222,7 +224,7 @@ impl Forest {
     #[inline]
     pub(crate) fn open_node(
         &mut self,
-        widget_id: WidgetId,
+        resolved: ResolvedId,
         node: &Node,
         chrome: Option<&Background>,
         ring: Stroke,
@@ -240,12 +242,12 @@ impl Forest {
         });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
-        let node_id = tree.open_node(scratch, widget_id, node, chrome);
+        let node_id = tree.open_node(scratch, resolved.id(), node, chrome);
         let endpoint = Endpoint {
             layer,
             node: node_id,
         };
-        if let Some(collision) = self.ids.record_endpoint(widget_id, endpoint) {
+        if let Some(collision) = self.ids.record_endpoint(resolved, endpoint) {
             self.report_explicit_collision(collision);
         }
     }

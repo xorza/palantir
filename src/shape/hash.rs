@@ -59,8 +59,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     hash_optional_rect(*local_rect, &mut h);
                     corners.hash(&mut h);
                     hash_brush(*fill, &mut h);
-                    // Pod-byte hash for `(color, width)` — one dispatch.
-                    h.pod(border);
+                    border.hash_into(&mut h);
                 }
                 QuadShape::Shadow {
                     local_rect,
@@ -88,7 +87,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     c.hash_visual(&mut h);
                     radius.hash_visual(&mut h);
                     fill.hash(&mut h);
-                    h.pod(border);
+                    border.hash_into(&mut h);
                 }
             }
         }
@@ -251,8 +250,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     a1.hash_visual(&mut h);
                 }
             }
-            // Pod-byte hash for `(width, color)` — one dispatch.
-            h.pod(stroke);
+            stroke.hash_into(&mut h);
             match ramp {
                 CurveRamp::None => h.write_u8(*cap as u8),
                 CurveRamp::Interned { id: _, hash } => {

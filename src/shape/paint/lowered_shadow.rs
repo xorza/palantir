@@ -9,8 +9,7 @@ use crate::primitives::paint::shadow::Shadow;
 use glam::Vec2;
 use std::hash;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct LoweredShadow {
     pub(crate) color: RgbaF16,
     /// `(offset.x, offset.y, blur, spread)`. Wraps [`F16x4`] rather
@@ -124,10 +123,14 @@ impl From<Shadow> for LoweredShadow {
     }
 }
 
+/// Fed as words straight from registers rather than as the struct's
+/// bytes, which a freshly lowered shadow would be read back across.
 impl hash::Hash for LoweredShadow {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
+        state.write_u64(self.color.as_u64());
+        state.write_u64(self.geom_f16.as_u64());
+        state.write_u16(self.inset_flag);
     }
 }
 
