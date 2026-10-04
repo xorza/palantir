@@ -249,11 +249,14 @@ mod tests {
         assert!(mesh_upload_required(3, 3, 1));
     }
 
-    /// Debug-only: the two geometry screens are `debug_assert!`s, since
-    /// the composer produced these counts a pass ago and the upload path
-    /// runs them at frame rate.
-    #[cfg(debug_assertions)]
+    /// The two geometry screens are `debug_assert!`s, since the composer
+    /// produced these counts a pass ago and the upload path runs them at
+    /// frame rate.
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "probes a debug_assert!, which release compiles out"
+    )]
     fn instances_without_geometry_are_screened() {
         panic_probe::assert_panics_with("mesh instances require vertices", || {
             mesh_upload_required(0, 3, 1)
