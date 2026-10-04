@@ -20,6 +20,7 @@ use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -175,11 +176,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         if !self.starvation.note() {
             return;
         }
-        let atlas_px = self.atlas.atlas_px();
         tracing::warn!(
             label = self.stem,
-            mask_px = atlas_px[1],
-            color_px = atlas_px[0],
+            mask_px = self.atlas.side_px(ContentType::Mask),
+            color_px = self.atlas.side_px(ContentType::Color),
             live_rasters = self.atlas.cache.len(),
             "atlas is full and cannot grow further; affected batches drop \
              rasters and re-encode every frame until pressure clears",

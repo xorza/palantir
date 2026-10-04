@@ -8,7 +8,6 @@
 //! their pixels came from.
 
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::surface::viewport::ViewportPush;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 
@@ -32,16 +31,6 @@ pub(crate) struct RasterQuad {
 }
 
 impl RasterQuad {
-    /// Offset of `[color_atlas_size, mask_atlas_size]` in the shared
-    /// immediate region: straight after the viewport, which is what
-    /// `shader.wgsl` declares as `Immediates { viewport_size, atlas_px }`
-    /// — flat members, for the Dx12 constant-buffer reason documented there.
-    ///
-    /// Derived rather than written as `8`, because the offset and
-    /// `ViewportPush`'s size are the same fact — a literal would let a field
-    /// added to the viewport silently overlap these.
-    pub(crate) const PARAMS_OFFSET: u32 = ViewportPush::BYTES as u32;
-
     /// Collapse a colour raster to its luminance when drawn — OR into the
     /// value [`Self::pack_uv`] returns.
     ///
@@ -168,18 +157,6 @@ mod tests {
         assert_eq!(offset_of!(RasterQuad, size), 12);
         assert_eq!(offset_of!(RasterQuad, uv_and_kind), 16);
         assert_eq!(offset_of!(RasterQuad, color), 20);
-    }
-
-    /// The viewport and the atlas sizes share one immediate region, and the
-    /// shader reads them as `Immediates { viewport, params }`. What a wider
-    /// viewport or a third params field can still break is the pair fitting
-    /// inside the region at all, which nothing else checks.
-    #[test]
-    fn viewport_and_params_fit_the_immediate_region() {
-        use crate::gpu::pipeline::IMMEDIATES_BYTES;
-        assert!(
-            RasterQuad::PARAMS_OFFSET as usize + size_of::<[u32; 2]>() <= IMMEDIATES_BYTES as usize
-        );
     }
 
     /// The three fields share one `u32`, so each has to survive the other

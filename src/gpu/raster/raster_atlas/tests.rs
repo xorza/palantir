@@ -493,11 +493,8 @@ mod gpu {
     /// An entry that fits the ceiling but not the *current* side has to
     /// grow, whatever the byte budget says: eviction frees rectangles
     /// and never widens the texture, so every victim it takes is
-    /// spent for nothing.
-    ///
-    /// Also the one place a grow's effect on the group-0 binding is
-    /// observable: the params bracket the insert, so they pin both the
-    /// lane order and that only the side that grew moves.
+    /// spent for nothing. The side extents bracket the insert, so they
+    /// pin that only the side that grew moves.
     #[test]
     fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
         let gpu = headless_test_gpu();
@@ -506,9 +503,12 @@ mod gpu {
         atlas.advance_to(1);
 
         assert_eq!(
-            atlas.atlas_px(),
+            [
+                atlas.side_px(ContentType::Mask),
+                atlas.side_px(ContentType::Color)
+            ],
             [128, 128],
-            "both sides start at their configured 128², reported `[color, mask]`",
+            "both sides start at their configured 128²",
         );
 
         let pixels = vec![0u8; 200 * 200];
@@ -524,12 +524,13 @@ mod gpu {
             17,
             "growing is what made room, so nothing should have been evicted",
         );
-        // The invariant `BoundSides` exists for.
         assert_eq!(
-            atlas.atlas_px(),
-            [128, 256],
-            "the grown mask side must be reflected in the params, the \
-             untouched colour side must not",
+            [
+                atlas.side_px(ContentType::Mask),
+                atlas.side_px(ContentType::Color)
+            ],
+            [256, 128],
+            "only the side that had to grow grew",
         );
     }
 }

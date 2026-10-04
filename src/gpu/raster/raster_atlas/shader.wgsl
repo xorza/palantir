@@ -5,7 +5,7 @@
 // - blend = PREMULTIPLIED_ALPHA_BLENDING; render target is sRGB
 //   (GPU re-encodes on write).
 // - mask atlas = R8Unorm linear; color atlas = Rgba8UnormSrgb
-//   (auto-decodes to linear straight RGBA on sample).
+//   (a load decodes it to linear straight RGBA).
 // - `uv_and_kind` packs u, two flags, and v; Rust owns the field widths and
 //   substitutes them below. Both atlases cap well under the room u gets.
 
@@ -23,12 +23,14 @@ struct VertexIn {
 struct VertexOut {
     @invariant @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,          // linear straight
-    @location(1) uv: vec2<f32>,             // normalized atlas uv
-    @location(2) @interpolate(flat) flags: u32, // FLAG_* below
-    // Atlas texel coordinate, and the raster's texel rect as inclusive
-    // min/max — read only under FLAG_RESAMPLE.
-    @location(3) texel: vec2<f32>,
-    @location(4) @interpolate(flat) texel_rect: vec4<i32>,
+    @location(1) @interpolate(flat) flags: u32, // FLAG_* below
+    // Atlas texel coordinate. A quad drawn at its raster's own size sits on
+    // whole pixels, so every fragment centre lands on a texel centre and the
+    // texel it reads is this one, truncated.
+    @location(2) texel: vec2<f32>,
+    // The raster's texel rect as inclusive min/max — read only under
+    // FLAG_RESAMPLE.
+    @location(3) @interpolate(flat) texel_rect: vec4<i32>,
 }
 
 // The `uv_and_kind` layout. Rust owns every number here and substitutes it in
@@ -42,12 +44,10 @@ const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample colour, not mask
 // raster's, so `fs` filters instead of reading texel for texel.
 const FLAG_RESAMPLE: u32 = 4u;
 
-// Group(0) = the atlas textures and their sampler. This is the only
-// shader that reads `imm.atlas_px`, which the text backend rewrites per
-// batch when either atlas is resized.
+// Group(0) = the atlas textures. Every read is a `textureLoad` by texel,
+// so there is no sampler.
 @group(0) @binding(0) var mask_atlas: texture_2d<f32>;
 @group(0) @binding(1) var color_atlas: texture_2d<f32>;
-@group(0) @binding(2) var atlas_sampler: sampler;
 
 @vertex
 fn vs(in: VertexIn) -> VertexOut {
@@ -65,16 +65,12 @@ fn vs(in: VertexIn) -> VertexOut {
     let pos = in.pos + vec2<i32>(size * corner);
     let uv_texel = vec2<f32>(vec2<u32>(u, v) + dim * corner);
 
-    let atlas_size_texels =
-        select(imm.atlas_px.y, imm.atlas_px.x, (flags & FLAG_COLOR) != 0u);
-
     var out: VertexOut;
     out.position = clip_from_px(vec2<f32>(pos));
 
     // Straight-alpha linear color. Shader premuls at output; no sRGB
     // decode — the instance lanes are linear.
     out.color = in.color;
-    out.uv = uv_texel / f32(atlas_size_texels);
     out.flags = flags | select(0u, FLAG_RESAMPLE, any(size != dim));
     out.texel = uv_texel;
     out.texel_rect = vec4<i32>(vec2<i32>(vec2<u32>(u, v)), vec2<i32>(vec2<u32>(u, v) + dim) - 1);
@@ -107,14 +103,14 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
     if ((in.flags & FLAG_COLOR) == 0u) {
         // Mask: vertex color modulated by R-channel coverage.
-        let cov = textureSampleLevel(mask_atlas, atlas_sampler, in.uv, 0.0).x;
+        let cov = textureLoad(mask_atlas, vec2<i32>(in.texel), 0).x;
         return premultiply(in.color.rgb, in.color.a * cov);
     }
     // Colour emoji or colour icon: the sRGB texture decodes to linear
     // straight RGBA on sample. Premultiply at output; the run alpha modulates
     // the whole premultiplied result, so faded text fades its emoji too and a
     // faded icon fades whole.
-    let s = textureSampleLevel(color_atlas, atlas_sampler, in.uv, 0.0);
+    let s = textureLoad(color_atlas, vec2<i32>(in.texel), 0);
     // DESATURATE collapses the artwork to its luminance — the disabled look
     // for an icon whose own colours the tint cannot replace. Alpha is
     // untouched, so the shape is unchanged and only the hue goes.
@@ -124,8 +120,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
 }
 
 // An icon drawn at a size other than its raster's: the four nearest texels,
-// filtered by hand because the atlas sampler is `Nearest` — right for every
-// quad that maps texel to pixel, which is all the others. Colour taps are
+// filtered by hand, clamped to the raster's own slot. Colour taps are
 // premultiplied before they blend, like every colour interpolation.
 fn resampled(in: VertexOut) -> vec4<f32> {
     let t = taps(in.texel, in.texel_rect);
