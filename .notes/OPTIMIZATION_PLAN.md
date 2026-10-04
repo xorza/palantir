@@ -116,6 +116,12 @@ no `ldlat` filter.
   from there, every arm got slower: +0.9 to +1.7 % at default size,
   −0.3 to +1.1 % at 10×. The second column a child step touched was not
   a cost on this CPU, so the change was reverted.
+- **Item 5, one rollup row: measured and dropped** (6800U, three
+  alternating rounds against item 3). With the three hashes in one
+  24-byte `NodeRollup` row, the frame arms stayed inside the noise
+  (−1.1 to +0.6 %), and `cascade/run` got 0.7–1 % slower (+4.8 % on one
+  `full_rebuild` run), because its walk reads only `subtree` and now
+  strides 24 bytes. The change was reverted.
 
 ## How to measure
 
@@ -168,17 +174,6 @@ measure both.
 
 ## Plan, highest value first
 
-### 5. The three rollup columns move together
-
-`SubtreeRollups` keeps `node`, `subtree` and `layout_subtree` as three
-separate `Vec<ContentHash>`. `compute_rollups` writes all three at the same
-index. Its child loop reads `subtree` and `layout_subtree` of each child.
-Damage reads `node` and `subtree` together.
-
-- Change: one `Vec<NodeRollup>` with the three hashes in a 24-byte row. Writes
-  become one stream, and a child read touches one line instead of two.
-- Check: `frame/cached_cpu`, `post_record` self-time.
-
 ### 6. `ShapeRecord` is 88 bytes
 
 Text, the common variant, uses 57 bytes. Curve (87), Quad (79), Image (78) and
@@ -215,4 +210,4 @@ Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
 
 ## Order
 
-Items 5 and 6 are small and independent, and each one is worth more at 10× than at default size.
+Item 6 is small and independent, and each one is worth more at 10× than at default size.
