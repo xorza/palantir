@@ -11,21 +11,14 @@ use std::env;
 use std::fs;
 use std::process;
 
-/// A pair covering no pixels differs nowhere, so the verdict is a pass
-/// and the ratio is a real number.
-///
-/// Both degenerate shapes fail differently without the early answer: a
-/// zero *width* panics inside `chunks_exact`, which rejects a
-/// zero-length chunk, and a zero *height* divides by no pixels and
-/// reports NaN — which `passes` reads as a failure through a comparison
-/// that is false for NaN, printing "0 differing pixels (NaN of the
-/// image)".
+/// A pair covering no pixels differs nowhere, so the verdict is a pass.
+/// A zero *width* would panic inside `chunks_exact`, which rejects a
+/// zero-length chunk, without the early answer.
 #[test]
-fn a_zero_pixel_pair_reports_a_real_ratio() {
+fn a_zero_pixel_pair_passes() {
     let empty = RgbaImage::new(0, 0);
     let report = Tolerance::default().diff(&empty, &empty);
     assert_eq!(report.differing_pixels, 0);
-    assert_eq!(report.differing_ratio, 0.0);
     assert!(report.passes());
 
     // A zero-width strip with real height, and the transpose: both
@@ -33,129 +26,57 @@ fn a_zero_pixel_pair_reports_a_real_ratio() {
     for (w, h) in [(0, 8), (8, 0)] {
         let strip = RgbaImage::new(w, h);
         let report = Tolerance::default().diff(&strip, &strip);
-        assert_eq!(report.differing_ratio, 0.0, "{w}x{h}");
+        assert_eq!(report.differing_pixels, 0, "{w}x{h}");
         assert!(report.passes(), "{w}x{h}");
     }
 }
 
 #[test]
-fn identical_images_pass() {
+fn identical_images_pass_exactly() {
     let img = RgbaImage::from_pixel(8, 8, Rgba([10, 20, 30, 255]));
-    let report = Tolerance::default().diff(&img, &img);
+    let report = Tolerance::EXACT.diff(&img, &img);
     assert_eq!(report.max_channel_delta, 0);
     assert_eq!(report.differing_pixels, 0);
     assert!(report.passes());
+    assert_eq!(Tolerance::default(), Tolerance::EXACT);
 }
 
+/// A pixel differs when any channel differs at all, and the verdict
+/// bounds both how many pixels differ and how far the worst one strays.
+/// Here one pixel of 100 is three steps off on red: the count passes a
+/// one-pixel budget, and the delta decides.
 #[test]
-fn within_per_channel_tolerance_passes() {
-    let a = RgbaImage::from_pixel(4, 4, Rgba([100, 100, 100, 255]));
-    let e = RgbaImage::from_pixel(4, 4, Rgba([102, 100, 100, 255]));
-    let report = Tolerance::default().diff(&a, &e);
-    assert_eq!(report.max_channel_delta, 2);
-    assert_eq!(report.differing_pixels, 0);
-    assert!(report.passes());
-}
+fn the_verdict_bounds_both_the_count_and_the_delta() {
+    let e = RgbaImage::from_pixel(10, 10, Rgba([100, 100, 100, 255]));
+    let mut a = e.clone();
+    a.put_pixel(3, 4, Rgba([103, 100, 100, 255]));
 
-#[test]
-fn one_outlier_within_ratio_passes() {
-    let mut a = RgbaImage::from_pixel(40, 40, Rgba([50, 50, 50, 255]));
-    let e = RgbaImage::from_pixel(40, 40, Rgba([50, 50, 50, 255]));
-    a.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
-    // 1 differing pixel in 40x40 = a ratio of exactly 1/1600, so a
-    // `max_ratio` of that admits it on the `<=` boundary.
-    let tol = Tolerance {
-        per_channel: 2,
-        max_ratio: 1.0 / (40.0 * 40.0),
-    };
-    let report = tol.diff(&a, &e);
-    assert!(report.max_channel_delta > 2);
-    assert_eq!(report.differing_pixels, 1);
-    assert!(report.passes());
-}
+    let exact = Tolerance::EXACT.diff(&a, &e);
+    assert_eq!(exact.max_channel_delta, 3);
+    assert_eq!(exact.differing_pixels, 1);
+    assert!(!exact.passes(), "exact admits no difference");
 
-#[test]
-fn too_many_outliers_fail() {
-    let a = RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 255]));
-    let e = RgbaImage::from_pixel(8, 8, Rgba([255, 255, 255, 255]));
-    let report = Tolerance::default().diff(&a, &e);
-    assert_eq!(report.max_channel_delta, 255);
-    assert_eq!(report.differing_pixels, 64);
-    assert!(!report.passes());
-}
-
-#[test]
-fn strict_tolerance_rejects_one_off() {
-    let a = RgbaImage::from_pixel(2, 2, Rgba([100, 100, 100, 255]));
-    let e = RgbaImage::from_pixel(2, 2, Rgba([101, 100, 100, 255]));
-    let strict = Tolerance {
-        per_channel: 0,
-        max_ratio: 0.0,
-    };
-    let report = strict.diff(&a, &e);
-    assert_eq!(report.max_channel_delta, 1);
-    assert_eq!(report.differing_pixels, 4);
-    assert!(!report.passes());
-}
-
-#[test]
-fn ratio_gates_pass_regardless_of_outlier_magnitude() {
-    // One saturated outlier in 100 pixels = 0.01 ratio.
-    // Pin that `passes` is ratio-only — a giant per-pixel delta
-    // doesn't fail the report so long as the count stays below
-    // `max_ratio`.
-    let mut a = RgbaImage::from_pixel(10, 10, Rgba([0, 0, 0, 255]));
-    let e = RgbaImage::from_pixel(10, 10, Rgba([0, 0, 0, 255]));
-    a.put_pixel(0, 0, Rgba([255, 255, 255, 255]));
-
-    let tol_loose = Tolerance {
-        per_channel: 2,
-        max_ratio: 0.02,
-    };
-    let loose = tol_loose.diff(&a, &e);
-    assert_eq!(loose.max_channel_delta, 255);
-    assert_eq!(loose.differing_pixels, 1);
-    assert!(loose.passes());
-
-    // Same pixels, same `per_channel`, tighter ratio — only the
-    // ratio decides, so the verdict flips while the measurements
-    // stay identical.
-    let tol_tight = Tolerance {
-        per_channel: 2,
-        max_ratio: 0.005,
-    };
-    let tight = tol_tight.diff(&a, &e);
-    assert_eq!(tight.max_channel_delta, 255);
-    assert_eq!(tight.differing_pixels, 1);
-    assert!(!tight.passes());
-}
-
-#[test]
-fn per_channel_is_the_tolerance_the_report_was_measured_under() {
-    // The skew `passes()` used to allow: a report measured with a
-    // lenient `per_channel` counts zero differing pixels, and one
-    // measured with a strict `per_channel` counts all of them —
-    // from the same two images. Pinning that the verdict follows
-    // the tolerance `diff` actually ran with.
-    let a = RgbaImage::from_pixel(4, 4, Rgba([100, 100, 100, 255]));
-    let e = RgbaImage::from_pixel(4, 4, Rgba([103, 100, 100, 255]));
-    let ratio = 0.0;
-
-    let lenient = Tolerance {
-        per_channel: 4,
-        max_ratio: ratio,
+    for (max_delta, max_pixels, passes) in
+        [(3, 1, true), (2, 1, false), (3, 0, false), (255, 1, true)]
+    {
+        let tolerance = Tolerance {
+            max_delta,
+            max_pixels,
+        };
+        assert_eq!(tolerance.diff(&a, &e).passes(), passes, "{tolerance:?}");
     }
-    .diff(&a, &e);
-    assert_eq!(lenient.differing_pixels, 0);
-    assert!(lenient.passes());
+}
 
-    let strict = Tolerance {
-        per_channel: 2,
-        max_ratio: ratio,
-    }
-    .diff(&a, &e);
-    assert_eq!(strict.differing_pixels, 16);
-    assert!(!strict.passes());
+/// The diff map marks every differing pixel, however small the step, and
+/// dims the rest of `actual` to a quarter.
+#[test]
+fn the_diff_map_marks_every_differing_pixel() {
+    let e = RgbaImage::from_pixel(2, 1, Rgba([100, 100, 100, 255]));
+    let mut a = e.clone();
+    a.put_pixel(1, 0, Rgba([101, 100, 100, 255]));
+    let report = Tolerance::EXACT.diff(&a, &e);
+    assert_eq!(*report.diff_image.get_pixel(0, 0), Rgba([25, 25, 25, 255]));
+    assert_eq!(*report.diff_image.get_pixel(1, 0), Rgba([255, 0, 0, 255]));
 }
 
 #[test]
@@ -190,14 +111,14 @@ impl Drop for Scratch {
 /// is written and failed. Two held images compared through `assert_same`
 /// take the same handling, and write no golden.
 ///
-/// `near` is one step off `base`, inside the 2-step tolerance; `far` is
-/// forty steps off, outside it, in all 16 pixels.
+/// `near` is one step off `base` in all 16 pixels, inside a tolerance of
+/// two steps over 16 pixels; `far` is forty steps off, outside it.
 #[test]
 fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     let dir = Scratch::new("update");
     let goldens = Goldens::new(&dir.0).with_tolerance(Tolerance {
-        per_channel: 2,
-        max_ratio: 0.0,
+        max_delta: 2,
+        max_pixels: 16,
     });
     let solid = |v: u8| RgbaImage::from_pixel(4, 4, Rgba([v, 10, 10, 255]));
     let (base, near, far) = (solid(10), solid(11), solid(50));
@@ -252,4 +173,50 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
         !goldens.golden_path("pair").exists(),
         "comparing two images writes no golden"
     );
+}
+
+/// The adapter sidecar: the first comparison records the run's adapter, a
+/// later run on the same one compares as usual, a run on another adapter
+/// fails with that reason before any pixel diff, and an update run adopts
+/// the new adapter.
+#[test]
+fn goldens_record_and_hold_their_adapter() {
+    let dir = Scratch::new("adapter");
+    let image = RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255]));
+    let sidecar = dir.0.join("golden").join("adapter.txt");
+    let first = Goldens::new(&dir.0).with_adapter("GPU A");
+    first.check("g", &image, true);
+    assert_eq!(fs::read_to_string(&sidecar).unwrap(), "GPU A");
+    first.check("g", &image, false);
+
+    let other = Goldens::new(&dir.0).with_adapter("GPU B");
+    panic_probe::assert_panics_with("written on adapter \"GPU A\"", || {
+        other.check("g", &image, false);
+    });
+    other.check("g", &image, true);
+    assert_eq!(
+        fs::read_to_string(&sidecar).unwrap(),
+        "GPU B",
+        "an update adopts it"
+    );
+
+    Goldens::new(&dir.0).check("g", &image, false);
+}
+
+/// Every golden no name claims is an orphan, in name order; the adapter
+/// sidecar is not a golden, and a set with no directory has none.
+#[test]
+fn orphans_are_the_goldens_no_name_claims() {
+    let dir = Scratch::new("orphans");
+    let goldens = Goldens::new(&dir.0).with_adapter("GPU A");
+    assert!(goldens.orphans([]).is_empty(), "no directory, no orphans");
+    let image = RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 255]));
+    for name in ["kept", "old", "older"] {
+        goldens.check(name, &image, true);
+    }
+    assert_eq!(
+        goldens.orphans(["kept"]),
+        [goldens.golden_path("old"), goldens.golden_path("older")],
+    );
+    assert!(goldens.orphans(["kept", "old", "older"]).is_empty());
 }

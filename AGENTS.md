@@ -136,7 +136,9 @@ cargo test --test visual --features golden
 Its goldens in `tests/visual/golden/` are local and show whatever tree last
 wrote them; a missing one is written and then failed. Run the suite on the
 unchanged tree first — if it fails there, rewrite the stale goldens with
-`UPDATE_GOLDEN=1` before changing anything. A failure leaves `actual.png`,
+`UPDATE_GOLDEN=1` before changing anything. The goldens record the adapter
+that wrote them in `golden/adapter.txt`; a run on another adapter fails with
+that reason until `UPDATE_GOLDEN=1` adopts it. A failure leaves `actual.png`,
 `expected.png`, and `diff.png` in `tests/visual/output/<name>/`.
 
 A change a user can see ends with a look at `cargo run --example showcase`.

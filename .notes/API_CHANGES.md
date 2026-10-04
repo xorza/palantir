@@ -16,20 +16,6 @@ Line numbers are against `50b34a49`.
 
 ---
 
-## A7. `golden` module surface
-
-**Findings.** REVIEW "the public `golden` API takes and returns `image::RgbaImage` without
-re-exporting `image`". TEST_REVIEW 7: `Tolerance` caps the share of differing pixels but not how
-far a pixel may differ, and `render*` drops the `FrameReport`.
-
-**Recommendation.**
-
-- `pub use image` from `golden` (the same reason `lib.rs:225-238` re-exports `wgpu`).
-- The `render*` functions return the `FrameReport` beside the image, so a suite can assert on
-  repaint and paint mode without a second frame.
-- The tolerance is A25 and the adapter sidecar and orphan report are A26; the three items land
-  together (phase 5 of the plan).
-
 ## A10. Super modifier
 
 **Findings.** REVIEW "Platform key events": `Modifiers` has no super bit, so Super+L arrives as
@@ -87,32 +73,6 @@ delta only when no row under the pointer pans y. Touches `Sense`, `Scroll`, `Tex
 `TabStrip`, `Cascade::hit_test_targets` and `InputState::on_scroll`. Tests: wheel y over a field in
 a `Scroll::vertical()` scrolls the page; an overflowing tab strip pans on wheel x and Shift+wheel y
 (Linux) and passes wheel y to the page; a lone field with overflowing text pans on wheel y.
-
-## A25. Golden tolerance that bounds how far a pixel may differ
-
-**Findings.** TEST_REVIEW "The visual suite's tolerance and capture lose information":
-`golden::Tolerance { per_channel, max_ratio }` caps the share of pixels past `per_channel`, but not
-how far those pixels may move, so a loosened golden lets a few pixels be wholly wrong. Its
-`Default` (2 per channel, 0.1 %) hid stale goldens in this repo's own suite: switching the suite to
-exact comparison turned up five goldens 1–3 steps off on a large share of their pixels. The suite
-now compares exactly through its own wrapper (`tests/visual/goldens.rs`); the public type and its
-default are unchanged.
-
-**Recommendation.** The WPT fuzzy shape: `Tolerance { max_delta, max_pixels }` — at most
-`max_pixels` pixels may differ, and none by more than `max_delta` on any channel — with
-`Tolerance::EXACT` as the `Default`. A loosening then names two numbers a reader can derive. Touches
-`golden::Tolerance`, `DiffReport::passes`, `Goldens::tolerance` and any downstream suite.
-
-## A26. Golden bookkeeping a suite cannot do from outside
-
-**Findings.** TEST_REVIEW "The visual suite's tolerance and capture lose information": `Goldens`
-does not know which adapter wrote a golden, so a driver update reads as pixel diffs across the
-suite; and nothing reports a golden no test compares against any more.
-
-**Recommendation.** `Goldens::adapter(info)` writes an adapter sidecar beside the goldens and
-fails a comparison against a sidecar from another adapter with that reason instead of a pixel
-diff; `Goldens::orphans(names)` lists golden files not among `names`, for a suite to assert empty
-from one test that names them all. Touches `golden::Goldens`.
 
 ---
 
@@ -188,9 +148,8 @@ Done. The rules are in AGENTS.md, the kinds in `widget::domain`, and
 
 ## Phase 5 — goldens
 
-A7, A25 and A26 together: `golden` re-exports `image`, `render*` returns the `FrameReport`,
-`Tolerance { max_delta, max_pixels }` with `EXACT` as default, the adapter sidecar and the orphan
-report. Downstream suites change once.
+Done (A7, A25, A26). The visual suite records its adapter; it does not assert `orphans` yet,
+because no one test names every golden the suite draws.
 
 ## Phase 6 — features
 

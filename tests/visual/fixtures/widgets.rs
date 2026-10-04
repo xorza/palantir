@@ -2,7 +2,7 @@
 //! widget's render path.
 
 use glam::{UVec2, Vec2};
-use image::Rgba;
+use palantir::golden::image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
     Background, Block, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,

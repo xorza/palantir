@@ -4,7 +4,7 @@
 //! showcase's gradients page.
 
 use glam::UVec2;
-use image::RgbaImage;
+use palantir::golden::image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{
     Background, Block, Brush, Configure, ConicGradient, Corners, LinearGradient, Panel,

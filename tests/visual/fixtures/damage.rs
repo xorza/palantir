@@ -11,7 +11,7 @@
 //! `tests/visual/output/damage_<name>/`.
 
 use glam::{UVec2, Vec2};
-use image::{Rgba, RgbaImage};
+use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::{
     Background, Block, Button, Configure, DebugOverlayConfig, FramePaint, Panel, RgbaF32, Sizing,
 };
