@@ -27,36 +27,6 @@ or translated, and there is no Tab focus traversal. REDESIGN D16 fixes the docs.
 for preedit and commit; focus traversal needs a focus order (the `KeyClass::Focus` class it reads
 exists since the key-class split). Out of scope for the defect work.
 
-## A22. Wheel sense per axis
-
-**Findings.** REVIEW "Wheel routing" / REDESIGN D9: `hit_test_targets` sends the whole wheel delta
-to the topmost `Sense::SCROLL` row. Every `TextEdit` senses `SCROLL` and a tab strip band is a
-horizontal scroll, so a vertical wheel over either is swallowed and the page under it does not
-scroll. Routing each axis to the nearest row that can pan along it (browser scroll chaining, CSS
-Overscroll Behavior §2) needs each row to say which axes it pans *this frame* — a `Scroll` only
-where its content overflows its viewport or its zoom is above 1, a single-line `TextEdit` only
-along x and only when its text overflows. The cascade cannot infer that: the row that senses the
-wheel is a `Scroll`'s outer frame, not the viewport node layout knows the extent of, and a
-`TextEdit` pans inside one leaf. Widgets reach only the public API, so the declaration has to be
-public.
-
-**Options.**
-
-1. `Sense::SCROLL_X` and `Sense::SCROLL_Y`, with `SCROLL = SCROLL_X | SCROLL_Y`. A widget senses the
-   axes it can pan this frame; `hit_test_targets` keeps the topmost row per axis, and the wheel
-   delta splits by axis (after the Shift swap) before delivery.
-2. A separate `pan_axes(ScrollAxes)` configure setter beside `sense`. More explicit, but a second
-   knob that has to agree with the `SCROLL` bit.
-
-**Recommendation.** Option 1: the axes are what the sense means, and existing `Sense::SCROLL`
-callers keep their behaviour. `Scroll` senses its declared axes intersected with the axes it can
-pan (from last frame's `ScrollGeometry`), and `TextEdit` senses `SCROLL_X` while its text
-overflows; the y→x wheel mapping then moves into routing — a horizontal-only row takes a pure-y
-delta only when no row under the pointer pans y. Touches `Sense`, `Scroll`, `TextEdit`,
-`TabStrip`, `Cascade::hit_test_targets` and `InputState::on_scroll`. Tests: wheel y over a field in
-a `Scroll::vertical()` scrolls the page; an overflowing tab strip pans on wheel x and Shift+wheel y
-(Linux) and passes wheel y to the page; a lone field with overflowing text pans on wheel y.
-
 ---
 
 # Surface review (2026-10-04)
@@ -136,10 +106,10 @@ because no one test names every golden the suite draws.
 
 ## Phase 6 — features
 
-1. **A22** wheel sense per axis, after phase 1 step 3.
-2. **A20** keyboard on toggles and ranges, after phase 3 step 1.
-3. **A19** IME and focus traversal, each its own design.
-4. **A10** the `meta` modifier, after phase 2 step 4.
+1. Done: wheel sense per axis (A22).
+2. Done: keyboard on toggles and ranges (A20).
+3. **A19** IME and focus traversal, each its own design. Waits on `QUESTIONS.md` Q2.
+4. Done: the `meta` modifier (A10).
 
 ## Order at a glance
 

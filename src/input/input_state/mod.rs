@@ -21,6 +21,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
 use crate::input::scope::Scopes;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::shortcut::Shortcut;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
@@ -46,13 +47,13 @@ pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pointer_pos: Option<Vec2>,
     hovered: Option<WidgetId>,
-    /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
-    /// whenever the pointer moves and at `end_frame`. New scroll events
-    /// are attributed to this id when they arrive.
-    pub(crate) scroll_target: Option<WidgetId>,
+    /// Topmost `Sense::SCROLL_X` and `Sense::SCROLL_Y` widgets under the
+    /// pointer, recomputed whenever the pointer moves and at `end_frame`.
+    /// New scroll events are split between them when they arrive.
+    pub(crate) scroll_targets: ScrollTargets,
     /// Topmost `Sense::PINCH` widget under the pointer, recomputed
-    /// alongside `scroll_target`. Pinch zoom factors route to this id
-    /// instead of `scroll_target` so a widget can opt into pan-via-
+    /// alongside `scroll_targets`. Pinch zoom factors route to this id
+    /// instead of `scroll_targets` so a widget can opt into pan-via-
     /// scroll *without* committing to pinch zoom (and vice versa).
     pub(crate) pinch_target: Option<WidgetId>,
     /// Pixel, line, and pinch deltas accumulated by their event-time
@@ -435,26 +436,33 @@ impl InputState {
         self.captures.iter().any(|c| c.press.is_some())
     }
 
-    /// Accumulate one scroll delta on the current scroll target and wake
-    /// the watchers, answering whether anything observed it.
+    /// Accumulate one scroll delta on the current scroll targets, split
+    /// by axis, and wake the watchers, answering whether anything
+    /// observed it.
     ///
     /// One body for the two units a host delivers: pixels off a trackpad,
     /// lines off a wheel notch. They reach the widget in separate lanes —
     /// see [`ScrollDelta`] — so the caller fills the lane it has and
     /// leaves the other at zero.
     fn on_scroll(&mut self, pixels: Vec2, lines: Vec2) -> EventOutcome {
-        let target = self.scroll_target;
-        if let Some(target) = target {
-            let delta = self.target_scroll_delta_mut(target);
-            delta.pixels += pixels;
-            delta.lines += lines;
+        let mut delivered = false;
+        for share in self
+            .scroll_targets
+            .route(pixels, lines)
+            .into_iter()
+            .flatten()
+        {
+            let delta = self.target_scroll_delta_mut(share.target);
+            delta.pixels += share.pixels;
+            delta.lines += share.lines;
+            delivered = true;
         }
         let subbed = self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
             pos,
             pixels,
             lines,
         });
-        EventOutcome::repaint(target.is_some() || subbed)
+        EventOutcome::repaint(delivered || subbed)
     }
 
     /// Push for the events that route *by pointer position* — scroll and
@@ -535,7 +543,7 @@ impl InputState {
         let outcome = match event {
             InputEvent::PointerMoved(p) => {
                 let prev_hover = self.hovered;
-                let prev_scroll = self.scroll_target;
+                let prev_scroll = self.scroll_targets;
                 let prev_pinch = self.pinch_target;
                 self.pointer_pos = Some(p);
                 // Drag-latch check per button. Every captured button
@@ -565,7 +573,7 @@ impl InputState {
                     self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Move);
                 EventOutcome {
                     repaint: self.hovered != prev_hover
-                        || self.scroll_target != prev_scroll
+                        || self.scroll_targets != prev_scroll
                         || self.pinch_target != prev_pinch
                         || self.any_press()
                         || move_subbed,
@@ -576,7 +584,7 @@ impl InputState {
             }
             InputEvent::PointerLeft => {
                 let observable = self.hovered.is_some()
-                    || self.scroll_target.is_some()
+                    || self.scroll_targets.any()
                     || self.pinch_target.is_some()
                     || self.any_press();
                 self.pointer_pos = None;
@@ -816,7 +824,7 @@ impl InputState {
         self.frame_keyboard_events.clear();
     }
 
-    /// Re-resolve `hovered` / `scroll_target` / `pinch_target` against
+    /// Re-resolve `hovered` / `scroll_targets` / `pinch_target` against
     /// `cascade` using the current `pointer_pos` — the single owner of
     /// the target-triple assignment (the `PointerMoved` / `PointerLeft`
     /// arms, `end_frame`, and the cold-start warmup all route through
@@ -830,11 +838,11 @@ impl InputState {
         if let Some(p) = self.pointer_pos {
             let hits = cascade.hit_test_targets(p);
             self.hovered = hits.hover;
-            self.scroll_target = hits.scroll;
+            self.scroll_targets = hits.scroll;
             self.pinch_target = hits.pinch;
         } else {
             self.hovered = None;
-            self.scroll_target = None;
+            self.scroll_targets = ScrollTargets::default();
             self.pinch_target = None;
         }
     }
@@ -904,7 +912,7 @@ impl InputState {
     ///
     /// **The pointer test carries the routed targets with it.**
     /// [`Self::refresh_pointer_targets`] is the only writer of `hovered`
-    /// / `scroll_target` / `pinch_target`, and it clears all three
+    /// / `scroll_targets` / `pinch_target`, and it clears all three
     /// whenever `pointer_pos` is `None` — so asking each of them again
     /// asks a question the first test already answered.
     ///
@@ -916,7 +924,7 @@ impl InputState {
         debug_assert!(
             self.pointer_pos.is_some()
                 || (self.hovered.is_none()
-                    && self.scroll_target.is_none()
+                    && !self.scroll_targets.any()
                     && self.pinch_target.is_none()),
             "a routed target outlived the pointer, so `pointer_pos.is_none()` \
              no longer answers for it",

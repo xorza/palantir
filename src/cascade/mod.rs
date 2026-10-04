@@ -137,25 +137,33 @@ impl Cascade {
     }
 
     /// One reverse walk that finds the topmost hover, scroll and pinch
-    /// target at once. Used on `PointerMoved` and at `post_record` to
-    /// recompute all three in a single pass.
+    /// targets at once. Used on `PointerMoved` and at `post_record` to
+    /// recompute them all in a single pass.
     /// [`Self::hit_test_press`] is the same shape for the press path.
-    /// The three are independent: a `Sense::DRAG | Sense::SCROLL` widget
-    /// sits in both hover and scroll slots if it's the topmost match for
-    /// each. Stops as soon as all three are filled.
+    /// The slots are independent: a `Sense::DRAG | Sense::SCROLL` widget
+    /// sits in the hover slot and both scroll slots if it's the topmost
+    /// match for each, and the two wheel axes may land on two rows.
+    /// Stops as soon as every slot is filled.
     pub(crate) fn hit_test_targets(&self, pos: Vec2) -> HitTargets {
         let mut targets = HitTargets::default();
         for row in self.hits_under(pos) {
             if targets.hover.is_none() && Sense::hovers(row.sense) {
                 targets.hover = Some(row.widget_id);
             }
-            if targets.scroll.is_none() && Sense::scrolls(row.sense) {
-                targets.scroll = Some(row.widget_id);
+            if targets.scroll.x.is_none() && row.sense.contains(Sense::SCROLL_X) {
+                targets.scroll.x = Some(row.widget_id);
+            }
+            if targets.scroll.y.is_none() && row.sense.contains(Sense::SCROLL_Y) {
+                targets.scroll.y = Some(row.widget_id);
             }
             if targets.pinch.is_none() && Sense::pinches(row.sense) {
                 targets.pinch = Some(row.widget_id);
             }
-            if targets.hover.is_some() && targets.scroll.is_some() && targets.pinch.is_some() {
+            if targets.hover.is_some()
+                && targets.scroll.x.is_some()
+                && targets.scroll.y.is_some()
+                && targets.pinch.is_some()
+            {
                 break;
             }
         }

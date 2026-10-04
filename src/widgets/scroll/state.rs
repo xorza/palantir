@@ -2,6 +2,7 @@
 //! each input step as ephemeral [`ScrollBounds`] rather than becoming
 //! another retained widget-state copy.
 
+use crate::input::sense::Sense;
 use crate::layout::drivers::scrollbars::bar_geometry::BarGeometry;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -221,6 +222,20 @@ impl ScrollState {
             self.offset = (self.offset + pivot) * dz_eff - pivot;
             self.zoom = new_zoom;
         }
+    }
+
+    /// The wheel axes a viewport panning `pan_x` / `pan_y` can move along
+    /// inside `bounds`: those where the content overflows the viewport at
+    /// this zoom, or a content margin widens the range past the rest.
+    ///
+    /// What the viewport senses, so the wheel on an axis it cannot pan
+    /// reaches the container behind it instead.
+    pub(crate) fn wheel_sense(&self, bounds: ScrollBounds, pan_x: bool, pan_y: bool) -> Sense {
+        let range = self.natural_bounds(bounds);
+        let mut sense = Sense::NONE;
+        sense.set(Sense::SCROLL_X, pan_x && range.hi.x > range.lo.x);
+        sense.set(Sense::SCROLL_Y, pan_y && range.hi.y > range.lo.y);
+        sense
     }
 
     pub(crate) fn apply_wheel_pan(

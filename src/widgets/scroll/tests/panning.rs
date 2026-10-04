@@ -1,6 +1,7 @@
 //! What moves the offset, and where it is clamped.
 
 use crate::Ui;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -438,4 +439,89 @@ fn pan_by_composes_with_a_wheel_and_with_itself() {
         50.0,
         "30 px of wheel and two requests of 12 and 8 are 50 px of pan",
     );
+}
+
+/// A viewport senses the wheel only on the axes it can pan, so the other
+/// axis reaches the container behind it. Before its first arrange it has
+/// no overflow to read and claims every axis it declares; a zoomable one
+/// claims both always, since its wheel zooms.
+#[test]
+fn a_viewport_senses_the_wheel_only_on_the_axes_it_can_pan() {
+    type Case = (
+        &'static str,
+        fn() -> Scroll<'static>,
+        (f32, f32),
+        ScrollTargets,
+        ScrollTargets,
+    );
+    let id = WidgetId::from_hash("sensing");
+    let both = ScrollTargets::both(id);
+    let x_only = ScrollTargets {
+        x: Some(id),
+        y: None,
+    };
+    let y_only = ScrollTargets {
+        x: None,
+        y: Some(id),
+    };
+    let none = ScrollTargets::default();
+    // (case, the viewport, its content, targets after one frame, after two)
+    let cases: [Case; 6] = [
+        (
+            "vertical, overflowing",
+            Scroll::vertical,
+            (100.0, 800.0),
+            y_only,
+            y_only,
+        ),
+        (
+            "vertical, fitting",
+            Scroll::vertical,
+            (100.0, 100.0),
+            y_only,
+            none,
+        ),
+        (
+            "both, wide content",
+            Scroll::both,
+            (800.0, 100.0),
+            both,
+            x_only,
+        ),
+        (
+            "both, tall content",
+            Scroll::both,
+            (100.0, 800.0),
+            both,
+            y_only,
+        ),
+        ("both, fitting", Scroll::both, (100.0, 100.0), both, none),
+        (
+            "zoomable, fitting",
+            || Scroll::both().zoomable(),
+            (100.0, 100.0),
+            both,
+            both,
+        ),
+    ];
+    for (label, scroll, (w, h_content), first, settled) in cases {
+        let build = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    scroll()
+                        .id(id)
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                        .show(ui, |ui| {
+                            fixed_block(ui, WidgetId::from_hash("content"), w, h_content);
+                        });
+                });
+        };
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(build);
+        h.move_to(Vec2::new(50.0, 50.0));
+        assert_eq!(h.ui.input().scroll_targets, first, "{label}: first frame");
+        h.frame(build);
+        assert_eq!(h.ui.input().scroll_targets, settled, "{label}: settled");
+    }
 }

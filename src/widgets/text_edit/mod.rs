@@ -77,6 +77,11 @@ struct TextEditState {
 /// the widget retains only semantic and view state. Host-side buffer
 /// mutations between frames are visible immediately; persisted offsets
 /// are repaired before each input pass.
+///
+/// The wheel pans the text only along the axis it overflows on — x for a
+/// single line, y for [`Self::multiline`] — and reaches the container
+/// behind the field on the other. A plain vertical wheel turn pans a
+/// single-line field when nothing under the pointer scrolls vertically.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TextEdit<'a> {
@@ -133,7 +138,8 @@ impl<'a> TextEdit<'a> {
         // an editor whose content overflows has somewhere to go, and
         // without the sense the wheel routed straight past it to
         // whatever container sat behind — a multi-line editor could only
-        // be panned by moving the caret.
+        // be panned by moving the caret. `pass` narrows it to the axis
+        // the text overflows on before the node records.
         //
         // The clip keeps glyphs, caret, and selection wash inside the
         // editor's own rect, so a `Fixed`-sized editor with long content
@@ -389,6 +395,10 @@ impl<'a> TextEdit<'a> {
         // the box paints, the layout below does not run.
         if !look.text.metrics_valid() {
             let focus = state.view.roll_focus(is_focused);
+            let sense = self.widget.authored_sense();
+            self.widget
+                .configure()
+                .sense(sense.difference(Sense::SCROLL));
             self.widget.record(ui, Some(&look.background), |_| {});
             return EditSignals::focus_only(focus, response);
         }
@@ -507,6 +517,13 @@ impl<'a> TextEdit<'a> {
             gained_focus: focus.gained,
             now,
         });
+        // The wheel senses only the axis the text overflows on, so the
+        // other one — and both, while the text fits — reaches the
+        // container behind the field.
+        let sense = self.widget.authored_sense();
+        self.widget
+            .configure()
+            .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));
         let text_color = look.text.color;
         PaintInput {
             chrome: look.background,

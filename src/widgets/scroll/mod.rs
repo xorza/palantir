@@ -179,7 +179,11 @@ impl ScrollWrappers {
 /// their full natural extent; the viewport itself takes whatever its
 /// parent gave it. Wheel / touchpad input over the viewport pans
 /// children via a `transform` applied at record time using the
-/// previous frame's clamp. The scrollbar's relationship to the
+/// previous frame's clamp. The viewport senses the wheel only on the
+/// axes its content overflows, so the other axis — or both, while the
+/// content fits — reaches the container behind it. A
+/// [`zoomable`](Self::zoomable) one senses both always. The scrollbar's
+/// relationship to the
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
 ///
@@ -575,6 +579,27 @@ impl<'a> Scroll<'a> {
             }
             *state
         };
+        // The wheel senses only the axes the viewport can pan, so the
+        // other one reaches the container behind it. A zoomable viewport
+        // keeps both: its wheel zooms whether the content overflows or not.
+        // So does one with no arranged box yet, whose overflow is not
+        // known: the next frame has the box an event after this one pans.
+        let pan_x = self.axes.pans(Axis::X);
+        let pan_y = self.axes.pans(Axis::Y);
+        let pans = if self.zoom.is_some() {
+            Sense::SCROLL
+        } else if response.layout_rect.is_none() {
+            let mut declared = Sense::NONE;
+            declared.set(Sense::SCROLL_X, pan_x);
+            declared.set(Sense::SCROLL_Y, pan_y);
+            declared
+        } else {
+            state.wheel_sense(geom.bounds(), pan_x, pan_y)
+        };
+        let sense = self.widget.authored_sense();
+        self.widget
+            .configure()
+            .sense(sense.difference(Sense::SCROLL.difference(pans)));
 
         let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, geom, state);
         let inner_chrome = self.chrome;

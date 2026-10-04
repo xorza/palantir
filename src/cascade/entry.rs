@@ -4,6 +4,7 @@
 //! a key press resolves against.
 
 use crate::input::key_class::KeyFilter;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -127,11 +128,12 @@ pub(crate) struct PressTargets {
     pub(crate) focus: Option<WidgetId>,
 }
 
-/// Topmost interactive row under a point for each of three
-/// independent sense filters — the result of one reverse scan.
+/// Topmost interactive row under a point for each independent sense
+/// filter — hover, each wheel axis, pinch — the result of one reverse
+/// scan.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct HitTargets {
     pub(crate) hover: Option<WidgetId>,
-    pub(crate) scroll: Option<WidgetId>,
+    pub(crate) scroll: ScrollTargets,
     pub(crate) pinch: Option<WidgetId>,
 }

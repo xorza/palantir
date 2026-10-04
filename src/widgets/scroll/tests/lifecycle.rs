@@ -264,6 +264,10 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     };
 
     let mut h = UiHarness::new(surface);
+    // Two frames: the first has no box to read overflow from, so the
+    // viewport claims its wheel axis, and the second drops it — a flag
+    // change, which misses the measure cache as any other would.
+    h.frame(build);
     h.frame(build);
     let scroll_id = WidgetId::from_hash("scroll");
     let after_first = scroll_content(&h.ui, scroll_id);

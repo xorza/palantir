@@ -10,17 +10,17 @@ pub(crate) struct NodeFlags {
 }
 
 impl NodeFlags {
-    const SENSE_MASK: u32 = 0b1_1111;
-    const DISABLED: u32 = 1 << 5;
-    const CLIP_SHIFT: u32 = 6;
+    const SENSE_MASK: u32 = 0b11_1111;
+    const DISABLED: u32 = 1 << 6;
+    const CLIP_SHIFT: u32 = 7;
     const CLIP_MASK: u32 = 0b11 << Self::CLIP_SHIFT;
-    const FOCUSABLE: u32 = 1 << 8;
-    const SCOPE_SHIFT: u32 = 9;
+    const FOCUSABLE: u32 = 1 << 9;
+    const SCOPE_SHIFT: u32 = 10;
     const SCOPE_MASK: u32 = 0xff << Self::SCOPE_SHIFT;
 
     /// The whole bitset, for callers that fold it into a hash rather
     /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
-    /// these two bytes in with the packed layout metadata.
+    /// these bits in with the packed layout metadata.
     ///
     /// [`LayoutCore::hash_with_flags`]:
     ///     crate::scene::node::layout_core::LayoutCore::hash_with_flags
@@ -96,7 +96,7 @@ const _: () = assert!(
 );
 const _: () = assert!(
     Sense::ALL.bits() as u32 <= NodeFlags::SENSE_MASK,
-    "Sense uses more than 5 bits",
+    "Sense uses more than 6 bits",
 );
 const _: () = assert!(
     ((KeyFilter::ALL.bits() as u32) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
