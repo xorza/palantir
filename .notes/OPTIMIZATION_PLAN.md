@@ -91,6 +91,11 @@ no `ldlat` filter.
   recomputes nearly every row: `cascade/run/transform` stays at 56 µs,
   about 50 ns a node. A pan gets cheaper than that only when the rows
   under a transform stop holding screen space.
+- **Item 2, one widget-id table** (6800U, A/B against item 1): every
+  `frame/*_cpu` arm −1.2 to −2 % at default size, inside the noise at
+  10×. The reserved set held about one id at a time, so the merge saved
+  small-table work only. `resolve` and `record_endpoint` still probe the
+  large table once each.
 
 ## How to measure
 
@@ -142,30 +147,6 @@ Locality changes show at 10× and hide in the noise at the default size, so
 measure both.
 
 ## Plan, highest value first
-
-### 2. Five hash probes in two widget-id tables for each node
-
-For each node, recording does:
-
-- `SeenIds::resolve`: `curr.contains_key`, `reserved.contains`,
-  `reserved.insert`.
-- `SeenIds::record_endpoint`: `curr.entry` and `reserved.remove`.
-- `rollover` then probes `curr` once for each `prev` key, and a cascade
-  rebuild inserts every id into `by_id` again.
-
-These ids are random hashes, so each probe is a random line in a table of
-10 600 entries at 10×.
-
-- Cost: the main slow loads (`open_node` 32 %, `Widget::resolve` 13 %,
-  `HashSet<WidgetId>::insert` 7.6 %) and 2 % self-time in the out-of-line
-  `insert`.
-- Change: merge `reserved` into `curr` as one `WidgetIdMap<IdSlot>`, with
-  `IdSlot` either `Reserved` or `Recorded(Endpoint)`. `resolve` does one
-  `entry` probe and `record_endpoint` does one more. Keep the collision rules
-  that `seen_ids/tests.rs` pins: an explicit id may claim its own
-  reservation, and an auto id must step past it.
-- Check: `frame/cached_cpu` at both sizes, the slow-load report, and
-  `cargo test` on `scene::seen_ids`.
 
 ### 3. Blocked store forwarding when `Node::columns` reads the node
 
@@ -252,6 +233,5 @@ Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
 
 ## Order
 
-Start with item 2: it gives the largest saving left, and it is a
-contained change. Item 3 needs its confirmation capture first. Items 4–6 are
+Item 3 needs its confirmation capture first. Items 4–6 are
 small and independent, and each one is worth more at 10× than at default size.
