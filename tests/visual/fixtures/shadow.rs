@@ -476,3 +476,44 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
         probe(&img, x, y, 1.0, "closed inset hole");
     }
 }
+
+/// An inset shadow takes its source's own edge ramp. With its hole closed
+/// by the spread, it covers the source exactly as a fill of its colour
+/// does, so the two renders match pixel for pixel — the rounded corners'
+/// partly covered pixels included, which a hard cut at the edge left at
+/// full shadow inside the edge and bare outside it.
+#[test]
+fn an_inset_shadow_shares_its_source_edge_ramp() {
+    let source = Rect::new(40.5, 40.25, 100.0, 80.0);
+    let color = RgbaF32::srgba(0.0, 0.0, 0.0, 0.85);
+    let render = |shadow: bool| {
+        let mut harness = Harness::new();
+        harness
+            .size(VIEWPORT)
+            .clear(CLEAR)
+            .frame(|ui| {
+                Panel::canvas()
+                    .auto_id()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        if shadow {
+                            ui.add_shape(
+                                Shape::shadow(Shadow {
+                                    color,
+                                    offset: Vec2::ZERO,
+                                    blur: 3.0,
+                                    spread: 60.0,
+                                    inset: true,
+                                })
+                                .at(source)
+                                .corners(14.0),
+                            );
+                        } else {
+                            ui.add_shape(Shape::rect(source).fill(color).corners(14.0));
+                        }
+                    });
+            })
+            .image
+    };
+    assert_same("shadow_inset_edge", &render(true), &render(false));
+}
