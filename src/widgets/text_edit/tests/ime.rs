@@ -3,6 +3,7 @@
 //! for IME text while it holds focus.
 
 use crate::common::span::Span;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -71,10 +72,10 @@ fn focused_at(text: &str, back: usize) -> (UiHarness, String) {
 fn a_composition_shows_in_place_and_types_on_commit() {
     let caret_width = TextEditTheme::default().caret_width;
     let (mut h, mut buf) = focused_at("abcd", 2);
-    h.on_input(InputEvent::ImePreedit {
+    h.on_input(InputEvent::ImePreedit(ImePreedit {
         text: "かな",
         cursor: Some(Span::new(6, 0)),
-    });
+    }));
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(buf, "abcd", "a composition types nothing");
     assert_eq!(painted(&h, caret_width), ("abかなcd".to_owned(), 1));
@@ -96,7 +97,7 @@ fn a_composition_starting_over_a_selection_deletes_it() {
     h.frame(|ui| record(ui, &mut buf));
     h.set_modifiers(Modifiers::NONE);
     for text in ["x", "xy"] {
-        h.on_input(InputEvent::ImePreedit { text, cursor: None });
+        h.on_input(InputEvent::ImePreedit(ImePreedit { text, cursor: None }));
         h.frame(|ui| record(ui, &mut buf));
         assert_eq!(buf, "", "{text}: the selection went, and only it");
     }

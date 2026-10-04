@@ -1,4 +1,5 @@
 use super::InputQueue;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
@@ -166,10 +167,10 @@ fn a_held_ime_event_keeps_its_own_text() {
     }
     let owned = String::from("abc");
     queue.defer(
-        InputEvent::ImePreedit {
+        InputEvent::ImePreedit(ImePreedit {
             text: &owned,
             cursor: Some(Span::new(1, 1)),
-        },
+        }),
         Duration::ZERO,
     );
     drop(owned);
@@ -183,7 +184,7 @@ fn a_held_ime_event_keeps_its_own_text() {
         [
             "ImeCommit(\"かな\")",
             "ImeCommit(\"x\")",
-            "ImePreedit { text: \"abc\", cursor: Some(Span { start: 1, len: 1 }) }",
+            "ImePreedit(ImePreedit { text: \"abc\", cursor: Some(Span { start: 1, len: 1 }) })",
         ],
     );
     // Empty again, so the next hold starts the buffer over.

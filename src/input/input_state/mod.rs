@@ -301,7 +301,7 @@ impl InputState {
         (!self.ime_preedit.is_empty() && self.ime_owner.is_some() && self.ime_owner == self.focused)
             .then(|| ImePreedit {
                 text: &self.ime_preedit,
-                cursor: self.ime_cursor.map(Span::range),
+                cursor: self.ime_cursor,
             })
     }
 
@@ -957,7 +957,7 @@ impl InputState {
                 }
                 EventOutcome::settle(observable)
             }
-            InputEvent::ImePreedit { text, cursor } => {
+            InputEvent::ImePreedit(ImePreedit { text, cursor }) => {
                 self.ime_preedit.clear();
                 self.ime_preedit.push_str(text);
                 self.ime_cursor = cursor;

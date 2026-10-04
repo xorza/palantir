@@ -166,6 +166,12 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
+    /// The bound colour as it stands before `show`: what a
+    /// [`ColorButton`](crate::ColorButton) paints its chip with.
+    pub const fn color(&self) -> RgbaF32 {
+        *self.color
+    }
+
     /// Record the panel and report what it did to the bound colour.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         // An `Rc` bump on the theme bundle, so the rows can borrow their

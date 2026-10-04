@@ -14,9 +14,9 @@ use crate::primitives::paint::color::RgbaF32;
 /// [`Self::build`] and implicit conversions panic if fewer than two were
 /// added.
 ///
-/// `with_spread` / `with_interpolation` are spelled the same here as on the
-/// finished [`Gradient`] on purpose, so a caller needn't know which side
-/// of the build it is holding.
+/// Its setters are bare (`spread`, `interpolation`), as a builder's are;
+/// the finished [`Gradient`] spells the same settings `with_spread` and
+/// `with_interpolation`, as a value does.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct GradientBuilder<G> {

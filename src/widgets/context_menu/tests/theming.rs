@@ -4,7 +4,6 @@
 use crate::Ui;
 use crate::input::shortcut::Shortcut;
 use crate::internals::harness::UiHarness;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -169,48 +168,6 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
         panic!("the menu rule paints a solid fill");
     };
     assert_eq!(fill, RgbaF16::from(rule), "rule color comes off the menu");
-}
-
-/// Both menu radii are theme fields, and `with_radius` keeps them in
-/// the relationship the default ships: the row chip nests *inside* the
-/// panel corner rather than out-rounding it. A `None` chip derives one
-/// px under the panel; `Some` overrides it outright. `normal` paints no
-/// background at rest and must stay that way.
-#[test]
-fn with_radius_rerounds_panel_and_nests_the_row_chip() {
-    let derived = ContextMenuTheme::default().with_radius(10.0, None);
-    assert_eq!(derived.panel.corners, Corners::all(10.0), "panel radius");
-    assert_eq!(
-        derived.item.looks.hovered.background.corners,
-        Corners::all(9.0),
-        "chip derives one px under the panel",
-    );
-    assert_eq!(
-        derived.item.looks.active.background.corners,
-        Corners::all(9.0),
-        "every state that paints a chip follows",
-    );
-    assert!(
-        derived.item.looks.normal.background.is_noop(),
-        "rows stay transparent at rest — rerounding an invisible chip leaves it invisible",
-    );
-
-    let explicit = ContextMenuTheme::default().with_radius(10.0, Some(2.0));
-    assert_eq!(explicit.panel.corners, Corners::all(10.0));
-    assert_eq!(
-        explicit.item.looks.hovered.background.corners,
-        Corners::all(2.0),
-        "an explicit chip radius wins over the derived one",
-    );
-
-    // A square panel can't take a negative chip.
-    let square = ContextMenuTheme::default().with_radius(0.0, None);
-    assert_eq!(square.panel.corners, Corners::all(0.0));
-    assert_eq!(
-        square.item.looks.hovered.background.corners,
-        Corners::all(0.0),
-        "derived chip floors at 0 rather than going negative",
-    );
 }
 
 /// `.style(...)` beats the global slot on every menu widget and writes

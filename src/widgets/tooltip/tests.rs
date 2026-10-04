@@ -3,6 +3,7 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
+use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
 use crate::input::interaction::response_state::ResponseState;
@@ -116,7 +117,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     assert_eq!(shaped.extent.size, Size::new(260.0, 2.0 * 15.59375));
     assert_eq!(bubble.size.w, 260.0 + 14.0);
     assert!(
-        shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
+        shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.sums().w,
         "text width {} must fit inside bubble width {}",
         shaped.extent.size.w,
         bubble.size.w,
@@ -513,7 +514,7 @@ fn tooltip_inside_popup_records_without_panic() {
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::at_point(popup_anchor)
+                    Popup::new(Anchor::at_point(popup_anchor))
                         .id(WidgetId::from_hash("popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .padding(4.0)

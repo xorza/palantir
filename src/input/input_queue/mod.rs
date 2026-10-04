@@ -83,7 +83,7 @@ impl InputQueue {
             | InputEvent::Zoom(_)
             | InputEvent::ModifiersChanged(_)
             | InputEvent::SurfaceFocusLost
-            | InputEvent::ImePreedit { .. }
+            | InputEvent::ImePreedit(_)
             | InputEvent::ImeCommit(_) => true,
         }
     }

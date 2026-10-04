@@ -73,7 +73,7 @@ impl<'a> MenuItem<'a> {
     /// using the platform's native form (`⌘C` / `Ctrl+C`) and
     /// intercepts that keypress while the menu is open. Glyph-only
     /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
-    /// `Shortcut::new(ShortcutMods::NONE, Key::Backspace)`.
+    /// `Shortcut::key(Key::Backspace)`.
     pub const fn shortcut(mut self, s: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Activate(s);
         self

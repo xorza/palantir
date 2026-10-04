@@ -257,9 +257,9 @@ impl<'a> Splitter<'a> {
         let rule_bg = Background::fill(rule_color);
 
         let main_tracks = [
-            Track::new(Sizing::share(layout_ratio)),
+            Track::fill(layout_ratio),
             Track::fixed(rule_thickness),
-            Track::new(Sizing::share(1.0 - layout_ratio)),
+            Track::fill(1.0 - layout_ratio),
         ];
         let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);

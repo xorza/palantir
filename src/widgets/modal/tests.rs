@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -98,7 +99,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
         const SURFACE: UVec2 = UVec2::new(400, 300);
         let scene = |ui: &mut Ui| {
             if with_popup {
-                Popup::at_point(Vec2::ZERO)
+                Popup::new(Anchor::at_point(Vec2::ZERO))
                     .id(WidgetId::from_hash("under-modal"))
                     .show(ui, |_ui, _handle| {});
             }
@@ -205,7 +206,7 @@ fn escape_closes_only_the_topmost_overlay() {
         modal: bool,
     }
     let scene = |ui: &mut Ui| Closed {
-        popup: Popup::at_point(Vec2::ZERO)
+        popup: Popup::new(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
             .show(ui, |_ui, _handle| {})
             .dismissed,

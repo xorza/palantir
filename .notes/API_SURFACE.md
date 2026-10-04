@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `32cacabb` (plus the working tree).
+Generated on top of `4519bd41` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -339,12 +339,7 @@ CloseHandle
 ColorButton
     struct ColorButton<'a>
         // and private fields
-        pub fn new(color: &'a mut RgbaF32) -> Self
-        pub const fn alpha(self, on: bool) -> Self
-        pub const fn model(self, model: ColorModel) -> Self
-        pub const fn history(self, on: bool) -> Self
-        pub const fn swatches(self, colors: &'a [RgbaF32]) -> Self
-        pub const fn texel_size(self, n: u32) -> Self
+        pub fn new(picker: ColorPicker<'a>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
@@ -410,6 +405,7 @@ ColorPicker
         pub const fn swatches(self, colors: &'a [RgbaF32]) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
+        pub const fn color(&self) -> RgbaF32
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl Configure
         impl ThemeDefaults  (blanket)
@@ -587,7 +583,6 @@ ContextMenuTheme
         pub gap: f32
         pub item: MenuItemTheme
         pub separator: SeparatorTheme
-        pub fn with_radius(self, panel: f32, chip: Option<f32>) -> Self
         pub fn from_palette(p: &Palette) -> Self
         impl Clone
         impl Debug
@@ -600,16 +595,12 @@ Corners
         (_)
         pub const ZERO: Self
         pub fn as_array(self) -> [f32; 4]
-        pub fn from_array(v: [f32; 4]) -> Self
         pub fn all(r: f32) -> Self
         pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self
         pub fn top(r: f32) -> Self
         pub fn bottom(r: f32) -> Self
         pub fn left(r: f32) -> Self
         pub fn right(r: f32) -> Self
-        pub fn top_bottom(top: f32, bottom: f32) -> Self
-        pub fn main_diagonal(r: f32) -> Self
-        pub fn anti_diagonal(r: f32) -> Self
         pub fn scaled_by(self, factor: f32) -> Self
         pub const fn is_approx_zero(&self) -> bool
         impl Clone
@@ -1342,9 +1333,8 @@ Hsv
         impl PartialEq
 
 HueSlice
-    enum HueSlice
-        Okhsv(OkhsvSlice)
-        Hsv(f32)
+    struct HueSlice
+        (_)
         pub fn color(self, s: f32, v: f32) -> RgbaF32
         impl Clone
         impl Copy
@@ -1501,8 +1491,9 @@ ImageTooLarge
 ImePreedit
     struct ImePreedit<'a>
         pub text: &'a str
-        pub cursor: Option<Range<usize>>
+        pub cursor: Option<Span>
         impl<'a> Clone for ImePreedit<'a>
+        impl<'a> Copy for ImePreedit<'a>
         impl<'a> Debug for ImePreedit<'a>
         impl<'a> Eq for ImePreedit<'a>
         impl<'a> PartialEq for ImePreedit<'a>
@@ -1534,7 +1525,7 @@ InputEvent
         Zoom(f32)
         KeyDown { key: Key, repeat: bool, physical: Key, text: KeyText }
         ModifiersChanged(Modifiers)
-        ImePreedit { text: &'a str, cursor: Option<Span> }
+        ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
         impl<'a> Clone for InputEvent<'a>
@@ -1671,7 +1662,7 @@ KeyFilter
         pub const fn set(&mut self, other: Self, on: bool)
         pub const TEXT_FIELD: Self
         pub const fn takes(self, class: KeyClass) -> bool
-        pub fn accepts(self, press: KeyPress) -> Option<KeyPress>
+        pub fn takes_press(self, press: KeyPress) -> bool
         impl BitOr
         impl Clone
         impl Copy
@@ -1909,21 +1900,12 @@ Okhsv
         pub v: f32
         pub const fn new(h: f32, s: f32, v: f32) -> Self
         pub fn to_color(self) -> RgbaF32
-        pub fn slice(hue: f32) -> OkhsvSlice
         pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self
         impl Clone
         impl Copy
         impl Debug
         impl Default
         impl PartialEq
-
-OkhsvSlice
-    struct OkhsvSlice
-        // and private fields
-        pub fn color(self, s: f32, v: f32) -> RgbaF32
-        impl Clone
-        impl Copy
-        impl Debug
 
 OverlayResponse
     struct OverlayResponse<R>
@@ -2087,11 +2069,6 @@ Popup
     struct Popup
         // and private fields
         pub fn new(anchor: Anchor) -> Self
-        pub fn below(rect: Rect) -> Self
-        pub fn above(rect: Rect) -> Self
-        pub fn left_of(rect: Rect) -> Self
-        pub fn right_of(rect: Rect) -> Self
-        pub fn at_point(point: Vec2) -> Self
         pub const fn layer(self, layer: Layer) -> Self
         pub const fn click_outside(self, m: ClickOutside) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
@@ -2292,7 +2269,6 @@ RgbaF32
         pub const fn with_alpha(self, a: f32) -> Self
         pub const fn from_srgba(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
-        pub const fn hexa(rgba: u32) -> Self
         pub fn to_srgba_u8(self) -> SrgbaU8
         impl Animatable
         impl Clone
@@ -2529,7 +2505,6 @@ Sizing
         pub const FILL: Self
         pub const fn fixed(value: f32) -> Self
         pub const fn fill(weight: f32) -> Self
-        pub const fn share(weight: f32) -> Self
         pub const fn split(fraction: f32) -> [Self; 2]
         pub const fn fixed_value(self) -> Option<f32>
         pub const fn fill_weight(self) -> Option<f32>
@@ -2586,12 +2561,10 @@ Spacing
         (_)
         pub const ZERO: Self
         pub fn as_array(self) -> [f32; 4]
-        pub fn from_array(v: [f32; 4]) -> Self
         pub fn all(v: f32) -> Self
         pub fn xy(x: f32, y: f32) -> Self
         pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self
-        pub fn horizontal_sum(self) -> f32
-        pub fn vertical_sum(self) -> f32
+        pub fn from_array(v: [f32; 4]) -> Self
         pub fn sums(self) -> Size
         impl Add
         impl Clone
@@ -3273,8 +3246,6 @@ TranslateScale
         pub const fn new(translation: Vec2, scale: f32) -> Self
         pub const fn from_translation(t: Vec2) -> Self
         pub const fn from_scale(s: f32) -> Self
-        pub const fn from_scale_about(center: Vec2, s: f32) -> Self
-        pub const fn from_translate_scale_about(translation: Vec2, center: Vec2, s: f32) -> Self
         pub const fn anchored_at(self, origin: Vec2) -> Self
         pub const fn compose(self, other: Self) -> Self
         pub const fn apply_point(self, p: Vec2) -> Vec2

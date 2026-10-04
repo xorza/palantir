@@ -2,6 +2,7 @@
 
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -35,7 +36,7 @@ fn the_theme_panel_is_the_last_resort() {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().panel_background = Some(Background::fill(theme_fill));
         h.frame(|ui| {
-            build(Popup::at_point(ANCHOR).id(id)).show(ui, |_, _| {});
+            build(Popup::new(Anchor::at_point(ANCHOR)).id(id)).show(ui, |_, _| {});
         });
         let body = h.node_of(id).expect("popup body recorded");
         assert_eq!(body.layer, Layer::Popup);

@@ -180,10 +180,10 @@ impl InputPass<'_> {
         // the text inline, and iterating the queue would hold a borrow of
         // `ui` across every one of those probes.
         for i in 0..ui.keyboard_events().len() {
-            let press = ui.keyboard_events()[i];
-            let Some(kp) = filter.accepts(press) else {
+            let kp = ui.keyboard_events()[i];
+            if !filter.takes_press(kp) {
                 continue;
-            };
+            }
             // Single-line Enter is a *submit* signal, not an edit: the buffer
             // is left untouched (multi-line handles `\n` in `apply_key`), but
             // the caller learns the user accepted the value.

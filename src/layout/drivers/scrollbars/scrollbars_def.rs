@@ -61,9 +61,10 @@ impl ScrollbarsDef {
     /// bars. A widget passes the size it arranged at last frame, to solve
     /// its offset in.
     pub(crate) fn viewport(&self, outer: Size) -> Size {
+        let (reserve, padding) = (self.reserve.sums(), self.padding.sums());
         Size::new(
-            (outer.w - self.reserve.horizontal_sum() - self.padding.horizontal_sum()).max(0.0),
-            (outer.h - self.reserve.vertical_sum() - self.padding.vertical_sum()).max(0.0),
+            (outer.w - reserve.w - padding.w).max(0.0),
+            (outer.h - reserve.h - padding.h).max(0.0),
         )
     }
 

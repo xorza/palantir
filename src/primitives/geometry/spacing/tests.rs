@@ -21,7 +21,7 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
             "lane {lane} went unseen",
         );
         assert!(
-            NanCheck::has_nan(&Corners::from_array(lanes)),
+            NanCheck::has_nan(&Corners::new(lanes[0], lanes[1], lanes[2], lanes[3])),
             "lane {lane} went unseen on the sibling",
         );
     }
@@ -31,8 +31,6 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
 fn lanes_round_trip_integer_values_exactly() {
     let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
-    assert_eq!(s.horizontal_sum(), 4.0);
-    assert_eq!(s.vertical_sum(), 6.0);
     // Left + right = 1 + 3, top + bottom = 2 + 4.
     assert_eq!(s.sums(), Size::new(4.0, 6.0));
 }
@@ -69,8 +67,8 @@ fn as_array_and_from_array_round_trip() {
 fn xy_ctor_repeats_axes() {
     let s = Spacing::xy(3.0, 7.0);
     assert_eq!(s.as_array(), [3.0, 7.0, 3.0, 7.0]);
-    assert_eq!(s.horizontal_sum(), 6.0);
-    assert_eq!(s.vertical_sum(), 14.0);
+    // Left + right = 3 + 3, top + bottom = 7 + 7.
+    assert_eq!(s.sums(), Size::new(6.0, 14.0));
 }
 
 /// Tuple `From` impls — easy place to swap component order during

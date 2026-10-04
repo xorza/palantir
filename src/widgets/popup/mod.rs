@@ -4,7 +4,6 @@ pub(crate) mod click_outside;
 pub(crate) mod popup_trigger;
 
 use crate::input::sense::Sense;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
@@ -16,7 +15,6 @@ use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::click_outside::ClickOutside;
-use glam::Vec2;
 use std::rc::Rc;
 
 /// A side-layer container placed relative to a screen-space anchor.
@@ -60,11 +58,8 @@ impl Popup {
     /// A popup placed by `anchor`.
     ///
     /// [`Anchor`] carries the whole placement vocabulary — a point, a side
-    /// of a rect, and the gap off it — so this is the one constructor and
-    /// the four below are sugar for the shapes a dropdown takes. An
-    /// application holding an anchor already (from
-    /// [`LayerScope::anchor`](crate::LayerScope::anchor), or one it
-    /// computed) hands it straight over:
+    /// of a rect, and the gap off it — so this is the one constructor:
+    /// `Popup::new(Anchor::below(rect))`,
     /// `Popup::new(Anchor::at_point(p).with_gap(4.0))`.
     #[track_caller]
     pub fn new(anchor: Anchor) -> Self {
@@ -75,37 +70,6 @@ impl Popup {
             widget: Widget::vstack().sense(Sense::CLICK),
             chrome: None,
         }
-    }
-
-    /// Placed by [`Anchor::below`].
-    #[track_caller]
-    pub fn below(rect: Rect) -> Self {
-        Self::new(Anchor::below(rect))
-    }
-
-    /// Placed by [`Anchor::above`].
-    #[track_caller]
-    pub fn above(rect: Rect) -> Self {
-        Self::new(Anchor::above(rect))
-    }
-
-    /// Placed by [`Anchor::left_of`].
-    #[track_caller]
-    pub fn left_of(rect: Rect) -> Self {
-        Self::new(Anchor::left_of(rect))
-    }
-
-    /// Placed by [`Anchor::right_of`].
-    #[track_caller]
-    pub fn right_of(rect: Rect) -> Self {
-        Self::new(Anchor::right_of(rect))
-    }
-
-    /// Placed by [`Anchor::at_point`] — a menu or a picker raised at the
-    /// pointer rather than off a widget's rect.
-    #[track_caller]
-    pub fn at_point(point: Vec2) -> Self {
-        Self::new(Anchor::at_point(point))
     }
 
     /// Record into `layer` rather than [`Layer::Popup`].

@@ -1,6 +1,6 @@
 //! The crate's host-facing input vocabulary.
 
-use crate::common::span::Span;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -72,18 +72,10 @@ pub enum InputEvent<'a> {
     /// (not a delta). Consumers track the latest snapshot to disambiguate
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
     ModifiersChanged(Modifiers),
-    /// An input method's uncommitted text changed: what a composition
-    /// shows so far, and where its cursor sits in it as a byte span. An
-    /// empty `text` ends the composition. Hosts forward it only while a
-    /// widget asks for IME text — see
-    /// [`Ui::request_ime`](crate::Ui::request_ime).
-    ImePreedit {
-        /// The composition so far.
-        text: &'a str,
-        /// The input method's cursor or selection in `text`, as byte
-        /// offsets, when it reports one.
-        cursor: Option<Span>,
-    },
+    /// An input method's uncommitted text changed. An empty `text` ends
+    /// the composition. Hosts forward it only while a widget asks for IME
+    /// text — see [`Ui::request_ime`](crate::Ui::request_ime).
+    ImePreedit(ImePreedit<'a>),
     /// An input method committed `text`: it is typed, in place among the
     /// key presses, as if each character had its own key.
     ImeCommit(&'a str),
@@ -103,7 +95,7 @@ impl<'a> InputEvent<'a> {
     /// The text an IME event borrows, or `None` for every other event.
     pub(crate) const fn text(&self) -> Option<&'a str> {
         match *self {
-            Self::ImePreedit { text, .. } | Self::ImeCommit(text) => Some(text),
+            Self::ImePreedit(ImePreedit { text, .. }) | Self::ImeCommit(text) => Some(text),
             _ => None,
         }
     }
@@ -113,7 +105,9 @@ impl<'a> InputEvent<'a> {
     /// back. Every other event is itself.
     pub(crate) const fn with_text(self, text: &str) -> InputEvent<'_> {
         match self {
-            Self::ImePreedit { cursor, .. } => InputEvent::ImePreedit { text, cursor },
+            Self::ImePreedit(ImePreedit { cursor, .. }) => {
+                InputEvent::ImePreedit(ImePreedit { text, cursor })
+            }
             Self::ImeCommit(_) => InputEvent::ImeCommit(text),
             Self::PointerMoved(p) => InputEvent::PointerMoved(p),
             Self::PointerLeft => InputEvent::PointerLeft,
@@ -169,7 +163,7 @@ impl<'a> InputEvent<'a> {
             | Self::ImeCommit(_) => true,
             // A cursor past the text is the platform's mistake, and one a
             // widget would slice on.
-            Self::ImePreedit { text, cursor } => {
+            Self::ImePreedit(ImePreedit { text, cursor }) => {
                 cursor.is_none_or(|span| text.get(span.range()).is_some())
             }
         }
@@ -201,6 +195,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::common::span::Span;
+    use crate::input::ime_preedit::ImePreedit;
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_text::KeyText;
@@ -251,19 +246,19 @@ mod tests {
             InputEvent::ModifiersChanged(Modifiers::default()),
             InputEvent::SurfaceFocusLost,
             // A cursor on the boundaries of "かな": bytes 3..6 is "な".
-            InputEvent::ImePreedit {
+            InputEvent::ImePreedit(ImePreedit {
                 text: "かな",
                 cursor: Some(Span::new(3, 3)),
-            },
+            }),
             InputEvent::ImeCommit("かな"),
         ];
         // A preedit cursor past its text, or inside a character, is
         // refused: a widget would slice the text on it.
         for cursor in [Span::new(3, 4), Span::new(1, 2)] {
-            let event = InputEvent::ImePreedit {
+            let event = InputEvent::ImePreedit(ImePreedit {
                 text: "かな",
                 cursor: Some(cursor),
-            };
+            });
             assert!(!event.is_valid(), "{event:?}");
         }
         // An exhaustive match with no `_` arm: a new variant does not
@@ -283,7 +278,7 @@ mod tests {
                 InputEvent::KeyDown { .. } => 7,
                 InputEvent::ModifiersChanged(_) => 8,
                 InputEvent::SurfaceFocusLost => 9,
-                InputEvent::ImePreedit { .. } => 10,
+                InputEvent::ImePreedit(_) => 10,
                 InputEvent::ImeCommit(_) => 11,
             };
             covered[index] = true;

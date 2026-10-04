@@ -82,9 +82,8 @@ impl<'a> ColorStrip<'a> {
     /// An alpha bar over `color`, showing that colour from transparent to
     /// opaque and writing its alpha.
     ///
-    /// Not `alpha`: that is a *setter* on the two colour widgets next door
-    /// ([`ColorPicker::alpha`](crate::ColorPicker::alpha),
-    /// [`ColorButton::alpha`](crate::ColorButton::alpha)), and one word
+    /// Not `alpha`: that is a *setter* on the picker next door
+    /// ([`ColorPicker::alpha`](crate::ColorPicker::alpha)), and one word
     /// cannot mean both a setter and a constructor.
     #[track_caller]
     pub fn for_alpha(color: &'a mut RgbaF32) -> Self {

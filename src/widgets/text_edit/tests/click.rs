@@ -525,8 +525,11 @@ fn caret_click_is_scale_invariant_under_zoom() {
     );
 }
 
+/// Focus and hover each answer "within" by the same ancestry walk, and
+/// apart: the pointer leaving the subtree ends the hover and keeps the
+/// focus.
 #[test]
-fn focus_within_follows_the_focused_widgets_ancestry() {
+fn focus_and_hover_within_follow_their_targets_ancestry() {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
     let editor = WidgetId::from_hash("editor");
@@ -561,6 +564,21 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
     assert!(h.is_focus_within(holder));
     assert!(!h.is_focus_within(bystander));
     assert!(!h.is_focus_within(WidgetId::from_hash("unrecorded")));
+    // The click left the pointer on the editor, its hover target.
+    assert!(h.ui.is_hover_within(editor), "self-inclusive");
+    assert!(h.ui.is_hover_within(holder));
+    assert!(!h.ui.is_hover_within(bystander));
+
+    // The bystander sits at x 100..140 beside the 100 px editor, and
+    // senses nothing, so the pointer over it hovers no widget.
+    h.move_to(Vec2::new(120.0, 20.0));
+    h.frame(&mut record);
+    assert!(!h.ui.is_hover_within(holder), "the pointer left the holder");
+    assert!(
+        !h.ui.is_hover_within(bystander),
+        "nothing sensed is hovered"
+    );
+    assert!(h.is_focus_within(holder), "focus stays where it was");
 }
 
 /// A tap — press and release fed together, as a touchpad's tap-to-click

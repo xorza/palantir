@@ -52,13 +52,10 @@ impl PaintInput<'_> {
             // panned axis contributes no max-content — so this floor is what the
             // field's height *is*, and a floor a thousandth under what the shaper
             // measured is a field a thousandth shorter than the chip it replaces.
-            min_size.h = min_size
-                .h
-                .max(self.block_size(layout).h + ctx.padding.vertical_sum());
+            let padding = ctx.padding.sums();
+            min_size.h = min_size.h.max(self.block_size(layout).h + padding.h);
             if widget.authored_size().unwrap_or_default().w().is_hug() {
-                let reserved = self.geometry.display_size.w
-                    + layout.caret_reserve()
-                    + ctx.padding.horizontal_sum();
+                let reserved = self.geometry.display_size.w + layout.caret_reserve() + padding.w;
                 min_size.w = min_size.w.max(reserved);
             }
             widget.configure().min_size(min_size);

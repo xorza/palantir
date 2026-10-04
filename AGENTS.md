@@ -95,7 +95,7 @@ against it.
   (`padding(p)`, `style(s)`), and `px` for a length.
 - **Constructors.** `new` is the primary one. A named constructor names the
   kind or the arrangement it builds (`Panel::hstack`, `Sizing::fixed`,
-  `Popup::below`, `Splitter::row`, `Shape::rect`, `Background::rounded`).
+  `Anchor::below`, `Splitter::row`, `Shape::rect`, `Background::rounded`).
   `from_*` converts another representation (`Image::from_srgba8`,
   `Rect::from_min_max`, `ButtonTheme::from_palette`). `on(&snapshot)` attaches
   an overlay to a trigger, with the snapshot first and required text second;

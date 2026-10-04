@@ -103,7 +103,7 @@ impl<'a> ContextMenu<'a> {
         Self {
             for_id,
             open_on_show: false,
-            popup: Popup::at_point(Vec2::ZERO).default_id(for_id.with("body")),
+            popup: Popup::new(Anchor::at_point(Vec2::ZERO)).default_id(for_id.with("body")),
             style: None,
         }
     }

@@ -81,10 +81,7 @@ impl Axis {
     }
     /// Total spacing along this axis (left+right for X, top+bottom for Y).
     pub(crate) fn spacing(self, s: Spacing) -> f32 {
-        match self {
-            Axis::X => s.horizontal_sum(),
-            Axis::Y => s.vertical_sum(),
-        }
+        self.main(s.sums())
     }
     /// Build a `Size` from main- and cross-axis lengths.
     pub(crate) const fn compose_size(self, main: f32, cross: f32) -> Size {

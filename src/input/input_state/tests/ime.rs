@@ -2,6 +2,7 @@
 //! characters, and the preedit a focused widget reads.
 
 use crate::common::span::Span;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -77,13 +78,16 @@ fn a_commit_splits_between_characters_and_types_whole() {
 #[test]
 fn the_preedit_is_a_level_for_the_focused_widget() {
     let (mut h, mut buf) = focused_field();
-    h.on_input(InputEvent::ImePreedit {
+    h.on_input(InputEvent::ImePreedit(ImePreedit {
         text: "かな",
         cursor: Some(Span::new(3, 3)),
-    });
+    }));
     h.frame(|ui| record(ui, &mut buf));
     let preedit = h.ui.ime_preedit().expect("a live composition");
-    assert_eq!((preedit.text, preedit.cursor), ("かな", Some(3..6)));
+    assert_eq!(
+        (preedit.text, preedit.cursor),
+        ("かな", Some(Span::new(3, 3)))
+    );
     assert_eq!(buf, "", "a preedit types nothing");
 
     h.on_input(InputEvent::ImeCommit("仮名"));
@@ -91,10 +95,10 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
     assert_eq!(h.ui.ime_preedit(), None, "a commit ends it");
     assert_eq!(buf, "仮名");
 
-    h.on_input(InputEvent::ImePreedit {
+    h.on_input(InputEvent::ImePreedit(ImePreedit {
         text: "か",
         cursor: None,
-    });
+    }));
     h.frame(|ui| record(ui, &mut buf));
     assert!(h.ui.ime_preedit().is_some());
     h.clear_focus();

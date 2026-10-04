@@ -14,9 +14,6 @@ use glam::Vec2;
 /// per channel per colour to reach what the final instruction reaches
 /// anyway. Adding the half before the truncation is round-half-up, which
 /// over a non-negative product is `round`.
-///
-/// A free `const fn` rather than an [`F32Px`] method: `RgbaF32::hexa` is
-/// `const`, and a trait method cannot be called from one.
 #[inline]
 #[expect(
     clippy::cast_sign_loss,
