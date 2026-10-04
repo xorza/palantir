@@ -2,7 +2,7 @@
 //! drives.
 
 use crate::common::span::Span;
-use crate::gpu::frame::schedule::{MaskPlan, RenderStep};
+use crate::gpu::frame::schedule::RenderStep;
 use crate::gpu::wgpu_backend::tests::support::{
     DrawOp, buf_with, buf_with_batches, buf_with_tier_anchors, collect, group, plain_steps,
     scissor_count, simplify, text_batch,
@@ -27,7 +27,7 @@ fn preclear_emits_under_partial_damage() {
     );
     let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
+        simplify(&buf, &collect(&buf, damage, None)),
         vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0),],
     );
     assert_eq!(
@@ -55,18 +55,8 @@ fn schedule_replays_per_damage_rect() {
         },
     ]);
     // DamageEngine rect A covers only group 0; rect B covers only group 1.
-    let pass_a = collect(
-        &buf,
-        Some(URect::new(0, 0, 50, 100)),
-        &MaskPlan::default(),
-        false,
-    );
-    let pass_b = collect(
-        &buf,
-        Some(URect::new(50, 0, 50, 100)),
-        &MaskPlan::default(),
-        false,
-    );
+    let pass_a = collect(&buf, Some(URect::new(0, 0, 50, 100)), None);
+    let pass_b = collect(&buf, Some(URect::new(50, 0, 50, 100)), None);
     let mut combined = pass_a;
     combined.extend(pass_b);
     assert_eq!(
@@ -107,7 +97,7 @@ fn scissor_steps_emit_once_per_transition() {
     let buf = buf_with(vec![scissored(narrow, 0)]);
     let damage = URect::new(0, 0, 80, 80);
     assert_eq!(
-        collect(&buf, Some(damage), &MaskPlan::default(), false),
+        collect(&buf, Some(damage), None),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
@@ -120,7 +110,7 @@ fn scissor_steps_emit_once_per_transition() {
     );
     // Same buffer, damage equal to the group's rect: nothing to narrow.
     assert_eq!(
-        collect(&buf, Some(narrow), &MaskPlan::default(), false),
+        collect(&buf, Some(narrow), None),
         vec![
             RenderStep::SetScissor(narrow),
             RenderStep::PreClear,
@@ -196,10 +186,7 @@ fn group_outside_damage_emits_no_steps() {
     ]);
     let damage = URect::new(0, 0, 40, 40);
     assert_eq!(
-        simplify(
-            &buf,
-            &collect(&buf, Some(damage), &MaskPlan::default(), false)
-        ),
+        simplify(&buf, &collect(&buf, Some(damage), None)),
         vec![DrawOp::PreClear, DrawOp::Quads(0)],
     );
 }

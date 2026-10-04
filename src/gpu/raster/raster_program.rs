@@ -17,7 +17,7 @@ use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::{ColorVariantSpec, StencilVariant};
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
-use crate::gpu::resource::texture_binding;
+use crate::gpu::resource::texture_binding::TextureBinding;
 
 /// Shader and group-0 layout, built once and lent to every raster tenant.
 ///
@@ -88,8 +88,8 @@ impl RasterProgram {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.raster.atlas layout"),
             entries: &[
-                texture_binding::texture_entry(0),
-                texture_binding::texture_entry(1),
+                TextureBinding::texture_entry(0),
+                TextureBinding::texture_entry(1),
             ],
         })
     }

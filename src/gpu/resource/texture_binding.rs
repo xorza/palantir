@@ -1,111 +1,99 @@
-//! The one texture-plus-sampler binding shape every palantir shader that
-//! samples a texture declares — its layout entries, the group-0 layout
-//! they compose into, and the bind group that fills it.
-//!
-//! Free functions rather than methods because every type involved is
-//! `wgpu`'s; reach them namespace-qualified (`texture_binding::layout`).
-//! Split into entries and whole-layout builders because the layouts that
-//! need them do not all have the same *arity*: the gradient LUT atlas and
-//! the per-image group take one texture, the glyph atlas takes two (mask
-//! + colour), so no single builder covers them.
+//! [`TextureBinding`] — the one texture-plus-sampler group every palantir
+//! shader that samples a texture binds.
 
-/// One fragment-visible, filterable 2D float texture binding — the only
-/// texture shape any palantir shader declares.
+/// The group-0 layout every sampled texture binds through, and the sampler
+/// it pairs with: the gradient LUT atlas, the registered images, the
+/// `GpuView` targets, and the backbuffer when it is drawn onto a target
+/// that takes no copy.
 ///
-/// A named entry rather than an inline literal because the layouts that
-/// need it do not all have the same *arity*: the gradient LUT atlas and
-/// the per-image group take one ([`layout`]), the glyph
-/// atlas takes two (mask + colour), so no single layout builder covers
-/// them. The entry is the largest piece they can actually share, and
-/// sharing it is what keeps a `filterable` or `view_dimension` change
-/// from reaching some groups and not others.
-pub(crate) const fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::FRAGMENT,
-        ty: wgpu::BindingType::Texture {
-            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-            view_dimension: wgpu::TextureViewDimension::D2,
-            multisampled: false,
-        },
-        count: None,
+/// Built once by the backend. `Clone` hands out `wgpu`'s own
+/// reference-counted handles, so every holder shares one layout and one
+/// sampler, and every pipeline that samples one of these textures composes
+/// over that same layout — a group built for one binds in any of them.
+#[derive(Clone, Debug)]
+pub(crate) struct TextureBinding {
+    layout: wgpu::BindGroupLayout,
+    /// Linear within a mip and nearest between them, clamped on all three
+    /// axes. Clamping is safe for every user because none hands the sampler
+    /// a coordinate outside `0..1`: the gradient shader applies
+    /// [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t`
+    /// before the sample, and the image shader `fract`s its uv under
+    /// `FLAG_TILED`. Nearest image filtering is a shader-side snap to the
+    /// texel centre, so every filter combination rides this one sampler.
+    sampler: wgpu::Sampler,
+}
+
+impl TextureBinding {
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("palantir.texture.bgl"),
+            entries: &[
+                Self::texture_entry(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("palantir.texture.sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+        Self { layout, sampler }
     }
-}
 
-/// The filtering sampler that pairs with [`texture_entry`].
-/// Split out for the same reason: it trails a different number of
-/// texture bindings in each layout.
-pub(crate) const fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::FRAGMENT,
-        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-        count: None,
+    /// One fragment-visible, filterable 2D float texture entry — the only
+    /// texture shape any palantir shader declares.
+    ///
+    /// Shared beyond this layout because the raster atlases bind two such
+    /// textures and no sampler, so their layout is their own; sharing the
+    /// entry is what keeps a `filterable` or `view_dimension` change from
+    /// reaching one layout and not the other.
+    pub(crate) const fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+        wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        }
     }
-}
 
-/// The sampler that fills a [`sampler_entry`] slot — the value twin of
-/// that entry builder, the way [`bind_group`] is [`layout`]'s.
-///
-/// Linear within a mip and nearest between them, clamped on all three
-/// axes. Clamping is safe for both users because neither hands the
-/// sampler a coordinate outside `0..1`: the gradient shader applies
-/// [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` before
-/// the sample, and the image shader `fract`s its uv under
-/// `FLAG_TILED`. One descriptor, so a filter or address change cannot
-/// reach one of them and not the other.
-///
-/// The raster atlases build their own, and should: they sample at
-/// exactly one texel per pixel and want `Nearest` throughout.
-pub(super) fn sampler(device: &wgpu::Device, label: &'static str) -> wgpu::Sampler {
-    device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some(label),
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-        ..Default::default()
-    })
-}
+    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
+        &self.layout
+    }
 
-/// Build a group-0 bind-group layout pairing a filterable 2D float
-/// texture at binding 0 with a filtering sampler at binding 1, both
-/// fragment-visible. The shape shared by the gradient LUT atlas
-/// (`GpuGradientAtlas`) and the per-image bind group (`ImagePipeline`).
-pub(super) fn layout(device: &wgpu::Device, label: &'static str) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some(label),
-        entries: &[texture_entry(0), sampler_entry(1)],
-    })
-}
-
-/// Build a bind group pairing a texture view at binding 0 with a sampler
-/// at binding 1 against a [`layout`]-shaped layout — the
-/// value twin of that layout builder. One construction site for the
-/// registered images (`WgpuImageStore::write`), the `GpuView` off-screen
-/// target (`AllocatedTarget::new`), and the gradient LUT atlas
-/// (`GpuGradientAtlas::new`), so their bindings can't drift.
-pub(super) fn bind_group(
-    device: &wgpu::Device,
-    bgl: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-    view: &wgpu::TextureView,
-    label: &str,
-) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(label),
-        layout: bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-        ],
-    })
+    /// The group that binds `view` through this layout and sampler.
+    pub(crate) fn bind_group(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+        label: &str,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
+    }
 }

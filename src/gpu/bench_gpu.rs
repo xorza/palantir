@@ -59,7 +59,7 @@ fn build(timing: Timing) -> BenchGpu {
         Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
         Timing::Bare => wgpu::Features::empty(),
     };
-    // Palantir's own needs — the immediates feature and its 16-byte budget —
+    // Palantir's own needs — the immediates feature and its byte budget —
     // come from `RequestedGpu`, so the bench device cannot drift from the one
     // the production host builds.
     let gpu = RequestedGpu::headless(PowerPreference::HighPerformance, timing_features)

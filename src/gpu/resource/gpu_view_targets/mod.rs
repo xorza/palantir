@@ -3,7 +3,7 @@
 //!
 //! Registered images are the other population a draw can sample. Those
 //! live in [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore),
-//! and the two build against one [`ImageBinding`], so a composite of a
+//! and the two build against one [`TextureBinding`], so a composite of a
 //! view binds exactly like an image. [`TextureId::reserve`](crate::primitives::identity::texture_id::TextureId::reserve)
 //! mints both populations' ids, so an id cannot mean two things.
 
@@ -15,7 +15,7 @@ use crate::gpu::device::gpu_frame_context::GpuFrameContext;
 use crate::gpu::device::gpu_init_context::GpuInitContext;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::resource::gpu_view_targets::view_target::{AllocatedTarget, ViewTarget};
-use crate::gpu::resource::image_binding::ImageBinding;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::image::FrameViews;
 use crate::renderer::render_owner_id::RenderOwnerId;
@@ -33,11 +33,11 @@ pub(crate) struct GpuViewTargets {
     /// the first paint, replaced on a resize, removed by the per-submit
     /// eviction or [`Self::retire_owner`].
     targets: FxHashMap<TextureId, ViewTarget>,
-    binding: ImageBinding,
+    binding: TextureBinding,
 }
 
 impl GpuViewTargets {
-    pub(crate) fn new(binding: ImageBinding) -> Self {
+    pub(crate) fn new(binding: TextureBinding) -> Self {
         Self {
             targets: FxHashMap::default(),
             binding,
@@ -171,7 +171,7 @@ mod tests {
     use crate::gpu::device::gpu_ctx::GpuCtx;
     use crate::gpu::device::gpu_frame_context::GpuFrameContext;
     use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
-    use crate::gpu::resource::image_binding::ImageBinding;
+    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::primitives::identity::texture_id::TextureId;
     use crate::renderer::gpu_paint::GpuPaint;
@@ -202,7 +202,7 @@ mod tests {
     fn an_unchanged_stamp_skips_the_paint() {
         let gpu = headless_test_gpu();
         let device = &gpu.device;
-        let mut targets = GpuViewTargets::new(ImageBinding::new(device));
+        let mut targets = GpuViewTargets::new(TextureBinding::new(device));
         let paints = Rc::new(Cell::new(0));
         let paint = GpuPaintRef(Rc::new(RefCell::new(CountingPaint(Rc::clone(&paints)))));
         let id = TextureId::reserve();

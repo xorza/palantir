@@ -25,6 +25,7 @@ use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::renderer::render_buffer::curve::{CurveInstance, SEGMENTS_PER_INSTANCE};
 use wgpu::util::DeviceExt;
 
@@ -69,7 +70,7 @@ impl CurvePipeline {
     /// Format-independent curve resources; the pipelines are built by
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Curve.module(device);
 
         let instance_buffer =
@@ -89,7 +90,7 @@ impl CurvePipeline {
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.curve.pl",
-                &[Some(gradient_bgl)],
+                &[Some(textures.layout())],
             ),
         }
     }

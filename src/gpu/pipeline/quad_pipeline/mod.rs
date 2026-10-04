@@ -5,21 +5,19 @@
 //! [`ViewportPush`](crate::gpu::surface::viewport::ViewportPush).
 
 use crate::common::span::Span;
-use crate::common::tracy;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::schedule::{MaskPlan, build_mask_plan};
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::RenderBuffer;
 use glam::Vec2;
 use std::slice;
 
@@ -40,31 +38,21 @@ pub(crate) struct QuadVariants {
     pub(crate) mask_clear: wgpu::RenderPipeline,
 }
 
+/// Format-independent quad resources. The format-dependent render
+/// pipelines ([`QuadVariants`]) live in
+/// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines),
+/// keyed by swapchain format and passed into every `bind*` call.
+/// The group-0 bind group, the gradient atlas, is owned by
+/// [`GpuGradientAtlas`](crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas)
+/// and passed to every `bind*` call.
 #[derive(Debug)]
 pub(crate) struct QuadPipeline {
-    /// Format-independent quad resources. The format-dependent render
-    /// pipelines ([`QuadVariants`]) live in
-    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines),
-    /// keyed by swapchain format and passed into every `bind*` call.
-    /// Group 0 (gradient atlas + sampler) is owned by
-    /// [`GpuGradientAtlas`](crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas)
-    /// and passed to every `bind*` call.
     instance_buffer: DynamicBuffer<Quad>,
     /// Lazy buffer holding one `Quad` per deduped rounded clip in the
-    /// current frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
-    /// across frames; capacity grows monotonically. `None` until the
-    /// first stencil frame.
+    /// current frame; uploaded by `upload_masks`, drawn by `draw_mask`.
+    /// Reused across frames; capacity grows monotonically. `None` until
+    /// the first stencil frame.
     mask_buffer: Option<DynamicBuffer<Quad>>,
-    /// Retained scratch for the stencil-mask sweep, populated by
-    /// [`Self::stage_masks`] and read by the render schedule. Stale on
-    /// non-stencil frames; the schedule only reads it when
-    /// `use_stencil` is true.
-    pub(crate) mask_indices: MaskPlan,
-    /// Retained scratch for stencil-mask quads: one entry per chain
-    /// level per run of consecutive groups sharing a chain (see
-    /// [`build_mask_plan`]); uploaded to `mask_buffer`. Cleared at
-    /// the start of each stencil frame; capacity retained.
-    masks: Vec<Quad>,
     /// The partial-repaint pre-clear quad (full-viewport, opaque, clear
     /// color). Drawn before regular groups inside the damage scissor so
     /// `LoadOp::Load` doesn't leak last frame's AA-fringe pixels into
@@ -80,10 +68,10 @@ pub(crate) struct QuadPipeline {
 impl QuadPipeline {
     /// Bind a pipeline, the shared gradient group, and the buffer whose
     /// instances the draws index. The whole of binding a quad pipeline —
-    /// the colour draws, the pre-clear quad and the two mask variants
-    /// differ only in which pipeline and which buffer, never in the
-    /// steps.
-    fn bind_buffer<'a>(
+    /// the colour draws, the pre-clear quad, the two mask variants and the
+    /// debug overlay's quads differ only in which pipeline and which
+    /// buffer, never in the steps.
+    pub(crate) fn bind_buffer<'a>(
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
@@ -152,15 +140,10 @@ impl QuadPipeline {
         );
     }
 
-    /// Build the per-group / per-text-batch mask-index maps for the
-    /// schedule ([`build_mask_plan`]) and upload the deduped mask
-    /// quads. After this call, `self.mask_indices.groups` parallels
-    /// `buffer.groups` and `.batches` parallels `buffer.text_batches`,
-    /// each entry the mask-quad span for that chain.
-    pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, buffer: &RenderBuffer) {
-        tracy::zone!();
-        build_mask_plan(buffer, &mut self.mask_indices, &mut self.masks);
-        if self.masks.is_empty() {
+    /// Upload the frame's deduped mask quads, which the schedule's mask
+    /// plan indexes by [`Self::draw_mask`].
+    pub(crate) fn upload_masks(&mut self, ctx: &mut GpuCtx<'_>, masks: &[Quad]) {
+        if masks.is_empty() {
             return;
         }
         // Lazy-create the mask buffer on the first stencil frame, then
@@ -169,21 +152,21 @@ impl QuadPipeline {
         let buf = self.mask_buffer.get_or_insert_with(|| {
             DynamicBuffer::<Quad>::vertex(ctx.device, "palantir.quad.masks", 8)
         });
-        buf.upload_instances(ctx, &self.masks);
+        buf.upload_instances(ctx, masks);
     }
 
     /// Bind a mask pipeline (stamp or clear — the schedule picks) +
     /// the mask instance buffer. Caller sets `stencil_reference` per
     /// draw (the chain level for stamps, 0 for clears). Group 0 is the
-    /// shared gradient bind group; viewport rides immediates,
-    /// pre-pushed by the backend.
+    /// shared gradient bind group; the backend pushes the viewport
+    /// after the bind.
     pub(crate) fn bind_mask<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         mask_pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        let buf = self.mask_buffer.as_ref().expect("stage_masks first");
+        let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         Self::bind_buffer(pass, mask_pipeline, gradient_bg, &buf.buffer);
     }
 
@@ -196,7 +179,7 @@ impl QuadPipeline {
     /// pipelines are built separately by
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Quad.module(device);
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
@@ -204,8 +187,6 @@ impl QuadPipeline {
         Self {
             instance_buffer,
             mask_buffer: None,
-            mask_indices: MaskPlan::default(),
-            masks: Vec::new(),
             clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
             shader,
             // Gradient atlas at group 0 (viewport rides the shared
@@ -215,7 +196,7 @@ impl QuadPipeline {
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.quad.pl",
-                &[Some(gradient_bgl)],
+                &[Some(textures.layout())],
             ),
         }
     }
@@ -230,7 +211,7 @@ impl QuadPipeline {
 
     /// Build every quad pipeline against `format` — the only
     /// format-dependent quad objects; the gradient LUT atlas (texture +
-    /// bind group + sampler) and the instance / clear buffers are
+    /// bind group) and the instance / clear buffers are
     /// reused. Called by `FormatPipelines` for each swapchain format.
     pub(super) fn build_variants(
         &self,

@@ -104,7 +104,7 @@ use crate::gpu::device::requested_gpu::Gpu;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::frame::overlay_pass::DebugOverlay;
-use crate::gpu::frame::schedule::{RenderStep, for_each_step};
+use crate::gpu::frame::schedule::{MaskPlan, RenderStep, for_each_step};
 use crate::gpu::frame::submission::{Submission, SubmissionTargets};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
@@ -118,6 +118,7 @@ use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
@@ -154,8 +155,8 @@ pub(crate) struct WgpuBackend {
     /// resizing-frame's worth of buffer uploads (~512 KB observed in
     /// the frame bench).
     staging_belt: StagingBelt,
-    /// Shared gradient LUT atlas resources (texture + sampler + group-0
-    /// bind group), lent to the quad and curve pipelines — both render
+    /// Shared gradient LUT atlas resources (texture + group-0 bind
+    /// group), lent to the quad and curve pipelines — both render
     /// gradient brushes off this one allocation.
     gradient: GpuGradientAtlas,
     quad: QuadPipeline,
@@ -171,7 +172,7 @@ pub(crate) struct WgpuBackend {
     /// than inside it, so `paint_gpu_views` and `retire_owner` are reached
     /// without a forwarder and `draw` is handed the store it binds from.
     gpu_view_targets: GpuViewTargets,
-    /// The one shader, group-0 layout and sampler both raster tenants
+    /// The one shader and group-0 layout both raster tenants
     /// draw through, and so the one pipeline pair per format they
     /// share — see [`RasterProgram`].
     raster: RasterProgram,
@@ -182,6 +183,15 @@ pub(crate) struct WgpuBackend {
     curve: CurvePipeline,
     text: TextBackend,
     debug: DebugOverlay,
+    /// The group-0 layout and sampler every sampled texture binds
+    /// through: the gradient atlas, the images, the `GpuView` targets and
+    /// each window's backbuffer. One, so a group built for one binds in
+    /// every pipeline that samples any of them.
+    texture_binding: TextureBinding,
+    /// The rounded-clip chains each group and text batch stamps, and the
+    /// mask quads they index, rebuilt on every stencil frame and handed to
+    /// the schedule only on those. Retained so a frame costs no allocation.
+    mask_plan: MaskPlan,
     /// Format-dependent render pipelines, keyed by swapchain color format
     /// and built lazily ([`Self::ensure_format`]) the first time a
     /// surface of that format is submitted. Windows on different-format
@@ -189,7 +199,7 @@ pub(crate) struct WgpuBackend {
     /// sharing every format-independent resource above. The only state
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
-    pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
+    pipelines: FxHashMap<TargetFormat, FormatPipelines>,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation and the device was created with `TIMESTAMP_QUERY`
     /// enabled. Publishes into the host's shared `GpuPassStats` handle;
@@ -232,20 +242,28 @@ impl WgpuBackend {
     /// [`Self::ensure_format`]).
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, config: BackendConfig) -> Self {
         let Gpu { device, queue } = gpu;
-        let image_store = Rc::new(WgpuImageStore::new(device.clone(), queue.clone()));
+        let texture_binding = TextureBinding::new(&device);
+        let image_store = Rc::new(WgpuImageStore::new(
+            device.clone(),
+            queue.clone(),
+            texture_binding.clone(),
+        ));
         resources.images.attach(Rc::clone(&image_store));
         // Gradient LUT atlas resources, shared by the quad and curve
         // pipelines (both sample gradient brushes). Owned here so neither
-        // pipeline owns the other's input — each composes its layout
-        // against `gradient.bgl` and binds `gradient.bg`.
-        let gradient = GpuGradientAtlas::new(&device, resources.gradient_atlas.clone());
-        let quad = QuadPipeline::new(&device, &gradient.bgl);
+        // pipeline owns the other's input — each binds `gradient.bg`.
+        let gradient = GpuGradientAtlas::new(
+            &device,
+            resources.gradient_atlas.clone(),
+            texture_binding.clone(),
+        );
+        let quad = QuadPipeline::new(&device, &texture_binding);
         let mesh = MeshPipeline::new(&device);
-        let image = ImagePipeline::new(&device, image_store.binding().layout());
-        let gpu_view_targets = GpuViewTargets::new(image_store.binding().clone());
-        let curve = CurvePipeline::new(&device, &gradient.bgl);
+        let image = ImagePipeline::new(&device, &texture_binding);
+        let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
+        let curve = CurvePipeline::new(&device, &texture_binding);
         let raster = RasterProgram::new(&device);
-        let blit = BlitPipeline::new(&device, image_store.binding().layout());
+        let blit = BlitPipeline::new(&device, &texture_binding);
         let text = TextBackend::new(&device, &raster, resources.text.clone());
         let icon = IconBackend::new(&device, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&device);
@@ -286,6 +304,8 @@ impl WgpuBackend {
             curve,
             text,
             debug,
+            texture_binding,
+            mask_plan: MaskPlan::default(),
             pipelines,
             gpu_timings,
             pass_stats: resources.gpu_pass_stats.clone(),
@@ -301,21 +321,15 @@ impl WgpuBackend {
     /// shared resource structs, so a new format costs only a handful of
     /// pipeline compiles — **no image re-upload or glyph re-rasterization**.
     /// Windows on different-format outputs each get (and keep) their own set.
-    fn ensure_format(&mut self, format: wgpu::TextureFormat) {
+    fn ensure_format(&mut self, format: TargetFormat) {
         // Split borrow: the resource structs the builder reads are
         // disjoint from `self.pipelines`, but the borrow checker can't see
         // that through `entry().or_insert_with(closure)`, so build first
         // then insert.
         if !self.pipelines.contains_key(&format) {
-            // Every format arrives through `TargetFormat::new`, which
-            // checks this in release.
-            debug_assert!(
-                TargetFormat::encodes_linear(format),
-                "{format:?} reached the backend unchecked",
-            );
             let built = FormatPipelines::new(
                 &self.device,
-                format,
+                format.get(),
                 PipelineSources {
                     quad: &self.quad,
                     mesh: &self.mesh,
@@ -372,7 +386,7 @@ impl WgpuBackend {
         // format. Read back as `&self.pipelines[&format]` after the
         // `&mut self` upload phase so the borrows don't collide.
         let surface_tex = target.texture();
-        let format = surface_tex.format();
+        let format = target.format();
         self.ensure_format(format);
 
         let viewport = ViewportPush::for_buffer(buffer);
@@ -515,10 +529,12 @@ impl WgpuBackend {
             0
         };
         if use_stencil {
-            // After staging, `self.quad.mask_indices` parallels
-            // `buffer.groups` / `buffer.text_batches` and
-            // `render_groups` reads it directly.
-            self.quad.stage_masks(&mut ctx, buffer);
+            tracy::zone!("stage_masks");
+            // After this, `mask_plan.groups` parallels `buffer.groups` and
+            // `.batches` parallels `buffer.text_batches`, each entry the
+            // span of its quads that chain stamps.
+            self.mask_plan.build(buffer);
+            self.quad.upload_masks(&mut ctx, self.mask_plan.quads());
         }
 
         self.quad.upload(&mut ctx, &buffer.quads);
@@ -558,10 +574,7 @@ impl WgpuBackend {
         // Text prepare: per-batch glyph encoding. Routes its
         // vertex/atlas-staging writes through the same ctx so
         // every text-backend write lands as
-        // `copy_buffer_to_buffer` on the main encoder. The
-        // atlas-size params ride the shared immediate region,
-        // pushed per batch by `RasterPass::render_batch` — no
-        // per-frame sync from here.
+        // `copy_buffer_to_buffer` on the main encoder.
         {
             tracy::zone!(
                 "text.prepare_batches",
@@ -671,7 +684,9 @@ impl WgpuBackend {
             stencil_view,
             clear,
         } = target;
-        let use_stencil = stencil_view.is_some();
+        // The mask chains go with the stencil attachment they stamp into:
+        // a pass without one has no plan to read.
+        let masks = stencil_view.map(|_| &self.mask_plan);
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
                 view,
@@ -723,7 +738,7 @@ impl WgpuBackend {
             }
             match repaint_scissors {
                 RepaintScissors::Full => {
-                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil, viewport);
+                    self.render_groups(fmt, &mut pass, buffer, None, masks, viewport);
                 }
                 RepaintScissors::Partial(rects) => {
                     let rect_count = rects.len();
@@ -734,7 +749,7 @@ impl WgpuBackend {
                             scissor = ?r,
                             "wgpu_backend.submit.pass.partial_rect"
                         );
-                        self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil, viewport);
+                        self.render_groups(fmt, &mut pass, buffer, Some(r), masks, viewport);
                     }
                 }
             }
@@ -753,13 +768,16 @@ impl WgpuBackend {
     /// this method is purely the wgpu translation layer for each
     /// `RenderStep`. Tests reuse the same schedule emitter to assert
     /// on the sequence without GPU.
+    ///
+    /// `masks` is `Some` exactly when the pass has a stencil attachment,
+    /// which is also what picks each kind's stencil-test pipeline.
     fn render_groups<'a>(
         &'a self,
         fmt: &'a FormatPipelines,
         pass: &mut wgpu::RenderPass<'a>,
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
-        use_stencil: bool,
+        masks: Option<&MaskPlan>,
         viewport: ViewportPush,
     ) {
         // Track what pipeline + vertex buffer is currently bound so we
@@ -779,8 +797,8 @@ impl WgpuBackend {
             MaskClear,
             /// Text and icons both draw through it: one shader and one
             /// group-0 layout, so one pipeline pair. Only the bind
-            /// group, the atlas extents and the vertex buffer differ,
-            /// and `RasterPass::render_batch` sets those per step.
+            /// group and the vertex buffer differ, and
+            /// `RasterPass::render_batch` sets those per step.
             ///
             /// One state for two tenants holds only while they name one
             /// pipeline, which is why both arms bind `raster_pipeline`
@@ -794,12 +812,8 @@ impl WgpuBackend {
         }
 
         // `viewport.push_into(pass)` is called after every (re)bind
-        // below. Cheap (register-mapped `set_immediates`, no buffer
-        // round-trip) and dodges the immediate-state-survives-pipeline-
-        // switch contract entirely — wgpu's IMMEDIATES feature claims
-        // it does, but the symptom of a missed push is silent NDC
-        // corruption (wrong-scaled quads painting outside their
-        // damage scissor). Re-push is the unambiguous fix.
+        // below — the rule `IMMEDIATES_BYTES` states. Cheap: a
+        // register-mapped `set_immediates`, no buffer round-trip.
         //
         // `rebind` bundles the "bind ⇒ re-push viewport ⇒ record bound"
         // triple so no draw arm can bind a pipeline and forget the
@@ -822,6 +836,7 @@ impl WgpuBackend {
         tracy::zone!();
         let images = self.image_store.read();
         let mut bound = Bound::None;
+        let use_stencil = masks.is_some();
         let raster_pipeline = fmt.raster.select(use_stencil);
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
@@ -834,132 +849,126 @@ impl WgpuBackend {
             }
         };
 
-        for_each_step(
-            buffer,
-            damage_scissor,
-            &self.quad.mask_indices,
-            use_stencil,
-            &mut |step| match step {
-                RenderStep::PreClear => {
-                    mark(pass, BatchKind::PreClear);
-                    debug_marker::push(pass, "preclear");
-                    // bind → push viewport → draw. Pushing after the
-                    // draw (or skipping it) leaves the clear quad
-                    // reading whatever's in the immediate region —
-                    // zero on the first PreClear of a partial pass,
-                    // which lands the quad at garbage NDC and skips
-                    // the damage-region clear.
+        for_each_step(buffer, damage_scissor, masks, &mut |step| match step {
+            RenderStep::PreClear => {
+                mark(pass, BatchKind::PreClear);
+                debug_marker::push(pass, "preclear");
+                // bind → push viewport → draw. Pushing after the
+                // draw (or skipping it) leaves the clear quad
+                // reading whatever's in the immediate region —
+                // zero on the first PreClear of a partial pass,
+                // which lands the quad at garbage NDC and skips
+                // the damage-region clear.
+                self.quad
+                    .bind_clear(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                viewport.push_into(pass);
+                pass.draw(0..4, 0..1);
+                // Distinct vertex buffer (clear_buffer); next
+                // non-clear step re-binds.
+                bound = Bound::None;
+                debug_marker::pop(pass);
+            }
+            RenderStep::SetScissor(r) => {
+                pass.set_scissor_rect(r.min.x, r.min.y, r.size.x, r.size.y);
+            }
+            RenderStep::SetStencilRef(v) => {
+                pass.set_stencil_reference(v);
+            }
+            RenderStep::MaskStamp(mi) => {
+                mark(pass, BatchKind::Mask);
+                debug_marker::push(pass, "mask_stamp");
+                rebind(&mut bound, Bound::MaskStamp, pass, viewport, |pass| {
                     self.quad
-                        .bind_clear(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
-                    viewport.push_into(pass);
-                    pass.draw(0..4, 0..1);
-                    // Distinct vertex buffer (clear_buffer); next
-                    // non-clear step re-binds.
-                    bound = Bound::None;
-                    debug_marker::pop(pass);
-                }
-                RenderStep::SetScissor(r) => {
-                    pass.set_scissor_rect(r.min.x, r.min.y, r.size.x, r.size.y);
-                }
-                RenderStep::SetStencilRef(v) => {
-                    pass.set_stencil_reference(v);
-                }
-                RenderStep::MaskStamp(mi) => {
-                    mark(pass, BatchKind::Mask);
-                    debug_marker::push(pass, "mask_stamp");
-                    rebind(&mut bound, Bound::MaskStamp, pass, viewport, |pass| {
-                        self.quad
-                            .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg);
-                    });
-                    self.quad.draw_mask(pass, mi);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::MaskClear(mi) => {
-                    mark(pass, BatchKind::Mask);
-                    debug_marker::push(pass, "mask_clear");
-                    rebind(&mut bound, Bound::MaskClear, pass, viewport, |pass| {
-                        self.quad
-                            .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg);
-                    });
-                    self.quad.draw_mask(pass, mi);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::Quads { range } => {
-                    mark(pass, BatchKind::Quads);
-                    debug_marker::push(pass, "quads");
-                    rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
-                        self.quad
-                            .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
-                    });
-                    self.quad.draw(pass, range);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::Text { batch } => {
-                    mark(pass, BatchKind::Text);
-                    debug_marker::push(pass, "text");
-                    rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
-                        pass.set_pipeline(raster_pipeline);
-                    });
-                    self.text.render_batch(batch, pass);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::TierBatch { tier, batch } => {
-                    // Timing bucket and debug label both come off the tier,
-                    // so a new one cannot land in the pass untimed or
-                    // unlabelled the way a forgotten `mark` call would.
-                    let kind = batch_kind(tier);
-                    mark(pass, kind);
-                    debug_marker::push(pass, kind.label());
-                    // Lazy: the icon tier draws off the batch index alone.
-                    let items = || buffer.batches(tier)[batch].items;
-                    match tier {
-                        PaintTier::Mesh => {
-                            rebind(&mut bound, Bound::Mesh, pass, viewport, |pass| {
-                                self.mesh.bind(pass, &fmt.mesh, use_stencil);
-                            });
-                            self.mesh.draw(
-                                pass,
-                                MeshBatch {
-                                    draws: buffer.meshes.draw(),
-                                    items: items(),
-                                },
-                            );
-                        }
-                        PaintTier::Image => {
-                            rebind(&mut bound, Bound::Image, pass, viewport, |pass| {
-                                self.image.bind(pass, &fmt.image, use_stencil);
-                            });
-                            self.image.draw(
-                                pass,
-                                ImageBatch {
-                                    ids: buffer.images.id(),
-                                    items: items(),
-                                },
-                                &images,
-                                &self.gpu_view_targets,
-                            );
-                        }
-                        PaintTier::Icon => {
-                            // The pipeline text draws through, so a text
-                            // step followed by an icon one rebinds
-                            // nothing — see [`Bound::Raster`].
-                            rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
-                                pass.set_pipeline(raster_pipeline);
-                            });
-                            self.icon.render_batch(batch, pass);
-                        }
-                        PaintTier::Curve => {
-                            rebind(&mut bound, Bound::Curve, pass, viewport, |pass| {
-                                self.curve
-                                    .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg);
-                            });
-                            self.curve.draw(pass, items());
-                        }
+                        .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg);
+                });
+                self.quad.draw_mask(pass, mi);
+                debug_marker::pop(pass);
+            }
+            RenderStep::MaskClear(mi) => {
+                mark(pass, BatchKind::Mask);
+                debug_marker::push(pass, "mask_clear");
+                rebind(&mut bound, Bound::MaskClear, pass, viewport, |pass| {
+                    self.quad
+                        .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg);
+                });
+                self.quad.draw_mask(pass, mi);
+                debug_marker::pop(pass);
+            }
+            RenderStep::Quads { range } => {
+                mark(pass, BatchKind::Quads);
+                debug_marker::push(pass, "quads");
+                rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
+                    self.quad
+                        .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                });
+                self.quad.draw(pass, range);
+                debug_marker::pop(pass);
+            }
+            RenderStep::Text { batch } => {
+                mark(pass, BatchKind::Text);
+                debug_marker::push(pass, "text");
+                rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
+                    pass.set_pipeline(raster_pipeline);
+                });
+                self.text.render_batch(batch, pass);
+                debug_marker::pop(pass);
+            }
+            RenderStep::TierBatch { tier, batch } => {
+                // Timing bucket and debug label both come off the tier,
+                // so a new one cannot land in the pass untimed or
+                // unlabelled the way a forgotten `mark` call would.
+                let kind = batch_kind(tier);
+                mark(pass, kind);
+                debug_marker::push(pass, kind.label());
+                // Lazy: the icon tier draws off the batch index alone.
+                let items = || buffer.batches(tier)[batch].items;
+                match tier {
+                    PaintTier::Mesh => {
+                        rebind(&mut bound, Bound::Mesh, pass, viewport, |pass| {
+                            self.mesh.bind(pass, &fmt.mesh, use_stencil);
+                        });
+                        self.mesh.draw(
+                            pass,
+                            MeshBatch {
+                                draws: buffer.meshes.draw(),
+                                items: items(),
+                            },
+                        );
                     }
-                    debug_marker::pop(pass);
+                    PaintTier::Image => {
+                        rebind(&mut bound, Bound::Image, pass, viewport, |pass| {
+                            self.image.bind(pass, &fmt.image, use_stencil);
+                        });
+                        self.image.draw(
+                            pass,
+                            ImageBatch {
+                                ids: buffer.images.id(),
+                                items: items(),
+                            },
+                            &images,
+                            &self.gpu_view_targets,
+                        );
+                    }
+                    PaintTier::Icon => {
+                        // The pipeline text draws through, so a text
+                        // step followed by an icon one rebinds
+                        // nothing — see [`Bound::Raster`].
+                        rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
+                            pass.set_pipeline(raster_pipeline);
+                        });
+                        self.icon.render_batch(batch, pass);
+                    }
+                    PaintTier::Curve => {
+                        rebind(&mut bound, Bound::Curve, pass, viewport, |pass| {
+                            self.curve
+                                .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg);
+                        });
+                        self.curve.draw(pass, items());
+                    }
                 }
-            },
-        );
+                debug_marker::pop(pass);
+            }
+        });
     }
 
     /// Draw the damage-rect debug overlay onto the swapchain texture
@@ -991,20 +1000,17 @@ impl WgpuBackend {
         );
     }
 
-    /// The device every window's per-window attachment is built against
-    /// — the one thing a host needs off the shared backend to size its
-    /// own [`Backbuffer`] and [`Stencil`].
+    /// The device every window's per-window attachment is built against,
+    /// for a host to size its own [`Backbuffer`] and [`Stencil`].
     pub(crate) const fn device(&self) -> &wgpu::Device {
         &self.device
     }
 
-    /// A per-window [`Backbuffer`]'s group-0 binding, built through the one
-    /// layout every sampled texture here shares rather than a second one that
-    /// would have to agree with it.
-    pub(crate) fn backbuffer_bind_group(&self, view: &wgpu::TextureView) -> wgpu::BindGroup {
-        self.image_store
-            .binding()
-            .bind_group(&self.device, view, "palantir.renderer.backbuffer.bg")
+    /// The binding every sampled texture here shares, for a host to build
+    /// its [`Backbuffer`] through rather than a second layout that would
+    /// have to agree with it.
+    pub(crate) const fn texture_binding(&self) -> &TextureBinding {
+        &self.texture_binding
     }
 
     /// Skip path: the host's damage compute returned `None`, but the
@@ -1036,7 +1042,7 @@ impl WgpuBackend {
         } else {
             let fmt = self
                 .pipelines
-                .get(&surface_tex.format())
+                .get(&target.format())
                 .expect("a skip implies a prior submit built this format's pipelines");
             let view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
@@ -1121,7 +1127,7 @@ pub(crate) mod internals {
     impl WgpuBackend {
         /// Whether a pipeline set has been built for `format`.
         pub(crate) fn has_format_pipelines(&self, format: TargetFormat) -> bool {
-            self.pipelines.contains_key(&format.get())
+            self.pipelines.contains_key(&format)
         }
 
         /// Registered images resident on the GPU — what the surface-format

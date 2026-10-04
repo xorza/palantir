@@ -591,8 +591,13 @@ impl WindowDriver {
             // the backbuffer leaves it holding what the target holds.
             PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
                 let backbuffer = if mode.renders_via_backbuffer() {
-                    let ensured =
-                        Backbuffer::ensure(&mut self.backbuffer, backend, size, target.format());
+                    let ensured = Backbuffer::ensure(
+                        &mut self.backbuffer,
+                        backend.device(),
+                        backend.texture_binding(),
+                        size,
+                        target.format(),
+                    );
                     // A Partial reaches here un-escalated only when
                     // `backbuffer_fresh` — last frame rendered into the
                     // backbuffer at this size/format — so a recreate under
