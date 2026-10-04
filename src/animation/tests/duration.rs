@@ -298,8 +298,11 @@ fn out_back_reaches_its_overshoot_on_a_small_change() {
 
 /// A non-finite target is a caller's logic error: NaN differs from itself,
 /// so the row would retarget every frame and never settle.
-#[cfg(debug_assertions)]
 #[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "probes a debug_assert!, which release compiles out"
+)]
 fn a_non_finite_target_is_refused() {
     for target in [f32::NAN, f32::INFINITY] {
         let mut map = AnimMapTyped::<f32>::default();

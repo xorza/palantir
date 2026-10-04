@@ -59,26 +59,13 @@ fn intersects_cases() {
         // The predicate and the two rectangle-valued forms are one question
         // asked three ways, and they have to agree: `intersect` answers `Some`
         // exactly when `intersects` is true, and `clamp_to` answers the same
-        // rect where it does. The pair replaced a single `intersect` that
-        // returned a zero-sized rect on a miss, so what is pinned here is that
-        // the strict one now says so rather than handing back an empty rect a
+        // rect where it does, so a miss is `None` rather than an empty rect a
         // caller has to remember to test.
         assert_eq!(a.intersect(*b).is_some(), *want, "strict: {label}");
         match a.intersect(*b) {
             Some(overlap) => assert_eq!(overlap, a.clamp_to(*b), "agree: {label}"),
             None => assert!(a.clamp_to(*b).is_paint_empty(), "saturating: {label}"),
         }
-    }
-
-    // A NaN operand is a broken contract, not a miss: `f32::max` would drop
-    // it and answer the other rect, so `Rect::NAN.intersect(b)` was `Some(b)`.
-    #[cfg(debug_assertions)]
-    for (a, b) in [
-        (Rect::NAN, Rect::new(0.0, 0.0, 10.0, 10.0)),
-        (Rect::new(0.0, 0.0, 10.0, 10.0), Rect::NAN),
-    ] {
-        panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
-        panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
     }
 
     // Clamping is not symmetric the way overlapping is: it keeps the *origin*
@@ -96,6 +83,23 @@ fn intersects_cases() {
     // `clamp_to` takes the bounds' origin (50, 50) and the smaller max
     // (10, 10), so both extents saturate at zero rather than going negative.
     assert_eq!(missed, Rect::new(50.0, 50.0, 0.0, 0.0));
+}
+
+/// A NaN operand is a broken contract, not a miss: `f32::max` would drop
+/// it and answer the other rect.
+#[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "probes a debug_assert!, which release compiles out"
+)]
+fn a_nan_operand_is_refused() {
+    for (a, b) in [
+        (Rect::NAN, Rect::new(0.0, 0.0, 10.0, 10.0)),
+        (Rect::new(0.0, 0.0, 10.0, 10.0), Rect::NAN),
+    ] {
+        panic_probe::assert_panics_with("NaN operand", || a.intersect(b));
+        panic_probe::assert_panics_with("NaN operand", || a.clamp_to(b));
+    }
 }
 
 #[test]
