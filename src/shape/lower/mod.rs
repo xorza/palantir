@@ -50,7 +50,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 use std::f32::consts::TAU;
 use std::hash;
-use std::hash::Hasher as _;
+use std::hash::{Hash as _, Hasher as _};
 use std::slice;
 
 /// Stable content hash for a gradient kind or a curve ramp: discriminant
@@ -169,37 +169,19 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke)
     };
     let ring = ShapeStroke::from(ring);
     let has_ring = !ring.is_noop();
-    // Canonical authoring hash: fold all inputs into one
-    // `Hasher::pod` call. Five separate `Hasher::write*` calls pay
-    // `hash_bytes` setup + final `add_to_hash` five times — ~40 cycles
-    // that dominate `background`'s self-time (~0.5% of frame total).
-    // Field order is layout-engineered to avoid internal
-    // padding — descending alignment, u64s first, then the Pod
-    // structs widest-aligned first, then the tag; `padding_struct`
-    // fills the tail so `NoUninit` is sound.
-    #[repr(C)]
-    #[padding_struct::padding_struct]
-    #[derive(Debug, Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
-    struct ChromeHashBytes {
-        fill_payload: u64, // RgbaF16-as-u64 (Solid) or content hash (Gradient)
-        corners_u64: u64,
-        border: ShapeStroke,   // 12 B align 4
-        ring: ShapeStroke,     // 12 B align 4
-        shadow: LoweredShadow, // 18 B align 2
-        fill_tag: u8,
-    }
+    // Canonical authoring hash, fed as whole words straight from
+    // registers. Packing the fields into a struct for one byte-slice
+    // `write` stored it field by field and read it back in wider
+    // chunks, and a load spanning several in-flight stores cannot be
+    // forwarded: the reads stalled until the stores retired.
     let brush = fill.hash_parts();
-    let packed = ChromeHashBytes {
-        fill_payload: brush.payload,
-        corners_u64: corners.as_u64(),
-        border,
-        ring,
-        shadow,
-        fill_tag: brush.tag,
-        ..bytemuck::Zeroable::zeroed()
-    };
     let mut h = Hasher::new();
-    h.pod(&packed);
+    h.write_u64(brush.payload);
+    h.write_u64(corners.as_u64());
+    border.hash_into(&mut h);
+    ring.hash_into(&mut h);
+    shadow.hash(&mut h);
+    h.write_u8(brush.tag);
     let hash = ContentHash(h.finish());
     ChromeRow {
         fill,

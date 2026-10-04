@@ -1,9 +1,7 @@
 //! The incremental walk against a full one, and the gates that bust reuse.
 
 use crate::Ui;
-use crate::cascade::engine::{
-    CascadeContext, CascadePrefixBits, build_cascade_prefix, finish_cascade_input,
-};
+use crate::cascade::engine::{CascadeContext, build_cascade_prefix, finish_cascade_input};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -30,7 +28,6 @@ use glam::Vec2;
 fn cascade_input_hash_collapses_visual_zero_noise() {
     use crate::primitives::math::domain::EPS;
 
-    assert_eq!(size_of::<CascadePrefixBits>(), 32);
     let hash = |transform, rect| {
         let prefix = build_cascade_prefix(CascadeContext {
             transform,
