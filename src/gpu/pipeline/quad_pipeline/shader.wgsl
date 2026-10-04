@@ -20,6 +20,13 @@ const BLUR_EPS: f32 = 1e-4;
 // Half-width of the SDF antialiasing transition in physical pixels.
 const AA_RADIUS: f32 = /*{AA_RADIUS}*/;
 
+// A drop shadow clips where its source's own coverage is within this of
+// full: one 8-bit step, so what the clip takes from under an opaque fill
+// never reaches a stored value, while a pixel centre that sits exactly on
+// the threshold clips the same way under the float noise that the
+// interpolated `local` carries.
+const SHADOW_CLIP_EPS: f32 = 1.0 / 255.0;
+
 // Brush kind low byte:
 //   0 = solid  (use `fill` directly)
 //   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
@@ -46,13 +53,11 @@ const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
 const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill` is the shadow colour, `radius` is the source rect's corner
-// radii, `size` is the paint bbox.
+// radii, `size` is the paint bbox, and
+// `fill_axis = (offset.x, offset.y, sigma, spread)` for both.
 //   - Drop:  paint bbox = (source + offset).inflated(3σ + max(spread, 0)).
-//            Offset and positive spread are baked into the paint bbox;
-//            `fill_axis = (0, 0, sigma, spread)` preserves signed spread.
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
-//            inside the shader via
-//            `fill_axis = (offset.x, offset.y, sigma, spread)`.
+//            inside the shader.
 const BRUSH_KIND_SHADOW_DROP:  u32 = /*{BRUSH_KIND_SHADOW_DROP}*/;
 const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // Rounded-triangle SDF. `fill` is the solid fill; the three corner points
@@ -162,8 +167,8 @@ fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f3
 
 // CSS `box-shadow` spread on each radius: `max(r + s, 0)` for `s < 0`;
 // for `s ≥ 0`, `r + s` when `r ≥ s` and `r + s·(1 + (r/s − 1)³)` below, so
-// a sharp corner stays sharp. The shader's copy of the rule in
-// `Corners::fit_to`, for the inset hole, whose box only the shader sizes.
+// a sharp corner stays sharp, as CSS Backgrounds 3 §7.1 has it. Only
+// the shader applies it: the shadow boxes are sized here.
 // At `s = 0` the cubic arm divides by the floor and goes non-finite, and
 // the `r ≥ s` arm is the one selected.
 fn spread_radius(r: vec4<f32>, s: f32) -> vec4<f32> {
@@ -376,13 +381,27 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
     let kind = in.fill_kind & 0xFFu;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
+        // Drop shadow: the quad is the source S moved by `offset` and
+        // grown by the halo, so S sits `offset` back from its centre.
+        let offset = in.fill_axis.xy;
         let sigma  = in.fill_axis.z;
         let spread = in.fill_axis.w;
         let half   = in.size * 0.5;
         let source_half = half - vec2<f32>(3.0 * sigma + max(spread, 0.0));
+        // CSS clips an outer shadow inside the box that casts it
+        // (Backgrounds 3 §7.1.1). Only where S's own coverage is full:
+        // the fill drawn over S's edge pixels then blends with the shadow
+        // under them as CSS's geometric clip would, where a clip at the
+        // edge itself would open a seam.
+        let d_src = sdf_rounded_box_centered(in.local - half + offset, source_half, in.radius);
+        if (d_src <= AA_RADIUS - 1.0 + SHADOW_CLIP_EPS) {
+            return vec4<f32>(0.0);
+        }
+        // The shadow's radii are S's under the CSS spread rule, fitted
+        // to the shadow's own box, as the inset hole's are.
         let shadow_half = max(source_half + vec2<f32>(spread), vec2<f32>(0.0));
-        let p = in.local - half;
-        let d = sdf_rounded_box_centered(p, shadow_half, in.radius);
+        let shadow_radius = fit_radii(spread_radius(in.radius, spread), shadow_half);
+        let d = sdf_rounded_box_centered(in.local - half, shadow_half, shadow_radius);
         let cov = blurred_rect_coverage(d, sigma);
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);

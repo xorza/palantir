@@ -61,38 +61,16 @@ fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
         ("sharp", Corners::ZERO, [0.0; 4]),
     ];
     for (label, corners, want) in rows {
-        assert_eq!(corners.fit_to(size, 1.0, 0.0).as_array(), want, "{label}");
+        assert_eq!(corners.fit_to(size, 1.0).as_array(), want, "{label}");
     }
     // Scaled first, in f32: 9999 × 8 is past f16's 65504, and still fits
     // a 100×40 box at 8× (800×320) to 160.
     assert_eq!(
         Corners::all(9999.0)
-            .fit_to(Size::new(800.0, 320.0), 8.0, 0.0)
+            .fit_to(Size::new(800.0, 320.0), 8.0)
             .as_array(),
         [160.0; 4],
     );
-}
-
-/// CSS `box-shadow` spread on a radius, in a box large enough that the
-/// fit changes nothing: `(r 0, s 10)` stays sharp; `(r 10, s 10)` → 20;
-/// `(r 4, s 10)` → `4 + 10·(1 + (0.4 − 1)³) = 4 + 10·0.784 = 11.84`;
-/// `(r 10, s −6)` → 4; `(r 4, s −6)` → 0.
-#[test]
-fn fit_to_grows_radii_by_the_css_spread_rule() {
-    let size = Size::new(1000.0, 1000.0);
-    for (r, spread, want) in [
-        (0.0, 10.0, 0.0),
-        (10.0, 10.0, 20.0),
-        (4.0, 10.0, 11.84),
-        (10.0, -6.0, 4.0),
-        (4.0, -6.0, 0.0),
-    ] {
-        let got = Corners::all(r).fit_to(size, 1.0, spread).as_array()[0];
-        // f16 packing: 11.84 lands on the nearest step, 2^-7 apart there —
-        // 1515.52 steps, so 1516 × 2^-7 = 11.84375.
-        let packed = half::f16::from_f32(want).to_f32();
-        assert_eq!(got, packed, "r {r}, spread {spread}");
-    }
 }
 
 #[test]

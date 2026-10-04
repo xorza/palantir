@@ -180,14 +180,14 @@ fn compose_flushes_when_later_quad_overlaps_prior_text() {
 #[test]
 fn compose_shadow_outer_halo_after_text_splits_group() {
     let sigma = 4.0;
+    // The composer grows the source by 3σ = 12, to x = 38: past the text's 39.
     let source = Rect::new(50.0, 50.0, 50.0, 50.0);
-    let shadow_rect = source.inflated(3.0 * sigma);
     let buf = run(
         |b, _arena| {
             text(b, Rect::new(39.0, 60.0, 2.0, 10.0));
             b.draw_quad(
                 DrawQuadPayload::shadow(
-                    shadow_rect,
+                    source,
                     Corners::ZERO,
                     RgbaF32::BLACK.into(),
                     FillKind::SHADOW_DROP,

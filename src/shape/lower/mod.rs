@@ -146,11 +146,17 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke)
         &bg.fill
     };
     let fill = brush(store, fill_brush);
-    let border = ShapeStroke::from(if bg.border.has_nan() {
-        Stroke::NONE
-    } else {
-        bg.border
-    });
+    // The width stays even when the colour paints nothing: it is the
+    // padding edge the layout fold moved the children to, and an inset
+    // shadow paints inside that edge.
+    let border = ShapeStroke {
+        width: bg.border_inset(),
+        ..ShapeStroke::from(if bg.border.has_nan() {
+            Stroke::NONE
+        } else {
+            bg.border
+        })
+    };
     let corners = if bg.corners.has_nan() {
         Corners::ZERO
     } else {

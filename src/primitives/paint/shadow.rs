@@ -10,9 +10,10 @@ use palantir_anim_derive::Animatable;
 /// Single drop-or-inset shadow. Used in two places: embedded in a
 /// `Shape::Shadow` (paints via the shape buffer, multi-shadow stacks
 /// allowed by record order) and as `Background::shadow` (paints via
-/// the encoder's chrome branch, before the rect fill, single-shadow
-/// only). Both routes share the `LoweredShadow::paint_rect_local`
-/// overhang formula and the one `emit_shadow` path.
+/// the encoder's chrome branch: a drop shadow under the fill, an inset
+/// one over it, single-shadow only). Both routes share the
+/// `LoweredShadow::paint_rect_local` overhang formula and the one
+/// `emit_shadow` path.
 ///
 /// `Shadow::NONE` (also `Default`) is the "no shadow" sentinel —
 /// matches the `Stroke::NONE` convention so consumers can store a
@@ -23,7 +24,10 @@ use palantir_anim_derive::Animatable;
 /// the Gaussian σ in logical px (CSS `blur-radius / 2`); 0 collapses
 /// to a sharp SDF. `spread` inflates (drop) or deflates (inset) the
 /// source rect. `inset = true` paints inside the chrome boundary;
-/// `false` paints outside it.
+/// `false` paints outside it: as CSS clips an outer `box-shadow`, a drop
+/// shadow is clipped inside the box that casts it, so it does not show
+/// through a translucent fill. A drop shadow with no box drawn over it
+/// paints a blurred ring around an empty box.
 ///
 /// Multi-shadow stacks are intentionally not modelled here — drop a
 /// `Shape::Shadow` directly when you need more than one.

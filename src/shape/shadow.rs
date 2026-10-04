@@ -71,7 +71,8 @@ impl sealed::LowerShape for ShadowShape {
     /// `LoweredShadow`'s `From<Shadow>`, and the paint extent is derived
     /// downstream by
     /// [`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)
-    /// so damage and the encoder can't disagree about the halo. Nothing
+    /// from the same `ShadowGeom::halo` the composer grows a drop shadow
+    /// by, so damage and paint can't disagree about the halo. Nothing
     /// is staged, so nothing goes through `lower::`.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {

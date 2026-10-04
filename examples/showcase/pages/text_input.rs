@@ -234,7 +234,10 @@ fn ime(ui: &mut Ui, s: &mut Page) {
                     fmt!(ui, "{:?}", s.preedit)
                 };
                 readout(ui, "preedit", preedit);
-                let cursor = fmt!(ui, "{:?}", s.preedit_cursor);
+                let cursor = match s.preedit_cursor {
+                    Some(cursor) => fmt!(ui, "bytes {:?}", cursor.range()),
+                    None => ui.intern("none"),
+                };
                 readout(ui, "cursor", cursor);
                 let bound = fmt!(ui, "{:?}", s.ime);
                 readout(ui, "bound value", bound);

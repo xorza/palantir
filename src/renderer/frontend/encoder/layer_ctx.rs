@@ -47,12 +47,12 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::{self, ShapeRecord};
 use crate::text::shaped_ref::ShapedTextRef;
+use glam::Vec2;
 use std::time::Duration;
 
 /// Per-layer encode context: the fixed inputs one layer's walk reads,
@@ -479,16 +479,34 @@ impl LayerCtx<'_, '_> {
         let chrome = self.tree.chrome(id);
 
         if let Some(bg) = chrome {
-            // Both draws pass alpha `1.0`: a paint animation is registered
+            // Every draw passes alpha `1.0`: a paint animation is registered
             // against a shape, and chrome is the node's own, not one of them.
             //
-            // Shadow paints UNDER the rect fill (CSS box-shadow order).
-            // `local_rect = None` means the shadow follows the owner's
-            // full arranged rect — `compute_paint_rect` mirrors this so
-            // paint extent and damage extent stay in lockstep.
-            emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
+            // CSS Backgrounds 3 §7.1 order: a drop shadow under the fill, an
+            // inset one over it, inside the border.
             let src = self.brush_source(bg.fill);
-            out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.border), 1.0);
+            let fill = DrawQuadPayload::rect(rect, bg.corners, src, bg.border);
+            if bg.shadow.inset() {
+                out.draw_quad(fill, 1.0);
+                // CSS draws the border over an inset shadow. Fill and border
+                // stay one quad, as two would blend a seam along their shared
+                // edge, so the shadow's edge pixels land on the border's inner
+                // anti-aliased ones instead.
+                let width = bg.border.width;
+                let padding_box = Rect {
+                    min: Vec2::ZERO,
+                    size: rect.size,
+                }
+                .deflated(width);
+                let corners = bg.corners.deflated(rect.size, width);
+                emit_shadow(out, rect, Some(padding_box), corners, &bg.shadow, 1.0);
+            } else {
+                // `local_rect = None`: the owner's full arranged rect, which
+                // `compute_paint_rect` mirrors so paint extent and damage
+                // extent stay in lockstep.
+                emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
+                out.draw_quad(fill, 1.0);
+            }
             // The focus ring, over the chrome on the same edge, and before
             // the clip like the border it shares the edge with.
             if bg.ring {
@@ -581,11 +599,11 @@ impl LayerCtx<'_, '_> {
     }
 }
 
-/// Shared shadow emit. Chrome branch (`Background::shadow`,
-/// `local_rect = None`) and shape-buffer branch (`QuadShape::Shadow`,
-/// owner-relative `local_rect`) both route here so the
-/// `LoweredShadow::paint_rect_local` translation + fill-axis packing
-/// can't drift between the two views.
+/// Shared shadow emit. Chrome branch (`Background::shadow`) and
+/// shape-buffer branch (`QuadShape::Shadow`) both route here. Either
+/// kind travels as its source rect and its stored geometry lanes: the
+/// composer grows a drop shadow from the source once it is in physical
+/// pixels, so the source lands on the same pixels as the fill it shadows.
 fn emit_shadow(
     out: &mut impl PaintSink,
     owner_rect: Rect,
@@ -597,36 +615,24 @@ fn emit_shadow(
     if shadow.is_noop() {
         return;
     }
-    let paint_local = shadow.paint_rect_local(local_rect, owner_rect.size);
-    let paint_rect = Rect {
-        min: owner_rect.min + paint_local.min,
-        size: paint_local.size,
+    let source = match local_rect {
+        Some(local) => Rect {
+            min: owner_rect.min + local.min,
+            size: local.size,
+        },
+        None => owner_rect,
     };
-    let (kind, fill_axis) = if shadow.inset() {
-        // The inset axis *is* the stored geometry, so it travels as the
-        // packed word — unpacking it to f32 and repacking would be an
-        // f16 round trip of identical bytes.
-        (FillKind::SHADOW_INSET, FillAxis::from(shadow.geom_f16))
+    let kind = if shadow.inset() {
+        FillKind::SHADOW_INSET
     } else {
-        // A drop shadow zeroes the offset lanes: the halo is already
-        // folded into `paint_rect`, so the shader must not shift again.
-        let ShadowGeom { blur, spread, .. } = shadow.geom();
-        (
-            FillKind::SHADOW_DROP,
-            FillAxis::from_lanes(0.0, 0.0, blur, spread),
-        )
+        FillKind::SHADOW_DROP
     };
+    // The axis *is* the stored geometry, so it travels as the packed
+    // word — unpacking it to f32 and repacking would be an f16 round
+    // trip of identical bytes.
+    let fill_axis = FillAxis::from(shadow.geom_f16);
     out.draw_quad(
-        DrawQuadPayload::shadow(
-            paint_rect,
-            corners,
-            // LoweredShadow.color is `RgbaF16` (the field); the payload
-            // takes the packed form directly so the encoder doesn't
-            // unpack-and-repack.
-            shadow.color,
-            kind,
-            fill_axis,
-        ),
+        DrawQuadPayload::shadow(source, corners, shadow.color, kind, fill_axis),
         alpha,
     );
 }

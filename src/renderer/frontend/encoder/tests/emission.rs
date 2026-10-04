@@ -241,11 +241,11 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     );
 }
 
-/// Drop shadows lower around their shifted source and no longer need
-/// offset lanes in the shader payload. Inset shadows retain the source
-/// bbox and offset/spread lanes because the shader moves the inner hole.
+/// Both shadow kinds lower to their source rect and their stored
+/// `(offset, σ, spread)` lanes: the composer grows a drop shadow from the
+/// source once it is snapped, and the shader moves an inset one's hole.
 #[test]
-fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
+fn shadows_lower_to_their_source_and_geometry_lanes() {
     use crate::Shadow;
 
     use crate::primitives::packed::fill_kind::FillKind;
@@ -290,9 +290,8 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     let (drop_rect, inset_rect) = (quad_rect(drop), quad_rect(inset));
 
     assert_eq!(drop.fill.kind, FillKind::SHADOW_DROP);
-    assert_eq!(drop_rect.size, Size::new(78.0, 88.0));
-    assert_eq!(drop_rect.min - inset_rect.min, Vec2::new(-22.0, -20.0));
-    assert_eq!(drop.fill_axis.lanes(), [0.0, 0.0, 8.0, -1.0]);
+    assert_eq!(drop_rect, inset_rect, "both carry the one source rect");
+    assert_eq!(drop.fill_axis.lanes(), [2.0, 4.0, 8.0, -1.0]);
     assert_eq!(
         drop.fill.color,
         RgbaF16::from(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5))
@@ -305,6 +304,129 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     assert_eq!(inset.fill.kind, FillKind::SHADOW_INSET);
     assert_eq!(inset_rect.size, Size::new(30.0, 40.0));
     assert_eq!(inset.fill_axis.lanes(), [2.0, 4.0, 8.0, -2.0]);
+}
+
+/// Chrome paints its shadow in CSS Backgrounds 3 §7.1 order: a drop
+/// shadow under the fill, an inset one over it. A drop shadow's source is
+/// the whole 100×60 rect. An inset one's is the padding box — the rect
+/// less the border on every side — on the padding edge's radii: fitted to
+/// the rect (§5.5), then each `max(r − w, 0)` (§5.2). The width is the
+/// layout fold's, so a transparent border still moves the shadow in.
+#[test]
+fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
+
+    struct Case {
+        label: &'static str,
+        inset: bool,
+        border: Stroke,
+        corners: Corners,
+        /// The shadow's source rect, from the node's top left.
+        shadow_rect: Rect,
+        shadow_corners: Corners,
+    }
+    let red = RgbaF32::srgb(1.0, 0.0, 0.0);
+    let cases = [
+        Case {
+            label: "drop",
+            inset: false,
+            border: Stroke::new(red, 2.0),
+            corners: Corners::all(8.0),
+            shadow_rect: Rect::new(0.0, 0.0, 100.0, 60.0),
+            shadow_corners: Corners::all(8.0),
+        },
+        Case {
+            label: "inset under a 2 px border",
+            inset: true,
+            border: Stroke::new(red, 2.0),
+            // 8 − 2 = 6; 1 − 2 and 0 − 2 floor at 0; 3 − 2 = 1.
+            corners: Corners::new(8.0, 1.0, 0.0, 3.0),
+            shadow_rect: Rect::new(2.0, 2.0, 96.0, 56.0),
+            shadow_corners: Corners::new(6.0, 0.0, 0.0, 1.0),
+        },
+        Case {
+            label: "inset under radii that overlap",
+            inset: true,
+            border: Stroke::new(red, 2.0),
+            // The left side's 100 + 100 fit its 60 px at f = 0.3 before the
+            // border comes off: 30 − 2 = 28 and 20·0.3 − 2 = 4. Deflated
+            // first, the 4 would be 18·(56 / 196) = 5.14, a rounder curve
+            // than the border's inner edge.
+            corners: Corners::new(100.0, 20.0, 20.0, 100.0),
+            shadow_rect: Rect::new(2.0, 2.0, 96.0, 56.0),
+            shadow_corners: Corners::new(28.0, 4.0, 4.0, 28.0),
+        },
+        Case {
+            label: "inset under a transparent 4 px border",
+            inset: true,
+            border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
+            corners: Corners::all(8.0),
+            shadow_rect: Rect::new(4.0, 4.0, 92.0, 52.0),
+            shadow_corners: Corners::all(4.0),
+        },
+        Case {
+            label: "inset with no border",
+            inset: true,
+            border: Stroke::NONE,
+            corners: Corners::all(8.0),
+            shadow_rect: Rect::new(0.0, 0.0, 100.0, 60.0),
+            shadow_corners: Corners::all(8.0),
+        },
+    ];
+    for case in &cases {
+        let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 6.0);
+        let background = Background {
+            fill: RgbaF32::WHITE.into(),
+            border: case.border,
+            corners: case.corners,
+            shadow: if case.inset { shadow.inset() } else { shadow },
+        };
+        let mut h = UiHarness::new(UVec2::new(200, 200));
+        h.frame(|ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("chrome"))
+                    .size((100.0, 60.0))
+                    .background(background.clone())
+                    .show(ui);
+            });
+        });
+        let cmds = h.encode_paint();
+        let quads: Vec<_> = cmds
+            .calls
+            .iter()
+            .filter(|c| as_rect(c).is_some() || as_shadow(c).is_some())
+            .collect();
+        let label = case.label;
+        assert_eq!(quads.len(), 2, "{label}: one fill and one shadow");
+        let (fill, shadow) = if case.inset {
+            (as_rect(quads[0]), as_shadow(quads[1]))
+        } else {
+            (as_rect(quads[1]), as_shadow(quads[0]))
+        };
+        let fill = fill.unwrap_or_else(|| panic!("{label}: fill out of order"));
+        let shadow = shadow.unwrap_or_else(|| panic!("{label}: shadow out of order"));
+        let node = quad_rect(fill);
+        assert_eq!(node.size, Size::new(100.0, 60.0), "{label}");
+        let expected_kind = if case.inset {
+            FillKind::SHADOW_INSET
+        } else {
+            FillKind::SHADOW_DROP
+        };
+        assert_eq!(shadow.fill.kind, expected_kind, "{label}");
+        let QuadGeom::Rect { rect, corners } = shadow.geom else {
+            panic!("{label}: a shadow has rect geometry");
+        };
+        let expected = Rect {
+            min: node.min + case.shadow_rect.min,
+            size: case.shadow_rect.size,
+        };
+        assert_eq!(rect, expected, "{label}");
+        assert_eq!(corners, case.shadow_corners, "{label}");
+        assert_eq!(shadow.fill_axis.lanes(), [0.0, 2.0, 6.0, 0.0], "{label}");
+    }
 }
 
 #[test]
