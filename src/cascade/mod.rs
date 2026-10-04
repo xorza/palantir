@@ -1,8 +1,9 @@
 //! Per-frame post-arrange state.
 //!
 //! [`CascadeEngine`](engine::CascadeEngine) owns the walk scratch and
-//! updates a retained [`Cascade`]. Paint-only changes repair dirty
-//! subtrees in place; geometry or inherited-state changes rebuild all
+//! updates a retained [`Cascade`]. While the structure holds — ids,
+//! nesting, flags, visibility, Tab order — geometry and paint changes
+//! refresh the moved rows in place; a structural change rebuilds all
 //! per-tree rows. Downstream phases (damage diff, input hit-test,
 //! renderer encoder) take `&Cascade` as their single frozen-state
 //! handle.
@@ -63,7 +64,7 @@ pub(crate) struct Cascade {
     /// ([`crate::input::input_state::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
     /// the end of the most recent `CascadeEngine::run`** — a full
-    /// rebuild refills it from `seen.curr`, and paint-only runs and
+    /// rebuild refills it from `seen.curr`, and incremental runs and
     /// skips retain it because [`Self::key`] includes every widget
     /// identity. The snapshot is required (rather than reading
     /// `seen.curr` directly) because `response_for` is called during
@@ -466,6 +467,18 @@ pub(crate) mod internals {
                         warm.subtree_ends[node],
                         full.subtree_ends[node],
                         "subtree end of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.paint_rects[node],
+                        full.paint_rects[node],
+                        "own paint rect of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.hit_rows[node],
+                        full.hit_rows[node],
+                        "hit row of {}",
                         at(),
                     );
                     assert_eq!(

@@ -121,9 +121,15 @@ fn self_transform_change_flips_node_hash() {
         a.subtree, b.subtree,
         "self transform MUST change subtree hash"
     );
-    assert_ne!(
+    // A transform moves no rect, so neither the measure cache nor the
+    // cascade's structural tables may see it.
+    assert_eq!(
+        a.layout_subtree, b.layout_subtree,
+        "self transform must not change the layout half"
+    );
+    assert_eq!(
         a.cascade_static, b.cascade_static,
-        "self transform MUST change cascade-static hash"
+        "self transform must not change the cascade-static hash"
     );
 
     let identity = TranslateScale::IDENTITY;
