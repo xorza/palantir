@@ -155,8 +155,8 @@ pub(crate) struct WgpuBackend {
     /// resizing-frame's worth of buffer uploads (~512 KB observed in
     /// the frame bench).
     staging_belt: StagingBelt,
-    /// Shared gradient LUT atlas resources (texture + sampler + group-0
-    /// bind group), lent to the quad and curve pipelines — both render
+    /// Shared gradient LUT atlas resources (texture + group-0 bind
+    /// group), lent to the quad and curve pipelines — both render
     /// gradient brushes off this one allocation.
     gradient: GpuGradientAtlas,
     quad: QuadPipeline,
@@ -257,14 +257,13 @@ impl WgpuBackend {
             resources.gradient_atlas.clone(),
             texture_binding.clone(),
         );
-        let textures = texture_binding.layout();
-        let quad = QuadPipeline::new(&device, textures);
+        let quad = QuadPipeline::new(&device, &texture_binding);
         let mesh = MeshPipeline::new(&device);
-        let image = ImagePipeline::new(&device, textures);
+        let image = ImagePipeline::new(&device, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
-        let curve = CurvePipeline::new(&device, textures);
+        let curve = CurvePipeline::new(&device, &texture_binding);
         let raster = RasterProgram::new(&device);
-        let blit = BlitPipeline::new(&device, textures);
+        let blit = BlitPipeline::new(&device, &texture_binding);
         let text = TextBackend::new(&device, &raster, resources.text.clone());
         let icon = IconBackend::new(&device, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&device);

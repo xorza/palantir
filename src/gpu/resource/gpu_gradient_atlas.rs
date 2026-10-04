@@ -3,8 +3,7 @@
 //! Owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend) and lent to the quad and
 //! curve pipelines (both render gradient brushes). Keeping the resource
 //! here — rather than on whichever pipeline happens to build first —
-//! means neither pipeline owns the other's input: each takes `&bgl` at
-//! build time and `&bg` at bind time.
+//! means neither pipeline owns the other's input: each binds `&bg`.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -111,8 +110,8 @@ impl GpuGradientAtlas {
     /// texture and its bind group are replaced at the new height before
     /// the upload. Growth dirties every row, so the replacement texture
     /// is refilled in the same `write_texture`, and the pipelines stay
-    /// valid because they bind through the height-independent `bgl` and
-    /// read the height with `textureDimensions`.
+    /// valid because they bind through the height-independent shared
+    /// layout and read the height with `textureDimensions`.
     pub(crate) fn upload(&mut self, ctx: &GpuCtx<'_>) {
         // Destructured so the resize below borrows the GPU-side fields
         // while `flush_with` holds the CPU atlas.
