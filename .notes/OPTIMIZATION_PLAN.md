@@ -122,6 +122,11 @@ no `ldlat` filter.
   (−1.1 to +0.6 %), and `cascade/run` got 0.7–1 % slower (+4.8 % on one
   `full_rebuild` run), because its walk reads only `subtree` and now
   strides 24 bytes. The change was reverted.
+- **Item 6, a 64-byte `ShapeRecord`: bounded and not done** (6800U). A
+  probe padded the record from 88 to 128 bytes (+45 %). Three
+  alternating rounds against item 3 measured −0.1 to +1.0 % on the frame
+  arms, inside the noise. A shrink to 64 bytes cannot gain more than
+  that, so the payload move into `RecordStore` does not pay for itself.
 
 ## How to measure
 
@@ -174,19 +179,6 @@ measure both.
 
 ## Plan, highest value first
 
-### 6. `ShapeRecord` is 88 bytes
-
-Text, the common variant, uses 57 bytes. Curve (87), Quad (79), Image (78) and
-Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
-8-byte alignment. A record never fits in one 64-byte line.
-
-- Change: move the payloads of the rare large variants (Curve, Image, Mesh,
-  Polyline) into `RecordStore` behind a 4-byte index, as meshes and polylines
-  already do for their vertex data. Give the local rect an encoding without
-  the 4-byte `Option` tag. The target is 64 bytes or less.
-- Check: `frame/cached_cpu` at 10×, `Shapes::push` in the slow-load report,
-  `tests/alloc`.
-
 ### 7. Low value
 
 - `LayoutScratch::resize_for` and `LayerLayout::resize_for` fill about
@@ -210,4 +202,6 @@ Mesh (71) set the size. `Option<Rect>` costs 20 bytes, and `ShapeBrush` forces
 
 ## Order
 
-Item 6 is small and independent, and each one is worth more at 10× than at default size.
+Items 1–6 are done or measured. On this CPU the frame is bound by the
+instruction count of recording, not by locality: items 4–6 moved nothing
+outside the noise.
