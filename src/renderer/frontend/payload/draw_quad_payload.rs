@@ -9,6 +9,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
+use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
@@ -21,10 +22,9 @@ use glam::Vec2;
 /// are transformed, so it carries the points instead.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum QuadGeom {
-    /// A logical-px paint rect + corner radii. For a drop shadow the
-    /// rect is the offset source inflated by `3σ + max(spread, 0)`; for
-    /// an inset shadow it is the source, and `corners` carries the
-    /// *source* shape's radii either way.
+    /// A logical-px rect + corner radii. For a shadow of either kind
+    /// they are the *source* shape's: the composer grows a drop shadow's
+    /// paint rect from the source after it snaps it.
     Rect { rect: Rect, corners: Corners },
     /// Owner-local corner points and corner rounding. The composer
     /// folds `origin` (the owner-rect top-left) + the active
@@ -38,21 +38,6 @@ pub(crate) enum QuadGeom {
         c: Vec2,
         radius: f32,
     },
-}
-
-impl QuadGeom {
-    /// Whether this geometry covers no pixels on its own. A triangle
-    /// always answers `false`: its covering rect doesn't exist until the
-    /// composer transforms the points, and degenerate corners are
-    /// already filtered at the authoring boundary by
-    /// `TriangleShape::is_noop`.
-    #[inline]
-    const fn is_paint_empty(&self) -> bool {
-        match self {
-            Self::Rect { rect, .. } => rect.is_paint_empty(),
-            Self::Triangle { .. } => false,
-        }
-    }
 }
 
 /// One quad-tier draw: a rounded rect, a windowed rect, a box-shadow,
@@ -147,12 +132,9 @@ impl DrawQuadPayload {
         }
     }
 
-    /// A shadow. For a drop shadow, `rect` is the offset source inflated
-    /// by `3σ + max(spread, 0)`; for an inset shadow it is the source
-    /// rect. `corners` is the source shape's corner radii, `color` the
-    /// shadow tint, `fill_kind` `FillKind::SHADOW_DROP|SHADOW_INSET`.
-    /// Drop shadows carry `(0, 0, σ, spread)` in `fill_axis`; inset
-    /// shadows carry `(offset.x, offset.y, σ, spread)`. The composer
+    /// A shadow of the source `rect` with its `corners`: `color` the
+    /// shadow tint, `fill_kind` `FillKind::SHADOW_DROP|SHADOW_INSET`, and
+    /// `fill_axis` its `(offset.x, offset.y, σ, spread)`. The composer
     /// scales the logical-px lanes to physical px on emit.
     pub(crate) const fn shadow(
         rect: Rect,
@@ -222,8 +204,26 @@ impl DrawQuadPayload {
     /// slipping past that gate would paint a useless transparent quad
     /// whose alpha blend produces nothing visible.
     #[inline]
-    pub(crate) const fn is_noop(&self) -> bool {
-        self.geom.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
+    pub(crate) fn is_noop(&self) -> bool {
+        self.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
+    }
+
+    /// Whether the geometry covers no pixels on its own. A drop shadow
+    /// covers its source grown by the halo, so an empty source with a
+    /// blur or a spread still paints. A triangle always answers `false`:
+    /// its covering rect doesn't exist until the composer transforms the
+    /// points, and degenerate corners are already filtered at the
+    /// authoring boundary by `TriangleShape::is_noop`.
+    #[inline]
+    fn is_paint_empty(&self) -> bool {
+        match self.geom {
+            QuadGeom::Rect { rect, .. } if self.fill.kind == FillKind::SHADOW_DROP => {
+                let halo = ShadowGeom::from_lanes(self.fill_axis.lanes()).halo();
+                rect.inflated(halo).is_paint_empty()
+            }
+            QuadGeom::Rect { rect, .. } => rect.is_paint_empty(),
+            QuadGeom::Triangle { .. } => false,
+        }
     }
 }
 

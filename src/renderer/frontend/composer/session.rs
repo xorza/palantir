@@ -4,7 +4,6 @@ use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
@@ -40,6 +39,7 @@ use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::record::ColorMode;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
@@ -227,7 +227,7 @@ impl PaintSink for ComposeSession<'_> {
             // leaves the viewport.
             let rc = RoundedClip {
                 mask_rect: phys,
-                corners: logical_radius.fit_to(phys.size, scale_phys, 0.0),
+                corners: logical_radius.fit_to(phys.size, scale_phys),
             };
             // A rounded push nested in rounded ancestors
             // STACKS: child chain = ancestor chain + own
@@ -912,7 +912,7 @@ impl ComposeSession<'_> {
         let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor());
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
-                let rect = self.scaled_rect(rect);
+                let source = self.scaled_rect(rect);
                 // Live shadow parameters are logical-px scalars; scale
                 // them so the shader's `local` coords line up. A gradient
                 // axis is already unit-space and passes through untouched.
@@ -921,21 +921,24 @@ impl ComposeSession<'_> {
                 } else {
                     p.fill_axis
                 };
-                // The radii fit the box the shader rounds. For a drop
-                // shadow that is the shadow box inside the blur halo, the
-                // same arithmetic as `quad_pipeline/shader.wgsl`'s drop arm, and the radii
-                // grow by the spread first; every other quad rounds its
-                // own rect.
-                let corners = if p.fill.kind == FillKind::SHADOW_DROP {
-                    let [_, _, sigma, spread] = fill_axis.lanes();
-                    let halo = 3.0 * sigma + spread.max(0.0);
-                    let shadow = Size::new(
-                        (rect.phys.size.w - 2.0 * halo + 2.0 * spread).max(0.0),
-                        (rect.phys.size.h - 2.0 * halo + 2.0 * spread).max(0.0),
-                    );
-                    corners.fit_to(shadow, scale_phys, spread)
+                // The radii fit the rect they round — for a shadow, its
+                // source, from which the shader derives a drop shadow's own
+                // radii as CSS does.
+                let corners = corners.fit_to(source.phys.size, scale_phys);
+                // A drop shadow's quad is its snapped source moved and
+                // grown here, not snapped again: the source the shader
+                // finds inside it then sits on the pixels the shadowed
+                // fill does, which its clip depends on.
+                let rect = if p.fill.kind == FillKind::SHADOW_DROP {
+                    let geom = ShadowGeom::from_lanes(fill_axis.lanes());
+                    let phys = Rect {
+                        min: source.phys.min + geom.offset,
+                        size: source.phys.size,
+                    }
+                    .inflated(geom.halo());
+                    ScaledRect::from_phys(phys, self.out.display.physical)
                 } else {
-                    corners.fit_to(rect.phys.size, scale_phys, 0.0)
+                    source
                 };
                 PackedQuad {
                     rect,

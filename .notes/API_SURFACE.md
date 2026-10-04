@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `4519bd41` (plus the working tree).
+Generated on top of `593854db` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -4000,8 +4000,10 @@ widget::Shape
 
 widget::Span
     struct Span
-        // and private fields
+        pub start: u32
+        pub len: u32
         pub const fn new(start: u32, len: u32) -> Self
+        pub const fn range(self) -> Range<usize>
         impl Clone
         impl Copy
         impl Debug

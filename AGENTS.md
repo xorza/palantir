@@ -60,7 +60,7 @@ against it.
   constructor that takes one setting, as `Vec::with_capacity` is
   (`Mesh::with_capacity`, `TextShaper::with_fonts`).
 - **Plain data** — public fields and no invariant: `Rect`, `Size`, `Spacing`,
-  `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Background`, `Brush` and the
+  `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Background`, `Brush` and the
   gradients, `GlyphFont`, `TextStyle`, `PaintAnimation`, the theme structs.
   Arithmetic may pass through values no widget takes, so the check runs where
   the value enters (**Input validation**).

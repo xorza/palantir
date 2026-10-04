@@ -130,6 +130,19 @@ fn background_lowering_keeps_an_authored_field() {
         ringed.hash, kept.hash,
         "the ring must reach the chrome hash"
     );
+    // A transparent border paints nothing, but its width is the padding
+    // edge an inset shadow paints inside, so the row and its hash keep it.
+    let clear_border = Background {
+        border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
+        ..with_corners(sane)
+    };
+    let clear = background(&mut store, &clear_border, Stroke::NONE);
+    assert_eq!(clear.border.width, 4.0);
+    assert!(clear.border.is_noop(), "it still paints no stroke");
+    assert_ne!(
+        clear.hash, kept.hash,
+        "the border's width must reach the chrome hash"
+    );
 }
 
 /// Chrome is the paint path `Shapes::add` never sees, so `background`

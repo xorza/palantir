@@ -5,17 +5,21 @@ use std::ops::Range;
 
 /// `(start, len)` index range over a flat arena. Compact — 8 bytes —
 /// because measure-cache snapshots and grid hug slots store many of
-/// these and we want to keep the per-entry footprint small.
+/// these and we want to keep the per-entry footprint small. Public as
+/// the input method's cursor in [`ImePreedit`](crate::ImePreedit) and as
+/// the byte range of an icon's SVG in its set's blob.
 ///
-/// [`Span::new`] is the constructor. `From` converts both ways against
-/// `Range<u32>` and `Range<usize>`, for callers that already hold a
-/// `start..end`. `range()` returns `Range<usize>` for slicing into
-/// `Vec<T>`.
+/// Plain data: [`Span::new`] checks nothing, so the fields carry no
+/// invariant. `From` converts both ways against `Range<u32>` and
+/// `Range<usize>`, for callers that already hold a `start..end`.
+/// [`Span::range`] returns `Range<usize>` for slicing.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Span {
-    pub(crate) start: u32,
-    pub(crate) len: u32,
+    /// The first index.
+    pub start: u32,
+    /// How many indices it covers, from `start` on.
+    pub len: u32,
 }
 
 impl Span {
@@ -29,9 +33,11 @@ impl Span {
         Self { start, len }
     }
 
+    /// `start..start + len`, to slice the arena or text it indexes.
     #[inline]
-    pub(crate) const fn range(self) -> Range<usize> {
-        self.start as usize..(self.start + self.len) as usize
+    pub const fn range(self) -> Range<usize> {
+        let start = self.start as usize;
+        start..start + self.len as usize
     }
 }
 

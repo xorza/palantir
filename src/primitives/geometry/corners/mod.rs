@@ -90,25 +90,36 @@ impl Corners {
         Self(self.0.scaled(factor))
     }
 
+    /// The radii of the edge `width` inside a box of `size` with these
+    /// corners — CSS Backgrounds 3's padding edge under a border `width`
+    /// wide. The radii fit the box first (§5.5), as the border's own curve
+    /// does, and then each loses `width`, floored at zero (§5.2).
+    #[inline]
+    pub(crate) fn deflated(self, size: Size, width: f32) -> Self {
+        let fitted = self.fitted_radii(size, 1.0);
+        Self(F16x4::from_lanes(fitted.map(|r| (r - width).max(0.0))))
+    }
+
     /// The radii a box of `size` physical px is drawn with: every radius
-    /// times `scale`, grown by a shadow's `spread` (zero for anything
-    /// else), then reduced so no two adjacent corners overlap. Computed in
-    /// f32 and packed once, so a radius too large for f16 at this scale —
-    /// `corners(9999)` at 8× — fits the box instead of reaching the shader
-    /// as `inf`. After it no radius exceeds half the shorter side, which
-    /// the rounded-box SDF assumes; the f16 lanes overflow only for a box
-    /// itself wider than 65504 px.
+    /// times `scale`, then reduced so no two adjacent corners overlap.
+    /// Computed in f32 and packed once, so a radius too large for f16 at
+    /// this scale — `corners(9999)` at 8× — fits the box instead of
+    /// reaching the shader as `inf`. After it no radius exceeds half the
+    /// shorter side, which the rounded-box SDF assumes; the f16 lanes
+    /// overflow only for a box itself wider than 65504 px.
     ///
-    /// The spread rule is CSS Backgrounds 3 §7.1 (`box-shadow`): with
-    /// `s > 0` a radius `r` becomes `r + s` when `r ≥ s`, and
-    /// `r + s·(1 + (r/s − 1)³)` below, so a sharp corner stays sharp;
-    /// with `s < 0` it becomes `max(r + s, 0)`. The fit is §5.5
-    /// "Overlapping curves": `f` is the least of each side's length over
-    /// the sum of its two radii, and every radius scales by `f` when
-    /// `f < 1`. `quad_pipeline/shader.wgsl`'s `fit_radii` and `spread_radius` are the
-    /// shader's copies, for the inset-shadow hole only the shader sizes.
-    pub(crate) fn fit_to(self, size: Size, scale: f32, spread: f32) -> Self {
-        let radii = self.as_array().map(|r| spread_radius(r * scale, spread));
+    /// The fit is CSS Backgrounds 3 §5.5 "Overlapping curves": `f` is the
+    /// least of each side's length over the sum of its two radii, and
+    /// every radius scales by `f` when `f < 1`. `quad_pipeline/shader.wgsl`'s
+    /// `fit_radii` is the shader's copy, for the shadow boxes only the
+    /// shader sizes.
+    pub(crate) fn fit_to(self, size: Size, scale: f32) -> Self {
+        Self(F16x4::from_lanes(self.fitted_radii(size, scale)))
+    }
+
+    /// [`Self::fit_to`] before it packs, for a caller that goes on in f32.
+    fn fitted_radii(self, size: Size, scale: f32) -> [f32; 4] {
+        let radii = self.as_array().map(|r| r * scale);
         let [tl, tr, br, bl] = radii;
         let f = [
             (size.w, tl + tr),
@@ -119,7 +130,7 @@ impl Corners {
         .into_iter()
         .filter(|&(_, sum)| sum > 0.0)
         .fold(1.0_f32, |f, (side, sum)| f.min(side.max(0.0) / sum));
-        Self(F16x4::from_lanes(radii.map(|r| r * f)))
+        radii.map(|r| r * f)
     }
 
     /// True when every corner is within UI epsilon of zero. Routes
@@ -149,18 +160,6 @@ impl Corners {
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
-    }
-}
-
-/// One radius grown by a shadow's `spread` — see [`Corners::fit_to`].
-const fn spread_radius(r: f32, spread: f32) -> f32 {
-    if spread < 0.0 {
-        (r + spread).max(0.0)
-    } else if r >= spread {
-        r + spread
-    } else {
-        let t = r / spread - 1.0;
-        r + spread * (1.0 + t * t * t)
     }
 }
 

@@ -29,6 +29,28 @@ pub(crate) struct ShadowGeom {
     pub(crate) spread: f32,
 }
 
+impl ShadowGeom {
+    /// The `(offset.x, offset.y, blur, spread)` lanes a shadow travels in,
+    /// from the lowered shadow to the GPU instance.
+    #[inline]
+    pub(crate) const fn from_lanes([x, y, blur, spread]: [f32; 4]) -> Self {
+        Self {
+            offset: Vec2::new(x, y),
+            blur,
+            spread,
+        }
+    }
+
+    /// How far a drop shadow reaches past its moved source: three
+    /// standard deviations of blur, where the Gaussian's tail drops
+    /// below one 8-bit step, plus a positive spread. The shader's drop
+    /// arm repeats it to find the source inside the quad.
+    #[inline]
+    pub(crate) const fn halo(self) -> f32 {
+        3.0 * self.blur.max(0.0) + self.spread.max(0.0)
+    }
+}
+
 impl LoweredShadow {
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
@@ -43,12 +65,7 @@ impl LoweredShadow {
 
     #[inline]
     pub(crate) fn geom(self) -> ShadowGeom {
-        let out = self.geom_f16.lanes();
-        ShadowGeom {
-            offset: Vec2::new(out[0], out[1]),
-            blur: out[2],
-            spread: out[3],
-        }
+        ShadowGeom::from_lanes(self.geom_f16.lanes())
     }
 
     #[inline]
@@ -57,14 +74,14 @@ impl LoweredShadow {
     }
 
     /// Owner-local paint bbox of this shadow — a drop shadow is the
-    /// offset source inflated by `3σ + max(spread, 0)`; an inset shadow
-    /// stays inside the source. `local_rect = None` ⇒ source covers the
-    /// full owner; `Some(r)` ⇒ source is `r` at owner-relative coords.
+    /// offset source inflated by its [halo](ShadowGeom::halo); an inset
+    /// shadow stays inside the source. `local_rect = None` ⇒ source covers
+    /// the full owner; `Some(r)` ⇒ source is `r` at owner-relative coords.
     ///
-    /// **Sole formula source** for the shadow paint extent: the encoder
-    /// (per-quad paint rect), the cascade (per-node ink union), and
-    /// [`QuadShape::bbox_local`](crate::shape::paint::quad_shape::QuadShape::bbox_local) all call this, so the three views
-    /// cannot drift.
+    /// What the cascade (per-node ink union) and
+    /// [`QuadShape::bbox_local`](crate::shape::paint::quad_shape::QuadShape::bbox_local)
+    /// read, so the two views cannot drift. The composer grows the same
+    /// way from the snapped source, through the same `halo`.
     pub(crate) fn paint_rect_local(self, local_rect: Option<Rect>, owner_size: Size) -> Rect {
         let source = local_rect.unwrap_or(Rect {
             min: Vec2::ZERO,
@@ -73,17 +90,12 @@ impl LoweredShadow {
         if self.inset() {
             return source;
         }
-        let ShadowGeom {
-            offset,
-            blur,
-            spread,
-        } = self.geom();
-        let halo = 3.0 * blur.max(0.0) + spread.max(0.0);
+        let geom = self.geom();
         Rect {
-            min: source.min + offset,
+            min: source.min + geom.offset,
             size: source.size,
         }
-        .inflated(halo)
+        .inflated(geom.halo())
     }
 }
 

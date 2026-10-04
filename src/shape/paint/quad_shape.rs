@@ -54,9 +54,10 @@ pub(crate) enum QuadShape {
     /// parameters are inline scalars; no retained payloads. With
     /// `local_rect = None` the shadow shadows the owner's full arranged
     /// rect; with `Some(r)` it shadows the owner-relative rect `r`. The
-    /// encoder shifts drop-shadow paint bounds by `offset`, inflates
-    /// them by `3σ + max(spread, 0)`, and routes both shadow kinds
-    /// through `FillKind::SHADOW_DROP|SHADOW_INSET`.
+    /// encoder routes both shadow kinds through
+    /// `FillKind::SHADOW_DROP|SHADOW_INSET` with the source rect; the
+    /// composer shifts a drop shadow by `offset` and inflates it by its
+    /// [halo](crate::shape::paint::lowered_shadow::ShadowGeom::halo).
     Shadow {
         local_rect: Option<Rect>,
         corners: Corners,

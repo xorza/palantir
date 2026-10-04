@@ -486,3 +486,60 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
         assert_eq!(buf.quads[0].rect, want, "snap {}", display.pixel_snap);
     }
 }
+
+/// A drop shadow's quad is its source snapped as a fill is, then moved by
+/// the offset and grown by the halo, both in physical px. At 1.5× the
+/// source (10.25, 10.75, 20.5, 5.25) snaps to (15, 16, 31, 8), as in
+/// `compose_snaps_quad_edges_only_under_pixel_snap`. The lanes scale to
+/// offset (3, −1.5), σ 3, spread 1.5, so the halo is 3·3 + 1.5 = 10.5:
+/// min (15 + 3 − 10.5, 16 − 1.5 − 10.5) = (7.5, 4), size (31 + 21, 8 + 21).
+/// The radii fit the source: 4 × 1.5 = 6 per corner, 12 over its 8 px
+/// sides, so f = 8 / 12 and each is 4.
+///
+/// A source with no size still casts its spread: (50, 50) grown by 2 is
+/// (48, 48, 4, 4). With no blur and no spread it casts nothing.
+#[test]
+fn drop_shadow_quad_grows_from_the_snapped_source() {
+    use crate::primitives::packed::fill_axis::FillAxis;
+    use crate::primitives::packed::fill_kind::FillKind;
+
+    let drop = |source: Rect, corners: f32, lanes: [f32; 4]| {
+        let [x, y, blur, spread] = lanes;
+        DrawQuadPayload::shadow(
+            source,
+            Corners::all(corners),
+            RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).into(),
+            FillKind::SHADOW_DROP,
+            FillAxis::from_lanes(x, y, blur, spread),
+        )
+    };
+    let buf = run(
+        |b, _| {
+            b.draw_quad(
+                drop(
+                    Rect::new(10.25, 10.75, 20.5, 5.25),
+                    4.0,
+                    [2.0, -1.0, 2.0, 1.0],
+                ),
+                1.0,
+            );
+        },
+        &params(1.5, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 1);
+    let q = &buf.quads[0];
+    assert_eq!(q.rect, Rect::new(7.5, 4.0, 52.0, 29.0));
+    assert_eq!(q.corners, Corners::all(4.0));
+    assert_eq!(q.fill_axis.lanes(), [3.0, -1.5, 3.0, 1.5]);
+
+    let point = Rect::new(50.0, 50.0, 0.0, 0.0);
+    let buf = run(
+        |b, _| {
+            b.draw_quad(drop(point, 0.0, [0.0, 0.0, 0.0, 2.0]), 1.0);
+            b.draw_quad(drop(point, 0.0, [0.0, 0.0, 0.0, 0.0]), 1.0);
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.quads.len(), 1, "only the spread one paints");
+    assert_eq!(buf.quads[0].rect, Rect::new(48.0, 48.0, 4.0, 4.0));
+}

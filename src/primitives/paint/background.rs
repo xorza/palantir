@@ -66,6 +66,8 @@ pub struct Background {
     /// the paint-time `is_noop` filter catching authored or
     /// animation-decayed no-ops. Multi-shadow stacks: push
     /// `Shape::Shadow` records directly via `Ui::add_shape`.
+    /// As CSS paints `box-shadow`, a drop shadow paints under the fill,
+    /// and an inset one over it, inside the border.
     /// `Shadow::NONE` (the `Default`) omitted from serialized output —
     /// a noop shadow shouldn't bloat exported themes.
     #[serde(default, skip_serializing_if = "Shadow::is_noop")]
@@ -99,7 +101,7 @@ impl Background {
     /// encoder skips emitting a rect quad for no-op chrome so
     /// transparent `Surface::scissor()` defaults don't leak draw
     /// commands. The shadow check is required: the encoder's chrome
-    /// branch paints shadow before the rect, so dropping chrome
+    /// branch paints the shadow as its own draw, so dropping chrome
     /// without considering shadow would silently kill a shadow-only
     /// background.
     #[inline]

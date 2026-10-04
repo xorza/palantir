@@ -61,8 +61,8 @@ pub(crate) fn build(ui: &mut Ui) {
             note(
                 ui,
                 "Each pair paints one shadow two ways: pushed as a shape with the card, and \
-                 set on a widget's Background, which paints its shadow before its fill. The \
-                 two should match.",
+                 set on a widget's Background, which paints a drop shadow under its fill and \
+                 an inset one over it, as CSS does. The two should match.",
             );
             tiles(ui, |ui| {
                 demo_cell_light(ui, "soft — shape", soft);
@@ -179,7 +179,8 @@ fn stacked(ui: &mut Ui) {
 }
 
 /// The card painted via `Background` (fill + radius + shadow) instead of
-/// shape pushes — the encoder emits the shadow before the chrome rect.
+/// shape pushes — the encoder emits a drop shadow before the chrome rect
+/// and an inset one after it.
 /// Placed on [`CARD`] exactly, so it sits where its shape twin does: the
 /// shapes are in the cell's own coordinates, and the canvas starts inside
 /// the cell's padding.
@@ -199,9 +200,9 @@ fn chrome(shadow: Shadow) -> Background {
     Background::rounded(CARD_INK, card_corners()).with_shadow(shadow)
 }
 
-/// Semi-transparent chrome fill: the shadow paints UNDER the fill, so
-/// the halo doesn't bleed through. This is the case the
-/// shape-buffer-lowering route gets wrong; the encoder path is correct.
+/// Semi-transparent chrome fill: the drop shadow is clipped inside the
+/// box that casts it, as CSS clips an outer `box-shadow`, so the halo
+/// shows around the card and not through it.
 fn chrome_translucent() -> Background {
     Background::rounded(CARD_INK.with_alpha(0.4), card_corners()).with_shadow(Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
