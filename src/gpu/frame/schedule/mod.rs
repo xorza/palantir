@@ -217,106 +217,187 @@ pub(crate) fn for_each_step(
     // per caller and no devirtualised call.
     emit: &mut dyn FnMut(RenderStep),
 ) {
-    let full_viewport = URect::new(0, 0, buffer.display.physical.x, buffer.display.physical.y);
-    let mut state = PassState {
-        emit,
-        masks,
-        cur_scissor: None,
-        cur_ref: 0,
-        active: None,
-    };
+    ScheduleWalk {
+        buffer,
+        damage_scissor,
+        cursors: ScheduleCursors::default(),
+        state: PassState {
+            emit,
+            masks,
+            cur_scissor: None,
+            cur_ref: 0,
+            active: None,
+        },
+    }
+    .run();
+}
 
-    if let Some(scissor) = damage_scissor {
-        state.scissor(scissor);
-        state.push(RenderStep::PreClear);
+/// One schedule walk: the frame it walks, the per-kind cursors, and the
+/// pass state every step is emitted through. [`for_each_step`] builds one
+/// and runs it to the end.
+#[derive(Debug)]
+struct ScheduleWalk<'a> {
+    buffer: &'a RenderBuffer,
+    damage_scissor: Option<URect>,
+    cursors: ScheduleCursors,
+    state: PassState<'a>,
+}
+
+impl ScheduleWalk<'_> {
+    fn run(mut self) {
+        let buffer = self.buffer;
+        let full_viewport = URect::new(0, 0, buffer.display.physical.x, buffer.display.physical.y);
+
+        if let Some(scissor) = self.damage_scissor {
+            self.state.scissor(scissor);
+            self.state.push(RenderStep::PreClear);
+        }
+
+        // Text batches map to a group via `last_group`; the schedule
+        // emits `RenderStep::Text` when the walk reaches that group
+        // (after its quads, before its meshes). `last_group` values are
+        // monotonically increasing across batches (composer pushes in
+        // order), so one cursor per kind suffices instead of a per-group
+        // scan.
+        //
+        // **Damage-pass drain.** A batch whose `last_group` falls in a
+        // damage-skipped group must still render — earlier groups in the
+        // batch may sit inside the damage rect, and dropping the whole
+        // batch would silently erase their text. So before each rendered
+        // group's setup, drain any batches whose `last_group < i`: emit
+        // them now (paint-safe — the composer's overlap rule guarantees
+        // no quad in `(last_group, i)` overlapped them, and any of those
+        // skipped groups' quads don't paint this pass). A trailing drain
+        // after the loop catches batches anchored in tail-skipped groups.
+        // Each drained batch establishes its own mask chain, so drained
+        // text never stencil-tests against whatever chain the walk left
+        // stamped.
+        for (i, g) in buffer.groups.iter().enumerate() {
+            // Silently drop mesh/image/curve batches that anchored in
+            // earlier damage-skipped groups — they had no visible scissor
+            // so their draws don't paint.
+            for tier in PaintTier::ALL {
+                advance_past_skipped(
+                    buffer.batches(tier),
+                    &mut self.cursors.higher[tier.idx()],
+                    i,
+                );
+            }
+
+            let group_scissor = g.scissor.unwrap_or(full_viewport);
+            let effective = match self.damage_scissor {
+                Some(d) => match group_scissor.intersect(d) {
+                    Some(r) => r,
+                    None => continue,
+                },
+                None => group_scissor,
+            };
+            if effective.is_paint_empty() {
+                continue;
+            }
+            // Drain batches stuck behind earlier damage-skipped groups
+            // BEFORE this group's own setup, so the next quad/meshes
+            // emitted (in this group) can paint over the drained text.
+            // Drained first so a batch sharing the still-stamped chain
+            // elides its stamp; the group establish below then clears /
+            // restamps as its own chain requires.
+            self.drain_text_batches(i);
+
+            // A group can be content-less at walk time — its only text
+            // coalesced into a batch draining at a later group. Skip the
+            // scissor / chain establish entirely then: a scissor with no
+            // draws is a dead command, and on the stencil path the
+            // establish would stamp a whole mask chain for nothing (the
+            // next consumer establishes its own state regardless).
+            let has_content = g.quads.len != 0
+                || pending_at(&buffer.text_batches, self.cursors.text, i)
+                || self.has_tier_batch_at(i);
+            if has_content {
+                self.state.narrow(|masks| masks.groups[i], effective);
+                self.emit_group_body(i, effective);
+            }
+        }
+        // Trailing drain — batches anchored in tail-skipped groups. Runs
+        // BEFORE the tail clear so a batch whose chain is still stamped
+        // elides, and a foreign one establishes its own.
+        self.drain_text_batches(usize::MAX);
+        // Tail clear: never let a stamped chain survive the walk. The pass
+        // clears the stencil once, not per damage rect, and AA padding can
+        // make nominally-disjoint rects' scissors overlap — residue here
+        // would be read by the next rect's walk.
+        self.state.clear_active();
     }
 
-    // Per-kind walk cursors (see [`ScheduleCursors`]). Text batches map
-    // to a group via `last_group`; the schedule emits `RenderStep::Text`
-    // when the walk reaches that group (after its quads, before its
-    // meshes). `last_group` values are monotonically increasing across
-    // batches (composer pushes in order), so one cursor per kind
-    // suffices instead of a per-group scan.
-    //
-    // **Damage-pass drain.** A batch whose `last_group` falls in a
-    // damage-skipped group must still render — earlier groups in the
-    // batch may sit inside the damage rect, and dropping the whole
-    // batch would silently erase their text. So before each rendered
-    // group's setup, drain any batches whose `last_group < i`: emit
-    // them now (paint-safe — the composer's overlap rule guarantees
-    // no quad in `(last_group, i)` overlapped them, and any of those
-    // skipped groups' quads don't paint this pass). A trailing drain
-    // after the loop catches batches anchored in tail-skipped groups.
-    // Each drained batch establishes its own mask chain, so drained
-    // text never stencil-tests against whatever chain the walk left
-    // stamped.
-    let mut cursors = ScheduleCursors::default();
+    /// Whether group `group` has a mesh, image, icon or curve batch still
+    /// to emit.
+    fn has_tier_batch_at(&self, group: usize) -> bool {
+        PaintTier::ALL
+            .iter()
+            .any(|&t| pending_at(self.buffer.batches(t), self.cursors.higher[t.idx()], group))
+    }
 
-    for (i, g) in buffer.groups.iter().enumerate() {
-        // Silently drop mesh/image/curve batches that anchored in
-        // earlier damage-skipped groups — they had no visible scissor
-        // so their draws don't paint.
+    /// Drain every text batch whose `last_group < target`, emitting each
+    /// with its own bounds-union scissor (intersected with the damage
+    /// region) so the text backend's missing per-fragment x-clip doesn't
+    /// leak glyphs past a clipped owner's scissor (e.g. into a scrollbar
+    /// gutter). On the stencil path each batch also establishes its own
+    /// mask chain first — same clear / stamp / elision rules as a group —
+    /// so text drained past damage-skipped groups never stencil-tests
+    /// against a foreign mask. `target = i` drains stuck batches before
+    /// group `i`'s emits; `target = i + 1` drains the in-flight group's
+    /// own batches after its quads; `target = usize::MAX` drains tail
+    /// batches anchored in skipped groups.
+    fn drain_text_batches(&mut self, target: usize) {
+        let batches = &self.buffer.text_batches;
+        while self.cursors.text < batches.len() && batches[self.cursors.text].last_group() < target
+        {
+            let batch = self.cursors.text;
+            let s = match self.damage_scissor {
+                Some(d) => batches[batch].scissor.intersect(d).unwrap_or_default(),
+                None => batches[batch].scissor,
+            };
+            if !s.is_paint_empty() {
+                self.state.narrow(|masks| masks.batches[batch], s);
+                self.state.push(RenderStep::Text { batch });
+            }
+            self.cursors.text += 1;
+        }
+    }
+
+    /// The draws every non-skipped group emits, identical under both the
+    /// stencil and non-stencil paths: the group's quads, then its text
+    /// batches (drained after the quads so a child quad occludes a
+    /// label), then its mesh / image / curve batches — after
+    /// re-requesting the group's own scissor + stencil state, since the
+    /// text drain may have widened the scissor or restamped a different
+    /// chain. Shared by the stencil and non-stencil paths so the two
+    /// can't drift; the caller gates it on the group having any content.
+    fn emit_group_body(&mut self, i: usize, effective: URect) {
+        let quads = self.buffer.groups[i].quads;
+        if quads.len != 0 {
+            self.state.push(RenderStep::Quads { range: quads });
+        }
+        self.drain_text_batches(i + 1);
+        if !self.has_tier_batch_at(i) {
+            return;
+        }
+        // Restore the group's own state: the text drain above may have
+        // widened the scissor or restamped a different chain. Both
+        // requests collapse to nothing when it didn't — the common case,
+        // since most groups with a higher-kind batch carry no text at all.
+        self.state.narrow(|masks| masks.groups[i], effective);
+        // Paint order is `PaintTier::ALL`'s order, which is `Ord`'s — the
+        // property the composer's flush arbitration rests on.
         for tier in PaintTier::ALL {
-            advance_past_skipped(buffer.batches(tier), &mut cursors.higher[tier.idx()], i);
-        }
-
-        let group_scissor = g.scissor.unwrap_or(full_viewport);
-        let effective = match damage_scissor {
-            Some(d) => match group_scissor.intersect(d) {
-                Some(r) => r,
-                None => continue,
-            },
-            None => group_scissor,
-        };
-        if effective.is_paint_empty() {
-            continue;
-        }
-        // Drain batches stuck behind earlier damage-skipped groups
-        // BEFORE this group's own setup, so the next quad/meshes
-        // emitted (in this group) can paint over the drained text.
-        // Drained first so a batch sharing the still-stamped chain
-        // elides its stamp; the group establish below then clears /
-        // restamps as its own chain requires.
-        drain_text_batches(buffer, damage_scissor, i, &mut cursors.text, &mut state);
-
-        // A group can be content-less at walk time — its only text
-        // coalesced into a batch draining at a later group. Skip the
-        // scissor / chain establish entirely then: a scissor with no
-        // draws is a dead command, and on the stencil path the
-        // establish would stamp a whole mask chain for nothing (the
-        // next consumer establishes its own state regardless).
-        let has_content = g.quads.len != 0
-            || pending_at(&buffer.text_batches, cursors.text, i)
-            || PaintTier::ALL
-                .iter()
-                .any(|&t| pending_at(buffer.batches(t), cursors.higher[t.idx()], i));
-        if has_content {
-            state.narrow(|masks| masks.groups[i], effective);
-            emit_group_body(
-                buffer,
-                damage_scissor,
+            drain_group_batches(
+                self.buffer.batches(tier),
+                &mut self.cursors.higher[tier.idx()],
                 i,
-                effective,
-                &mut cursors,
-                &mut state,
+                |batch| RenderStep::TierBatch { tier, batch },
+                &mut self.state,
             );
         }
     }
-    // Trailing drain — batches anchored in tail-skipped groups. Runs
-    // BEFORE the tail clear so a batch whose chain is still stamped
-    // elides, and a foreign one establishes its own.
-    drain_text_batches(
-        buffer,
-        damage_scissor,
-        usize::MAX,
-        &mut cursors.text,
-        &mut state,
-    );
-    // Tail clear: never let a stamped chain survive the walk. The pass
-    // clears the stencil once, not per damage rect, and AA padding can
-    // make nominally-disjoint rects' scissors overlap — residue here
-    // would be read by the next rect's walk.
-    state.clear_active();
 }
 
 /// A stamped stencil chain: the mask quads stamped (outer→inner — the
@@ -447,7 +528,7 @@ impl PassState<'_> {
     }
 }
 
-/// Per-kind walk cursors for [`for_each_step`]. Each field is the index
+/// Per-kind walk cursors for a [`ScheduleWalk`]. Each field is the index
 /// of the next unconsumed batch of that kind; the cursors only advance
 /// (batches are emitted in `last_group` order), so the whole walk is
 /// linear in the batch count.
@@ -473,8 +554,8 @@ fn advance_past_skipped(batches: &[GroupBatch], cursor: &mut usize, before: usiz
 /// **One generic helper, not a family.** This is the only one written
 /// over [`PerGroupBatch`], because anchoring is the only rule the two
 /// batch kinds share. [`advance_past_skipped`] is concrete because only
-/// higher-kind cursors skip, and [`drain_text_batches`] drains on a
-/// *range* predicate rather than [`drain_group_batches`]'s equality one
+/// higher-kind cursors skip, and [`ScheduleWalk::drain_text_batches`]
+/// drains on a *range* predicate rather than [`drain_group_batches`]'s equality one
 /// because every text batch also needs its own bounds-union scissor, a
 /// damage intersection, an empty-skip and its own mask chain. That is
 /// different work, not a missed reuse.
@@ -496,87 +577,6 @@ fn drain_group_batches(
     while pending_at(batches, *cursor, group) {
         state.push(step(*cursor));
         *cursor += 1;
-    }
-}
-
-/// Drain every text batch whose `last_group < target`, emitting each
-/// with its own bounds-union scissor (intersected with the damage
-/// region) so the text backend's missing per-fragment x-clip doesn't
-/// leak glyphs past a clipped owner's scissor (e.g. into a scrollbar
-/// gutter). On the stencil path each batch also establishes its own
-/// mask chain first — same clear / stamp / elision rules as a group —
-/// so text drained past damage-skipped groups never stencil-tests
-/// against a foreign mask. `target = i` drains stuck batches before
-/// group `i`'s emits; `target = i + 1` drains the in-flight group's
-/// own batches after its quads; `target = usize::MAX` drains tail
-/// batches anchored in skipped groups.
-fn drain_text_batches(
-    buffer: &RenderBuffer,
-    damage_scissor: Option<URect>,
-    target: usize,
-    cursor: &mut usize,
-    state: &mut PassState<'_>,
-) {
-    while *cursor < buffer.text_batches.len() && buffer.text_batches[*cursor].last_group() < target
-    {
-        let s = match damage_scissor {
-            Some(d) => buffer.text_batches[*cursor]
-                .scissor
-                .intersect(d)
-                .unwrap_or_default(),
-            None => buffer.text_batches[*cursor].scissor,
-        };
-        if !s.is_paint_empty() {
-            let batch = *cursor;
-            state.narrow(|masks| masks.batches[batch], s);
-            state.push(RenderStep::Text { batch: *cursor });
-        }
-        *cursor += 1;
-    }
-}
-
-/// The draws every non-skipped group emits, identical under both the
-/// stencil and non-stencil paths: the group's quads, then its text
-/// batches (drained after the quads so a child quad occludes a label),
-/// then its mesh / image / curve batches — after re-requesting the
-/// group's own scissor + stencil state, since the text drain may have
-/// widened the scissor or restamped a different chain. Shared by the
-/// stencil and non-stencil paths so the two can't drift; the caller
-/// gates it on the group having any content.
-fn emit_group_body(
-    buffer: &RenderBuffer,
-    damage_scissor: Option<URect>,
-    i: usize,
-    effective: URect,
-    cursors: &mut ScheduleCursors,
-    state: &mut PassState<'_>,
-) {
-    let quads = buffer.groups[i].quads;
-    if quads.len != 0 {
-        state.push(RenderStep::Quads { range: quads });
-    }
-    drain_text_batches(buffer, damage_scissor, i + 1, &mut cursors.text, state);
-    if !PaintTier::ALL
-        .iter()
-        .any(|&t| pending_at(buffer.batches(t), cursors.higher[t.idx()], i))
-    {
-        return;
-    }
-    // Restore the group's own state: the text drain above may have
-    // widened the scissor or restamped a different chain. Both requests
-    // collapse to nothing when it didn't — the common case, since most
-    // groups with a higher-kind batch carry no text at all.
-    state.narrow(|masks| masks.groups[i], effective);
-    // Paint order is `PaintTier::ALL`'s order, which is `Ord`'s — the
-    // property the composer's flush arbitration rests on.
-    for tier in PaintTier::ALL {
-        drain_group_batches(
-            buffer.batches(tier),
-            &mut cursors.higher[tier.idx()],
-            i,
-            |batch| RenderStep::TierBatch { tier, batch },
-            state,
-        );
     }
 }
 

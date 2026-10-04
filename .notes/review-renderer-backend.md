@@ -7,13 +7,6 @@ backend half of the renderer. Test code is out of scope.
 
 ## Arguments threaded down the schedule walk
 
-- [ ] `src/gpu/frame/schedule/mod.rs:210`, `:522`, `:555` — `buffer`,
-  `damage_scissor`, `masks`, `cursors` and `state` go through
-  `for_each_step` → `drain_text_batches` (6 arguments) and
-  `emit_group_body` (7 arguments), and `PassState` already holds the walk's
-  other state. Target: one walk struct (`PassState` widened, or a `Walk`
-  that owns it) that holds the frame's inputs and cursors, with
-  `drain_text_batches` and `emit_group_body` as its methods.
 - [ ] `src/gpu/frame/schedule/mod.rs:55` — `build_mask_plan` is a free
   `pub(crate)` function that fills a `&mut MaskPlan`. Target:
   `MaskPlan::build(&mut self, buffer, masks)`.
