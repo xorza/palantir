@@ -33,7 +33,6 @@ https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
 [Darkroom app](https://github.com/xorza/Darkroom)
 ![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
 
----
 
 ## Performance
 
@@ -81,7 +80,6 @@ out.
 
 The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the CPU figures above.
 
----
 
 ## Highlights
 
