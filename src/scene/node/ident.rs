@@ -2,6 +2,7 @@
 //! salt, or the call site itself — and the id it became once derived.
 
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::scene::seen_ids::ResolvedId;
 
 /// A [`Widget`](crate::widget_core::widget::Widget)'s identity, in one of two
 /// halves of its life. Before the widget's first contact with `Ui` it is a
@@ -51,7 +52,7 @@ pub(crate) enum Ident {
     Auto(WidgetId),
     Hash(WidgetId),
     Verbatim(WidgetId),
-    Resolved(WidgetId),
+    Resolved(ResolvedId),
 }
 
 impl Ident {
@@ -72,7 +73,9 @@ impl Ident {
     pub(crate) fn raw_id(self, parent: Option<WidgetId>) -> WidgetId {
         match self {
             Ident::Verbatim(id) => id,
-            Ident::Resolved(id) => unreachable!("resolved id {id:?} fed back to the forest"),
+            Ident::Resolved(resolved) => {
+                unreachable!("resolved id {:?} fed back to the forest", resolved.id)
+            }
             Ident::Auto(id) | Ident::Hash(id) => match parent {
                 Some(p) => p.with(id.0),
                 None => id,

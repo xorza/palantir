@@ -23,6 +23,10 @@ pub(crate) struct CascadeCounters {
     /// Incremental walks that got partway and gave up, forcing the full
     /// rebuild they had already started duplicating.
     abandoned_incrementals: TestOnly<u32>,
+    /// Nodes whose rows an incremental walk recomputed rather than kept —
+    /// what tells a repair that stayed inside the changed subtree from
+    /// one that walked the tree.
+    refreshed_nodes: TestOnly<u32>,
     /// Whether the last run did any work, rather than skip on an
     /// unchanged key.
     ran: TestOnly<bool>,
@@ -37,6 +41,11 @@ impl CascadeCounters {
     #[inline]
     pub(crate) fn abandoned_incremental(&mut self) {
         self.abandoned_incrementals.bump();
+    }
+
+    #[inline]
+    pub(crate) fn refreshed_node(&mut self) {
+        self.refreshed_nodes.bump();
     }
 
     #[inline]
@@ -55,6 +64,10 @@ impl CascadeCounters {
 
     pub(crate) fn abandoned_incrementals(&self) -> u32 {
         self.abandoned_incrementals.count()
+    }
+
+    pub(crate) fn refreshed_nodes(&self) -> u32 {
+        self.refreshed_nodes.count()
     }
 
     pub(crate) fn ran(&self) -> bool {

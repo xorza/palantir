@@ -68,6 +68,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
+use crate::scene::seen_ids::ResolvedId;
 use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
 use crate::text::error::FontLoadError;
@@ -1098,30 +1099,36 @@ impl Ui {
     ///
     /// [`Widget::resolve`]: crate::widget::Widget::resolve
     #[inline]
-    pub(crate) fn resolve_ident(&mut self, ident: Ident) -> WidgetId {
+    pub(crate) fn resolve_ident(&mut self, ident: Ident) -> ResolvedId {
         self.forest.widget_id(ident)
     }
 
-    /// Open `node` under `id`, painting `chrome` behind it, and the
-    /// theme's focus ring over that when `id` holds focus that came from
-    /// the keyboard. Pairs with [`Self::close_node`].
+    /// Open `node` under the id `resolved` names, painting `chrome` behind
+    /// it, and the theme's focus ring over that when the id holds focus
+    /// that came from the keyboard. Pairs with [`Self::close_node`].
     ///
     /// Two callers, and no third: [`Widget::record`], which is how every
     /// widget in the crate reaches the tree, and `FrameCycle`'s synthetic
-    /// `Layer::Main` viewport, which has no `Widget` to record through.
+    /// `Layer::Main` viewport, which has no `Widget` to record through and
+    /// resolves its fixed id itself.
     /// Widget code calls `Widget::record`, never this.
     ///
     /// [`Widget::record`]: crate::widget::Widget::record
     #[inline]
     #[track_caller]
-    pub(crate) fn open_node(&mut self, id: WidgetId, node: &Node, chrome: Option<&Background>) {
-        let ring = if self.input.focused() == Some(id) && self.input.focus_visible() {
+    pub(crate) fn open_node(
+        &mut self,
+        resolved: ResolvedId,
+        node: &Node,
+        chrome: Option<&Background>,
+    ) {
+        let ring = if self.input.focused() == Some(resolved.id) && self.input.focus_visible() {
             let theme = &self.theme.focus_ring;
             Stroke::new(domain::color(theme.color), domain::length(theme.width))
         } else {
             Stroke::NONE
         };
-        self.forest.open_node(id, node, chrome, ring);
+        self.forest.open_node(resolved, node, chrome, ring);
     }
 
     #[inline]
