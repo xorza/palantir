@@ -3,23 +3,16 @@
 // compile in front of every one of them — nothing may declare a
 // binding, which is the one thing they disagree about.
 
-// The whole immediate region. Every pipeline declares the same size
-// (`IMMEDIATES_BYTES`), which is what keeps the bytes one pipeline
-// writes valid after a switch to another:
-//   offset 0: viewport size, written once per pass by the backend.
-//   offset 8: atlas sizes (color, mask), written per text batch by
-//   `RasterAtlas::draw_span` and read by the raster-atlas shader alone.
+// The whole immediate region: the viewport size, written once per pass
+// by the backend. Every pipeline declares the same size
+// (`IMMEDIATES_BYTES`), so the bytes stay valid across a pipeline switch.
 //
-// **Flat members, no nested structs.** HLSL constant-buffer rules start a
-// *struct* member on the next 16-byte register, so a nested
-// `struct Immediates { viewport: Viewport, params: Params }` put `params`
-// at offset 16 on Dx12 — past the four root constants the layout declares.
-// It read back as zero, `uv_texel / 0` sent every glyph's UV to infinity,
-// and text vanished on Dx12 while every other pipeline was fine. Vectors
-// pack tightly inside one register.
+// **Flat members, no nested structs**, should it ever grow: HLSL
+// constant-buffer rules start a *struct* member on the next 16-byte
+// register, past the root constants the layout declares, where Dx12
+// reads it back as zero. Vectors pack tightly inside one register.
 struct Immediates {
     viewport_size: vec2<f32>,
-    atlas_px: vec2<u32>,
 };
 var<immediate> imm: Immediates;
 

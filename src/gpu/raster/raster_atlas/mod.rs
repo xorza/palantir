@@ -306,13 +306,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ///
     /// The whole per-batch draw sequence, once. Text and icon are two
     /// tenants of one atlas with one shader and one bind-group shape
-    /// (see [`RasterQuad`]), so their draws were byte-identical apart from the
-    /// atlas path — including the comment explaining why the viewport is
-    /// pushed here.
-    ///
-    /// Only the params half of the shared immediate region is written
-    /// here. The viewport half is the backend's, pushed when it binds a
-    /// pass.
+    /// (see [`RasterQuad`]), so they draw through this one sequence.
     pub(super) fn draw_span<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -323,17 +317,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             return;
         }
         pass.set_bind_group(0, self.bound.bind_group(), &[]);
-        pass.set_immediates(
-            RasterQuad::PARAMS_OFFSET,
-            bytemuck::bytes_of(&self.bound.atlas_px()),
-        );
         pass.set_vertex_buffer(0, vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
     }
 
-    /// `[color, mask]` side extents, as the shader reads them.
-    pub(super) const fn atlas_px(&self) -> [u32; 2] {
-        self.bound.atlas_px()
+    /// The edge, in texels, of the side holding `content`.
+    pub(super) const fn side_px(&self, content: ContentType) -> u32 {
+        self.sides[content as usize].size
     }
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its

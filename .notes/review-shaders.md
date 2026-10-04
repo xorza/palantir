@@ -7,30 +7,6 @@ the pipeline modules that build and feed them, and the wire types they read
 
 Whoever addresses an item deletes it.
 
-## The raster atlas reads a normalized UV through a nearest sampler
-
-- [ ] `src/gpu/raster/raster_atlas/shader.wgsl:68-77, 110, 117`. A quad that
-  is not resampled has integer pixel origin and `size == dim`, so every
-  fragment centre is on a texel centre. The shader divides the texel
-  coordinate by the atlas size and samples it through a `Nearest` sampler.
-  The result is the texel that `textureLoad(atlas, vec2<i32>(in.texel), 0)`
-  reads directly. The resampled path at `:130-150` already uses
-  `textureLoad` on `in.texel`. The division is the only reason for these
-  items:
-  - the `atlas_px` tail of the immediate region (`prelude.wgsl:6-24`), with
-    the Dx12 register hazard that the prelude documents;
-  - `IMMEDIATES_BYTES = 16` (`src/gpu/pipeline/mod.rs:34`) and the device
-    request it controls;
-  - `RasterQuad::PARAMS_OFFSET` (`raster_quad.rs:43`) and the per-span
-    `set_immediates` in `RasterAtlas::draw_span` (`raster_atlas/mod.rs:326`);
-  - the sampler binding and `RasterProgram::create_sampler`
-    (`raster_program.rs:105-116`).
-  Target: `textureLoad` on both paths. The immediate region then holds only
-  the viewport, and group 0 holds two textures and no sampler. The doc of
-  `IMMEDIATES_BYTES` (`pipeline/mod.rs:20-24`) names `text::Params` and
-  `RasterPass::render_batch`, which do not exist. That doc goes away with
-  the tail.
-
 ## Wire layouts: the shaders restate numbers that Rust says it owns
 
 - [ ] `src/primitives/packed/fill_kind.rs:30-34` says that every number is
