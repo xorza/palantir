@@ -143,15 +143,12 @@ fn align_grid(ui: &mut Ui) {
                             // frame to describe two `&'static str`s.
                             let key = ("textedit_align", vname, hname);
                             let buf_id = WidgetId::from_hash(key);
-                            // Seeded on the first frame only — keyed on the
-                            // row not existing yet, rather than on the buffer
-                            // being empty, so a cell the user clears stays
-                            // cleared and its placeholder can actually show.
-                            let fresh = ui.state::<String>(buf_id).is_none();
-                            ui.with_state::<String, _>(buf_id, |ui, buf| {
-                                if fresh {
-                                    *buf = format!("{vname}-{hname}");
-                                }
+                            // Seeded on the first frame only — `None` until
+                            // then, rather than an empty buffer, so a cell the
+                            // user clears stays cleared and its placeholder
+                            // can actually show.
+                            ui.with_state::<Option<String>, _>(buf_id, |ui, buf| {
+                                let buf = buf.get_or_insert_with(|| format!("{vname}-{hname}"));
                                 let empty = buf.is_empty();
                                 let mut edit = TextEdit::new(buf)
                                     .id_salt(key)

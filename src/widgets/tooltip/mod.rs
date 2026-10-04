@@ -189,7 +189,7 @@ impl<'a> Tooltip<'a> {
         if state.visible
             && let Some(trigger_rect) = trigger_rect
         {
-            ui.singleton_or_default::<TooltipGlobal>().last_visible_at = Some(now);
+            ui.with_singleton::<TooltipGlobal, _>(|_, global| global.last_visible_at = Some(now));
             let anchor = Anchor::below(trigger_rect).with_gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
@@ -224,7 +224,7 @@ impl<'a> Tooltip<'a> {
         }
 
         if state != prev {
-            *ui.state_or_default::<TooltipState>(trigger_id) = state;
+            ui.with_state::<TooltipState, _>(trigger_id, |_, s| *s = state);
         }
         TooltipResponse {
             visible: state.visible,

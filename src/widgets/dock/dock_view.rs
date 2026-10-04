@@ -37,7 +37,6 @@ use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
 use crate::widgets::theme::dock::DockTheme;
 use crate::window::cursor_icon::CursorIcon;
-use std::mem;
 use std::rc::Rc;
 
 /// The docked pane tree: splits onto [`Splitter`]s, leaves as a
@@ -173,20 +172,18 @@ impl<T: DockTab> DockView<'_, T> {
     /// with no such pipeline pays one line here instead.
     pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D) {
         let id = DockView::dock_id(state);
-        let mut operations = ui
-            .state_mut::<DockOpBuf<T>>(id)
-            .map(|buf| mem::take(&mut buf.operations))
-            .unwrap_or_default();
-        operations.clear();
-        DockView::scan(ui, state, &mut operations);
-        for operation in operations.drain(..) {
-            state.apply(operation);
-        }
-        DockView::new(&*state, &mut operations).show(ui, tabs);
-        for operation in operations.drain(..) {
-            state.apply(operation);
-        }
-        ui.state_or_default::<DockOpBuf<T>>(id).operations = operations;
+        ui.with_state::<DockOpBuf<T>, _>(id, |ui, buf| {
+            let operations = &mut buf.operations;
+            operations.clear();
+            DockView::scan(ui, state, operations);
+            for operation in operations.drain(..) {
+                state.apply(operation);
+            }
+            DockView::new(&*state, operations).show(ui, tabs);
+            for operation in operations.drain(..) {
+                state.apply(operation);
+            }
+        });
     }
 }
 
@@ -309,7 +306,7 @@ impl<T: DockTab> DockView<'_, T> {
     }
 
     fn set_drag(state: &DockState<T>, ui: &mut Ui, tab: Option<T>) {
-        ui.state_or_default::<TabDrag<T>>(Self::dock_id(state)).tab = tab;
+        ui.with_state::<TabDrag<T>, _>(Self::dock_id(state), |_, s| s.tab = tab);
     }
 
     /// The drop the pointer currently indicates: the pane whose rect

@@ -32,12 +32,6 @@ impl Singletons {
             .map(|value| value.downcast_ref::<S>().expect(DOWNCAST_ERROR))
     }
 
-    pub(super) fn get_mut<S: 'static>(&mut self) -> Option<&mut S> {
-        self.by_type
-            .get_mut(&TypeId::of::<S>())
-            .map(|value| value.downcast_mut::<S>().expect(DOWNCAST_ERROR))
-    }
-
     pub(super) fn get_or_default<S: Default + 'static>(&mut self) -> &mut S {
         self.by_type
             .entry(TypeId::of::<S>())
@@ -62,12 +56,7 @@ mod tests {
     #[test]
     fn one_value_per_type_kept_across_reads() {
         let mut singletons = Singletons::default();
-        assert_eq!(singletons.get::<Counter>(), None);
-        assert_eq!(
-            singletons.get_mut::<Counter>(),
-            None,
-            "a probe stores nothing"
-        );
+        assert_eq!(singletons.get::<Counter>(), None, "a probe stores nothing");
         assert_eq!(singletons.get::<Counter>(), None);
         singletons.get_or_default::<Counter>().0 = 3;
         singletons.get_or_default::<Other>().0 = 7;

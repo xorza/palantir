@@ -1194,39 +1194,18 @@ impl Ui {
         state
     }
 
-    /// Cross-frame state row for `id`, inserting `S::default()` on first
-    /// access — the one a widget reaches for, since the row it wants may not
-    /// exist yet. [`Self::state`] and [`Self::state_mut`] insert nothing,
-    /// which is why they answer `Option`.
-    ///
-    /// **A row lives as long as a node records under `id`.** When a frame
-    /// that recorded `id` is followed by one that does not, the row is
-    /// dropped, once per `Ui::frame` after its final record pass. A row
-    /// under an id no node ever records is therefore never dropped: it
-    /// lives as long as the `Ui`, which is what an application wants for
-    /// a page's state and what a widget must not do — a widget keys its
-    /// state by its own id, and keeps state that no instance owns in
-    /// [`Self::singleton_or_default`].
-    ///
-    /// Each type lives in its own store, so one widget keeps several
-    /// kinds of state under its one id. Two call sites storing the *same*
-    /// type at one id share a row, which nothing detects.
-    ///
-    /// The returned borrow is out of `&mut Ui`, so it ends at the next
-    /// widget call — fine for a single read or write, useless for state a
-    /// whole subtree edits. Use [`Self::with_state`] for that.
-    pub fn state_or_default<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
-        self.state.get_or_insert_with(id, S::default)
+    /// The cross-frame state row for `id`, or `None` when nothing has been
+    /// stored for `(id, S)` yet. Stores nothing, so it is the read for a
+    /// probe that must not create a row, and the one a `&Ui` caller has —
+    /// "is this menu open?". Every write goes through [`Self::with_state`].
+    pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
+        self.state.try_get::<S>(id)
     }
 
     /// Lend the cross-frame state row for `id` to `body`, **alongside** the
-    /// `Ui` — the scope in which a page, a panel, or any other subtree
-    /// larger than one widget owns state.
-    ///
-    /// [`Self::state_or_default`] hands back a borrow of the `Ui`, which the first
-    /// widget call inside the scope invalidates; the row is instead moved
-    /// out for the duration of the call and moved back after, so both are
-    /// live at once:
+    /// `Ui`: the row is moved out for the call and moved back after, so a
+    /// widget writes its state, and a page or panel holds its own across
+    /// the widget calls it makes. The row is `S::default()` on first use.
     ///
     /// ```
     /// # use palantir::{Button, Configure, Text, Ui, WidgetId};
@@ -1242,43 +1221,32 @@ impl Ui {
     /// # }
     /// ```
     ///
-    /// The row is `S::default()` on first access and follows the same
-    /// eviction rule as [`Self::state_or_default`], so a subtree that stops being
-    /// recorded drops its state — key it off a [`WidgetId`] that lives as
-    /// long as the state should.
+    /// **A row lives as long as a node records under `id`.** When a frame
+    /// that recorded `id` is followed by one that does not, the row is
+    /// dropped, once per `Ui::frame` after its final record pass. A row
+    /// under an id no node ever records is therefore never dropped: it
+    /// lives as long as the `Ui`, which is what an application wants for
+    /// a page's state and what a widget must not do — a widget keys its
+    /// state by its own id, and keeps state that no instance owns with
+    /// [`Self::with_singleton`].
     ///
-    /// Re-entering the same `(id, S)` from within `body` is a caller bug:
-    /// the inner scope sees a default row and its writes are overwritten
-    /// when the outer one restores. Nesting *different* rows is fine, which
-    /// is what makes this compose down a tree.
+    /// Each type lives in its own store, so one widget keeps several
+    /// kinds of state under its one id. Two call sites storing the *same*
+    /// type at one id share a row, which nothing detects. Re-entering the
+    /// same `(id, S)` from within `body` sees a default row whose writes
+    /// are overwritten when the outer call restores; nesting *different*
+    /// rows is what makes this compose down a tree.
     pub fn with_state<S: Default + 'static, R>(
         &mut self,
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = mem::take(self.state_or_default::<S>(id));
+        let mut value = mem::take(self.state.get_or_insert_with(id, S::default));
         let out = body(self, &mut value);
         // Re-probed rather than held: `body` may have inserted rows of the
         // same `S` at other ids, which can reallocate the store's data vec.
-        *self.state_or_default::<S>(id) = value;
+        *self.state.get_or_insert_with(id, S::default) = value;
         out
-    }
-
-    /// The cross-frame state row for `id`, or `None` when nothing has been
-    /// stored for `(id, S)` yet. Allocates nothing and mutates nothing.
-    ///
-    /// The `&Ui` read — probes, hit-test helpers, "is this menu open?"
-    /// checks — where [`Self::state_or_default`]'s `&mut Ui` receiver would
-    /// be a needless borrow upgrade.
-    pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
-        self.state.try_get::<S>(id)
-    }
-
-    /// [`Self::state`], mutably. `None` if `(id, S)` has never been stored —
-    /// unlike [`Self::state_or_default`], this allocates no typed store and
-    /// inserts no default row.
-    pub fn state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S> {
-        self.state.try_get_mut::<S>(id)
     }
 
     /// The one `S` this `Ui` holds, or `None` until something stores it.
@@ -1287,28 +1255,16 @@ impl Ui {
     /// than state one widget owns — the clock that lets one tooltip after
     /// another show at once. Keyed by type, so a widget's private type
     /// cannot collide with anyone else's, and never swept: it lives as
-    /// long as the `Ui`. A widget's own state belongs under its id, in
-    /// [`Self::state_or_default`].
+    /// long as the `Ui`. Stores nothing; every write goes through
+    /// [`Self::with_singleton`]. A widget's own state belongs under its
+    /// id, in [`Self::with_state`].
     pub fn singleton<S: 'static>(&self) -> Option<&S> {
         self.singletons.get::<S>()
     }
 
-    /// [`Self::singleton`], mutably. `None` until something stores one —
-    /// unlike [`Self::singleton_or_default`], this stores nothing.
-    pub fn singleton_mut<S: 'static>(&mut self) -> Option<&mut S> {
-        self.singletons.get_mut::<S>()
-    }
-
-    /// The one `S` this `Ui` holds, stored as `S::default()` on first use.
-    /// See [`Self::singleton`].
-    pub fn singleton_or_default<S: Default + 'static>(&mut self) -> &mut S {
-        self.singletons.get_or_default::<S>()
-    }
-
-    /// Lend the one `S` to `body` beside the `Ui`, as
-    /// [`Self::with_state`] lends a widget's row: the value is moved out,
-    /// `body` runs with both, and the value is moved back. Stored as
-    /// `S::default()` on first use.
+    /// Lend the one `S` to `body` beside the `Ui`, as [`Self::with_state`]
+    /// lends a widget's row: moved out, `body` runs with both, moved back.
+    /// Stored as `S::default()` on first use.
     ///
     /// A nested call for the same `S` sees the default, and its writes
     /// are lost when the outer one restores.

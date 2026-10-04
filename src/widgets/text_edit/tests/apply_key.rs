@@ -299,7 +299,7 @@ fn max_chars_caps_typing_and_paste_through_show() {
     h.frame(|ui| record(ui, &mut buf));
     h.click_on(id);
     h.frame(|ui| record(ui, &mut buf));
-    h.ui.state_or_default::<TextEditState>(id).edit.caret = 2;
+    h.ui.with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 2);
 
     for c in ['c', 'd'] {
         h.key(Key::Char(c));

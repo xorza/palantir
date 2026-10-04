@@ -280,7 +280,7 @@ impl<'a> TabStrip<'a> {
         // next frame pans the band to it. A click needs no pan — the chip
         // was where the pointer was.
         if let Some(slot) = hits.keyed.or(hits.menu_picked) {
-            ui.state_or_default::<StripState>(id).reveal = Some(items[slot].key);
+            ui.with_state::<StripState, _>(id, |_, s| s.reveal = Some(items[slot].key));
         }
 
         let StripHits {
@@ -338,7 +338,7 @@ fn reveal_delta(ui: &mut Ui, strip: WidgetId, t: &TabsTheme) -> Vec2 {
     let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
         return Vec2::ZERO;
     };
-    ui.state_or_default::<StripState>(strip).reveal = None;
+    ui.with_state::<StripState, _>(strip, |_, s| s.reveal = None);
     let (Some(clip), Some(chip)) = (band_clip(ui, strip, t), chip_extent(ui, strip, key)) else {
         return Vec2::ZERO;
     };

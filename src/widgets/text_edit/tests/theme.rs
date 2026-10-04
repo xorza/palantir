@@ -208,11 +208,10 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
                     .show(ui);
             });
         });
-        {
-            let st = h.ui.state_or_default::<TextEditState>(editor_id);
+        h.ui.with_state::<TextEditState, _>(editor_id, |_, st| {
             st.edit.caret = 4;
             st.edit.selection = Some(1);
-        }
+        });
 
         h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE
             .with_font_size(font_size)

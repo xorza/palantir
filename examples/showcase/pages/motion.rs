@@ -47,10 +47,9 @@ fn easing(ui: &mut Ui) {
                 .left
                 .clicked()
             {
-                let s = ui.state_or_default::<Bars>(demo_id);
-                s.wide = !s.wide;
+                ui.with_state::<Bars, _>(demo_id, |_, s| s.wide = !s.wide);
             }
-            let target = if ui.state_or_default::<Bars>(demo_id).wide {
+            let target = if ui.state::<Bars>(demo_id).is_some_and(|s| s.wide) {
                 420.0
             } else {
                 80.0
@@ -111,8 +110,8 @@ fn bar(
 /// actively-dragged card records last so it paints over any overlap.
 fn drag(ui: &mut Ui) {
     let dragging = CARDS.iter().position(|(k, _, _)| {
-        ui.state_or_default::<CardState>(WidgetId::from_hash(*k))
-            .dragging
+        ui.state::<CardState>(WidgetId::from_hash(*k))
+            .is_some_and(|st| st.dragging)
     });
 
     support::section(
@@ -141,7 +140,9 @@ fn drag(ui: &mut Ui) {
 
 #[derive(Default, Debug)]
 struct CardState {
-    pos: Vec2,
+    /// `None` until the card's first frame seeds it with its initial
+    /// position.
+    pos: Option<Vec2>,
     /// Position at the moment `drag_started` fired; reused every
     /// subsequent frame as `pos = anchor + drag_delta`.
     anchor: Vec2,
@@ -151,36 +152,26 @@ struct CardState {
 
 fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
     let id = WidgetId::from_hash(key);
-    // Seeded on the first frame only — keyed on the row not existing yet,
-    // the way every other page seeds one, rather than on a flag the row's
-    // own presence already answers.
-    let fresh = ui.state::<CardState>(id).is_none();
-    let st: &mut CardState = ui.state_or_default(id);
-    if fresh {
-        st.pos = initial;
-    }
-    let pos = st.pos;
-
-    let r = Block::new()
-        .id(id)
-        .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
-        .position(pos)
-        .sense(Sense::DRAG)
-        .background(
-            Background::rounded(accent, Corners::all(6.0))
-                .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
-        )
-        .show(ui)
-        .snapshot();
-
-    let st: &mut CardState = ui.state_or_default(id);
-    if r.left.drag.started() {
-        st.anchor = st.pos;
-        st.dragging = true;
-    }
-    if let Some(delta) = r.left.drag.delta() {
-        st.pos = st.anchor + delta;
-    } else if st.dragging {
-        st.dragging = false;
-    }
+    ui.with_state::<CardState, _>(id, |ui, st| {
+        let pos = st.pos.get_or_insert(initial);
+        let r = Block::new()
+            .id(id)
+            .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
+            .position(*pos)
+            .sense(Sense::DRAG)
+            .background(
+                Background::rounded(accent, Corners::all(6.0))
+                    .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
+            )
+            .show(ui);
+        if r.left.drag.started() {
+            st.anchor = *pos;
+            st.dragging = true;
+        }
+        if let Some(delta) = r.left.drag.delta() {
+            *pos = st.anchor + delta;
+        } else if st.dragging {
+            st.dragging = false;
+        }
+    });
 }

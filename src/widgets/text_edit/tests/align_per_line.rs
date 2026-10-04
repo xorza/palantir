@@ -434,7 +434,7 @@ fn multiline_widget_right_aligns_each_line() {
         });
     };
     h.frame(&mut record);
-    h.ui.state_or_default::<TextEditState>(id).edit.caret = 5;
+    h.ui.with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 5);
     h.frame(&mut record);
     // wrap target = inner width = 300 - 2*5 = 290.
     let wrap = 290.0;

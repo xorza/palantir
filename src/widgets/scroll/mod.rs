@@ -590,14 +590,13 @@ impl<'a> Scroll<'a> {
         let bars = (self.bar_mode != BarMode::Hidden)
             .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
 
-        let state = {
-            let state = ui.state_or_default::<ScrollState>(id);
+        let state = ui.with_state::<ScrollState, _>(id, |_, state| {
             self.apply_input(state, input, geom);
             if let Some(bars) = &bars {
                 bars.drive(state, geom);
             }
             *state
-        };
+        });
         // The wheel senses only the axes the viewport can pan, so the
         // other one reaches the container behind it. A zoomable viewport
         // keeps both: its wheel zooms whether the content overflows or not.

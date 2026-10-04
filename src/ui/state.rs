@@ -37,10 +37,6 @@ impl StateMap {
         self.stores.get::<Store<T>>()?.try_get(id)
     }
 
-    pub(super) fn try_get_mut<T: 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
-        self.stores.get_mut::<Store<T>>()?.try_get_mut(id)
-    }
-
     /// Drop the rows of the widgets in `removed`, one probe each.
     pub(super) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         self.stores.sweep_removed(removed, Drained::Keep);
@@ -73,11 +69,6 @@ impl<T> Store<T> {
 
     fn try_get(&self, id: WidgetId) -> Option<&T> {
         Some(&self.data[self.index_of(id)?])
-    }
-
-    fn try_get_mut(&mut self, id: WidgetId) -> Option<&mut T> {
-        let idx = self.index_of(id)?;
-        Some(&mut self.data[idx])
     }
 
     fn get_or_insert_with<F: FnOnce() -> T>(&mut self, id: WidgetId, init: F) -> &mut T {
@@ -133,15 +124,15 @@ mod tests {
     #[test]
     fn value_persists_across_frames() {
         let mut map = StateMap::default();
-        assert!(map.try_get_mut::<u32>(wid(1)).is_none());
+        assert!(map.try_get::<u32>(wid(1)).is_none());
         assert!(
             map.stores.is_empty(),
-            "missing mutable probe must not create a typed store",
+            "a missing probe must not create a typed store",
         );
         *map.get_or_insert_with(wid(1), || 0u32) = 42;
-        *map.try_get_mut::<u32>(wid(1)).unwrap() = 43;
-        assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 43);
-        assert!(map.try_get_mut::<u32>(wid(2)).is_none());
+        *map.get_or_insert_with(wid(1), || 0u32) = 43;
+        assert_eq!(map.try_get::<u32>(wid(1)), Some(&43));
+        assert!(map.try_get::<u32>(wid(2)).is_none());
     }
 
     #[test]

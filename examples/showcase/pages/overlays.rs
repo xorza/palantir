@@ -242,8 +242,8 @@ fn context_menu_section(ui: &mut Ui) {
 
                 // Static strings only — no per-frame alloc.
                 let label = ui
-                    .state_or_default::<CtxState>(state_id)
-                    .last_action
+                    .state::<CtxState>(state_id)
+                    .and_then(|s| s.last_action)
                     .unwrap_or("last action: (none yet)");
                 Text::new(label)
                     .id_salt("ctx-status")
@@ -332,7 +332,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
                 .left
                 .clicked()
             {
-                ui.state_or_default::<CtxState>(state_id).last_action = Some(action);
+                ui.with_state::<CtxState, _>(state_id, |_, s| s.last_action = Some(action));
             }
         }
         MenuSeparator::new().style(rule).show(ui);
@@ -348,7 +348,9 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
             .left
             .clicked()
         {
-            ui.state_or_default::<CtxState>(state_id).last_action = Some("last action: Delete");
+            ui.with_state::<CtxState, _>(state_id, |_, s| {
+                s.last_action = Some("last action: Delete");
+            });
         }
     });
 }

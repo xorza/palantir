@@ -51,11 +51,10 @@ fn context_menu_cut_copy_paste_clear() {
     h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    {
-        let st = h.ui.state_or_default::<TextEditState>(editor_id());
+    h.ui.with_state::<TextEditState, _>(editor_id(), |_, st| {
         st.edit.caret = 4;
         st.edit.selection = Some(1);
-    }
+    });
 
     // Copy → clipboard holds "ell", buffer unchanged. Menu closes
     // on click.
@@ -69,11 +68,10 @@ fn context_menu_cut_copy_paste_clear() {
     );
 
     // Cut → buffer drops "ell", caret collapses to selection start.
-    {
-        let st = h.ui.state_or_default::<TextEditState>(editor_id());
+    h.ui.with_state::<TextEditState, _>(editor_id(), |_, st| {
         st.edit.caret = 4;
         st.edit.selection = Some(1);
-    }
+    });
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
@@ -341,11 +339,10 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     };
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.set_focus(a_id);
-    {
-        let state = h.ui.state_or_default::<TextEditState>(a_id);
+    h.ui.with_state::<TextEditState, _>(a_id, |_, state| {
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
-    }
+    });
     ContextMenu::open(&mut h.ui, b_id, Vec2::new(200.0, 20.0));
     h.frame(|ui| {
         body(ui, &mut a, &mut b);
