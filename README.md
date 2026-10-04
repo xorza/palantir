@@ -25,6 +25,18 @@ Published on [crates.io](https://crates.io/crates/palantir); API reference on
 Status: **beta** — feature-rich and usable, but still pre-1.0: the public
 API can still change and break between releases.
 
+A short screen recording of the
+[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase) tabs:
+
+https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
+
+[Darkroom app](https://github.com/xorza/Darkroom)
+![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
+
+---
+
+## Performance
+
 ![Frame bench timings](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
 
 Worst-case frame timing captured while resizing the window on a **MacBook Air M5**.
@@ -70,17 +82,6 @@ out.
 The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the CPU figures above.
 
 ---
-
-A short screen recording of the
-[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase) tabs:
-
-https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
-
-
----
-
-[Darkroom app](https://github.com/xorza/Darkroom)
-![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
 
 ## Highlights
 
