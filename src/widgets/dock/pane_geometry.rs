@@ -5,7 +5,7 @@ use glam::Vec2;
 
 use crate::primitives::geometry::rect::Rect;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
-use crate::widgets::dock::dock_op::DockDrop;
+use crate::widgets::dock::dock_operation::DockDrop;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::TabGroupId;
 use crate::widgets::tabs::tab_strip::TabStrip;

@@ -3,6 +3,7 @@
 
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::record_store::RecordStore;
@@ -32,14 +33,25 @@ impl<'a> MeshShape<'a> {
 impl MeshShape<'_> {
     /// Paint into `rect`, in owner-relative coords, instead of the
     /// owner's whole arranged rect.
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.local_rect = Some(rect);
         self
     }
 
     /// Multiplied onto every vertex colour. White leaves the mesh alone.
-    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
-        self.tint = tint.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `tint` is a [colour](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn tint(mut self, tint: RgbaF32) -> Self {
+        self.tint = domain::color(tint);
         self
     }
 }

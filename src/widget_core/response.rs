@@ -22,7 +22,7 @@ use std::ops;
 ///
 /// Widgets that already had to call `ui.response_for(id)` for their
 /// own theme-picking / interaction logic (Button, Checkbox, …) hand
-/// the already-paid-for state to [`Response::eager`] so callers
+/// the already-paid-for state to [`Response::new`] so callers
 /// inherit the cached result without a second probe.
 ///
 /// To detach from the `&Ui` borrow (e.g. before calling another
@@ -34,7 +34,6 @@ use std::ops;
 /// A widget that owes the caller more than interaction returns a wrapper
 /// holding this in a `response` field — [`InnerResponse`],
 /// [`ValueResponse`](crate::ValueResponse),
-/// [`SelectResponse`](crate::SelectResponse),
 /// [`TextEditResponse`](crate::TextEditResponse) and the rest. **None of
 /// them derefs to it**, so interaction is always spelled
 /// `r.response.clicked()` there where a plain response spells
@@ -85,7 +84,7 @@ impl<'a> Response<'a> {
     /// hands it back here rather than letting the caller re-probe. `Widget::show` packages
     /// the lazy path for widgets that need none of that.
     #[inline]
-    pub fn eager(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
+    pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
         Self {
             id,
             ui,
@@ -130,7 +129,7 @@ impl fmt::Debug for Response<'_> {
 /// Owned snapshot of a widget's response state — what [`Response::snapshot`]
 /// produces. Same deref surface as [`Response`] but doesn't borrow `Ui`,
 /// so it can be stored across `&mut Ui` operations and passed to
-/// consumers like [`crate::Tooltip::on`] / [`crate::ContextMenu::attach`]
+/// consumers like [`crate::Tooltip::on`] / [`crate::ContextMenu::on`]
 /// that need a stable trigger anchor.
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseSnapshot {
@@ -177,7 +176,6 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::widget_core::response::InnerResponse;
-    use crate::widget_core::select_response::SelectResponse;
     use crate::widget_core::value_response::ValueResponse;
     use crate::widgets::expander::ExpanderResponse;
     use crate::widgets::tabs::tab_strip::TabStripResponse;
@@ -191,7 +189,6 @@ mod tests {
     // cannot drift into "three of them".
     assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
     assert_not_impl_any!(ValueResponse<'static>: Deref);
-    assert_not_impl_any!(SelectResponse<'static>: Deref);
     assert_not_impl_any!(TextEditResponse<'static>: Deref);
     assert_not_impl_any!(ExpanderResponse<'static, ()>: Deref);
     assert_not_impl_any!(TabStripResponse<'static>: Deref);

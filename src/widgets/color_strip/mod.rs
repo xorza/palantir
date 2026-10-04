@@ -4,7 +4,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -43,7 +43,7 @@ use glam::Vec2;
 pub struct ColorStrip<'a> {
     widget: Widget,
     kind: StripKind<'a>,
-    downsample: u32,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -82,9 +82,8 @@ impl<'a> ColorStrip<'a> {
     /// An alpha bar over `color`, showing that colour from transparent to
     /// opaque and writing its alpha.
     ///
-    /// Not `alpha`: that is a *setter* on the two colour widgets next door
-    /// ([`ColorPicker::alpha`](crate::ColorPicker::alpha),
-    /// [`ColorButton::alpha`](crate::ColorButton::alpha)), and one word
+    /// Not `alpha`: that is a *setter* on the picker next door
+    /// ([`ColorPicker::alpha`](crate::ColorPicker::alpha)), and one word
     /// cannot mean both a setter and a constructor.
     #[track_caller]
     pub fn for_alpha(color: &'a mut RgbaF32) -> Self {
@@ -98,20 +97,22 @@ impl<'a> ColorStrip<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             kind,
-            downsample: color_surface::DOWNSAMPLE,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
 
-    /// How far below the display's resolution the texture is built, as a
-    /// power of two. Default 4. See
-    /// [`ColorField::downsample`](crate::ColorField::downsample).
+    /// The edge of one texture texel, in physical pixels: how far below the
+    /// display's resolution the texture is built, as a power of two.
+    /// Default 4. See
+    /// [`ColorField::texel_size`](crate::ColorField::texel_size).
     ///
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = color_surface::checked_downsample(n);
+    #[track_caller]
+    pub const fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
         self
     }
 
@@ -126,10 +127,10 @@ impl<'a> ColorStrip<'a> {
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let themed = Size::new(
-            theme.field_width.themed_length(1.0),
-            theme.bar_thickness.themed_length(1.0),
+            domain::length_at_least(theme.field_width, 1.0),
+            domain::length_at_least(theme.bar_thickness, 1.0),
         );
-        let handle_width = theme.handle_width.themed_length(0.0);
+        let handle_width = domain::length_at_least(theme.handle_width, 0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
         let checker = Checkerboard::new(theme);
@@ -146,11 +147,11 @@ impl<'a> ColorStrip<'a> {
         if let Some(at) = response.press_fraction(0.0) {
             changed |= kind.write(at.x);
         }
-        let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, &mut kind);
+        let keyed = !response.disabled && ui.is_focus_within(id) && keyboard_travel(ui, &mut kind);
         changed |= keyed;
         let committed = !response.disabled && (response.left.released() || keyed);
 
-        let texels = color_surface::texel_size(size, self.downsample, ui);
+        let texels = color_surface::texture_size(size, self.texel_size, ui);
         let paint = kind.paint();
         let marker = kind.read() * size.w;
 
@@ -158,12 +159,11 @@ impl<'a> ColorStrip<'a> {
             if paint.wants_checker() {
                 checker.paint(ui, size);
             }
-            let image =
-                ui.with_state::<ColorSurface<StripPaint>, _>(id.with("surface"), |ui, surface| {
-                    surface
-                        .ensure(ui, texels, paint, |image| paint.fill(image))
-                        .clone()
-                });
+            let image = ui.with_state::<ColorSurface<StripPaint>, _>(id, |ui, surface| {
+                surface
+                    .ensure(ui, texels, paint, |image| paint.fill(image))
+                    .clone()
+            });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             let top = Vec2::new(marker, 0.0);
             let bottom = Vec2::new(marker, size.h);
@@ -179,7 +179,7 @@ impl<'a> ColorStrip<'a> {
             ));
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }

@@ -10,6 +10,7 @@ use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::align::Align;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
@@ -77,8 +78,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
                     .label(label)
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&btn)
-                    .label("Header action")
+                Tooltip::on(&btn, "Header action")
                     .delay(Duration::ZERO)
                     .show(ui);
             }
@@ -216,7 +216,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
         TOAST_W.min(bar_rect.size.w),
         bar_rect.size.h,
     );
-    Popup::above(anchor)
+    Popup::new(Anchor::above(anchor))
         .click_outside(ClickOutside::PassThrough)
         .background(Background {
             fill: tokens::CARD_BG.into(),

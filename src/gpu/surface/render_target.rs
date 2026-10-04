@@ -11,23 +11,46 @@ use glam::UVec2;
 /// is presented.
 ///
 /// This is the seam an application meets. Palantir's host and driver code
-/// passes it around without naming a graphics-API type, and the [`From`] impl
-/// below is where a caller that owns its own device hands one in — every
-/// entry point that takes a target takes an `impl Into<RenderTarget>`, so a
-/// `&wgpu::Texture` goes straight in.
+/// passes it around without naming a graphics-API type, and
+/// [`RenderTarget::new`] is where a caller that owns its own device hands one
+/// in, checked there rather than on the first frame.
 #[derive(Clone, Copy, Debug)]
 pub struct RenderTarget<'a> {
     texture: &'a wgpu::Texture,
 }
 
 impl<'a> RenderTarget<'a> {
+    /// Render into `texture`.
+    ///
+    /// The renderer writes linear light and relies on the target to encode
+    /// it, so the format must be an sRGB one or a float one (`Rgba16Float`,
+    /// `Rgba32Float`, `Rg11b10Ufloat`). The texture must allow
+    /// `RENDER_ATTACHMENT`; with `COPY_DST` as well, a host presenting
+    /// through its backbuffer copies onto it, and without it draws onto it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the format is neither sRGB nor float, or the usage lacks
+    /// `RENDER_ATTACHMENT`.
+    #[track_caller]
+    pub fn new(texture: &'a wgpu::Texture) -> Self {
+        assert!(
+            texture
+                .usage()
+                .contains(wgpu::TextureUsages::RENDER_ATTACHMENT),
+            "a render target must allow RENDER_ATTACHMENT",
+        );
+        TargetFormat::new(texture.format());
+        Self { texture }
+    }
+
     pub(crate) fn size(self) -> UVec2 {
         let size = self.texture.size();
         UVec2::new(size.width, size.height)
     }
 
     pub(crate) fn format(self) -> TargetFormat {
-        TargetFormat::from(self.texture.format())
+        TargetFormat(self.texture.format())
     }
 
     /// Whether a finished frame can be copied onto this target.
@@ -45,19 +68,6 @@ impl<'a> RenderTarget<'a> {
     }
 }
 
-/// Render into `texture`.
-///
-/// It must carry `RENDER_ATTACHMENT`, and `COPY_DST` as well when the host
-/// presents through its backbuffer. Its format must be an sRGB one or a
-/// float one (`Rgba16Float`, `Rgba32Float`, `Rg11b10Ufloat`): the renderer
-/// writes linear light and relies on the target to encode it. Rendering
-/// into any other format panics on the first frame.
-impl<'a> From<&'a wgpu::Texture> for RenderTarget<'a> {
-    fn from(texture: &'a wgpu::Texture) -> Self {
-        Self { texture }
-    }
-}
-
 /// The texel format of a [`RenderTarget`].
 ///
 /// Opaque on purpose. Outside this module a format is compared and keyed on —
@@ -67,16 +77,37 @@ impl<'a> From<&'a wgpu::Texture> for RenderTarget<'a> {
 pub struct TargetFormat(wgpu::TextureFormat);
 
 impl TargetFormat {
+    /// Name a format directly, for a caller that has one in hand before it
+    /// has a texture to read it off. The format rule is
+    /// [`RenderTarget::new`]'s.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `format` is neither sRGB nor float.
+    #[track_caller]
+    pub fn new(format: wgpu::TextureFormat) -> Self {
+        assert!(
+            Self::encodes_linear(format),
+            "a render target's format must be sRGB or float",
+        );
+        Self(format)
+    }
+
+    /// True if a target in `format` encodes the linear light the shaders
+    /// write. A unorm target would store it as is, and everything renders
+    /// too dark — sRGB 0x80 grey lands as 0x37 — with no error.
+    pub(crate) fn encodes_linear(format: wgpu::TextureFormat) -> bool {
+        format.is_srgb()
+            || matches!(
+                format,
+                wgpu::TextureFormat::Rgba16Float
+                    | wgpu::TextureFormat::Rgba32Float
+                    | wgpu::TextureFormat::Rg11b10Ufloat
+            )
+    }
+
     pub(crate) const fn get(self) -> wgpu::TextureFormat {
         self.0
-    }
-}
-
-/// Name a format directly, for a caller that has one in hand before it has a
-/// texture to read it off.
-impl From<wgpu::TextureFormat> for TargetFormat {
-    fn from(format: wgpu::TextureFormat) -> Self {
-        Self(format)
     }
 }
 
@@ -117,5 +148,45 @@ pub(crate) mod internals {
             usage,
             view_formats: &[],
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::surface::render_target::internals::texture;
+    use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::internals::panic_probe;
+    use glam::UVec2;
+
+    /// A target encodes linear light, so its format is sRGB or float, and
+    /// it must take a render pass. Either flaw panics where the target is
+    /// named rather than on the first frame.
+    #[test]
+    fn targets_check_their_format_and_usage() {
+        use wgpu::{TextureFormat as F, TextureUsages as U};
+
+        for format in [F::Rgba8UnormSrgb, F::Bgra8UnormSrgb, F::Rgba16Float] {
+            let _ = TargetFormat::new(format);
+        }
+        for format in [F::Rgba8Unorm, F::Bgra8Unorm, F::R8Unorm] {
+            panic_probe::assert_panics_with("format must be sRGB or float", || {
+                TargetFormat::new(format)
+            });
+        }
+
+        let gpu = headless_test_gpu();
+        let made =
+            |format, usage| texture(&gpu.device, "target-check", UVec2::splat(4), format, usage);
+        let good = made(F::Rgba8UnormSrgb, U::RENDER_ATTACHMENT);
+        assert_eq!(RenderTarget::new(&good).size(), UVec2::splat(4));
+        let linear = made(F::Rgba8Unorm, U::RENDER_ATTACHMENT);
+        panic_probe::assert_panics_with("format must be sRGB or float", || {
+            RenderTarget::new(&linear)
+        });
+        let sampled = made(F::Rgba8UnormSrgb, U::TEXTURE_BINDING);
+        panic_probe::assert_panics_with("must allow RENDER_ATTACHMENT", || {
+            RenderTarget::new(&sampled)
+        });
     }
 }

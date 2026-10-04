@@ -37,9 +37,10 @@ fn bench_stable(
     }
     if selected {
         h.set_focus(editor_id());
-        let state = h.ui.state_or_default::<TextEditState>(editor_id());
-        state.edit.selection = Some(0);
-        state.edit.caret = text.len();
+        h.ui.with_state::<TextEditState, _>(editor_id(), |_, state| {
+            state.edit.selection = Some(0);
+            state.edit.caret = text.len();
+        });
         run_frame(&mut h, &mut text, multiline);
     }
     group.bench_function(leaf, |bencher| {

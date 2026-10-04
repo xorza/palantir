@@ -330,19 +330,19 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     h.frame(|ui| {
         Block::new().id(WidgetId::from_hash("a")).show(ui);
         Block::new().id(WidgetId::from_hash("b")).show(ui);
-        *ui.state_or_default::<u32>(id_a) = 11;
-        *ui.state_or_default::<u32>(id_b) = 22;
+        ui.with_state::<u32, _>(id_a, |_, s| *s = 11);
+        ui.with_state::<u32, _>(id_b, |_, s| *s = 22);
     });
     let a = h.frame_value(|ui| {
         Block::new().id(WidgetId::from_hash("a")).show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
-        *ui.state_or_default::<u32>(id_a)
+        ui.with_state::<u32, _>(id_a, |_, n| *n)
     });
     assert_eq!(a, 11);
     let b = h.frame_value(|ui| {
         Block::new().id(WidgetId::from_hash("b")).show(ui);
-        *ui.state_or_default::<u32>(id_b)
+        ui.with_state::<u32, _>(id_b, |_, n| *n)
     });
     assert_eq!(
         b, 0,

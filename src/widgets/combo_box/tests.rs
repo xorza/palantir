@@ -9,8 +9,9 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
-use crate::widgets::combo_box::{ComboBox, ComboState};
+use crate::widgets::combo_box::ComboBox;
 use crate::widgets::panel::Panel;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
@@ -18,35 +19,37 @@ use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
-/// A selection the option list doesn't contain has no rendering: the
-/// trigger shows the current choice and there is no placeholder. Falling
-/// back to a blank label made a broken caller model look like an
-/// ordinary empty control, so it panics instead.
-///
-/// An empty list is the same failure — every index is out of range —
-/// which is why it is the second case rather than a carve-out.
+/// The selection is an index coerced for display: one past the end of the
+/// list — a list that shrank under it — shows the last option, measured
+/// through the trigger label's width ("Longer" against "A"), and the bound
+/// index stays where the caller left it. An empty list shows an empty
+/// label rather than panicking.
 #[test]
-#[should_panic(expected = "out of range for 1 option(s)")]
-fn an_out_of_range_selection_panics() {
+fn a_stale_selection_shows_the_last_option_without_writing_back() {
+    const OPTIONS: [&str; 2] = ["A", "Longer"];
+    let ids = [0, 1, 9].map(|i| WidgetId::from_hash(("combo", i)));
+    let empty = WidgetId::from_hash("combo-empty");
+    let mut picks = [0usize, 1, 9];
+    let mut none = 4usize;
     let mut h = UiHarness::new(SURFACE);
-    let mut selected = 3;
     h.frame(|ui| {
-        ComboBox::new(&mut selected, &["One"])
-            .id(WidgetId::from_hash("combo"))
-            .show(ui);
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (selected, id) in picks.iter_mut().zip(ids) {
+                    ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+                }
+                ComboBox::new(&mut none, &[] as &[&str]).id(empty).show(ui);
+            });
     });
-}
-
-#[test]
-#[should_panic(expected = "out of range for 0 option(s)")]
-fn an_empty_option_list_panics() {
-    let mut h = UiHarness::new(SURFACE);
-    let mut selected = 0;
-    h.frame(|ui| {
-        ComboBox::new(&mut selected, &[] as &[&str])
-            .id(WidgetId::from_hash("combo"))
-            .show(ui);
-    });
+    let width = |id: WidgetId| h.rect(id.with("label")).expect("label arranged").size.w;
+    let [first, last, stale] = ids.map(width);
+    assert_ne!(first, last, "premise: the two options measure apart");
+    assert_eq!(stale, last, "a stale index shows the last option");
+    assert_eq!(picks, [0, 1, 9], "nothing was written back");
+    assert_eq!(width(empty), 0.0, "an empty list shows an empty label");
+    assert_eq!(none, 4);
 }
 
 /// `labeled` reads the row's projected field, not the row: a dropdown over
@@ -129,7 +132,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             });
     };
     h.frame(|ui| build(ui, &mut selected));
-    h.ui.state_or_default::<ComboState>(id).open = true;
+    PopupTrigger::open(&mut h.ui, id);
 
     assert_eq!(
         h.frame(|ui| build(ui, &mut selected)).processing,
@@ -292,7 +295,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
                 });
         };
         h.frame(|ui| build(ui, &mut selected));
-        h.ui.state_or_default::<ComboState>(id).open = true;
+        PopupTrigger::open(&mut h.ui, id);
         h.frame(|ui| build(ui, &mut selected));
         h.rect(id.with("list")).expect("combo list arranged").size.h
     };
@@ -338,4 +341,109 @@ fn disabling_an_open_trigger_closes_its_list() {
     h.click_at(last_row);
     record(&mut h, true, &mut selected);
     assert_eq!(selected, 0, "a click where a row was picks nothing");
+}
+
+/// A focused, closed combo box steps its pick with the arrows, stopping at
+/// the ends, and reports each step as a committed change; Enter, Space and
+/// Alt+Down open it, and the arrows step nothing while it is open.
+#[test]
+fn the_keys_step_a_closed_pick_and_open_the_list() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    const OPTIONS: [&str; 3] = ["A", "B", "C"];
+    let id = WidgetId::from_hash("combo-keys");
+    let mut selected = 1usize;
+    let mut h = UiHarness::new(SURFACE);
+    let frame = |h: &mut UiHarness, selected: &mut usize| {
+        h.frame_value(|ui| {
+            let r = ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+            (r.changed, r.committed)
+        })
+    };
+    frame(&mut h, &mut selected);
+    h.set_focus(id);
+    frame(&mut h, &mut selected);
+    for (key, want, moved) in [
+        (Key::ArrowDown, 2, true),
+        (Key::ArrowDown, 2, false),
+        (Key::ArrowUp, 1, true),
+        (Key::ArrowUp, 0, true),
+        (Key::ArrowUp, 0, false),
+    ] {
+        h.key(key);
+        assert_eq!(frame(&mut h, &mut selected), (moved, moved), "{key:?}");
+        assert_eq!(selected, want, "{key:?}");
+    }
+    for (mods, key) in [
+        (Modifiers::NONE, Key::Enter),
+        (Modifiers::NONE, Key::Char(' ')),
+        (Modifiers::ALT, Key::ArrowDown),
+    ] {
+        h.set_modifiers(mods);
+        h.key(key);
+        frame(&mut h, &mut selected);
+        h.set_modifiers(Modifiers::NONE);
+        assert!(
+            PopupTrigger::is_open(&h.ui, id),
+            "{mods:?} {key:?} opens it"
+        );
+        h.key(Key::ArrowDown);
+        frame(&mut h, &mut selected);
+        assert_eq!(selected, 0, "an open list steps nothing");
+        PopupTrigger::close(&mut h.ui, id);
+        frame(&mut h, &mut selected);
+        h.set_focus(id);
+        frame(&mut h, &mut selected);
+    }
+}
+
+/// The whole keyboard path through a dropdown: Enter on the focused combo
+/// box opens it with focus on the first row, Tab and the arrows walk the
+/// rows inside the list it traps, Enter picks the row it is on and closes
+/// the list, and
+/// focus goes back to the combo box.
+#[test]
+fn the_keyboard_alone_picks_from_the_dropdown() {
+    use crate::input::keyboard::key::Key;
+
+    const OPTIONS: [&str; 3] = ["A", "B", "C"];
+    let id = WidgetId::from_hash("combo-walk");
+    let mut selected = 0usize;
+    let mut h = UiHarness::new(SURFACE);
+    let frame = |h: &mut UiHarness, selected: &mut usize| {
+        h.frame_value(|ui| ComboBox::new(selected, &OPTIONS).id(id).show(ui).changed)
+    };
+    frame(&mut h, &mut selected);
+    h.key(Key::Tab);
+    frame(&mut h, &mut selected);
+    assert_eq!(h.focus(), Some(id), "Tab reaches the combo box");
+
+    h.key(Key::Enter);
+    frame(&mut h, &mut selected);
+    assert!(PopupTrigger::is_open(&h.ui, id));
+    let first = h.focus().expect("focus moved into the list");
+    assert_ne!(first, id);
+
+    h.key(Key::Tab);
+    frame(&mut h, &mut selected);
+    let second = h.focus().expect("a row holds focus");
+    assert_ne!(second, first, "Tab moves to the next row");
+    h.key(Key::ArrowDown);
+    frame(&mut h, &mut selected);
+    let third = h.focus().expect("a row holds focus");
+    assert!(third != first && third != second, "Down moves to the third");
+    h.key(Key::ArrowUp);
+    frame(&mut h, &mut selected);
+    assert_eq!(h.focus(), Some(second), "Up moves back");
+
+    h.key(Key::Enter);
+    let changed = frame(&mut h, &mut selected);
+    assert!(changed && selected == 1, "Enter picks the second row");
+    frame(&mut h, &mut selected);
+    assert!(
+        !PopupTrigger::is_open(&h.ui, id),
+        "the pick closes the list"
+    );
+    assert_eq!(h.focus(), Some(id), "focus goes back to the combo box");
 }

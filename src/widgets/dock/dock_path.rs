@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 /// byte — a leading sentinel bit, then one bit per level (`0` = first
 /// child, `1` = second). The root split is the bare sentinel. One `Copy`
 /// byte instead of a `Vec<bool>`, with capacity for 7 levels, which
-/// [`DockState::max_depth`](crate::DockState::max_depth) keeps real
+/// [`DockState::with_max_depth`](crate::DockState::with_max_depth) keeps real
 /// trees well inside.
 ///
 /// Like any address into the tree it is only stable between structural
 /// changes; a stale path that no longer lands on a split is ignored by
-/// the op it feeds.
+/// the operation it feeds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[must_use]
 pub struct DockPath(u8);

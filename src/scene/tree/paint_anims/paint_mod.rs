@@ -1,6 +1,6 @@
 //! What one paint animation does to one shape at one instant.
 
-/// Per-shape paint modification sampled from a `PaintAnim`. Encoder
+/// Per-shape paint modification sampled from a `PaintAnimation`. Encoder
 /// folds this into the shape's brush / geometry at emit time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PaintMod {

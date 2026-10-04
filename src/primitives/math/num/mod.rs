@@ -1,8 +1,7 @@
-//! Scalar helpers the crate keeps one definition of: the [`F32Ext`],
-//! [`F32Px`] and [`Vec2Ext`] methods on the scalars themselves, and two free
-//! conversions whose exact form is a contract rather than a detail.
+//! Scalar helpers the engines keep one definition of: the [`F32Px`] and
+//! [`Vec2Ext`] methods on the scalars themselves, and a free conversion
+//! whose exact form is a contract rather than a detail.
 
-use crate::primitives::math::approx;
 use glam::Vec2;
 
 /// A 0..1 value as a byte: rounded half up, saturating outside the
@@ -15,9 +14,6 @@ use glam::Vec2;
 /// per channel per colour to reach what the final instruction reaches
 /// anyway. Adding the half before the truncation is round-half-up, which
 /// over a non-negative product is `round`.
-///
-/// A free `const fn` rather than an [`F32Px`] method: `RgbaF32::hexa` is
-/// `const`, and a trait method cannot be called from one.
 #[inline]
 #[expect(
     clippy::cast_sign_loss,
@@ -25,112 +21,6 @@ use glam::Vec2;
 )]
 pub(crate) const fn unit_to_u8(x: f32) -> u8 {
     (x * 255.0 + 0.5) as u8
-}
-
-/// The `f32` operations a widget reads a theme or a pointer through, as
-/// methods on the scalar itself — and, per component, on a [`Vec2`], so a
-/// two-axis widget asks once for both.
-///
-/// Each is here because one wrong answer about a length or a share reaches
-/// layout as a panic, so the crate keeps one definition and every widget —
-/// inside this crate or outside it — goes through it. The engine-side
-/// scalar helpers are `F32Px`.
-pub trait F32Ext {
-    /// Where `self` sits along a track of `extent` that reserves `band`
-    /// to a centred thing the pointer drags, as a 0..1 share.
-    ///
-    /// A slider's knob and a splitter's rule are the same placement
-    /// problem: a fixed-width object whose *centre* follows the pointer,
-    /// so half the band comes off each end before the division and the
-    /// usable travel is `extent - band`. A track with no travel left has
-    /// no share to report and yields zero.
-    /// What that zero means is the caller's, and the two callers
-    /// disagree.
-    ///
-    /// The result is unclamped — a pointer outside the track reports
-    /// outside `0..1`, and each caller pins it with the bounds it
-    /// enforces, which is what [`Self::unit_fraction_or`] is for.
-    #[must_use]
-    fn band_fraction(self, extent: Self, band: Self) -> Self;
-
-    /// This value as a share of something — clamped into `0..=1`, or
-    /// `fallback` where it names no share at all.
-    ///
-    /// The clamp alone is not the rule. `f32::clamp` answers NaN for NaN,
-    /// and every consumer of a share turns it into a `Fill` weight, a
-    /// track extent, or a seam position — each of which rejects one. An
-    /// infinity clamps to an *end*, which states a share the caller never
-    /// meant. Both non-finite cases are "no share", so both take the
-    /// fallback.
-    ///
-    /// `fallback` is the caller's, because "no share" resolves
-    /// differently: unknown progress is empty, an unknown split is
-    /// centred. The screen is shared, the neutral is not.
-    #[must_use]
-    fn unit_fraction_or(self, fallback: Self) -> Self;
-
-    /// A length read out of a theme, floored at `min`.
-    ///
-    /// The floor is a widget design rule, not validation: a theme file's
-    /// scalars are checked where they are deserialized
-    /// (`primitives::packed::serde::checked`), so what arrives here is a finite,
-    /// non-negative length. `min` is the widget's, not the type's. A rule
-    /// the theme sets to zero is a rule the app wanted invisible, while a
-    /// grab bar or a spinner that thin cannot be grabbed or seen at all.
-    #[must_use]
-    fn themed_length(self, min: Self) -> Self;
-}
-
-impl F32Ext for f32 {
-    #[inline]
-    fn band_fraction(self, extent: f32, band: f32) -> f32 {
-        approx::share_of(self - band * 0.5, extent - band)
-    }
-
-    #[inline]
-    fn unit_fraction_or(self, fallback: f32) -> f32 {
-        debug_assert!(
-            (0.0..=1.0).contains(&fallback),
-            "a unit-fraction fallback must itself be a share, got {fallback}",
-        );
-        if self.is_finite() {
-            self.clamp(0.0, 1.0)
-        } else {
-            fallback
-        }
-    }
-
-    #[inline]
-    fn themed_length(self, min: f32) -> f32 {
-        debug_assert!(
-            min >= 0.0,
-            "a themed length's floor is itself a length, got {min}",
-        );
-        self.max(min)
-    }
-}
-
-impl F32Ext for Vec2 {
-    #[inline]
-    fn band_fraction(self, extent: Self, band: Self) -> Self {
-        Self::new(
-            self.x.band_fraction(extent.x, band.x),
-            self.y.band_fraction(extent.y, band.y),
-        )
-    }
-
-    #[inline]
-    fn unit_fraction_or(self, fallback: Self) -> Self {
-        Self::new(
-            self.x.unit_fraction_or(fallback.x),
-            self.y.unit_fraction_or(fallback.y),
-        )
-    }
-
-    #[inline]
-    fn themed_length(self, min: Self) -> Self {
-        Self::new(self.x.themed_length(min.x), self.y.themed_length(min.y))
-    }
 }
 
 /// The `f32` operations the layout and paint engines keep one definition

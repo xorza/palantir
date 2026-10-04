@@ -3,6 +3,10 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
+use crate::input::scroll_targets::ScrollTargets;
+use crate::widgets::block::Block;
+use crate::widgets::scroll::Scroll;
+use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::text_edit::tests::*;
 use std::fmt::Write;
 
@@ -32,7 +36,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // Short text: caret at end (5) → x = 40 px ≤ inner_w. No scroll.
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 5;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 5);
     h.frame(|ui| body(ui, &mut buf));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset;
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
@@ -43,7 +47,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // 801.5 − (267 − 1.5) = 536.
     let mut long = "a".repeat(100);
     h.frame(|ui| body(ui, &mut long));
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 100;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset;
     assert_eq!(scroll.x, 536.0, "scroll.x = {}", scroll.x);
@@ -51,7 +55,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 
     // Caret home: scroll.x snaps back so the start of the text is
     // visible again.
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 0;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset;
     assert_eq!(scroll.x, 0.0, "scroll snaps to 0 when caret moves home");
@@ -84,14 +88,14 @@ fn hug_width_editor_shows_full_text_after_growth() {
     // Start narrow so the Hug width settles small (rect ≈ one glyph).
     let mut buf = String::from("1");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 1;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
     h.frame(|ui| body(ui, &mut buf));
 
     // Grow the buffer with the caret pinned at the end. The first frame
     // still sees last frame's narrower rect and scrolls left to chase the
     // caret — exactly the transient that used to stick.
     buf.push_str("2345");
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = buf.len();
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = buf.len());
     h.frame(|ui| body(ui, &mut buf));
     // Settle: the widened rect is now visible to update_scroll.
     h.frame(|ui| body(ui, &mut buf));
@@ -126,7 +130,7 @@ fn click_hit_test_compensates_for_scroll() {
 
     // Drive caret to end so the editor scrolls all the way right.
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 100;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut buf));
     let scroll_x = h.state::<TextEditState>(ed_id).view.scroll.offset.x;
     assert!(scroll_x > 100.0, "precondition: editor is scrolled");
@@ -185,7 +189,7 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     // Caret at the top, so anything that follows it would pull the view
     // back to zero and the assertions below could not pass by accident.
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 0;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
         h.state::<TextEditState>(ed_id).view.scroll.offset.y,
@@ -214,12 +218,111 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
 
     // Moving the caret *does* pull the view back, so the wheel has not
     // simply disabled caret-following.
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 0;
-    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 1;
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
         h.state::<TextEditState>(ed_id).view.scroll.offset.y,
         0.0,
         "a caret move must scroll it back into view",
+    );
+}
+
+/// Each wheel axis goes to the topmost row that pans it, as browser
+/// scroll chaining does. A single-line field pans only x, so a vertical
+/// wheel over one scrolls the page behind it and a horizontal one pans
+/// the field — even while its text overflows.
+#[test]
+fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
+    let page = WidgetId::from_hash("page");
+    let ed_id = WidgetId::from_hash("chained-ed");
+    let body = |ui: &mut Ui, buf: &mut String| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Scroll::vertical()
+                .id(page)
+                .size((Sizing::fixed(300.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    TextEdit::new(buf)
+                        .id(ed_id)
+                        .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
+                        .show(ui);
+                    Block::new()
+                        .id_salt("filler")
+                        .size((Sizing::fixed(280.0), Sizing::fixed(600.0)))
+                        .show(ui);
+                });
+        });
+    };
+    let mut h = UiHarness::new(NARROW);
+    // 100 glyphs at 8 px overflow the 267 px inner width.
+    let mut long = "a".repeat(100);
+    h.prime(2, |ui| body(ui, &mut long));
+    h.move_to(Vec2::new(50.0, 20.0));
+    assert_eq!(
+        h.ui.input().scroll_targets,
+        ScrollTargets {
+            x: Some(ed_id),
+            y: Some(page),
+        },
+    );
+
+    h.scroll_pixels(Vec2::new(0.0, 10.0));
+    h.frame(|ui| body(ui, &mut long));
+    assert_eq!(h.state::<ScrollState>(page).offset, Vec2::new(0.0, 10.0));
+    assert_eq!(
+        h.state::<TextEditState>(ed_id).view.scroll.offset,
+        Vec2::ZERO
+    );
+
+    // The page moved the field up by 10 px, to y -10..30, so (50, 20) is
+    // still on it.
+    h.scroll_pixels(Vec2::new(30.0, 0.0));
+    h.frame(|ui| body(ui, &mut long));
+    assert_eq!(h.state::<ScrollState>(page).offset, Vec2::new(0.0, 10.0));
+    assert_eq!(
+        h.state::<TextEditState>(ed_id).view.scroll.offset,
+        Vec2::new(30.0, 0.0),
+    );
+}
+
+/// With no row under the pointer that pans y, a single-line field takes a
+/// plain vertical wheel turn as horizontal movement — the routing does
+/// the move, so the field only ever reads x. A field whose text fits
+/// senses no wheel axis at all.
+#[test]
+fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
+    let ed_id = WidgetId::from_hash("lone-ed");
+    let body = |ui: &mut Ui, buf: &mut String| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id(ed_id)
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
+                .show(ui);
+        });
+    };
+    let mut h = UiHarness::new(NARROW);
+    let mut short = String::from("hello");
+    h.prime(2, |ui| body(ui, &mut short));
+    h.move_to(Vec2::new(50.0, 20.0));
+    assert_eq!(
+        h.ui.input().scroll_targets,
+        ScrollTargets::default(),
+        "five glyphs fit, so the field leaves the wheel to what is behind it",
+    );
+
+    let mut long = "a".repeat(100);
+    h.prime(2, |ui| body(ui, &mut long));
+    assert_eq!(
+        h.ui.input().scroll_targets,
+        ScrollTargets {
+            x: Some(ed_id),
+            y: None,
+        },
+    );
+    h.scroll_pixels(Vec2::new(0.0, 50.0));
+    h.frame(|ui| body(ui, &mut long));
+    assert_eq!(
+        h.state::<TextEditState>(ed_id).view.scroll.offset,
+        Vec2::new(50.0, 0.0),
     );
 }

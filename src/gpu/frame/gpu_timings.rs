@@ -9,7 +9,7 @@
 //!   inside the main pass (`render_groups`), then attribute the
 //!   resolved durations per [`BatchKind`] into the [`GpuPassStats`]
 //!   sink. When off, only pass begin/end are timed via descriptor —
-//!   `last_pass_ms()` is populated, per-kind slots stay `None`.
+//!   `last_pass()` is populated, per-kind slots stay `None`.
 //! - **`PIPELINE_STATISTICS_QUERY`**. When on, we bracket the main
 //!   pass with `begin_pipeline_statistics_query` /
 //!   `end_pipeline_statistics_query` and publish the resolved counts.
@@ -33,7 +33,6 @@ use std::array;
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering::Acquire, Ordering::Release};
-use strum::IntoEnumIterator;
 
 const BYTES_PER_U64: u64 = 8;
 
@@ -472,8 +471,8 @@ fn publish_timestamps(
     }
     // Per-batch attribution when we collected midpoint marks.
     if count >= 3 {
-        let mut per_kind_ns = [0u64; <BatchKind as strum::EnumCount>::COUNT];
-        let mut seen = [false; <BatchKind as strum::EnumCount>::COUNT];
+        let mut per_kind_ns = [0u64; BatchKind::COUNT];
+        let mut seen = [false; BatchKind::COUNT];
         for i in 0..count - 1 {
             let t0 = tick(ts, i);
             let t1 = tick(ts, i + 1);
@@ -482,7 +481,7 @@ fn publish_timestamps(
             seen[kind.idx()] = true;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }
-        for kind in BatchKind::iter() {
+        for kind in BatchKind::ALL {
             if seen[kind.idx()] {
                 sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
             }
@@ -523,6 +522,7 @@ fn publish_stats(bytes: &[u8], sink: &GpuPassStats) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     fn ts_bytes(ticks: &[u64]) -> Vec<u8> {
         ticks.iter().flat_map(|t| t.to_le_bytes()).collect()
@@ -543,20 +543,23 @@ mod tests {
             0.5,
             &sink,
         );
-        assert_eq!(sink.last_pass_ms(), Some(0.002));
-        assert_eq!(sink.last_kind_ms(BatchKind::Quads), Some(0.0));
-        assert_eq!(sink.last_kind_ms(BatchKind::Text), Some(0.002));
-        assert_eq!(sink.last_kind_ms(BatchKind::Mesh), None);
+        assert_eq!(sink.last_pass(), Some(Duration::from_micros(2)));
+        assert_eq!(sink.last_kind(BatchKind::Quads), Some(Duration::ZERO));
+        assert_eq!(
+            sink.last_kind(BatchKind::Text),
+            Some(Duration::from_micros(2))
+        );
+        assert_eq!(sink.last_kind(BatchKind::Mesh), None);
 
         // Frame 2: begin/end only (count == 2 — a truly blank window
         // in per-batch mode). Pass time refreshes to 14000 - 10000 =
         // 4000 ns; every per-kind slot clears to None instead of
         // keeping frame 1's values.
         publish_timestamps(&ts_bytes(&[10_000, 14_000]), 2, &[], 1.0, &sink);
-        assert_eq!(sink.last_pass_ms(), Some(0.004));
-        for kind in BatchKind::iter() {
+        assert_eq!(sink.last_pass(), Some(Duration::from_micros(4)));
+        for kind in BatchKind::ALL {
             assert_eq!(
-                sink.last_kind_ms(kind),
+                sink.last_kind(kind),
                 None,
                 "{} stale after blank measured frame",
                 kind.label(),

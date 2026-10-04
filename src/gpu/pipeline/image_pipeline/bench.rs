@@ -142,7 +142,7 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
     let edge = workload.texel();
     let image = handle
         .get_or_insert_with(|| {
-            ui.load_image(&Image::from_srgba8(UVec2::new(edge, edge), texels(edge)))
+            ui.load_image(&Image::from_srgba8(UVec2::new(edge, edge), texels(edge)).unwrap())
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();
@@ -241,9 +241,9 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
         fixture.render(gpu, workload);
         gpu.poll();
         if frame >= WARMUP_FRAMES
-            && let Some(ms) = fixture.host.gpu_pass_stats().last_kind_ms(BatchKind::Image)
+            && let Some(ms) = fixture.host.gpu_pass_stats().last_kind(BatchKind::Image)
         {
-            image_ms.push(ms);
+            image_ms.push(ms.as_secs_f32() * 1e3);
         }
     }
     let stats = fixture.host.gpu_pass_stats().last_pipeline_stats();

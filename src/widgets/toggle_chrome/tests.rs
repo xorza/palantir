@@ -65,10 +65,12 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
                 .padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
                 .show(ui)
+                .response
                 .node(),
             Checkbox::new(&mut b)
                 .id(WidgetId::from_hash("cb-inherited"))
                 .show(ui)
+                .response
                 .node(),
         ]
     });
@@ -101,10 +103,12 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
                 .padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
                 .show(ui)
+                .response
                 .node(),
             Switch::new(&mut f)
                 .id(WidgetId::from_hash("sw-inherited"))
                 .show(ui)
+                .response
                 .node(),
         ]
     });
@@ -119,37 +123,33 @@ enum Toggle {
 }
 
 /// Record one `kind` bound to `value`, at the origin, and report
-/// `(clicked, changed)` — what its response says this frame.
+/// `(clicked, changed)` — what its response says this frame. Every toggle
+/// reports `changed` exactly when the bound value moved, and commits it at
+/// once.
 fn record_toggle(ui: &mut Ui, kind: Toggle, value: &mut bool, disabled: bool) -> [bool; 2] {
     let id = WidgetId::from_hash("toggle");
-    match kind {
-        Toggle::Checkbox => {
-            let before = *value;
-            let r = Checkbox::new(value)
-                .id(id)
-                .label("t")
-                .disabled(disabled)
-                .show(ui);
-            [r.left.clicked(), *value != before]
-        }
-        Toggle::Switch => {
-            let before = *value;
-            let r = Switch::new(value)
-                .id(id)
-                .label("t")
-                .disabled(disabled)
-                .show(ui);
-            [r.left.clicked(), *value != before]
-        }
-        Toggle::Radio => {
-            let r = RadioButton::new(value, true)
-                .id(id)
-                .label("t")
-                .disabled(disabled)
-                .show(ui);
-            [r.response.left.clicked(), r.changed]
-        }
-    }
+    let before = *value;
+    let r = match kind {
+        Toggle::Checkbox => Checkbox::new(value)
+            .id(id)
+            .label("t")
+            .disabled(disabled)
+            .show(ui),
+        Toggle::Switch => Switch::new(value)
+            .id(id)
+            .label("t")
+            .disabled(disabled)
+            .show(ui),
+        Toggle::Radio => RadioButton::new(value, true)
+            .id(id)
+            .label("t")
+            .disabled(disabled)
+            .show(ui),
+    };
+    let (clicked, changed, committed) = (r.response.left.clicked(), r.changed, r.committed);
+    assert_eq!(changed, *value != before, "{kind:?}: changed is the move");
+    assert_eq!(committed, changed, "{kind:?}: a pick commits at once");
+    [clicked, changed]
 }
 
 /// Two clicks on each toggle, enabled and disabled. A checkbox and a
@@ -193,6 +193,34 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
             }
             let quiet = h.frame_value(|ui| record_toggle(ui, kind, &mut value, disabled));
             assert_eq!(quiet, [false, false], "{kind:?}: the edges are one-shot");
+        }
+    }
+}
+
+/// Space activates a focused toggle as a click does: a checkbox and a
+/// switch flip, a radio selects, and each reports a committed change. An
+/// unfocused toggle ignores the key.
+#[test]
+fn space_activates_a_focused_toggle() {
+    use crate::input::keyboard::key::Key;
+
+    for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {
+        for focused in [true, false] {
+            let mut h = UiHarness::new(UVec2::new(300, 100));
+            let mut value = false;
+            h.frame(|ui| {
+                record_toggle(ui, kind, &mut value, false);
+            });
+            if focused {
+                h.set_focus(WidgetId::from_hash("toggle"));
+            }
+            h.key(Key::Char(' '));
+            let [_, changed] = h.frame_value(|ui| record_toggle(ui, kind, &mut value, false));
+            assert_eq!(
+                (value, changed),
+                (focused, focused),
+                "{kind:?} focused {focused}"
+            );
         }
     }
 }

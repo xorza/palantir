@@ -304,10 +304,10 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
         let frame = |h: &mut UiHarness, size: Size| {
             let report = h.frame(|ui| {
                 let popup = match edge {
-                    Edge::Top => Popup::above(anchor),
-                    Edge::Right => Popup::right_of(anchor),
-                    Edge::Bottom => Popup::below(anchor),
-                    Edge::Left => Popup::left_of(anchor),
+                    Edge::Top => Popup::new(Anchor::above(anchor)),
+                    Edge::Right => Popup::new(Anchor::right_of(anchor)),
+                    Edge::Bottom => Popup::new(Anchor::below(anchor)),
+                    Edge::Left => Popup::new(Anchor::left_of(anchor)),
                 };
                 popup
                     .id(body_id)

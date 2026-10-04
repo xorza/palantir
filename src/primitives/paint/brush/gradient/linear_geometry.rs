@@ -1,10 +1,11 @@
 //! The linear gradient's axis: colour runs along a direction the angle
 //! names.
 
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use std::hash;
 
@@ -14,6 +15,7 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct LinearGeometry {
     /// Axis direction in radians — `0` runs right, `π/2` runs down.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub angle: f32,
 }
 
@@ -23,8 +25,8 @@ pub type LinearGradient = Gradient<LinearGeometry>;
 /// Authoring builder for a [`LinearGradient`].
 pub type LinearGradientBuilder = GradientBuilder<LinearGeometry>;
 
-impl GradientGeometry for LinearGeometry {
-    const DEFAULT_INTERP: Interp = Interp::Oklab;
+impl Geometry for LinearGeometry {
+    const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
 
     /// `dir = (cos(angle), sin(angle))`; the shader projects each
     /// fragment's 0..1 object-local position onto `dir`, then maps the

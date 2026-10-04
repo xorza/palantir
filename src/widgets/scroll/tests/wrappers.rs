@@ -27,7 +27,7 @@ fn split_carries_every_interaction_flag_onto_the_outer_wrapper() {
     assert!(outer.authored_disabled());
     assert!(outer.authored_focusable());
     assert_eq!(outer.authored_input_scope(), KeyFilter::ALL);
-    assert_eq!(inner.authored_input_scope(), KeyFilter::empty());
+    assert_eq!(inner.authored_input_scope(), KeyFilter::NONE);
 }
 
 /// Sizing is the outer wrapper's, and the box the caller sees; padding,

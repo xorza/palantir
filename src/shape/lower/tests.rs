@@ -12,7 +12,7 @@ use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Interp, Spread};
+use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradients::GradientId;
@@ -40,7 +40,7 @@ fn with_corners(corners: Corners) -> Background {
 ///
 /// All four are covered because no no-op predicate owns the question
 /// for any of them: "the radius is NaN" is not a reason the
-/// background paints nothing, and `approx_zero` reports NaN as
+/// background paints nothing, and `is_approx_zero` reports NaN as
 /// non-zero by design so a NaN cannot take the sharp-corner fast
 /// path.
 fn nan_backgrounds() -> [(&'static str, Background); 4] {
@@ -115,12 +115,20 @@ fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
 fn background_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
     let sane = Corners::all(6.0);
-    let kept = background(&mut store, &with_corners(sane));
+    let kept = background(&mut store, &with_corners(sane), Stroke::NONE);
     assert_eq!(kept.corners, sane);
     assert_ne!(
         kept.hash,
-        background(&mut store, &with_corners(Corners::ZERO)).hash,
+        background(&mut store, &with_corners(Corners::ZERO), Stroke::NONE).hash,
         "corners must still reach the chrome hash",
+    );
+    let ring = Stroke::new(RgbaF32::WHITE, 2.0);
+    let ringed = background(&mut store, &with_corners(sane), ring);
+    assert!(ringed.ring, "a ring is flagged on the row");
+    assert!(!kept.ring, "no ring unless one is passed");
+    assert_ne!(
+        ringed.hash, kept.hash,
+        "the ring must reach the chrome hash"
     );
 }
 
@@ -140,7 +148,7 @@ fn a_nan_background_field_never_reaches_the_row() {
     let mut store = RecordStore::default();
     for (label, authored) in nan_backgrounds() {
         let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            background(&mut store, &authored)
+            background(&mut store, &authored, Stroke::NONE)
         })) else {
             // The gate asserted, which is the loudest form of "did
             // not reach the row".
@@ -162,9 +170,10 @@ fn a_nan_background_field_never_reaches_the_row() {
         background(
             &mut store,
             &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
+            Stroke::NONE,
         )
     })) {
-        assert!(row.corners.approx_zero(), "a radius collapses to none");
+        assert!(row.corners.is_approx_zero(), "a radius collapses to none");
     }
 }
 
@@ -184,10 +193,14 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
 
     let mut mode_ids = HashSet::new();
     for spread in [Spread::Pad, Spread::Repeat, Spread::Reflect] {
-        for interp in [Interp::Oklab, Interp::Linear] {
+        for interpolation in [Interpolation::Oklab, Interpolation::Linear] {
             let id = gradient_id(
                 &mut store,
-                &Brush::Linear(base.clone().with_spread(spread).with_interp(interp)),
+                &Brush::Linear(
+                    base.clone()
+                        .with_spread(spread)
+                        .with_interpolation(interpolation),
+                ),
             );
             assert!(
                 mode_ids.insert(id),

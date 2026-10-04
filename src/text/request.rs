@@ -116,7 +116,7 @@ pub(crate) mod internals {
         /// one const face and shape it unbounded, so only a test ever
         /// binds a width or asks for an alignment.
         #[cfg(test)]
-        pub(crate) max_width_px: Option<f32>,
+        pub(crate) max_width: Option<f32>,
         #[cfg(test)]
         pub(crate) halign: HAlign,
     }
@@ -140,8 +140,8 @@ pub(crate) mod internals {
         /// The width this request commits to, or `None` when it is the
         /// run's unbounded root — the question that picks between the
         /// shaper's two measure paths.
-        pub(crate) fn max_width_px(self) -> Option<f32> {
-            self.key.max_width_px()
+        pub(crate) fn max_width(self) -> Option<f32> {
+            self.key.max_width()
         }
     }
 
@@ -153,7 +153,7 @@ pub(crate) mod internals {
             Self {
                 font,
                 #[cfg(test)]
-                max_width_px: None,
+                max_width: None,
                 #[cfg(test)]
                 halign: HAlign::Auto,
             }
@@ -182,29 +182,26 @@ pub(crate) mod internals {
     /// both things only a test does.
     #[cfg(test)]
     impl TestShape {
-        pub(crate) fn font_size(self, size_px: f32) -> Self {
+        pub(crate) fn font_size(self, size: f32) -> Self {
+            Self {
+                font: GlyphFont { size, ..self.font },
+                ..self
+            }
+        }
+
+        pub(crate) fn leading(self, line_height: f32) -> Self {
             Self {
                 font: GlyphFont {
-                    size_px,
+                    line_height,
                     ..self.font
                 },
                 ..self
             }
         }
 
-        pub(crate) fn leading(self, line_height_px: f32) -> Self {
+        pub(crate) fn width(self, max_width: f32) -> Self {
             Self {
-                font: GlyphFont {
-                    line_height_px,
-                    ..self.font
-                },
-                ..self
-            }
-        }
-
-        pub(crate) fn width(self, max_width_px: f32) -> Self {
-            Self {
-                max_width_px: Some(max_width_px),
+                max_width: Some(max_width),
                 ..self
             }
         }
@@ -213,7 +210,7 @@ pub(crate) mod internals {
         /// per-line alignment, which only means anything with one.
         pub(crate) fn unbounded(self) -> Self {
             Self {
-                max_width_px: None,
+                max_width: None,
                 halign: HAlign::Auto,
                 ..self
             }
@@ -269,7 +266,7 @@ pub(crate) mod internals {
         /// since a copy of that mapping is a copy that can go stale.
         pub(crate) fn request(self, text: &str, fit: LineFit) -> TextShapeRequest<'_> {
             let request = self.unbounded_request(text);
-            match self.max_width_px {
+            match self.max_width {
                 Some(width) => request.with_bound(WrapBound::new(width, self.halign, fit)),
                 None => request,
             }

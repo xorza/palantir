@@ -8,6 +8,7 @@ use palantir::{
 };
 
 use crate::fixtures::DARK_BG;
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -44,7 +45,7 @@ fn windowed_rect_masks_corners_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("windowed_rect_masks_corners", &img);
+    assert_matches_golden(GoldenName::WindowedRectMasksCorners, &img);
 }
 
 /// Pin the slot mechanism end-to-end: a parent records three sub-rect
@@ -107,7 +108,7 @@ fn interleaved_shapes_paint_in_record_order() {
                 });
         })
         .image;
-    assert_matches_golden("interleaved_shapes_paint_order", &img);
+    assert_matches_golden(GoldenName::InterleavedShapesPaintOrder, &img);
 }
 
 /// Pin: `Shape::line` paints a fringe-AA stroke. A diagonal 4-px
@@ -149,7 +150,7 @@ fn line_diagonal_aa_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("line_diagonal_aa", &img);
+    assert_matches_golden(GoldenName::LineDiagonalAa, &img);
 }
 
 /// Pin: `Shape::polyline` with `per_point` colours paints
@@ -186,7 +187,7 @@ fn polyline_gradient_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("polyline_gradient", &img);
+    assert_matches_golden(GoldenName::PolylineGradient, &img);
 }
 
 /// Pin: sharp Miter polyline joins downgrade to a clean bevel
@@ -222,7 +223,7 @@ fn polyline_bevel_join_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("polyline_bevel_join", &img);
+    assert_matches_golden(GoldenName::PolylineBevelJoin, &img);
 }
 
 /// Pin: `LineCap::Round` paints a half-disc fan at each endpoint
@@ -257,7 +258,7 @@ fn polyline_round_caps_match_golden() {
                 });
         })
         .image;
-    assert_matches_golden("polyline_round_caps", &img);
+    assert_matches_golden(GoldenName::PolylineRoundCaps, &img);
 }
 
 /// Pin: `LineJoin::Round` paints a circular arc at interior joins.
@@ -291,7 +292,7 @@ fn polyline_round_join_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("polyline_round_join", &img);
+    assert_matches_golden(GoldenName::PolylineRoundJoin, &img);
 }
 
 /// Pin: translucent polyline joints must not double-blend. The GPU
@@ -354,7 +355,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
              adjacent segments double-blended their concave overlap",
         );
     }
-    assert_matches_golden("polyline_translucent_joins", &img);
+    assert_matches_golden(GoldenName::PolylineTranslucentJoins, &img);
 }
 
 /// Pin: a translucent polyline must blend through
@@ -467,7 +468,7 @@ fn curve_caps_match_golden() {
                 });
         })
         .image;
-    assert_matches_golden("curve_caps", &img);
+    assert_matches_golden(GoldenName::CurveCaps, &img);
 }
 
 /// Rounded-triangle SDF primitive: pins the `FillKind::TRIANGLE` shader
@@ -529,7 +530,7 @@ fn triangle_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("triangle", &img);
+    assert_matches_golden(GoldenName::Triangle, &img);
 }
 
 /// Pin: `Shape::arc` renders natively on the GPU curve pipeline. A
@@ -571,7 +572,7 @@ fn arc_shapes_match_golden() {
                 });
         })
         .image;
-    assert_matches_golden("arc_shapes", &img);
+    assert_matches_golden(GoldenName::ArcShapes, &img);
 }
 
 /// A triangle with no area has no inside, so a radius grows its edges and

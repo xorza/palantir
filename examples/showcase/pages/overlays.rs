@@ -5,16 +5,14 @@
 //! within ~1 s and the next bubble skips the delay. ContextMenus attach
 //! to any sensed widget and auto-open on secondary-click at the pointer.
 
-use palantir::Anchor;
-
 use std::time::Duration;
 
 use crate::support;
 use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
-    Align, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem, Panel,
-    Popup, Rect, ResponseSnapshot, Sense, Shortcut, ShortcutMods, Sizing, Spacing, Text, Tooltip,
-    Ui, Vec2, WidgetId, fmt,
+    Align, Anchor, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem,
+    MenuSeparator, Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text,
+    Tooltip, Ui, Vec2, WidgetId, fmt,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -119,17 +117,14 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("default")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label("Default 0.5 s delay before this appears.")
-                    .show(ui);
+                Tooltip::on(&r, "Default 0.5 s delay before this appears.").show(ui);
 
                 let r = Button::new()
                     .id_salt("d-instant")
                     .label("instant")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label("No delay — fires the frame the pointer arrives.")
+                Tooltip::on(&r, "No delay — fires the frame the pointer arrives.")
                     .delay(Duration::ZERO)
                     .show(ui);
 
@@ -138,8 +133,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("slow (1.5 s)")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label("Held for 1.5 s before showing.")
+                Tooltip::on(&r, "Held for 1.5 s before showing.")
                     .delay(Duration::from_millis(1_500))
                     .show(ui);
 
@@ -148,23 +142,25 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("long text")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label(
-                        "Tooltips wrap to the configured max width — the default is \
+                Tooltip::on(
+                    &r,
+                    "Tooltips wrap to the configured max width — the default is \
                          280 logical pixels. Long bodies stack into multiple lines \
                          automatically; the bubble's height hugs the shaped text.",
-                    )
-                    .show(ui);
+                )
+                .show(ui);
 
                 let r = Button::new()
                     .id_salt("w-2")
                     .label("narrow")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label("Override max width to force tighter wrap on a single tooltip.")
-                    .max_size((140.0, f32::INFINITY))
-                    .show(ui);
+                Tooltip::on(
+                    &r,
+                    "Override max width to force tighter wrap on a single tooltip.",
+                )
+                .max_size((140.0, f32::INFINITY))
+                .show(ui);
 
                 let r = Button::new()
                     .id_salt("dis-1")
@@ -172,9 +168,11 @@ fn tooltip_section(ui: &mut Ui) {
                     .disabled(true)
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label("This text is suppressed by the default skip-on-disabled rule.")
-                    .show(ui);
+                Tooltip::on(
+                    &r,
+                    "This text is suppressed by the default skip-on-disabled rule.",
+                )
+                .show(ui);
 
                 let r = Button::new()
                     .id_salt("dis-2")
@@ -182,10 +180,12 @@ fn tooltip_section(ui: &mut Ui) {
                     .disabled(true)
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r)
-                    .label("Opt in via .when_disabled(true) for 'why is this disabled' hints.")
-                    .when_disabled(true)
-                    .show(ui);
+                Tooltip::on(
+                    &r,
+                    "Opt in via .when_disabled(true) for 'why is this disabled' hints.",
+                )
+                .when_disabled(true)
+                .show(ui);
             });
         },
     );
@@ -202,15 +202,17 @@ fn tooltip_section(ui: &mut Ui) {
                         .label(fmt!(ui, "item {}", i + 1))
                         .show(ui)
                         .snapshot();
-                    Tooltip::on(&r)
-                        .label(match i {
+                    Tooltip::on(
+                        &r,
+                        match i {
                             0 => "Hover, then move to the next item within ~1 s.",
                             1 => "See how the next bubble appears instantly?",
                             2 => "The warmup window keeps scanning a row snappy.",
                             3 => "Pause for ~1 s and the next one re-delays.",
                             _ => "Last one.",
-                        })
-                        .show(ui);
+                        },
+                    )
+                    .show(ui);
                 }
             });
         },
@@ -240,8 +242,8 @@ fn context_menu_section(ui: &mut Ui) {
 
                 // Static strings only — no per-frame alloc.
                 let label = ui
-                    .state_or_default::<CtxState>(state_id)
-                    .last_action
+                    .state::<CtxState>(state_id)
+                    .and_then(|s| s.last_action)
                     .unwrap_or("last action: (none yet)");
                 Text::new(label)
                     .id_salt("ctx-status")
@@ -309,7 +311,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
     // `style` setter takes an `Option`, so "styled or default" stays a value
     // threaded through the tree rather than a branch around each widget.
     let style = matches!(flavor, Flavor::Wide).then(|| roomy_menu_theme(ui));
-    let mut menu = ContextMenu::attach(ui, trigger)
+    let mut menu = ContextMenu::on(trigger)
         .size((Sizing::HUG, Sizing::HUG))
         .style(style.as_ref());
     if style.is_some() {
@@ -330,23 +332,25 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
                 .left
                 .clicked()
             {
-                ui.state_or_default::<CtxState>(state_id).last_action = Some(action);
+                ui.with_state::<CtxState, _>(state_id, |_, s| s.last_action = Some(action));
             }
         }
-        MenuItem::separator().style(rule).show(ui);
+        MenuSeparator::new().style(rule).show(ui);
         MenuItem::new("Disabled")
             .disabled(true)
             .style(item)
             .show(ui, popup);
-        MenuItem::separator().style(rule).show(ui);
+        MenuSeparator::new().style(rule).show(ui);
         if MenuItem::new("Delete")
-            .shortcut(Shortcut::new(ShortcutMods::NONE, Key::Backspace))
+            .shortcut(Shortcut::key(Key::Backspace))
             .style(item)
             .show(ui, popup)
             .left
             .clicked()
         {
-            ui.state_or_default::<CtxState>(state_id).last_action = Some("last action: Delete");
+            ui.with_state::<CtxState, _>(state_id, |_, s| {
+                s.last_action = Some("last action: Delete");
+            });
         }
     });
 }

@@ -27,7 +27,7 @@ fn click_to_edit_types_and_commits_on_enter() {
     // Editor frame: entry seeds the buffer from the value.
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.a().committed);
-    assert_eq!(edit_buffer(&mut h.ui, id), "5.0", "seeded on entry");
+    assert_eq!(edit_buffer(&h.ui, id), "5.0", "seeded on entry");
 
     // First keystroke replaces the select-all'd seed; second appends.
     h.key(Key::Char('7'));
@@ -58,6 +58,7 @@ fn escape_reverts_the_draft_without_a_commit() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.set_focus(id);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     for c in ['4', '2'] {
         h.key(Key::Char(c));
@@ -72,7 +73,7 @@ fn escape_reverts_the_draft_without_a_commit() {
         );
     }
     assert_eq!(canonical, 5.0);
-    assert!(h.ui.focused_id().is_none(), "Escape blurs");
+    assert_eq!(h.ui.focus(), Some(id), "Escape leaves the chip focused");
 
     let live_id = WidgetId::from_hash("dv-escape-live");
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -89,6 +90,7 @@ fn escape_reverts_the_draft_without_a_commit() {
     };
     live(&mut h, &mut value);
     h.set_focus(live_id);
+    h.key(Key::Enter);
     live(&mut h, &mut value);
     for c in ['4', '2'] {
         h.key(Key::Char(c));
@@ -102,9 +104,9 @@ fn escape_reverts_the_draft_without_a_commit() {
 }
 
 #[test]
-fn programmatic_focus_seeds_a_fresh_buffer() {
+fn a_new_edit_seeds_a_fresh_buffer() {
     // Regression: the buffer used to be seeded only by the click path, so
-    // set_focus re-opened the previous session's stale text and
+    // a keyboard entry re-opened the previous session's stale text and
     // committed it over an externally-changed value.
     let id = WidgetId::from_hash("dv-fresh-seed");
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -113,6 +115,7 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
 
     // First session commits 42 and leaves "42" in the buffer state.
     h.set_focus(id);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.key(Key::Char('4'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -122,11 +125,12 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 42.0);
 
-    // The value changes externally; a new focus must show 99, not 42.
+    // The value changes externally; a new edit must show 99, not 42.
     canonical = 99.0;
     h.set_focus(id);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert_eq!(edit_buffer(&mut h.ui, id), "99.0");
+    assert_eq!(edit_buffer(&h.ui, id), "99.0");
 
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -147,6 +151,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.set_focus(id);
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(matches!(
         h.state::<DragValueState>(id),
@@ -167,7 +172,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // the typed path is covered by `click_to_edit_types_and_commits_on_enter`)
     // + Enter: the draft wins, exactly one commit — the stale scrubbed 30
     // must not overwrite it from the same-frame chip pass.
-    *edit_buffer(&mut h.ui, id) = "42".to_string();
+    set_edit_buffer(&mut h.ui, id, "42");
     h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(s.a().committed && s.count_where(|e| e.committed) == 1);
@@ -193,8 +198,9 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
     // non-finite parses poison every later scrub, so they're rejected.
     for bad in ["junk", "nan", "inf", "-inf"] {
         h.set_focus(id);
+        h.key(Key::Enter);
         deferred_frame(&mut h, id, &mut canonical, true, false);
-        *edit_buffer(&mut h.ui, id) = bad.to_string();
+        set_edit_buffer(&mut h.ui, id, bad);
         h.clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, true, false);
         assert!(
@@ -213,6 +219,8 @@ fn disabling_mid_edit_discards_the_draft() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     h.set_focus(id);
+
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.key(Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -221,7 +229,7 @@ fn disabling_mid_edit_discards_the_draft() {
     // draft is discarded — a locked control must not emit an edit.
     let s = deferred_frame(&mut h, id, &mut canonical, true, true);
     assert!(!s.a().committed, "locked control emits no commit");
-    assert_eq!(h.focused_id(), None, "disable kicks the editor's focus");
+    assert_eq!(h.focus(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
         h.state::<DragValueState>(id),
@@ -244,6 +252,8 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     h.set_focus(id);
+
+    h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.key(Key::Char('9'));
     h.key(Key::Char('9'));
@@ -307,9 +317,17 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
     );
 }
 
-fn edit_buffer(ui: &mut Ui, id: WidgetId) -> &mut String {
-    match ui.state_or_default::<DragValueState>(id) {
-        DragValueState::Editing { buffer, .. } => buffer,
+fn edit_buffer(ui: &Ui, id: WidgetId) -> &str {
+    match ui.state::<DragValueState>(id) {
+        Some(DragValueState::Editing { buffer, .. }) => buffer,
         state => panic!("expected DragValue edit state, got {state:?}"),
     }
+}
+
+/// Write the open editor's draft, as typing would have left it.
+fn set_edit_buffer(ui: &mut Ui, id: WidgetId, text: &str) {
+    ui.with_state::<DragValueState, _>(id, |_, state| match state {
+        DragValueState::Editing { buffer, .. } => *buffer = text.to_owned(),
+        state => panic!("expected DragValue edit state, got {state:?}"),
+    });
 }

@@ -2,7 +2,8 @@
 //! `ShapeRecord::Quad(QuadShape::Triangle)`.
 
 use crate::primitives::geometry::rect::aabb::Aabb;
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain;
+use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -33,27 +34,44 @@ impl TriangleShape {
             c,
             radius: 0.0,
             fill: RgbaF32::TRANSPARENT,
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
         }
     }
 }
 
 impl TriangleShape {
     /// Interior paint.
-    pub fn fill(mut self, fill: impl Into<RgbaF32>) -> Self {
-        self.fill = fill.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `fill` is a [colour](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn fill(mut self, fill: RgbaF32) -> Self {
+        self.fill = domain::color(fill);
         self
     }
 
     /// Edge paint, inside the boundary like every area shape's.
-    pub fn border(mut self, border: impl Into<Stroke>) -> Self {
-        self.border = border.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the width is a [length](crate::widget::domain::length) and
+    /// the colour a [colour](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn border(mut self, border: Stroke) -> Self {
+        border.validate();
+        self.border = border;
         self
     }
 
     /// Round all three corners by this radius.
-    pub fn radius(mut self, radius: impl Into<f32>) -> Self {
-        self.radius = radius.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `radius` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn radius(mut self, radius: f32) -> Self {
+        self.radius = domain::length(radius);
         self
     }
 }
@@ -71,7 +89,7 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
         .max(bc.length_squared());
     // Longest-edge normalization keeps the cutoff independent of authored scale.
     let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
-    paints_nothing(normalized_twice_area)
+    is_invisible(normalized_twice_area)
 }
 impl sealed::LowerShape for TriangleShape {
     /// A thin or collapsed triangle with a radius is not empty: the SDF
@@ -79,7 +97,7 @@ impl sealed::LowerShape for TriangleShape {
     /// edges or a disc at its point.
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.border.is_noop())
-            || (paints_nothing(self.radius) && triangle_paint_empty(self.a, self.b, self.c))
+            || (is_invisible(self.radius) && triangle_paint_empty(self.a, self.b, self.c))
     }
 
     /// `radius` has to be named. Lowering launders it —

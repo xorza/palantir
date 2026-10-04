@@ -22,6 +22,7 @@ mod text_layout;
 mod unicode;
 mod view_state;
 
+use crate::common::span::Span;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -30,7 +31,9 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::text::text_input::TextInput;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -41,7 +44,7 @@ use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::text_edit::caret_paint::CaretPaint;
-use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::edit_state::{EditKind, EditState};
 use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
 use crate::widgets::text_edit::paint_input::PaintInput;
@@ -65,6 +68,54 @@ struct TextEditState {
     /// disjoint, where a field of `view` would have to be moved out and put
     /// back around every call that touches the rest of the view.
     selection_rects: Vec<Rect>,
+    /// An interned placeholder's characters, copied out of the arena so the
+    /// pass can measure them while it holds `&mut Ui`. Retained, so a
+    /// steady placeholder allocates once.
+    placeholder: String,
+    /// The focus session has an uncommitted result: set when focus
+    /// arrives and on every edit, cleared by the commit or the cancel that
+    /// ends it. What keeps a blur after Enter from committing twice.
+    commit_pending: bool,
+    /// The input method's live composition, copied out of `Ui` so the
+    /// pass can hold it beside `&mut Ui`, and its cursor; empty when
+    /// nothing is composing. Retained.
+    preedit: String,
+    preedit_cursor: Option<Span>,
+    /// What the field shows while composing — the buffer with the
+    /// preedit spliced in at the caret. The bound `String` changes only
+    /// when the composition commits. Retained.
+    display: String,
+    /// A composition was live last pass, so this pass's is not its start.
+    composing: bool,
+}
+
+/// One pass's inputs to [`TextEditState::roll_commit`].
+#[derive(Clone, Copy, Debug)]
+struct CommitPass {
+    focus: FocusEdges,
+    changed: bool,
+    submitted: bool,
+    canceled: bool,
+    disabled: bool,
+}
+
+impl TextEditState {
+    /// Whether this pass commits, as [`TextEditResponse::committed`]
+    /// states it, and what stays pending for a later pass.
+    const fn roll_commit(&mut self, pass: CommitPass) -> bool {
+        if pass.disabled || pass.canceled {
+            self.commit_pending = false;
+            return false;
+        }
+        if pass.focus.gained || pass.changed {
+            self.commit_pending = true;
+        }
+        let committed = pass.submitted || (pass.focus.lost && self.commit_pending);
+        if committed || pass.focus.lost {
+            self.commit_pending = false;
+        }
+        committed
+    }
 }
 
 /// Editable text leaf. Supports typing (whatever text a press produced —
@@ -72,10 +123,21 @@ struct TextEditState {
 /// (+ shift / home / end), drag-select, multi-line, cut/copy/paste, undo+redo
 /// (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z), escape-to-blur, click-to-place-caret.
 ///
+/// While focused it asks for IME text ([`Ui::request_ime`]), so an input
+/// method composes in place: the composition shows at the caret,
+/// underlined, and the bound `String` changes only when it commits. A
+/// commit types as keys would, so its control characters — a newline
+/// among them — are dropped, as a key's are.
+///
 /// Borrows `&'a mut String` for the buffer — host owns the storage and
 /// the widget retains only semantic and view state. Host-side buffer
 /// mutations between frames are visible immediately; persisted offsets
 /// are repaired before each input pass.
+///
+/// The wheel pans the text only along the axis it overflows on — x for a
+/// single line, y for [`Self::multiline`] — and reaches the container
+/// behind the field on the other. A plain vertical wheel turn pans a
+/// single-line field when nothing under the pointer scrolls vertically.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TextEdit<'a> {
@@ -83,7 +145,7 @@ pub struct TextEdit<'a> {
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
     overrides: TextStyleOverrides,
-    placeholder: &'a str,
+    placeholder: TextInput<'a>,
     /// When `true`, Enter inserts `\n`, paste preserves newlines,
     /// click hit-test + caret + selection render in 2D, and text
     /// soft-wraps to the editor's inner width via cosmic-text. v1
@@ -132,7 +194,8 @@ impl<'a> TextEdit<'a> {
         // an editor whose content overflows has somewhere to go, and
         // without the sense the wheel routed straight past it to
         // whatever container sat behind — a multi-line editor could only
-        // be panned by moving the caret.
+        // be panned by moving the caret. `pass` narrows it to the axis
+        // the text overflows on before the node records.
         //
         // The clip keeps glyphs, caret, and selection wash inside the
         // editor's own rect, so a `Fixed`-sized editor with long content
@@ -150,7 +213,7 @@ impl<'a> TextEdit<'a> {
             text,
             style: None,
             overrides: TextStyleOverrides::NONE,
-            placeholder: "",
+            placeholder: TextInput::Borrowed(""),
             multiline: false,
             text_align: None,
             max_chars: None,
@@ -174,24 +237,40 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Fill colour for the buffer, overriding the resolved look's.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
-        self.overrides.color = Some(color);
+        self.overrides.color = Some(domain::color(color));
         self
     }
 
-    /// Font size in logical px, overriding the resolved look's.
+    /// Font size in logical px, a *length*, overriding the resolved look's.
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size_px = Some(px);
+        self.overrides.font_size = Some(domain::length(px));
         self
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
-    /// look's `line_height_mult`. Sets the caret's height with it.
-    pub const fn line_height(mut self, mult: f32) -> Self {
-        self.overrides.line_height_mult = Some(mult);
+    /// look's `line_height_factor`. Sets the caret's height with it. `factor`:
+    /// *positive*, as a theme file's is.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    #[track_caller]
+    pub const fn line_height_factor(mut self, factor: f32) -> Self {
+        self.overrides.line_height_factor = Some(domain::positive(factor));
         self
     }
 
@@ -234,8 +313,8 @@ impl<'a> TextEdit<'a> {
     /// same-frame pointer press — so a value handed to it (via `set_focus`)
     /// is replaced by the first keystroke. Clicking into the field still
     /// places the caret at the hit. Default off.
-    pub const fn select_all_on_focus(mut self) -> Self {
-        self.select_all_on_focus = true;
+    pub const fn select_all_on_focus(mut self, on: bool) -> Self {
+        self.select_all_on_focus = on;
         self
     }
 
@@ -251,8 +330,8 @@ impl<'a> TextEdit<'a> {
     /// Off by default, because the other archetype is the common one: an
     /// inline rename or a value editor, where Escape *is* the cancel and
     /// must not reach past the field to close the surface behind it.
-    pub const fn escape_falls_through(mut self) -> Self {
-        self.escape_falls_through = true;
+    pub const fn escape_falls_through(mut self, on: bool) -> Self {
+        self.escape_falls_through = on;
         self
     }
 
@@ -277,7 +356,7 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Switch to multi-line mode. Enter inserts `\n` (instead of
-    /// blurring), paste / IME-text preserve newlines, text soft-wraps
+    /// blurring), paste preserves newlines, text soft-wraps
     /// to the editor's inner width, and click/caret/selection all
     /// route through cosmic-text's 2D layout.
     pub const fn multiline(mut self, on: bool) -> Self {
@@ -285,36 +364,10 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Text drawn in place of an empty, unfocused buffer.
-    ///
-    /// Borrowed for the frame, so it need not be `'static` — a prompt from
-    /// a locale table goes straight in.
-    pub const fn placeholder(mut self, s: &'a str) -> Self {
-        self.placeholder = s;
-        self
-    }
-
-    /// Take over the placement half of `from` — where the widget sits in
-    /// its parent, not what it looks like.
-    ///
-    /// For a widget that *becomes* a `TextEdit` partway through a
-    /// gesture: [`crate::DragValue`] swaps its scrub chip for an inline
-    /// editor on click, and without this the field visibly moved and
-    /// resized on the edit frame because margin, alignment, grid
-    /// placement and canvas position all vanished with the chip.
-    ///
-    /// Three fields the caller might expect are deliberately not
-    /// placement, and [`Widget::adopt_placement`] leaves all three alone.
-    /// Sizing is resolved by the caller, which pins the width to the
-    /// chip's last rect so a long value scrolls instead of growing the
-    /// row. Box parity is the *theme's* job — `DragValueTheme::from_chip`
-    /// mirrors the chip's padding onto the editor — and the chip resolves
-    /// its own padding from the theme rather than from this node. And
-    /// `TextEdit` wraps a [`crate::Scroll`], which overwrites `transform`
-    /// with its pan offset, so forwarding one would read as supported
-    /// while doing nothing.
-    pub fn adopt_placement(mut self, from: &Widget) -> Self {
-        self.widget.adopt_placement(from);
+    /// Text drawn in place of an empty, unfocused buffer: borrowed, owned,
+    /// interned or `fmt!` output, as every widget's text.
+    pub fn placeholder(mut self, text: impl Into<TextInput<'a>>) -> Self {
+        self.placeholder = text.into();
         self
     }
 
@@ -336,12 +389,13 @@ impl<'a> TextEdit<'a> {
             // The pass already probed this id and tracked the one field that
             // can move under it mid-pass (focus), so it hands the state back
             // rather than paying a second cascade + layout lookup here.
-            response: Response::eager(id, ui, signals.state),
+            response: Response::new(id, ui, signals.state),
             changed: signals.changed,
+            committed: signals.committed,
             submitted: signals.submitted,
-            cancelled: signals.cancelled,
-            gained_focus: signals.gained_focus,
-            lost_focus: signals.lost_focus,
+            canceled: signals.canceled,
+            focus_gained: signals.focus_gained,
+            focus_lost: signals.focus_lost,
         }
     }
 
@@ -349,7 +403,7 @@ impl<'a> TextEdit<'a> {
     /// [`Self::show`] for why it is passed in rather than looked up.
     /// Returns the borrow-free half of [`TextEditResponse`].
     fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> EditSignals {
-        let mut is_focused = ui.focused_id() == Some(id);
+        let mut is_focused = ui.focus() == Some(id);
         // The pass's one probe, and what `show` hands back at the end.
         // Nothing below can move a cascade or layout answer — both are frozen
         // for the pass — so the only field kept current is `focused`, updated
@@ -410,8 +464,19 @@ impl<'a> TextEdit<'a> {
         // the box paints, the layout below does not run.
         if !look.text.metrics_valid() {
             let focus = state.view.roll_focus(is_focused);
+            let committed = state.roll_commit(CommitPass {
+                focus,
+                changed: false,
+                submitted: false,
+                canceled: false,
+                disabled: response.disabled,
+            });
+            let sense = self.widget.authored_sense();
+            self.widget
+                .configure()
+                .sense(sense.difference(Sense::SCROLL));
             self.widget.record(ui, Some(&look.background), |_| {});
-            return EditSignals::focus_only(focus, response);
+            return EditSignals::focus_only(focus, committed, response);
         }
         let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored
@@ -450,7 +515,7 @@ impl<'a> TextEdit<'a> {
         let caret_before = state.edit.caret;
         let sel_before = state.edit.selection;
         let InputResult {
-            cancelled,
+            canceled,
             submitted,
             edited,
         } = InputPass {
@@ -466,7 +531,7 @@ impl<'a> TextEdit<'a> {
             state,
         }
         .run(ui);
-        if cancelled {
+        if canceled {
             ui.clear_focus();
             is_focused = false;
             response.focused = false;
@@ -491,7 +556,37 @@ impl<'a> TextEdit<'a> {
             let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
             editor.show_menu(ui, &snapshot, filter)
         };
-        let changed = edited || menu_edited;
+        // A composition shows in place and types nothing until it commits.
+        // Starting one over a selection deletes the selection first, as a
+        // browser's field does — that delete is an edit like any other.
+        let composing = is_focused
+            && !response.disabled
+            && match ui.ime_preedit() {
+                Some(preedit) => {
+                    state.preedit.clear();
+                    state.preedit.push_str(preedit.text);
+                    state.preedit_cursor = preedit.cursor;
+                    true
+                }
+                None => false,
+            };
+        let cleared = composing && !state.composing && {
+            let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
+            let had_selection = editor.has_selection();
+            if had_selection {
+                editor.replace_selection("", EditKind::Delete);
+            }
+            had_selection
+        };
+        state.composing = composing;
+        let changed = edited || menu_edited || cleared;
+        let committed = state.roll_commit(CommitPass {
+            focus,
+            changed,
+            submitted,
+            canceled,
+            disabled: response.disabled,
+        });
         let caret_moved = caret_before != state.edit.caret || sel_before != state.edit.selection;
         let caret_byte = state.edit.caret;
         let selection = state.edit.sel_range();
@@ -502,21 +597,81 @@ impl<'a> TextEdit<'a> {
         let wheel = if response.disabled {
             Vec2::ZERO
         } else {
-            response.scroll.pan(ctx.font.line_height_px)
+            response.scroll.pan(ctx.font.line_height)
         };
 
+        let placeholder: &str = match &self.placeholder {
+            TextInput::Borrowed(text) => text,
+            TextInput::Owned(text) => text,
+            TextInput::Interned(text) => {
+                state.placeholder.clear();
+                state.placeholder.push_str(ui.text(*text));
+                &state.placeholder
+            }
+        };
+        // While composing, the run shaped is the buffer with the preedit
+        // spliced in at the caret; the caret sits at the input method's
+        // cursor inside it, and the range the wash covers is the
+        // composition, which paint underlines instead of washing.
+        let (text, caret_byte, wash) = if composing {
+            state.display.clear();
+            state.display.push_str(&self.text[..caret_byte]);
+            state.display.push_str(&state.preedit);
+            state.display.push_str(&self.text[caret_byte..]);
+            let end = caret_byte + state.preedit.len();
+            let cursor = state
+                .preedit_cursor
+                .map_or(state.preedit.len(), |cursor| cursor.range().end);
+            (
+                state.display.as_str(),
+                caret_byte + cursor,
+                Some(caret_byte..end),
+            )
+        } else {
+            (
+                self.text.as_str(),
+                caret_byte,
+                is_focused.then_some(selection).flatten(),
+            )
+        };
         let geometry = TextGeometry::resolve(
             ui,
             GeometryInput {
                 layout,
-                text: self.text,
-                placeholder: self.placeholder,
+                text,
+                placeholder,
                 caret: caret_byte,
-                selection: is_focused.then_some(selection).flatten(),
+                selection: wash,
             },
             &mut state.selection_rects,
         );
-        state.edit.observe_text_hash(geometry.text_hash);
+        // The probe hashed what is on show, which is not the buffer while
+        // composing — and the buffer's identity is what the edit history
+        // reconciles against.
+        state.edit.observe_text_hash(if composing {
+            Some(EditState::text_hash(self.text))
+        } else {
+            geometry.text_hash
+        });
+        if is_focused
+            && !response.disabled
+            && let Some(layout_rect) = response.layout_rect
+        {
+            // The caret in screen space, for the platform's candidate
+            // list: block-local, slid by the field's scroll, placed by the
+            // block's offset in the padded box, then carried by the
+            // transform the field records under. The box and the block's
+            // offset are last arrange's, which is all a record pass has.
+            let caret = geometry.caret_pos;
+            let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
+            let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
+            let [left, top, _, _] = ctx.padding.as_array();
+            let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
+            ui.request_ime(response.transform.apply_rect(Rect {
+                min: scrolled.min + origin,
+                size: scrolled.size,
+            }));
+        }
         let now = ui.now();
         let caret_anim = state.view.update(ViewUpdateInput {
             geometry,
@@ -525,15 +680,23 @@ impl<'a> TextEdit<'a> {
             focused: is_focused,
             caret_moved,
             changed,
-            gained_focus: focus.gained,
+            focus_gained: focus.gained,
             now,
         });
+        // The wheel senses only the axis the text overflows on, so the
+        // other one — and both, while the text fits — reaches the
+        // container behind the field.
+        let sense = self.widget.authored_sense();
+        self.widget
+            .configure()
+            .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));
         let text_color = look.text.color;
         PaintInput {
             chrome: look.background,
             block_id: id.with("text-block"),
-            text: self.text,
-            placeholder: self.placeholder,
+            text,
+            preedit_underline: composing.then_some(caret_width),
+            placeholder,
             geometry,
             selection_rects: &state.selection_rects,
             selection_color,
@@ -550,10 +713,11 @@ impl<'a> TextEdit<'a> {
         .record(ui, self.widget);
         EditSignals {
             changed,
+            committed,
             submitted,
-            cancelled,
-            gained_focus: focus.gained,
-            lost_focus: focus.lost,
+            canceled,
+            focus_gained: focus.gained,
+            focus_lost: focus.lost,
             state: response,
         }
     }
@@ -572,13 +736,14 @@ impl Configure for TextEdit<'_> {
 #[derive(Clone, Copy, Debug)]
 struct EditSignals {
     changed: bool,
+    committed: bool,
     submitted: bool,
-    cancelled: bool,
-    gained_focus: bool,
-    lost_focus: bool,
+    canceled: bool,
+    focus_gained: bool,
+    focus_lost: bool,
     /// The response the pass probed — disabled already folded in — with
     /// `focused` as the pass left it. What `show` hands to
-    /// [`Response::eager`] instead of re-probing. Every other field is
+    /// [`Response::new`] instead of re-probing. Every other field is
     /// frozen for the pass, so this is the same answer a second probe
     /// would give.
     state: ResponseState,
@@ -587,13 +752,14 @@ struct EditSignals {
 impl EditSignals {
     /// A pass that left the buffer alone, so the focus roll is all it
     /// has to report.
-    const fn focus_only(focus: FocusEdges, state: ResponseState) -> Self {
+    const fn focus_only(focus: FocusEdges, committed: bool, state: ResponseState) -> Self {
         Self {
             changed: false,
+            committed,
             submitted: false,
-            cancelled: false,
-            gained_focus: focus.gained,
-            lost_focus: focus.lost,
+            canceled: false,
+            focus_gained: focus.gained,
+            focus_lost: focus.lost,
             state,
         }
     }
@@ -610,21 +776,27 @@ pub struct TextEditResponse<'a> {
     pub response: Response<'a>,
     /// The buffer was edited this frame (characters inserted or removed).
     pub changed: bool,
+    /// The edit finished this frame and the buffer holds its result, as
+    /// [`ValueResponse::committed`](crate::ValueResponse::committed)
+    /// means it: on Enter in a single-line editor, or on the blur that
+    /// ends a focus session, and never on Escape or on a blur because the
+    /// editor turned disabled. A session commits once, so a blur after
+    /// Enter commits again only when an edit came between them.
+    pub committed: bool,
     /// The user pressed Enter in a single-line editor — the conventional
     /// "accept" signal. Always `false` in multi-line mode (Enter inserts `\n`).
     pub submitted: bool,
     /// The user pressed Escape with no selection left to collapse — the
     /// conventional "cancel" signal.
     ///
-    /// Escape also blurs, so [`Self::lost_focus`] fires alongside it. A
-    /// commit-on-blur caller has to test this **first**, or a cancel is
-    /// indistinguishable from clicking away.
-    pub cancelled: bool,
+    /// Escape also blurs, so [`Self::focus_lost`] fires alongside it, and
+    /// [`Self::committed`] does not.
+    pub canceled: bool,
     /// The editor took focus this frame.
-    pub gained_focus: bool,
+    pub focus_gained: bool,
     /// The editor lost focus this frame (clicked away, another widget focused,
-    /// or Escape) — the conventional "commit on blur" signal.
-    pub lost_focus: bool,
+    /// or Escape). Read [`Self::committed`] to commit on blur.
+    pub focus_lost: bool,
 }
 
 #[cfg(test)]
@@ -636,18 +808,20 @@ pub(crate) mod internals {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) struct EditEdges {
         pub(crate) changed: bool,
+        pub(crate) committed: bool,
         pub(crate) submitted: bool,
-        pub(crate) gained_focus: bool,
-        pub(crate) lost_focus: bool,
+        pub(crate) focus_gained: bool,
+        pub(crate) focus_lost: bool,
     }
 
     impl TextEditResponse<'_> {
         pub(crate) const fn edges(&self) -> EditEdges {
             EditEdges {
                 changed: self.changed,
+                committed: self.committed,
                 submitted: self.submitted,
-                gained_focus: self.gained_focus,
-                lost_focus: self.lost_focus,
+                focus_gained: self.focus_gained,
+                focus_lost: self.focus_lost,
             }
         }
     }

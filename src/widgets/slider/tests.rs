@@ -35,7 +35,7 @@ fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passe
 /// The release frame re-writes the value, so a caller that re-seeds its
 /// draft from a canonical copy every frame and adopts it only on
 /// `committed` still observes the gesture's result. A release is neither
-/// `pressed()` nor `dragging()`, so without naming it the deferred
+/// `pressed()` nor `is_live()`, so without naming it the deferred
 /// caller would read its own seed back on the one frame it acts on.
 ///
 /// Geometry: 118 wide, knob 18, so travel is 100 px starting at x = 9 —
@@ -152,7 +152,7 @@ fn explicit_size_overrides_fill_default() {
 
 /// Each endpoint collapses one track segment to a zero-extent `Fixed`, and an
 /// unseeded value lays out as the low end rather than reaching
-/// `Sizing::share`'s finite assert — the value is app state the widget
+/// `Sizing::fill`'s finite assert — the value is app state the widget
 /// borrows and cannot assert on.
 #[test]
 fn endpoint_rails_collapse_without_invalid_fill_weights() {
@@ -293,7 +293,7 @@ fn snap_to_step_rounds_to_grid() {
 #[test]
 fn step_rejects_a_value_that_cannot_snap() {
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        panic_probe::assert_panics_with("slider step must be finite and greater than zero", || {
+        panic_probe::assert_panics_with("a positive value must be finite and above zero", || {
             let mut v = 0.5_f64;
             let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
         });
@@ -310,7 +310,7 @@ fn new_rejects_an_infinite_range() {
         (f64::NEG_INFINITY, 1.0),
         (f64::NAN, 1.0),
     ] {
-        panic_probe::assert_panics_with("slider range must be finite", || {
+        panic_probe::assert_panics_with("a range must have finite ends", || {
             let mut v = 0.5_f64;
             let _ = Slider::new(&mut v, lo..=hi);
         });
@@ -346,4 +346,77 @@ fn an_integer_target_lands_on_whole_values() {
     h.drag_to(Vec2::new(34.0, 9.0));
     frame(&mut h, &mut value);
     assert_eq!(value, 3);
+}
+
+/// A focused slider walks by key: an arrow steps a hundredth of the range
+/// toward `max` (right, up) or `min` (left, down), Shift ten of those, a
+/// page key a tenth of the range, Home and End to the ends. A step snaps
+/// the walk to it, a reversed range walks the same way along the track
+/// (right is toward `max`, here down), and every key is a whole edit.
+/// Unfocused or disabled, keys move nothing.
+#[test]
+fn a_focused_slider_walks_by_key() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    /// Held modifiers, the key, the range, the step, and where 5.0 lands.
+    type Case = (Modifiers, Key, (f64, f64), Option<f64>, f64);
+    let id = WidgetId::from_hash("slider-keys");
+    let cases: [Case; 11] = [
+        (Modifiers::NONE, Key::ArrowRight, (0.0, 10.0), None, 5.1),
+        (Modifiers::NONE, Key::ArrowUp, (0.0, 10.0), None, 5.1),
+        (Modifiers::NONE, Key::ArrowLeft, (0.0, 10.0), None, 4.9),
+        (Modifiers::SHIFT, Key::ArrowRight, (0.0, 10.0), None, 6.0),
+        (Modifiers::NONE, Key::PageUp, (0.0, 10.0), None, 6.0),
+        (Modifiers::NONE, Key::PageDown, (0.0, 10.0), None, 4.0),
+        (Modifiers::NONE, Key::Home, (0.0, 10.0), None, 0.0),
+        (Modifiers::NONE, Key::End, (0.0, 10.0), None, 10.0),
+        (
+            Modifiers::NONE,
+            Key::ArrowRight,
+            (0.0, 10.0),
+            Some(0.5),
+            5.5,
+        ),
+        (Modifiers::NONE, Key::ArrowRight, (10.0, 0.0), None, 4.9),
+        (Modifiers::NONE, Key::End, (10.0, 0.0), None, 0.0),
+    ];
+    for (mods, key, (min, max), step, want) in cases {
+        let mut h = UiHarness::new(UVec2::new(200, 40));
+        let mut value = 5.0_f64;
+        let frame = |h: &mut UiHarness, value: &mut f64| {
+            h.frame_value(|ui| {
+                let slider = Slider::new(&mut *value, min..=max).id(id);
+                match step {
+                    Some(s) => slider.step(s),
+                    None => slider,
+                }
+                .show(ui)
+                .edges()
+            })
+        };
+        frame(&mut h, &mut value);
+        h.set_focus(id);
+        h.set_modifiers(mods);
+        h.key(key);
+        let edges = frame(&mut h, &mut value);
+        assert_eq!(value, want, "{mods:?} {key:?} over {min}..={max}");
+        assert!(edges.changed && edges.committed, "{key:?} is a whole edit");
+    }
+
+    let mut h = UiHarness::new(UVec2::new(200, 40));
+    let mut value = 5.0_f64;
+    for (focused, disabled) in [(false, false), (true, true)] {
+        if focused {
+            h.set_focus(id);
+        }
+        h.key(Key::ArrowRight);
+        h.frame(|ui| {
+            Slider::new(&mut value, 0.0..=10.0)
+                .id(id)
+                .disabled(disabled)
+                .show(ui);
+        });
+        assert_eq!(value, 5.0, "focused {focused}, disabled {disabled}");
+    }
 }

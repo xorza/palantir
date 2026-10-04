@@ -1,5 +1,6 @@
 //! The crate's host-facing input vocabulary.
 
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -15,8 +16,11 @@ use glam::Vec2;
 /// coordinate or delta, and a zoom factor that is not strictly positive,
 /// are discarded before anything reads them — so a host may forward
 /// whatever its platform reported without filtering first.
+///
+/// The two IME variants borrow their text from the host, so an event
+/// lives as long as the string it was translated from; it stays `Copy`.
 #[derive(Clone, Copy, Debug)]
-pub enum InputEvent {
+pub enum InputEvent<'a> {
     /// Pointer position in logical pixels, relative to the surface origin.
     PointerMoved(Vec2),
     /// Pointer left the surface; clears `hovered`.
@@ -68,6 +72,13 @@ pub enum InputEvent {
     /// (not a delta). Consumers track the latest snapshot to disambiguate
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
     ModifiersChanged(Modifiers),
+    /// An input method's uncommitted text changed. An empty `text` ends
+    /// the composition. Hosts forward it only while a widget asks for IME
+    /// text — see [`Ui::request_ime`](crate::Ui::request_ime).
+    ImePreedit(ImePreedit<'a>),
+    /// An input method committed `text`: it is typed, in place among the
+    /// key presses, as if each character had its own key.
+    ImeCommit(&'a str),
     /// The surface lost keyboard focus to another window.
     ///
     /// **Everything held is no longer held.** A platform stops reporting
@@ -80,7 +91,47 @@ pub enum InputEvent {
     SurfaceFocusLost,
 }
 
-impl InputEvent {
+impl<'a> InputEvent<'a> {
+    /// The text an IME event borrows, or `None` for every other event.
+    pub(crate) const fn text(&self) -> Option<&'a str> {
+        match *self {
+            Self::ImePreedit(ImePreedit { text, .. }) | Self::ImeCommit(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    /// This event borrowing `text` in place of its own — how the trickle
+    /// queue holds an IME event past the host's string, and gives it
+    /// back. Every other event is itself.
+    pub(crate) const fn with_text(self, text: &str) -> InputEvent<'_> {
+        match self {
+            Self::ImePreedit(ImePreedit { cursor, .. }) => {
+                InputEvent::ImePreedit(ImePreedit { text, cursor })
+            }
+            Self::ImeCommit(_) => InputEvent::ImeCommit(text),
+            Self::PointerMoved(p) => InputEvent::PointerMoved(p),
+            Self::PointerLeft => InputEvent::PointerLeft,
+            Self::PointerPressed(button) => InputEvent::PointerPressed(button),
+            Self::PointerReleased(button) => InputEvent::PointerReleased(button),
+            Self::ScrollPixels(delta) => InputEvent::ScrollPixels(delta),
+            Self::ScrollLines(delta) => InputEvent::ScrollLines(delta),
+            Self::Zoom(factor) => InputEvent::Zoom(factor),
+            Self::KeyDown {
+                key,
+                repeat,
+                physical,
+                text: key_text,
+            } => InputEvent::KeyDown {
+                key,
+                repeat,
+                physical,
+                text: key_text,
+            },
+            Self::ModifiersChanged(mods) => InputEvent::ModifiersChanged(mods),
+            Self::SurfaceFocusLost => InputEvent::SurfaceFocusLost,
+        }
+    }
+
     /// Whether this event's payload is one the pipeline can act on.
     ///
     /// **The screen on host input**, applied once by
@@ -108,7 +159,13 @@ impl InputEvent {
             | Self::PointerReleased(_)
             | Self::KeyDown { .. }
             | Self::ModifiersChanged(_)
-            | Self::SurfaceFocusLost => true,
+            | Self::SurfaceFocusLost
+            | Self::ImeCommit(_) => true,
+            // A cursor past the text is the platform's mistake, and one a
+            // widget would slice on.
+            Self::ImePreedit(ImePreedit { text, cursor }) => {
+                cursor.is_none_or(|span| text.get(span.range()).is_some())
+            }
         }
     }
 }
@@ -119,7 +176,7 @@ pub(crate) mod internals {
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_text::KeyText;
 
-    impl InputEvent {
+    impl InputEvent<'_> {
         /// A first press of `key`, typing what the key types on a plain
         /// layout. `physical` is [`Key::Other`]: only a non-ASCII `Char`
         /// under a command modifier consults it (`Shortcut::matches`), so
@@ -137,6 +194,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::span::Span;
+    use crate::input::ime_preedit::ImePreedit;
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_text::KeyText;
@@ -169,7 +228,7 @@ mod tests {
             assert!(!InputEvent::Zoom(factor).is_valid(), "zoom {factor}");
         }
 
-        let ok: &[InputEvent] = &[
+        let ok: &[InputEvent<'_>] = &[
             InputEvent::PointerMoved(Vec2::new(-3.5, 12.0)),
             InputEvent::ScrollPixels(Vec2::new(0.0, -40.0)),
             InputEvent::ScrollLines(Vec2::ZERO),
@@ -186,11 +245,26 @@ mod tests {
             },
             InputEvent::ModifiersChanged(Modifiers::default()),
             InputEvent::SurfaceFocusLost,
+            // A cursor on the boundaries of "かな": bytes 3..6 is "な".
+            InputEvent::ImePreedit(ImePreedit {
+                text: "かな",
+                cursor: Some(Span::new(3, 3)),
+            }),
+            InputEvent::ImeCommit("かな"),
         ];
+        // A preedit cursor past its text, or inside a character, is
+        // refused: a widget would slice the text on it.
+        for cursor in [Span::new(3, 4), Span::new(1, 2)] {
+            let event = InputEvent::ImePreedit(ImePreedit {
+                text: "かな",
+                cursor: Some(cursor),
+            });
+            assert!(!event.is_valid(), "{event:?}");
+        }
         // An exhaustive match with no `_` arm: a new variant does not
         // compile until it has an index here, and the count below fails
         // until it has a case above.
-        let mut covered = [false; 10];
+        let mut covered = [false; 12];
         for event in ok {
             assert!(event.is_valid(), "{event:?}");
             let index = match event {
@@ -204,6 +278,8 @@ mod tests {
                 InputEvent::KeyDown { .. } => 7,
                 InputEvent::ModifiersChanged(_) => 8,
                 InputEvent::SurfaceFocusLost => 9,
+                InputEvent::ImePreedit(_) => 10,
+                InputEvent::ImeCommit(_) => 11,
             };
             covered[index] = true;
         }

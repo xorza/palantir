@@ -5,14 +5,14 @@ use std::hash::Hasher;
 use std::panic;
 
 /// Both calls resolve to the *same* caller location, letting the test
-/// below rebuild the exact hash `auto_stable` must produce.
+/// below rebuild the exact hash `auto` must produce.
 #[track_caller]
 fn id_and_loc() -> (WidgetId, &'static panic::Location<'static>) {
-    (WidgetId::auto_stable(), panic::Location::caller())
+    (WidgetId::auto(), panic::Location::caller())
 }
 
 #[test]
-fn auto_stable_hashes_location_via_fx() {
+fn auto_hashes_location_via_fx() {
     let (id, l) = id_and_loc();
     // Deliberately the *raw* `FxHasher`, not the crate wrapper the
     // production path now uses: rebuilding the expected value with

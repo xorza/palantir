@@ -2,8 +2,8 @@
 //! and the motion model carrying it there.
 
 use crate::animation::anim_map_typed::TickResult;
-use crate::animation::anim_spec::AnimMotion;
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_spec::AnimMotion;
 use crate::animation::duration::within_duration_snap_eps;
 use crate::animation::easing::Easing;
 use crate::animation::spring::{self, within_settle_eps};
@@ -234,7 +234,7 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// `false` at `post_record` are dropped — that's how a slot whose
     /// caller stopped poking it (widget id stuck around but the
     /// animation site went away) gets evicted. Without this the
-    /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
+    /// `(WidgetId, AnimationSlot)` map only shrinks on full widget removal.
     pub(super) touched: bool,
     /// `Ui` render-frame id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:

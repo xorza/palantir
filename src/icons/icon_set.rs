@@ -138,7 +138,7 @@ impl IconSet {
         self.inner
             .table()
             .icons()
-            .binary_search_by_key(&name, |def| def.name)
+            .binary_search_by(|def| def.name.as_ref().cmp(name))
             .ok()
             .map(|i| IconId(i as u16))
     }

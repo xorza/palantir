@@ -22,7 +22,7 @@ use std::iter;
 fn image_updates_copy_pixels_and_repaint_every_clone() {
     let mut h = Harness::new();
     let size = UVec2::new(4, 2);
-    let mut image = Image::from_srgba8(UVec2::new(2, 2), [RED, BLUE, BLUE, RED].concat());
+    let mut image = Image::from_srgba8(UVec2::new(2, 2), [RED, BLUE, BLUE, RED].concat()).unwrap();
     let handle = h.host.ui().load_image(&image).unwrap();
     let clone = handle.clone();
     drop(handle);
@@ -130,8 +130,10 @@ fn minification_and_magnification_filters_are_independent() {
         .frame(|ui| {
             let handle = mag_strip
                 .get_or_insert_with(|| {
-                    ui.load_image(&Image::from_srgba8(UVec2::new(2, 1), [RED, BLUE].concat()))
-                        .expect("fixture image fits every supported GPU")
+                    ui.load_image(
+                        &Image::from_srgba8(UVec2::new(2, 1), [RED, BLUE].concat()).unwrap(),
+                    )
+                    .expect("fixture image fits every supported GPU")
                 })
                 .clone();
             Panel::canvas()
@@ -198,10 +200,10 @@ fn minification_and_magnification_filters_are_independent() {
         .frame(|ui| {
             let handle = min_strip
                 .get_or_insert_with(|| {
-                    ui.load_image(&Image::from_srgba8(
-                        UVec2::new(4, 1),
-                        [RED, BLUE, RED, BLUE].concat(),
-                    ))
+                    ui.load_image(
+                        &Image::from_srgba8(UVec2::new(4, 1), [RED, BLUE, RED, BLUE].concat())
+                            .unwrap(),
+                    )
                     .expect("fixture image fits every supported GPU")
                 })
                 .clone();
@@ -284,10 +286,9 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         .frame(|ui| {
             let handle = strip
                 .get_or_insert_with(|| {
-                    ui.load_image(&Image::from_srgba8(
-                        UVec2::new(3, 1),
-                        [RED, BLUE, RED].concat(),
-                    ))
+                    ui.load_image(
+                        &Image::from_srgba8(UVec2::new(3, 1), [RED, BLUE, RED].concat()).unwrap(),
+                    )
                     .expect("fixture image fits every supported GPU")
                 })
                 .clone();
@@ -352,8 +353,10 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         .frame(|ui| {
             let handle = tile
                 .get_or_insert_with(|| {
-                    ui.load_image(&Image::from_srgba8(UVec2::new(2, 1), [RED, BLUE].concat()))
-                        .expect("fixture image fits every supported GPU")
+                    ui.load_image(
+                        &Image::from_srgba8(UVec2::new(2, 1), [RED, BLUE].concat()).unwrap(),
+                    )
+                    .expect("fixture image fits every supported GPU")
                 })
                 .clone();
             let fit = ImageFit::Tile {
@@ -510,7 +513,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
                         .flatten()
                         .flatten()
                         .collect();
-                    ui.load_image(&Image::from_srgba8(UVec2::new(24, 1), texels))
+                    ui.load_image(&Image::from_srgba8(UVec2::new(24, 1), texels).unwrap())
                         .expect("fixture image fits every supported GPU")
                 })
                 .clone();
@@ -625,7 +628,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
                     .map(|(triple, _, _, _)| {
                         let texels: Vec<u8> =
                             iter::repeat_n(*triple, 8).flatten().flatten().collect();
-                        ui.load_image(&Image::from_srgba8(UVec2::new(24, 1), texels))
+                        ui.load_image(&Image::from_srgba8(UVec2::new(24, 1), texels).unwrap())
                             .expect("fixture image fits every supported GPU")
                     })
                     .collect()
@@ -693,7 +696,7 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
             let handle = source
                 .get_or_insert_with(|| {
                     let texels: Vec<u8> = [RED, CLEAR].into_iter().flatten().collect();
-                    ui.load_image(&Image::from_srgba8(UVec2::new(2, 1), texels))
+                    ui.load_image(&Image::from_srgba8(UVec2::new(2, 1), texels).unwrap())
                         .expect("fixture image fits every supported GPU")
                 })
                 .clone();
@@ -751,10 +754,10 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
         .frame(|ui| {
             let handle = source
                 .get_or_insert_with(|| {
-                    ui.load_image(&Image::from_srgba8(
-                        UVec2::new(4, 1),
-                        [STAR, SKY, SKY, SKY].concat(),
-                    ))
+                    ui.load_image(
+                        &Image::from_srgba8(UVec2::new(4, 1), [STAR, SKY, SKY, SKY].concat())
+                            .unwrap(),
+                    )
                     .expect("fixture image fits every supported GPU")
                 })
                 .clone();
@@ -819,7 +822,7 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
         .frame(|ui| {
             let handles = sources.get_or_insert_with(|| {
                 SOURCES.map(|texel| {
-                    ui.load_image(&Image::from_srgba8(UVec2::new(1, 1), texel.to_vec()))
+                    ui.load_image(&Image::from_srgba8(UVec2::new(1, 1), texel.to_vec()).unwrap())
                         .expect("fixture image fits every supported GPU")
                 })
             });

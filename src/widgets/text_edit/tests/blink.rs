@@ -5,8 +5,8 @@ use std::time::Duration;
 /// Caret is the only rounded rect with `local_rect: Some(...)` on a
 /// focused, unselected editor — `Background` routes through `chrome`
 /// (no shape), selection wash is absent without a selection.
-/// Post-`PaintAnim`-migration the rect is always present when focused;
-/// the encoder hides it via the attached `PaintAnim`. "Painted" means
+/// Post-`PaintAnimation`-migration the rect is always present when focused;
+/// the encoder hides it via the attached `PaintAnimation`. "Painted" means
 /// "rect present AND its anim (if any) samples to visible at the
 /// current time".
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
@@ -143,7 +143,7 @@ fn caret_blinks_on_and_off_while_focused() {
 
 /// Caret *motion* with no edit resets the blink, on its own: `End`
 /// walks the caret to the buffer end and leaves the text alone, so the
-/// reset rides on `caret_moved` with `edited` and `gained_focus` both
+/// reset rides on `caret_moved` with `edited` and `focus_gained` both
 /// false. Separate from the sweep above because the reset it performs
 /// moves that test's last-change timestamp, and its long-idle tail
 /// assertion is phase-sensitive to exactly that.

@@ -5,7 +5,6 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
@@ -161,16 +160,16 @@ fn typed_builders_set_the_fields_they_name() {
     assert_eq!(rect_shape.corners.as_array(), [6.0; 4]);
 
     let mesh = Mesh::new();
-    let tint = SrgbaU8::rgb(10, 20, 30);
+    let tint = RgbaF32::srgb(0.1, 0.2, 0.3);
     let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
     assert!(ptr::eq(mesh_shape.mesh, &raw const mesh));
     assert_eq!(mesh_shape.local_rect, Some(rect));
-    assert_eq!(mesh_shape.tint, tint.into());
+    assert_eq!(mesh_shape.tint, tint);
 }
 
 #[test]
 fn text_noop_rejects_invalid_metrics() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     let mut store = RecordStore::default();
     let cases = [
@@ -190,20 +189,17 @@ fn text_noop_rejects_invalid_metrics() {
     ];
 
     // `local_origin` is the one Text scalar `GlyphFont::metrics_valid`
-    // does not cover, and it is the NaN screen's rather than the no-op
-    // screen's: an origin that is not a number is not a reason the run
-    // paints nothing. Both run before lowering, which is what keeps the
-    // interned bytes out of the arena either way.
-    for (label, local_origin, expected_nan) in [
-        ("no origin", None, false),
-        ("finite origin", Some(Vec2::new(1.0, 2.0)), false),
-        ("NaN origin x", Some(Vec2::new(f32::NAN, 2.0)), true),
-        ("NaN origin y", Some(Vec2::new(1.0, f32::NAN)), true),
+    // does not cover. It is geometry, so `at_origin` refuses a non-finite
+    // one (`shapes::tests::builders_refuse_what_they_check`); a finite one
+    // carries no NaN and does not stop a visible run from painting.
+    for (label, local_origin) in [
+        ("no origin", None),
+        ("finite origin", Some(Vec2::new(1.0, 2.0))),
     ] {
         let shape = Shape::text(
             store.intern("visible"),
             GlyphFont {
-                line_height_px: 19.2,
+                line_height: 19.2,
                 ..GlyphFont::new(16.0)
             },
         )
@@ -212,19 +208,19 @@ fn text_noop_rejects_invalid_metrics() {
             Some(origin) => shape.at_origin(origin),
             None => shape,
         };
-        assert_eq!(shape.has_nan(), expected_nan, "{label}");
+        assert!(!shape.has_nan(), "{label}");
         assert!(
             !shape.is_noop(),
             "{label}: a visible run does not stop painting over its origin",
         );
     }
 
-    for (label, font_size_px, line_height_px, expected_noop) in cases {
+    for (label, font_size, line_height, expected_noop) in cases {
         let shape = Shape::text(
             store.intern("visible"),
             GlyphFont {
-                line_height_px,
-                ..GlyphFont::new(font_size_px)
+                line_height,
+                ..GlyphFont::new(font_size)
             },
         )
         .color(RgbaF32::WHITE)

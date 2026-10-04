@@ -1,7 +1,8 @@
 //! A 2D extent in logical pixels — a magnitude rather than a position,
 //! which is why it is not a `Vec2`.
 
-use crate::primitives::math::approx::{self, FloatHash};
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num::Num;
 use glam::{BVec2, Vec2};
@@ -37,14 +38,15 @@ impl FloatHash for Size {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(
-            (u64::from(approx::eq_bits(self.w)) << 32) | u64::from(approx::eq_bits(self.h)),
+            (u64::from(float_hash::eq_bits(self.w)) << 32) | u64::from(float_hash::eq_bits(self.h)),
         );
     }
 
     #[inline]
     fn hash_visual<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(
-            (u64::from(approx::canon_bits(self.w)) << 32) | u64::from(approx::canon_bits(self.h)),
+            (u64::from(float_hash::canon_bits(self.w)) << 32)
+                | u64::from(float_hash::canon_bits(self.h)),
         );
     }
 }
@@ -66,11 +68,11 @@ impl Size {
 
     /// True if both axes are within `EPS` of zero — i.e. this size
     /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
-    /// match the crate's scalar `approx_zero` predicate.
+    /// match the crate's scalar `is_approx_zero` predicate.
     /// For "paints no pixels" use [`Self::is_paint_empty`] —
     /// different (looser) predicate.
-    pub const fn approx_zero(self) -> bool {
-        approx::approx_zero(self.w) && approx::approx_zero(self.h)
+    pub const fn is_approx_zero(self) -> bool {
+        domain::is_approx_zero(self.w) && domain::is_approx_zero(self.h)
     }
 
     /// True when either axis is at or below `EPS` (including NaN /
@@ -79,7 +81,7 @@ impl Size {
     /// zero-extent geometry before emit / cache work runs.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        approx::paints_nothing(self.w) || approx::paints_nothing(self.h)
+        domain::is_invisible(self.w) || domain::is_invisible(self.h)
     }
 
     /// True if either axis is NaN. `const`, so the const predicates that

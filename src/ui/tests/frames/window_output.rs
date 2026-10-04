@@ -55,12 +55,12 @@ fn window_requests_queue_and_survive_the_frame() {
     assert!(h.ui.window_requests.commands.opens.is_empty());
     assert!(h.ui.window_requests.commands.closes.is_empty());
 
-    // `window_open` polls the host-refreshed live set (here set directly,
+    // `is_window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
-    assert!(!h.ui.window_open(open), "empty live set ⇒ nothing open");
+    assert!(!h.ui.is_window_open(open), "empty live set ⇒ nothing open");
     h.ui.window_directory().add(open);
-    assert!(h.ui.window_open(open));
-    assert!(!h.ui.window_open(close), "only `open` is live");
+    assert!(h.ui.is_window_open(open));
+    assert!(!h.ui.is_window_open(close), "only `open` is live");
 
     // The placement travels whole, so what the app persists is what a
     // `WindowConfig` takes back — no field-by-field translation between
@@ -75,7 +75,7 @@ fn window_requests_queue_and_survive_the_frame() {
     assert_eq!(geometry.placement, placed);
     assert_eq!(
         WindowConfig::new("restored")
-            .placement(geometry.placement)
+            .with_placement(geometry.placement)
             .placement,
         placed,
     );
@@ -181,4 +181,29 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
         UVec2::new(100, 100),
         "and the platform hears the unscaled one",
     );
+}
+
+/// IME is a level asked for each pass, like the cursor: the frame that
+/// asks reports its caret, the next frame that does not turns it off, and
+/// a caret that is not an offset panics where it was passed.
+#[test]
+fn request_ime_is_a_per_pass_level() {
+    use crate::internals::panic_probe;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::math::domain;
+
+    let caret = Rect::new(10.0, 20.0, 2.0, 16.0);
+    let mut h = UiHarness::new(SURFACE);
+    let report = h.frame(|ui| ui.request_ime(caret));
+    assert_eq!(report.ime_area, Some(caret));
+    let report = h.frame(|_| {});
+    assert_eq!(
+        report.ime_area, None,
+        "a pass that does not ask turns it off"
+    );
+
+    panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| ui.request_ime(Rect::new(f32::NAN, 0.0, 2.0, 16.0)));
+    });
 }

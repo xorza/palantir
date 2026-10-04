@@ -37,17 +37,17 @@
 //! Usage:
 //!
 //! ```no_run
-//! # use palantir::{AnimSpec, Theme, Ui, WindowToken, WinitHost, WinitHostError};
+//! # use palantir::{AnimationSpec, Theme, Ui, WindowToken, WinitHost, WinitHostError};
 //! # fn demo() -> Result<(), WinitHostError> {
 //! struct MyApp;
 //! impl palantir::App for MyApp {
-//!     fn record(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
+//!     fn record(&mut self, _window: WindowToken, ui: &mut Ui) { /* build ui */ }
 //! }
 //! WinitHost::builder(WindowToken(0))
 //!     .title("title")
 //!     .build(|ui, _handle| {
 //!         let mut theme = Theme::default();
-//!         theme.button.defaults.anim = Some(AnimSpec::SPRING);
+//!         theme.button.defaults.animation = Some(AnimationSpec::SPRING);
 //!         ui.set_theme(theme);
 //!         MyApp
 //!     })?
@@ -164,20 +164,14 @@ impl<T> WinitHostBuilder<T>
 where
     T: App + 'static,
 {
-    /// Replace all startup tunables at once. Granular setters called afterward
-    /// override individual fields.
-    pub fn config(mut self, config: WinitHostConfig) -> Self {
-        self.config = config;
-        self
-    }
-
     /// Set the bootstrap window's full configuration.
     pub fn window(mut self, window: WindowConfig) -> Self {
         self.config.window = window;
         self
     }
 
-    /// Set the bootstrap window's title.
+    /// Set the bootstrap window's title — the shorthand for the one field of
+    /// [`Self::window`] nearly every app sets.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.config.window.title = title.into();
         self
@@ -185,7 +179,10 @@ where
 
     /// Which faces every window shapes against. Defaults to
     /// [`FontScope::System`], because a window sits beside the machine's
-    /// other applications and should fall back the way they do.
+    /// other applications and should fall back the way they do: the OS
+    /// fonts are the glyph fallback that keeps scripts the bundled faces do
+    /// not cover from rendering as tofu. The scan runs on its own thread
+    /// beside GPU init, so it costs no wall time on a warm disk cache.
     ///
     /// The door both hosts share — see
     /// [`OffscreenHostBuilder::fonts`](crate::OffscreenHostBuilder::fonts),
@@ -208,18 +205,32 @@ where
     }
 
     /// Set the adapter power preference used at startup.
-    pub const fn power_preference(mut self, pref: PowerPreference) -> Self {
-        self.config.power_preference = pref;
+    ///
+    /// `LowPower` by default, unlike the headless paths, which ask for
+    /// `HighPerformance`. The difference is deliberate: a window is a user
+    /// interface and on a hybrid laptop the integrated GPU draws it without
+    /// waking the discrete one, while a bench or a golden test is worth
+    /// little unless it runs on the adapter a user is looking at. An
+    /// application that draws something heavier should say so here.
+    pub const fn power_preference(mut self, preference: PowerPreference) -> Self {
+        self.config.power_preference = preference;
         self
     }
 
-    /// Opt into GPU timestamp and pipeline-statistics collection.
+    /// Opt into GPU timestamp and pipeline-statistics collection. Off by
+    /// default, because the per-frame readback round-trip is non-trivial.
+    /// Gates device-feature requests at startup; every window inherits the
+    /// result.
     pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
         self.config.collect_gpu_stats = collect;
         self
     }
 
-    /// Whether axis-aligned paint edges snap to physical pixels.
+    /// Whether axis-aligned paint edges snap to physical pixels. On by
+    /// default, which is what a window wants: an unsnapped edge lands
+    /// between texels and antialiases into a soft line. Turn it off for a
+    /// view that animates position continuously, where the snap reads as a
+    /// stutter.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.config.pixel_snap = pixel_snap;
         self
@@ -405,7 +416,7 @@ where
             platform: PLATFORM,
         };
         let trace = input::translate(&event, at, |ev| {
-            wants_repaint |= win.on_input(ev).requests_repaint;
+            wants_repaint |= win.on_input(ev).repaint_requested;
         });
         win.note_pointer(trace, scale);
         if wants_repaint {

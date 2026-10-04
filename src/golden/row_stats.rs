@@ -9,9 +9,10 @@ pub(super) struct RowStats {
 }
 
 impl RowStats {
-    /// Scan one row: writes each diff pixel into `d_row` (red on miss,
-    /// dimmed actual on match) and returns the row's tallies.
-    pub(super) fn scan_row(a_row: &[u8], e_row: &[u8], d_row: &mut [u8], per_channel: u8) -> Self {
+    /// Scan one row: writes each diff pixel into `d_row` (red where any
+    /// channel differs, dimmed actual where none does) and returns the
+    /// row's tallies.
+    pub(super) fn scan_row(a_row: &[u8], e_row: &[u8], d_row: &mut [u8]) -> Self {
         let mut stats = Self::default();
         for ((a, e), d) in a_row
             .as_chunks::<4>()
@@ -24,7 +25,7 @@ impl RowStats {
             if delta > stats.max_delta {
                 stats.max_delta = delta;
             }
-            if delta > per_channel {
+            if delta > 0 {
                 stats.differing += 1;
                 *d = [255, 0, 0, 255];
             } else {

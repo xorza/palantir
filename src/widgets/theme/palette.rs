@@ -16,10 +16,10 @@ use glam::Vec2;
 /// chrome recipe overlays share live as methods so a palette swap moves
 /// them automatically.
 ///
-/// The three `elem` rungs name a tier and never a widget state, because
-/// no one mapping holds: a standard button rests on `elem_mid` and
-/// hovers to `elem_strong`, while a menu row rests transparent and
-/// hovers to `elem_mid`. A name saying "hover" would be one rung out of
+/// The three `element` rungs name a tier and never a widget state, because
+/// no one mapping holds: a standard button rests on `element_mid` and
+/// hovers to `element_strong`, while a menu row rests transparent and
+/// hovers to `element_mid`. A name saying "hover" would be one rung out of
 /// step for whichever widget disagreed.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Palette {
@@ -32,13 +32,13 @@ pub struct Palette {
     /// Window background (`Theme::window_clear`). Also the active tab
     /// chip's fill, so the chip reads as continuous with the page, and the
     /// check and dot a toggle draws on its accent.
-    pub window_bg: RgbaF32,
+    pub window_background: RgbaF32,
     /// Resting surface tier (disabled fills, menu panels).
-    pub elem: RgbaF32,
+    pub element: RgbaF32,
     /// One step brighter — resting chrome for interactive surfaces.
-    pub elem_mid: RgbaF32,
+    pub element_mid: RgbaF32,
     /// Two steps brighter — the emphasis tier hover and press reach for.
-    pub elem_strong: RgbaF32,
+    pub element_strong: RgbaF32,
     /// Focus-ring / pressed-stroke color.
     pub border_focused: RgbaF32,
     /// The accent (checked toggles, progress fill, selection wash).
@@ -52,16 +52,16 @@ impl Palette {
         text: RgbaF32::hex(0xffffff),
         text_muted: RgbaF32::hex(0xaaaaa8),
         text_disabled: RgbaF32::hex(0x878a8d),
-        window_bg: RgbaF32::hex(0x1a1a1a),
-        elem: RgbaF32::hex(0x343434),
-        elem_mid: RgbaF32::hex(0x3e3e3e),
-        elem_strong: RgbaF32::hex(0x4b4b4b),
+        window_background: RgbaF32::hex(0x1a1a1a),
+        element: RgbaF32::hex(0x343434),
+        element_mid: RgbaF32::hex(0x3e3e3e),
+        element_strong: RgbaF32::hex(0x4b4b4b),
         border_focused: RgbaF32::hex(0x105577),
         accent: RgbaF32::hex(0x9adbfb),
     };
 
     // The border ladder — TEXT_MUTED tints, not grays: raw surface
-    // grays sit too close to `elem`/`elem_mid` to read as edges at
+    // grays sit too close to `element`/`element_mid` to read as edges at
     // 1 px.
     /// The faintest edge — a rule, a divider.
     pub const fn border_soft(&self) -> RgbaF32 {
@@ -86,11 +86,11 @@ impl Palette {
     /// [`TooltipTheme`](crate::TooltipTheme), not the modal's 12 — the same
     /// corner that reads as "soft" on a dialog reads as a bubble on a stack
     /// of 26 px rows. The shadow is what separates the body from what it
-    /// opened over: the fill is `elem`, the same surface tier as the panels
+    /// opened over: the fill is `element`, the same surface tier as the panels
     /// and cards underneath, so a hairline alone leaves it looking glued
     /// down.
     pub fn popup_panel(&self) -> Background {
-        Background::rounded(self.elem, Corners::all(4.0))
+        Background::rounded(self.element, Corners::all(4.0))
             .with_border(Stroke::new(self.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 RgbaF32::new(0.0, 0.0, 0.0, 0.5),

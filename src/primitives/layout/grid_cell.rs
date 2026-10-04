@@ -3,6 +3,7 @@
 
 use crate::common::span::Span;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::math::domain;
 use std::hash;
 
 /// Per-child placement inside a `Grid` parent. Inert when the parent is not a
@@ -12,14 +13,12 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[must_use]
 pub struct GridCell {
-    /// Zero-based row.
-    pub row: u16,
-    /// Zero-based column.
-    pub col: u16,
-    /// Rows covered, at least one.
-    pub row_span: u16,
-    /// Columns covered, at least one.
-    pub col_span: u16,
+    pub(crate) row: u16,
+    pub(crate) col: u16,
+    /// At least one: [`Self::with_span`] checks it.
+    pub(crate) row_span: u16,
+    /// At least one: [`Self::with_span`] checks it.
+    pub(crate) col_span: u16,
 }
 
 impl hash::Hash for GridCell {
@@ -44,13 +43,41 @@ impl GridCell {
     }
 
     /// This cell widened to cover `row_span` rows and `col_span`
-    /// columns. Both floor at one — a zero-track span names no cell.
-    pub const fn span(self, row_span: u16, col_span: u16) -> Self {
+    /// columns. Both are *counts*: a zero-track span names no cell, which
+    /// is a caller bug rather than data to coerce.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both spans are [counts](crate::widget::domain::count).
+    #[track_caller]
+    pub const fn with_span(self, row_span: u16, col_span: u16) -> Self {
+        domain::count(row_span as u32);
+        domain::count(col_span as u32);
         Self {
-            row_span: if row_span > 1 { row_span } else { 1 },
-            col_span: if col_span > 1 { col_span } else { 1 },
+            row_span,
+            col_span,
             ..self
         }
+    }
+
+    /// The zero-based row.
+    pub const fn row(self) -> u16 {
+        self.row
+    }
+
+    /// The zero-based column.
+    pub const fn col(self) -> u16 {
+        self.col
+    }
+
+    /// The rows covered, at least one.
+    pub const fn row_span(self) -> u16 {
+        self.row_span
+    }
+
+    /// The columns covered, at least one.
+    pub const fn col_span(self) -> u16 {
+        self.col_span
     }
 
     /// Track-index span on `axis`: `(col, col_span)` for X,

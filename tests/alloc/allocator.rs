@@ -66,7 +66,7 @@ thread_local! {
 /// prints resolves symbols. Windows does both through `dbghelp`, behind one
 /// process-wide mutex it shares with the panic printer, at a cost no other
 /// platform charges — an unbounded window there ran four of this harness's
-/// own tests past a minute each, and the job was cancelled before they
+/// own tests past a minute each, and the job was canceled before they
 /// finished.
 pub(crate) const TRACE_CAP: usize = 8;
 

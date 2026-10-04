@@ -157,7 +157,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
         label: &'static str,
         text: &'static str,
         range: ops::Range<usize>,
-        max_width_px: Option<f32>,
+        max_width: Option<f32>,
     }
 
     let m = TextShaper::new();
@@ -166,43 +166,43 @@ fn selection_rects_match_cosmic_highlight_spans() {
             label: "single_line",
             text: "hello",
             range: 1..4,
-            max_width_px: None,
+            max_width: None,
         },
         Case {
             label: "hard_breaks",
             text: "abc\ndef\nghi",
             range: 0..11,
-            max_width_px: None,
+            max_width: None,
         },
         // "def" only — lines before AND after the range must emit nothing.
         Case {
             label: "middle_line_only",
             text: "abc\ndef\nghi",
             range: 4..7,
-            max_width_px: None,
+            max_width: None,
         },
         // "ef\ng" — spans lines 1–2, line 0 must emit nothing.
         Case {
             label: "tail_span",
             text: "abc\ndef\nghi",
             range: 5..9,
-            max_width_px: None,
+            max_width: None,
         },
         Case {
             label: "mixed_bidi",
             text: "abc אבג def",
             range: 2..12,
-            max_width_px: None,
+            max_width: None,
         },
         Case {
             label: "soft_wrap_and_graphemes",
             text: "á one two three four five",
             range: 0..27,
-            max_width_px: Some(48.0),
+            max_width: Some(48.0),
         },
     ];
     for case in cases {
-        let params = match case.max_width_px {
+        let params = match case.max_width {
             Some(w) => ui_shape(16.0).width(w),
             None => ui_shape(16.0),
         };
@@ -330,7 +330,7 @@ fn a_truncated_run_hits_inside_its_kept_prefix() {
             font,
             wrap: TextWrap::SingleLine,
             align: Align::LEFT,
-            max_width_px: None,
+            max_width: None,
         })
         .size()
         .w;
@@ -339,7 +339,7 @@ fn a_truncated_run_hits_inside_its_kept_prefix() {
         font,
         wrap: TextWrap::Ellipsis,
         align: Align::LEFT,
-        max_width_px: Some(width + 0.5),
+        max_width: Some(width + 0.5),
     });
     assert_eq!(probe.size().w, width, "premise: the run is cut to \"é…\"");
     // The kept `é` advances 9.328125, so x left of its midpoint

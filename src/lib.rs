@@ -14,7 +14,7 @@
 // doctest when that feature is on. Without it the crate docs open at the
 // orientation section below instead.
 #![cfg_attr(feature = "winit", doc = include_str!("../README.md"))]
-// `WinitHost`, `WinitHostConfig` and `HostHandle` are the windowed host's own
+// `WinitHost`, `WinitHostBuilder` and `HostHandle` are the windowed host's own
 // types, and the docs on the backend-agnostic items around them — `Ui`'s
 // window commands, `WindowConfig`, `WindowToken` — say what that host does
 // with each. Those sentences are worth as much to a reader building without
@@ -267,10 +267,10 @@ pub mod prelude {
         Align, App, Axis, Background, Block, Brush, Button, Checkbox, ComboBox, Configure,
         ContextMenu, Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify,
         Key, KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
-        ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, SelectResponse, Sense,
-        Separator, Shadow, Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter,
-        Stroke, Switch, TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui,
-        VAlign, ValueResponse, Vec2, WidgetId, WindowToken, fmt,
+        ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, Sense, Separator, Shadow,
+        Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter, Stroke, Switch,
+        TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui, VAlign,
+        ValueResponse, Vec2, WidgetId, WindowToken, fmt,
     };
 }
 
@@ -289,20 +289,18 @@ pub mod prelude {
 /// items with one canonical path each, and an application that draws its own
 /// geometry reaches for [`Shape`](widget::Shape) as readily as a widget does.
 pub mod widget {
-    pub use crate::animation::anim_slot::AnimSlot;
     pub use crate::animation::animatable::Animatable;
+    pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::common::span::Span;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
-    pub use crate::primitives::geometry::spacing::Sums;
-    pub use crate::primitives::math::approx;
-    pub use crate::primitives::math::num::F32Ext;
+    pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
     /// The paint-time animation curves the crate ships. A caller's own curve
     /// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
     pub use crate::scene::tree::paint_anims::curves;
-    pub use crate::scene::tree::paint_anims::paint_anim::{
-        PaintAnim, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
+    pub use crate::scene::tree::paint_anims::paint_animation::{
+        PaintAnimation, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
     };
     /// The bound on [`Ui::add_shape`](crate::Ui::add_shape) — sealed, so it
     /// names the shape kinds the crate ships and nothing else.
@@ -332,7 +330,7 @@ pub mod widget {
     pub use palantir_anim_derive::Animatable;
 }
 
-pub use animation::anim_spec::AnimSpec;
+pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
 pub use app::App;
 pub use common::clipboard::{Clipboard, ClipboardUnavailable};
@@ -359,13 +357,13 @@ pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 #[cfg(feature = "winit")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
-    config::WinitHostConfig,
     error::{HostDisconnected, WinitHostError},
-    handle::{HostHandle, UserEvent},
+    handle::HostHandle,
 };
 /// The event a host feeds a `Ui`. Toolkit-independent, so a host of your
 /// own translates its platform's events into these — see
 /// [`OffscreenHost::on_input`].
+pub use input::ime_preedit::ImePreedit;
 pub use input::input_event::InputEvent;
 pub use input::interaction::button_phase::ButtonPhase;
 pub use input::interaction::button_state::ButtonState;
@@ -415,13 +413,14 @@ pub use primitives::paint::brush::gradient::radial_geometry::{
     RadialGeometry, RadialGradient, RadialGradientBuilder,
 };
 pub use primitives::paint::brush::gradient::stops::{GradientStops, Stop};
-pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
+pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interpolation, Spread};
 pub use primitives::paint::color::RgbaF32;
 pub use primitives::paint::color::color_coords::ColorCoords;
 pub use primitives::paint::color::color_model::{ColorModel, HueSlice};
 pub use primitives::paint::color::hsv::Hsv;
-pub use primitives::paint::color::okhsv::{Okhsv, OkhsvSlice};
+pub use primitives::paint::color::okhsv::Okhsv;
 pub use primitives::paint::color::srgba_u8::SrgbaU8;
+pub use primitives::paint::image::error::ImageDataError;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::paint::shadow::Shadow;
 pub use primitives::text::interned_str::InternedStr;
@@ -441,14 +440,15 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
-pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
-pub use gpu::device::gpu_init_ctx::GpuInitCtx;
+pub use gpu::device::gpu_frame_context::GpuFrameContext;
+pub use gpu::device::gpu_init_context::GpuInitContext;
+pub use icons::error::IconTableError;
 pub use icons::icon_set::{IconHandle, IconSet};
-pub use icons::icon_table::{IconDef, IconId, IconTable};
+pub use icons::icon_table::{IconDefinition, IconId, IconTable};
 pub use primitives::geometry::translate_scale::TranslateScale;
 pub use primitives::identity::widget_id::WidgetId;
 pub use primitives::paint::stroke::Stroke;
-pub use renderer::error::ImageLoadError;
+pub use renderer::error::ImageTooLarge;
 pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::image_registry::image_handle::ImageHandle;
 pub use text::error::FontLoadError;
@@ -465,7 +465,6 @@ pub use ui::layer_scope::LayerScope;
 pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::OverlayResponse;
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
-pub use widget_core::select_response::SelectResponse;
 pub use widget_core::value_response::ValueResponse;
 pub use widget_core::widget_look::WidgetLook;
 pub use widget_core::widget_look::animated_look::AnimatedLook;
@@ -485,15 +484,15 @@ pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;
 pub use widgets::dock::allowed_splits::AllowedSplits;
-pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
-pub use widgets::dock::dock_op::{DockDrop, DockOp};
+pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIndex};
+pub use widgets::dock::dock_operation::{DockDrop, DockOperation};
 pub use widgets::dock::dock_path::DockPath;
 pub use widgets::dock::dock_state::{DockState, TabAddress};
 pub use widgets::dock::dock_tab::DockTab;
 pub use widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 pub use widgets::dock::dock_view::DockView;
 pub use widgets::dock::error::DockError;
-pub use widgets::dock::split_side::{SplitDir, SplitSide};
+pub use widgets::dock::split_side::{SplitDirection, SplitSide};
 pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
 pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;
@@ -505,6 +504,7 @@ pub use widgets::modal::Modal;
 pub use widgets::panel::Panel;
 pub use widgets::popup::Popup;
 pub use widgets::popup::click_outside::ClickOutside;
+pub use widgets::popup::popup_trigger::PopupTrigger;
 pub use widgets::progress_bar::ProgressBar;
 pub use widgets::radio::RadioButton;
 pub use widgets::scroll::Scroll;
@@ -530,6 +530,7 @@ pub use widgets::theme::context_menu::menu_item::MenuItemTheme;
 pub use widgets::theme::dock::DockTheme;
 pub use widgets::theme::drag_value::DragValueTheme;
 pub use widgets::theme::expander::ExpanderTheme;
+pub use widgets::theme::focus_ring::FocusRingTheme;
 pub use widgets::theme::modal::ModalTheme;
 pub use widgets::theme::palette::Palette;
 pub use widgets::theme::progress_bar::ProgressBarTheme;

@@ -200,13 +200,13 @@ fn build_heavy(ui: &mut Ui) {
     };
     let row_bg = Background {
         fill: RgbaF32::hex(0x252525).into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(6.0),
         shadow: Shadow::NONE,
     };
     let avatar_bg = Background {
         fill: RgbaF32::hex(0x3a4a5c).into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(10.0),
         shadow: Shadow::NONE,
     };

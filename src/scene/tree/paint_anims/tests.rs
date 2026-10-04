@@ -1,6 +1,6 @@
 use crate::common::hash::Hasher;
-use crate::primitives::math::approx::internals::assert_close;
-use crate::scene::tree::paint_anims::paint_anim::{PaintChannel, PaintRepeat};
+use crate::primitives::math::domain::internals::assert_close;
+use crate::scene::tree::paint_anims::paint_animation::{PaintChannel, PaintCurve, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
 use std::f32::consts::TAU;
 use std::hash::Hasher as _;
@@ -12,22 +12,22 @@ const START: Duration = Duration::from_secs(1);
 const NO_STOP: Duration = Duration::MAX;
 
 /// A blink that runs forever, for the cases about phase alone.
-fn blink() -> PaintAnim {
-    PaintAnim::alpha(0.0, 1.0)
-        .started_at(START)
-        .period(HP * 2)
-        .steps(2)
-        .repeat(PaintRepeat::Settle(NO_STOP))
-        .curve(curves::square)
+fn blink() -> PaintAnimation {
+    PaintAnimation::alpha(0.0, 1.0)
+        .with_started_at(START)
+        .with_period(HP * 2)
+        .with_steps(2)
+        .with_repeat(PaintRepeat::Settle(NO_STOP))
+        .with_curve(curves::square)
 }
 
 fn spinning(shape_idx: u32, speed: f32) -> PaintAnimEntry {
     PaintAnimEntry {
-        anim: PaintAnim::turn(0.0, 1.0)
-            .started_at(START)
-            .period(Duration::from_secs_f32(TAU / speed))
-            .repeat(PaintRepeat::Forever)
-            .curve(curves::linear),
+        anim: PaintAnimation::turn(0.0, 1.0)
+            .with_started_at(START)
+            .with_period(Duration::from_secs_f32(TAU / speed))
+            .with_repeat(PaintRepeat::Forever)
+            .with_curve(curves::linear),
         shape_idx,
         row: 0,
         node: NodeId(0),
@@ -167,11 +167,11 @@ fn a_zero_period_settles_to_the_right_value() {
         ),
     ];
     for (repeat, expected) in cases {
-        let a = PaintAnim::alpha(0.0, 1.0)
-            .started_at(START)
-            .period(Duration::ZERO)
-            .repeat(repeat)
-            .curve(curves::linear);
+        let a = PaintAnimation::alpha(0.0, 1.0)
+            .with_started_at(START)
+            .with_period(Duration::ZERO)
+            .with_repeat(repeat)
+            .with_curve(curves::linear);
         for (now, (alpha, wake)) in [before, START, settled].into_iter().zip(expected) {
             assert_eq!(
                 (a.sample(now).alpha, a.next_wake(now)),
@@ -185,11 +185,11 @@ fn a_zero_period_settles_to_the_right_value() {
 #[test]
 fn spin_angle_is_elapsed_times_speed_wrapped() {
     let speed = 4.0; // rad/s
-    let a = PaintAnim::turn(0.0, 1.0)
-        .started_at(START)
-        .period(Duration::from_secs_f32(TAU / speed))
-        .repeat(PaintRepeat::Forever)
-        .curve(curves::linear);
+    let a = PaintAnimation::turn(0.0, 1.0)
+        .with_started_at(START)
+        .with_period(Duration::from_secs_f32(TAU / speed))
+        .with_repeat(PaintRepeat::Forever)
+        .with_curve(curves::linear);
     // Pre-start clamps to 0 (no negative elapsed).
     assert_eq!(a.sample(START - Duration::from_secs(1)).rotation, 0.0);
     // 0.25 s in → 1.0 rad, alpha untouched.
@@ -226,7 +226,7 @@ fn spin_wakes_every_frame() {
 fn blink_settles_solid_after_stop_and_stops_waking() {
     // Stop at 4 half-periods: boundaries at +1..+4 HP, then solid.
     let stop = HP * 4;
-    let a = blink().repeat(PaintRepeat::Settle(stop));
+    let a = blink().with_repeat(PaintRepeat::Settle(stop));
 
     // Before the stop the phase still alternates: odd multiples of
     // HP are the hidden ones.
@@ -254,7 +254,7 @@ fn blink_settles_solid_after_stop_and_stops_waking() {
     // 3.5 half-periods in, the phase is the hidden one (n = 3), so
     // waking only on boundaries would strand the caret invisible.
     let ragged = HP * 3 + HP / 2;
-    let b = blink().repeat(PaintRepeat::Settle(ragged));
+    let b = blink().with_repeat(PaintRepeat::Settle(ragged));
     assert_eq!(b.sample(START + HP * 3).alpha, 0.0);
     assert_eq!(b.sample(START + ragged).alpha, 1.0);
     assert_eq!(b.next_wake(START + HP * 3), Some(START + ragged));
@@ -272,6 +272,35 @@ fn blink_settles_solid_after_stop_and_stops_waking() {
 /// - at 1.0 s the pass is over. `Once` holds the end: alpha 1.0, turn a
 ///   half, which is `TAU / 2`.
 ///
+/// A sample is coerced where it is read: an alpha past either end
+/// clamps to it, a NaN alpha end or a curve that answers NaN reads as no
+/// opacity, and a turn that is not finite reads as no turn. Halfway along
+/// a linear curve, `-1 → 3` is `1` and `0 → 4` is `2`; past `1` it is
+/// clamped there.
+#[test]
+fn samples_are_coerced_where_they_are_read() {
+    let half = START + Duration::from_millis(500);
+    let linear = |alpha: (f32, f32), turn: (f32, f32), curve: PaintCurve| {
+        PaintAnimation::alpha(alpha.0, alpha.1)
+            .with_turn(turn.0, turn.1)
+            .with_started_at(START)
+            .with_period(Duration::from_secs(1))
+            .with_curve(curve)
+            .sample(half)
+    };
+    let fine = linear((-1.0, 3.0), (0.0, 0.5), curves::linear);
+    assert_eq!((fine.alpha, fine.rotation), (1.0, 0.25 * TAU));
+    let nan_end = linear((f32::NAN, 1.0), (f32::NAN, 1.0), curves::linear);
+    assert_eq!((nan_end.alpha, nan_end.rotation), (0.0, 0.0));
+    let nan_curve = linear((0.0, 1.0), (0.0, 1.0), |_| f32::NAN);
+    assert_eq!((nan_curve.alpha, nan_curve.rotation), (0.0, 0.0));
+    let huge = linear((0.0, 1.0), (0.0, f32::MAX), curves::linear);
+    assert_eq!(
+        huge.rotation, 0.0,
+        "a turn whose radians overflow is no turn"
+    );
+}
+
 /// A fractional alpha is the whole point — the two shipped animations
 /// only ever answered 0 or 1, so nothing before this could produce one.
 #[test]
@@ -280,11 +309,11 @@ fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
         t * t
     }
 
-    let a = PaintAnim::alpha(0.2, 1.0)
+    let a = PaintAnimation::alpha(0.2, 1.0)
         .with_turn(0.0, 0.5)
-        .started_at(START)
-        .period(Duration::from_secs(1))
-        .curve(squared);
+        .with_started_at(START)
+        .with_period(Duration::from_secs(1))
+        .with_curve(squared);
 
     let mid = a.sample(START + Duration::from_millis(500));
     assert_eq!(mid.alpha, 0.4, "alpha {}", mid.alpha);
@@ -298,7 +327,7 @@ fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
     // A turn of any range makes the damage bound the swept square, and
     // the cascade asks without a `now` or a call into the curve.
     assert!(a.rotates());
-    assert!(!PaintAnim::alpha(0.0, 1.0).rotates());
+    assert!(!PaintAnimation::alpha(0.0, 1.0).rotates());
 }
 
 /// `Settle` stops modifying the shape, rather than holding an end value.
@@ -307,10 +336,10 @@ fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
 /// arm of its own.
 #[test]
 fn a_settled_animation_stops_modifying_the_shape() {
-    let a = PaintAnim::alpha(0.0, 0.25)
-        .started_at(START)
-        .period(Duration::from_millis(100))
-        .repeat(PaintRepeat::Settle(Duration::from_millis(250)));
+    let a = PaintAnimation::alpha(0.0, 0.25)
+        .with_started_at(START)
+        .with_period(Duration::from_millis(100))
+        .with_repeat(PaintRepeat::Settle(Duration::from_millis(250)));
 
     assert!(a.sample(START + Duration::from_millis(200)).alpha < 0.25);
     let settled = a.sample(START + Duration::from_millis(250));
@@ -322,9 +351,9 @@ fn a_settled_animation_stops_modifying_the_shape() {
 /// Zero steps would read as a shape that never animates, with nothing
 /// else to say the animation was asked for.
 #[test]
-#[should_panic = "zero steps"]
+#[should_panic = "a count must be at least 1"]
 fn zero_steps_is_a_caller_bug() {
-    let _ = PaintAnim::alpha(0.0, 1.0).steps(0);
+    let _ = PaintAnimation::alpha(0.0, 1.0).with_steps(0);
 }
 
 /// Every part of an animation reaches its hash, so a shape whose
@@ -333,7 +362,7 @@ fn zero_steps_is_a_caller_bug() {
 /// animation hashes the same.
 #[test]
 fn hash_static_covers_channel_timing_and_curve() {
-    let hash = |anim: PaintAnim| {
+    let hash = |anim: PaintAnimation| {
         let mut h = Hasher::new();
         anim.hash_static(&mut h);
         h.finish()
@@ -343,7 +372,7 @@ fn hash_static_covers_channel_timing_and_curve() {
     for (label, other) in [
         (
             "alpha range",
-            PaintAnim {
+            PaintAnimation {
                 channel: PaintChannel {
                     alpha: Some((0.0, 0.5)),
                     turn: None,
@@ -353,7 +382,7 @@ fn hash_static_covers_channel_timing_and_curve() {
         ),
         (
             "the same range on the other channel",
-            PaintAnim {
+            PaintAnimation {
                 channel: PaintChannel {
                     alpha: None,
                     turn: Some((0.0, 1.0)),
@@ -361,11 +390,11 @@ fn hash_static_covers_channel_timing_and_curve() {
                 ..base
             },
         ),
-        ("started_at", base.started_at(START + HP)),
-        ("period", base.period(HP)),
-        ("repeat", base.repeat(PaintRepeat::Forever)),
-        ("steps", base.steps(3)),
-        ("curve", base.curve(curves::linear)),
+        ("started_at", base.with_started_at(START + HP)),
+        ("period", base.with_period(HP)),
+        ("repeat", base.with_repeat(PaintRepeat::Forever)),
+        ("steps", base.with_steps(3)),
+        ("curve", base.with_curve(curves::linear)),
     ] {
         assert_ne!(hash(base), hash(other), "{label}");
     }

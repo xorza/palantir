@@ -1,11 +1,13 @@
 mod click;
 mod drag;
+mod ime;
 mod input_delta;
 mod keyboard;
 mod response_state;
 mod scroll;
 mod scroll_routing;
 mod settle;
+mod tab;
 mod trickle;
 mod watch;
 mod zoom;
@@ -23,12 +25,11 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::UVec2;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 impl InputState {
     /// Feed `event` at time zero against an empty cascade — the input
     /// machine alone, with no tree behind it.
-    fn feed(&mut self, event: InputEvent) -> InputDelta {
+    fn feed(&mut self, event: InputEvent<'_>) -> InputDelta {
         self.on_input(event, &Cascade::default(), Duration::ZERO)
     }
 }

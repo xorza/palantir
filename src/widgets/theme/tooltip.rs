@@ -26,6 +26,7 @@ pub struct TooltipTheme {
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub text: TextStyleOverrides,
     /// Padding between chrome and the text.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is
     /// usually `INF` so tall tooltips just keep growing. Builder
@@ -65,7 +66,7 @@ impl TooltipTheme {
 
     /// A small raised bubble with a soft drop shadow.
     pub fn from_palette(p: &Palette) -> Self {
-        let panel = Background::rounded(p.elem, Corners::all(4.0))
+        let panel = Background::rounded(p.element, Corners::all(4.0))
             .with_border(Stroke::new(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 RgbaF32::new(0.0, 0.0, 0.0, 0.6),

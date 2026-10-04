@@ -3,7 +3,6 @@
 //! appear without re-serving the delay.
 
 use crate::input::sense::Sense;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::primitives::text::text_input::TextInput;
@@ -38,14 +37,6 @@ struct TooltipGlobal {
     last_visible_at: Option<Duration>,
 }
 
-/// Row key for the process-wide warmup state shared by every tooltip.
-/// Hashed on call rather than held in a `LazyLock`: hashing a short
-/// literal costs less than the lazy cell's init check, and only a
-/// hovered trigger asks for it at all.
-fn global_state_id() -> WidgetId {
-    WidgetId::from_hash("palantir.tooltip.global")
-}
-
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested
 /// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
@@ -59,7 +50,7 @@ fn global_state_id() -> WidgetId {
 /// # use palantir::{Button, Tooltip, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let r = Button::new().label("Save").show(ui).snapshot();
-/// Tooltip::on(&r).label("Persist changes (Ctrl+S)").show(ui);
+/// Tooltip::on(&r, "Persist changes (Ctrl+S)").show(ui);
 /// # }
 /// ```
 ///
@@ -85,18 +76,21 @@ pub struct Tooltip<'a> {
 }
 
 impl<'a> Tooltip<'a> {
-    /// Attach a tooltip to the given trigger response snapshot. The
-    /// snapshot carries the trigger's `WidgetId` and last-frame rect
-    /// — both drive timer keying and anchor computation. Pass via
-    /// `trigger.snapshot()` to detach from the trigger's `&Ui`
+    /// Attach a tooltip showing `text` to the given trigger response
+    /// snapshot. The snapshot carries the trigger's `WidgetId` and
+    /// last-frame rect — both drive timer keying and anchor computation.
+    /// Pass via `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before recording the tooltip body.
+    ///
+    /// `text` is the bubble's whole content, so it is required. An empty
+    /// one records no bubble at all.
     #[track_caller]
-    pub fn on(snapshot: &'a ResponseSnapshot) -> Self {
+    pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self {
         // Bubble must never claim hover — would shadow its own trigger.
-        let widget = Widget::vstack().sense(Sense::empty());
+        let widget = Widget::vstack().sense(Sense::NONE);
         Self {
             snapshot,
-            label: TextInput::default(),
+            label: text.into(),
             delay: None,
             when_disabled: false,
             widget,
@@ -111,15 +105,6 @@ impl<'a> Tooltip<'a> {
     /// Per-field [`Self::background`] / [`Self::delay`] still win over it.
     pub fn style(mut self, s: impl Into<Option<&'a TooltipTheme>>) -> Self {
         self.style = s.into();
-        self
-    }
-
-    /// The text this widget draws. Empty (the default) draws none —
-    /// no text child is recorded at all.
-    ///
-    /// The bubble's whole content — a tooltip draws nothing else.
-    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
         self
     }
 
@@ -179,7 +164,7 @@ impl<'a> Tooltip<'a> {
 
         if active_trigger {
             let warmup_active = ui
-                .state::<TooltipGlobal>(global_state_id())
+                .singleton::<TooltipGlobal>()
                 .and_then(|global| global.last_visible_at)
                 .is_some_and(|t| now.saturating_sub(t) < warmup);
             let started = if let Some(t) = state.hover_started_at {
@@ -204,9 +189,8 @@ impl<'a> Tooltip<'a> {
         if state.visible
             && let Some(trigger_rect) = trigger_rect
         {
-            ui.state_or_default::<TooltipGlobal>(global_state_id())
-                .last_visible_at = Some(now);
-            let anchor = Anchor::below(trigger_rect).gap(gap);
+            ui.with_singleton::<TooltipGlobal, _>(|_, global| global.last_visible_at = Some(now));
+            let anchor = Anchor::below(trigger_rect).with_gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             let text = theme.text.apply(&ui_theme.text);
@@ -240,7 +224,7 @@ impl<'a> Tooltip<'a> {
         }
 
         if state != prev {
-            *ui.state_or_default::<TooltipState>(trigger_id) = state;
+            ui.with_state::<TooltipState, _>(trigger_id, |_, s| *s = state);
         }
         TooltipResponse {
             visible: state.visible,
@@ -249,13 +233,37 @@ impl<'a> Tooltip<'a> {
 }
 
 impl Tooltip<'_> {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().tooltip.panel` when unset. Pass
     /// [`Background::NONE`] to suppress the themed bubble chrome.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 }

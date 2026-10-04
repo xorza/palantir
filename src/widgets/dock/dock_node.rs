@@ -2,19 +2,19 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::widgets::dock::split_side::SplitDir;
+use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_group::TabGroup;
 
 /// Index of a node in [`DockState`](crate::DockState)'s flat tree.
 ///
 /// Only stable between structural changes — every one of them re-packs
 /// the vector — so long-lived references use
-/// [`TabGroupId`](crate::TabGroupId) instead, and an op fed a stale
+/// [`TabGroupId`](crate::TabGroupId) instead, and an operation fed a stale
 /// index bounds-checks and no-ops.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeIdx(pub(crate) u32);
+pub struct NodeIndex(pub(crate) u32);
 
-impl NodeIdx {
+impl NodeIndex {
     pub(crate) const fn usize(self) -> usize {
         self.0 as usize
     }
@@ -30,15 +30,36 @@ pub enum DockNode<T> {
 }
 
 /// A division of one rect between two child nodes.
+///
+/// Read-only outside the crate: a [`DockState`](crate::DockState) keeps its
+/// ratio inside the split clamp, and only its operations change one.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DockSplit {
+    pub(crate) direction: SplitDirection,
+    pub(crate) ratio: f32,
+    pub(crate) first: NodeIndex,
+    pub(crate) second: NodeIndex,
+}
+
+impl DockSplit {
     /// How the two children are arranged.
-    pub dir: SplitDir,
-    /// The first child's share of the free space.
-    pub ratio: f32,
-    /// The leading child — left in a [`SplitDir::Row`], top in a
-    /// [`SplitDir::Column`].
-    pub first: NodeIdx,
+    pub const fn direction(self) -> SplitDirection {
+        self.direction
+    }
+
+    /// The first child's share of the free space, inside the split clamp.
+    pub const fn ratio(self) -> f32 {
+        self.ratio
+    }
+
+    /// The leading child — left in a [`SplitDirection::Row`], top in a
+    /// [`SplitDirection::Column`].
+    pub const fn first(self) -> NodeIndex {
+        self.first
+    }
+
     /// The trailing child.
-    pub second: NodeIdx,
+    pub const fn second(self) -> NodeIndex {
+        self.second
+    }
 }

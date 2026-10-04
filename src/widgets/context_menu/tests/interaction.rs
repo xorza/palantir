@@ -6,6 +6,7 @@ use crate::input::shortcut::Shortcut;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -13,6 +14,7 @@ use crate::widgets::button::Button;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::ContextMenuState;
 use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -103,10 +105,7 @@ fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
 
         // The primary command modifier + 'C' — `Modifiers::ctrl` is
         // platform-normalized (Cmd on macOS, Ctrl elsewhere).
-        h.set_modifiers(Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        });
+        h.set_modifiers(Modifiers::CTRL);
         h.key(Key::Char('C'));
         let row = h.frame_value(|ui| build_copy(ui, hint));
         assert_eq!(row.clicked, !hint, "hint {hint}: the press clicks the row");
@@ -191,7 +190,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                 .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .snapshot();
-            ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+            ContextMenu::on(&trigger).show(ui, |ui, popup| {
                 let item = MenuItem::new("Copy");
                 let item = if hint {
                     item.shortcut_hint(Shortcut::ctrl('C'))
@@ -203,7 +202,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                     clicked: row.left.clicked(),
                     id: row.id,
                 };
-                MenuItem::separator().show(ui);
+                MenuSeparator::new().show(ui);
                 MenuItem::new("Paste").show(ui, popup);
             });
         });
@@ -248,7 +247,7 @@ fn nested(ui: &mut Ui) {
         .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Popup::below(Rect::new(10.0, 10.0, 100.0, 20.0))
+            Popup::new(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
                 .id(WidgetId::from_hash("host"))
                 .show(ui, |ui, _| {
                     let trigger = Button::new()
@@ -257,7 +256,7 @@ fn nested(ui: &mut Ui) {
                         .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .snapshot();
-                    ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+                    ContextMenu::on(&trigger).show(ui, |ui, popup| {
                         MenuItem::new("Copy").show(ui, popup);
                     });
                 });

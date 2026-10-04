@@ -3,11 +3,12 @@ use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
-use crate::icons::icon_table::{IconDef, IconId, IconTable};
+use crate::icons::icon_table::{IconDefinition, IconId, IconTable};
 use crate::icons::internals::BROKEN;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use glam::{IVec2, U16Vec2, UVec2, Vec2};
+use std::borrow::Cow;
 
 /// A solid black square filling its whole 8x8 viewBox: every pixel is
 /// fully covered, so coverage is exactly 255 everywhere and the expected
@@ -21,7 +22,7 @@ const HALF: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"
 /// viewBox and tintability by parsing it, which is also what makes the
 /// ids below the *name-sorted* order rather than the listed one.
 fn fixtures() -> IconTable {
-    IconTable::from_svgs([("half", HALF), ("solid", SOLID)])
+    IconTable::from_svgs([("half", HALF), ("solid", SOLID)]).unwrap()
 }
 
 // Name-sorted, not listed-order.
@@ -53,7 +54,8 @@ fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
     let table = IconTable::from_svgs((0..=MAX_PARSED_TREES).map(|i| {
         let name: &'static str = Box::leak(format!("i{i:03}").into_boxed_str());
         (name, SOLID)
-    }));
+    }))
+    .unwrap();
     let icon = |n: usize| key(IconId(n as u16), 4, 4).icon;
     let mut r = IconRasterizer::default();
     for i in 0..MAX_PARSED_TREES {
@@ -137,8 +139,8 @@ fn colour_icon_rasterizes_to_straight_srgb_rgba() {
 /// rasterizer still has to fail *once* rather than once per frame.
 #[test]
 fn unparseable_icon_fails_once_and_is_not_retried() {
-    static BROKEN_ICONS: [IconDef; 1] = [IconDef {
-        name: "broken",
+    static BROKEN_ICONS: [IconDefinition; 1] = [IconDefinition {
+        name: Cow::Borrowed("broken"),
         view_box: Vec2::splat(8.0),
         svg: Span::new(0, BROKEN.len() as u32),
         tintable: true,

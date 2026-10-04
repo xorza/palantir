@@ -1,3 +1,4 @@
+use crate::animation::animatable::Animatable;
 use crate::primitives::paint::color::*;
 use ron::ser;
 
@@ -150,12 +151,12 @@ fn lerp_spans_both_endpoints_and_overshoots() {
     let b = RgbaF32::new(0.0, 1.0, 0.5, 0.0);
 
     // The endpoints come back exactly, alpha included.
-    assert_eq!(a.lerp(b, 0.0), a);
-    assert_eq!(a.lerp(b, 1.0), b);
+    assert_eq!(Animatable::lerp(a, b, 0.0), a);
+    assert_eq!(Animatable::lerp(a, b, 1.0), b);
 
     // Hand-computed quarter step: r 1.0→0.75, g 0.0→0.25, b flat at 0.5,
     // a 0.5→0.375. Alpha travels with the color, unlike `with_alpha`.
-    let quarter = a.lerp(b, 0.25);
+    let quarter = Animatable::lerp(a, b, 0.25);
     assert_eq!(
         (quarter.r, quarter.g, quarter.b, quarter.a),
         (0.75, 0.25, 0.5, 0.375)
@@ -163,12 +164,12 @@ fn lerp_spans_both_endpoints_and_overshoots() {
 
     // Hand-computed half step: r 1.0→0.5, g 0.0→0.5, b flat at 0.5,
     // a 0.5→0.25.
-    let mid = a.lerp(b, 0.5);
+    let mid = Animatable::lerp(a, b, 0.5);
     assert_eq!((mid.r, mid.g, mid.b, mid.a), (0.5, 0.5, 0.5, 0.25));
 
     // `t` is deliberately unclamped, so a caller can overshoot: t = 2
     // continues past `b` by the same delta again (r 1.0 → -1.0).
-    assert_eq!(a.lerp(b, 2.0).r, -1.0);
+    assert_eq!(Animatable::lerp(a, b, 2.0).r, -1.0);
 }
 
 /// `faded` scales alpha and nothing else.

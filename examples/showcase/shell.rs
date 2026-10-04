@@ -9,10 +9,10 @@
 use palantir::SlotDefaults;
 use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
-    Align, AnimSpec, App, Background, Block, Button, ButtonTheme, Checkbox, Configure, Corners,
-    FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut, Sizing,
-    Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides, TextWrap, Theme, Tooltip,
-    Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
+    Align, AnimationSpec, App, Background, Block, Button, ButtonTheme, Checkbox, Configure,
+    Corners, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut,
+    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides, TextWrap, Theme,
+    Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -32,7 +32,7 @@ pub(crate) const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 /// is, so both the F8 shortcut and the `state` page's button ask it here
 /// rather than each tracking a bool of its own.
 pub(crate) fn toggle_inspector(ui: &mut Ui) {
-    if ui.window_open(INSPECTOR_WINDOW) {
+    if ui.is_window_open(INSPECTOR_WINDOW) {
         ui.close_window(INSPECTOR_WINDOW);
     } else {
         ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
@@ -299,7 +299,7 @@ impl State {
         let mut theme = Theme::from_palette(&showcase_palette());
         // Library default is no button animation (`anim = None`). The
         // showcase exists to demo the animation primitive — opt in.
-        theme.button.defaults.anim = Some(AnimSpec::SPRING);
+        theme.button.defaults.animation = Some(AnimationSpec::SPRING);
         ui.set_theme(theme);
         State {
             active: 0,
@@ -569,9 +569,7 @@ fn ui_scale_row(ui: &mut Ui) {
             if clicked {
                 next = scale.stepped_up();
             }
-            Tooltip::on(&up)
-                .label("UI scale — ctrl +/− · ctrl 0 resets")
-                .show(ui);
+            Tooltip::on(&up, "UI scale — ctrl +/− · ctrl 0 resets").show(ui);
         });
     ui.set_user_scale(next);
 }
@@ -582,7 +580,7 @@ fn ui_scale_row(ui: &mut Ui) {
 fn scale_step_style() -> ButtonTheme {
     let mut style = nav_style(false);
     let grow = |look: &mut WidgetLook| {
-        look.text.font_size_px = Some(15.0);
+        look.text.font_size = Some(15.0);
     };
     grow(&mut style.looks.normal);
     grow(&mut style.looks.hovered);
@@ -623,10 +621,10 @@ const fn showcase_palette() -> Palette {
         text: support::INK,
         text_muted: support::INK_DIM,
         text_disabled: support::INK_DISABLED,
-        window_bg: support::WINDOW,
-        elem: support::ELEM,
-        elem_mid: support::ELEM_MID,
-        elem_strong: support::ELEM_STRONG,
+        window_background: support::WINDOW,
+        element: support::ELEMENT,
+        element_mid: support::ELEM_MID,
+        element_strong: support::ELEM_STRONG,
         border_focused: support::BORDER_FOCUSED,
         accent: support::ACCENT,
     }
@@ -669,7 +667,7 @@ fn nav_style(selected: bool) -> ButtonTheme {
         defaults: SlotDefaults {
             padding: Spacing::xy(10.0, 5.0),
             margin: Spacing::ZERO,
-            anim: Some(AnimSpec::FAST),
+            animation: Some(AnimationSpec::FAST),
         },
     }
 }

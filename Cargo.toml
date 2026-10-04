@@ -5,7 +5,6 @@ edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
 repository = "https://github.com/xorza/palantir"
-homepage = "https://github.com/xorza/palantir"
 documentation = "https://docs.rs/palantir"
 readme = "README.md"
 keywords = ["gui", "ui", "immediate-mode", "wgpu", "graphics"]
@@ -26,6 +25,7 @@ exclude = [
     "assets/logo/",
     "benches/bench-perf.sh",
     "docs/",
+    "scripts/",
 ]
 
 # `internals` exposes test-only reach-ins and `bench` the criterion
@@ -195,15 +195,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 static_assertions = "1.1"
 ron = "0.12"
 
+# No suite names `internals`: the self dev-dependency below turns it on for
+# every test build.
 [[test]]
 name = "visual"
 path = "tests/visual/main.rs"
-required-features = ["internals", "golden"]
+required-features = ["golden"]
 
 [[test]]
 name = "alloc"
 path = "tests/alloc/main.rs"
-required-features = ["internals"]
 
 [[example]]
 name = "counter"

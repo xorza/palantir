@@ -2,6 +2,7 @@
 //! normalized into the active text arena.
 
 use crate::primitives::layout::align::Align;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
@@ -64,47 +65,57 @@ impl TextShape {
     /// Not `at`, which every rect-shaped kind spells for a whole
     /// [`Rect`](crate::Rect): a run has a pen position rather than a box,
     /// and one word cannot mean both.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `origin` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn at_origin(mut self, origin: Vec2) -> Self {
-        self.local_origin = Some(origin);
+        self.local_origin = Some(vec2::offset(origin));
         self
     }
 }
 impl TextShape {
     /// Ink colour. Straight-alpha linear RGB, like every other colour
     /// on the CPU side.
-    pub fn color(mut self, color: impl Into<RgbaF32>) -> Self {
-        self.color = color.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn color(mut self, color: RgbaF32) -> Self {
+        self.color = domain::color(color);
         self
     }
 
     /// Whether the run breaks to the owner's width, and how.
-    pub fn wrap(mut self, wrap: impl Into<TextWrap>) -> Self {
-        self.wrap = wrap.into();
+    pub const fn wrap(mut self, wrap: TextWrap) -> Self {
+        self.wrap = wrap;
         self
     }
 
     /// Where the run sits inside its owner. Unread once
     /// [`Self::at_origin`] takes placement over.
-    pub fn align(mut self, align: impl Into<Align>) -> Self {
-        self.align = align.into();
+    pub const fn align(mut self, align: Align) -> Self {
+        self.align = align;
         self
     }
 
     /// Which family to shape in.
-    pub fn family(mut self, family: impl Into<FontFamily>) -> Self {
-        self.font.family = family.into();
+    pub const fn family(mut self, family: FontFamily) -> Self {
+        self.font.family = family;
         self
     }
 
     /// Which weight to shape at, on the CSS 1–1000 scale.
-    pub fn weight(mut self, weight: impl Into<FontWeight>) -> Self {
-        self.font.weight = weight.into();
+    pub const fn weight(mut self, weight: FontWeight) -> Self {
+        self.font.weight = weight;
         self
     }
 
     /// Upright or italic.
-    pub fn slant(mut self, slant: impl Into<FontSlant>) -> Self {
-        self.font.slant = slant.into();
+    pub const fn slant(mut self, slant: FontSlant) -> Self {
+        self.font.slant = slant;
         self
     }
 }

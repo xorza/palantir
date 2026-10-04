@@ -2,7 +2,7 @@
 //!
 //! **Where colours blend, they blend premultiplied.** Every interpolation
 //! between two colours — a gradient's stops (in linear light, or Oklab
-//! under [`Interp::Oklab`](crate::Interp)), a mesh's vertex colours, a
+//! under [`Interpolation::Oklab`](crate::Interpolation)), a mesh's vertex colours, a
 //! polyline's per-point colours and the average its joins paint — weighs
 //! each colour by its alpha first, the rule CSS Color 4 §12.3 sets for
 //! gradients. A fade from opaque white to transparent black is therefore
@@ -12,6 +12,7 @@
 pub(crate) mod gradient;
 
 use crate::animation::animatable::Animatable;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::conic_geometry::{
     ConicGradient, ConicGradientBuilder,
@@ -50,12 +51,39 @@ pub enum Brush {
 }
 
 impl Brush {
+    /// Panics unless a solid brush's colour is a [colour](domain::color)
+    /// and a gradient's geometry holds its kinds: angles are
+    /// [angles](domain::angle), centres [offsets](domain::offset), a radial
+    /// radius a [length](domain::length) on each axis. A gradient's stops
+    /// are checked when they are made. The check a brush faces where it
+    /// enters a shape or a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        match self {
+            Brush::Solid(c) => {
+                let _ = domain::color(*c);
+            }
+            Brush::Linear(g) => {
+                domain::angle(g.geometry.angle);
+            }
+            Brush::Radial(g) => {
+                vec2::offset(g.geometry.center);
+                vec2::length(g.geometry.radius);
+            }
+            Brush::Conic(g) => {
+                vec2::offset(g.geometry.center);
+                domain::angle(g.geometry.start_angle);
+            }
+        }
+    }
+
     /// Paints nothing. The identity a fill falls back to.
     pub const TRANSPARENT: Self = Self::Solid(RgbaF32::TRANSPARENT);
 
     /// Paints nothing visible.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         match self {
             Brush::Solid(c) => c.is_noop(),
             Brush::Linear(g) => g.is_noop(),

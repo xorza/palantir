@@ -29,7 +29,7 @@ use palantir::{
 pub(crate) const WINDOW: RgbaF32 = RgbaF32::hex(0x131417);
 /// Nav rail fill.
 pub(crate) const SIDEBAR: RgbaF32 = RgbaF32::hex(0x1a1b1f);
-/// Page canvas. Deliberately darker than [`ELEM`], the button fill this
+/// Page canvas. Deliberately darker than [`ELEMENT`], the button fill this
 /// showcase installs, so widgets read as raised against it.
 pub(crate) const CARD: RgbaF32 = RgbaF32::hex(0x212329);
 /// Recessed demo surface — one step below [`CARD`].
@@ -47,7 +47,7 @@ pub(crate) const HAIRLINE: RgbaF32 = RgbaF32::hex(0x272a31);
 /// Widget-chrome fill at rest. `shell`'s palette reads this rung and the
 /// three below it, so widget chrome and the page's own surfaces come off
 /// one ladder — which only holds while the ladder lives in one file.
-pub(crate) const ELEM: RgbaF32 = RgbaF32::hex(0x2b2e36);
+pub(crate) const ELEMENT: RgbaF32 = RgbaF32::hex(0x2b2e36);
 /// Widget chrome under the pointer.
 pub(crate) const ELEM_MID: RgbaF32 = RgbaF32::hex(0x353942);
 /// Widget chrome while pressed.

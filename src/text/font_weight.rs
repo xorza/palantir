@@ -49,6 +49,7 @@ impl FontWeight {
     /// whole `wght` range a variable face registers. A weight is authored
     /// in a theme or a builder, never taken from a frame, so this is a
     /// cold check on public-API misuse.
+    #[track_caller]
     pub const fn new(weight: u16) -> Self {
         assert!(Self::in_range(weight), "a font weight is 1..=1000");
         Self(weight)
@@ -61,7 +62,7 @@ impl FontWeight {
     }
 
     /// This weight as a bare number on the 1–1000 scale.
-    pub const fn value(self) -> u16 {
+    pub const fn get(self) -> u16 {
         self.0
     }
 
@@ -120,12 +121,12 @@ mod tests {
 
     #[test]
     fn the_named_steps_are_the_css_scale() {
-        assert_eq!(FontWeight::REGULAR.value(), 400);
-        assert_eq!(FontWeight::BOLD.value(), 700);
+        assert_eq!(FontWeight::REGULAR.get(), 400);
+        assert_eq!(FontWeight::BOLD.get(), 700);
         assert_eq!(FontWeight::default(), FontWeight::REGULAR);
         assert!(FontWeight::LIGHT < FontWeight::REGULAR);
         assert!(FontWeight::REGULAR < FontWeight::BOLD);
-        assert_eq!(FontWeight::new(550).value(), 550);
+        assert_eq!(FontWeight::new(550).get(), 550);
     }
 
     #[test]

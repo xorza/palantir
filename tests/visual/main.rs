@@ -10,7 +10,7 @@
 //!
 //! Layout: `harness` raises the UI, `palantir::golden` does the comparing,
 //! and `fixtures/` holds the actual UI scenes grouped by topic. Add new
-//! fixtures there.
+//! fixtures there, and name each new golden in `golden_name`.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -18,6 +18,7 @@
 )]
 
 mod fixtures;
+mod golden_name;
 mod goldens;
 mod harness;
 /// The showcase's support module, compiled into this suite so a golden can

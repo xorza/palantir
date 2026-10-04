@@ -5,7 +5,7 @@
 use glam::Vec2;
 use resvg::usvg;
 
-/// The three things an [`IconDef`](crate::IconDef) carries that the markup
+/// The three things an [`IconDefinition`](crate::IconDefinition) carries that the markup
 /// does not state outright, read off one parse of an SVG source.
 ///
 /// This is the only place outside the rasterizer that talks to `usvg`, which
@@ -131,7 +131,7 @@ mod tests {
         SvgFacts::of(svg.as_bytes()).expect("fixture parses")
     }
 
-    /// One parse decides the three facts an `IconDef` carries that the markup
+    /// One parse decides the three facts an `IconDefinition` carries that the markup
     /// does not state outright.
     #[test]
     fn survey_reads_viewbox_tintability_and_filter_use() {

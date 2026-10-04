@@ -8,6 +8,7 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
+use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -52,8 +53,8 @@ fn button_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            ptr::eq(theme.pick(state), *expected),
-            "{label}: pick should return the matching slot",
+            ptr::eq(theme.look(state, ()), *expected),
+            "{label}: look should return the matching slot",
         );
     }
 }
@@ -89,8 +90,8 @@ fn text_edit_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            ptr::eq(theme.pick(state), *expected),
-            "{label}: pick should return the matching slot",
+            ptr::eq(theme.look(state, ()), *expected),
+            "{label}: look should return the matching slot",
         );
     }
 }
@@ -158,33 +159,33 @@ fn toggle_theme_pick_selects_pack_then_state() {
     ];
     for (state, checked, expected, label) in cases {
         assert!(
-            ptr::eq(theme.pick(state, *checked), *expected),
-            "{label}: pick should return the matching slot",
+            ptr::eq(theme.look(state, *checked), *expected),
+            "{label}: look should return the matching slot",
         );
     }
 
     // The checked flag decides the answer on its own: one state, two packs.
     let idle = state(false, false, false);
     assert!(
-        !ptr::eq(theme.pick(&idle, false), theme.pick(&idle, true)),
+        !ptr::eq(theme.look(&idle, false), theme.look(&idle, true)),
         "checked and unchecked must not resolve to the same look",
     );
 }
 
 #[test]
-fn animated_look_line_height_px_delegates_to_text_style() {
+fn animated_look_line_height_delegates_to_text_style() {
     let look = AnimatedLook {
         background: Background::default(),
         text: TextStyle {
-            font_size_px: 16.0,
+            font_size: 16.0,
             color: RgbaF32::TRANSPARENT,
-            line_height_mult: 1.5,
+            line_height_factor: 1.5,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
         },
     };
-    assert_eq!(look.text.font().line_height_px, 24.0);
+    assert_eq!(look.text.font().line_height, 24.0);
 }
 
 /// The picker's channel values keep `DragValueTheme`'s promise: the editor
@@ -205,7 +206,7 @@ fn the_picker_value_editor_is_its_chip() {
         value.chip.looks.normal.text,
         TextStyleOverrides {
             family: Some(FontFamily::MONO),
-            font_size_px: Some(13.0),
+            font_size: Some(13.0),
             ..TextStyleOverrides::NONE
         },
         "the face and size are the picker's, every other axis the theme's",

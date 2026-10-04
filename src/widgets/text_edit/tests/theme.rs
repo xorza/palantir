@@ -10,7 +10,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(UVec2::new(600, 200));
-    h.ui.theme_mut().text.font_size_px = 22.0;
+    h.ui.theme_mut().text.font_size = 22.0;
     h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE.with_font_size(24.0);
     let mut buf = String::from("hi");
 
@@ -39,7 +39,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let read_fs = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.size_px),
+                ShapeRecord::Text { font, .. } => Some(font.size),
                 _ => None,
             })
             .unwrap()
@@ -118,9 +118,9 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::widgets::text::Text;
 
     let mut h = UiHarness::new(UVec2::new(600, 200));
-    h.ui.theme_mut().text.line_height_mult = 2.0;
+    h.ui.theme_mut().text.line_height_factor = 2.0;
     h.ui.theme_mut().text_edit.looks.normal.text =
-        TextStyleOverrides::NONE.with_line_height_mult(3.0);
+        TextStyleOverrides::NONE.with_line_height_factor(3.0);
     let mut buf = String::from("hi");
 
     let [btn_node, txt_node, ed_node] = h.frame_value(|ui| {
@@ -148,7 +148,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let read_lh = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.line_height_px),
+                ShapeRecord::Text { font, .. } => Some(font.line_height),
                 _ => None,
             })
             .unwrap()
@@ -168,7 +168,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 
 #[test]
 fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
     use crate::shape::record::ShapeRecord;
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEditState;
@@ -188,10 +188,10 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         ("infinite line height", 16.0, f32::INFINITY),
     ];
 
-    for (label, font_size_px, line_height_mult) in cases {
+    for (label, font_size, line_height_factor) in cases {
         let style = TextStyle {
-            font_size_px,
-            line_height_mult,
+            font_size,
+            line_height_factor,
             ..TextStyle::default()
         };
         let editor_id = WidgetId::from_hash("invalid editor");
@@ -208,15 +208,14 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
                     .show(ui);
             });
         });
-        {
-            let st = h.ui.state_or_default::<TextEditState>(editor_id);
+        h.ui.with_state::<TextEditState, _>(editor_id, |_, st| {
             st.edit.caret = 4;
             st.edit.selection = Some(1);
-        }
+        });
 
         h.ui.theme_mut().text_edit.looks.normal.text = TextStyleOverrides::NONE
-            .with_font_size(font_size_px)
-            .with_line_height_mult(line_height_mult);
+            .with_font_size(font_size)
+            .with_line_height_factor(line_height_factor);
         let calls = h.ui.shaper().measure_calls();
 
         let nodes = h.frame_value(|ui| {
@@ -270,7 +269,7 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
-    for (label, mult, expected_lh) in [
+    for (label, factor, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
         ("mult_2x_override", 2.0_f32, 32.0_f32),
     ] {
@@ -279,7 +278,7 @@ fn textedit_style_override_replaces_default_theme() {
         let style = TextEditTheme {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    text: TextStyleOverrides::NONE.with_line_height_mult(mult),
+                    text: TextStyleOverrides::NONE.with_line_height_factor(factor),
                     ..TextEditTheme::default().looks.normal
                 },
                 ..TextEditTheme::default().looks
@@ -302,7 +301,7 @@ fn textedit_style_override_replaces_default_theme() {
         });
         let lh = painted_shapes(&h.ui, leaf)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.line_height_px),
+                ShapeRecord::Text { font, .. } => Some(font.line_height),
                 _ => None,
             })
             .unwrap();
@@ -329,7 +328,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             .inner
     });
     let text_shape = painted_shapes(&h.ui, leaf_node).find_map(|s| match s {
-        ShapeRecord::Text { font, .. } => Some((font.size_px, font.line_height_px)),
+        ShapeRecord::Text { font, .. } => Some((font.size, font.line_height)),
         _ => None,
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
@@ -339,7 +338,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     assert_eq!(
         lh,
         (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0,
-        "default line_height_px is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
+        "default line_height is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
     );
     assert_eq!(lh, 19.203125);
 }
@@ -414,10 +413,7 @@ fn shift_end_paints_selection_highlight() {
     h.frame(|ui| {
         body(ui, &mut buf);
     });
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::End);
     let leaf = h.frame_value(|ui| body(ui, &mut buf));
 
@@ -480,10 +476,7 @@ fn click_without_drag_clears_prior_selection() {
 
     h.frame(editor_at(&mut buf, None));
     h.click_at(Vec2::new(60.0, 20.0));
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.set_modifiers(Modifiers::NONE);
     h.frame(editor_at(&mut buf, None));
@@ -548,7 +541,7 @@ fn line_height_override_changes_caret_rect_height() {
     let doubled = caret_height(Some(&TextEditTheme {
         looks: StatefulLook {
             active: WidgetLook {
-                text: TextStyleOverrides::NONE.with_line_height_mult(2.0),
+                text: TextStyleOverrides::NONE.with_line_height_factor(2.0),
                 ..TextEditTheme::default().looks.active
             },
             ..TextEditTheme::default().looks

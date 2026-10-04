@@ -7,6 +7,7 @@ use palantir::{
     Stroke, Text, TextStyle, Track,
 };
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -38,7 +39,7 @@ fn dashboard_matches_golden() {
                     // Header: title + action buttons, spans both columns.
                     Panel::hstack()
                         .id_salt("header")
-                        .grid_cell(GridCell::at(0, 0).span(1, 2))
+                        .grid_cell(GridCell::at(0, 0).with_span(1, 2))
                         .size((Sizing::FILL, Sizing::FILL))
                         .max_size((f32::INFINITY, 40.0))
                         .padding((10.0, 14.0, 10.0, 14.0))
@@ -154,7 +155,7 @@ fn dashboard_matches_golden() {
                     // Footer status bar.
                     Panel::hstack()
                         .id_salt("footer")
-                        .grid_cell(GridCell::at(2, 0).span(1, 2))
+                        .grid_cell(GridCell::at(2, 0).with_span(1, 2))
                         .max_size((f32::INFINITY, 24.0))
                         .padding((4.0, 10.0, 4.0, 10.0))
                         .background(Background {
@@ -175,5 +176,5 @@ fn dashboard_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("dashboard_hidpi", &img);
+    assert_matches_golden(GoldenName::DashboardHidpi, &img);
 }

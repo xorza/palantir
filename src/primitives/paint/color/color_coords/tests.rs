@@ -1,4 +1,5 @@
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain;
+use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -52,16 +53,55 @@ fn setters_clamp() {
     coords.set_hue(1.0);
     assert_eq!(coords.hue(), 1.0);
     coords.set_hue(1.25);
-    coords.set_sat(2.0);
-    coords.set_val(-1.0);
+    coords.set_saturation(2.0);
+    coords.set_value(-1.0);
     assert_eq!(coords.hue(), 1.0);
-    assert_eq!(coords.sat(), 1.0);
-    assert_eq!(coords.val(), 0.0);
+    assert_eq!(coords.saturation(), 1.0);
+    assert_eq!(coords.value(), 0.0);
     assert_eq!(
         coords.to_color().to_srgba_u8(),
         ColorCoords::default().to_color().to_srgba_u8(),
         "hue 1 is the colour hue 0 is",
     );
+
+    // A non-finite axis is no value, so each setter reads it as 0.
+    coords.set_hue(f32::NAN);
+    coords.set_saturation(f32::INFINITY);
+    coords.set_value(f32::NAN);
+    assert_eq!(
+        (coords.hue(), coords.saturation(), coords.value()),
+        (0.0, 0.0, 0.0)
+    );
+}
+
+/// Both models read raw axes the same way when they convert: the hue as a
+/// turn and the rest as fractions, so an out-of-range or non-finite axis
+/// paints what its coerced value paints, never NaN. `1.25` wraps to
+/// `0.25`, `1.7` clamps to `1`, and NaN or an infinity reads as `0`. The
+/// getters read the axes the same way, so a field or a bar built from
+/// them paints the colour the swatch does.
+#[test]
+fn raw_axes_coerce_on_conversion() {
+    let cases = [
+        ((f32::NAN, 0.5, 0.5), (0.0, 0.5, 0.5)),
+        ((0.25, f32::NAN, 0.5), (0.25, 0.0, 0.5)),
+        ((0.25, 0.5, f32::INFINITY), (0.25, 0.5, 0.0)),
+        ((1.25, 1.7, -0.3), (0.25, 1.0, 0.0)),
+    ];
+    for model in ColorModel::ALL {
+        for ((h, s, v), (ch, cs, cv)) in cases {
+            let got = axes(model, h, s, v).to_color();
+            let want = axes(model, ch, cs, cv).to_color();
+            assert_eq!(got, want, "{model:?} ({h}, {s}, {v})");
+            assert!(domain::is_color(got), "{model:?}: {got:?}");
+            let read = axes(model, h, s, v);
+            assert_eq!(
+                (read.hue(), read.saturation(), read.value()),
+                (ch, cs, cv),
+                "{model:?} ({h}, {s}, {v}): the getters read the painted axes",
+            );
+        }
+    }
 }
 
 /// `model`'s coordinates at the raw axes `(h, s, v)` — through the
@@ -95,8 +135,8 @@ fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
                     let back = ColorCoords::new(model, axes(model, h, s, v).to_color(), h);
                     worst = worst
                         .max(hue_gap(back.hue(), h))
-                        .max((back.sat() - s).abs())
-                        .max((back.val() - v).abs());
+                        .max((back.saturation() - s).abs())
+                        .max((back.value() - v).abs());
                 }
             }
         }
@@ -111,7 +151,7 @@ fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
             let grey = ColorCoords::new(model, RgbaF32::srgb(level, level, level), 0.618);
             assert_eq!(grey.hue(), 0.618, "{model:?}: grey at {level}");
             assert_close(
-                grey.sat(),
+                grey.saturation(),
                 0.0,
                 1e-3,
                 "grey's saturation, to the model's f32 rounding",

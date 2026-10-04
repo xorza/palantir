@@ -40,7 +40,7 @@ pub struct ExpanderTheme {
     /// Angle the arrow wears while the body is closed, in radians. The
     /// default quarter turn anticlockwise points it at the label, which
     /// is the disclosure triangle every file tree draws.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_closed_angle: f32,
     /// Angle the arrow wears while the body is open. The default leaves
     /// it upright, pointing down at what it revealed.
@@ -48,7 +48,7 @@ pub struct ExpanderTheme {
     /// Set the pair to `0.0` and `-PI` for the other convention — down
     /// when closed, up when open — which reads better for a column of
     /// sibling sections than for one disclosure.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_open_angle: f32,
     /// Gutter between the arrow and the label.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
@@ -61,8 +61,9 @@ pub struct ExpanderTheme {
     /// Named apart from [`SlotDefaults::padding`], which this bundle
     /// flattens: that one is the box default the header takes, and two
     /// fields of one name collide on the wire.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub body_padding: Spacing,
-    /// Spacing and transition spec — see [`SlotDefaults`]. `anim` is
+    /// Spacing and transition spec — see [`SlotDefaults`]. `animation` is
     /// `None` by default, so a reveal snaps until an application asks
     /// for the motion.
     #[serde(flatten)]
@@ -104,11 +105,11 @@ impl ExpanderTheme {
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
-                    background: Background::rounded(p.elem_mid, radius),
+                    background: Background::rounded(p.element_mid, radius),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    background: Background::rounded(p.elem_strong, radius),
+                    background: Background::rounded(p.element_strong, radius),
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
@@ -126,7 +127,7 @@ impl ExpanderTheme {
             defaults: SlotDefaults {
                 padding: Spacing::new(4.0, 4.0, 4.0, 4.0),
                 margin: Spacing::ZERO,
-                anim: None,
+                animation: None,
             },
         }
     }

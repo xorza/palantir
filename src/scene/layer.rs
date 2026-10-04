@@ -1,19 +1,7 @@
 //! Layer ordering and fixed per-layer storage.
 
 #[repr(u8)]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    strum::EnumCount,
-    strum::VariantArray,
-)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Which recording arena a widget lands in. Each layer is an independent
 /// tree; they are painted bottom-up in declaration order and hit-tested
 /// top-down, so a popup rejects a pointer before the content beneath it
@@ -48,27 +36,38 @@ pub enum Layer {
 }
 
 impl Layer {
+    pub(crate) const COUNT: usize = 6;
+
     /// Every layer, back to front. Hit order is this reversed.
     ///
-    /// Copied out of the derived `VARIANTS` at const-eval rather than
-    /// written out, because paint order *is* declaration order — the
-    /// discriminants are the paint sequence. A hand-written table could
-    /// only ever agree with the enum or be wrong, which is why it used
-    /// to need a `const` block asserting `PAINT_ORDER[i] as usize == i`.
-    /// An array rather than the slice so callers keep iterating by
-    /// value.
-    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = {
-        let mut out = [Layer::Main; <Layer as strum::EnumCount>::COUNT];
-        let mut i = 0;
-        while i < out.len() {
-            out[i] = <Layer as strum::VariantArray>::VARIANTS[i];
-            i += 1;
-        }
-        out
-    };
+    /// Paint order *is* declaration order — the discriminants are the
+    /// paint sequence — and the assertion below holds this table to them.
+    /// An array rather than a slice so callers keep iterating by value.
+    pub(crate) const PAINT_ORDER: [Layer; Layer::COUNT] = [
+        Layer::Main,
+        Layer::Popup,
+        Layer::Modal,
+        Layer::Menu,
+        Layer::Tooltip,
+        Layer::Debug,
+    ];
 
     #[inline]
     pub(crate) const fn idx(self) -> usize {
         self as usize
     }
 }
+
+// Entry `i` of the paint order has discriminant `i`, and the last
+// variant closes the count.
+const _: () = {
+    let mut i = 0;
+    while i < Layer::COUNT {
+        assert!(
+            Layer::PAINT_ORDER[i].idx() == i,
+            "Layer::PAINT_ORDER must list every discriminant in order",
+        );
+        i += 1;
+    }
+    assert!(Layer::Debug.idx() + 1 == Layer::COUNT);
+};

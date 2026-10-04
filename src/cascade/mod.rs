@@ -23,11 +23,15 @@ pub(crate) mod paint;
 mod paint_rect;
 
 use crate::cascade::cascade_key::CascadeKey;
-use crate::cascade::entry::{EntryRow, HitRow, HitTargets, PressTargets, ScopeRow, WidgetLocation};
+use crate::cascade::entry::{
+    ArrowGroupRow, EntryRow, HitRow, HitTargets, PressTargets, RootRow, ScopeRow, TabDirection,
+    TabDomain, TabStopRow, WidgetLocation,
+};
 use crate::cascade::layer_cascade::LayerCascade;
 use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::endpoint::Endpoint;
+use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use glam::Vec2;
 
@@ -49,6 +53,12 @@ pub(crate) struct Cascade {
     hits: Vec<HitRow>,
     /// Declared input scopes in record order — see [`ScopeRow`].
     pub(crate) scopes: Vec<ScopeRow>,
+    /// Tab stops in record order — see [`TabStopRow`].
+    pub(crate) tab_stops: Vec<TabStopRow>,
+    /// Layer roots in record order — see [`RootRow`].
+    pub(crate) roots: Vec<RootRow>,
+    /// Arrow groups in record order — see [`ArrowGroupRow`].
+    pub(crate) arrow_groups: Vec<ArrowGroupRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
     /// ([`crate::input::input_state::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
@@ -137,25 +147,33 @@ impl Cascade {
     }
 
     /// One reverse walk that finds the topmost hover, scroll and pinch
-    /// target at once. Used on `PointerMoved` and at `post_record` to
-    /// recompute all three in a single pass.
+    /// targets at once. Used on `PointerMoved` and at `post_record` to
+    /// recompute them all in a single pass.
     /// [`Self::hit_test_press`] is the same shape for the press path.
-    /// The three are independent: a `Sense::DRAG | Sense::SCROLL` widget
-    /// sits in both hover and scroll slots if it's the topmost match for
-    /// each. Stops as soon as all three are filled.
+    /// The slots are independent: a `Sense::DRAG | Sense::SCROLL` widget
+    /// sits in the hover slot and both scroll slots if it's the topmost
+    /// match for each, and the two wheel axes may land on two rows.
+    /// Stops as soon as every slot is filled.
     pub(crate) fn hit_test_targets(&self, pos: Vec2) -> HitTargets {
         let mut targets = HitTargets::default();
         for row in self.hits_under(pos) {
             if targets.hover.is_none() && Sense::hovers(row.sense) {
                 targets.hover = Some(row.widget_id);
             }
-            if targets.scroll.is_none() && Sense::scrolls(row.sense) {
-                targets.scroll = Some(row.widget_id);
+            if targets.scroll.x.is_none() && row.sense.contains(Sense::SCROLL_X) {
+                targets.scroll.x = Some(row.widget_id);
+            }
+            if targets.scroll.y.is_none() && row.sense.contains(Sense::SCROLL_Y) {
+                targets.scroll.y = Some(row.widget_id);
             }
             if targets.pinch.is_none() && Sense::pinches(row.sense) {
                 targets.pinch = Some(row.widget_id);
             }
-            if targets.hover.is_some() && targets.scroll.is_some() && targets.pinch.is_some() {
+            if targets.hover.is_some()
+                && targets.scroll.x.is_some()
+                && targets.scroll.y.is_some()
+                && targets.pinch.is_some()
+            {
                 break;
             }
         }
@@ -190,6 +208,123 @@ impl Cascade {
             }
         }
         targets
+    }
+
+    /// The stop a Tab press moves focus to from `focused`, or `None` when
+    /// `domain` holds no stop.
+    ///
+    /// The stops of `domain` — [`Self::tab_domain`] — in ascending `index`, ties in
+    /// record order; `Next` takes the first after `focused` and `Previous`
+    /// the last before it, both wrapping. A `focused` outside the domain —
+    /// nothing focused, or a field behind an open modal — enters it at the
+    /// first stop, or at the last going back.
+    ///
+    /// One scan over the rows rather than a sort: a stop's order key is
+    /// `(index, record position)`, and the answer is a minimum or a
+    /// maximum over it.
+    pub(crate) fn next_tab_stop(
+        &self,
+        domain: TabDomain,
+        focused: Option<WidgetId>,
+        direction: TabDirection,
+    ) -> Option<WidgetId> {
+        let stops = || {
+            self.tab_stops
+                .iter()
+                .enumerate()
+                .filter(move |(_, row)| self.in_domain(domain, row))
+                .map(|(position, row)| ((row.index, position), row.id))
+        };
+        let current =
+            focused.and_then(|id| stops().find(|&(_, stop)| stop == id).map(|(key, _)| key));
+        match direction {
+            TabDirection::Next => current
+                .and_then(|from| {
+                    stops()
+                        .filter(|&(key, _)| key > from)
+                        .min_by_key(|&(key, _)| key)
+                })
+                .or_else(|| stops().min_by_key(|&(key, _)| key)),
+            TabDirection::Previous => current
+                .and_then(|from| {
+                    stops()
+                        .filter(|&(key, _)| key < from)
+                        .max_by_key(|&(key, _)| key)
+                })
+                .or_else(|| stops().max_by_key(|&(key, _)| key)),
+        }
+        .map(|(_, id)| id)
+    }
+
+    /// Whether `row` is one of `domain`'s stops.
+    fn in_domain(&self, domain: TabDomain, row: &TabStopRow) -> bool {
+        match domain {
+            TabDomain::Root(root) => row.root == root,
+            TabDomain::Layer(layer) => row.layer == layer,
+            TabDomain::Group(group) => self.is_within(row.id, group),
+        }
+    }
+
+    /// The innermost arrow group `focused` sits in, or `None`. Groups are
+    /// rows in pre-order, so the last one holding it is the innermost.
+    pub(crate) fn arrow_group_of(&self, focused: WidgetId) -> Option<ArrowGroupRow> {
+        self.arrow_groups
+            .iter()
+            .rev()
+            .find(|row| self.is_within(focused, row.id))
+            .copied()
+    }
+
+    /// The first stop in Tab order recorded under `ancestor`, or `None`
+    /// when it holds none or was not recorded.
+    pub(crate) fn first_tab_stop_within(&self, ancestor: WidgetId) -> Option<WidgetId> {
+        self.tab_stops
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| self.is_within(row.id, ancestor))
+            .min_by_key(|&(position, row)| (row.index, position))
+            .map(|(_, row)| row.id)
+    }
+
+    /// The stops a Tab press from `focused` may reach.
+    ///
+    /// - A `Menu` root that holds the focus traps it: a menu is raised
+    ///   from whatever it sits above, modal included.
+    /// - Otherwise the topmost open `Modal` traps it — the last `Modal`
+    ///   root recorded — and a focus anywhere else is pulled into it.
+    /// - Otherwise a `Popup` root that holds the focus traps it. A popup
+    ///   that does not hold it — an autocomplete list under a focused
+    ///   field — takes nothing, so Tab moves on through the field's own
+    ///   layer, as ARIA's combobox does.
+    /// - Otherwise every stop in `Main`.
+    pub(crate) fn tab_domain(&self, focused: Option<WidgetId>) -> TabDomain {
+        let modal = self
+            .roots
+            .iter()
+            .rev()
+            .find(|row| row.layer == Layer::Modal);
+        let focus_root = focused.and_then(|id| {
+            let layer = self.endpoint(id)?.layer;
+            self.roots
+                .iter()
+                .rev()
+                .find(|row| row.layer == layer && self.is_within(id, row.id))
+        });
+        if let Some(root) = focus_root {
+            let traps = match root.layer {
+                Layer::Menu => true,
+                Layer::Modal => modal == Some(root),
+                Layer::Popup => modal.is_none(),
+                Layer::Main | Layer::Tooltip | Layer::Debug => false,
+            };
+            if traps {
+                return TabDomain::Root(root.id);
+            }
+        }
+        match modal {
+            Some(root) => TabDomain::Root(root.id),
+            None => TabDomain::Layer(Layer::Main),
+        }
     }
 }
 
@@ -308,6 +443,9 @@ pub(crate) mod internals {
                     .collect::<Vec<_>>()
             };
             assert_eq!(scopes(self), scopes(cold), "scope rows");
+            assert_eq!(self.tab_stops, cold.tab_stops, "tab stop rows");
+            assert_eq!(self.roots, cold.roots, "root rows");
+            assert_eq!(self.arrow_groups, cold.arrow_groups, "arrow group rows");
             for (layer, tree) in forest.trees.iter_paint_order() {
                 let (warm, full) = (&self.layers[layer], &cold.layers[layer]);
                 for (node, id) in tree.records.widget_id().iter().enumerate() {

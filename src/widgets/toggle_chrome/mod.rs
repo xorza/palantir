@@ -2,7 +2,10 @@
 //! toggle widgets, and the resolved chrome each hands it.
 
 use crate::input::interaction::response_state::ResponseState;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::paint::background::Background;
@@ -54,20 +57,36 @@ impl ToggleChrome {
     /// than to this line.
     #[track_caller]
     pub(crate) fn row() -> Widget {
-        Widget::hstack().sense(Sense::CLICK)
+        Widget::hstack()
+            .sense(Sense::CLICK)
+            .focusable(true)
+            // Space classifies as `KeyClass::Text`, so taking it means
+            // claiming that class — right for a focused toggle, which is
+            // not a typing target, as for a focused `Expander` header.
+            .input_scope(KeyFilter::TEXT)
     }
 
-    /// Flip `value` when the row was clicked while enabled, and answer
-    /// what it now holds.
+    /// Whether the row was activated this frame: clicked, or Space pressed
+    /// while it holds focus. The click half is already empty on a disabled
+    /// row; the key half checks, since keys never pass through that fold.
+    pub(crate) fn activated(ui: &mut Ui, widget: &mut Widget, response: &ResponseState) -> bool {
+        let id = widget.resolve(ui);
+        response.clicked()
+            || (!response.disabled
+                && ui.is_focus_within(id)
+                && widget.key_pressed(ui, Shortcut::key(Key::Char(' '))))
+    }
+
+    /// Flip `value` when the row was `activated`, and answer what it now
+    /// holds.
     ///
     /// One body for [`Checkbox`](crate::Checkbox) and
-    /// [`Switch`](crate::Switch): both bind a `bool` a click inverts, and
-    /// a click on a disabled row is not an edit.
+    /// [`Switch`](crate::Switch): both bind a `bool` an activation inverts.
     /// [`RadioButton`](crate::RadioButton) latches instead —
-    /// re-clicking the selected option is a no-op — so it resolves its
+    /// re-activating the selected option is a no-op — so it resolves its
     /// own.
-    pub(crate) const fn toggled(response: &ResponseState, value: &mut bool) -> bool {
-        if response.clicked() {
+    pub(crate) const fn toggled(activated: bool, value: &mut bool) -> bool {
+        if activated {
             *value = !*value;
         }
         *value
@@ -124,7 +143,7 @@ impl ToggleChrome {
             }
         });
 
-        Response::eager(id, ui, response)
+        Response::new(id, ui, response)
     }
 }
 

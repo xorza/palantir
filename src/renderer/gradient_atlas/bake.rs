@@ -6,8 +6,8 @@
 //! The shaders filter between texels in the same space.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::math::approx;
-use crate::primitives::paint::brush::gradient::Interp;
+use crate::primitives::math::domain;
+use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::paint::color::RgbaF32;
@@ -19,8 +19,11 @@ pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
 
 /// Bake `ramp` into one row of texels.
 pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
-    let ColorRamp { stops, interp } = ramp;
-    let interp = *interp;
+    let ColorRamp {
+        stops,
+        interpolation,
+    } = ramp;
+    let interpolation = *interpolation;
     // No sort here: `GradientStops` holds its stops in ascending offset
     // order as a type invariant, precisely so the value that keys this
     // row and the row it bakes cannot disagree.
@@ -34,8 +37,8 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     // Only the Oklab ramp reads these, and an empty slice is what says so:
     // a linear bake neither computes nor carries a second colour space.
-    let oklab: &[[f32; 3]] = match interp {
-        Interp::Oklab => {
+    let oklab: &[[f32; 3]] = match interpolation {
+        Interpolation::Oklab => {
             // From the straight colour: a premultiplied one has no hue
             // left to convert where its alpha is zero.
             for index in 0..count {
@@ -44,14 +47,14 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
             }
             &oklab_stops[..count]
         }
-        Interp::Linear => &[],
+        Interpolation::Linear => &[],
     };
 
     for (texel, color) in out.iter_mut().zip(RampTexels::new(
         stops,
         &linear_stops[..count],
         oklab,
-        interp,
+        interpolation,
     )) {
         *texel = color;
     }
@@ -80,9 +83,9 @@ struct RampTexels<'a> {
     /// The stop colours, premultiplied.
     linear: &'a [RgbaF32],
     /// Oklab coordinates of the straight stop colours, empty under
-    /// [`Interp::Linear`].
+    /// [`Interpolation::Linear`].
     oklab: &'a [[f32; 3]],
-    interp: Interp,
+    interpolation: Interpolation,
     /// Index of the segment's upper stop — the invariant is
     /// `stops[upper - 1].offset() <= t`, restored by [`Self::color_at`].
     upper: usize,
@@ -98,13 +101,13 @@ impl<'a> RampTexels<'a> {
         stops: &'a GradientStops,
         linear: &'a [RgbaF32],
         oklab: &'a [[f32; 3]],
-        interp: Interp,
+        interpolation: Interpolation,
     ) -> Self {
         Self {
             stops,
             linear,
             oklab,
-            interp,
+            interpolation,
             upper: 1,
             texel: 0,
         }
@@ -129,15 +132,15 @@ impl<'a> RampTexels<'a> {
         let lower_offset = self.stops[upper - 1].offset();
         let upper_offset = self.stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if approx::approx_zero(denominator) {
+        if domain::is_approx_zero(denominator) {
             return self.linear[upper];
         }
         let amount = (t - lower_offset) / denominator;
         let lower = self.linear[upper - 1];
         let upper_color = self.linear[upper];
-        match self.interp {
-            Interp::Linear => RgbaF32::lerp(lower, upper_color, amount),
-            Interp::Oklab => lerp_oklab(
+        match self.interpolation {
+            Interpolation::Linear => RgbaF32::lerp(lower, upper_color, amount),
+            Interpolation::Oklab => lerp_oklab(
                 lower,
                 upper_color,
                 self.oklab[upper - 1],
@@ -198,8 +201,8 @@ fn lerp_oklab(
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::math::approx::internals::assert_close;
-    use crate::primitives::paint::brush::gradient::Interp;
+    use crate::primitives::math::domain::internals::assert_close;
+    use crate::primitives::paint::brush::gradient::Interpolation;
     use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
     use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
     use crate::primitives::paint::color::RgbaF32;
@@ -219,7 +222,7 @@ mod tests {
             Stop::new(1.0, RgbaF32::WHITE),
         ]);
         let linear = [RgbaF32::BLACK, RgbaF32::WHITE];
-        let ramp = RampTexels::new(&stops, &linear, &[], Interp::Linear);
+        let ramp = RampTexels::new(&stops, &linear, &[], Interpolation::Linear);
 
         assert_eq!(ramp.len(), LUT_ROW_TEXELS);
         assert_eq!(ramp.count(), LUT_ROW_TEXELS);
@@ -240,12 +243,12 @@ mod tests {
     fn the_ramp_is_baked_premultiplied() {
         let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
         let clear_blue = RgbaF32::new(0.0, 0.0, 1.0, 0.0);
-        let bake = |stops: &GradientStops, interp| {
+        let bake = |stops: &GradientStops, interpolation| {
             let mut row = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
             super::row(
                 &ColorRamp {
                     stops: *stops,
-                    interp,
+                    interpolation,
                 },
                 &mut row,
             );
@@ -254,9 +257,9 @@ mod tests {
         let fade = GradientStops::new([Stop::new(0.0, red), Stop::new(1.0, clear_blue)]);
         // 0.8 stores as the f16 1638 × 2^-11.
         let stored = 1638.0 / 2048.0;
-        let linear = RgbaF32::from(bake(&fade, Interp::Linear)[51]);
+        let linear = RgbaF32::from(bake(&fade, Interpolation::Linear)[51]);
         assert_eq!(linear, RgbaF32::new(stored, 0.0, 0.0, stored));
-        let oklab = RgbaF32::from(bake(&fade, Interp::Oklab)[51]);
+        let oklab = RgbaF32::from(bake(&fade, Interpolation::Oklab)[51]);
         assert_eq!((oklab.r, oklab.a), (stored, stored));
         for residue in [oklab.g, oklab.b] {
             assert_close(
@@ -269,7 +272,7 @@ mod tests {
         }
 
         let hard = GradientStops::new([Stop::new(0.5, red), Stop::new(0.5, clear_blue)]);
-        let row = bake(&hard, Interp::Linear);
+        let row = bake(&hard, Interpolation::Linear);
         assert_eq!(row[128], RgbaF16::from(red));
         assert_eq!(row[129], RgbaF16::TRANSPARENT);
     }

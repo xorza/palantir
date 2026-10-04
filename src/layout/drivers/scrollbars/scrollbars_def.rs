@@ -8,7 +8,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 use std::hash::{Hash, Hasher};
@@ -61,9 +61,10 @@ impl ScrollbarsDef {
     /// bars. A widget passes the size it arranged at last frame, to solve
     /// its offset in.
     pub(crate) fn viewport(&self, outer: Size) -> Size {
+        let (reserve, padding) = (self.reserve.sums(), self.padding.sums());
         Size::new(
-            (outer.w - self.reserve.horizontal_sum() - self.padding.horizontal_sum()).max(0.0),
-            (outer.h - self.reserve.vertical_sum() - self.padding.vertical_sum()).max(0.0),
+            (outer.w - reserve.w - padding.w).max(0.0),
+            (outer.h - reserve.h - padding.h).max(0.0),
         )
     }
 

@@ -4,7 +4,7 @@
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -54,7 +54,7 @@ impl<'a> ColorSwatch<'a> {
     /// Record the chip and report whether it was clicked.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().color_picker);
-        let side = theme.swatch_size.themed_length(1.0);
+        let side = domain::length_at_least(theme.swatch_size, 1.0);
         let checker = Checkerboard::new(theme);
         let mut widget = self
             .widget
@@ -67,7 +67,7 @@ impl<'a> ColorSwatch<'a> {
         let color = self.color;
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, color, size));
-        Response::eager(id, ui, response)
+        Response::new(id, ui, response)
     }
 }
 

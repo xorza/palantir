@@ -2,7 +2,7 @@
 //! velocity clears.
 
 use crate::animation::anim_map_typed::AnimMapTyped;
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{
     AnimUi, SLOT, closed_form_settle_step, setup_anim_ui, spring_velocity, wid,
 };
@@ -28,26 +28,26 @@ fn spring_snap_fields_carry_target_immediately() {
     let id = wid("snap-carry");
     let start = Background {
         fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
     };
     // First touch: snaps current = start, returns settled. No motion
     // started yet.
-    let _ = map.step(id, SLOT, start.clone(), AnimSpec::SPRING, 0.016);
+    let _ = map.step(id, SLOT, start.clone(), AnimationSpec::SPRING, 0.016);
 
     // Retarget to a new fill (animated) and a new radius (snap). From
     // rest, the change's own frame steps nothing and shows the start,
     // snap field included.
     let target = Background {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
-    let r = map.step(id, SLOT, target.clone(), AnimSpec::SPRING, 0.016);
+    let r = map.step(id, SLOT, target.clone(), AnimationSpec::SPRING, 0.016);
     assert_eq!(r.current, start, "the change's frame shows the start");
-    let r = map.step(id, SLOT, target.clone(), AnimSpec::SPRING, 0.016);
+    let r = map.step(id, SLOT, target.clone(), AnimationSpec::SPRING, 0.016);
     assert!(
         !r.settled,
         "spring with a real fill diff must remain in flight after one step",
@@ -86,9 +86,9 @@ fn gradient_snap_clears_only_its_background_velocity() {
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let _ = map.step(id, SLOT, start, AnimSpec::SPRING, 0.0);
+    let _ = map.step(id, SLOT, start, AnimationSpec::SPRING, 0.0);
     for _ in 0..3 {
-        let _ = map.step(id, SLOT, moving.clone(), AnimSpec::SPRING, 0.016);
+        let _ = map.step(id, SLOT, moving.clone(), AnimationSpec::SPRING, 0.016);
     }
     let stroke_velocity = spring_velocity(&map.rows[&(id, SLOT)]).border.width;
     assert!(
@@ -107,7 +107,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let result = map.step(id, SLOT, target, AnimSpec::SPRING, 0.0);
+    let result = map.step(id, SLOT, target, AnimationSpec::SPRING, 0.0);
     let row = &map.rows[&(id, SLOT)];
     let velocity = spring_velocity(row);
     assert_eq!(result.current.fill, gradient);
@@ -142,7 +142,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     // what says whether the spring is still moving.
     let frame = |h: &mut UiHarness, look: &AnimatedLook| {
         h.frame_passes(|ui| {
-            let current = ui.animate(id, SLOT, look.clone(), Some(AnimSpec::SPRING));
+            let current = ui.animate(id, SLOT, look.clone(), Some(AnimationSpec::SPRING));
             Block::new()
                 .id(WidgetId::from_hash("gradient-look-settle"))
                 .show(ui);
@@ -163,7 +163,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     // The gradient snaps and holds through every frame of the fade.
     let mut last = None;
     let frames = h.frames_until_idle(600, tick, |ui| {
-        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
+        let current = ui.animate(id, SLOT, target.clone(), Some(AnimationSpec::SPRING));
         assert_eq!(current.background.fill, gradient);
         Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))

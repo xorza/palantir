@@ -31,7 +31,7 @@ fn explicit_size_overrides_fill_default() {
 
 /// Both endpoints collapse one segment to a zero-extent `Fixed` rather
 /// than a zero-weight `Fill`, and a fraction that names no share reads as
-/// empty instead of reaching `Sizing::share`'s finite assert —
+/// empty instead of reaching `Sizing::fill`'s finite assert —
 /// `ProgressBar::new(done / total)` with `total == 0` is the case app
 /// code writes without thinking.
 #[test]

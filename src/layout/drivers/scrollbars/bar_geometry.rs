@@ -1,6 +1,6 @@
 //! One scrollbar along its axis.
 
-use crate::primitives::math::approx;
+use crate::primitives::math::domain;
 use crate::primitives::math::num::F32Px;
 
 /// One bar along its axis, in logical pixels from the track's start:
@@ -69,7 +69,7 @@ impl BarGeometry {
             .clamp(1.0, floored);
         let travel = floored - thumb_size;
         let max_offset = content - track;
-        let fraction = approx::share_of(offset, max_offset).clamp(0.0, 1.0);
+        let fraction = domain::share_of(offset, max_offset).clamp(0.0, 1.0);
         Some(Self {
             track,
             thumb_size,

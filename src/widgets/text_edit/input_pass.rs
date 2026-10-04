@@ -20,9 +20,9 @@ use crate::widgets::text_edit::text_layout::TextLayout;
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// Escape cancelled the edit, which also blurs before view
+    /// Escape canceled the edit, which also blurs before view
     /// recording.
-    pub(super) cancelled: bool,
+    pub(super) canceled: bool,
     /// Enter accepted a single-line value this frame.
     pub(super) submitted: bool,
     /// The buffer was mutated this frame (typing, delete, paste, cut,
@@ -92,7 +92,7 @@ impl InputPass<'_> {
             select_all_on_focus,
             filter,
         } = policy;
-        let mut cancelled = false;
+        let mut canceled = false;
         let mut submitted = false;
         let clipboard = ui.clipboard();
 
@@ -102,6 +102,12 @@ impl InputPass<'_> {
             // Filled by the geometry pass after this one, and read only by the
             // painter — the input pass has no business in it.
             selection_rects: _,
+            placeholder: _,
+            commit_pending: _,
+            preedit: _,
+            preedit_cursor: _,
+            display: _,
+            composing: _,
         } = state;
         let was_focused = view.was_focused();
         // Repair persisted byte offsets before any range/slice operation.
@@ -162,7 +168,7 @@ impl InputPass<'_> {
         if !is_focused {
             ed.normalize();
             return InputResult {
-                cancelled,
+                canceled,
                 submitted,
                 edited: ed.edited(),
             };
@@ -174,14 +180,14 @@ impl InputPass<'_> {
         // the text inline, and iterating the queue would hold a borrow of
         // `ui` across every one of those probes.
         for i in 0..ui.keyboard_events().len() {
-            let press = ui.keyboard_events()[i];
-            let Some(kp) = filter.accepts(press) else {
+            let kp = ui.keyboard_events()[i];
+            if !filter.takes_press(kp) {
                 continue;
-            };
+            }
             // Single-line Enter is a *submit* signal, not an edit: the buffer
             // is left untouched (multi-line handles `\n` in `apply_key`), but
             // the caller learns the user accepted the value.
-            if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
+            if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
                 submitted = true;
                 assert_only_repeats_after(ui.keyboard_events(), i);
                 break;
@@ -192,7 +198,7 @@ impl InputPass<'_> {
             }
             match apply_key(&mut ed, kp) {
                 KeyOutcome::Blur => {
-                    cancelled = true;
+                    canceled = true;
                     assert_only_repeats_after(ui.keyboard_events(), i);
                     break;
                 }
@@ -208,7 +214,7 @@ impl InputPass<'_> {
 
         ed.normalize();
         InputResult {
-            cancelled,
+            canceled,
             submitted,
             edited: ed.edited(),
         }
@@ -381,14 +387,8 @@ fn is_document_nav(keypress: KeyPress) -> bool {
 /// The chord that moves by word with an arrow: Alt on macOS, where Cmd
 /// is the line chord, and Ctrl elsewhere.
 const WORD_NAV: Modifiers = match PLATFORM {
-    Platform::Mac => Modifiers {
-        alt: true,
-        ..Modifiers::NONE
-    },
-    _ => Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    },
+    Platform::Mac => Modifiers::ALT,
+    _ => Modifiers::CTRL,
 };
 
 /// [`WORD_NAV`] held without the other of Ctrl and Alt.

@@ -26,7 +26,7 @@ pub enum DockError<T> {
     UnreachableSlots,
     /// No group holds the pinned tab.
     MissingPinnedTab,
-    /// Two groups share an id, so every op addressed to it is ambiguous.
+    /// Two groups share an id, so every operation addressed to it is ambiguous.
     DuplicateGroup {
         /// The id both groups claim.
         group: TabGroupId,

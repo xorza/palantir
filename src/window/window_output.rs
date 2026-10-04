@@ -1,5 +1,6 @@
 //! The per-window settings the host applies after a frame.
 
+use crate::primitives::geometry::rect::Rect;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 
@@ -11,11 +12,15 @@ use crate::window::vsync::Vsync;
 /// and copied out by each drain, which is what lets a host with no window
 /// to apply them to drop its copy without the app's own view of them
 /// changing.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct WindowOutput {
     /// The cursor this frame asked for; applied on change.
     pub(crate) cursor: CursorIcon,
     /// The pacing this frame wants. A level: the host diffs it against the
     /// swapchain it has open and reconfigures only on a change.
     pub(crate) vsync: Vsync,
+    /// The caret IME text goes to, in logical px, or `None` to turn IME
+    /// off: asked for each record pass by the widget that wants it, like
+    /// `cursor`, so a pass that nobody asks in turns it off.
+    pub(crate) ime: Option<Rect>,
 }

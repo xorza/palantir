@@ -1,7 +1,9 @@
 //! [`OverlayScope`] — a dismissible overlay's claim on its layer.
 
 use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -97,10 +99,13 @@ impl OverlayScope {
     /// is the root's own resolved id, so a caller-set id on the root is
     /// the owner too — not an id the caller derived beside it.
     ///
-    /// [`KeyFilter::ALL`] rather than something narrower because an
-    /// overlay *owns* input while it is up: it does not merely outrank
-    /// the layers below it, it cuts them off. That is what stops a popup
-    /// underneath a modal from dismissing alongside it on one Escape.
+    /// Every class but [`KeyFilter::FOCUS`], because an overlay *owns*
+    /// input while it is up: it does not merely outrank the layers below
+    /// it, it cuts them off. That is what stops a popup underneath a modal
+    /// from dismissing alongside it on one Escape. `FOCUS` stays out so
+    /// Tab walks the overlay's own stops: a claimed class is one the
+    /// framework's traversal leaves alone, and the layers below are cut
+    /// off by layer, whatever the class.
     pub(crate) fn claim(
         ui: &mut Ui,
         layer: Layer,
@@ -109,7 +114,8 @@ impl OverlayScope {
         root: &mut Widget,
     ) -> Self {
         if backdrop.owns_input() {
-            root.configure().input_scope(KeyFilter::ALL);
+            root.configure()
+                .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS));
         }
         let owner = root.resolve(ui);
         Self {
@@ -125,11 +131,11 @@ impl OverlayScope {
     ///
     /// The Escape read happens in here, before the layer closes, and it
     /// has to: outside the layer the ambient scope sits below this
-    /// overlay's, so an `escape_pressed()` call made after the fact is
+    /// overlay's, so a `key_pressed(Escape)` call made after the fact is
     /// silenced by the very scope the overlay just declared — and the
     /// overlay never sees its own dismiss key. A backdrop-less scope
     /// reports `false` without asking: it has no dismiss key, and
-    /// `escape_pressed` auto-watches the chord for wake-up, which an
+    /// `key_pressed` auto-watches the chord for wake-up, which an
     /// always-recorded overlay would re-arm every frame for nothing.
     ///
     /// A recorded eater goes down first, so it paints *under* the body.
@@ -154,12 +160,15 @@ impl OverlayScope {
         let owns_input = self.backdrop.owns_input();
         let scope = ui.layer(self.layer);
         let scope = match self.anchor {
-            Some(anchor) => scope.anchored(anchor),
+            Some(anchor) => scope.anchor(anchor),
             None => scope,
         };
         let (inner, escape) = scope.show(|ui| {
             let inner = body(ui);
-            (inner, owns_input && ui.escape_pressed())
+            (
+                inner,
+                owns_input && ui.key_pressed(Shortcut::key(Key::Escape)),
+            )
         });
         OverlayTurn {
             inner,

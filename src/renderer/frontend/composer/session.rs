@@ -8,7 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::math::approx::{EPS, paints_nothing};
+use crate::primitives::math::domain::{EPS, is_invisible};
 use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -87,7 +87,7 @@ impl PackedQuad {
     /// rect — the shape both the clear fold and the fragment fast path
     /// start from.
     const fn is_sharp(&self) -> bool {
-        paints_nothing(self.stroke_width) && self.corners.approx_zero()
+        is_invisible(self.stroke_width) && self.corners.is_approx_zero()
     }
 
     /// [`Self::is_sharp`] plus a rect whose physical edges land on whole
@@ -203,7 +203,7 @@ impl PaintSink for ComposeSession<'_> {
         let scale = self.out.display.scale_factor();
         let snap = self.out.display.pixel_snap;
         let viewport_phys = self.out.display.physical;
-        let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
+        let logical_radius = (!p.corners.is_approx_zero()).then_some(p.corners);
         let world = self.composer.transform.apply_rect(p.rect);
         // Scaled once: the scissor is the integer cover of this rect and
         // the rounded mask below is the rect itself, so deriving them
@@ -1041,7 +1041,7 @@ impl ComposeSession<'_> {
             return;
         }
         let inscribed = packed.rect.phys.inscribed_for_corners(packed.corners);
-        let stroke_inset = if paints_nothing(packed.stroke_width) || p.stroke.color.is_opaque() {
+        let stroke_inset = if is_invisible(packed.stroke_width) || p.stroke.color.is_opaque() {
             0.0
         } else {
             packed.stroke_width

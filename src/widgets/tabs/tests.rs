@@ -9,9 +9,14 @@ use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
+use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::panel::Panel;
+use crate::widgets::scroll::Scroll;
+use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
@@ -277,7 +282,7 @@ fn arrows_home_and_end_travel_and_wrap() {
 /// inside the band's clip — the band's rect deflated by its padding.
 #[test]
 fn a_keyboard_move_pans_the_band_to_the_chip() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     let record = |h: &mut UiHarness, selected: usize| {
         h.frame_value(|ui| {
@@ -313,6 +318,75 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
     assert!(in_clip(&mut h), "the band panned to the chip End selected");
 }
 
+/// An overflowing strip pans on a horizontal wheel — the Shift+wheel a
+/// Linux or Windows host turns into one, too — and hands a vertical one
+/// to the page behind it while the page can scroll. Over a page that
+/// fits, nothing else pans y, so the strip takes the vertical turn as
+/// horizontal movement.
+#[test]
+fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
+    let page = WidgetId::from_hash("page");
+    let band = strip_id().with("band");
+    // (case, page content height, page offset and band offset after the
+    // vertical turn of 25 px)
+    let cases: [(&str, f32, f32, f32); 2] = [
+        ("the page scrolls, so it takes y", 600.0, 25.0, 30.0),
+        ("the page fits, so the strip takes y", 50.0, 0.0, 55.0),
+    ];
+    for (label, filler_h, page_y, band_x) in cases {
+        let build = |ui: &mut Ui| {
+            let items = items(ui, TabBadge::None);
+            Scroll::vertical()
+                .id(page)
+                .size((Sizing::fixed(300.0), Sizing::fixed(150.0)))
+                .show(ui, |ui| {
+                    TabStrip::new(&items)
+                        .id(strip_id())
+                        .selected(0)
+                        .size((Sizing::fixed(90.0), Sizing::HUG))
+                        .show(ui);
+                    Block::new()
+                        .id_salt("filler")
+                        .size((Sizing::fixed(280.0), Sizing::fixed(filler_h)))
+                        .show(ui);
+                });
+        };
+        let mut h = UiHarness::new(SURFACE);
+        h.prime(2, build);
+        h.move_to(Vec2::new(40.0, 10.0));
+
+        h.scroll_pixels(Vec2::new(20.0, 0.0));
+        h.frame(build);
+        assert_eq!(
+            h.state::<ScrollState>(band).offset.x,
+            20.0,
+            "{label}: wheel x"
+        );
+        // What the host makes of Shift+wheel y on Linux: the swap is
+        // pinned with the host's input translation.
+        h.scroll_pixels(Vec2::new(10.0, 0.0));
+        h.frame(build);
+        assert_eq!(
+            h.state::<ScrollState>(band).offset.x,
+            30.0,
+            "{label}: Shift+wheel"
+        );
+
+        h.scroll_pixels(Vec2::new(0.0, 25.0));
+        h.frame(build);
+        assert_eq!(
+            h.state::<ScrollState>(page).offset.y,
+            page_y,
+            "{label}: page"
+        );
+        assert_eq!(
+            h.state::<ScrollState>(band).offset.x,
+            band_x,
+            "{label}: band"
+        );
+    }
+}
+
 /// Travel is scoped to focus: the same press with the strip unfocused
 /// moves nothing, so an application's own arrow handling keeps working.
 #[test]
@@ -334,9 +408,9 @@ fn travel_needs_focus_inside_the_strip() {
 }
 
 /// A focused strip takes Ctrl+Tab, which it cycles on, and lets bare Tab
-/// walk past to an app root that declares a scope of its own — the strip
-/// has no use for traversal, so claiming it would cut the app's traversal
-/// off at the chips.
+/// walk past to an app root that takes `FOCUS` itself — the strip has no
+/// use for traversal, so claiming it would cut the app's traversal off at
+/// the chips.
 #[test]
 fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     use crate::KeyFilter;
@@ -345,7 +419,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     let scene = |ui: &mut Ui, probe: Shortcut| {
         Panel::vstack()
             .id(WidgetId::from_hash("app-root"))
-            .input_scope(KeyFilter::ACCEL)
+            .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
                 let at_root = ui.key_pressed(probe);
                 let items = items(ui, TabBadge::None);
@@ -444,17 +518,49 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     );
 }
 
-/// A page index that does not address the option slice is a caller bug,
-/// exactly as it is for `ComboBox` — there is no empty state to fall
-/// back to.
+/// The page index is an index coerced for display: one past the end
+/// shows the last page and leaves the binding alone, and an empty page
+/// list records its strip with no page under it.
 #[test]
-#[should_panic(expected = "out of range")]
-fn a_tabbed_view_panics_on_an_index_it_cannot_show() {
+fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     let mut h = UiHarness::new(SURFACE);
+    let view = WidgetId::from_hash("test.stale");
     let mut page = 7usize;
+    let mut drawn = None;
     h.frame(|ui| {
-        TabbedView::new(&mut page, &PAGES).show(ui, |_, _| {});
+        TabbedView::new(&mut page, &PAGES)
+            .id(view)
+            .show(ui, |_, index| drawn = Some(index));
     });
+    assert_eq!((page, drawn), (7, Some(2)));
+
+    let mut drawn = None;
+    h.frame(|ui| {
+        TabbedView::new(&mut page, &[] as &[&str])
+            .id(view)
+            .show(ui, |_, index| drawn = Some(index));
+    });
+    assert_eq!((page, drawn), (7, None));
+    assert!(
+        h.rect(view.with("strip")).is_some(),
+        "the strip still records"
+    );
+}
+
+/// A strip's selection is coerced the same way: an index past the end caps
+/// the last chip and no other.
+#[test]
+fn a_stale_strip_selection_caps_the_last_chip() {
+    let mut h = UiHarness::new(SURFACE);
+    strip_frame(&mut h, 9, TabBadge::None);
+    let capped = |key: u64| {
+        let node = h
+            .node_of(TabStrip::chip_id(strip_id(), key))
+            .expect("chip")
+            .node;
+        h.ui.tree(Layer::Main).chrome(node).is_some()
+    };
+    assert_eq!([10, 20, 30].map(capped), [false, false, true]);
 }
 
 /// A drag that releases over another slot reports the move rather than
@@ -524,6 +630,68 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
         assert_eq!(action, want, "{label}");
         assert_eq!(page, page_after, "{label}: the bound page");
     }
+}
+
+/// A keyed view names each chip by its page, not its slot: after the
+/// first page goes, "Geometry"'s chip keeps its id and moves to the left
+/// edge, where an index-keyed view would hand slot 1's id to "Metadata".
+/// A drag reads the same keys: "Colour" dropped past the last chip is the
+/// append, exactly as on an index-keyed view.
+#[test]
+fn a_keyed_view_keeps_each_chip_with_its_page() {
+    let view = WidgetId::from_hash("test.keyed");
+    let strip = view.with("strip");
+    let chip = |name: &str| TabStrip::chip_id(strip, WidgetId::from_hash(name).0);
+    let record = |ui: &mut Ui, page: &mut usize, pages: &[&str]| {
+        TabbedView::new(page, pages)
+            .id(view)
+            .reorderable(true)
+            .keyed(|name: &&str| *name)
+            .show(ui, |ui, _| {
+                Panel::vstack()
+                    .id_salt("page")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |_| {});
+            })
+            .action
+    };
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut page = 0usize;
+    h.prime(2, |ui| {
+        record(ui, &mut page, &PAGES);
+    });
+    let geometry_before = h.rect(chip("Geometry")).expect("Geometry's chip");
+    let colour = h.rect(chip("Colour")).expect("Colour's chip");
+    assert!(
+        h.rect(TabStrip::chip_id(strip, 1)).is_none(),
+        "no index keys"
+    );
+    h.frame(|ui| {
+        record(ui, &mut page, &PAGES[1..]);
+    });
+    let geometry_after = h.rect(chip("Geometry")).expect("Geometry's chip survives");
+    assert_eq!(
+        geometry_after.min.x, colour.min.x,
+        "it moved to the left edge"
+    );
+    assert!(geometry_after.min.x < geometry_before.min.x);
+
+    let mut h = UiHarness::new(SURFACE);
+    let mut page = 0usize;
+    h.prime(2, |ui| {
+        record(ui, &mut page, &PAGES);
+    });
+    h.press_on(chip("Colour"));
+    let onto = h.center_of(chip("Metadata"));
+    h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
+    h.frame(|ui| {
+        record(ui, &mut page, &PAGES);
+    });
+    h.release();
+    let action = h.frame_value(|ui| record(ui, &mut page, &PAGES));
+    assert_eq!(action, Some(TabsAction::Reordered { from: 0, to: 3 }));
+    assert_eq!(page, 2, "the bound page followed Colour to the end");
 }
 
 /// Where an index lands when `from` moves into the gap `to`, for pages
@@ -598,7 +766,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // with a click and a keyboard move.
     h.click_on(chevron);
     h.frame(build(half_way));
-    h.click_on(strip_id().with("overflow_menu").with(30u64));
+    h.click_on(strip_id().with("overflow").with(30u64));
     let picked = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);
         let r = TabStrip::new(&items)
@@ -610,4 +778,19 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         (r.menu_picked, r.clicked, r.activated())
     });
     assert_eq!(picked, (Some(2), None, Some(2)));
+
+    // The menu's state is the chevron's: a strip that leaves while its
+    // menu is open takes the menu with it, and comes back closed.
+    h.click_on(chevron);
+    h.frame(build(half_way));
+    assert!(
+        ContextMenu::is_open(&h.ui, chevron),
+        "premise: the menu is open"
+    );
+    h.frame(|_| {});
+    h.frame(build(half_way));
+    assert!(
+        !ContextMenu::is_open(&h.ui, chevron),
+        "the strip came back with its menu closed"
+    );
 }

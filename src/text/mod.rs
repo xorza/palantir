@@ -9,7 +9,7 @@
 //!   buffer. The only production backend.
 //! - `mono` — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
-//!   `font_size_px * 0.5` wide; it mints no shaped buffer, so `TextSystem`
+//!   `font_size * 0.5` wide; it mints no shaped buffer, so `TextSystem`
 //!   reports no [`key::TextShapeKey`] for those runs and the renderer
 //!   drops them. It replaces the *measurement*, not the font system —
 //!   a mono shaper holds the same database as any other — so a layout
@@ -100,7 +100,7 @@ pub(crate) mod wrap;
 /// text is small enough that crispness stepping does not read, so coarse
 /// rungs and fewer atlas keys win.
 ///
-/// **Geometric note.** Measurement uses the unscaled `font_size_px` —
+/// **Geometric note.** Measurement uses the unscaled `font_size` —
 /// only the paint-time scale snaps. At a non-rung zoom the painted glyph
 /// block is up to `TEXT_SCALE_STEP / 2` wider or narrower on each axis
 /// than the layout-space rect it nominally fills. `TextDrawRow.bounds`

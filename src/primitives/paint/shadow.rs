@@ -1,6 +1,7 @@
 //! One drop or inset shadow: the offset, blur and spread a chrome or a
 //! shape paints behind itself.
 
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
@@ -14,7 +15,7 @@ use palantir_anim_derive::Animatable;
 /// overhang formula and the one `emit_shadow` path.
 ///
 /// `Shadow::NONE` (also `Default`) is the "no shadow" sentinel —
-/// matches the `Stroke::ZERO` convention so consumers can store a
+/// matches the `Stroke::NONE` convention so consumers can store a
 /// plain `Shadow` field instead of `Option<Shadow>` and animate
 /// componentwise through it.
 ///
@@ -34,7 +35,7 @@ pub struct Shadow {
     /// Ink colour, alpha included.
     pub color: RgbaF32,
     /// Shift in logical pixels — CSS `box-shadow`'s x and y.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite2")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub offset: Vec2,
     /// Gaussian σ in logical pixels, half CSS's `blur-radius`. Zero
     /// collapses to a sharp edge.
@@ -42,7 +43,7 @@ pub struct Shadow {
     pub blur: f32,
     /// Inflates a drop shadow's source rect, and deflates an inset
     /// one's.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset")]
     pub spread: f32,
     /// Paint inside the chrome boundary rather than outside it.
     #[animate(snap)]
@@ -50,6 +51,19 @@ pub struct Shadow {
 }
 
 impl Shadow {
+    /// Panics unless the colour is a [colour](domain::color), the offset
+    /// and the spread [offsets](domain::offset), and the blur a
+    /// [length](domain::length) — the check a shadow faces where it
+    /// enters a shape or a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        let _ = domain::color(self.color);
+        vec2::offset(self.offset);
+        domain::length(self.blur);
+        domain::offset(self.spread);
+    }
+
     /// Canonical "no shadow" sentinel. Equivalent to
     /// `Shadow::default()` but `const`, so callers can use it in
     /// `const` contexts (theme tables, look defaults). Reports

@@ -185,7 +185,6 @@ use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::any;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 pub mod frontend_harness;
 #[cfg(test)]
@@ -472,7 +471,7 @@ impl UiHarness {
     /// press-origin, modifier, and threshold rules, and a helper that
     /// emits exactly one event hands back that event's [`InputDelta`] so
     /// nothing is given up by using it.
-    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+    pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         match event {
             InputEvent::PointerPressed(button) => {
                 assert!(
@@ -801,8 +800,8 @@ impl UiHarness {
     /// makes a between-frames read wrong. `response_for` deliberately
     /// stays off this rung; use [`Self::rect`] for geometry and
     /// [`Self::response_in`] for edges.
-    pub const fn focused_id(&self) -> Option<WidgetId> {
-        self.ui.focused_id()
+    pub const fn focus(&self) -> Option<WidgetId> {
+        self.ui.focus()
     }
 
     /// [`Ui::set_focus`].
@@ -815,9 +814,9 @@ impl UiHarness {
         self.ui.clear_focus();
     }
 
-    /// [`Ui::focus_within`].
-    pub fn focus_within(&self, ancestor: WidgetId) -> bool {
-        self.ui.focus_within(ancestor)
+    /// [`Ui::is_focus_within`].
+    pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
+        self.ui.is_focus_within(ancestor)
     }
 
     /// Topmost widget the pointer would hit at `pos`, by the same filter
@@ -852,9 +851,8 @@ impl UiHarness {
     ///
     /// # Panics
     ///
-    /// Panics when no such row exists. Unlike `Ui::state_or_default`, a
-    /// read here never inserts the default it would then assert on, so a
-    /// wrong id or a wrong type fails instead of passing.
+    /// Panics when no such row exists, so a wrong id or a wrong type fails
+    /// instead of reading a default.
     pub fn state<S: 'static>(&self, id: WidgetId) -> &S {
         self.ui.state::<S>(id).unwrap_or_else(|| {
             panic!(

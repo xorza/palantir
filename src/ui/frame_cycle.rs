@@ -88,7 +88,8 @@ impl<'a> FrameCycle<'a> {
         // is screened where it enters, and neither door sees the other.
         assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor()),
-            "Display::scale_factor() must be finite and ≥ EPSILON; got {}",
+            "{}, got {}",
+            display::SCALE_RULE,
             stamp.display.scale_factor(),
         );
 
@@ -237,6 +238,7 @@ impl<'a> FrameCycle<'a> {
                 .map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, baseline.clear),
             processing,
+            ime_area: self.ui.window_requests.levels.ime,
         };
         // The first-frame contract, checked on the finished report
         // because each half carries a share of it. With no prev snapshot
@@ -357,8 +359,10 @@ impl<'a> FrameCycle<'a> {
         tracy::zone!("Ui::pre_record");
         self.ui.forest.pre_record();
         self.ui.input.pre_record(&self.ui.cascade);
-        // Re-asserted by whoever still wants the cursor this pass.
+        // Re-asserted by whoever still wants the cursor, or IME text, this
+        // pass.
         self.ui.window_requests.levels.cursor = CursorIcon::default();
+        self.ui.window_requests.levels.ime = None;
     }
 
     /// Record-half of a pass: finalize hashes, run measure / arrange,

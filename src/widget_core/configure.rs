@@ -16,11 +16,13 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::math::domain::vec2;
 use crate::scene::node::ident::Ident;
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
@@ -57,12 +59,13 @@ impl ConfigureWidget<'_> {
     #[track_caller]
     #[inline]
     pub fn auto_id(&mut self) -> &mut Self {
-        self.widget.ident = Ident::Auto(WidgetId::auto_stable());
+        self.widget.ident = Ident::Auto(WidgetId::auto());
         self
     }
 
     /// Borrowing form of [`Configure::size`].
     #[inline]
+    #[track_caller]
     pub fn size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
         self.widget.node.size = Some(s.into());
         self
@@ -70,6 +73,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_size`].
     #[inline]
+    #[track_caller]
     pub fn default_size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
         self.widget.node.size.get_or_insert(s.into());
         self
@@ -77,6 +81,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::min_size`].
     #[inline]
+    #[track_caller]
     pub fn min_size(&mut self, s: impl Into<Size>) -> &mut Self {
         self.widget.node.set_min_size(s.into());
         self
@@ -84,6 +89,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::max_size`].
     #[inline]
+    #[track_caller]
     pub fn max_size(&mut self, s: impl Into<Size>) -> &mut Self {
         self.widget.node.set_max_size(s.into());
         self
@@ -91,6 +97,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::padding`].
     #[inline]
+    #[track_caller]
     pub fn padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
         self.widget.node.set_padding(p.into());
         self
@@ -98,6 +105,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::margin`].
     #[inline]
+    #[track_caller]
     pub fn margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
         self.widget.node.set_margin(m.into());
         self
@@ -105,6 +113,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::transform`].
     #[inline]
+    #[track_caller]
     pub const fn transform(&mut self, t: TranslateScale) -> &mut Self {
         self.widget.node.transform = t;
         self
@@ -112,20 +121,31 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::position`].
     #[inline]
+    #[track_caller]
     pub fn position(&mut self, p: impl Into<Vec2>) -> &mut Self {
-        self.widget.node.position = p.into();
+        self.widget.node.position = vec2::offset(p.into());
         self
     }
 
     /// Borrowing form of [`Configure::grid_cell`].
     #[inline]
+    #[track_caller]
     pub fn grid_cell(&mut self, cell: impl Into<GridCell>) -> &mut Self {
         self.widget.node.grid = cell.into();
         self
     }
 
+    /// Borrowing form of [`Configure::adopt_placement`].
+    #[inline]
+    #[track_caller]
+    pub fn adopt_placement(&mut self, from: &Widget) -> &mut Self {
+        self.widget.node.adopt_placement(from.node);
+        self
+    }
+
     /// Borrowing form of [`Configure::gap`].
     #[inline]
+    #[track_caller]
     pub fn gap(&mut self, g: f32) -> &mut Self {
         self.widget.node.gaps.set_gap(g);
         self
@@ -133,6 +153,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::line_gap`].
     #[inline]
+    #[track_caller]
     pub fn line_gap(&mut self, g: f32) -> &mut Self {
         self.widget.node.gaps.set_line_gap(g);
         self
@@ -185,6 +206,27 @@ impl ConfigureWidget<'_> {
     #[inline]
     pub const fn focusable(&mut self, f: bool) -> &mut Self {
         self.widget.node.flags.set_focusable(f);
+        self
+    }
+
+    /// Borrowing form of [`Configure::tab_stop`].
+    #[inline]
+    pub const fn tab_stop(&mut self, stop: bool) -> &mut Self {
+        self.widget.node.flags.set_tab_stop(stop);
+        self
+    }
+
+    /// Borrowing form of [`Configure::arrow_focus`].
+    #[inline]
+    pub const fn arrow_focus(&mut self, axis: Axis) -> &mut Self {
+        self.widget.node.flags.set_arrow_focus(Some(axis));
+        self
+    }
+
+    /// Borrowing form of [`Configure::tab_index`].
+    #[inline]
+    pub const fn tab_index(&mut self, index: i16) -> &mut Self {
+        self.widget.node.tab_index = index;
         self
     }
 
@@ -246,6 +288,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_padding`].
     #[inline]
+    #[track_caller]
     pub fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
         self.widget.node.fill_padding(p.into());
         self
@@ -253,6 +296,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_margin`].
     #[inline]
+    #[track_caller]
     pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
         self.widget.node.fill_margin(m.into());
         self
@@ -267,6 +311,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_gap`].
     #[inline]
+    #[track_caller]
     pub fn default_gap(&mut self, g: f32) -> &mut Self {
         self.widget.node.fill_gap(g);
         self
@@ -274,6 +319,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_min_size`].
     #[inline]
+    #[track_caller]
     pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self {
         self.widget.node.fill_min_size(s.into());
         self
@@ -281,6 +327,7 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_max_size`].
     #[inline]
+    #[track_caller]
     pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self {
         self.widget.node.fill_max_size(s.into());
         self
@@ -406,46 +453,66 @@ pub trait Configure: Sized {
     /// number (fixed on both axes), a `(w, h)` pair, or a [`Size`].
     #[inline]
     #[must_use]
+    #[track_caller]
     fn size(mut self, s: impl Into<SizeSpec>) -> Self {
         self.configure().size(s);
         self
     }
 
+    /// The smallest size layout gives this node: each axis a *length*. A
+    /// maximum below it is raised to it — the minimum wins, as in CSS and
+    /// WPF.
+    ///
     /// # Panics
     ///
-    /// Panics if the bound is negative, non-finite, or above a maximum
-    /// already set on this node.
+    /// Panics unless both axes are [lengths](crate::widget::domain::length).
     #[inline]
     #[must_use]
+    #[track_caller]
     fn min_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().min_size(s);
         self
     }
 
+    /// The largest size layout gives this node: each axis an *extent*, so
+    /// `+inf` is unbounded. A maximum below the minimum is raised to it.
+    ///
     /// # Panics
     ///
-    /// Panics if the bound is negative, NaN, or below a minimum already
-    /// set on this node. Positive infinity is the unbounded maximum.
+    /// Panics unless both axes are [extents](crate::widget::domain::extent).
     #[inline]
     #[must_use]
+    #[track_caller]
     fn max_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().max_size(s);
         self
     }
 
     /// Space inside this node, between its edge and its children. Takes a
-    /// number, a `(x, y)` pair, or a `(l, t, r, b)` quad.
+    /// number, a `(x, y)` pair, or a `(l, t, r, b)` quad, each edge a
+    /// *length*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is a [length](crate::widget::domain::length).
     #[inline]
     #[must_use]
+    #[track_caller]
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
         self.configure().padding(p);
         self
     }
 
     /// Space outside this node, between its edge and its siblings. Same
-    /// argument shapes as [`Self::padding`].
+    /// argument shapes as [`Self::padding`], each edge an *offset* — a
+    /// negative margin pulls a sibling in.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is an [offset](crate::widget::domain::offset).
     #[inline]
     #[must_use]
+    #[track_caller]
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
         self.configure().margin(m);
         self
@@ -476,15 +543,21 @@ pub trait Configure: Sized {
     /// Inert on a leaf that records no shapes of its own.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn transform(mut self, t: TranslateScale) -> Self {
         self.configure().transform(t);
         self
     }
 
-    /// Absolute position inside a `Canvas` parent (parent-inner coords).
-    /// Ignored by other layout modes.
+    /// Absolute position inside a `Canvas` parent (parent-inner coords),
+    /// each axis an *offset*. Ignored by other layout modes.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes are [offsets](crate::widget::domain::offset).
     #[inline]
     #[must_use]
+    #[track_caller]
     fn position(mut self, p: impl Into<Vec2>) -> Self {
         self.configure().position(p);
         self
@@ -492,7 +565,7 @@ pub trait Configure: Sized {
 
     /// Placement inside a `Grid` parent: a bare `(row, col)` for a
     /// single-track cell, or a [`GridCell`] for one that spans — see
-    /// [`GridCell::at`] and [`GridCell::span`]. Default `(0, 0)`.
+    /// [`GridCell::at`] and [`GridCell::with_span`]. Default `(0, 0)`.
     ///
     /// One setter for one field, so the placement cannot arrive half
     /// written and no chain order can drop a span. Ignored outside a Grid
@@ -506,16 +579,47 @@ pub trait Configure: Sized {
     /// track index in layout instead.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn grid_cell(mut self, cell: impl Into<GridCell>) -> Self {
         self.configure().grid_cell(cell);
         self
     }
 
-    /// Logical-px space between siblings within a line. Read by
-    /// HStack/VStack, the within-line direction of WrapHStack/
-    /// WrapVStack, and a Grid's columns.
+    /// Take over `from`'s placement — where it sits in its parent, and
+    /// nothing about what it contains, how it behaves, or who it is.
+    ///
+    /// For a widget that hands its slot to a second one partway through
+    /// a gesture: [`DragValue`](crate::DragValue) swaps its scrub chip for
+    /// an inline [`TextEdit`](crate::TextEdit) on click, and without this
+    /// the field visibly moves and resizes on the edit frame, because
+    /// margin, alignment, grid placement and canvas position all go with
+    /// the chip. And for a widget that records as two nodes rather than
+    /// one: [`Scroll`](crate::Scroll) splits the caller's widget into an
+    /// outer box and an inner viewport, and the placement is the outer
+    /// one's.
+    ///
+    /// Size, padding and transform are not placement, and stay the
+    /// adopting widget's own. Margin is the one `Option`: `None` there means
+    /// the caller stated no opinion, so the adopting widget keeps its own
+    /// themed default rather than taking a zero.
     #[inline]
     #[must_use]
+    #[track_caller]
+    fn adopt_placement(mut self, from: &Widget) -> Self {
+        self.configure().adopt_placement(from);
+        self
+    }
+
+    /// Logical-px space between siblings within a line, a *gap*. Read by
+    /// HStack/VStack, the within-line direction of WrapHStack/
+    /// WrapVStack, and a Grid's columns.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `g` is a [gap](crate::widget::domain::gap).
+    #[inline]
+    #[must_use]
+    #[track_caller]
     fn gap(mut self, g: f32) -> Self {
         self.configure().gap(g);
         self
@@ -524,9 +628,14 @@ pub trait Configure: Sized {
     /// Logical-px space between *lines*: the cross-axis spacing between
     /// a WrapHStack/WrapVStack's wrap rows, and between a Grid's rows.
     /// Inert in every other layout mode. Pair with `.gap(...)` for the
-    /// within-line spacing.
+    /// within-line spacing. `g`: a *gap*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `g` is a [gap](crate::widget::domain::gap).
     #[inline]
     #[must_use]
+    #[track_caller]
     fn line_gap(mut self, g: f32) -> Self {
         self.configure().line_gap(g);
         self
@@ -601,8 +710,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Mark this node as eligible to take keyboard focus on press.
-    /// Default `false`. Only editable widgets (TextEdit) opt in.
+    /// Mark this node as eligible to take keyboard focus, on a press and
+    /// as a Tab stop. Default `false`; a widget that acts on keys opts in.
     ///
     /// Disabled or invisible nodes are excluded from focus regardless of
     /// this flag. Unlike [`Sense`], which a disabled node keeps: it
@@ -611,6 +720,46 @@ pub trait Configure: Sized {
     #[must_use]
     fn focusable(mut self, f: bool) -> Self {
         self.configure().focusable(f);
+        self
+    }
+
+    /// Whether Tab and Shift+Tab stop on this node when it is
+    /// [`focusable`](Self::focusable). Default `true`. `false` keeps the
+    /// focus a press gives — a dock pane, a canvas — and takes the node
+    /// out of the Tab order, as WPF's `IsTabStop` does.
+    #[inline]
+    #[must_use]
+    fn tab_stop(mut self, stop: bool) -> Self {
+        self.configure().tab_stop(stop);
+        self
+    }
+
+    /// Make this node a group whose stops the arrow keys along `axis`
+    /// move focus between, as WAI-ARIA's menus, list boxes, radio groups
+    /// and toolbars do: the next arrow goes to the next stop inside the
+    /// node in Tab order, the previous one back, both wrapping.
+    ///
+    /// The framework moves focus, as it does on Tab, for every arrow
+    /// press that no scope *inside* the group claims — a text field in a
+    /// toolbar keeps its caret keys, and a popup around a menu does not
+    /// take the menu's arrows away. Unmodified arrows only.
+    #[inline]
+    #[must_use]
+    fn arrow_focus(mut self, axis: Axis) -> Self {
+        self.configure().arrow_focus(axis);
+        self
+    }
+
+    /// This node's key in the Tab order. Default `0`.
+    ///
+    /// Tab visits the stops of its domain in ascending `index`, and stops
+    /// with equal indices in record order — so a negative index moves a
+    /// node ahead of the unindexed ones and a positive index behind
+    /// them, as WPF's `TabIndex` does.
+    #[inline]
+    #[must_use]
+    fn tab_index(mut self, index: i16) -> Self {
+        self.configure().tab_index(index);
         self
     }
 
@@ -633,7 +782,7 @@ pub trait Configure: Sized {
     /// focus is where typing *goes*. Conflating them is what forces an
     /// app to reconstruct one from the other.
     ///
-    /// [`KeyFilter::empty`] clears it — an empty filter is how "not a
+    /// [`KeyFilter::NONE`] clears it — an empty filter is how "not a
     /// scope" is stored.
     #[inline]
     #[must_use]
@@ -732,6 +881,7 @@ pub trait ThemeDefaults: Configure {
     /// The size to fall back on when the caller set none.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn default_size(mut self, s: impl Into<SizeSpec>) -> Self {
         self.configure().default_size(s);
         self
@@ -740,6 +890,7 @@ pub trait ThemeDefaults: Configure {
     /// Padding to fall back on when the caller set none.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn default_padding(mut self, p: impl Into<Spacing>) -> Self {
         self.configure().default_padding(p);
         self
@@ -748,6 +899,7 @@ pub trait ThemeDefaults: Configure {
     /// Margin to fall back on when the caller set none.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn default_margin(mut self, m: impl Into<Spacing>) -> Self {
         self.configure().default_margin(m);
         self
@@ -765,6 +917,7 @@ pub trait ThemeDefaults: Configure {
     /// Sibling spacing to fall back on when the caller set none.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn default_gap(mut self, g: f32) -> Self {
         self.configure().default_gap(g);
         self
@@ -773,6 +926,7 @@ pub trait ThemeDefaults: Configure {
     /// Lower size bound to fall back on when the caller set none.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn default_min_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().default_min_size(s);
         self
@@ -781,6 +935,7 @@ pub trait ThemeDefaults: Configure {
     /// Upper size bound to fall back on when the caller set none.
     #[inline]
     #[must_use]
+    #[track_caller]
     fn default_max_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().default_max_size(s);
         self

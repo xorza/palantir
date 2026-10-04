@@ -5,102 +5,107 @@
 //! `Duration::from_secs_f32`. Each numeric field a theme carries names one
 //! of these in `#[serde(deserialize_with)]`, so a bad value is a
 //! deserialization error where it is read, and the code that uses the
-//! value can treat it as already valid. The field types stay `f32`: a
-//! value built in code is the caller's own contract, checked where it is
-//! used.
+//! value can treat it as already valid. Each is a thin wrapper over the
+//! [`domain`] predicate of its kind, and reports the kind's rule, so a
+//! file and a call site cannot disagree about a value.
 
-use crate::primitives::layout::limits::MAX_PACKED_GAP;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::domain::{self, vec2};
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer};
 use glam::Vec2;
 use std::fmt::Display;
 
-fn read<'de, D: Deserializer<'de>, T: Deserialize<'de> + Display>(
+fn read<'de, D: Deserializer<'de>, T: Deserialize<'de> + Display + Copy>(
     deserializer: D,
-    valid: impl Fn(&T) -> bool,
+    valid: impl Fn(T) -> bool,
     rule: &str,
 ) -> Result<T, D::Error> {
     let value = T::deserialize(deserializer)?;
-    if valid(&value) {
+    if valid(value) {
         Ok(value)
     } else {
         Err(D::Error::custom(format_args!("{rule}, got {value}")))
     }
 }
 
-/// A distance: finite and not negative.
+/// A [length](domain::length).
 pub(crate) fn length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
-    read(
-        deserializer,
-        |v: &f32| v.is_finite() && *v >= 0.0,
-        "a theme length must be finite and not negative",
-    )
+    read(deserializer, domain::is_length, domain::LENGTH_RULE)
 }
 
-/// A container gap: a length that fits the packed f16 gap lane.
+/// A [gap](domain::gap).
 pub(crate) fn gap<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
-    read(
-        deserializer,
-        |v: &f32| v.is_finite() && (0.0..=MAX_PACKED_GAP).contains(v),
-        "a theme gap must be finite, not negative, and at most 65504",
-    )
+    read(deserializer, domain::is_gap, domain::GAP_RULE)
 }
 
-/// A rate or a divisor: finite and above zero.
+/// A [positive](domain::positive) rate or divisor.
 pub(crate) fn positive<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
-    read(
-        deserializer,
-        |v: &f32| v.is_finite() && *v > 0.0,
-        "a theme rate must be finite and above zero",
-    )
+    read(deserializer, domain::is_positive, domain::POSITIVE_RULE)
 }
 
-/// A share of something: in `0.0..=1.0`.
+/// A [fraction](domain::fraction). A file states one in range: a value
+/// outside `0..=1` is refused rather than clamped, because the author of a
+/// file can fix it.
 pub(crate) fn fraction<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
-    read(
-        deserializer,
-        |v: &f32| (0.0..=1.0).contains(v),
-        "a theme fraction must be in 0..=1",
-    )
+    read(deserializer, domain::is_fraction, domain::FRACTION_RULE)
 }
 
-/// An angle or a signed offset: any finite value.
-pub(crate) fn finite<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
-    read(
-        deserializer,
-        |v: &f32| v.is_finite(),
-        "a theme value must be finite",
-    )
+/// A signed [offset](domain::offset).
+pub(crate) fn offset<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    read(deserializer, domain::is_offset, domain::OFFSET_RULE)
 }
 
-/// A 2-D extent: both axes are lengths.
+/// An [angle](domain::angle).
+pub(crate) fn angle<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    read(deserializer, domain::is_angle, domain::ANGLE_RULE)
+}
+
+/// A 2-D extent: both axes are [lengths](vec2::length).
 pub(crate) fn length2<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec2, D::Error> {
-    read(
-        deserializer,
-        |v: &Vec2| v.is_finite() && v.x >= 0.0 && v.y >= 0.0,
-        "a theme extent must be finite and not negative",
-    )
+    read(deserializer, vec2::is_length, domain::LENGTH_RULE)
 }
 
-/// A 2-D offset: both axes finite, either sign.
-pub(crate) fn finite2<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec2, D::Error> {
-    read(
-        deserializer,
-        |v: &Vec2| v.is_finite(),
-        "a theme offset must be finite",
-    )
+/// A 2-D [offset](vec2::offset).
+pub(crate) fn offset2<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec2, D::Error> {
+    read(deserializer, vec2::is_offset, domain::OFFSET_RULE)
 }
 
-/// Three points in some unit space — a polyline like a checkmark:
-/// every coordinate finite. Three, because serde implements arrays
+/// Spacing every edge of which passes `valid`, or the first edge that
+/// fails, reported under `rule`.
+fn spacing<'de, D: Deserializer<'de>>(
+    deserializer: D,
+    valid: fn(f32) -> bool,
+    rule: &str,
+) -> Result<Spacing, D::Error> {
+    let spacing = Spacing::deserialize(deserializer)?;
+    match spacing.as_array().into_iter().find(|&edge| !valid(edge)) {
+        Some(bad) => Err(D::Error::custom(format_args!("{rule}, got {bad}"))),
+        None => Ok(spacing),
+    }
+}
+
+/// A padding: every edge a [length](domain::length).
+pub(crate) fn padding<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Spacing, D::Error> {
+    spacing(deserializer, domain::is_length, domain::LENGTH_RULE)
+}
+
+/// A margin: every edge an [offset](domain::offset).
+pub(crate) fn margin<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Spacing, D::Error> {
+    spacing(deserializer, domain::is_offset, domain::OFFSET_RULE)
+}
+
+/// Three points in some unit space — a polyline like a checkmark: every
+/// point an [offset](vec2::offset). Three, because serde implements arrays
 /// per length rather than for any `N`.
-pub(crate) fn finite_points3<'de, D: Deserializer<'de>>(
+pub(crate) fn offset_points3<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<[Vec2; 3], D::Error> {
     let points = <[Vec2; 3]>::deserialize(deserializer)?;
-    match points.iter().find(|point| !point.is_finite()) {
+    match points.iter().find(|point| !vec2::is_offset(**point)) {
         Some(bad) => Err(D::Error::custom(format_args!(
-            "a theme point must be finite, got {bad}"
+            "{}, got {bad}",
+            domain::OFFSET_RULE
         ))),
         None => Ok(points),
     }

@@ -1,3 +1,8 @@
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+)]
+
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -7,6 +12,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
+use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 
@@ -37,7 +43,7 @@ fn the_chip_toggles_its_panel() {
     let mut color = RgbaF32::hex(0x4cd3ff);
     let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
         h.frame(|ui| {
-            ColorButton::new(color).id(id).show(ui);
+            ColorButton::new(ColorPicker::new(color)).id(id).show(ui);
         });
     };
     frame(&mut h, &mut color);
@@ -54,35 +60,80 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
 }
 
-/// The panel's picker shows its swatch row by default — a chip has no
-/// room for a preset row of its own — and `history(false)` hides it.
+/// The popup shows the picker as the caller configured it, under the
+/// chip's `id.with("picker")` unless the picker names its own id. Its
+/// swatch row is off by default, as a picker's is; `history(true)` shows
+/// the picker's own and `swatches` a row of the app's. `texel_size`
+/// reaches the field's texture: one texel per `n` px, rounded up, so the 4
+/// default builds a quarter of the 1 one on each axis.
 #[test]
-fn history_reaches_the_picker_in_the_panel() {
-    let id = WidgetId::from_hash("color-button-history");
-    for (history, shown) in [(None, true), (Some(false), false)] {
+fn panel_settings_reach_the_picker() {
+    use crate::primitives::paint::color::color_model::ColorModel;
+    use crate::widgets::color_surface::ColorSurface;
+
+    type Settings = fn(ColorPicker<'_>) -> ColorPicker<'_>;
+    const OWN: [RgbaF32; 2] = [RgbaF32::WHITE, RgbaF32::BLACK];
+    const OWN_ID: &str = "color-button-own-picker";
+    let id = WidgetId::from_hash("color-button-settings");
+    let rows: [(&str, Settings, bool, u32, WidgetId); 5] = [
+        ("default", |c| c, false, 4, id.with("picker")),
+        (
+            "history on",
+            |c| c.history(true),
+            true,
+            4,
+            id.with("picker"),
+        ),
+        (
+            "own swatches",
+            |c| c.swatches(&OWN),
+            true,
+            4,
+            id.with("picker"),
+        ),
+        (
+            "texel size 1",
+            |c| c.texel_size(1),
+            false,
+            1,
+            id.with("picker"),
+        ),
+        (
+            "own id",
+            |c| c.id(WidgetId::from_hash(OWN_ID)),
+            false,
+            4,
+            WidgetId::from_hash(OWN_ID),
+        ),
+    ];
+    for (label, settings, swatch_row, texel, picker) in rows {
         let mut h = harness();
         let mut color = RgbaF32::hex(0x4cd3ff);
         let mut frame = |h: &mut UiHarness| {
             h.frame(|ui| {
-                let chip = ColorButton::new(&mut color).id(id);
-                match history {
-                    Some(on) => chip.history(on),
-                    None => chip,
-                }
-                .show(ui);
+                ColorButton::new(settings(ColorPicker::new(&mut color)))
+                    .id(id)
+                    .show(ui);
             });
         };
         frame(&mut h);
         click_chip(&mut h, &mut frame);
-        assert!(
-            h.rect(id.with("panel")).is_some(),
-            "premise: the panel opened"
-        );
+        assert!(h.rect(id.with("panel")).is_some(), "{label}: premise");
         assert_eq!(
-            h.node_of(id.with("picker").with("swatches")).is_some(),
-            shown,
-            "history {history:?}",
+            h.node_of(picker.with("swatches")).is_some(),
+            swatch_row,
+            "{label}: the swatch row",
         );
+        let field = h.rect(picker.with("field")).expect("the field").size;
+        let built =
+            h.ui.state::<ColorSurface<(ColorModel, f32)>>(picker.with("field"))
+                .and_then(ColorSurface::built_size)
+                .expect("the field built its texture");
+        let want = UVec2::new(
+            (field.w / texel as f32).ceil() as u32,
+            (field.h / texel as f32).ceil() as u32,
+        );
+        assert_eq!(built, want, "{label}: field {field:?}");
     }
 }
 
@@ -96,7 +147,12 @@ fn opening_the_panel_is_not_an_edit() {
     let before = color;
     for round in 0..2 {
         let changes = h
-            .frame_passes(|ui| ColorButton::new(&mut color).id(id).show(ui).changed)
+            .frame_passes(|ui| {
+                ColorButton::new(ColorPicker::new(&mut color))
+                    .id(id)
+                    .show(ui)
+                    .changed
+            })
             .count_where(|&changed| changed);
         assert_eq!(changes, 0, "round {round}");
         h.press_at(Vec2::new(10.0, 10.0));
@@ -121,7 +177,10 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     let mut color = RgbaF32::hex(0x4cd3ff);
     let mut frame = |h: &mut UiHarness| {
         h.frame(|ui| {
-            ColorButton::new(&mut color).style(style).id(id).show(ui);
+            ColorButton::new(ColorPicker::new(&mut color))
+                .style(style)
+                .id(id)
+                .show(ui);
         });
     };
     frame(&mut h);
@@ -177,6 +236,6 @@ fn the_popup_takes_the_picker_theme() {
     // Two edges of padding, (19 - 8) * 2 = 22, plus the preview's 30: the chip
     // is taller than the bar beside it on both sides of the difference, so
     // the bars row grows by exactly what the chip does.
-    let padding = custom.popup_padding.vertical_sum() - stock.popup_padding.vertical_sum();
+    let padding = custom.popup_padding.sums().h - stock.popup_padding.sums().h;
     assert_eq!(styled.height - plain.height, padding + 30.0);
 }

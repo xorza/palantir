@@ -1,11 +1,10 @@
 //! What closes a popup, and how long it takes to settle.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -41,7 +40,7 @@ fn click_inside_popup_does_not_dismiss() {
 /// then ignored, leaving the menu stuck open.
 #[test]
 fn outside_click_dismisses_on_any_button_and_blocks_main() {
-    for button in PointerButton::all() {
+    for button in PointerButton::ALL {
         let mut h = UiHarness::new(SURFACE);
         frame_body(&mut h, ClickOutside::Dismiss);
         h.click_button_at(button, Vec2::new(300.0, 300.0));

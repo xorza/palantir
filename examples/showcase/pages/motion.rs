@@ -9,9 +9,10 @@
 
 use crate::support;
 use palantir::{
-    AnimSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense, Sizing,
-    Stroke, Text, Ui, Vec2, WidgetId,
+    AnimationSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense,
+    Sizing, Stroke, Text, Ui, Vec2, WidgetId,
 };
+use std::time::Duration;
 
 #[derive(Default, Debug)]
 struct Bars {
@@ -37,7 +38,7 @@ fn easing(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("motion::bars");
     support::section(
         ui,
-        "easing — Ui::animate; every bar retargets at once, one AnimSpec each",
+        "easing — Ui::animate; every bar retargets at once, one AnimationSpec each",
         |ui| {
             if Button::new()
                 .id_salt("anim-go")
@@ -46,10 +47,9 @@ fn easing(ui: &mut Ui) {
                 .left
                 .clicked()
             {
-                let s = ui.state_or_default::<Bars>(demo_id);
-                s.wide = !s.wide;
+                ui.with_state::<Bars, _>(demo_id, |_, s| s.wide = !s.wide);
             }
-            let target = if ui.state_or_default::<Bars>(demo_id).wide {
+            let target = if ui.state::<Bars>(demo_id).is_some_and(|s| s.wide) {
                 420.0
             } else {
                 80.0
@@ -58,19 +58,19 @@ fn easing(ui: &mut Ui) {
                 (
                     "linear-200",
                     "linear 200 ms",
-                    AnimSpec::duration(0.2, Easing::Linear),
+                    AnimationSpec::duration(Duration::from_millis(200), Easing::Linear),
                 ),
                 (
                     "out-cubic-200",
                     "out-cubic 200 ms",
-                    AnimSpec::duration(0.2, Easing::OutCubic),
+                    AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
                 ),
                 (
                     "out-back-300",
                     "out-back 300 ms — overshoots",
-                    AnimSpec::duration(0.3, Easing::OutBack),
+                    AnimationSpec::duration(Duration::from_millis(300), Easing::OutBack),
                 ),
-                ("spring-soft", "soft spring", AnimSpec::SPRING),
+                ("spring-soft", "soft spring", AnimationSpec::SPRING),
             ] {
                 bar(ui, key, label, spec, target);
             }
@@ -78,7 +78,13 @@ fn easing(ui: &mut Ui) {
     );
 }
 
-fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
+fn bar(
+    ui: &mut Ui,
+    key: &'static str,
+    label: &'static str,
+    spec: AnimationSpec,
+    target_width: f32,
+) {
     let id = WidgetId::from_hash(("motion::bar", key));
     let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()
@@ -104,8 +110,8 @@ fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, targ
 /// actively-dragged card records last so it paints over any overlap.
 fn drag(ui: &mut Ui) {
     let dragging = CARDS.iter().position(|(k, _, _)| {
-        ui.state_or_default::<CardState>(WidgetId::from_hash(*k))
-            .dragging
+        ui.state::<CardState>(WidgetId::from_hash(*k))
+            .is_some_and(|st| st.dragging)
     });
 
     support::section(
@@ -134,7 +140,9 @@ fn drag(ui: &mut Ui) {
 
 #[derive(Default, Debug)]
 struct CardState {
-    pos: Vec2,
+    /// `None` until the card's first frame seeds it with its initial
+    /// position.
+    pos: Option<Vec2>,
     /// Position at the moment `drag_started` fired; reused every
     /// subsequent frame as `pos = anchor + drag_delta`.
     anchor: Vec2,
@@ -144,36 +152,26 @@ struct CardState {
 
 fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
     let id = WidgetId::from_hash(key);
-    // Seeded on the first frame only — keyed on the row not existing yet,
-    // the way every other page seeds one, rather than on a flag the row's
-    // own presence already answers.
-    let fresh = ui.state::<CardState>(id).is_none();
-    let st: &mut CardState = ui.state_or_default(id);
-    if fresh {
-        st.pos = initial;
-    }
-    let pos = st.pos;
-
-    let r = Block::new()
-        .id(id)
-        .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
-        .position(pos)
-        .sense(Sense::DRAG)
-        .background(
-            Background::rounded(accent, Corners::all(6.0))
-                .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
-        )
-        .show(ui)
-        .snapshot();
-
-    let st: &mut CardState = ui.state_or_default(id);
-    if r.left.drag.started() {
-        st.anchor = st.pos;
-        st.dragging = true;
-    }
-    if let Some(delta) = r.left.drag.delta() {
-        st.pos = st.anchor + delta;
-    } else if st.dragging {
-        st.dragging = false;
-    }
+    ui.with_state::<CardState, _>(id, |ui, st| {
+        let pos = st.pos.get_or_insert(initial);
+        let r = Block::new()
+            .id(id)
+            .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
+            .position(*pos)
+            .sense(Sense::DRAG)
+            .background(
+                Background::rounded(accent, Corners::all(6.0))
+                    .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
+            )
+            .show(ui);
+        if r.left.drag.started() {
+            st.anchor = *pos;
+            st.dragging = true;
+        }
+        if let Some(delta) = r.left.drag.delta() {
+            *pos = st.anchor + delta;
+        } else if st.dragging {
+            st.dragging = false;
+        }
+    });
 }

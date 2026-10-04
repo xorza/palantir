@@ -1,6 +1,6 @@
 //! One stroked-polyline draw.
 
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::is_invisible;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -69,7 +69,7 @@ impl DrawPolylinePayload {
     /// still paint stroke pixels, so it isn't checked either.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
-        self.is_degenerate() || paints_nothing(self.alpha)
+        self.is_degenerate() || is_invisible(self.alpha)
     }
 
     /// Fewer than two points (no segments), or a non-paintable stroke
@@ -81,6 +81,6 @@ impl DrawPolylinePayload {
     /// `Shape::Polyline::is_noop`.
     #[inline]
     pub(crate) const fn is_degenerate(&self) -> bool {
-        self.points_len < 2 || paints_nothing(self.width)
+        self.points_len < 2 || is_invisible(self.width)
     }
 }

@@ -20,7 +20,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
-use crate::widgets::tooltip::{Tooltip, TooltipGlobal, TooltipState, global_state_id};
+use crate::widgets::tooltip::{Tooltip, TooltipGlobal, TooltipState};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -68,10 +68,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     let bubble_id = trigger_id.with("bubble");
     let frame = |h: &mut UiHarness, text: &str| {
         let report = h.frame(|ui| {
-            Tooltip::on(&snapshot)
-                .label(text)
-                .delay(Duration::ZERO)
-                .show(ui);
+            Tooltip::on(&snapshot, text).delay(Duration::ZERO).show(ui);
         });
         assert_eq!(
             report.processing,
@@ -120,7 +117,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     assert_eq!(shaped.extent.size, Size::new(260.0, 2.0 * 15.59375));
     assert_eq!(bubble.size.w, 260.0 + 14.0);
     assert!(
-        shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
+        shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.sums().w,
         "text width {} must fit inside bubble width {}",
         shaped.extent.size.w,
         bubble.size.w,
@@ -133,7 +130,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
 #[test]
 fn tooltip_text_inherits_the_ambient_leading() {
     let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().text.line_height_mult = 2.0;
+    h.ui.theme_mut().text.line_height_factor = 2.0;
     let snapshot = ResponseSnapshot {
         id: WidgetId::from_hash("leading-trigger"),
         state: ResponseState {
@@ -143,10 +140,7 @@ fn tooltip_text_inherits_the_ambient_leading() {
         },
     };
     h.frame(|ui| {
-        Tooltip::on(&snapshot)
-            .label("tip")
-            .delay(Duration::ZERO)
-            .show(ui);
+        Tooltip::on(&snapshot, "tip").delay(Duration::ZERO).show(ui);
     });
     let shaped =
         h.ui.layout(Layer::Tooltip)
@@ -179,8 +173,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
 
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        Tooltip::on(&snapshot)
-            .label("tip")
+        Tooltip::on(&snapshot, "tip")
             .background(Background::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(7.0))
@@ -202,8 +195,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let explicit = WidgetId::from_hash("my-own-bubble");
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        Tooltip::on(&snapshot)
-            .label("tip")
+        Tooltip::on(&snapshot, "tip")
             .id(explicit)
             .delay(Duration::ZERO)
             .show(ui);
@@ -236,10 +228,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
         "a measured tooltip stays single-pass",
     ] {
         let report = h.frame(|ui| {
-            Tooltip::on(&snapshot)
-                .label(text)
-                .delay(Duration::ZERO)
-                .show(ui);
+            Tooltip::on(&snapshot, text).delay(Duration::ZERO).show(ui);
         });
         assert_eq!(report.processing, FrameProcessing::SingleLayout, "{why}");
     }
@@ -291,8 +280,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     };
     let record_at = |h: &mut UiHarness, time: Duration| {
         h.at(time).frame(|ui| {
-            Tooltip::on(&snapshot)
-                .label("tip")
+            Tooltip::on(&snapshot, "tip")
                 .delay(Duration::from_millis(250))
                 .show(ui);
         });
@@ -322,7 +310,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let record = |ui: &mut Ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
-            Tooltip::on(&trigger).label("tip").show(ui);
+            Tooltip::on(&trigger, "tip").show(ui);
         });
     };
 
@@ -332,8 +320,8 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "an idle trigger must not materialise a state row",
     );
     assert!(
-        h.ui.state::<TooltipGlobal>(global_state_id()).is_none(),
-        "nothing has been visible yet, so the singleton has no row either",
+        h.ui.singleton::<TooltipGlobal>().is_none(),
+        "nothing has been visible yet, so the singleton holds no value either",
     );
 
     // Hover lands a frame late — the response reads the previous frame's
@@ -350,7 +338,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "per-trigger state must not use an unrecorded synthetic id",
     );
     assert!(
-        h.ui.state::<TooltipGlobal>(global_state_id()).is_some(),
+        h.ui.singleton::<TooltipGlobal>().is_some(),
         "the intentional global singleton must exist",
     );
 
@@ -359,7 +347,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     });
 
     assert!(h.ui.state::<TooltipState>(trigger_id).is_none());
-    assert!(h.ui.state::<TooltipGlobal>(global_state_id()).is_some());
+    assert!(h.ui.singleton::<TooltipGlobal>().is_some());
 }
 
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering
@@ -382,8 +370,7 @@ fn delay_gates_visibility() {
                         .show(ui)
                         .snapshot();
                     *captured = Some(r.id);
-                    Tooltip::on(&r)
-                        .label("tip")
+                    Tooltip::on(&r, "tip")
                         .delay(Duration::from_millis(300))
                         .show(ui);
                 });
@@ -451,7 +438,7 @@ fn delay_gates_visibility() {
     );
 }
 
-/// The bubble records with `Sense::empty()`, so a visible tooltip must
+/// The bubble records with `Sense::NONE`, so a visible tooltip must
 /// never become the hover target: after it appears, moving the pointer
 /// off the trigger clears the trigger's hover and hides the bubble.
 #[test]
@@ -471,8 +458,7 @@ fn hover_clears_after_tooltip_visible() {
                         .show(ui)
                         .snapshot();
                     *captured = Some(r.id);
-                    Tooltip::on(&r)
-                        .label("tip")
+                    Tooltip::on(&r, "tip")
                         .delay(Duration::from_millis(300))
                         .show(ui);
                 });
@@ -539,8 +525,7 @@ fn tooltip_inside_popup_records_without_panic() {
                                 .show(ui)
                                 .snapshot();
                             *captured = Some(r.id);
-                            Tooltip::on(&r)
-                                .label("tip")
+                            Tooltip::on(&r, "tip")
                                 .delay(Duration::from_millis(300))
                                 .show(ui);
                         });
@@ -615,8 +600,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
                             .disabled(true)
                             .show(ui)
                             .snapshot();
-                        Tooltip::on(&r)
-                            .label("nothing to save yet")
+                        Tooltip::on(&r, "nothing to save yet")
                             .when_disabled(allow)
                             .delay(Duration::from_millis(300))
                             .show(ui);
@@ -665,8 +649,7 @@ fn an_authored_min_above_the_themed_max_width_wins() {
         },
     };
     h.prime(2, |ui| {
-        Tooltip::on(&snapshot)
-            .label("wide")
+        Tooltip::on(&snapshot, "wide")
             .delay(Duration::ZERO)
             .min_size((300.0, 0.0))
             .show(ui);

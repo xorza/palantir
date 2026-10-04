@@ -75,7 +75,7 @@ const ELLIPSIS_MEMO_SLOTS: usize = 4;
 /// through four accessors of its own, so no two of them can shape one
 /// key against different faces.
 const fn metrics_of(key: TextShapeKey) -> Metrics {
-    Metrics::new(key.font_size_px(), key.line_height_px())
+    Metrics::new(key.font_size(), key.line_height())
 }
 
 /// The attributes a resolved family shapes under.
@@ -98,7 +98,7 @@ const fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -
         .family(Family::Name(name))
         // fontdb instantiates the `wght` axis at this value on a variable
         // face, and picks the nearest static face otherwise.
-        .weight(Weight(weight.value()));
+        .weight(Weight(weight.get()));
     match style {
         FontSlant::Normal => base,
         FontSlant::Italic => base.style(Style::Italic),
@@ -163,7 +163,7 @@ enum FamilyResolution {
 /// like whatever the machine happens to have installed, and the same app
 /// would read differently on two machines. Falling back to the bundled
 /// default is a look the app can predict, and
-/// [`CosmicMeasure::font_available`] is how it asks in advance.
+/// [`CosmicMeasure::has_font`] is how it asks in advance.
 ///
 /// Takes the answer rather than the database, because the two callers
 /// hold it from different places — one memoized, one from a walk it is
@@ -252,11 +252,11 @@ const fn subpixel_offset(key: CacheKey) -> Vector {
 /// [`FontScope`] and a cache of shaped `Buffer`s keyed on the inputs that
 /// affect shaping. Per-call face selection comes from [`FontFamily`],
 /// [`FontWeight`] and [`FontSlant`] on each measurement, resolved through
-/// [`Self::font_available`] and [`shaping_name`].
+/// [`Self::has_font`] and [`shaping_name`].
 pub(super) struct CosmicMeasure {
     font_system: FontSystem,
     /// Whether a face answers to each [`FontFamily`] index, filled on
-    /// demand — see [`Self::font_available`] for why it is memoized.
+    /// demand — see [`Self::has_font`] for why it is memoized.
     ///
     /// One byte an entry, and the shaping name is derived from it through
     /// [`shaping_name`] rather than stored beside it: the two are the same
@@ -361,9 +361,10 @@ impl CosmicMeasure {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read or mapped, and
+    /// [`FontLoadError::Io`] when the file cannot be read or mapped,
     /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
-    /// parse.
+    /// parse, and [`FontLoadError::FamilyTableFull`] when no family the
+    /// faces name fits the family table.
     pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
         let source = match source {
             // The `Cow` goes into the `Arc` whole: it is `AsRef<[u8]>`,
@@ -400,18 +401,7 @@ impl CosmicMeasure {
             };
             names.extend(face.families.iter().map(|(name, _)| name.clone()));
         }
-        // `try_named`, because the names come from the file: a collection
-        // with enough distinct families to fill the name table is bad
-        // font data, which this reports as an error rather than a panic.
-        // A name that does not fit is skipped; when none fits, the load
-        // has nothing to hand back.
-        let mut loaded = None;
-        for name in &names {
-            if let Some(family) = FontFamily::try_named(name) {
-                loaded.get_or_insert(family);
-            }
-        }
-        let loaded = loaded.ok_or(FontLoadError::NoFaces)?;
+        let loaded = first_family(&names, FontFamily::named)?;
 
         // Everything downstream of the database is now stale: a family
         // that resolved to SANS may answer for itself, and every shaped
@@ -447,7 +437,7 @@ impl CosmicMeasure {
     /// costs a walk of every face in the database. Sharing it is also
     /// what stops the answer and the face actually shaped from ever
     /// disagreeing.
-    pub(super) fn font_available(&mut self, family: FontFamily) -> bool {
+    pub(super) fn has_font(&mut self, family: FontFamily) -> bool {
         let index = usize::from(family.raw());
         match self.resolved.get(index).copied().unwrap_or_default() {
             FamilyResolution::Present => return true,
@@ -481,7 +471,8 @@ impl CosmicMeasure {
     /// A `Vec` rather than an iterator: the database sits behind the
     /// shaper's `RefCell`, so a lending iterator would hold that borrow
     /// across the caller's whole walk. Cold — a preferences picker asks
-    /// once.
+    /// once. A name that no longer fits a full family table is left out:
+    /// the caller could not shape with it either.
     pub(super) fn font_families(&self) -> Vec<FontFamily> {
         let mut names: Vec<&str> = self
             .font_system
@@ -491,7 +482,7 @@ impl CosmicMeasure {
             .collect();
         names.sort_unstable();
         names.dedup();
-        names.into_iter().map(FontFamily::named).collect()
+        names.into_iter().filter_map(FontFamily::named).collect()
     }
 
     /// Drop every shaped buffer now — see
@@ -504,7 +495,7 @@ impl CosmicMeasure {
     /// The attributes `key` shapes under, resolved family and all.
     fn attrs_of(&mut self, key: TextShapeKey) -> Attrs<'static> {
         let family = key.family();
-        let name = shaping_name(family, self.font_available(family));
+        let name = shaping_name(family, self.has_font(family));
         attrs_named(name, key.weight(), key.slant())
     }
 
@@ -525,7 +516,7 @@ impl CosmicMeasure {
     pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         let key = request.key;
         debug_assert!(
-            key.max_width_px().is_none(),
+            key.max_width().is_none(),
             "a committed width has no unbounded root to answer with",
         );
         // One lookup for the whole hit path, entry held across the
@@ -553,7 +544,7 @@ impl CosmicMeasure {
     pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         let key = request.key;
         debug_assert!(
-            key.max_width_px().is_some(),
+            key.max_width().is_some(),
             "an unbounded request commits no width to resolve against",
         );
         if let Some(entry) = self.cache.hit(key) {
@@ -571,7 +562,7 @@ impl CosmicMeasure {
     /// first and take their own kind out of the result.
     fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> CachedExtent {
         let key = request.key;
-        let mut buffer = self.acquire_buffer(metrics_of(key), key.max_width_px());
+        let mut buffer = self.acquire_buffer(metrics_of(key), key.max_width());
         // Per-line alignment travels through cosmic's `set_text`
         // `alignment` slot — that's the canonical entry point and
         // applies the align to every parsed buffer line in one
@@ -581,9 +572,7 @@ impl CosmicMeasure {
         // meaningful with a finite wrap target (cosmic uses it as the
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
-        let alignment = key
-            .max_width_px()
-            .and_then(|_| cosmic_align(key.line_align()));
+        let alignment = key.max_width().and_then(|_| cosmic_align(key.line_align()));
         let attrs = self.attrs_of(key);
         buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
@@ -594,7 +583,7 @@ impl CosmicMeasure {
             .extent(&buffer, &mut self.font_system, &geometry);
         // Which kind the entry is follows from the key: a committed width
         // means a bounded resolve, and nothing else can name that entry.
-        let extent = match key.max_width_px() {
+        let extent = match key.max_width() {
             None => CachedExtent::Root(geometry.root(extent)),
             Some(_) => CachedExtent::Bounded(extent),
         };
@@ -617,7 +606,7 @@ impl CosmicMeasure {
         // either way — but the two paths shape differently, and the key is
         // what says which one this run went through. Both open with the
         // cache lookup, so a resident buffer costs one and no reshape.
-        match request.key.max_width_px() {
+        match request.key.max_width() {
             Some(_) => {
                 self.resolve(request);
             }
@@ -823,7 +812,7 @@ impl CosmicMeasure {
         let key = request.key;
         let fit = key.fit();
         let width = key
-            .max_width_px()
+            .max_width()
             .expect("a truncating fit resolves against a committed width");
         let unbounded = request.unbounded_version();
         // Residency *and* the measure, from one lookup. `ensure_buffer`
@@ -956,6 +945,30 @@ impl fmt::Debug for CosmicMeasure {
     }
 }
 
+/// The first of a loaded file's family `names` that `intern` admits.
+///
+/// Every name interns, so a family the file shares with another load
+/// resolves to the same id. The names come from the file: a collection
+/// with enough distinct families to fill the table is bad font data, so a
+/// name that does not fit is skipped. No names at all means nothing parsed
+/// ([`FontLoadError::NoFaces`]); names of which none fits is
+/// [`FontLoadError::FamilyTableFull`].
+pub(super) fn first_family(
+    names: &[String],
+    intern: impl Fn(&str) -> Option<FontFamily>,
+) -> Result<FontFamily, FontLoadError> {
+    if names.is_empty() {
+        return Err(FontLoadError::NoFaces);
+    }
+    let mut loaded = None;
+    for name in names {
+        if let Some(family) = intern(name) {
+            loaded.get_or_insert(family);
+        }
+    }
+    loaded.ok_or(FontLoadError::FamilyTableFull)
+}
+
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use super::*;
@@ -996,7 +1009,7 @@ pub(crate) mod internals {
         #[cfg(test)]
         fn measure_with_fit_key(&mut self, request: TextShapeRequest<'_>) -> TestMeasure {
             let key = request.key;
-            match key.max_width_px() {
+            match key.max_width() {
                 Some(_) => TestMeasure {
                     size: self.resolve(request).size,
                     key: Some(key),

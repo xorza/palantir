@@ -17,7 +17,7 @@ use std::rc::Rc;
 /// Track sizing maps 1:1 to `Sizing`: `Fixed` = Pixel, `Hug` = Auto,
 /// `Fill(weight)` = Star. Star tracks split the leftover after Fixed and Hug
 /// tracks resolve, weighted, with bounded constraint resolution if any
-/// `Track::min` / `Track::max` clamps fire.
+/// `Track::with_min` / `Track::with_max` clamps fire.
 ///
 /// Arrays remain inline in the builder and borrowed slices remain borrowed.
 /// On `show`, tracks are copied into the current Tree's capacity-retained
@@ -74,8 +74,32 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     /// the default; theme fallback in [`Self::show`] fills it in from
     /// `ui.theme().panel_background` when unset. Pass [`Background::NONE`]
     /// to suppress that fallback for this grid.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 
@@ -107,7 +131,7 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 #[cfg(test)]
 mod tests {
     use super::Grid;
-    use crate::primitives::layout::limits::MAX_PACKED_GAP;
+    use crate::primitives::math::domain::MAX_GAP;
     use crate::widget_core::configure::Configure;
 
     /// A grid's spacing is the node column every other container uses,
@@ -119,8 +143,8 @@ mod tests {
         assert_eq!(configured.widget.authored_line_gap(), Some(3.0));
         assert_eq!(configured.widget.authored_gap(), Some(5.0));
 
-        let edge = Grid::new().line_gap(MAX_PACKED_GAP).gap(0.0);
-        assert_eq!(edge.widget.authored_line_gap(), Some(MAX_PACKED_GAP));
+        let edge = Grid::new().line_gap(MAX_GAP).gap(0.0);
+        assert_eq!(edge.widget.authored_line_gap(), Some(MAX_GAP));
         assert_eq!(edge.widget.authored_gap(), Some(0.0));
     }
 }

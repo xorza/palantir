@@ -33,7 +33,7 @@ mod gpu {
     }
 
     fn load(icons: &IconRegistry) -> IconSet {
-        icons.register(Rc::new(IconTable::from_svgs([("solid", SOLID)])))
+        icons.register(Rc::new(IconTable::from_svgs([("solid", SOLID)]).unwrap()))
     }
 
     /// Draw `set`'s only icon at 16², which is what puts a parse in the

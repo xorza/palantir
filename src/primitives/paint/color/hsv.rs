@@ -1,6 +1,7 @@
 //! HSV — the classic axes, kept so a number copied out of another tool still
 //! means what it says.
 
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgb_transfer;
 
@@ -32,7 +33,9 @@ const GREY_SPREAD: f32 = 1e-6;
 
 impl Hsv {
     /// Construct from the three axes. Out-of-range values are the caller's
-    /// until [`Self::to_color`], which wraps the hue and clamps the rest.
+    /// until [`Self::to_color`], which reads the hue as a *turn* and the
+    /// rest as *fractions*: it wraps the hue, clamps the rest, and reads a
+    /// non-finite axis as `0`.
     pub const fn new(h: f32, s: f32, v: f32) -> Self {
         Self { h, s, v }
     }
@@ -40,12 +43,12 @@ impl Hsv {
     /// The opaque colour these axes name.
     #[expect(
         clippy::cast_sign_loss,
-        reason = "`rem_euclid` puts the hue in [0, 6), so its sector is non-negative"
+        reason = "a turn puts the hue in [0, 6), so its sector is non-negative"
     )]
     pub fn to_color(self) -> RgbaF32 {
-        let hue = self.h.rem_euclid(1.0) * 6.0;
-        let sat = self.s.clamp(0.0, 1.0);
-        let val = self.v.clamp(0.0, 1.0);
+        let hue = domain::turn(self.h) * 6.0;
+        let sat = domain::fraction(self.s);
+        let val = domain::fraction(self.v);
         let sector = hue.floor();
         let f = hue - sector;
         let down = val * (1.0 - sat);
@@ -74,7 +77,7 @@ impl Hsv {
         let spread = high - low;
         if spread <= GREY_SPREAD {
             return Self {
-                h: fallback_hue.rem_euclid(1.0),
+                h: domain::turn(fallback_hue),
                 s: 0.0,
                 v: high.clamp(0.0, 1.0),
             };

@@ -77,7 +77,7 @@ fn clicking_a_row_selects_it() {
     assert_eq!(sel, Pick::C, "click on row C selects C");
     assert_eq!(rows.changed, [false, false, true]);
 
-    // The whole reason a radio hands back a `SelectResponse`: this frame
+    // Why a radio reports `changed` beside its response: this frame
     // is `clicked()` on row C and `changed == false`, and `Response`
     // alone cannot tell the two apart.
     h.click_at(row_c.min + (row_c.max() - row_c.min) * 0.5);

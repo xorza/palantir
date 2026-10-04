@@ -39,9 +39,9 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     h.frame(build);
 
     h.move_to(Vec2::new(50.0, 50.0));
-    assert_eq!(h.ui.input().scroll_target, Some(inner_id));
+    assert_eq!(h.ui.input().scroll_targets.y, Some(inner_id));
     assert_eq!(h.ui.input().pinch_target, Some(outer_id));
-    assert!(h.pinch(1.5).requests_repaint);
+    assert!(h.pinch(1.5).repaint_requested);
     h.frame(build);
 
     let outer_zoom = h.state::<ScrollState>(outer_id).zoom;
@@ -229,10 +229,9 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     h.frame(build);
 
     let id = WidgetId::from_hash("xy");
-    {
-        let row = h.ui.state_or_default::<ScrollState>(id);
+    h.ui.with_state::<ScrollState, _>(id, |_, row| {
         row.offset = Vec2::new(0.0, -50.0);
-    }
+    });
 
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     h.frame(build);
@@ -314,10 +313,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
     h.move_onto(scroll_id);
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     let line_px = TextStyle::default().line_height_for(16.0);
     h.scroll_pixels(Vec2::new(0.0, 2.0 * line_px));
     h.frame(build_zoom);
@@ -342,7 +338,7 @@ fn wheel_zoom_step_is_font_independent() {
         use crate::input::keyboard::modifiers::Modifiers;
 
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme_mut().text.font_size_px = font_size;
+        h.ui.theme_mut().text.font_size = font_size;
         let build_zoom = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -359,10 +355,7 @@ fn wheel_zoom_step_is_font_independent() {
         h.frame(build_zoom);
 
         h.move_onto(WidgetId::from_hash("fz"));
-        h.set_modifiers(Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        });
+        h.set_modifiers(Modifiers::CTRL);
         h.scroll_lines(Vec2::new(0.0, 1.0));
         h.frame(build_zoom);
 
@@ -380,18 +373,18 @@ fn wheel_zoom_step_is_font_independent() {
 #[test]
 fn line_wheel_step_scales_with_theme_font_size() {
     // Pin: a `ScrollLines(0, 1)` event lands one laid-out line of pan —
-    // `font_size * line_height_mult` on the shaper's 1/64-px grid — not
+    // `font_size * line_height_factor` on the shaper's 1/64-px grid — not
     // the legacy 40 px constant. 16 × 1.2 = 19.2 is 1228.8 64ths, which
     // rounds to 1229: 19.203125. 24 × 1.5 = 36 is on the grid.
     let cases: &[(&str, f32, f32, f32)] = &[
         ("default_16px_text", 16.0, 1.2, 1229.0 / 64.0),
         ("larger_24px_text", 24.0, 1.5, 36.0),
     ];
-    for (label, font_size, line_height_mult, expected_px) in cases {
+    for (label, font_size, line_height_factor, expected_px) in cases {
         let mut h = UiHarness::new(SURFACE);
         let text = &mut h.ui.theme_mut().text;
-        text.font_size_px = *font_size;
-        text.line_height_mult = *line_height_mult;
+        text.font_size = *font_size;
+        text.line_height_factor = *line_height_factor;
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
         h.frame(build_v);
         h.scroll_lines_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 1.0));
@@ -467,8 +460,18 @@ fn zoom_by_composes_across_calls() {
 #[test]
 fn zoom_by_rejects_a_factor_that_cannot_scale() {
     for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        panic_probe::assert_panics_with("a zoom factor must be finite and above zero", || {
+        panic_probe::assert_panics_with("a positive value must be finite and above zero", || {
             let _ = Scroll::both().zoom_by(bad);
+        });
+    }
+    // A single-axis scroll has no zoom: it panics where the zoom is asked
+    // for, in every build, through either setter.
+    for scroll in [Scroll::vertical, Scroll::horizontal] {
+        panic_probe::assert_panics_with("a zoomable scroll must pan on both axes", || {
+            let _ = scroll().zoomable();
+        });
+        panic_probe::assert_panics_with("a zoomable scroll must pan on both axes", || {
+            let _ = scroll().zoom_config(ZoomConfig::default());
         });
     }
 }
@@ -520,11 +523,11 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
     }
 }
 
-/// `zoomable_with` carries its range to the zoom: one 0.25× pinch lands
+/// `zoom_config` carries its range to the zoom: one 0.25× pinch lands
 /// at 0.25 under the default 0.1..=10 range, and clamps to the floor of a
 /// 0.5..=2 one.
 #[test]
-fn zoomable_with_clamps_to_its_own_range() {
+fn zoom_config_clamps_to_its_own_range() {
     let id = WidgetId::from_hash("ranged");
     for (config, want) in [
         (ZoomConfig::default(), 0.25),
@@ -534,7 +537,7 @@ fn zoomable_with_clamps_to_its_own_range() {
         let build = |ui: &mut Ui| {
             Scroll::both()
                 .id(id)
-                .zoomable_with(config.clone())
+                .zoom_config(config.clone())
                 .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .show(ui, |ui| {
                     fixed_block(ui, WidgetId::from_hash("ranged-content"), 100.0, 100.0);
@@ -544,5 +547,79 @@ fn zoomable_with_clamps_to_its_own_range() {
         h.pinch_at(Vec2::new(50.0, 50.0), 0.25);
         h.frame(build);
         assert_eq!(h.state::<ScrollState>(id).zoom, want);
+    }
+}
+
+/// The modifier decides which wheel zooms. One line down with and without
+/// Ctrl, under each setting: `Ctrl` zooms only the Ctrl wheel, `Always`
+/// zooms both, and `PinchOnly` neither. One line is one step, `1.03^-1`.
+#[test]
+fn zoom_modifier_picks_which_wheel_zooms() {
+    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::widgets::scroll::zoom_config::ZoomModifier;
+
+    let id = WidgetId::from_hash("modded");
+    let step = 1.03_f32.powf(-1.0);
+    for (modifier, bare, ctrl) in [
+        (ZoomModifier::Ctrl, 1.0, step),
+        (ZoomModifier::Always, step, step),
+        (ZoomModifier::PinchOnly, 1.0, 1.0),
+    ] {
+        let ctrl_held = Modifiers::CTRL;
+        for (held, want) in [(Modifiers::NONE, bare), (ctrl_held, ctrl)] {
+            let mut h = UiHarness::new(SURFACE);
+            let config = ZoomConfig::default().with_modifier(modifier);
+            let build = |ui: &mut Ui| {
+                Scroll::both()
+                    .id(id)
+                    .zoom_config(config.clone())
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                    .show(ui, |ui| {
+                        fixed_block(ui, WidgetId::from_hash("modded-content"), 800.0, 800.0);
+                    });
+            };
+            h.frame(build);
+            h.move_onto(id);
+            h.set_modifiers(held);
+            h.scroll_lines(Vec2::new(0.0, 1.0));
+            h.frame(build);
+            assert_eq!(
+                h.state::<ScrollState>(id).zoom,
+                want,
+                "{modifier:?} with {held:?}",
+            );
+        }
+    }
+}
+
+/// The pivot is the point a zoom step holds still. A 2× pinch at (50, 50)
+/// over a 200 × 200 viewport at the origin: under `Pointer` content point
+/// (50, 50) stays under the pointer, so it moves to (100, 100) and the
+/// offset becomes 100 − 50 = 50; under `Center` the viewport centre
+/// (100, 100) stays, so it moves to (200, 200) and the offset becomes
+/// 200 − 100 = 100.
+#[test]
+fn zoom_pivot_picks_the_point_a_step_holds() {
+    use crate::widgets::scroll::zoom_config::ZoomPivot;
+
+    let id = WidgetId::from_hash("pivoted");
+    for (pivot, want) in [(ZoomPivot::Pointer, 50.0), (ZoomPivot::Center, 100.0)] {
+        let mut h = UiHarness::new(SURFACE);
+        let config = ZoomConfig::default().with_pivot(pivot);
+        let build = |ui: &mut Ui| {
+            Scroll::both()
+                .id(id)
+                .zoom_config(config.clone())
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    fixed_block(ui, WidgetId::from_hash("pivoted-content"), 800.0, 800.0);
+                });
+        };
+        h.frame(build);
+        h.pinch_at(Vec2::new(50.0, 50.0), 2.0);
+        h.frame(build);
+        let state = h.state::<ScrollState>(id);
+        assert_eq!(state.zoom, 2.0, "{pivot:?}");
+        assert_eq!(state.offset, Vec2::splat(want), "{pivot:?}");
     }
 }

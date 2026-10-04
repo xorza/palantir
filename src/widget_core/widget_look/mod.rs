@@ -20,7 +20,7 @@ pub(crate) mod look_plan;
 pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
 
-use crate::animation::anim_slot::AnimSlot;
+use crate::animation::animation_slot::AnimationSlot;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::ThemeText;
@@ -33,7 +33,7 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 ///
 /// `text` overrides [`crate::Theme::text`] axis by axis, so a look that
 /// dims the ink names the colour alone and keeps the theme's size and
-/// face: an app changing `theme.text.font_size_px` moves every label,
+/// face: an app changing `theme.text.font_size` moves every label,
 /// and one changing `theme.text.color` moves every label whose look
 /// didn't name a colour. `background` has no ambient to inherit —
 /// [`Background::NONE`] already *is* "paints nothing", and
@@ -59,7 +59,7 @@ impl WidgetLook {
     /// Slot the resolved look reserves on the widget's id. One row
     /// per widget animates the whole look (background + text) — halves
     /// `Ui::animate` call traffic compared to per-component slots.
-    pub(crate) const SLOT_LOOK: AnimSlot = AnimSlot::new("look");
+    pub(crate) const SLOT_LOOK: AnimationSlot = AnimationSlot::new("look");
 
     /// Resolve the look into the target `Ui::animate` interpolates
     /// toward: `Background` (fill + stroke) animates, `TextStyle`

@@ -80,7 +80,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
         let rows = [Track::HUG; 6];
         Grid::new()
             .id_salt("settings-grid")
-            .cols([Track::HUG.min(92.0), Track::FILL])
+            .cols([Track::HUG.with_min(92.0), Track::FILL])
             .rows(rows)
             .line_gap(8.0)
             .gap(12.0)
@@ -116,7 +116,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                     .id_salt("s-rule")
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
                     .background(Background::fill(tokens::BORDER))
-                    .grid_cell(GridCell::at(1, 0).span(1, 2))
+                    .grid_cell(GridCell::at(1, 0).with_span(1, 2))
                     .show(ui);
 
                 Text::new("Zoom")
@@ -172,7 +172,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
     tokens::card(ui, "props", "PROPERTIES", Sizing::HUG, |ui| {
         Grid::new()
             .id_salt("props-grid")
-            .cols([Track::HUG.min(92.0), Track::FILL, Track::fixed(60.0)])
+            .cols([Track::HUG.with_min(92.0), Track::FILL, Track::fixed(60.0)])
             .rows(state.grid_rows.as_slice())
             .line_gap(2.0)
             .gap(8.0)
@@ -208,7 +208,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
                                 corners: Corners::all(4.0),
                                 ..Default::default()
                             })
-                            .grid_cell(GridCell::at(r, 0).span(1, 3))
+                            .grid_cell(GridCell::at(r, 0).with_span(1, 3))
                             .show(ui);
                     }
                     Text::new(LABELS[row % LABELS.len()])

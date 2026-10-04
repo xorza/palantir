@@ -432,7 +432,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
                     points,
                     RgbaF32::WHITE.into(),
                     2.0,
-                    Stroke::ZERO.into(),
+                    Stroke::NONE.into(),
                 ),
                 1.0,
             );

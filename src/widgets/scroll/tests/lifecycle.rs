@@ -72,9 +72,14 @@ fn state_is_swept_when_scroll_disappears() {
     };
 
     h.frame(build);
-    let state = h.ui.state_mut::<ScrollState>(id).unwrap();
-    state.offset = Vec2::new(12.0, 34.0);
-    state.zoom = 2.0;
+    assert!(
+        h.ui.state::<ScrollState>(id).is_some(),
+        "the scroll stored its row"
+    );
+    h.ui.with_state::<ScrollState, _>(id, |_, state| {
+        state.offset = Vec2::new(12.0, 34.0);
+        state.zoom = 2.0;
+    });
 
     h.frame(|_| {});
     assert!(h.ui.state::<ScrollState>(id).is_none());
@@ -264,6 +269,10 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     };
 
     let mut h = UiHarness::new(surface);
+    // Two frames: the first has no box to read overflow from, so the
+    // viewport claims its wheel axis, and the second drops it — a flag
+    // change, which misses the measure cache as any other would.
+    h.frame(build);
     h.frame(build);
     let scroll_id = WidgetId::from_hash("scroll");
     let after_first = scroll_content(&h.ui, scroll_id);

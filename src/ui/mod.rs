@@ -16,12 +16,13 @@ pub(crate) mod frame_runtime;
 pub(crate) mod frame_stamp;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
+pub(crate) mod singletons;
 pub(crate) mod state;
 
 use crate::animation::AnimMap;
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::app::App;
 use crate::cascade::Cascade;
 use crate::common::clipboard::Clipboard;
@@ -31,12 +32,12 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::interaction::response_state::ResponseState;
-use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
@@ -46,15 +47,18 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::layout::Layout;
 use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
-use crate::renderer::error::ImageLoadError;
+use crate::renderer::error::ImageTooLarge;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
@@ -64,7 +68,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
@@ -79,6 +83,7 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
+use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::cursor_icon::CursorIcon;
@@ -134,6 +139,9 @@ pub struct Ui {
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
     state: StateMap,
+    /// State shared across every instance of a kind of widget — see
+    /// [`Singletons`].
+    singletons: Singletons,
     /// Live `GpuView`s — the only `GpuView` bookkeeping on the `Ui`. The
     /// shape records only the redraw epoch, and the encoder looks the view
     /// up here by the node's `WidgetId`. Swept by the same `removed` set
@@ -192,6 +200,7 @@ impl Ui {
             forest: Forest::default(),
             theme: Rc::default(),
             state: StateMap::default(),
+            singletons: Singletons::default(),
             gpu_views: GpuViews::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
@@ -263,7 +272,7 @@ impl Ui {
 
     /// Feed an event that arrived at `now`. Returns an [`InputDelta`] the
     /// host reads to decide whether to request a redraw — pointer moves
-    /// over inert surfaces leave `requests_repaint` false so the host can
+    /// over inert surfaces leave `repaint_requested` false so the host can
     /// skip the frame entirely. Animation/tooltip-delay wakes still drive
     /// paints independently via `FrameReport::repaint_after`.
     ///
@@ -282,7 +291,7 @@ impl Ui {
     /// wants reproducible input timing hands over a clock it controls,
     /// exactly as it does for frames.
     #[inline]
-    pub(crate) fn on_input(&mut self, event: InputEvent, now: Duration) -> InputDelta {
+    pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
         self.input.on_input(event, &self.cascade, now)
     }
 
@@ -311,7 +320,7 @@ impl Ui {
 
     /// Declare interest in off-target pointer events of `flags`.
     #[inline]
-    pub fn watch_pointer(&mut self, flags: PointerWake) {
+    pub const fn watch_pointer(&mut self, flags: PointerWake) {
         self.input.watch_pointer(flags);
     }
 
@@ -319,7 +328,7 @@ impl Ui {
     /// recorders, accel-underline UIs, command palettes that record
     /// before focus. Specific chords use [`Self::watch_key`].
     #[inline]
-    pub fn watch_keyboard(&mut self, flags: KeyboardWake) {
+    pub const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.input.watch_keyboard(flags);
     }
 
@@ -327,8 +336,8 @@ impl Ui {
     /// `Shortcut::key(Key::Escape)`, `Shortcut::ctrl('K')`).
     /// Duplicate watchers collapse.
     #[inline]
-    pub fn watch_key(&mut self, sc: Shortcut) {
-        self.input.watch_key(sc);
+    pub fn watch_key(&mut self, shortcut: Shortcut) {
+        self.input.watch_key(shortcut);
     }
 
     /// Unified pointer event stream captured this frame. Empty when
@@ -358,7 +367,7 @@ impl Ui {
     }
 
     /// `true` if any press this frame matches
-    /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
+    /// `shortcut`. Iterates [`Self::keyboard_events`]; for repeat or
     /// stateful logic, iterate directly instead.
     ///
     /// Side-effect: auto-watches the chord for wake-up. Without
@@ -367,18 +376,21 @@ impl Ui {
     /// Pair with the call-it-every-frame discipline that the
     /// watch system already requires.
     #[inline]
-    pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
+    pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
         let layer = self.forest.current_layer();
         let parent = self.forest.current_parent_id();
-        self.input.key_pressed(layer, parent, &self.cascade, sc)
+        self.input
+            .key_pressed(layer, parent, &self.cascade, shortcut)
     }
 
-    /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
-    /// Used by overlays without exclusive keyboard capture, such as
-    /// [`crate::widgets::modal::Modal`].
+    /// [`Self::key_pressed`] read as `reader` rather than as the record
+    /// position — what [`Widget::key_pressed`](crate::widget::Widget::key_pressed)
+    /// asks with the widget's own id.
     #[inline]
-    pub fn escape_pressed(&mut self) -> bool {
-        self.key_pressed(Shortcut::key(Key::Escape))
+    pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
+        let layer = self.forest.current_layer();
+        self.input
+            .key_pressed(layer, Some(reader), &self.cascade, shortcut)
     }
 
     /// Re-record this frame after measure runs, for authoring code that
@@ -393,6 +405,11 @@ impl Ui {
     /// after measure instead. Prefer that shape — or handling the edge in
     /// [`App::update`], which runs before any
     /// recording — and reach for this only when neither fits.
+    ///
+    /// # Panics
+    ///
+    /// Panics outside a record pass, where there is no record to retry.
+    #[track_caller]
     pub fn request_relayout(&mut self) {
         // Record-pass only. `FrameCycle::run` clears the flag before
         // handing the `Ui` to the app, so a call from outside a record —
@@ -416,7 +433,7 @@ impl Ui {
     /// queue. Use for time-driven animation that needs a continuous
     /// clock rather than a tween toward a fixed target; pair with
     /// [`Self::request_repaint`] to keep the host awake. (Shape-level
-    /// continuous motion like `Spinner`'s rides `PaintAnim` instead —
+    /// continuous motion like `Spinner`'s rides `PaintAnimation` instead —
     /// sampled at encode time, no record-time clock read.)
     #[inline]
     pub const fn now(&self) -> Duration {
@@ -471,7 +488,7 @@ impl Ui {
     /// [`Self::set_vsync`] or as the host opened the swapchain with.
     ///
     /// Read it as the source of truth instead of mirroring the setting in
-    /// app code — the same position [`Self::window_open`] takes for window
+    /// app code — the same position [`Self::is_window_open`] takes for window
     /// liveness. A host launched with an explicit backend present mode
     /// reports whichever of the two states that mode paces like.
     #[inline]
@@ -661,7 +678,7 @@ impl Ui {
     /// A computed view, not stored state: the inner size comes from
     /// [`Self::display`] (the single source of truth for surface size), and
     /// the placement from the host-refreshed window-manager facts. Feed it
-    /// back through [`WindowConfig::placement`](crate::WindowConfig) and
+    /// back through [`WindowConfig::with_placement`](crate::WindowConfig) and
     /// `inner_size` on the next launch to reopen where the user left off.
     /// The placement's position is `None` on platforms that don't report
     /// one (Wayland). All-zero / `None` in headless contexts.
@@ -729,7 +746,7 @@ impl Ui {
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames,
-            gpu_ms: self.resources.diagnostics().gpu_pass_stats.last_pass_ms(),
+            gpu: self.resources.diagnostics().gpu_pass_stats.last_pass(),
         }
     }
 
@@ -741,12 +758,12 @@ impl Ui {
     /// instead of mirroring the state in app code — a window the user
     /// closed via its titlebar drops out of this set automatically.
     #[inline]
-    pub fn window_open(&self, token: WindowToken) -> bool {
+    pub fn is_window_open(&self, token: WindowToken) -> bool {
         self.resources.windows().contains(token)
     }
 
     /// The app-global live-window set this recorder answers
-    /// [`Self::window_open`] from.
+    /// [`Self::is_window_open`] from.
     ///
     /// For `WindowDriver`'s `Drop`, which retires its own token: the
     /// driver owns this `Ui` and the directory is the only thing it needs
@@ -788,8 +805,8 @@ impl Ui {
     /// no point here at which it could fail. A malformed icon is reported
     /// when it is first drawn.
     #[inline]
-    pub fn load_icons(&self, table: Rc<IconTable>) -> IconSet {
-        self.resources.icons().register(table)
+    pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet {
+        self.resources.icons().register(table.into())
     }
 
     /// Load an image and get back an owning [`ImageHandle`]. **Hold
@@ -808,7 +825,7 @@ impl Ui {
     /// texture limit. A rejected image never reaches the GPU. Standalone
     /// CPU recorders have no device limit and retain the original dimensions.
     #[inline]
-    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError> {
+    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
         self.resources.load_image(image)
     }
 
@@ -847,9 +864,10 @@ impl Ui {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read, and
+    /// [`FontLoadError::Io`] when the file cannot be read,
     /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
-    /// parse.
+    /// parse,
+    /// and [`FontLoadError::FamilyTableFull`] when the family table is full.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)
@@ -862,8 +880,8 @@ impl Ui {
     /// warns once — never to whatever the machine happens to have
     /// installed. Ask here to choose deterministically instead.
     #[inline]
-    pub fn font_available(&self, family: FontFamily) -> bool {
-        self.resources.text().font_available(family)
+    pub fn has_font(&self, family: FontFamily) -> bool {
+        self.resources.text().has_font(family)
     }
 
     /// Every family the shaper's database knows, system fonts included —
@@ -984,11 +1002,28 @@ impl Ui {
         self.forest.record_store.intern(text.into())
     }
 
+    /// The characters of `text`, a handle this pass interned — how a widget
+    /// reads text a caller handed it as an [`InternedStr`].
+    ///
+    /// The borrow holds `self`, so a widget that also needs `&mut Ui` while
+    /// it reads the text (to measure it with [`Self::probe_text`], or to
+    /// format it into a new string with [`Self::fmt`]) copies it into a
+    /// scratch `String` it keeps in its state first.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `text` was interned by an earlier pass or another
+    /// window, as [`Self::intern`] does.
+    #[must_use]
+    pub fn text(&self, text: InternedStr) -> &str {
+        self.forest.record_store.text(text)
+    }
+
     /// Append `shape` to the active node and animate it at **paint**
     /// time.
     ///
     /// The recorded shape is byte-identical every frame — the encoder
-    /// samples `anim` one pass later and folds the result into the
+    /// samples `animation` one pass later and folds the result into the
     /// brush — so the widget never re-records and its layout cache entry
     /// survives. [`Self::animate`] plus [`Self::request_repaint`] paint
     /// the same pixels at the cost of a record pass per frame.
@@ -1001,21 +1036,21 @@ impl Ui {
     /// shape paintable.
     ///
     /// ```
-    /// # use palantir::widget::{PaintAnim, PaintRepeat, Shape, curves};
+    /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
     /// # use palantir::{Rect, RgbaF32, Ui};
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
     /// ui.add_shape_animated(
     ///     Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
-    ///     PaintAnim::alpha(0.4, 1.0)
-    ///         .period(Duration::from_secs(2))
-    ///         .repeat(PaintRepeat::Forever)
-    ///         .curve(curves::sine),
+    ///     PaintAnimation::alpha(0.4, 1.0)
+    ///         .with_period(Duration::from_secs(2))
+    ///         .with_repeat(PaintRepeat::Forever)
+    ///         .with_curve(curves::sine),
     /// );
     /// # }
     /// ```
-    pub fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
-        self.forest.add_shape_animated(shape, anim);
+    pub fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation) {
+        self.forest.add_shape_animated(shape, animation);
     }
 
     /// Open a side layer — an arena that paints above the `Main` tree,
@@ -1067,8 +1102,9 @@ impl Ui {
         self.forest.widget_id(ident)
     }
 
-    /// Open `node` under `id`, painting `chrome` behind it. Pairs with
-    /// [`Self::close_node`].
+    /// Open `node` under `id`, painting `chrome` behind it, and the
+    /// theme's focus ring over that when `id` holds focus that came from
+    /// the keyboard. Pairs with [`Self::close_node`].
     ///
     /// Two callers, and no third: [`Widget::record`], which is how every
     /// widget in the crate reaches the tree, and `FrameCycle`'s synthetic
@@ -1077,8 +1113,15 @@ impl Ui {
     ///
     /// [`Widget::record`]: crate::widget::Widget::record
     #[inline]
+    #[track_caller]
     pub(crate) fn open_node(&mut self, id: WidgetId, node: &Node, chrome: Option<&Background>) {
-        self.forest.open_node(id, node, chrome);
+        let ring = if self.input.focused() == Some(id) && self.input.focus_visible() {
+            let theme = &self.theme.focus_ring;
+            Stroke::new(domain::color(theme.color), domain::length(theme.width))
+        } else {
+            Stroke::NONE
+        };
+        self.forest.open_node(id, node, chrome, ring);
     }
 
     #[inline]
@@ -1151,33 +1194,18 @@ impl Ui {
         state
     }
 
-    /// Cross-frame state row for `id`, inserting `S::default()` on first
-    /// access — the one a widget reaches for, since the row it wants may not
-    /// exist yet. [`Self::state`] and [`Self::state_mut`] insert nothing,
-    /// which is why they answer `Option`.
-    ///
-    /// Rows for `WidgetId`s not recorded this frame are
-    /// evicted in `finalize_frame`, once per `Ui::frame` after the
-    /// final record pass. Type collisions at one `id` are NOT
-    /// detected — each `T` lives in its own store, so two call sites
-    /// using different types at the same id silently coexist (see the
-    /// `state` module doc).
-    ///
-    /// The returned borrow is out of `&mut Ui`, so it ends at the next
-    /// widget call — fine for a single read or write, useless for state a
-    /// whole subtree edits. Use [`Self::with_state`] for that.
-    pub fn state_or_default<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
-        self.state.get_or_insert_with(id, S::default)
+    /// The cross-frame state row for `id`, or `None` when nothing has been
+    /// stored for `(id, S)` yet. Stores nothing, so it is the read for a
+    /// probe that must not create a row, and the one a `&Ui` caller has —
+    /// "is this menu open?". Every write goes through [`Self::with_state`].
+    pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
+        self.state.try_get::<S>(id)
     }
 
     /// Lend the cross-frame state row for `id` to `body`, **alongside** the
-    /// `Ui` — the scope in which a page, a panel, or any other subtree
-    /// larger than one widget owns state.
-    ///
-    /// [`Self::state_or_default`] hands back a borrow of the `Ui`, which the first
-    /// widget call inside the scope invalidates; the row is instead moved
-    /// out for the duration of the call and moved back after, so both are
-    /// live at once:
+    /// `Ui`: the row is moved out for the call and moved back after, so a
+    /// widget writes its state, and a page or panel holds its own across
+    /// the widget calls it makes. The row is `S::default()` on first use.
     ///
     /// ```
     /// # use palantir::{Button, Configure, Text, Ui, WidgetId};
@@ -1193,51 +1221,69 @@ impl Ui {
     /// # }
     /// ```
     ///
-    /// The row is `S::default()` on first access and follows the same
-    /// eviction rule as [`Self::state_or_default`], so a subtree that stops being
-    /// recorded drops its state — key it off a [`WidgetId`] that lives as
-    /// long as the state should.
+    /// **A row lives as long as a node records under `id`.** When a frame
+    /// that recorded `id` is followed by one that does not, the row is
+    /// dropped, once per `Ui::frame` after its final record pass. A row
+    /// under an id no node ever records is therefore never dropped: it
+    /// lives as long as the `Ui`, which is what an application wants for
+    /// a page's state and what a widget must not do — a widget keys its
+    /// state by its own id, and keeps state that no instance owns with
+    /// [`Self::with_singleton`].
     ///
-    /// Re-entering the same `(id, S)` from within `body` is a caller bug:
-    /// the inner scope sees a default row and its writes are overwritten
-    /// when the outer one restores. Nesting *different* rows is fine, which
-    /// is what makes this compose down a tree.
+    /// Each type lives in its own store, so one widget keeps several
+    /// kinds of state under its one id. Two call sites storing the *same*
+    /// type at one id share a row, which nothing detects. Re-entering the
+    /// same `(id, S)` from within `body` sees a default row whose writes
+    /// are overwritten when the outer call restores; nesting *different*
+    /// rows is what makes this compose down a tree.
     pub fn with_state<S: Default + 'static, R>(
         &mut self,
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = mem::take(self.state_or_default::<S>(id));
+        let mut value = mem::take(self.state.get_or_insert_with(id, S::default));
         let out = body(self, &mut value);
         // Re-probed rather than held: `body` may have inserted rows of the
         // same `S` at other ids, which can reallocate the store's data vec.
-        *self.state_or_default::<S>(id) = value;
+        *self.state.get_or_insert_with(id, S::default) = value;
         out
     }
 
-    /// The cross-frame state row for `id`, or `None` when nothing has been
-    /// stored for `(id, S)` yet. Allocates nothing and mutates nothing.
+    /// The one `S` this `Ui` holds, or `None` until something stores it.
     ///
-    /// The `&Ui` read — probes, hit-test helpers, "is this menu open?"
-    /// checks — where [`Self::state_or_default`]'s `&mut Ui` receiver would
-    /// be a needless borrow upgrade.
-    pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
-        self.state.try_get::<S>(id)
+    /// For state a kind of widget shares across all its instances rather
+    /// than state one widget owns — the clock that lets one tooltip after
+    /// another show at once. Keyed by type, so a widget's private type
+    /// cannot collide with anyone else's, and never swept: it lives as
+    /// long as the `Ui`. Stores nothing; every write goes through
+    /// [`Self::with_singleton`]. A widget's own state belongs under its
+    /// id, in [`Self::with_state`].
+    pub fn singleton<S: 'static>(&self) -> Option<&S> {
+        self.singletons.get::<S>()
     }
 
-    /// [`Self::state`], mutably. `None` if `(id, S)` has never been stored —
-    /// unlike [`Self::state_or_default`], this allocates no typed store and
-    /// inserts no default row.
-    pub fn state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S> {
-        self.state.try_get_mut::<S>(id)
+    /// Lend the one `S` to `body` beside the `Ui`, as [`Self::with_state`]
+    /// lends a widget's row: moved out, `body` runs with both, moved back.
+    /// Stored as `S::default()` on first use.
+    ///
+    /// A nested call for the same `S` sees the default, and its writes
+    /// are lost when the outer one restores.
+    pub fn with_singleton<S: Default + 'static, R>(
+        &mut self,
+        body: impl FnOnce(&mut Self, &mut S) -> R,
+    ) -> R {
+        let mut value = mem::take(self.singletons.get_or_default::<S>());
+        let out = body(self, &mut value);
+        *self.singletons.get_or_default::<S>() = value;
+        out
     }
 
     /// Advance an animation row keyed by `(id, slot)` and return the
     /// current value.
     ///
-    /// `spec` takes an [`AnimSpec`] as readily as an `Option<AnimSpec>`, so
+    /// `spec` takes an [`AnimationSpec`] as readily as an `Option<AnimationSpec>`, so
     /// a themed slot's `Option` goes straight in and a call site that means
-    /// one motion names it. [`AnimSpec::SNAP`] and `None` are the same
+    /// one motion names it. [`AnimationSpec::SNAP`] and `None` are the same
     /// answer — land on `target` this frame, drop any stale row, and
     /// request no repaint.
     // Generic and reached through cross-module widget helpers. Keep the
@@ -1247,9 +1293,9 @@ impl Ui {
     pub fn animate<V: Animatable>(
         &mut self,
         id: WidgetId,
-        slot: impl Into<AnimSlot>,
+        slot: impl Into<AnimationSlot>,
         target: V,
-        spec: impl Into<Option<AnimSpec>>,
+        spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
         let r = self.anim.animate(
             id,
@@ -1267,7 +1313,7 @@ impl Ui {
 
     /// Currently focused widget id, or `None`.
     #[inline]
-    pub const fn focused_id(&self) -> Option<WidgetId> {
+    pub const fn focus(&self) -> Option<WidgetId> {
         self.input.focused()
     }
 
@@ -1280,7 +1326,7 @@ impl Ui {
     /// off-screen subtrees keep the one holding an in-progress edit
     /// alive without enumerating every focusable widget it contains.
     #[inline]
-    pub fn focus_within(&self, ancestor: WidgetId) -> bool {
+    pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .focused()
             .is_some_and(|f| self.cascade.is_within(f, ancestor))
@@ -1288,7 +1334,7 @@ impl Ui {
 
     /// True when the pointer's hover target is `ancestor` or any widget
     /// recorded inside its subtree — the hover sibling of
-    /// [`Self::focus_within`], same cascade timing and layer caveats.
+    /// [`Self::is_focus_within`], same cascade timing and layer caveats.
     /// Prefer this over testing `Self::pointer_pos` against a rect for
     /// "is the pointer on me" styling: it's occlusion-aware (a panel
     /// stacked on top wins the pointer), and because it's a pure
@@ -1296,7 +1342,7 @@ impl Ui {
     /// the target changes — which is exactly when a repaint is already
     /// scheduled, so no `MOVE` watch is needed to stay fresh.
     #[inline]
-    pub fn hover_within(&self, ancestor: WidgetId) -> bool {
+    pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .hovered()
             .is_some_and(|h| self.cascade.is_within(h, ancestor))
@@ -1450,7 +1496,7 @@ impl Ui {
     /// Move keyboard focus to `id`. Bypasses [`FocusPolicy`], and takes
     /// effect at once rather than asking anything.
     ///
-    /// [`Self::focused_id`] reads back immediately, but key-class routing
+    /// [`Self::focus`] reads back immediately, but key-class routing
     /// does not move until the next record pass: this pass's keystrokes
     /// were already routed by the scope path resolved at its start. A
     /// widget that blurs itself on Escape therefore does not also hand
@@ -1465,6 +1511,70 @@ impl Ui {
     #[inline]
     pub const fn clear_focus(&mut self) {
         self.input.set_focus(None);
+    }
+
+    /// Ask for IME text this frame, with `caret` — in the frame's logical
+    /// px, as [`ResponseState::rect`](crate::ResponseState) is — where the
+    /// platform places its candidate list.
+    ///
+    /// A level asked for on every frame it is wanted, like
+    /// [`Self::set_cursor`]: a frame with no call turns IME off, so a
+    /// widget that loses focus, or stops recording, releases it without
+    /// saying so. The focused text widget calls it; while it does, an
+    /// input method's composition arrives through [`Self::ime_preedit`]
+    /// and its commits among [`Self::keyboard_events`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `caret` is an
+    /// [offset](crate::widget::domain::offset).
+    #[inline]
+    #[track_caller]
+    pub const fn request_ime(&mut self, caret: Rect) {
+        caret.validate();
+        self.window_requests.levels.ime = Some(caret);
+    }
+
+    /// The input method's uncommitted text, for the focused widget to draw
+    /// at its caret — `None` when no composition is live, or when it
+    /// belongs to a widget that has since lost focus.
+    ///
+    /// A widget receives it only while it asks for IME text with
+    /// [`Self::request_ime`]. The committed text arrives separately, among
+    /// [`Self::keyboard_events`], typed in place.
+    #[inline]
+    pub fn ime_preedit(&self) -> Option<ImePreedit<'_>> {
+        self.input.ime_preedit()
+    }
+
+    /// Whether the focus came from the keyboard — the focus ring is
+    /// showing — rather than from a press: CSS's `:focus-visible`. A Tab
+    /// move sets it and a left press clears it; [`Self::set_focus`] keeps
+    /// whichever the last input chose.
+    ///
+    /// What an opener reads to tell a keyboard open from a click, so that
+    /// only the keyboard's moves focus into what it opened.
+    #[inline]
+    pub const fn is_focus_visible(&self) -> bool {
+        self.input.focus_visible()
+    }
+
+    /// Move keyboard focus to the first Tab stop recorded under
+    /// `ancestor`, as a popup opened from the keyboard does — the twin of
+    /// [`Self::is_focus_within`]. A dialog needs no call: focus moves into
+    /// every [`Layer::Modal`] root on the frame it appears.
+    ///
+    /// Takes effect at the end of this frame, against the tree this frame
+    /// recorded, so an overlay that opens and asks on the same frame is
+    /// found. Nothing moves when `ancestor` holds no stop or was not
+    /// recorded.
+    ///
+    /// Focus goes back to the widget that held it when `ancestor` leaves
+    /// the tree, as an overlay does when it closes — the framework keeps
+    /// that, so the overlay does not have to.
+    #[inline]
+    pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
+        self.input.focus_first_within(ancestor);
     }
 
     /// Current pointer position in logical pixels (surface space), or
@@ -1482,11 +1592,11 @@ impl Ui {
     /// another reason.
     ///
     /// This is the *raw* pointer, so it ignores who owns input. For "is
-    /// the pointer on me" styling prefer [`Self::hover_within`], which
+    /// the pointer on me" styling prefer [`Self::is_hover_within`], which
     /// routes through the hit index and is therefore occlusion- and
     /// overlay-aware.
     #[inline]
-    pub fn pointer_pos(&mut self) -> Option<Vec2> {
+    pub const fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos()
     }
@@ -1515,7 +1625,7 @@ impl Ui {
     /// common `if response.clicked() { … }` — use
     /// [`Self::peek_modifiers`] and don't pay for the wake.
     #[inline]
-    pub fn modifiers(&mut self) -> Modifiers {
+    pub const fn modifiers(&mut self) -> Modifiers {
         self.watch_keyboard(KeyboardWake::MODIFIER);
         self.input.modifiers()
     }
@@ -1769,7 +1879,7 @@ pub(crate) mod internals {
 
     impl Ui {
         /// The active theme, for in-place edits
-        /// (`ui.theme_mut().button.anim = …`).
+        /// (`ui.theme_mut().button.defaults.animation = …`).
         ///
         /// Gated, because in-place mutation is a fixture affordance
         /// rather than how an app dresses a `Ui`: build the [`Theme`]

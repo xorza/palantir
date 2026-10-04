@@ -1,8 +1,8 @@
-//! Paint-only animations: the per-shape contract (`PaintAnim` /
+//! Paint-only animations: the per-shape contract (`PaintAnimation` /
 //! `PaintMod`) and the per-tree registry that stores it.
 //!
 //! Paint anims are declarative shape-level animations that don't affect
-//! layout, hit-test, or tree structure. Widgets register a `PaintAnim`
+//! layout, hit-test, or tree structure. Widgets register a `PaintAnimation`
 //! against a freshly-added shape via `Ui::add_shape_animated`; the
 //! encoder samples it at paint time and folds the resulting [`PaintMod`]
 //! (an alpha multiplier today; transform mod once the renderer can
@@ -12,7 +12,7 @@
 //! never calls `request_repaint_after` for these shapes.
 //!
 //! Unlike the value-interpolation animations in `crate::animation`
-//! (record-time readback, keyed `(WidgetId, AnimSlot)`), paint anims are
+//! (record-time readback, keyed `(WidgetId, AnimationSlot)`), paint anims are
 //! sampled at *encode* time and stored on the `Tree`. They share no code
 //! with that system — sampling is a pure function of `now`, with no
 //! accumulator state, so dropped frames / irregular `dt` don't drift.
@@ -30,11 +30,11 @@
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub mod curves;
-pub(crate) mod paint_anim;
+pub(crate) mod paint_animation;
 pub(crate) mod paint_mod;
 
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::scene::tree::paint_anims::paint_mod::PaintMod;
 use std::time::Duration;
 
@@ -43,7 +43,7 @@ const CURSOR_END: u64 = u64::MAX;
 /// One row per registered paint animation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintAnimEntry {
-    pub(crate) anim: PaintAnim,
+    pub(crate) anim: PaintAnimation,
     /// Index into `Tree::shapes.records` of the animated shape. Strictly
     /// increasing across [`PaintAnims::entries`], because registration
     /// follows append-only shape recording — which is what lets

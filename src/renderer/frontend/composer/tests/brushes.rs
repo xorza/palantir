@@ -76,7 +76,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
                     Rect::new(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::ZERO.into(),
+                    Stroke::NONE.into(),
                 ),
                 1.0,
             );

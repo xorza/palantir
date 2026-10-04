@@ -29,7 +29,7 @@ impl SliderTheme {
     /// text colour.
     pub const fn from_palette(p: &Palette) -> Self {
         Self {
-            track: p.elem_mid,
+            track: p.element_mid,
             fill: p.accent,
             knob: p.text,
             knob_size: 18.0,

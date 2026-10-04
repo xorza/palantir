@@ -2,8 +2,11 @@
 //! independently of whether the tree was rebuilt.
 
 use crate::cascade::Cascade;
+use crate::cascade::entry::{TabDirection, TabDomain};
+use crate::common::span::Span;
 use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
 use crate::input::event_outcome::EventOutcome;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::input_queue::InputQueue;
 use crate::input::interaction::button_phase::ButtonPhase;
@@ -17,10 +20,12 @@ use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
 use crate::input::scope::Scopes;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::shortcut::Shortcut;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
@@ -28,11 +33,11 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::Layout;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::mem;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: TranslateScale) -> Vec2 {
     let surface_origin = transform.apply_point(layout_origin);
@@ -47,13 +52,13 @@ pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pointer_pos: Option<Vec2>,
     hovered: Option<WidgetId>,
-    /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
-    /// whenever the pointer moves and at `end_frame`. New scroll events
-    /// are attributed to this id when they arrive.
-    pub(crate) scroll_target: Option<WidgetId>,
+    /// Topmost `Sense::SCROLL_X` and `Sense::SCROLL_Y` widgets under the
+    /// pointer, recomputed whenever the pointer moves and at `end_frame`.
+    /// New scroll events are split between them when they arrive.
+    pub(crate) scroll_targets: ScrollTargets,
     /// Topmost `Sense::PINCH` widget under the pointer, recomputed
-    /// alongside `scroll_target`. Pinch zoom factors route to this id
-    /// instead of `scroll_target` so a widget can opt into pan-via-
+    /// alongside `scroll_targets`. Pinch zoom factors route to this id
+    /// instead of `scroll_targets` so a widget can opt into pan-via-
     /// scroll *without* committing to pinch zoom (and vice versa).
     pub(crate) pinch_target: Option<WidgetId>,
     /// Pixel, line, and pinch deltas accumulated by their event-time
@@ -94,6 +99,34 @@ pub(crate) struct InputState {
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
     focused: Option<WidgetId>,
+    /// Whether [`Self::focused`] came from the keyboard, and so shows the
+    /// focus ring — CSS's `:focus-visible`. Set by a Tab move, cleared by
+    /// any left press — the pointer is the modality from then on — and
+    /// left alone by `set_focus`, so a programmatic focus follows the last
+    /// input's modality.
+    focus_visible: bool,
+    /// Where focus goes back to when an overlay it entered closes — one
+    /// row per overlay focus is inside, pushed as it enters and taken
+    /// when the overlay's id leaves the cascade. Capacity retained.
+    focus_returns: Vec<FocusReturn>,
+    /// A held IME event's text, copied out of the queue for the one call
+    /// that applies it. Capacity retained.
+    held_text: String,
+    /// The input method's uncommitted text, as the last preedit left it,
+    /// and the cursor in it — read through [`Self::ime_preedit`].
+    ime_preedit: String,
+    ime_cursor: Option<Span>,
+    /// The widget that held focus when the preedit arrived. A preedit is
+    /// that widget's alone, so a focus move retires it without every path
+    /// that moves focus having to clear it.
+    ime_owner: Option<WidgetId>,
+    /// The topmost `Modal`-layer root the last frame recorded — how
+    /// [`Self::end_frame`] knows a dialog appeared.
+    modal_root: Option<WidgetId>,
+    /// A [`Self::focus_first_within`] request, resolved at
+    /// [`Self::end_frame`] against the cascade the frame built — the
+    /// first one holding an overlay opened this frame.
+    focus_first: Option<WidgetId>,
     /// This pass's scope routing — who owns which key class, and which
     /// layers are cut off. Resolved once per record pass; see
     /// [`Scopes`].
@@ -136,6 +169,20 @@ pub(crate) struct InputState {
     queue: InputQueue,
 }
 
+/// Where one press moves focus: the stops it may reach, and which way.
+#[derive(Clone, Copy, Debug)]
+struct Traversal {
+    domain: TabDomain,
+    direction: TabDirection,
+}
+
+/// Where focus goes back to when the overlay it entered closes.
+#[derive(Clone, Copy, Debug)]
+struct FocusReturn {
+    overlay: WidgetId,
+    to: WidgetId,
+}
+
 impl InputState {
     /// Start a record pass: drop last pass's watches and resolve this
     /// pass's scope path.
@@ -147,13 +194,121 @@ impl InputState {
     pub(crate) fn pre_record(&mut self, cascade: &Cascade) {
         self.subs.clear();
         self.scopes.resolve(self.focused, cascade);
+        self.traverse_focus(cascade);
         self.snapshot_frame_quiescent();
+    }
+
+    /// Move focus for each Tab and Shift+Tab press no scope claims, and
+    /// take those presses out of the frame's key stream.
+    ///
+    /// A press is the framework's when no scope on the focused widget's
+    /// path takes [`KeyClass::Focus`]: the default action a scope opts out
+    /// of by taking the class — a code editor that indents on Tab, or an
+    /// application root that reads Tab itself. Scopes resolve again after
+    /// each move, so the next press is judged against the new focus. Here,
+    /// before anything records, so the whole pass routes by the focus Tab
+    /// left behind.
+    ///
+    /// Arrows move the same way inside an arrow group
+    /// ([`Configure::arrow_focus`](crate::Configure::arrow_focus)): an
+    /// unmodified arrow along the innermost group around the focus, that
+    /// no scope strictly inside the group takes, steps to the group's next
+    /// or previous stop.
+    fn traverse_focus(&mut self, cascade: &Cascade) {
+        let mut i = 0;
+        while i < self.frame_keyboard_events.len() {
+            let press = self.frame_keyboard_events[i];
+            let Some(Traversal { domain, direction }) = self.traversal(press, cascade) else {
+                i += 1;
+                continue;
+            };
+            if let Some(next) = cascade.next_tab_stop(domain, self.focused, direction) {
+                if let TabDomain::Root(root) = domain {
+                    self.enter_overlay(root, cascade);
+                }
+                self.focused = Some(next);
+                self.focus_visible = true;
+            }
+            self.frame_keyboard_events.remove(i);
+            self.scopes.resolve(self.focused, cascade);
+        }
+    }
+
+    /// Where `press` moves focus, if it is the framework's to move: a Tab
+    /// no scope on the path claims, or an arrow along an arrow group no
+    /// scope inside the group claims.
+    fn traversal(&self, press: KeyPress, cascade: &Cascade) -> Option<Traversal> {
+        match KeyClass::of(press) {
+            KeyClass::Focus if !self.scopes.path_takes(KeyClass::Focus) => {
+                let direction = if press.mods.shift {
+                    TabDirection::Previous
+                } else {
+                    TabDirection::Next
+                };
+                Some(Traversal {
+                    domain: cascade.tab_domain(self.focused),
+                    direction,
+                })
+            }
+            KeyClass::Caret if press.mods == Modifiers::NONE => {
+                let group = cascade.arrow_group_of(self.focused?)?;
+                let direction = match (group.axis, press.key) {
+                    (Axis::Y, Key::ArrowDown) | (Axis::X, Key::ArrowRight) => TabDirection::Next,
+                    (Axis::Y, Key::ArrowUp) | (Axis::X, Key::ArrowLeft) => TabDirection::Previous,
+                    _ => return None,
+                };
+                let claimed = self
+                    .scopes
+                    .path_takes_within(KeyClass::Caret, group.id, cascade);
+                (!claimed).then_some(Traversal {
+                    domain: TabDomain::Group(group.id),
+                    direction,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Remember where focus goes back to as it enters `overlay`: the
+    /// widget that holds it now, unless that widget is already inside.
+    fn enter_overlay(&mut self, overlay: WidgetId, cascade: &Cascade) {
+        let Some(from) = self.focused else {
+            return;
+        };
+        let inside = cascade.is_within(from, overlay)
+            || self.focus_returns.iter().any(|row| row.overlay == overlay);
+        if !inside {
+            self.focus_returns.push(FocusReturn { overlay, to: from });
+        }
+    }
+
+    /// Move focus to the first Tab stop under `ancestor` once this frame's
+    /// cascade holds it — see [`crate::Ui::focus_first_within`].
+    pub(crate) const fn focus_first_within(&mut self, ancestor: WidgetId) {
+        self.focus_first = Some(ancestor);
     }
 
     /// The focused widget, or `None`.
     #[inline]
     pub(crate) const fn focused(&self) -> Option<WidgetId> {
         self.focused
+    }
+
+    /// The input method's uncommitted text for the focused widget, or
+    /// `None` when no composition is live or it belongs to a widget that
+    /// no longer holds focus.
+    pub(crate) fn ime_preedit(&self) -> Option<ImePreedit<'_>> {
+        (!self.ime_preedit.is_empty() && self.ime_owner.is_some() && self.ime_owner == self.focused)
+            .then(|| ImePreedit {
+                text: &self.ime_preedit,
+                cursor: self.ime_cursor,
+            })
+    }
+
+    /// Whether the focus came from the keyboard — see the field.
+    #[inline]
+    pub(crate) const fn focus_visible(&self) -> bool {
+        self.focus_visible
     }
 
     /// The modifier keys held as of the last `ModifiersChanged`.
@@ -229,14 +384,15 @@ impl InputState {
     /// discarded pass.
     pub(crate) fn adopt_warmup(&mut self, warmup: &Self) {
         self.focused = warmup.focused;
+        self.focus_first = warmup.focus_first.or(self.focus_first);
         self.scopes.adopt_closing(&warmup.scopes);
     }
 
-    pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
+    pub(crate) const fn watch_pointer(&mut self, flags: PointerWake) {
         self.subs.pointer_mask.insert(flags);
     }
 
-    pub(crate) fn watch_keyboard(&mut self, flags: KeyboardWake) {
+    pub(crate) const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.subs.keyboard_mask.insert(flags);
     }
 
@@ -348,7 +504,7 @@ impl InputState {
     /// frame, so a release and a new press never share one. Nothing is
     /// allocated — the slots are an array.
     pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
-        PointerButton::all().flat_map(move |button| {
+        PointerButton::ALL.into_iter().flat_map(move |button| {
             let cap = self.capture(button);
             // Each edge is built where its target is already in hand, rather
             // than recovered afterwards from which variant it turned out to be:
@@ -436,26 +592,33 @@ impl InputState {
         self.captures.iter().any(|c| c.press.is_some())
     }
 
-    /// Accumulate one scroll delta on the current scroll target and wake
-    /// the watchers, answering whether anything observed it.
+    /// Accumulate one scroll delta on the current scroll targets, split
+    /// by axis, and wake the watchers, answering whether anything
+    /// observed it.
     ///
     /// One body for the two units a host delivers: pixels off a trackpad,
     /// lines off a wheel notch. They reach the widget in separate lanes —
     /// see [`ScrollDelta`] — so the caller fills the lane it has and
     /// leaves the other at zero.
     fn on_scroll(&mut self, pixels: Vec2, lines: Vec2) -> EventOutcome {
-        let target = self.scroll_target;
-        if let Some(target) = target {
-            let delta = self.target_scroll_delta_mut(target);
-            delta.pixels += pixels;
-            delta.lines += lines;
+        let mut delivered = false;
+        for share in self
+            .scroll_targets
+            .route(pixels, lines)
+            .into_iter()
+            .flatten()
+        {
+            let delta = self.target_scroll_delta_mut(share.target);
+            delta.pixels += share.pixels;
+            delta.lines += share.lines;
+            delivered = true;
         }
         let subbed = self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
             pos,
             pixels,
             lines,
         });
-        EventOutcome::repaint(target.is_some() || subbed)
+        EventOutcome::repaint(delivered || subbed)
     }
 
     /// Push for the events that route *by pointer position* — scroll and
@@ -474,7 +637,7 @@ impl InputState {
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active
     /// capture, no hover/scroll target change) leaves
-    /// `requests_repaint` false so the frame can be skipped entirely.
+    /// `repaint_requested` false so the frame can be skipped entirely.
     ///
     /// `now` is when the event arrived, handed in by the host that read
     /// its own clock for it — see [`Ui::on_input`](crate::Ui::on_input).
@@ -483,7 +646,7 @@ impl InputState {
     /// carried them.
     pub(crate) fn on_input(
         &mut self,
-        event: InputEvent,
+        event: InputEvent<'_>,
         cascade: &Cascade,
         now: Duration,
     ) -> InputDelta {
@@ -503,7 +666,7 @@ impl InputState {
         if !self.queue.is_empty() || !self.queue.admits(&event) {
             self.queue.defer(event, now);
             return InputDelta {
-                requests_repaint: true,
+                repaint_requested: true,
             };
         }
         self.apply(event, cascade, now)
@@ -517,13 +680,23 @@ impl InputState {
     pub(crate) fn next_frame(&mut self, cascade: &Cascade) -> bool {
         self.queue.next_frame();
         while let Some(held) = self.queue.pop_admitted() {
-            self.apply(held.event, cascade, held.at);
+            if held.event.text().is_none() {
+                self.apply(held.event, cascade, held.at);
+                continue;
+            }
+            // Out of the queue and into a scratch the event can borrow
+            // while `apply` holds `self` — moved, not allocated.
+            let mut text = mem::take(&mut self.held_text);
+            text.clear();
+            text.push_str(self.queue.text(held.text));
+            self.apply(held.event.with_text(&text), cascade, held.at);
+            self.held_text = text;
         }
         self.signal_since_last_frame != InputSignal::None || !self.queue.is_empty()
     }
 
     /// Apply one admitted event — the body of [`Self::on_input`].
-    fn apply(&mut self, event: InputEvent, cascade: &Cascade, now: Duration) -> InputDelta {
+    fn apply(&mut self, event: InputEvent<'_>, cascade: &Cascade, now: Duration) -> InputDelta {
         // Any host-pushed event that survived the screen above is at
         // least `Inert` — enough to force a record under
         // `InputPolicy::Always`, whose app may observe even a pointer
@@ -536,7 +709,7 @@ impl InputState {
         let outcome = match event {
             InputEvent::PointerMoved(p) => {
                 let prev_hover = self.hovered;
-                let prev_scroll = self.scroll_target;
+                let prev_scroll = self.scroll_targets;
                 let prev_pinch = self.pinch_target;
                 self.pointer_pos = Some(p);
                 // Drag-latch check per button. Every captured button
@@ -566,7 +739,7 @@ impl InputState {
                     self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Move);
                 EventOutcome {
                     repaint: self.hovered != prev_hover
-                        || self.scroll_target != prev_scroll
+                        || self.scroll_targets != prev_scroll
                         || self.pinch_target != prev_pinch
                         || self.any_press()
                         || move_subbed,
@@ -577,7 +750,7 @@ impl InputState {
             }
             InputEvent::PointerLeft => {
                 let observable = self.hovered.is_some()
-                    || self.scroll_target.is_some()
+                    || self.scroll_targets.any()
                     || self.pinch_target.is_some()
                     || self.any_press();
                 self.pointer_pos = None;
@@ -633,6 +806,7 @@ impl InputState {
                         (None, FocusPolicy::ClearOnMiss) => self.focused = None,
                         (None, FocusPolicy::PreserveOnMiss) => {}
                     }
+                    self.focus_visible = false;
                 }
                 // Press on inert surface (no click target, no focus
                 // change, no `BUTTONS` watcher) is observably
@@ -742,7 +916,13 @@ impl InputState {
                 // reaches it through `ModifiersChanged` — so it wakes only
                 // a watcher that asked for it.
                 let bare_modifier = key == Key::Other && text.is_empty();
+                // A Tab press wakes whenever there is a stop to move to:
+                // traversal is the framework's, and moves focus that is
+                // not there yet.
+                let traverses =
+                    KeyClass::of(kp) == KeyClass::Focus && !cascade.tab_stops.is_empty();
                 let observable = (self.focused.is_some() && !bare_modifier)
+                    || traverses
                     || self.subs.matches_press(kp)
                     || self.subs.keyboard_mask.contains(KeyboardWake::KEY);
                 if observable {
@@ -752,6 +932,37 @@ impl InputState {
                     }
                 }
                 EventOutcome::settle(observable)
+            }
+            InputEvent::ImeCommit(text) => {
+                // Typed in place among the presses, as if each character
+                // had its own key: as many presses as `KeyText` needs,
+                // split between characters. No modifiers, because a commit
+                // is text whatever keys are held, and `types_text` reads
+                // them.
+                self.ime_preedit.clear();
+                self.ime_cursor = None;
+                let observable = self.focused.is_some();
+                if observable {
+                    let mut piece = KeyText::EMPTY;
+                    for c in text.chars() {
+                        if !piece.push(c) {
+                            self.frame_keyboard_events.push(KeyPress::typed(piece));
+                            piece = KeyText::EMPTY;
+                            piece.push(c);
+                        }
+                    }
+                    if !piece.is_empty() {
+                        self.frame_keyboard_events.push(KeyPress::typed(piece));
+                    }
+                }
+                EventOutcome::settle(observable)
+            }
+            InputEvent::ImePreedit(ImePreedit { text, cursor }) => {
+                self.ime_preedit.clear();
+                self.ime_preedit.push_str(text);
+                self.ime_cursor = cursor;
+                self.ime_owner = self.focused;
+                EventOutcome::repaint(self.focused.is_some())
             }
             InputEvent::SurfaceFocusLost => {
                 // Modifiers are a running snapshot of physical keys, and
@@ -779,7 +990,7 @@ impl InputState {
         }
         self.frame_had_action |= outcome.settles;
         InputDelta {
-            requests_repaint: outcome.repaint,
+            repaint_requested: outcome.repaint,
         }
     }
 
@@ -817,7 +1028,7 @@ impl InputState {
         self.frame_keyboard_events.clear();
     }
 
-    /// Re-resolve `hovered` / `scroll_target` / `pinch_target` against
+    /// Re-resolve `hovered` / `scroll_targets` / `pinch_target` against
     /// `cascade` using the current `pointer_pos` — the single owner of
     /// the target-triple assignment (the `PointerMoved` / `PointerLeft`
     /// arms, `end_frame`, and the cold-start warmup all route through
@@ -831,11 +1042,11 @@ impl InputState {
         if let Some(p) = self.pointer_pos {
             let hits = cascade.hit_test_targets(p);
             self.hovered = hits.hover;
-            self.scroll_target = hits.scroll;
+            self.scroll_targets = hits.scroll;
             self.pinch_target = hits.pinch;
         } else {
             self.hovered = None;
-            self.scroll_target = None;
+            self.scroll_targets = ScrollTargets::default();
             self.pinch_target = None;
         }
     }
@@ -876,12 +1087,57 @@ impl InputState {
         // above. A focused widget that vanished from the tree drops
         // focus to None; otherwise next frame's keystrokes route to a
         // ghost.
+        let before = self.focused;
         if let Some(focused) = self.focused
             && !cascade.by_id.contains_key(&focused)
         {
             self.focused = None;
         }
+        self.return_from_closed_overlays(cascade);
+        // A dialog takes focus as it appears, whatever opened it, as
+        // `<dialog>.showModal()` does — the entering half of what
+        // `return_from_closed_overlays` does as it leaves, and kept here
+        // beside it, so no dialog has to ask.
+        let modal_root = cascade
+            .roots
+            .iter()
+            .rev()
+            .find(|row| row.layer == Layer::Modal)
+            .map(|row| row.id);
+        if modal_root.is_some() && modal_root != self.modal_root {
+            self.focus_first = modal_root;
+        }
+        self.modal_root = modal_root;
+        if let Some(ancestor) = self.focus_first.take()
+            && let Some(first) = cascade.first_tab_stop_within(ancestor)
+        {
+            self.enter_overlay(ancestor, cascade);
+            self.focused = Some(first);
+        }
+        if self.focused != before {
+            // The next frame records against the new focus — its ring, its
+            // scope path — so it must record rather than repaint the
+            // retained tree.
+            self.signal_since_last_frame.raise(InputSignal::Repaint);
+        }
         self.refresh_pointer_targets(cascade);
+    }
+
+    /// Give focus back for every overlay that left the cascade, newest
+    /// first, to the widget that held it when focus entered — when focus
+    /// is now nowhere, because it was inside, and the widget is still
+    /// there.
+    fn return_from_closed_overlays(&mut self, cascade: &Cascade) {
+        while let Some(index) = self
+            .focus_returns
+            .iter()
+            .rposition(|row| !cascade.by_id.contains_key(&row.overlay))
+        {
+            let row = self.focus_returns.remove(index);
+            if self.focused.is_none() && cascade.by_id.contains_key(&row.to) {
+                self.focused = Some(row.to);
+            }
+        }
     }
 
     /// Returns the raw scroll and pinch deltas attributed to `id` when
@@ -905,7 +1161,7 @@ impl InputState {
     ///
     /// **The pointer test carries the routed targets with it.**
     /// [`Self::refresh_pointer_targets`] is the only writer of `hovered`
-    /// / `scroll_target` / `pinch_target`, and it clears all three
+    /// / `scroll_targets` / `pinch_target`, and it clears all three
     /// whenever `pointer_pos` is `None` — so asking each of them again
     /// asks a question the first test already answered.
     ///
@@ -917,7 +1173,7 @@ impl InputState {
         debug_assert!(
             self.pointer_pos.is_some()
                 || (self.hovered.is_none()
-                    && self.scroll_target.is_none()
+                    && !self.scroll_targets.any()
                     && self.pinch_target.is_none()),
             "a routed target outlived the pointer, so `pointer_pos.is_none()` \
              no longer answers for it",
@@ -1021,7 +1277,7 @@ impl InputState {
         // Drag exclusivity: only the priority-first latched button
         // owns the widget's drag, so at most one slot goes live.
         let mut drag_owned = false;
-        for btn in PointerButton::all() {
+        for btn in PointerButton::ALL {
             let cap = self.capture(btn);
             let phase = match &cap.press {
                 Some(press) if press.target == id => {

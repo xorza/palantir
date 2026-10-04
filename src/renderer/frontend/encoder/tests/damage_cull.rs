@@ -140,8 +140,8 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::display::Display;
 
     use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+    use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
     use crate::shape::Shape;
     use std::time::Duration;
 
@@ -180,12 +180,12 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                                 ui.add_shape_animated(
                                     Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))
                                         .fill(RgbaF32::WHITE),
-                                    PaintAnim::alpha(0.0, 1.0)
-                                        .started_at(started_at)
-                                        .period(HALF * 2)
-                                        .steps(2)
-                                        .repeat(PaintRepeat::Settle(Duration::MAX))
-                                        .curve(curves::square),
+                                    PaintAnimation::alpha(0.0, 1.0)
+                                        .with_started_at(started_at)
+                                        .with_period(HALF * 2)
+                                        .with_steps(2)
+                                        .with_repeat(PaintRepeat::Settle(Duration::MAX))
+                                        .with_curve(curves::square),
                                 );
                             });
                     }

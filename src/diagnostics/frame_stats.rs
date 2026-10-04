@@ -15,6 +15,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use std::fmt;
+use std::time::Duration;
 
 /// One frame's diagnostic counters, as [`Ui::frame_stats`] snapshots them.
 ///
@@ -28,7 +29,7 @@ pub(crate) struct FrameStats {
     pub(crate) fps: f32,
     pub(crate) settle_frames: u32,
     /// Whole-pass GPU time of the last frame that read a timestamp back.
-    pub(crate) gpu_ms: Option<f32>,
+    pub(crate) gpu: Option<Duration>,
 }
 
 /// The GPU-time segment of the readout, or nothing until timestamp readback
@@ -39,12 +40,12 @@ pub(crate) struct FrameStats {
 /// reaches the arena through one [`Ui::fmt`] and the overlay costs no
 /// allocation per record pass.
 #[derive(Debug)]
-struct GpuSegment(Option<f32>);
+struct GpuSegment(Option<Duration>);
 
 impl fmt::Display for GpuSegment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
-            Some(ms) => write!(f, " · gpu {ms:>5.2} ms"),
+            Some(pass) => write!(f, " · gpu {:>5.2} ms", pass.as_secs_f64() * 1e3),
             None => Ok(()),
         }
     }
@@ -57,9 +58,9 @@ pub(crate) fn record(ui: &mut Ui) {
         render_frame_id,
         fps,
         settle_frames,
-        gpu_ms,
+        gpu,
     } = ui.frame_stats();
-    let gpu = GpuSegment(gpu_ms);
+    let gpu = GpuSegment(gpu);
     // `settle/frame` reads as a ratio across a gesture: a sustained drag that
     // still double-records advances both halves in lockstep, one that stops
     // advances only the right.
@@ -70,7 +71,7 @@ pub(crate) fn record(ui: &mut Ui) {
         family: FontFamily::MONO,
         weight: FontWeight::REGULAR,
         color: RgbaF32::srgb(1.0, 0.2, 0.2),
-        font_size_px: 12.0,
+        font_size: 12.0,
         ..ui.theme().text
     };
     let chrome = Background::fill(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
@@ -93,14 +94,16 @@ pub(crate) fn record(ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::frame_stats::GpuSegment;
+    use std::time::Duration;
 
     /// The GPU segment appends a separator and a two-decimal time padded
     /// to five columns, and nothing at all when the device publishes no
     /// pass time.
     #[test]
     fn the_gpu_segment_formats_or_vanishes() {
-        assert_eq!(GpuSegment(Some(3.456)).to_string(), " · gpu  3.46 ms");
-        assert_eq!(GpuSegment(Some(12.0)).to_string(), " · gpu 12.00 ms");
+        let ms = |micros| Some(Duration::from_micros(micros));
+        assert_eq!(GpuSegment(ms(3_456)).to_string(), " · gpu  3.46 ms");
+        assert_eq!(GpuSegment(ms(12_000)).to_string(), " · gpu 12.00 ms");
         assert_eq!(GpuSegment(None).to_string(), "");
     }
 }

@@ -1,6 +1,6 @@
 //! The disclosure control: a header that reveals or hides a body.
 
-use crate::animation::anim_slot::AnimSlot;
+use crate::animation::animation_slot::AnimationSlot;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
@@ -8,7 +8,6 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
@@ -62,7 +61,7 @@ pub struct Expander<'a> {
 }
 
 /// The reveal's `0..1` tween, on the header's id.
-const SLOT_OPEN: AnimSlot = AnimSlot::new("open");
+const SLOT_OPEN: AnimationSlot = AnimationSlot::new("open");
 
 impl<'a> Expander<'a> {
     /// A header labelled `label`, closed on its first frame. The widget
@@ -166,7 +165,7 @@ impl<'a> Expander<'a> {
             // The click half needs no `disabled` guard — a disabled
             // widget's button slices are already empty. The key half
             // does: keyboard events never pass through that fold.
-            let activated = state.clicked() || (!state.disabled && activation_key(ui, header_id));
+            let activated = state.clicked() || (!state.disabled && activation_key(ui, &mut header));
             let now_open = was_open != activated;
             // No measured height yet, so a tween would have nothing to
             // clip against. Snap instead of guessing one, and animate
@@ -174,7 +173,7 @@ impl<'a> Expander<'a> {
             let spec = if now_open && height.is_none() {
                 None
             } else {
-                t.defaults.anim
+                t.defaults.animation
             };
             let openness = ui.animate(header_id, SLOT_OPEN, f32::from(now_open), spec);
             let showing = openness > 0.0;
@@ -257,13 +256,13 @@ impl<'a> Expander<'a> {
             shown: false,
         });
         if current != row {
-            *ui.state_or_default::<ExpanderState>(header_id) = row;
+            ui.with_state::<ExpanderState, _>(header_id, |_, s| *s = row);
         }
 
         ExpanderResponse {
-            response: Response::eager(header_id, ui, pass.header),
+            response: Response::new(header_id, ui, pass.header),
             inner: pass.inner,
-            toggled: pass.toggled,
+            changed: pass.toggled,
             openness: pass.openness,
         }
     }
@@ -306,12 +305,13 @@ struct ExpanderState {
 /// Both are sampled, never short-circuited: `key_pressed` also keeps the
 /// chord subscribed for the wake gate, so one firing must not drop the
 /// other's subscription that frame.
-fn activation_key(ui: &mut Ui, header: WidgetId) -> bool {
-    if !ui.focus_within(header) {
+fn activation_key(ui: &mut Ui, header: &mut Widget) -> bool {
+    let id = header.resolve(ui);
+    if !ui.is_focus_within(id) {
         return false;
     }
-    let space = ui.key_pressed(Shortcut::key(Key::Char(' ')));
-    let enter = ui.key_pressed(Shortcut::key(Key::Enter));
+    let space = header.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+    let enter = header.key_pressed(ui, Shortcut::key(Key::Enter));
     space || enter
 }
 
@@ -324,8 +324,9 @@ pub struct ExpanderResponse<'a, R> {
     /// not record. A collapsed [`Expander::keep_body`](crate::Expander::keep_body) section still
     /// records, so it still answers `Some`.
     pub inner: Option<R>,
-    /// The header was activated this frame, by click or by key.
-    pub toggled: bool,
+    /// The header was activated this frame, by click or by key, so the
+    /// section flipped open or closed.
+    pub changed: bool,
     /// `0.0` closed, `1.0` open, in between while the reveal animates.
     pub openness: f32,
 }

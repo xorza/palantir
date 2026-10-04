@@ -211,7 +211,7 @@ impl TextSystem {
         request: TextShapeRequest<'_>,
         wrap_policy: TextWrap,
     ) -> TextRoot {
-        debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
+        debug_assert!(request.key.max_width().is_none(), "{UNBOUND_REQUEST}");
         Self::refresh(
             &mut self.entries,
             &self.shaper,
@@ -237,7 +237,7 @@ impl TextSystem {
         halign: HAlign,
         available_width_px: Option<f32>,
     ) -> RunMeasure {
-        debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
+        debug_assert!(request.key.max_width().is_none(), "{UNBOUND_REQUEST}");
         if let Some(width) = available_width_px {
             debug_assert!(width.is_finite());
         }
@@ -458,7 +458,7 @@ pub(crate) mod internals {
         ) -> TestMeasure {
             let request = shape.unbounded_request(text);
             let root = self.root(slot, request, wrap_policy);
-            let shaped = self.measure(slot, request, wrap_policy, shape.halign, shape.max_width_px);
+            let shaped = self.measure(slot, request, wrap_policy, shape.halign, shape.max_width);
             TestMeasure {
                 size: shaped.shaped.extent.size,
                 key: shaped.shaped.key,

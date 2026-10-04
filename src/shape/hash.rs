@@ -14,7 +14,7 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::image::ImageFit;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::image_source::ImageSource;
@@ -310,14 +310,14 @@ mod tests {
     use crate::text::wrap::TextWrap;
 
     fn text_shape(
-        line_height_px: f32,
+        line_height: f32,
         weight: FontWeight,
         local_origin: Option<glam::Vec2>,
     ) -> ShapeRecord {
         text_face(
             GlyphFont {
-                size_px: 16.0,
-                line_height_px,
+                size: 16.0,
+                line_height,
                 family: FontFamily::SANS,
                 weight,
                 slant: FontSlant::Normal,
@@ -353,7 +353,7 @@ mod tests {
         let upright = GlyphFont::new(16.0);
         let cases: [(&str, ShapeRecord, ShapeRecord); 6] = [
             (
-                "line_height_px",
+                "line_height",
                 text_shape(16.0 * 1.2, regular, None),
                 text_shape(16.0 * 1.5, regular, None),
             ),

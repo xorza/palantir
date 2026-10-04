@@ -10,6 +10,7 @@ use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::background::Background;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -20,7 +21,7 @@ use crate::scene::seen_ids::{CollisionRecord, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_anims::PaintAnimEntry;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
@@ -224,12 +225,19 @@ impl Forest {
         widget_id: WidgetId,
         node: &Node,
         chrome: Option<&Background>,
+        ring: Stroke,
     ) {
         let layer = self.current_layer();
         // Disjoint borrow: record storage, `trees`, and `scratch` are separate
         // fields, so all three can be borrowed for the same call.
         let store = &mut self.record_store;
-        let chrome = chrome.map(|bg| ChromeInput { bg, store });
+        // A ring with no background rides an empty one, which paints
+        // nothing and widens no padding.
+        let chrome = (chrome.is_some() || !ring.is_noop()).then(|| ChromeInput {
+            bg: chrome.unwrap_or(&Background::NONE),
+            ring,
+            store,
+        });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
         let node_id = tree.open_node(scratch, widget_id, node, chrome);
@@ -322,14 +330,14 @@ impl Forest {
         });
     }
 
-    /// Same as [`Self::add_shape`], but registers a `PaintAnim` against
+    /// Same as [`Self::add_shape`], but registers a `PaintAnimation` against
     /// the freshly-pushed shape so the encoder applies the sampled
     /// `PaintMod` at paint time and [`Self::min_paint_anim_wake`] folds
     /// the anim's `next_wake` into the host's repaint queue. Drops silently
     /// (no entry pushed) if the shape itself was noop-collapsed.
     /// Effectively invisible shapes stay authored but omit their
     /// animation row until a visible record pass resumes them.
-    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
+    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnimation) {
         self.push_shape("add_shape_animated", |tree, store, frame| {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;

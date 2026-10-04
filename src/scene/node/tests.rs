@@ -38,12 +38,38 @@ fn flag_setters_round_trip_each_field_independently() {
         f.set_sense(*sense);
         f.set_disabled(*disabled);
         f.set_clip(*clip);
+        assert!(f.is_tab_stop(), "case: {label}: a stop by default");
         f.set_focusable(*focusable);
+        // The opposite of `focusable`, so every row tells the two bits
+        // apart.
+        f.set_tab_stop(!*focusable);
         assert_eq!(f.sense(), *sense, "case: {label} sense");
         assert_eq!(f.is_disabled(), *disabled, "case: {label} disabled");
         assert_eq!(f.clip_mode(), *clip, "case: {label} clip");
         assert_eq!(f.is_focusable(), *focusable, "case: {label} focusable");
+        assert_eq!(f.is_tab_stop(), !*focusable, "case: {label} tab stop");
     }
+}
+
+/// A node that adopts another's placement takes its place in the Tab
+/// order too — the stop bit and the index — and none of its other flags.
+#[test]
+fn adopt_placement_carries_the_tab_order() {
+    let from = Widget::leaf()
+        .tab_stop(false)
+        .tab_index(7)
+        .sense(Sense::CLICK)
+        .node;
+    let mut to = Widget::leaf().focusable(true).node;
+    to.adopt_placement(from);
+    assert!(!to.flags.is_tab_stop());
+    assert_eq!(to.tab_index, 7);
+    assert!(to.flags.is_focusable(), "its own flags stay");
+    assert_eq!(
+        to.flags.sense(),
+        Sense::NONE,
+        "the source's sense does not travel"
+    );
 }
 
 #[test]
@@ -236,8 +262,9 @@ fn an_authored_value_wins_over_the_theme_default() {
 /// A themed default never contradicts what the caller authored: a default
 /// minimum above an authored maximum is clamped to it, a default maximum
 /// below an authored minimum is raised to it, per axis. Two authored
-/// bounds that conflict still panic, and a NaN default still reaches the
-/// check rather than being clamped away.
+/// bounds that conflict resolve as CSS resolves them — the minimum wins —
+/// and a NaN default still reaches the check rather than being clamped
+/// away.
 #[test]
 fn themed_bounds_yield_to_authored_ones() {
     let leaf = || Node::new(NodeMode::Resolved(LayoutMode::Leaf));
@@ -260,12 +287,16 @@ fn themed_bounds_yield_to_authored_ones() {
     node.fill_min_size(Size::new(280.0, 10.0));
     assert_eq!(node.min_size, Some(Size::new(280.0, 10.0)));
 
-    panic_probe::assert_panics_with("node minimums must be finite", || {
-        let mut node = leaf();
-        node.set_max_size(Size::new(240.0, 400.0));
-        node.set_min_size(Size::new(280.0, 0.0));
-    });
-    panic_probe::assert_panics_with("node minimums must be finite", || {
+    let mut node = leaf();
+    node.set_max_size(Size::new(240.0, 400.0));
+    node.set_min_size(Size::new(280.0, 0.0));
+    assert_eq!(
+        node.max_size,
+        Some(Size::new(280.0, 400.0)),
+        "the minimum wins"
+    );
+
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
         let mut node = leaf();
         node.set_max_size(Size::new(240.0, 400.0));
         node.fill_min_size(Size::new(f32::NAN, 0.0));

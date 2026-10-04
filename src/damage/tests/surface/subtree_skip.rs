@@ -1,13 +1,12 @@
 //! Subtrees the diff can jump over, and the transitions that end that.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::Ui;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::configure::Configure;

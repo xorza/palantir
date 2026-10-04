@@ -15,11 +15,11 @@ use glam::UVec2;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WindowGeometry {
     /// Inner (content) size in logical pixels — DPI-independent, so it
-    /// round-trips through [`WindowConfig::inner_size()`](crate::window::window_config::WindowConfig::inner_size) unchanged across
+    /// round-trips through [`WindowConfig::with_inner_size()`](crate::window::window_config::WindowConfig::with_inner_size) unchanged across
     /// monitors of different scale.
     pub inner_size: UVec2,
     /// Where the window sits, as
-    /// [`WindowConfig::placement`](crate::window::window_config::WindowConfig::placement)
+    /// [`WindowConfig::with_placement`](crate::window::window_config::WindowConfig::with_placement)
     /// takes it back on restore.
     pub placement: WindowPlacement,
 }

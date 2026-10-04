@@ -1,6 +1,6 @@
 //! Row assignment: reuse, dedup, and the reserved fallback at row zero.
 
-use crate::primitives::paint::brush::gradient::Interp;
+use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
@@ -57,8 +57,8 @@ fn near_identical_keys_never_share_a_row() {
 
     let mut rows = HashSet::new();
     for g in [&base, &one_byte_off] {
-        for interp in [Interp::Oklab, Interp::Linear] {
-            let row = atlas.register(&g.ramp.with_interp(interp));
+        for interpolation in [Interpolation::Oklab, Interpolation::Linear] {
+            let row = atlas.register(&g.ramp.with_interpolation(interpolation));
             assert_real_row(&atlas, row);
             assert!(rows.insert(row), "row {} aliased a distinct key", row.0);
         }
@@ -66,8 +66,8 @@ fn near_identical_keys_never_share_a_row() {
     assert_eq!(rows.len(), 4);
 
     // And each of the four still resolves back to its own row.
-    let first = atlas.register(&base.ramp.with_interp(Interp::Oklab));
-    let second = atlas.register(&one_byte_off.ramp.with_interp(Interp::Oklab));
+    let first = atlas.register(&base.ramp.with_interpolation(Interpolation::Oklab));
+    let second = atlas.register(&one_byte_off.ramp.with_interpolation(Interpolation::Oklab));
     assert_ne!(first, second);
 }
 
@@ -96,7 +96,7 @@ fn register_many_distinct_gradients_all_unique_rows() {
 }
 
 /// The atlas keys on the ramp alone, so a linear gradient, a radial
-/// gradient and a bare curve ramp with the same stops and interp share
+/// gradient and a bare curve ramp with the same stops and interpolation share
 /// one row. Geometry differs in the shader (per-fragment `t`), but the
 /// LUT bake doesn't depend on it.
 #[test]
@@ -110,16 +110,16 @@ fn register_dedups_across_variants() {
     let radial = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), stops);
     let curve = ColorRamp::new(stops);
     assert_eq!(
-        linear.ramp.interp,
-        Interp::Oklab,
+        linear.ramp.interpolation,
+        Interpolation::Oklab,
         "both kinds default to Oklab"
     );
-    assert_eq!(radial.ramp.interp, Interp::Oklab);
+    assert_eq!(radial.ramp.interpolation, Interpolation::Oklab);
     let r_linear = atlas.register(&linear.ramp);
     assert_eq!(atlas.register(&radial.ramp), r_linear);
     assert_eq!(atlas.register(&curve), r_linear);
-    // Same stops, different interp → different row.
-    let r_other_interp = atlas.register(&curve.with_interp(Interp::Linear));
+    // Same stops, different interpolation → different row.
+    let r_other_interp = atlas.register(&curve.with_interpolation(Interpolation::Linear));
     assert_ne!(r_linear, r_other_interp);
 }
 

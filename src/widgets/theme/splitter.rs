@@ -33,7 +33,7 @@ impl SplitterTheme {
             grab_thickness: 6.0,
             rule: p.border_soft(),
             rule_thickness: 1.0,
-            hovered: p.elem_mid,
+            hovered: p.element_mid,
             active: p.accent.with_alpha(0.6),
         }
     }

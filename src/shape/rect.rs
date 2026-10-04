@@ -37,28 +37,52 @@ impl RectShape {
             local_rect,
             corners: Corners::ZERO,
             fill: Brush::TRANSPARENT,
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
         }
     }
 }
 
 impl RectShape {
     /// Interior paint.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless a solid fill is a [colour](crate::widget::domain::color), and a
+    /// gradient's geometry holds the kinds [`Background`](crate::Background)
+    /// lists for a fill.
+    #[track_caller]
     pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
-        self.fill = fill.into();
+        let fill = fill.into();
+        fill.validate();
+        self.fill = fill;
         self
     }
 
     /// Edge paint, inside the boundary: the outer edge of the border is
     /// the rect's edge, like every area shape's.
-    pub fn border(mut self, border: impl Into<Stroke>) -> Self {
-        self.border = border.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the width is a [length](crate::widget::domain::length) and
+    /// the colour a [colour](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn border(mut self, border: Stroke) -> Self {
+        border.validate();
+        self.border = border;
         self
     }
 
     /// Corner radii. Takes one number for all four, or a [`Corners`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every radius is a [length](crate::widget::domain::length) of at most
+    /// 65504, one f16 lane.
+    #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
-        self.corners = corners.into();
+        let corners = corners.into();
+        corners.validate();
+        self.corners = corners;
         self
     }
 }

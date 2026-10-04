@@ -48,8 +48,10 @@ pub enum Key {
     /// Named rather than `Char('\r')`, whose printable form differs by
     /// platform.
     Enter,
-    /// Tab. This crate binds no focus traversal to it — it arrives as an
-    /// ordinary press for a widget or a scope to claim.
+    /// Tab. With Shift or without, it moves focus between Tab stops —
+    /// see [`Configure::tab_stop`](crate::Configure::tab_stop) — unless a
+    /// scope on the focus path takes [`KeyFilter::FOCUS`](crate::KeyFilter),
+    /// which then reads it as an ordinary press.
     Tab,
     /// Escape — the conventional cancel, and what dismisses an overlay.
     Escape,

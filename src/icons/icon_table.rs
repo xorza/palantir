@@ -3,6 +3,7 @@
 //! the facts a definition carries are surveyed in `svg_facts`.
 
 use crate::common::span::Span;
+use crate::icons::error::IconTableError;
 use crate::icons::svg_facts::SvgFacts;
 use glam::Vec2;
 use std::borrow::Cow;
@@ -16,12 +17,13 @@ pub struct IconId(pub u16);
 /// One baked icon: what it is called, the size it was drawn at, where its
 /// normalized SVG sits in the set's blob, and the two facts the renderer needs
 /// before it has parsed anything.
-#[derive(Clone, Copy, Debug)]
-pub struct IconDef {
+#[derive(Clone, Debug)]
+pub struct IconDefinition {
     /// Lowercase kebab-case, derived from the source filename. Unique within
     /// a set, and the key [`IconSet::by_name`](crate::IconSet::by_name)
-    /// searches.
-    pub name: &'static str,
+    /// searches. Borrowed in a baked set, owned in one built at runtime, so
+    /// a set built from files leaks nothing.
+    pub name: Cow<'static, str>,
     /// The SVG's viewBox extent in logical px — the size the artwork was
     /// designed at, and what to size a node to.
     pub view_box: Vec2,
@@ -53,12 +55,12 @@ pub struct IconDef {
 /// so parses nothing at construction, while [`Self::from_svgs`] has to read
 /// each source to fill it.
 ///
-/// The table is sorted by [`IconDef::name`], which is what lets
+/// The table is sorted by [`IconDefinition::name`], which is what lets
 /// [`IconSet::by_name`](crate::IconSet::by_name) binary-search it.
 #[derive(Debug)]
 pub struct IconTable {
-    icons: Cow<'static, [IconDef]>,
-    /// Every icon's SVG, concatenated. Sliced by [`IconDef::svg`].
+    icons: Cow<'static, [IconDefinition]>,
+    /// Every icon's SVG, concatenated. Sliced by [`IconDefinition::svg`].
     svg: Cow<'static, [u8]>,
 }
 
@@ -67,11 +69,11 @@ impl IconTable {
     /// `icons.rs` calls. Borrows both halves, so it allocates nothing and
     /// parses nothing.
     ///
-    /// `icons` must be sorted by [`IconDef::name`] and each entry's
-    /// [`IconDef::svg`] must span its own slice of `svg` — the two invariants
+    /// `icons` must be sorted by [`IconDefinition::name`] and each entry's
+    /// [`IconDefinition::svg`] must span its own slice of `svg` — the two invariants
     /// name lookup and per-icon slicing rest on. Whatever generates the table
     /// owes them; [`Self::from_svgs`] establishes them itself.
-    pub const fn baked(icons: &'static [IconDef], svg: &'static [u8]) -> Self {
+    pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self {
         Self {
             icons: Cow::Borrowed(icons),
             svg: Cow::Borrowed(svg),
@@ -99,37 +101,43 @@ impl IconTable {
     /// and [`IconSet::by_name`](crate::IconSet::by_name) binary-searches — so
     /// resolve ids by name rather than by the order they were passed in.
     ///
-    /// An unparseable source is skipped; it would have failed to rasterize
-    /// anyway, and dropping it here keeps one broken icon from taking the set
-    /// with it.
+    /// A name is a `&'static str` or a `String`; an owned one is freed with
+    /// the set.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics when more than 65 536 sources parse, the most an [`IconId`]
-    /// can name, or when two of them share a name, which
-    /// [`IconSet::by_name`](crate::IconSet::by_name) could then resolve to
-    /// either. Both are the caller's set, not data the set was read from.
-    pub fn from_svgs<'a>(sources: impl IntoIterator<Item = (&'static str, &'a str)>) -> Self {
-        let mut surveyed: Vec<(&'static str, &'a str, SvgFacts)> = sources
-            .into_iter()
-            .filter_map(|(name, svg)| Some((name, svg, SvgFacts::of(svg.as_bytes())?)))
-            .collect();
-        surveyed.sort_unstable_by_key(|(name, ..)| *name);
-        assert!(
-            surveyed.len() <= usize::from(u16::MAX) + 1,
-            "an icon set holds at most 65536 icons, got {}",
-            surveyed.len(),
-        );
+    /// [`IconTableError`] when a source does not parse, when there are more
+    /// than 65 536 of them — the most an [`IconId`] can name — or when two
+    /// share a name.
+    pub fn from_svgs<'a, N: Into<Cow<'static, str>>>(
+        sources: impl IntoIterator<Item = (N, &'a str)>,
+    ) -> Result<Self, IconTableError> {
+        let mut surveyed: Vec<(Cow<'static, str>, &'a str, SvgFacts)> = Vec::new();
+        for (name, svg) in sources {
+            let name = name.into();
+            let Some(facts) = SvgFacts::of(svg.as_bytes()) else {
+                return Err(IconTableError::Unreadable { name });
+            };
+            surveyed.push((name, svg, facts));
+        }
+        if surveyed.len() > usize::from(u16::MAX) + 1 {
+            return Err(IconTableError::TooMany {
+                count: surveyed.len(),
+            });
+        }
+        surveyed.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         if let Some(pair) = surveyed.windows(2).find(|pair| pair[0].0 == pair[1].0) {
-            panic!("two icons in one set are named {:?}", pair[0].0);
+            return Err(IconTableError::DuplicateName {
+                name: pair[0].0.clone(),
+            });
         }
 
         let mut blob: Vec<u8> = Vec::with_capacity(surveyed.iter().map(|(_, s, _)| s.len()).sum());
-        let mut icons: Vec<IconDef> = Vec::with_capacity(surveyed.len());
-        for &(name, svg, facts) in &surveyed {
+        let mut icons: Vec<IconDefinition> = Vec::with_capacity(surveyed.len());
+        for (name, svg, facts) in surveyed {
             let start = blob.len() as u32;
             blob.extend_from_slice(svg.as_bytes());
-            icons.push(IconDef {
+            icons.push(IconDefinition {
                 name,
                 view_box: facts.view_box,
                 svg: Span::new(start, svg.len() as u32),
@@ -137,16 +145,16 @@ impl IconTable {
                 filtered: facts.filtered,
             });
         }
-        Self {
+        Ok(Self {
             icons: Cow::Owned(icons),
             svg: Cow::Owned(blob),
-        }
+        })
     }
 
     /// The name-sorted table, for the two places that walk the whole set —
     /// the prewarm pass and `by_name`. Everything else goes through an
     /// [`IconId`].
-    pub(crate) fn icons(&self) -> &[IconDef] {
+    pub(crate) fn icons(&self) -> &[IconDefinition] {
         &self.icons
     }
 
@@ -157,7 +165,7 @@ impl IconTable {
     /// Panics if `icon` is not from this set. Ids come from the generated
     /// constants or from [`IconSet::by_name`](crate::IconSet::by_name), so an
     /// out-of-range one means an id crossed between sets.
-    pub(crate) fn def(&self, icon: IconId) -> &IconDef {
+    pub(crate) fn def(&self, icon: IconId) -> &IconDefinition {
         let icons = &self.icons;
         assert!(
             (icon.0 as usize) < icons.len(),
@@ -185,8 +193,8 @@ mod tests {
     /// is `SvgFacts`' own test.
     #[test]
     fn runtime_build_sorts_by_name() {
-        let table = IconTable::from_svgs([("two", TWO_COLOURS), ("one", ONE_COLOUR)]);
-        let names: Vec<&str> = table.icons().iter().map(|d| d.name).collect();
+        let table = IconTable::from_svgs([("two", TWO_COLOURS), ("one", ONE_COLOUR)]).unwrap();
+        let names: Vec<&str> = table.icons().iter().map(|d| d.name.as_ref()).collect();
         assert_eq!(
             names,
             ["one", "two"],
@@ -200,7 +208,7 @@ mod tests {
     /// — an off-by-one here would rasterize the neighbouring icon.
     #[test]
     fn spans_slice_each_icon_out_of_the_shared_blob() {
-        let table = IconTable::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]);
+        let table = IconTable::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]).unwrap();
         assert_eq!(table.svg_bytes(IconId(0)), ONE_COLOUR.as_bytes());
         assert_eq!(table.svg_bytes(IconId(1)), TWO_COLOURS.as_bytes());
     }
@@ -208,37 +216,35 @@ mod tests {
     /// The smallest source that parses.
     const TINY: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>"#;
 
+    /// Each flaw in the sources is its own error: a source that does not
+    /// parse names its icon, a set past what an [`IconId`] can name counts
+    /// its sources, and a shared name names itself. An owned name is
+    /// accepted beside a borrowed one, and nothing leaks either way.
     #[test]
-    #[should_panic(expected = "two icons in one set are named \"twin\"")]
-    fn duplicate_names_are_rejected() {
-        let _ = IconTable::from_svgs([
-            ("twin", ONE_COLOUR),
-            ("other", ONE_COLOUR),
-            ("twin", ONE_COLOUR),
-        ]);
-    }
+    fn flawed_sources_are_errors() {
+        use crate::icons::error::IconTableError;
 
-    /// An [`IconId`] names at most 65 536 icons, so one more is the
-    /// caller's set overflowing it.
-    #[test]
-    #[should_panic(expected = "an icon set holds at most 65536 icons, got 65537")]
-    fn more_icons_than_an_id_can_name_are_rejected() {
-        let names: Vec<&'static str> = (0..=u32::from(u16::MAX) + 1)
-            .map(|i| &*Box::leak(format!("i{i}").into_boxed_str()))
-            .collect();
-        let _ = IconTable::from_svgs(names.iter().map(|&name| (name, TINY)));
-    }
-
-    /// One broken source must not take the set with it.
-    #[test]
-    fn unparseable_sources_are_skipped() {
-        let table = IconTable::from_svgs([("good", ONE_COLOUR), ("bad", BROKEN)]);
-        assert_eq!(table.icons().len(), 1);
-        assert_eq!(table.icons()[0].name, "good");
         assert_eq!(
-            table.svg_bytes(IconId(0)),
-            ONE_COLOUR.as_bytes(),
-            "the blob holds only what parsed",
+            IconTable::from_svgs([("good", ONE_COLOUR), ("bad", BROKEN)]).err(),
+            Some(IconTableError::Unreadable { name: "bad".into() }),
         );
+        assert_eq!(
+            IconTable::from_svgs([
+                ("twin", ONE_COLOUR),
+                ("other", ONE_COLOUR),
+                ("twin", ONE_COLOUR),
+            ])
+            .err(),
+            Some(IconTableError::DuplicateName {
+                name: "twin".into()
+            }),
+        );
+        let count = usize::from(u16::MAX) + 2;
+        assert_eq!(
+            IconTable::from_svgs((0..count).map(|i| (format!("i{i}"), TINY))).err(),
+            Some(IconTableError::TooMany { count }),
+        );
+        let owned = IconTable::from_svgs([(String::from("owned"), TINY)]).unwrap();
+        assert_eq!(owned.icons()[0].name, "owned");
     }
 }

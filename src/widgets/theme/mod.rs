@@ -12,6 +12,7 @@ pub(crate) mod context_menu;
 pub(crate) mod dock;
 pub(crate) mod drag_value;
 pub(crate) mod expander;
+pub(crate) mod focus_ring;
 pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
@@ -37,6 +38,7 @@ use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::dock::DockTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::expander::ExpanderTheme;
+use crate::widgets::theme::focus_ring::FocusRingTheme;
 use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
@@ -148,6 +150,9 @@ pub struct Theme {
     /// What [`crate::Expander`]'s header wears, and how far its body is
     /// inset.
     pub expander: ExpanderTheme,
+    /// The ring around the widget that holds keyboard focus, drawn by
+    /// the framework on every focusable widget alike.
+    pub focus_ring: FocusRingTheme,
     /// Ambient text style — size, colour, family, leading — that every
     /// [`Text`](crate::Text) falls back to when its builder didn't
     /// override the axis. Every other text slot in the theme — each widget
@@ -223,15 +228,15 @@ impl Theme {
     pub fn scale_text(&mut self, factor: f32) {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
         let scale = |px: f32| px * factor;
-        let ambient = self.text.with_font_size(scale(self.text.font_size_px));
+        let ambient = self.text.with_font_size(scale(self.text.font_size));
         let mut metrics_valid = true;
         self.for_each_text(|text| {
             metrics_valid &= match text {
-                ThemeText::Style(style) => style
-                    .with_font_size(scale(style.font_size_px))
-                    .metrics_valid(),
+                ThemeText::Style(style) => {
+                    style.with_font_size(scale(style.font_size)).metrics_valid()
+                }
                 ThemeText::Overrides(o) => TextStyleOverrides {
-                    font_size_px: o.font_size_px.map(scale),
+                    font_size: o.font_size.map(scale),
                     ..*o
                 }
                 .apply(&ambient)
@@ -240,8 +245,8 @@ impl Theme {
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(|text| match text {
-            ThemeText::Style(style) => style.font_size_px = scale(style.font_size_px),
-            ThemeText::Overrides(o) => o.font_size_px = o.font_size_px.map(scale),
+            ThemeText::Style(style) => style.font_size = scale(style.font_size),
+            ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
         });
     }
 
@@ -256,7 +261,7 @@ impl Theme {
     /// runtime backstop is
     /// `tests::text_scale::scale_text_reaches_every_font_size`,
     /// which scales a default theme and asserts over its serialized
-    /// form that every `font_size_px` moved. The test can only see
+    /// form that every `font_size` moved. The test can only see
     /// sizes the default theme materializes — a look's size override
     /// left unset by default is invisible to it — which is exactly the
     /// gap the destructuring closes.
@@ -284,6 +289,7 @@ impl Theme {
             slider: _,
             spinner: _,
             splitter: _,
+            focus_ring: _,
             window_clear: _,
             panel_background: _,
             panel_clip: _,
@@ -331,8 +337,9 @@ impl Theme {
             tabs: TabsTheme::from_palette(p),
             dock: DockTheme::from_palette(p),
             expander: ExpanderTheme::from_palette(p),
+            focus_ring: FocusRingTheme::from_palette(p),
             text: TextStyle::default().with_color(p.text),
-            window_clear: p.window_bg,
+            window_clear: p.window_background,
             panel_background: None,
             panel_clip: ClipMode::None,
         }

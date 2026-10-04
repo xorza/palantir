@@ -25,22 +25,22 @@ fn frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
 }
 
 #[test]
-fn reports_gained_focus_as_a_one_frame_edge() {
+fn reports_focus_gained_as_a_one_frame_edge() {
     let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
     assert!(
-        !frame(&mut h, &mut buf).a().gained_focus,
+        !frame(&mut h, &mut buf).a().focus_gained,
         "unfocused: no gain"
     );
     h.set_focus(id);
     assert!(
-        frame(&mut h, &mut buf).a().gained_focus,
+        frame(&mut h, &mut buf).a().focus_gained,
         "took focus this frame"
     );
     assert!(
-        !frame(&mut h, &mut buf).a().gained_focus,
+        !frame(&mut h, &mut buf).a().focus_gained,
         "gain clears after one frame"
     );
 }
@@ -74,8 +74,67 @@ fn reports_submitted_on_single_line_enter() {
     assert_eq!(buf, "hi", "buffer untouched by the submit");
 }
 
+/// `committed` fires once per finished edit, against sequences written
+/// out by hand. Each case focuses the editor and settles a frame first;
+/// then every step is one frame, and the row lists `committed` per step.
 #[test]
-fn reports_lost_focus_on_blur() {
+fn committed_fires_once_per_finished_edit() {
+    #[derive(Clone, Copy, Debug)]
+    enum Step {
+        Type(char),
+        Press(Key),
+        Blur,
+    }
+    use Step::{Blur, Press, Type};
+    let cases: [(&str, &[Step], &[bool]); 6] = [
+        (
+            "an edit commits on the blur",
+            &[Type('x'), Blur, Type('y')],
+            &[false, true, false],
+        ),
+        ("focus and blur with no edit commit", &[Blur], &[true]),
+        ("Enter commits at once", &[Press(Key::Enter)], &[true]),
+        (
+            "a blur after Enter does not commit again",
+            &[Press(Key::Enter), Blur],
+            &[true, false],
+        ),
+        (
+            "an edit after Enter commits again on the blur",
+            &[Press(Key::Enter), Type('y'), Blur],
+            &[true, false, true],
+        ),
+        (
+            "Escape blurs and commits nothing",
+            &[Type('x'), Press(Key::Escape), Blur],
+            &[false, false, false],
+        ),
+    ];
+    for (label, steps, want) in cases {
+        let mut h = UiHarness::with_text(SMALL);
+        let mut buf = String::new();
+        h.set_focus(WidgetId::from_hash(EDITOR));
+        assert!(
+            !frame(&mut h, &mut buf).a().committed,
+            "{label}: focus frame"
+        );
+        let got: Vec<bool> = steps
+            .iter()
+            .map(|step| {
+                match *step {
+                    Type(c) => drop(h.key(Key::Char(c))),
+                    Press(key) => drop(h.key(key)),
+                    Blur => h.clear_focus(),
+                }
+                frame(&mut h, &mut buf).a().committed
+            })
+            .collect();
+        assert_eq!(got, want, "{label}");
+    }
+}
+
+#[test]
+fn reports_focus_lost_on_blur() {
     let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
@@ -84,13 +143,13 @@ fn reports_lost_focus_on_blur() {
     let _ = frame(&mut h, &mut buf); // settle focus
     h.clear_focus();
     assert!(
-        frame(&mut h, &mut buf).a().lost_focus,
+        frame(&mut h, &mut buf).a().focus_lost,
         "lost focus this frame"
     );
 }
 
 #[test]
-fn escape_reports_lost_focus_on_the_blur_frame() {
+fn escape_reports_focus_lost_on_the_blur_frame() {
     let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
@@ -100,12 +159,12 @@ fn escape_reports_lost_focus_on_the_blur_frame() {
     h.key(Key::Escape);
     let escaped = frame(&mut h, &mut buf);
     assert!(
-        escaped.a().lost_focus,
+        escaped.a().focus_lost,
         "Escape reports the focus edge immediately"
     );
-    assert!(h.focused_id().is_none());
+    assert!(h.focus().is_none());
     assert!(
-        !frame(&mut h, &mut buf).a().lost_focus,
+        !frame(&mut h, &mut buf).a().focus_lost,
         "the edge is not repeated next frame",
     );
 }
@@ -122,10 +181,7 @@ fn reports_changed_on_same_length_overwrite() {
     h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     // Ctrl+A select-all, then type the replacement.
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.set_modifiers(Modifiers::NONE);
     let _ = frame(&mut h, &mut buf);
@@ -136,7 +192,7 @@ fn reports_changed_on_same_length_overwrite() {
 }
 
 /// Disabling a focused editor kicks focus out on the disable frame
-/// (`lost_focus` fires) and the same frame's keystrokes are dropped —
+/// (`focus_lost` fires) and the same frame's keystrokes are dropped —
 /// behavior agrees with the disabled visuals instead of silently
 /// routing typing into the host's buffer.
 #[test]
@@ -167,8 +223,9 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     let sig = disabled_frame(&mut h, &mut buf);
     assert_eq!(buf, "", "typing into a disabled editor is dropped");
     assert!(!sig.a().changed, "no change reported");
-    assert!(sig.a().lost_focus, "disable frame reports lost_focus");
-    assert!(h.focused_id().is_none(), "focus was kicked out");
+    assert!(sig.a().focus_lost, "disable frame reports focus_lost");
+    assert!(!sig.a().committed, "a blur by disabling commits nothing");
+    assert!(h.focus().is_none(), "focus was kicked out");
 }
 
 /// Every chord `TextEdit` binds as an editing action must classify as
@@ -209,6 +266,7 @@ fn every_edit_action_chord_is_edit_class() {
                 shift: shortcut.mods.shift,
                 alt: shortcut.mods.alt,
                 mac_ctrl: false,
+                meta: shortcut.mods.meta,
             },
             repeat: false,
             physical: shortcut.key,
@@ -228,7 +286,8 @@ fn every_edit_action_chord_is_edit_class() {
 /// End move its caret, so an app root reading them misses; Tab, Shift+Tab,
 /// the page keys and Ctrl+Tab do nothing in a field, so they reach the
 /// root's own scope. The root declares one — without it, the root would
-/// read as the layer's outermost scope, the field's, and see every key.
+/// read as the layer's outermost scope, the field's, and see every key —
+/// and takes `FOCUS`, without which bare Tab would move focus instead.
 #[test]
 fn a_focused_field_yields_the_keys_it_does_not_act_on() {
     use crate::KeyFilter;
@@ -238,7 +297,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
     let scene = |ui: &mut Ui, buf: &mut String, probe: Shortcut| {
         Panel::vstack()
             .id(WidgetId::from_hash("app-root"))
-            .input_scope(KeyFilter::ACCEL)
+            .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
                 let at_root = ui.key_pressed(probe);
                 TextEdit::new(buf)
@@ -249,14 +308,8 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
             })
             .inner
     };
-    let shift = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
-    let ctrl = Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    };
+    let shift = Modifiers::SHIFT;
+    let ctrl = Modifiers::CTRL;
     for (key, mods, probe_mods, reaches_root) in [
         (Key::ArrowLeft, Modifiers::NONE, ShortcutMods::NONE, false),
         (Key::End, Modifiers::NONE, ShortcutMods::NONE, false),
@@ -281,10 +334,6 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         h.key(key);
         let at_root = h.frame_value(|ui| scene(ui, &mut buf, probe));
         assert_eq!(at_root, reaches_root, "{key:?} under {mods:?}");
-        assert_eq!(
-            h.focused_id(),
-            Some(field),
-            "{key:?}: the field keeps focus"
-        );
+        assert_eq!(h.focus(), Some(field), "{key:?}: the field keeps focus");
     }
 }

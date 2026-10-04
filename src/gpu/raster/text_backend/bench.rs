@@ -208,8 +208,8 @@ fn make_run(
     store: &mut RecordStore,
     shaper: &TextShaper,
     text: &str,
-    font_size_px: f32,
-    line_height_px: f32,
+    font_size: f32,
+    line_height: f32,
     origin: Vec2,
     viewport: UVec2,
     scale: f32,
@@ -224,12 +224,12 @@ fn make_run(
     let run = TextRun {
         text,
         font: GlyphFont {
-            line_height_px,
-            ..GlyphFont::new(font_size_px)
+            line_height,
+            ..GlyphFont::new(font_size)
         },
         wrap: TextWrap::SingleLine,
         align: Align::default(),
-        max_width_px: None,
+        max_width: None,
     };
     let key = run
         .unbounded_key()

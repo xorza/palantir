@@ -5,14 +5,14 @@
 //!
 //! Four kinds of data, set independently as feature support permits:
 //!
-//! - **Whole-pass duration** ([`GpuPassStats::last_pass_ms`]). Always
+//! - **Whole-pass duration** ([`GpuPassStats::last_pass`]). Always
 //!   populated when `TIMESTAMP_QUERY` is on.
-//! - **Per-batch-kind duration** ([`GpuPassStats::last_kind_ms`]).
+//! - **Per-batch-kind duration** ([`GpuPassStats::last_kind`]).
 //!   Populated when `TIMESTAMP_QUERY_INSIDE_PASSES` is on.
 //! - **Pipeline statistics** ([`GpuPassStats::last_pipeline_stats`]).
 //!   Populated when `PIPELINE_STATISTICS_QUERY` is on.
 //! - **Main-pass CPU record time**
-//!   ([`GpuPassStats::last_main_pass_cpu_ms`]). The odd one out: host-side,
+//!   ([`GpuPassStats::last_main_pass_cpu`]). The odd one out: host-side,
 //!   not device-side, so it needs no adapter feature and no opt-in and is
 //!   populated on every submitted frame.
 //!
@@ -24,13 +24,10 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use strum::{EnumCount, EnumIter, IntoStaticStr};
+use std::time::Duration;
 
 /// Categories of work the per-batch timestamp marker distinguishes.
-/// `IntoStaticStr` with `serialize_all = "lowercase"` powers
-/// [`Self::label`] — `PreClear` → `"preclear"`, etc.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumCount, EnumIter, IntoStaticStr)]
-#[strum(serialize_all = "lowercase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BatchKind {
     /// Setup work between the pass beginning and the first drawing
@@ -59,17 +56,58 @@ pub enum BatchKind {
 }
 
 impl BatchKind {
+    /// How many kinds there are.
+    pub const COUNT: usize = 9;
+
+    /// Every kind, in discriminant order — the order a reporter lists
+    /// them in.
+    pub const ALL: [Self; Self::COUNT] = [
+        Self::Setup,
+        Self::PreClear,
+        Self::Mask,
+        Self::Quads,
+        Self::Text,
+        Self::Mesh,
+        Self::Image,
+        Self::Curve,
+        Self::Icon,
+    ];
+
     pub(crate) const fn idx(self) -> usize {
         self as u8 as usize
     }
 
-    /// Human-readable label for debug overlays / bench reporters.
-    /// Lowercased variant name via `strum::IntoStaticStr` — adding a
-    /// new variant carries its label automatically.
-    pub fn label(self) -> &'static str {
-        self.into()
+    /// Human-readable label for debug overlays and bench reporters: the
+    /// variant name, lowercased.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Setup => "setup",
+            Self::PreClear => "preclear",
+            Self::Mask => "mask",
+            Self::Quads => "quads",
+            Self::Text => "text",
+            Self::Mesh => "mesh",
+            Self::Image => "image",
+            Self::Curve => "curve",
+            Self::Icon => "icon",
+        }
     }
 }
+
+// `ALL` lists every discriminant once, in order, so `idx` indexes it and
+// a `[_; COUNT]` table keyed by `idx` has a slot per kind. A new variant
+// fails `label`'s match first, and this second.
+const _: () = {
+    let mut i = 0;
+    while i < BatchKind::COUNT {
+        assert!(
+            BatchKind::ALL[i].idx() == i,
+            "BatchKind::ALL must list every discriminant in order",
+        );
+        i += 1;
+    }
+    assert!(BatchKind::Icon.idx() + 1 == BatchKind::COUNT);
+};
 
 /// Counters surfaced by [`GpuPassStats::last_pipeline_stats`]. Order
 /// matches `wgpu::PipelineStatisticsTypes`.
@@ -91,7 +129,7 @@ pub struct PipelineStats {
 #[derive(Clone, Copy, Debug, Default)]
 struct Inner {
     pass_ns: Option<u64>,
-    kind_ns: [Option<u64>; <BatchKind as EnumCount>::COUNT],
+    kind_ns: [Option<u64>; BatchKind::COUNT],
     stats: Option<PipelineStats>,
     main_pass_cpu_ns: Option<u64>,
 }
@@ -106,19 +144,19 @@ pub struct GpuPassStats {
 }
 
 impl GpuPassStats {
-    /// Whole-pass duration in milliseconds, or `None` until the first
-    /// frame's resolve has landed (or always `None` on adapters
-    /// without `TIMESTAMP_QUERY` or when collection is disabled).
-    pub fn last_pass_ms(&self) -> Option<f32> {
-        self.inner.borrow().pass_ns.map(ns_to_ms)
+    /// Whole-pass duration, or `None` until the first frame's resolve has
+    /// landed (or always `None` on adapters without `TIMESTAMP_QUERY` or
+    /// when collection is disabled).
+    pub fn last_pass(&self) -> Option<Duration> {
+        self.inner.borrow().pass_ns.map(Duration::from_nanos)
     }
 
-    /// Per-category duration in milliseconds. `None` when
+    /// Per-category duration. `None` when
     /// `TIMESTAMP_QUERY_INSIDE_PASSES` is unavailable / disabled, or
     /// when the named category didn't run in the most recent measured
     /// frame.
-    pub fn last_kind_ms(&self, kind: BatchKind) -> Option<f32> {
-        self.inner.borrow().kind_ns[kind.idx()].map(ns_to_ms)
+    pub fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
+        self.inner.borrow().kind_ns[kind.idx()].map(Duration::from_nanos)
     }
 
     /// Pipeline-statistics counters around the main pass. `None` when
@@ -137,8 +175,11 @@ impl GpuPassStats {
     /// This is what scales with the *number* of draw steps rather than the
     /// number of pixels, which makes it the metric for bind/draw-count
     /// work (batch coalescing, bind-state deduplication).
-    pub fn last_main_pass_cpu_ms(&self) -> Option<f32> {
-        self.inner.borrow().main_pass_cpu_ns.map(ns_to_ms)
+    pub fn last_main_pass_cpu(&self) -> Option<Duration> {
+        self.inner
+            .borrow()
+            .main_pass_cpu_ns
+            .map(Duration::from_nanos)
     }
 
     pub(crate) fn record_pass_ns(&self, ns: u64) {
@@ -158,7 +199,7 @@ impl GpuPassStats {
     /// didn't run this frame don't keep showing the previous frame's
     /// number.
     pub(crate) fn clear_kinds(&self) {
-        self.inner.borrow_mut().kind_ns = [None; <BatchKind as EnumCount>::COUNT];
+        self.inner.borrow_mut().kind_ns = [None; BatchKind::COUNT];
     }
 
     pub(crate) fn record_pipeline_stats(&self, stats: PipelineStats) {
@@ -166,34 +207,27 @@ impl GpuPassStats {
     }
 }
 
-fn ns_to_ms(ns: u64) -> f32 {
-    ns as f32 / 1_000_000.0
-}
-
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::gpu_pass_stats::*;
-    use strum::IntoEnumIterator as _;
 
     #[test]
     fn starts_uninit() {
         let s = GpuPassStats::default();
-        assert_eq!(s.last_pass_ms(), None);
-        assert_eq!(s.last_kind_ms(BatchKind::Quads), None);
+        assert_eq!(s.last_pass(), None);
+        assert_eq!(s.last_kind(BatchKind::Quads), None);
         assert_eq!(s.last_pipeline_stats(), None);
-        assert_eq!(s.last_main_pass_cpu_ms(), None);
+        assert_eq!(s.last_main_pass_cpu(), None);
     }
 
-    /// `ns as f32 / 1e6` is one correctly rounded division, so each
-    /// reading is the f32 nearest the exact quotient — the literal itself.
     #[test]
     fn handle_clones_share_state() {
         let a = GpuPassStats::default();
         let b = a.clone();
         a.record_pass_ns(3_500_000);
         a.record_main_pass_cpu_ns(250_000);
-        assert_eq!(b.last_pass_ms().unwrap(), 3.5);
-        assert_eq!(b.last_main_pass_cpu_ms().unwrap(), 0.25);
+        assert_eq!(b.last_pass(), Some(Duration::from_micros(3500)));
+        assert_eq!(b.last_main_pass_cpu(), Some(Duration::from_micros(250)));
     }
 
     #[test]
@@ -204,10 +238,10 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_pass_ns(1_000_000);
         s.record_pass_ns(5_000_000);
-        assert_eq!(s.last_pass_ms().unwrap(), 5.0);
+        assert_eq!(s.last_pass(), Some(Duration::from_millis(5)));
         s.record_main_pass_cpu_ns(80_000);
         s.record_main_pass_cpu_ns(20_000);
-        assert_eq!(s.last_main_pass_cpu_ms().unwrap(), 0.02);
+        assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(20)));
     }
 
     #[test]
@@ -215,14 +249,20 @@ mod tests {
         let s = GpuPassStats::default();
         s.record_kind_ns(BatchKind::Quads, 1_500_000);
         s.record_kind_ns(BatchKind::Text, 500_000);
-        assert_eq!(s.last_kind_ms(BatchKind::Quads).unwrap(), 1.5);
-        assert_eq!(s.last_kind_ms(BatchKind::Text).unwrap(), 0.5);
-        assert_eq!(s.last_kind_ms(BatchKind::Mesh), None);
+        assert_eq!(
+            s.last_kind(BatchKind::Quads),
+            Some(Duration::from_micros(1500))
+        );
+        assert_eq!(
+            s.last_kind(BatchKind::Text),
+            Some(Duration::from_micros(500))
+        );
+        assert_eq!(s.last_kind(BatchKind::Mesh), None);
         // Total isn't auto-populated from per-kind.
-        assert_eq!(s.last_pass_ms(), None);
+        assert_eq!(s.last_pass(), None);
         // Nor is the CPU record time — it has a separate producer, and a
         // device with no timestamp support publishes only that one.
-        assert_eq!(s.last_main_pass_cpu_ms(), None);
+        assert_eq!(s.last_main_pass_cpu(), None);
     }
 
     #[test]
@@ -245,26 +285,19 @@ mod tests {
         s.record_main_pass_cpu_ns(500_000);
         s.record_pipeline_stats(stats);
         s.clear_kinds();
-        for kind in BatchKind::iter() {
-            assert_eq!(s.last_kind_ms(kind), None, "{kind:?}");
+        for kind in BatchKind::ALL {
+            assert_eq!(s.last_kind(kind), None, "{kind:?}");
         }
-        assert_eq!(s.last_pass_ms(), Some(3.0));
-        assert_eq!(s.last_main_pass_cpu_ms(), Some(0.5));
+        assert_eq!(s.last_pass(), Some(Duration::from_millis(3)));
+        assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(500)));
         assert_eq!(s.last_pipeline_stats(), Some(stats));
     }
 
     #[test]
     fn labels_match_lowercased_variant_names() {
-        // Pin: `IntoStaticStr` + `serialize_all = "lowercase"` strips
-        // the camel-case, no underscore. Adding a new variant breaks
-        // this only if its name uses a multi-word form the lowercase
-        // rule would mangle — choose names that round-trip cleanly.
-        let mut labelled = 0;
-        for kind in BatchKind::iter() {
+        for kind in BatchKind::ALL {
             assert_eq!(kind.label(), format!("{kind:?}").to_lowercase(), "{kind:?}");
-            labelled += 1;
         }
-        assert_eq!(labelled, BatchKind::COUNT, "every variant iterated");
     }
 
     #[test]

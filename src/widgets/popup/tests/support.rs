@@ -1,10 +1,9 @@
 //! The anchored body a popup test records, and the main-panel probe under
 //! it.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;

@@ -86,12 +86,15 @@ struct Icons {
 fn icons(ui: &mut Ui) -> Icons {
     ui.with_state::<Option<Icons>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
         held.get_or_insert_with(|| {
-            let set = ui.load_icons(Rc::new(IconTable::from_svgs([
-                ("folder", FOLDER_SVG),
-                ("new-file", NEW_FILE_SVG),
-                ("save", SAVE_SVG),
-                ("wide", WIDE_SVG),
-            ])));
+            let set = ui.load_icons(Rc::new(
+                IconTable::from_svgs([
+                    ("folder", FOLDER_SVG),
+                    ("new-file", NEW_FILE_SVG),
+                    ("save", SAVE_SVG),
+                    ("wide", WIDE_SVG),
+                ])
+                .expect("the bundled icons are readable SVGs with distinct names"),
+            ));
             let id = |name| set.by_name(name).expect("bundled icon");
             Icons {
                 folder: id("folder"),

@@ -8,7 +8,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::scene::record_store::RecordStore;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
 use crate::shape::hash;
 use crate::shape::paint::image_source::ImageSource;
@@ -101,7 +101,7 @@ impl Shapes {
     /// animated, stops being animated, or changes what its animation
     /// does reads as changed to every gate that keys on shape hashes —
     /// the node and subtree rollups, the cascade's repair, damage.
-    pub(crate) fn fold_paint_anim(&mut self, idx: u32, anim: &PaintAnim) {
+    pub(crate) fn fold_paint_anim(&mut self, idx: u32, anim: &PaintAnimation) {
         let slot = &mut self.hashes[idx as usize];
         let mut h = Hasher::new();
         h.write_u64(slot.0);

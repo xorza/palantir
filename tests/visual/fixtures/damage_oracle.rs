@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnim, PaintRepeat, Shape, curves};
+use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
     Background, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RgbaF32, Sizing,
     Stroke, Text,
@@ -83,11 +83,11 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
                     if k.spin {
                         ui.add_shape_animated(
                             line,
-                            PaintAnim::turn(0.0, 1.0)
-                                .started_at(Duration::ZERO)
-                                .period(Duration::from_secs(4))
-                                .repeat(PaintRepeat::Forever)
-                                .curve(curves::linear),
+                            PaintAnimation::turn(0.0, 1.0)
+                                .with_started_at(Duration::ZERO)
+                                .with_period(Duration::from_secs(4))
+                                .with_repeat(PaintRepeat::Forever)
+                                .with_curve(curves::linear),
                         );
                     } else {
                         ui.add_shape(line);
@@ -145,7 +145,7 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
 
 /// A 60 px checker, so an image drawn past its node is visible.
 fn picture(h: &mut Harness) -> ImageHandle {
-    let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]);
+    let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
     image.fill_with(|x, y| {
         let on = (x / 10 + y / 10) % 2 == 0;
         palantir::SrgbaU8::new(if on { 230 } else { 40 }, 120, 60, 255)

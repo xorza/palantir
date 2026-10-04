@@ -1,9 +1,9 @@
 //! The anchored floating body: the widget and the press-outside policy.
 
 pub(crate) mod click_outside;
+pub(crate) mod popup_trigger;
 
 use crate::input::sense::Sense;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
@@ -58,12 +58,9 @@ impl Popup {
     /// A popup placed by `anchor`.
     ///
     /// [`Anchor`] carries the whole placement vocabulary — a point, a side
-    /// of a rect, and the gap off it — so this is the one constructor and
-    /// the four below are sugar for the shapes a dropdown takes. An
-    /// application holding an anchor already (from
-    /// [`LayerScope::anchored`](crate::LayerScope::anchored), or one it
-    /// computed) hands it straight over:
-    /// `Popup::new(Anchor::at_point(p).gap(4.0))`.
+    /// of a rect, and the gap off it — so this is the one constructor:
+    /// `Popup::new(Anchor::below(rect))`,
+    /// `Popup::new(Anchor::at_point(p).with_gap(4.0))`.
     #[track_caller]
     pub fn new(anchor: Anchor) -> Self {
         Self {
@@ -73,30 +70,6 @@ impl Popup {
             widget: Widget::vstack().sense(Sense::CLICK),
             chrome: None,
         }
-    }
-
-    /// Placed by [`Anchor::below`].
-    #[track_caller]
-    pub fn below(rect: Rect) -> Self {
-        Self::new(Anchor::below(rect))
-    }
-
-    /// Placed by [`Anchor::above`].
-    #[track_caller]
-    pub fn above(rect: Rect) -> Self {
-        Self::new(Anchor::above(rect))
-    }
-
-    /// Placed by [`Anchor::left_of`].
-    #[track_caller]
-    pub fn left_of(rect: Rect) -> Self {
-        Self::new(Anchor::left_of(rect))
-    }
-
-    /// Placed by [`Anchor::right_of`].
-    #[track_caller]
-    pub fn right_of(rect: Rect) -> Self {
-        Self::new(Anchor::right_of(rect))
     }
 
     /// Record into `layer` rather than [`Layer::Popup`].
@@ -123,20 +96,6 @@ impl Popup {
         self
     }
 
-    /// Chrome to fall back on when the caller set none — the `Popup`
-    /// peer of [`ThemeDefaults::default_padding`](crate::widget_core::configure::ThemeDefaults::default_padding),
-    /// since chrome is a field here rather than on the node.
-    ///
-    /// Takes a borrow so a wrapper's themed panel is cloned only where
-    /// it is used — the caller holds the whole theme bundle and reads
-    /// the rest of it.
-    pub fn default_background(mut self, bg: &Background) -> Self {
-        if self.chrome.is_none() {
-            self.chrome = Some(bg.clone());
-        }
-        self
-    }
-
     /// Re-anchor an already-built popup.
     ///
     /// For a wrapper whose placement is late-bound: [`crate::ContextMenu`]
@@ -144,7 +103,7 @@ impl Popup {
     /// but doesn't learn where the menu was opened until `show` reads the
     /// state map. The constructors stay the canonical way in; this is for
     /// a wrapper that cannot use them.
-    pub const fn anchored(mut self, anchor: Anchor) -> Self {
+    pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }
@@ -166,7 +125,8 @@ impl Popup {
         // Resolved before the layer switch below, so the body id — and the
         // eater derived from it — is parent-scoped to the trigger's site the
         // way any other widget is, not to the side layer's empty root.
-        let eater_id = widget.resolve(ui).with("eater");
+        let id = widget.resolve(ui);
+        let eater_id = id.with("eater");
         // The two captures are one decision: an overlay either takes the
         // pointer *and* the keys from the layers below, or neither. Taking
         // one without the other leaves a host that is half-dead in a way
@@ -185,6 +145,7 @@ impl Popup {
         let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
+            id,
             // A `Dismiss` popup closes on an eaten outside-press OR an Esc
             // press — so overlay hosts (ComboBox / ContextMenu) read one
             // `closed()` signal instead of each re-deriving Esc. (`Block`
@@ -199,13 +160,37 @@ impl Popup {
 }
 
 impl Popup {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this popup.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 }

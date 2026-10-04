@@ -11,6 +11,7 @@ use palantir::{
     Configure, Panel, Sizing, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui, WidgetId,
 };
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
@@ -39,7 +40,7 @@ fn tab_strip_matches_golden() {
 
     let mut h = Harness::new();
     let img = h.size(UVec2::new(360, 76)).settled_frame(2, scene).image;
-    assert_matches_golden("tab_strip", &img);
+    assert_matches_golden(GoldenName::TabStrip, &img);
 }
 
 /// A tabbed view: the same strip over a content area, so the selected
@@ -69,7 +70,7 @@ fn tabbed_view_matches_golden() {
 
     let mut h = Harness::new();
     let img = h.size(UVec2::new(360, 140)).settled_frame(2, scene).image;
-    assert_matches_golden("tabbed_view", &img);
+    assert_matches_golden(GoldenName::TabbedView, &img);
 }
 
 /// Three panes: the divider chrome, one strip per pane, and the dimmed
@@ -84,5 +85,5 @@ fn dock_split_panes_matches_golden() {
 
     let mut h = Harness::new();
     let img = h.size(UVec2::new(520, 220)).settled_frame(2, scene).image;
-    assert_matches_golden("dock_split_panes", &img);
+    assert_matches_golden(GoldenName::DockSplitPanes, &img);
 }

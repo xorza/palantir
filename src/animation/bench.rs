@@ -1,6 +1,6 @@
 use crate::animation::anim_map_typed::AnimMapTyped;
-use crate::animation::anim_slot::AnimSlot;
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::bench::Run;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -13,7 +13,7 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const ROWS: usize = 4096;
-const SLOT: AnimSlot = AnimSlot::new("bench");
+const SLOT: AnimationSlot = AnimationSlot::new("bench");
 
 #[derive(Clone, Copy, Debug)]
 enum Motion {
@@ -22,10 +22,10 @@ enum Motion {
 }
 
 impl Motion {
-    const fn spec(self) -> AnimSpec {
+    const fn spec(self) -> AnimationSpec {
         match self {
-            Self::Duration => AnimSpec::duration(0.2, Easing::OutCubic),
-            Self::Spring => AnimSpec::SPRING,
+            Self::Duration => AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
+            Self::Spring => AnimationSpec::SPRING,
         }
     }
 }

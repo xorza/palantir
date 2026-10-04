@@ -218,7 +218,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 Shape::text(
                     first,
                     GlyphFont {
-                        line_height_px: 16.0,
+                        line_height: 16.0,
                         ..GlyphFont::new(14.0)
                     },
                 )
@@ -233,14 +233,14 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
                     .corners(crate::Corners::ZERO)
                     .fill(RgbaF32::WHITE)
-                    .border(crate::Stroke::ZERO),
+                    .border(crate::Stroke::NONE),
             );
             let second = ui.intern("second-with-different-text");
             ui.add_shape(
                 Shape::text(
                     second,
                     GlyphFont {
-                        line_height_px: 16.0,
+                        line_height: 16.0,
                         ..GlyphFont::new(14.0)
                     },
                 )

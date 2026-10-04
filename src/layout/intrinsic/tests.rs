@@ -318,7 +318,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
                     .style(
                         &TextStyle::default()
                             .with_font_size(16.0)
-                            .with_line_height_mult(1.0),
+                            .with_line_height_factor(1.0),
                     )
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .size((Sizing::HUG, Sizing::HUG))

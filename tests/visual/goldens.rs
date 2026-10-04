@@ -11,9 +11,11 @@
 
 use std::path::{Path, PathBuf};
 
-use image::{RgbaImage, imageops};
+use crate::golden_name::GoldenName;
 use palantir::Rect;
-use palantir::golden::{Goldens, Tolerance};
+use palantir::golden::Goldens;
+use palantir::golden::image::{RgbaImage, imageops};
+use palantir::internals::headless_test_gpu;
 use std::fs;
 use std::thread;
 
@@ -27,34 +29,24 @@ fn output_dir(name: &str) -> PathBuf {
     Path::new(ROOT).join("output").join(name)
 }
 
-/// No pixel may differ at all. The goldens are local and written by the
-/// adapter that compares against them, so an unchanged tree diffs at zero;
-/// anything looser would hide a change the suite exists to show.
-const EXACT: Tolerance = Tolerance {
-    per_channel: 0,
-    max_ratio: 0.0,
-};
-
-pub(crate) fn assert_matches_golden(name: &str, actual: &RgbaImage) {
-    assert_matches_golden_within(name, actual, EXACT);
+/// The suite's goldens, held to `Tolerance::EXACT` — the default — and
+/// to the adapter that wrote them. The goldens are local and written by
+/// the adapter that compares against them, so an unchanged tree diffs at
+/// zero; a run on another adapter fails with that reason rather than with
+/// pixel diffs across the suite.
+pub(crate) fn goldens() -> Goldens {
+    Goldens::new(ROOT).with_adapter(headless_test_gpu().adapter.clone())
 }
 
-/// [`assert_matches_golden`] under a looser tolerance — for a scene whose
-/// pixels genuinely vary between runs on one adapter. The caller states
-/// the derivation beside it.
-pub(crate) fn assert_matches_golden_within(name: &str, actual: &RgbaImage, tolerance: Tolerance) {
-    Goldens::new(ROOT)
-        .tolerance(tolerance)
-        .assert_matches(name, actual);
+pub(crate) fn assert_matches_golden(golden: GoldenName, actual: &RgbaImage) {
+    goldens().assert_matches(golden.name(), actual);
 }
 
 /// `actual` and `expected` agree in every pixel — `name` is a file name,
 /// not a sentence.
 #[track_caller]
 pub(crate) fn assert_same(name: &str, actual: &RgbaImage, expected: &RgbaImage) {
-    Goldens::new(ROOT)
-        .tolerance(EXACT)
-        .assert_same(name, actual, expected);
+    Goldens::new(ROOT).assert_same(name, actual, expected);
 }
 
 /// [`assert_same`] over the pixels of `region` only.

@@ -73,7 +73,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
     let mut c = CosmicMeasure::default();
     let long = "Screenshot 2026-05-28 at 01.21.25.png";
     let params = shape(16.0).width(120.0);
-    let w = params.max_width_px.unwrap();
+    let w = params.max_width.unwrap();
 
     // Precondition: the natural single line genuinely overflows `w`.
     let full = c.measure(long, params.unbounded());
@@ -416,7 +416,7 @@ fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
     // hands back an extent, so there is no floor on it to be wrong about.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
     let params = shape(16.0).width(40.0);
-    let w = params.max_width_px.unwrap();
+    let w = params.max_width.unwrap();
 
     let elided = mono_extent(long, params, LineFit::Ellipsis);
     assert_eq!(elided.w, w, "elided mono caps at the width");

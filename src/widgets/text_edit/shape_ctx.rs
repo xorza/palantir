@@ -56,7 +56,7 @@ impl ShapeCtx {
     /// API honest about being enough to build a text widget with.
     ///
     /// A non-multiline editor carries no wrap target, so its `Wrap` /
-    /// `SingleLine` choice and its `max_width_px` agree either way: both
+    /// `SingleLine` choice and its `max_width` agree either way: both
     /// resolve to an unbounded shape.
     pub(super) const fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
         TextRun {
@@ -68,7 +68,7 @@ impl ShapeCtx {
                 TextWrap::SingleLine
             },
             align: Align::h(self.halign),
-            max_width_px: self.wrap_target,
+            max_width: self.wrap_target,
         }
     }
 }

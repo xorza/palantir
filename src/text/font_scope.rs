@@ -40,7 +40,7 @@ pub enum FontScope {
     /// The bundled faces plus every font the OS has installed, which act
     /// as glyph fallback for scripts the bundled faces do not cover. Text
     /// metrics are then *not* identical across machines. What a window
-    /// wants, and what [`WinitHostConfig`](crate::WinitHostConfig)
+    /// wants, and what [`WinitHostBuilder`](crate::WinitHostBuilder)
     /// defaults to.
     System,
 }
