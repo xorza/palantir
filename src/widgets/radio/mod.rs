@@ -75,6 +75,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     /// pick. A pick commits at once, so `committed == changed`.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
+        let activated = ToggleChrome::activated(ui, &mut self.widget, &response);
 
         // Read ahead of the latch below, which moves `self.value` and so
         // leaves `self` unborrowable.
@@ -91,7 +92,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // this option, so flip `selected` now (`value` is moved into
         // `current`, so we can't re-derive it) — otherwise the chrome +
         // pip below paint unselected until the next unrelated repaint.
-        if response.clicked() && !selected {
+        if activated && !selected {
             *self.current = self.value;
             selected = true;
             changed = true;

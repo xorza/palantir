@@ -347,3 +347,76 @@ fn an_integer_target_lands_on_whole_values() {
     frame(&mut h, &mut value);
     assert_eq!(value, 3);
 }
+
+/// A focused slider walks by key: an arrow steps a hundredth of the range
+/// toward `max` (right, up) or `min` (left, down), Shift ten of those, a
+/// page key a tenth of the range, Home and End to the ends. A step snaps
+/// the walk to it, a reversed range walks the same way along the track
+/// (right is toward `max`, here down), and every key is a whole edit.
+/// Unfocused or disabled, keys move nothing.
+#[test]
+fn a_focused_slider_walks_by_key() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    /// Held modifiers, the key, the range, the step, and where 5.0 lands.
+    type Case = (Modifiers, Key, (f64, f64), Option<f64>, f64);
+    let id = WidgetId::from_hash("slider-keys");
+    let cases: [Case; 11] = [
+        (Modifiers::NONE, Key::ArrowRight, (0.0, 10.0), None, 5.1),
+        (Modifiers::NONE, Key::ArrowUp, (0.0, 10.0), None, 5.1),
+        (Modifiers::NONE, Key::ArrowLeft, (0.0, 10.0), None, 4.9),
+        (Modifiers::SHIFT, Key::ArrowRight, (0.0, 10.0), None, 6.0),
+        (Modifiers::NONE, Key::PageUp, (0.0, 10.0), None, 6.0),
+        (Modifiers::NONE, Key::PageDown, (0.0, 10.0), None, 4.0),
+        (Modifiers::NONE, Key::Home, (0.0, 10.0), None, 0.0),
+        (Modifiers::NONE, Key::End, (0.0, 10.0), None, 10.0),
+        (
+            Modifiers::NONE,
+            Key::ArrowRight,
+            (0.0, 10.0),
+            Some(0.5),
+            5.5,
+        ),
+        (Modifiers::NONE, Key::ArrowRight, (10.0, 0.0), None, 4.9),
+        (Modifiers::NONE, Key::End, (10.0, 0.0), None, 0.0),
+    ];
+    for (mods, key, (min, max), step, want) in cases {
+        let mut h = UiHarness::new(UVec2::new(200, 40));
+        let mut value = 5.0_f64;
+        let frame = |h: &mut UiHarness, value: &mut f64| {
+            h.frame_value(|ui| {
+                let slider = Slider::new(&mut *value, min..=max).id(id);
+                match step {
+                    Some(s) => slider.step(s),
+                    None => slider,
+                }
+                .show(ui)
+                .edges()
+            })
+        };
+        frame(&mut h, &mut value);
+        h.set_focus(id);
+        h.set_modifiers(mods);
+        h.key(key);
+        let edges = frame(&mut h, &mut value);
+        assert_eq!(value, want, "{mods:?} {key:?} over {min}..={max}");
+        assert!(edges.changed && edges.committed, "{key:?} is a whole edit");
+    }
+
+    let mut h = UiHarness::new(UVec2::new(200, 40));
+    let mut value = 5.0_f64;
+    for (focused, disabled) in [(false, false), (true, true)] {
+        if focused {
+            h.set_focus(id);
+        }
+        h.key(Key::ArrowRight);
+        h.frame(|ui| {
+            Slider::new(&mut value, 0.0..=10.0)
+                .id(id)
+                .disabled(disabled)
+                .show(ui);
+        });
+        assert_eq!(value, 5.0, "focused {focused}, disabled {disabled}");
+    }
+}

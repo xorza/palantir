@@ -27,14 +27,6 @@ or translated, and there is no Tab focus traversal. REDESIGN D16 fixes the docs.
 for preedit and commit; focus traversal needs a focus order (the `KeyClass::Focus` class it reads
 exists since the key-class split). Out of scope for the defect work.
 
-## A20. Keyboard support on the toggle and range widgets
-
-**Findings.** REVIEW "Small widgets design": ColorField, ColorStrip and Expander are focusable and
-key-driven; Slider, Checkbox, RadioButton and Switch are not.
-
-**Recommendation.** Make them focusable with Space/arrow handling. If this needs a public setter
-(for example `focusable(bool)`), match Expander's. Pairs with A19's focus traversal.
-
 ## A22. Wheel sense per axis
 
 **Findings.** REVIEW "Wheel routing" / REDESIGN D9: `hit_test_targets` sends the whole wheel delta
