@@ -7,13 +7,6 @@ backend half of the renderer. Test code is out of scope.
 
 ## One fact, "this frame has a stencil", has two sources
 
-- [ ] `src/gpu/frame/schedule/mod.rs:210-214`, `src/gpu/wgpu_backend/mod.rs:762`,
-  `:840` — `for_each_step` and `render_groups` take `use_stencil: bool` and
-  a `&MaskPlan` beside it. On a frame with no stencil, the plan is stale
-  data from the last stencil frame, and only the bool keeps the walk from
-  reading it (`quad_pipeline/mod.rs:58-62` documents this). Target: one
-  `Option<&MaskPlan>` (or a stencil enum that holds the plan), so a
-  frame with no stencil has no plan that it can read.
 - [ ] `src/gpu/pipeline/quad_pipeline/mod.rs:62`, `:160` — the `MaskPlan`
   is the schedule's data, but it is a `pub(crate)` field of `QuadPipeline`,
   and the backend reads it there (`self.quad.mask_indices`). The quad

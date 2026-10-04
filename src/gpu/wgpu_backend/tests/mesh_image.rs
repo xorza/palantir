@@ -1,7 +1,6 @@
 //! Mesh and image batches: ordering within a group, and dropping with it.
 
 use crate::common::span::Span;
-use crate::gpu::frame::schedule::MaskPlan;
 use crate::gpu::wgpu_backend::tests::support::{
     DrawOp, buf_with, buf_with_tier_anchors, collect, group, plain_steps, simplify,
 };
@@ -58,7 +57,7 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
     );
     let damage = Some(URect::new(50, 0, 50, 100));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
+        simplify(&buf, &collect(&buf, damage, None)),
         vec![DrawOp::PreClear, DrawOp::Meshes(1)],
     );
 }
@@ -108,7 +107,7 @@ fn image_batch_in_damage_skipped_group_drops_silently() {
     );
     let damage = Some(URect::new(50, 0, 50, 100));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
+        simplify(&buf, &collect(&buf, damage, None)),
         vec![DrawOp::PreClear, DrawOp::Images(1)],
     );
 }

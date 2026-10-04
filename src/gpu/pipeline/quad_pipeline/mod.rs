@@ -57,8 +57,7 @@ pub(crate) struct QuadPipeline {
     mask_buffer: Option<DynamicBuffer<Quad>>,
     /// Retained scratch for the stencil-mask sweep, populated by
     /// [`Self::stage_masks`] and read by the render schedule. Stale on
-    /// non-stencil frames; the schedule only reads it when
-    /// `use_stencil` is true.
+    /// non-stencil frames, which hand the schedule no plan at all.
     pub(crate) mask_indices: MaskPlan,
     /// Retained scratch for stencil-mask quads: one entry per chain
     /// level per run of consecutive groups sharing a chain (see
