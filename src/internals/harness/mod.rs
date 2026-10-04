@@ -851,9 +851,8 @@ impl UiHarness {
     ///
     /// # Panics
     ///
-    /// Panics when no such row exists. Unlike `Ui::state_or_default`, a
-    /// read here never inserts the default it would then assert on, so a
-    /// wrong id or a wrong type fails instead of passing.
+    /// Panics when no such row exists, so a wrong id or a wrong type fails
+    /// instead of reading a default.
     pub fn state<S: 'static>(&self, id: WidgetId) -> &S {
         self.ui.state::<S>(id).unwrap_or_else(|| {
             panic!(

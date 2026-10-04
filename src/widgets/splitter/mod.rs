@@ -236,7 +236,7 @@ impl<'a> Splitter<'a> {
             commit_on_sync: reset || (state.commit_on_sync && !synced),
         };
         if next != state {
-            *ui.state_or_default::<SplitterState>(id) = next;
+            ui.with_state::<SplitterState, _>(id, |_, s| *s = next);
         }
 
         let bar_fill = if divider.left.drag.is_live() {

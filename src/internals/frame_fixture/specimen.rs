@@ -219,17 +219,19 @@ fn add_shadow(ui: &mut Ui) {
 /// makes the build a warmup cost instead.
 fn gradient_mesh(ui: &mut Ui) {
     ui.with_singleton::<GradientMesh, _>(|ui, GradientMesh(m)| {
-        if m.is_noop() {
-            *m = Mesh::with_capacity(3, 3);
+        let m = m.get_or_insert_with(|| {
+            let mut m = Mesh::with_capacity(3, 3);
             let a = m.vertex(glam::Vec2::new(96.0, 82.0), RgbaF32::hex(0xff5e44));
             let b = m.vertex(glam::Vec2::new(128.0, 22.0), RgbaF32::hex(0xfacc15));
             let c = m.vertex(glam::Vec2::new(160.0, 82.0), RgbaF32::hex(0x46c46c));
             m.triangle(a, b, c);
-        }
+            m
+        });
         ui.add_shape(Shape::mesh(m));
     });
 }
 
-/// The fixture's one gradient triangle, built on first use.
+/// The fixture's one gradient triangle, `None` until its first use builds
+/// it.
 #[derive(Debug, Default)]
-struct GradientMesh(Mesh);
+struct GradientMesh(Option<Mesh>);

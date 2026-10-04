@@ -229,10 +229,9 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     h.frame(build);
 
     let id = WidgetId::from_hash("xy");
-    {
-        let row = h.ui.state_or_default::<ScrollState>(id);
+    h.ui.with_state::<ScrollState, _>(id, |_, row| {
         row.offset = Vec2::new(0.0, -50.0);
-    }
+    });
 
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     h.frame(build);

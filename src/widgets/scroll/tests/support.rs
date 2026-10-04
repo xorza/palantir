@@ -61,8 +61,9 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
 }
 
 pub(super) fn read_state(h: &mut UiHarness) -> ScrollState {
-    *h.ui
-        .state_or_default::<ScrollState>(WidgetId::from_hash("scroll"))
+    h.ui.state::<ScrollState>(WidgetId::from_hash("scroll"))
+        .copied()
+        .unwrap_or_default()
 }
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {

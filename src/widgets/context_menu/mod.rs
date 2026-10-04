@@ -200,13 +200,17 @@ impl<'a> ContextMenu<'a> {
     /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
     #[track_caller]
     pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
-        ui.state_or_default::<ContextMenuState>(for_id).open_at = Some(vec2::offset(point));
+        ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = Some(vec2::offset(point)));
     }
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        if let Some(response) = ui.state_mut::<ContextMenuState>(for_id) {
-            response.open_at = None;
+        // Probed first, so closing a closed menu stores nothing.
+        if ui
+            .state::<ContextMenuState>(for_id)
+            .is_some_and(|s| s.open_at.is_some())
+        {
+            ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = None);
         }
     }
 

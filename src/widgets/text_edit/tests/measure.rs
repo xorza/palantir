@@ -150,9 +150,10 @@ fn stable_editor_uses_one_direct_layout_probe() {
         h.prime(2, &mut record);
         if selected {
             h.set_focus(id);
-            let state = h.ui.state_or_default::<TextEditState>(id);
-            state.edit.selection = Some(0);
-            state.edit.caret = text_len;
+            h.ui.with_state::<TextEditState, _>(id, |_, state| {
+                state.edit.selection = Some(0);
+                state.edit.caret = text_len;
+            });
             h.frame(&mut record);
         }
         let before = h.ui.shaper().measure_calls();

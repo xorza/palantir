@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `7ecbb7c1` (plus the working tree).
+Generated on top of `32cacabb` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -3331,13 +3331,9 @@ Ui
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
         pub fn release_input_scope(&mut self, id: WidgetId)
         pub fn response_for(&self, id: WidgetId) -> ResponseState
-        pub fn state_or_default<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S
-        pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
-        pub fn state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S>
+        pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn singleton<S: 'static>(&self) -> Option<&S>
-        pub fn singleton_mut<S: 'static>(&mut self) -> Option<&mut S>
-        pub fn singleton_or_default<S: Default + 'static>(&mut self) -> &mut S
         pub fn with_singleton<S: Default + 'static, R>(&mut self, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn animate<V: Animatable>(&mut self, id: WidgetId, slot: impl Into<AnimationSlot>, target: V, spec: impl Into<Option<AnimationSpec>>) -> V
         pub const fn focus(&self) -> Option<WidgetId>

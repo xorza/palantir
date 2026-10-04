@@ -314,8 +314,7 @@ fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
     Audit::new().run(move |ui| {
         Block::new().id_salt("counter").show(ui);
-        let n = ui.state_or_default::<u32>(id);
-        *n = n.wrapping_add(1);
+        ui.with_state::<u32, _>(id, |_, n| *n = n.wrapping_add(1));
     });
 }
 

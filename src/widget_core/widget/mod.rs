@@ -171,7 +171,7 @@ impl Widget {
     ///
     /// The step a widget takes before `record` when it needs its id
     /// first: to read last frame's state through [`Ui::response_for`]
-    /// or [`Ui::state_or_default`], to key an animation slot, or to derive
+    /// or [`Ui::with_state`], to key an animation slot, or to derive
     /// child ids with [`WidgetId::with`]. A widget that needs none of
     /// those never calls it — [`Self::record`] resolves on its own.
     ///

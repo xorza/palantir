@@ -279,65 +279,64 @@ impl<'a> DragValue<'a> {
         let drag_started = response.left.drag.started();
         let drag_delta = response.left.drag.delta();
         let drag_stopped = response.left.drag.stopped();
-        let state = if drag_started {
-            Some(ui.state_or_default::<DragValueState>(id))
-        } else {
-            ui.state_mut::<DragValueState>(id)
-        };
-        if let Some(state) = state {
-            // A click-away reaches the chip with the edit draft still
-            // present. Resolve it while editable and enabled, otherwise drop
-            // it so a later focus cannot replay stale input.
-            if let DragValueState::Editing { buffer, .. } = state {
-                if self.editable && !response.disabled {
-                    changed = self.value.parse_from(buffer, self.min, self.max);
-                    committed = true;
+        // Probed first, so a chip that never scrubbed or edited stores no
+        // row.
+        if drag_started || ui.state::<DragValueState>(id).is_some() {
+            ui.with_state::<DragValueState, _>(id, |_, state| {
+                // A click-away reaches the chip with the edit draft still
+                // present. Resolve it while editable and enabled, otherwise drop
+                // it so a later focus cannot replay stale input.
+                if let DragValueState::Editing { buffer, .. } = state {
+                    if self.editable && !response.disabled {
+                        changed = self.value.parse_from(buffer, self.min, self.max);
+                        committed = true;
+                    }
+                    *state = DragValueState::Idle;
                 }
-                *state = DragValueState::Idle;
-            }
 
-            if drag_started {
-                *state = DragValueState::Scrubbing(Scrub {
-                    anchor: self.value.read(),
-                    speed: self.speed,
-                    travel: 0.0,
-                });
-            }
+                if drag_started {
+                    *state = DragValueState::Scrubbing(Scrub {
+                        anchor: self.value.read(),
+                        speed: self.speed,
+                        travel: 0.0,
+                    });
+                }
 
-            let mut stopped = None;
-            if let DragValueState::Scrubbing(scrub) = state {
-                if !response.disabled
-                    && let Some(delta) = drag_delta
-                {
-                    scrub.travel = delta.x;
-                    changed |= self.value.commit_drag(
-                        scrub.anchor,
-                        scrub.offset(),
-                        self.decimals,
-                        self.min,
-                        self.max,
-                    );
+                let mut stopped = None;
+                if let DragValueState::Scrubbing(scrub) = state {
+                    if !response.disabled
+                        && let Some(delta) = drag_delta
+                    {
+                        scrub.travel = delta.x;
+                        changed |= self.value.commit_drag(
+                            scrub.anchor,
+                            scrub.offset(),
+                            self.decimals,
+                            self.min,
+                            self.max,
+                        );
+                    }
+                    if drag_stopped {
+                        stopped = Some(*scrub);
+                    }
                 }
-                if drag_stopped {
-                    stopped = Some(*scrub);
+                // The stop edge is the commit: the drag state is already gone on
+                // this frame, so the scrub's own travel carries the final value.
+                // Released while disabled, the gesture is dropped instead.
+                if let Some(scrub) = stopped {
+                    *state = DragValueState::Idle;
+                    if !response.disabled {
+                        changed |= self.value.commit_drag(
+                            scrub.anchor,
+                            scrub.offset(),
+                            self.decimals,
+                            self.min,
+                            self.max,
+                        );
+                        committed = true;
+                    }
                 }
-            }
-            // The stop edge is the commit: the drag state is already gone on
-            // this frame, so the scrub's own travel carries the final value.
-            // Released while disabled, the gesture is dropped instead.
-            if let Some(scrub) = stopped {
-                *state = DragValueState::Idle;
-                if !response.disabled {
-                    changed |= self.value.commit_drag(
-                        scrub.anchor,
-                        scrub.offset(),
-                        self.decimals,
-                        self.min,
-                        self.max,
-                    );
-                    committed = true;
-                }
-            }
+            });
         }
 
         if focused && !response.disabled {
@@ -377,10 +376,12 @@ impl<'a> DragValue<'a> {
             // The probed snapshot predates the request, so without this
             // the response denies the focus the widget just took.
             response.focused = true;
-            *ui.state_or_default::<DragValueState>(id) = DragValueState::Editing {
-                buffer: self.value.edit_string(),
-                original: self.value.read(),
-            };
+            ui.with_state::<DragValueState, _>(id, |_, s| {
+                *s = DragValueState::Editing {
+                    buffer: self.value.edit_string(),
+                    original: self.value.read(),
+                }
+            });
         }
 
         let text = match &self.suffix {
@@ -464,12 +465,13 @@ impl<'a> DragValue<'a> {
         // Entry replaces any scrub state atomically, so its later release
         // cannot overwrite the typed result. Existing edit frames move the
         // same String through TextEdit without allocating a new buffer.
-        let (mut buffer, original) = match mem::take(ui.state_or_default::<DragValueState>(id)) {
-            DragValueState::Editing { buffer, original } => (buffer, original),
-            DragValueState::Idle | DragValueState::Scrubbing(_) => {
-                (self.value.edit_string(), self.value.read())
-            }
-        };
+        let (mut buffer, original) =
+            match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
+                DragValueState::Editing { buffer, original } => (buffer, original),
+                DragValueState::Idle | DragValueState::Scrubbing(_) => {
+                    (self.value.edit_string(), self.value.read())
+                }
+            };
         let ended = {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
@@ -496,11 +498,13 @@ impl<'a> DragValue<'a> {
         } else {
             self.value.parse_from(&buffer, self.min, self.max)
         };
-        *ui.state_or_default::<DragValueState>(id) = if ended.submitted || ended.canceled {
-            DragValueState::Idle
-        } else {
-            DragValueState::Editing { buffer, original }
-        };
+        ui.with_state::<DragValueState, _>(id, |_, s| {
+            *s = if ended.submitted || ended.canceled {
+                DragValueState::Idle
+            } else {
+                DragValueState::Editing { buffer, original }
+            }
+        });
         // The chip keeps focus once the edit ends, as a spin button does,
         // so the keyboard goes on from it; Escape blurred the editor.
         if ended.canceled {

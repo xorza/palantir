@@ -356,7 +356,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .size
         .h;
 
-    h.ui.state_or_default::<ScrollState>(scroll_id).zoom = 2.0;
+    h.ui.with_state::<ScrollState, _>(scroll_id, |_, s| s.zoom = 2.0);
     h.prime(2, build);
     let z2_thumbs = thumb_rects(&h.ui, "scroll");
     assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");

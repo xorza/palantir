@@ -256,7 +256,7 @@ impl<'a> Expander<'a> {
             shown: false,
         });
         if current != row {
-            *ui.state_or_default::<ExpanderState>(header_id) = row;
+            ui.with_state::<ExpanderState, _>(header_id, |_, s| *s = row);
         }
 
         ExpanderResponse {

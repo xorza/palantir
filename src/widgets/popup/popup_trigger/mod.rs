@@ -146,7 +146,7 @@ impl PopupTrigger {
             shown: shown && open,
         };
         if next != state {
-            *ui.state_or_default::<PopupTriggerState>(self.for_id) = next;
+            ui.with_state::<PopupTriggerState, _>(self.for_id, |_, s| *s = next);
         }
         resp
     }
@@ -154,13 +154,17 @@ impl PopupTrigger {
     /// Open the popup of the trigger `for_id`, for a programmatic open — a
     /// keyboard shortcut. It records on that trigger's next `show`.
     pub fn open(ui: &mut Ui, for_id: WidgetId) {
-        ui.state_or_default::<PopupTriggerState>(for_id).open = true;
+        ui.with_state::<PopupTriggerState, _>(for_id, |_, s| s.open = true);
     }
 
     /// Close the popup of the trigger `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        if let Some(state) = ui.state_mut::<PopupTriggerState>(for_id) {
-            state.open = false;
+        // Probed first, so closing a closed popup stores nothing.
+        if ui
+            .state::<PopupTriggerState>(for_id)
+            .is_some_and(|s| s.open)
+        {
+            ui.with_state::<PopupTriggerState, _>(for_id, |_, s| s.open = false);
         }
     }
 

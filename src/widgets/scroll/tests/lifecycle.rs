@@ -72,9 +72,14 @@ fn state_is_swept_when_scroll_disappears() {
     };
 
     h.frame(build);
-    let state = h.ui.state_mut::<ScrollState>(id).unwrap();
-    state.offset = Vec2::new(12.0, 34.0);
-    state.zoom = 2.0;
+    assert!(
+        h.ui.state::<ScrollState>(id).is_some(),
+        "the scroll stored its row"
+    );
+    h.ui.with_state::<ScrollState, _>(id, |_, state| {
+        state.offset = Vec2::new(12.0, 34.0);
+        state.zoom = 2.0;
+    });
 
     h.frame(|_| {});
     assert!(h.ui.state::<ScrollState>(id).is_none());
