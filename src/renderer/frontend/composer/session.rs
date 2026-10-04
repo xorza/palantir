@@ -12,6 +12,7 @@ use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::packed::half_simd::{self, F16x4};
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -24,7 +25,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::renderer::quad::{AA_RADIUS, Quad};
+use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance,
 };
@@ -41,7 +42,6 @@ use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::record::ColorMode;
-use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use glam::{U16Vec2, UVec2, Vec2};
@@ -339,7 +339,7 @@ impl PaintSink for ComposeSession<'_> {
         // `urect_from_phys` like every other tier's.
         let xform = self.composer.transform.current();
         let phys = geometry::phys_bbox(xform, p.bbox, p.origin, scale);
-        let fringe = Vec2::splat(HALF_FRINGE);
+        let fringe = Vec2::splat(AA_HALF_WIDTH);
         let mesh_urect =
             geometry::urect_from_phys(phys.min - fringe, phys.max() + fringe, viewport_phys);
         // Clip-cull + batch-close: a mesh fully outside the
@@ -967,7 +967,7 @@ impl ComposeSession<'_> {
                 // (like a rounded rect), so it adds no outward reach.
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
-                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + HALF_FRINGE);
+                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + AA_HALF_WIDTH);
                 // Pack the three points as unorm16 shares of the covering
                 // rect, which holds them, so every share is in 0..=1, and
                 // the corner radius as f16, into the reused `corners` /
@@ -1049,7 +1049,7 @@ impl ComposeSession<'_> {
         } else {
             packed.stroke_width
         };
-        let aa_inset = if fast { 0.0 } else { AA_RADIUS };
+        let aa_inset = if fast { 0.0 } else { AA_HALF_WIDTH };
         let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
         if !cover.is_paint_empty() {
             let idx = self.out.quads.len() as u32 - 1 - self.composer.cursors.quads;

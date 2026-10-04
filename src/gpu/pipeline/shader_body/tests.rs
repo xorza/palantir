@@ -10,9 +10,10 @@ fn specialization_replaces_every_typed_marker() {
             ShaderConstant::float("B", 0.5),
         ],
     );
+    let prelude = PRELUDE.replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"));
     assert_eq!(
         result,
-        format!("{PRELUDE}const A: u32 = 7u; const B: f32 = 0.5;"),
+        format!("{prelude}const A: u32 = 7u; const B: f32 = 0.5;"),
     );
 }
 
@@ -40,15 +41,18 @@ fn specialization_rejects_missing_marker() {
 /// fix for a failure here is one or the other, never an exemption.
 #[test]
 fn every_pinned_shader_constant_is_read() {
-    for &body in ShaderBody::VARIANTS {
-        let (file, source) = (body, body.wgsl());
+    let sources = ShaderBody::VARIANTS
+        .iter()
+        .map(|body| (format!("{body:?}"), body.wgsl()))
+        .chain([("prelude".to_owned(), PRELUDE)]);
+    for (file, source) in sources {
         let code = strip_comments(source);
         // Every marker is on a `const` line the name scan reads, so a
         // scan that stopped matching cannot pass by checking nothing.
         assert_eq!(
             source.lines().filter_map(pinned_const_name).count(),
             source.matches("/*{").count(),
-            "{file:?}: a marker sits where the const-name scan does not see it",
+            "{file}: a marker sits where the const-name scan does not see it",
         );
         for name in source.lines().filter_map(pinned_const_name) {
             let uses = code
@@ -57,7 +61,7 @@ fn every_pinned_shader_constant_is_read() {
                 .count();
             assert!(
                 uses > 1,
-                "{file:?}: `{name}` is substituted from Rust and never read. Either the \
+                "{file}: `{name}` is substituted from Rust and never read. Either the \
                  shader hard-codes the value it was given, or nothing should pin it.",
             );
         }

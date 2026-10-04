@@ -11,9 +11,6 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
 
-/// Half-width of the quad SDF's physical-pixel antialiasing transition.
-pub(crate) const AA_RADIUS: f32 = 0.5;
-
 /// Per-instance quad data (60 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see
 /// `QUAD_INSTANCE_ATTRS` (in the backend) for the explicit attribute

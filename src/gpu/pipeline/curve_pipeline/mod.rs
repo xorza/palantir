@@ -29,7 +29,7 @@ use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND,
     CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,
 };
-use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT};
+use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
 use wgpu::util::DeviceExt;
 
@@ -77,7 +77,6 @@ impl CurvePipeline {
     pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
         let wgsl = ShaderBody::Curve.specialize(&[
             ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
-            ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
             ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
             ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
             ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),

@@ -7,11 +7,12 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, SEGMENTS_PER_INSTANCE,
 };
-use crate::shape::stroke_bounds::{self, HALF_FRINGE, MITER_LIMIT};
+use crate::shape::stroke_bounds::{self, MITER_LIMIT};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
@@ -210,7 +211,7 @@ impl StrokeBbox {
             display,
         } = self;
         let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor());
-        let painted = stroke_bounds::bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
+        let painted = stroke_bounds::bbox(centerline_phys, width_phys, AA_HALF_WIDTH, cap, join);
         urect_from_phys(painted.min, painted.max(), display.physical)
     }
 }

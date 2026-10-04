@@ -1,5 +1,7 @@
 //! Assembly of a pipeline's WGSL source: the shared prelude, then the
-//! shader body with its Rust-owned constants substituted in.
+//! shader body, with the Rust-owned constants of both substituted in.
+
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 
 /// Concatenated ahead of every shader body, so the vocabulary the
 /// pipelines share has one definition. See the file itself for what may
@@ -69,9 +71,14 @@ impl ShaderConstant {
     }
 }
 
+/// The constants [`PRELUDE`] declares, substituted into every shader.
+fn prelude_constants() -> [ShaderConstant; 1] {
+    [ShaderConstant::float("AA_HALF_WIDTH", AA_HALF_WIDTH)]
+}
+
 fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
     let mut specialized = format!("{PRELUDE}{body}");
-    for constant in constants {
+    for constant in prelude_constants().iter().chain(constants) {
         let marker = format!("/*{{{}}}*/", constant.marker);
         assert_eq!(
             specialized.matches(&marker).count(),
