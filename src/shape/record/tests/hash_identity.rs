@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;

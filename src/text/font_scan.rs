@@ -60,8 +60,8 @@ mod tests {
     #[test]
     fn a_scanned_shaper_arrives_usable() {
         let shaper = FontScan::spawn(FontScope::System).join();
-        assert!(shaper.font_available(FontFamily::SANS));
-        assert!(shaper.font_available(FontFamily::MONO));
+        assert!(shaper.has_font(FontFamily::SANS));
+        assert!(shaper.has_font(FontFamily::MONO));
         assert_eq!(shaper.font_epoch(), 0);
         // At least the bundled pair: a host may have no fonts of its own,
         // and the scan must still hand back a usable database.

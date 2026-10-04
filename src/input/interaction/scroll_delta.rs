@@ -36,7 +36,7 @@ pub struct ScrollDelta {
 
 impl ScrollDelta {
     /// This frame's pan in logical pixels: the precision source plus the
-    /// notched one converted at `line_px`.
+    /// notched one converted at `line_height`, the logical height of one line.
     ///
     /// **The one fold.** Each widget still chooses the line height it
     /// converts at — a `Scroll` takes the theme's, a `TextEdit` its own
@@ -44,8 +44,8 @@ impl ScrollDelta {
     /// they do with it is this, spelled once rather than at every wheel
     /// reader.
     #[inline]
-    pub fn pan(self, line_px: f32) -> Vec2 {
-        self.pixels + self.lines * line_px
+    pub fn pan(self, line_height: f32) -> Vec2 {
+        self.pixels + self.lines * line_height
     }
 }
 

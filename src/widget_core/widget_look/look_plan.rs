@@ -62,7 +62,7 @@ impl LookPlan {
                 SlotDefaults {
                     padding,
                     margin,
-                    anim,
+                    animation,
                 },
         } = self;
         widget
@@ -70,6 +70,6 @@ impl LookPlan {
             .default_padding(padding)
             .default_margin(margin);
         let id = widget.resolve(ui);
-        ui.animate(id, WidgetLook::SLOT_LOOK, target, anim)
+        ui.animate(id, WidgetLook::SLOT_LOOK, target, animation)
     }
 }

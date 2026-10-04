@@ -5,7 +5,7 @@ use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 use crate::renderer::render_buffer::curve::{

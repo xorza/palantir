@@ -358,8 +358,8 @@ fn button_unhover_damage_covers_only_the_button() {
 #[test]
 fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+    use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
     use std::f32::consts::TAU;
     use std::time::Duration;
 
@@ -378,11 +378,11 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
                                 &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
                                 Stroke::new(RED, 1.0),
                             ),
-                            PaintAnim::turn(0.0, 1.0)
-                                .started_at(Duration::ZERO)
-                                .period(Duration::from_secs_f32(TAU / 1.0))
-                                .repeat(PaintRepeat::Forever)
-                                .curve(curves::linear),
+                            PaintAnimation::turn(0.0, 1.0)
+                                .with_started_at(Duration::ZERO)
+                                .with_period(Duration::from_secs_f32(TAU / 1.0))
+                                .with_repeat(PaintRepeat::Forever)
+                                .with_curve(curves::linear),
                         );
                     });
             });
@@ -651,6 +651,48 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     );
 }
 
+/// The focus ring arriving on a node damages that node and nothing else:
+/// it rides the node's chrome row, and the row's hash carries it, so a
+/// chromeless stop gains a row whose rect is its own, and its unfocused
+/// neighbour is untouched.
+#[test]
+fn a_focus_ring_damages_only_its_node() {
+    use crate::input::keyboard::key::Key;
+    use crate::widgets::block::Block;
+
+    let [a, b] = ["a", "b"].map(WidgetId::from_hash);
+    let mut h = UiHarness::new(DISPLAY.physical);
+    let build = |ui: &mut Ui| {
+        Panel::hstack().auto_id().gap(20.0).show(ui, |ui| {
+            for id in [a, b] {
+                Block::new()
+                    .id(id)
+                    .size((Sizing::fixed(40.0), Sizing::fixed(30.0)))
+                    .focusable(true)
+                    .show(ui);
+            }
+        });
+    };
+    frame(&mut h, build);
+    frame(&mut h, build); // settle
+    h.key(Key::Tab);
+    frame(&mut h, build);
+    assert_eq!(h.ui.focus(), Some(a));
+    let a_rect = h.engines.damage.prev_paint_rows(a)[0].screen;
+    let b_rect = h.ui.response_for(b).rect.expect("b arranged");
+    let region = h.damage_region();
+    let rects: Vec<_> = region.iter_rects().collect();
+    assert!(!rects.is_empty(), "the ring damages something");
+    assert!(
+        rects.iter().all(|r| a_rect.contains_rect(*r)),
+        "every damage rect lies in the ringed node {a_rect:?}: {rects:?}",
+    );
+    assert!(
+        rects.iter().all(|r| !r.intersects(b_rect)),
+        "the neighbour {b_rect:?} is not damaged: {rects:?}",
+    );
+}
+
 /// Painting-only invariant: every `DamageEngine.prev` entry covers
 /// at least one Paint row. A chrome-only owner used to land in `prev`
 /// with `shape_span.len == 0` (chrome was tracked in a separate
@@ -715,8 +757,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
 
-    // Mono fallback geometry: glyph width = font_size_px * 0.5, line
-    // height = font_size_px. With font_size_px = 14, "abc" measures
+    // Mono fallback geometry: glyph width = font_size * 0.5, line
+    // height = font_size. With font_size = 14, "abc" measures
     // 21×14 and "abcdef" measures 42×14.
     const FONT: f32 = 14.0;
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
@@ -735,7 +777,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         Shape::text(
                             text,
                             GlyphFont {
-                                line_height_px: FONT,
+                                line_height: FONT,
                                 ..GlyphFont::new(FONT)
                             },
                         )
@@ -833,7 +875,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
                         Shape::text(
                             text,
                             GlyphFont {
-                                line_height_px: FONT,
+                                line_height: FONT,
                                 slant: FontSlant::Italic,
                                 ..GlyphFont::new(FONT)
                             },

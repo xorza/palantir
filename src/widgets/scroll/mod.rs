@@ -20,7 +20,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -138,7 +138,7 @@ impl ScrollWrappers {
             .disabled(widget.authored_disabled())
             .focusable(widget.authored_focusable())
             .input_scope(widget.authored_input_scope());
-        outer.adopt_placement(widget);
+        outer.configure().adopt_placement(widget);
         if let Some(size) = widget.authored_size() {
             outer.configure().size(size);
         }
@@ -179,7 +179,11 @@ impl ScrollWrappers {
 /// their full natural extent; the viewport itself takes whatever its
 /// parent gave it. Wheel / touchpad input over the viewport pans
 /// children via a `transform` applied at record time using the
-/// previous frame's clamp. The scrollbar's relationship to the
+/// previous frame's clamp. The viewport senses the wheel only on the
+/// axes its content overflows, so the other axis — or both, while the
+/// content fits — reaches the container behind it. A
+/// [`zoomable`](Self::zoomable) one senses both always. The scrollbar's
+/// relationship to the
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
 ///
@@ -256,8 +260,13 @@ impl<'a> Scroll<'a> {
     ///
     /// Relative, because that is what a builder can state without first
     /// reading where the viewport already sits.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `delta` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub fn pan_by(mut self, delta: Vec2) -> Self {
-        self.pan_request += delta;
+        self.pan_request += vec2::offset(delta);
         self
     }
 
@@ -275,12 +284,13 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `factor` is finite and greater than zero. A zoom
-    /// cannot invert or annihilate, and a non-finite factor poisons
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    /// A zoom cannot invert or annihilate, and a non-finite factor poisons
     /// every product it enters.
+    #[track_caller]
     pub fn zoom_by(mut self, factor: f32) -> Self {
-        let factor = ZoomFactor::new(factor)
-            .unwrap_or_else(|| panic!("a zoom factor must be finite and above zero, got {factor}"));
+        let factor =
+            ZoomFactor::new(domain::positive(factor)).expect("a positive value is a zoom factor");
         self.zoom_request = self.zoom_request.combine(factor);
         self
     }
@@ -328,27 +338,47 @@ impl<'a> Scroll<'a> {
     /// band; `right`/`bottom` extend the positive band) — set them
     /// dynamically per frame from your own content's bounding box if
     /// you need the slack to track a moving leading edge.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.content_margin = m.into();
+        let m = m.into();
+        for edge in m.as_array() {
+            domain::length(edge);
+        }
+        self.content_margin = m;
         self
     }
 
-    /// Let the viewport zoom, pivot-anchored, with a default
-    /// [`ZoomConfig`]. A switch, not a step — [`Self::zoom_by`] is the
-    /// step.
+    /// Let the viewport zoom, pivot-anchored, under a default
+    /// [`ZoomConfig`] — the shorthand for [`Self::zoom_config`]. A switch,
+    /// not a step: [`Self::zoom_by`] is the step.
     ///
-    /// Asserts at record time that the scroll pans on both axes (built
-    /// via [`Scroll::both`]) — uniform scale on a single-axis scroll has
-    /// no clean answer (cross-axis content escapes the viewport with no
-    /// way to reach it). Debug builds reject the caller bug.
+    /// # Panics
+    ///
+    /// As [`Self::zoom_config`].
+    #[track_caller]
     pub fn zoomable(self) -> Self {
-        self.zoomable_with(ZoomConfig::default())
+        self.zoom_config(ZoomConfig::default())
     }
 
-    /// [`Self::zoomable`] with an explicit [`ZoomConfig`] in place of
-    /// the default. Same assert, same pivot rule.
-    pub fn zoomable_with(mut self, cfg: ZoomConfig) -> Self {
-        self.zoom = Some(cfg);
+    /// Let the viewport zoom under `config`'s range, step, modifier and pivot.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the scroll pans on both axes (built by
+    /// [`Scroll::both`]): a uniform scale on a single-axis scroll has no
+    /// clean answer, since content that escapes across the axis has no way
+    /// back into the viewport.
+    #[track_caller]
+    pub fn zoom_config(mut self, config: ZoomConfig) -> Self {
+        assert!(
+            self.axes.pans(Axis::X) && self.axes.pans(Axis::Y),
+            "a zoomable scroll must pan on both axes",
+        );
+        self.zoom = Some(config);
         self.add_sense(Sense::PINCH)
     }
 
@@ -375,12 +405,12 @@ impl<'a> Scroll<'a> {
         // children for a dominant font — that's a future polish; for
         // now the active theme's text size is a good proxy and stays
         // consistent with what the user is reading.
-        let line_px = ui.theme().text.font().line_height_px;
+        let line_px = ui.theme().text.font().line_height;
         let scroll = response.scroll;
         let pan_raw = scroll.pan(line_px);
         // A theme with no line metric behind it contributes no notches,
         // rather than the enormous ones a floored divisor would report.
-        let notches_per_px = approx::share_of(1.0, line_px);
+        let notches_per_px = domain::share_of(1.0, line_px);
         let notches = scroll.lines + scroll.pixels * notches_per_px;
         // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
         // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
@@ -405,7 +435,7 @@ impl<'a> Scroll<'a> {
         let centre = response
             .layout_rect
             .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
-        let zoom_changed = !approx::approx_zero(zoom_delta.get() - 1.0);
+        let zoom_changed = !domain::is_approx_zero(zoom_delta.get() - 1.0);
         let pivot = zoom_changed
             .then(
                 || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
@@ -453,7 +483,7 @@ impl<'a> Scroll<'a> {
                 reserve: self.bar_mode.gutter(self.axes, theme),
                 padding: self.widget.authored_padding().unwrap_or(Spacing::ZERO),
                 bar_thickness: theme.thickness,
-                min_thumb: theme.min_thumb_px,
+                min_thumb: theme.min_thumb,
             },
         }
     }
@@ -548,12 +578,6 @@ impl<'a> Scroll<'a> {
         // Identity resolves on the widget that came in; the outer wrapper
         // takes it below.
         let id = self.widget.resolve(ui);
-        if self.zoom.is_some() {
-            debug_assert!(
-                self.axes.pans(Axis::X) && self.axes.pans(Axis::Y),
-                "Scroll::zoomable requires Scroll::both — single-axis scroll has no clean zoom semantics",
-            );
-        }
         // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack, so wheel events over the bar gutter still pan the
         // viewport.
@@ -566,14 +590,34 @@ impl<'a> Scroll<'a> {
         let bars = (self.bar_mode != BarMode::Hidden)
             .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
 
-        let state = {
-            let state = ui.state_or_default::<ScrollState>(id);
+        let state = ui.with_state::<ScrollState, _>(id, |_, state| {
             self.apply_input(state, input, geom);
             if let Some(bars) = &bars {
                 bars.drive(state, geom);
             }
             *state
+        });
+        // The wheel senses only the axes the viewport can pan, so the
+        // other one reaches the container behind it. A zoomable viewport
+        // keeps both: its wheel zooms whether the content overflows or not.
+        // So does one with no arranged box yet, whose overflow is not
+        // known: the next frame has the box an event after this one pans.
+        let pan_x = self.axes.pans(Axis::X);
+        let pan_y = self.axes.pans(Axis::Y);
+        let pans = if self.zoom.is_some() {
+            Sense::SCROLL
+        } else if response.layout_rect.is_none() {
+            let mut declared = Sense::NONE;
+            declared.set(Sense::SCROLL_X, pan_x);
+            declared.set(Sense::SCROLL_Y, pan_y);
+            declared
+        } else {
+            state.wheel_sense(geom.bounds(), pan_x, pan_y)
         };
+        let sense = self.widget.authored_sense();
+        self.widget
+            .configure()
+            .sense(sense.difference(Sense::SCROLL.difference(pans)));
 
         let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, geom, state);
         let inner_chrome = self.chrome;
@@ -592,11 +636,11 @@ impl<'a> Scroll<'a> {
             // cascade or layout answer — both are frozen for the pass — so
             // the only field worth re-reading is `focused`, which the body
             // may have taken.
-            response: Response::eager(
+            response: Response::new(
                 id,
                 ui,
                 ResponseState {
-                    focused: ui.focused_id() == Some(id),
+                    focused: ui.focus() == Some(id),
                     ..response
                 },
             ),
@@ -606,15 +650,39 @@ impl<'a> Scroll<'a> {
 }
 
 impl Scroll<'_> {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// Chrome for the inner scroll surface — painted under the children,
     /// before the scrollbar overlay. Unlike the other containers
     /// (`Panel`/`Grid`/`Popup`), Scroll does **not** fall back to
     /// `theme.panel_background` when unset: an unstyled scroll surface
     /// paints no background. Pass one explicitly to fill it.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 }

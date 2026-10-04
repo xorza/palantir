@@ -2,13 +2,13 @@
 //! paint clock, so an idle window animates it without recording.
 
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
-use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
@@ -71,22 +71,37 @@ impl<'a> Spinner<'a> {
 
     /// Diameter in logical px, defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn diameter(mut self, px: f32) -> Self {
-        self.diameter = Some(px);
+        self.diameter = Some(domain::length(px));
         self
     }
 
     /// Arc color (head of the comet), defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c` is a [colour](crate::widget::domain::color).
+    #[track_caller]
     pub const fn color(mut self, c: RgbaF32) -> Self {
-        self.color = Some(c);
+        self.color = Some(domain::color(c));
         self
     }
 
     /// Stroke width in logical px, defaulting to the theme's
     /// diameter-derived width. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn thickness(mut self, px: f32) -> Self {
-        self.thickness = Some(px);
+        self.thickness = Some(domain::length(px));
         self
     }
 
@@ -95,7 +110,7 @@ impl<'a> Spinner<'a> {
     /// recorded.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
-        let diameter = self.diameter.unwrap_or(theme.diameter).themed_length(1.0);
+        let diameter = domain::length_at_least(self.diameter.unwrap_or(theme.diameter), 1.0);
         let width = self
             .thickness
             .unwrap_or((diameter * theme.thickness_ratio).max(theme.min_thickness));
@@ -116,10 +131,10 @@ impl<'a> Spinner<'a> {
                     // One turn per `TAU / speed` seconds — the old
                     // radians-per-second spelling, in the period the
                     // schedule is written in.
-                    PaintAnim::turn(0.0, 1.0)
-                        .period(Duration::from_secs_f32(TAU / speed))
-                        .repeat(PaintRepeat::Forever)
-                        .curve(curves::linear),
+                    PaintAnimation::turn(0.0, 1.0)
+                        .with_period(Duration::from_secs_f32(TAU / speed))
+                        .with_repeat(PaintRepeat::Forever)
+                        .with_curve(curves::linear),
                 );
             })
             .response

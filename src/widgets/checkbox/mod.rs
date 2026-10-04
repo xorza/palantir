@@ -2,7 +2,7 @@
 //! on either half reports.
 
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -10,7 +10,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
-use crate::widget_core::response::Response;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -66,26 +66,23 @@ impl<'a> Checkbox<'a> {
         self
     }
 
-    /// Record the row and hand back its [`Response`].
-    ///
-    /// **`clicked()` is the change edge.** A checkbox flips on every
-    /// activation, so a click always writes the bound `bool` and nothing
-    /// else ever does. That is why this returns a bare `Response` where
-    /// [`RadioButton`](crate::RadioButton) returns a
-    /// [`SelectResponse`](crate::SelectResponse) and
-    /// [`Slider`](crate::Slider) a
-    /// [`ValueResponse`](crate::ValueResponse): those two can be clicked
-    /// without moving their value, and this one cannot.
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    /// Record the row and report whether this frame flipped the bound
+    /// `bool`. A flip commits at once, so `committed == changed`.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
 
-        let checked = ToggleChrome::toggled(&response, self.value);
+        let before = *self.value;
+        let checked = ToggleChrome::toggled(
+            ToggleChrome::activated(ui, &mut self.widget, &response),
+            self.value,
+        );
+        let changed = checked != before;
 
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.checkbox);
-        let box_size = slot.box_size.themed_length(1.0);
+        let box_size = domain::length_at_least(slot.box_size, 1.0);
         let indicator = slot.indicator;
-        let indicator_stroke = slot.indicator_stroke.themed_length(0.0);
+        let indicator_width = domain::length_at_least(slot.indicator_width, 0.0);
         let check = slot.check_polyline();
         let chrome = ToggleChrome {
             plan: slot.plan(&response, checked, theme.text),
@@ -94,15 +91,20 @@ impl<'a> Checkbox<'a> {
             // Square box: the theme's own corner radius stands.
             pill: None,
         };
-        chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
+        let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
-                    Shape::polyline(&check, Stroke::new(indicator, indicator_stroke))
+                    Shape::polyline(&check, Stroke::new(indicator, indicator_width))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
             }
-        })
+        });
+        ValueResponse {
+            response,
+            changed,
+            committed: changed,
+        }
     }
 }
 

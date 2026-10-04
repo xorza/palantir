@@ -20,6 +20,7 @@ use glam::UVec2;
 use palantir::widget::Shape;
 use palantir::{
     Background, Block, Button, Configure, Corners, Image, Panel, RgbaF32, Sizing, Stroke,
+    TargetFormat,
 };
 use std::cell::RefCell;
 use wgpu::TextureFormat;
@@ -150,7 +151,7 @@ fn test_image() -> Image {
             px.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
         }
     }
-    Image::from_srgba8(UVec2::new(N, N), px)
+    Image::from_srgba8(UVec2::new(N, N), px).unwrap()
 }
 
 thread_local! {
@@ -217,7 +218,8 @@ fn images_survive_format_change_without_reupload() {
          cache must stay populated (no drop, no re-upload)",
     );
     assert!(
-        h.host.has_format_pipelines(TextureFormat::Bgra8UnormSrgb),
+        h.host
+            .has_format_pipelines(TargetFormat::new(TextureFormat::Bgra8UnormSrgb)),
         "the new format must have built its own pipeline set",
     );
 
@@ -225,10 +227,10 @@ fn images_survive_format_change_without_reupload() {
 }
 
 /// A unorm target would store the renderer's linear light as is and draw
-/// every colour too dark with no error, so the first frame into one
-/// refuses it.
+/// every colour too dark with no error, so naming one as a target refuses
+/// it.
 #[test]
-#[should_panic(expected = "render target format Rgba8Unorm does not encode linear light")]
+#[should_panic(expected = "a render target's format must be sRGB or float")]
 fn a_unorm_target_is_refused() {
     let mut h = Harness::new();
     let _ = h

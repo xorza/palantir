@@ -50,10 +50,10 @@ mod wrap;
 ///
 /// Override with the `TestShape` builders, so the one thing a case is
 /// about reads on one line: `shape(16.0).width(32.0).halign(HAlign::Right)`.
-fn shape(font_size_px: f32) -> TestShape {
+fn shape(font_size: f32) -> TestShape {
     TestShape::new(GlyphFont {
-        size_px: font_size_px,
-        line_height_px: font_size_px,
+        size: font_size,
+        line_height: font_size,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
         slant: FontSlant::Normal,
@@ -62,14 +62,14 @@ fn shape(font_size_px: f32) -> TestShape {
 
 /// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]) — what the real
 /// UI shapes at, and what the cosmic geometry cases pin.
-fn ui_shape(font_size_px: f32) -> TestShape {
-    shape(font_size_px).leading(font_size_px * LINE_HEIGHT_MULT)
+fn ui_shape(font_size: f32) -> TestShape {
+    shape(font_size).leading(font_size * LINE_HEIGHT_MULT)
 }
 
 /// Height of one line at `shape`'s leading, as a measured extent reports
 /// it — `Size` ceils, so a fractional leading rounds up.
 fn one_line_h(shape: TestShape) -> f32 {
-    shape.font.line_height_px.ceil()
+    shape.font.line_height.ceil()
 }
 
 fn slot(widget_id: WidgetId) -> TextRunSlot {
@@ -89,7 +89,7 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
 /// for them: a bounded resolve has neither to give, on either metric.
 fn mono_extent(text: &str, shape: TestShape, fit: LineFit) -> Size {
     let request = shape.request(text, fit);
-    match request.max_width_px() {
+    match request.max_width() {
         None => mono::root(request, WrapFloor::Skip).extent.size,
         Some(_) => mono::resolve(request).size,
     }

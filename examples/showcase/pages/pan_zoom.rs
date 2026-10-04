@@ -17,9 +17,10 @@ use crate::support::note_style;
 use palantir::SlotDefaults;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
-    AnimSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Grid,
-    LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
-    Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
+    AnimationSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners,
+    Grid, LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook,
+    Stroke, Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook,
+    fmt,
 };
 use std::array;
 
@@ -149,7 +150,7 @@ fn property_grid(ui: &mut Ui) {
     const ROWS: usize = 12;
     Grid::new()
         .id_salt("props")
-        .cols([Track::HUG.min(96.0), Track::FILL, Track::fixed(72.0)])
+        .cols([Track::HUG.with_min(96.0), Track::FILL, Track::fixed(72.0)])
         .rows([Track::HUG; ROWS])
         .line_gap(6.0).gap(6.0)
         .padding(4.0)
@@ -376,7 +377,7 @@ fn cell_theme() -> ButtonTheme {
         defaults: SlotDefaults {
             padding: Spacing::xy(6.0, 4.0),
             margin: Spacing::ZERO,
-            anim: Some(AnimSpec::FAST),
+            animation: Some(AnimationSpec::FAST),
         },
     }
 }

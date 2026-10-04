@@ -42,12 +42,36 @@ impl Block {
 }
 
 impl Block {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// `Block` is unthemed: there is no slot to fall back to, so an unset
     /// background paints nothing.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 }

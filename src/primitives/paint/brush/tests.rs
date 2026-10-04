@@ -1,11 +1,12 @@
 use crate::animation::animatable::Animatable;
 use crate::internals::panic_probe;
+use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
-use crate::primitives::paint::brush::gradient::{Gradient, Interp, Spread};
+use crate::primitives::paint::brush::gradient::{Gradient, Interpolation, Spread};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
@@ -190,14 +191,18 @@ fn two_stop_gradients_take_their_kind_defaults() {
     fn check<G: Clone + fmt::Debug + PartialEq>(
         kind: &str,
         two_stop: impl Fn(RgbaF32, RgbaF32) -> Gradient<G>,
-        interp: Interp,
+        interpolation: Interpolation,
     ) where
         Brush: From<Gradient<G>>,
     {
         let g = two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
         let offsets = [g.ramp.stops[0].offset(), g.ramp.stops[1].offset()];
         assert_eq!((g.ramp.stops.len(), offsets), (2, [0.0, 1.0]), "{kind}");
-        assert_eq!((g.spread, g.ramp.interp), (Spread::Pad, interp), "{kind}");
+        assert_eq!(
+            (g.spread, g.ramp.interpolation),
+            (Spread::Pad, interpolation),
+            "{kind}"
+        );
         let brush = Brush::from(g.clone());
         assert!(!brush.is_noop(), "{kind}");
         assert_eq!(brush.as_solid(), None, "{kind}");
@@ -205,13 +210,16 @@ fn two_stop_gradients_take_their_kind_defaults() {
         let clear = two_stop(RgbaF32::TRANSPARENT, RgbaF32::WHITE.with_alpha(0.0));
         assert!(Brush::from(clear).is_noop(), "{kind}: all transparent");
 
-        let other = match interp {
-            Interp::Linear => Interp::Oklab,
-            Interp::Oklab => Interp::Linear,
+        let other = match interpolation {
+            Interpolation::Linear => Interpolation::Oklab,
+            Interpolation::Oklab => Interpolation::Linear,
         };
-        let overridden = g.clone().with_spread(Spread::Repeat).with_interp(other);
+        let overridden = g
+            .clone()
+            .with_spread(Spread::Repeat)
+            .with_interpolation(other);
         assert_eq!(
-            (overridden.spread, overridden.ramp.interp),
+            (overridden.spread, overridden.ramp.interpolation),
             (Spread::Repeat, other),
             "{kind}"
         );
@@ -221,10 +229,10 @@ fn two_stop_gradients_take_their_kind_defaults() {
     check(
         "linear",
         |a, b| LinearGradient::two_stop(0.0, a, b),
-        Interp::Oklab,
+        Interpolation::Oklab,
     );
-    check("radial", RadialGradient::two_stop, Interp::Oklab);
-    check("conic", ConicGradient::two_stop, Interp::Linear);
+    check("radial", RadialGradient::two_stop, Interpolation::Oklab);
+    check("conic", ConicGradient::two_stop, Interpolation::Linear);
 
     // A radial gradient defaults to the centred circle: centre and
     // radius 0.5, both exact in f16.
@@ -234,15 +242,27 @@ fn two_stop_gradients_take_their_kind_defaults() {
     assert_eq!(radial.axis().lanes(), [0.5, 0.5, 0.5, 0.5]);
 }
 
+/// In code a stop's offset is a fraction, coerced: out of range clamps to
+/// the end it overshot, a non-finite one reads as 0. Its colour is checked
+/// and panics on a non-finite channel. A file refuses any offset outside
+/// `0..=1`, as it refuses every fraction, since its author can fix it.
 #[test]
-fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
-    for offset in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        panic_probe::assert_panics_with("gradient stop offset must be finite", || {
-            Stop::new(offset, RgbaF32::WHITE)
-        });
+fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
+    for (offset, want) in [
+        (f32::NAN, 0.0),
+        (f32::INFINITY, 0.0),
+        (f32::NEG_INFINITY, 0.0),
+        (-0.5, 0.0),
+        (1.5, 1.0),
+        (0.5, 128.0 / 255.0),
+    ] {
+        assert_eq!(Stop::new(offset, RgbaF32::WHITE).offset(), want, "{offset}");
     }
+    panic_probe::assert_panics_with("a color must have finite channels", || {
+        Stop::new(0.5, RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0))
+    });
 
-    for literal in ["NaN", "inf", "-inf"] {
+    for literal in ["NaN", "inf", "-inf", "-0.5", "1.5"] {
         let document = format!(
             "(stops: [\
                (offset: {literal}, color: \"#ffffff\"),\
@@ -251,14 +271,18 @@ fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
         );
         let error = ron::from_str::<StopsDocument>(&document).unwrap_err();
         assert!(
-            error.to_string().contains("offset must be finite"),
+            error.to_string().contains(domain::FRACTION_RULE),
             "{literal} produced unexpected error: {error}",
         );
     }
 }
 
+/// Every gradient kind round-trips, and a file whose geometry breaks its
+/// kind is a deserialization error rather than a brush that panics where
+/// it enters a node: angles are *angles*, centres *offsets*, a radial
+/// radius a *length* on each axis.
 #[test]
-fn every_gradient_variant_round_trips_validated_stops() {
+fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
     #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
     struct BrushDocument {
         brush: Brush,
@@ -279,6 +303,31 @@ fn every_gradient_variant_round_trips_validated_stops() {
         let decoded = ron::from_str::<BrushDocument>(&encoded).expect("deserialize valid gradient");
         assert_eq!(decoded, document);
     }
+
+    let stops = r##""stops":[(offset:0.0,color:"#000000"),(offset:1.0,color:"#ffffff")],"interpolation":Oklab,"spread":Pad"##;
+    for (geometry, rule) in [
+        (r#"Linear({"angle":inf,"#, domain::ANGLE_RULE),
+        (
+            r#"Radial({"center":(NaN,0.5),"radius":(0.5,0.5),"#,
+            domain::OFFSET_RULE,
+        ),
+        (
+            r#"Radial({"center":(0.5,0.5),"radius":(-0.5,0.5),"#,
+            domain::LENGTH_RULE,
+        ),
+        (
+            r#"Conic({"center":(0.5,inf),"start_angle":0.0,"#,
+            domain::OFFSET_RULE,
+        ),
+        (
+            r#"Conic({"center":(0.5,0.5),"start_angle":NaN,"#,
+            domain::ANGLE_RULE,
+        ),
+    ] {
+        let document = format!("(brush:{geometry}{stops}}}))");
+        let error = ron::from_str::<BrushDocument>(&document).unwrap_err();
+        assert!(error.to_string().contains(rule), "{geometry}: {error}");
+    }
 }
 
 #[test]
@@ -287,8 +336,8 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .stop(-1.0, RgbaF32::hex(0x000000))
         .stop(0.5, RgbaF32::hex(0x808080))
         .stop(2.0, RgbaF32::hex(0xffffff))
-        .with_spread(Spread::Reflect)
-        .with_interp(Interp::Linear)
+        .spread(Spread::Reflect)
+        .interpolation(Interpolation::Linear)
         .build();
     assert_eq!(linear.geometry.angle, PI / 2.0);
     assert_eq!(linear.ramp.stops.len(), 3);
@@ -296,7 +345,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
     assert_eq!(linear.ramp.stops[1].offset(), 128.0 / 255.0);
     assert_eq!(linear.ramp.stops[2].offset(), 1.0);
     assert_eq!(linear.spread, Spread::Reflect);
-    assert_eq!(linear.ramp.interp, Interp::Linear);
+    assert_eq!(linear.ramp.interpolation, Interpolation::Linear);
 
     let center = Vec2::new(0.25, 0.75);
     let radius = Vec2::new(0.4, 0.6);
@@ -306,7 +355,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(radial.geometry.center, center);
     assert_eq!(radial.geometry.radius, radius);
-    assert_eq!(radial.ramp.interp, Interp::Oklab);
+    assert_eq!(radial.ramp.interpolation, Interpolation::Oklab);
 
     let conic = ConicGradient::builder(center, FRAC_PI_4)
         .stop(0.0, RgbaF32::BLACK)
@@ -314,7 +363,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(conic.geometry.center, center);
     assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
-    assert_eq!(conic.ramp.interp, Interp::Linear);
+    assert_eq!(conic.ramp.interpolation, Interpolation::Linear);
 }
 
 #[test]

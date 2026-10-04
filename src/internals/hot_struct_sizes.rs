@@ -109,7 +109,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 6296;
+const UI_SIZE: usize = 6696;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -172,7 +172,7 @@ const PINS: &[Pin] = &[
     pin::<LayoutMode>("primitives::LayoutMode", 4, 2),
     pin::<PackedLayoutMeta>("primitives::PackedLayoutMeta", 4, 4),
     pin::<ExtrasIdx>("scene::ExtrasIdx", 6, 2),
-    pin::<BoundsExtras>("scene::BoundsExtras", 32, 4),
+    pin::<BoundsExtras>("scene::BoundsExtras", 36, 4),
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
     pin::<Node>("scene::Node", 104, 4),
     pin::<ShapeRecord>("shape::ShapeRecord", 88, 8),
@@ -191,7 +191,7 @@ const PINS: &[Pin] = &[
     // `LinearGradient` is stored inline on every `Brush::Linear`, so it
     // sets the floor for `Brush`, `Background.fill`, and every shape
     // carrying a brush. The stops are 1 (len) + `MAX_STOPS` × 5 (a `u8`
-    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interp) with
+    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interpolation) with
     // no padding; the gradient adds 4 (angle), 1 (spread) and 1 tail pad
     // to align 4.
     pin::<GradientStops>("brush::GradientStops", 1 + 5 * MAX_STOPS, 1),
@@ -207,9 +207,9 @@ const PINS: &[Pin] = &[
         168,
         8,
     ),
-    pin::<DragValue<'static>>("widgets::DragValue", 200, 8),
+    pin::<DragValue<'static>>("widgets::DragValue", 208, 8),
     pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 168, 8),
-    pin::<TextEdit<'static>>("widgets::TextEdit", 224, 8),
+    pin::<TextEdit<'static>>("widgets::TextEdit", 232, 8),
     pin::<Text<'static>>("widgets::Text", 208, 8),
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
@@ -224,7 +224,7 @@ const PINS: &[Pin] = &[
     pin::<Modal<'static>>("widgets::Modal", 272, 8),
     pin::<Tooltip<'static>>("widgets::Tooltip", 304, 8),
     pin::<GpuView>("widgets::GpuView", 144, 8),
-    pin::<ContextMenu<'static>>("widgets::ContextMenu", 288, 8),
+    pin::<ContextMenu<'static>>("widgets::ContextMenu", 296, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),

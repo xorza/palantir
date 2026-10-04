@@ -1,11 +1,12 @@
 //! A settled dock as a recordable scene, at the scale a real editor runs
 //! one.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::dock::dock_op::{DockDrop, DockOp};
+use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_state::DockState;
 use crate::widgets::dock::dock_tabs::DockTabs;
 use crate::widgets::dock::dock_view::DockView;
@@ -13,7 +14,6 @@ use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::TabBadge;
 use crate::widgets::text::Text;
-use glam::Vec2;
 
 /// Three panes and two dividers: the pinned canvas beside a split-off
 /// console, with an output pane under the console, and five tabs across
@@ -26,7 +26,7 @@ use glam::Vec2;
 pub struct DockFixture {
     dock: DockState<Tab>,
     panes: Panes,
-    ops: Vec<DockOp<Tab>>,
+    operations: Vec<DockOperation<Tab>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -57,7 +57,7 @@ impl Default for DockFixture {
         for tab in [Tab::Layers, Tab::History, Tab::Console, Tab::Output] {
             dock.find_or_insert(tab, primary);
         }
-        dock.apply(DockOp::MoveTab {
+        dock.apply(DockOperation::MoveTab {
             tab: Tab::Console,
             to: DockDrop::Split {
                 group: primary,
@@ -65,18 +65,18 @@ impl Default for DockFixture {
             },
         });
         let right = dock.focused();
-        dock.apply(DockOp::MoveTab {
+        dock.apply(DockOperation::MoveTab {
             tab: Tab::Output,
             to: DockDrop::Split {
                 group: right,
                 side: SplitSide::Bottom,
             },
         });
-        dock.apply(DockOp::ActivateTab { tab: Tab::Canvas });
+        dock.apply(DockOperation::ActivateTab { tab: Tab::Canvas });
         Self {
             dock,
             panes: Panes,
-            ops: Vec::new(),
+            operations: Vec::new(),
         }
     }
 }
@@ -88,18 +88,18 @@ impl DockFixture {
     }
 
     /// Record one frame through the two-call surface: scan last frame's
-    /// responses into the reused op buffer, apply them, then show.
+    /// responses into the reused operation buffer, apply them, then show.
     pub fn record_scanned(&mut self, ui: &mut Ui) {
-        self.ops.clear();
-        self.dock.scan(ui, &mut self.ops);
-        for op in self.ops.drain(..) {
-            self.dock.apply(op);
+        self.operations.clear();
+        DockView::scan(ui, &self.dock, &mut self.operations);
+        for operation in self.operations.drain(..) {
+            self.dock.apply(operation);
         }
-        DockView::new(&self.dock, &mut self.ops)
+        DockView::new(&self.dock, &mut self.operations)
             .min_pane(120.0)
             .show(ui, &mut self.panes);
-        for op in self.ops.drain(..) {
-            self.dock.apply(op);
+        for operation in self.operations.drain(..) {
+            self.dock.apply(operation);
         }
     }
 }
@@ -114,7 +114,7 @@ impl DockTabs for Panes {
         ui.intern(tab.title())
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Vec2>) {
+    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt(("pane", tab.title()))
             .size((Sizing::FILL, Sizing::FILL))

@@ -7,10 +7,9 @@ fn multiline_enter_inserts_newline() {
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
     h.set_focus(ed_id);
-    {
-        let st = h.ui.state_or_default::<TextEditState>(ed_id);
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
-    }
+    });
     h.frame(multiline_editor(&mut buf));
     h.key(Key::Enter);
     h.frame(multiline_editor(&mut buf));
@@ -61,10 +60,7 @@ fn multiline_paste_keeps_newlines() {
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
     h.frame(multiline_editor(&mut buf));
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
@@ -82,15 +78,11 @@ fn multiline_selection_crosses_newline() {
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
     // Caret on line 1, column 3.
-    {
-        let st = h.ui.state_or_default::<TextEditState>(ed_id);
+    h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
-    }
-    h.frame(multiline_editor(&mut buf));
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
     });
+    h.frame(multiline_editor(&mut buf));
+    h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowDown);
     h.frame(multiline_editor(&mut buf));
     let st = h.state::<TextEditState>(ed_id).clone();

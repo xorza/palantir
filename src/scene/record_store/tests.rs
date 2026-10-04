@@ -2,7 +2,7 @@ use crate::internals::panic_probe;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::{Interp, Spread};
+use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
@@ -68,7 +68,7 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     let after_clear = RecordedGradient {
         axis: FillAxis::ZERO,
         kind: FillKind::linear(Spread::Reflect),
-        ramp: ramp.with_interp(Interp::Linear),
+        ramp: ramp.with_interpolation(Interpolation::Linear),
     };
     let after_clear_id = gradients.intern(7, after_clear.clone());
     assert_eq!(after_clear_id.0, 0);

@@ -1,11 +1,12 @@
 use super::InputQueue;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::pointer::PointerButton;
 use std::time::Duration;
 
-fn key(key: Key, text: KeyText, repeat: bool) -> InputEvent {
+fn key(key: Key, text: KeyText, repeat: bool) -> InputEvent<'static> {
     InputEvent::KeyDown {
         key,
         repeat,
@@ -14,13 +15,13 @@ fn key(key: Key, text: KeyText, repeat: bool) -> InputEvent {
     }
 }
 
-fn typed(c: char) -> InputEvent {
+fn typed(c: char) -> InputEvent<'static> {
     key(Key::Char(c), KeyText::from_char(c), false)
 }
 
 /// Admit `event` and note what it changes, as `InputState::apply`
 /// does when every press latches and every key reaches a reader.
-fn admit_and_apply(queue: &mut InputQueue, event: &InputEvent) -> bool {
+fn admit_and_apply(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
     if !queue.admits(event) {
         return false;
     }
@@ -41,7 +42,7 @@ fn admit_and_apply(queue: &mut InputQueue, event: &InputEvent) -> bool {
 fn a_frame_admits_one_change_per_button_and_one_command_key() {
     let left = PointerButton::Left;
     let right = PointerButton::Right;
-    let rows: &[(&str, &[InputEvent], &[bool])] = &[
+    let rows: &[(&str, &[InputEvent<'_>], &[bool])] = &[
         (
             "press then release of one button: the release waits",
             &[
@@ -150,4 +151,45 @@ fn held_events_replay_in_order_one_frame_at_a_time() {
         frames.push(frame);
     }
     assert_eq!(frames, [vec![1], vec![2], vec![3]], "arrival times kept");
+}
+
+/// A held IME event outlives the host's string: the queue copies its text
+/// and hands each event back its own, in order, across a refill that
+/// starts on an empty queue.
+#[test]
+fn a_held_ime_event_keeps_its_own_text() {
+    use crate::common::span::Span;
+
+    let mut queue = InputQueue::default();
+    for text in ["かな", "x"] {
+        let owned = String::from(text);
+        queue.defer(InputEvent::ImeCommit(&owned), Duration::ZERO);
+    }
+    let owned = String::from("abc");
+    queue.defer(
+        InputEvent::ImePreedit(ImePreedit {
+            text: &owned,
+            cursor: Some(Span::new(1, 1)),
+        }),
+        Duration::ZERO,
+    );
+    drop(owned);
+    let mut got = Vec::new();
+    while let Some(held) = queue.pop_admitted() {
+        let event = held.event.with_text(queue.text(held.text));
+        got.push(format!("{event:?}"));
+    }
+    assert_eq!(
+        got,
+        [
+            "ImeCommit(\"かな\")",
+            "ImeCommit(\"x\")",
+            "ImePreedit(ImePreedit { text: \"abc\", cursor: Some(Span { start: 1, len: 1 }) })",
+        ],
+    );
+    // Empty again, so the next hold starts the buffer over.
+    queue.defer(InputEvent::ImeCommit("z"), Duration::ZERO);
+    let held = queue.pop_admitted().expect("held");
+    assert_eq!(queue.text(held.text), "z");
+    assert_eq!(queue.text.len(), 1, "the buffer restarted rather than grew");
 }

@@ -6,6 +6,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::edit_state::{
     EditDelta, EditKind, EditParts, EditState, SelectionState,
@@ -60,7 +61,7 @@ impl<'a> Editor<'a> {
     ///
     /// `filter` is the field's own — the menu drains the same layer-wide
     /// stream the input pass does, so it owes the same
-    /// [`KeyFilter::accepts`] gate against double dispatch.
+    /// [`KeyFilter::takes_press`] gate against double dispatch.
     pub(super) fn show_menu(
         &mut self,
         ui: &mut Ui,
@@ -69,11 +70,11 @@ impl<'a> Editor<'a> {
     ) -> bool {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
-        ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
-            for press in ui.keyboard_events() {
-                let Some(keypress) = filter.accepts(*press) else {
+        ContextMenu::on(snapshot).show(ui, |ui, popup| {
+            for &keypress in ui.keyboard_events() {
+                if !filter.takes_press(keypress) {
                     continue;
-                };
+                }
                 if let Some(action) = EditAction::from_keypress(keypress) {
                     action.execute(self, &clipboard);
                     if EditAction::MENU.iter().any(|item| item.action == action) {
@@ -86,7 +87,7 @@ impl<'a> Editor<'a> {
             let has_text = self.has_text();
             for item in EditAction::MENU {
                 if item.separator_before {
-                    MenuItem::separator().show(ui);
+                    MenuSeparator::new().show(ui);
                 }
                 let enabled = match item.availability {
                     ActionAvailability::Always => true,

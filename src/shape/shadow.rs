@@ -32,14 +32,28 @@ impl ShadowShape {
 impl ShadowShape {
     /// Paint into `rect`, in owner-relative coords, instead of the
     /// owner's whole arranged rect.
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.local_rect = Some(rect);
         self
     }
 
     /// Corner radii of the shape casting the shadow.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every radius is a [length](crate::widget::domain::length) of at most
+    /// 65504, one f16 lane.
+    #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
-        self.corners = corners.into();
+        let corners = corners.into();
+        corners.validate();
+        self.corners = corners;
         self
     }
 }

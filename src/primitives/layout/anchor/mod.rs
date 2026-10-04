@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::AxisAlign;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::math::domain::{self, vec2};
 use glam::Vec2;
 
 /// Which side of the anchored rect the body sits on — outside it, not
@@ -69,7 +70,7 @@ impl AnchorAlign {
 
 /// Where a side layer lands next to the thing it belongs to.
 ///
-/// Hand one to [`LayerScope::anchored`](crate::LayerScope::anchored). The
+/// Hand one to [`LayerScope::anchor`](crate::LayerScope::anchor). The
 /// origin resolves *after* measure, from the body's own size against the
 /// surface: the body takes the side you asked for when it fits there,
 /// flips to the opposite side when it does not, and shifts back inside
@@ -102,33 +103,63 @@ impl Anchor {
     /// overlay raised at the pointer rather than off a widget's rect.
     /// Still flips and shifts, so a menu opened near the bottom edge
     /// comes up rather than off-screen.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn at_point(point: Vec2) -> Self {
+        let point = vec2::offset(point);
         Self::below(Rect::new(point.x, point.y, 0.0, 0.0))
     }
 
     /// Above `rect`, falling back to below it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn above(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::Above, AnchorAlign::Start, 0.0)
     }
 
     /// Below `rect`, falling back to above it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn below(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::Below, AnchorAlign::Start, 0.0)
     }
 
     /// Left of `rect`, falling back to its right.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn left_of(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::LeftOf, AnchorAlign::Start, 0.0)
     }
 
     /// Right of `rect`, falling back to its left.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn right_of(rect: Rect) -> Self {
+        rect.validate();
         Self::new(rect, AnchorSide::RightOf, AnchorAlign::Start, 0.0)
     }
 
     /// Where the body sits across the side it is anchored to —
     /// [`AnchorAlign::Start`] by default.
-    pub const fn align(mut self, align: AnchorAlign) -> Self {
+    pub const fn with_align(mut self, align: AnchorAlign) -> Self {
         self.align = align;
         self
     }
@@ -137,9 +168,14 @@ impl Anchor {
     ///
     /// Zero by default, because a dropdown meets the trigger it drops out
     /// of. An overlay that reads as a separate object — a tooltip — sets
-    /// its own.
-    pub const fn gap(mut self, px: f32) -> Self {
-        self.gap = px;
+    /// its own. `px`: a *length*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn with_gap(mut self, px: f32) -> Self {
+        self.gap = domain::length(px);
         self
     }
 

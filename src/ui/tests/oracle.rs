@@ -17,7 +17,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::layer::Layer;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
+use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::Shape;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
@@ -91,11 +91,11 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     if k.spin {
                         ui.add_shape_animated(
                             line,
-                            PaintAnim::turn(0.0, 1.0)
-                                .started_at(Duration::ZERO)
-                                .period(Duration::from_secs(4))
-                                .repeat(PaintRepeat::Forever)
-                                .curve(curves::linear),
+                            PaintAnimation::turn(0.0, 1.0)
+                                .with_started_at(Duration::ZERO)
+                                .with_period(Duration::from_secs(4))
+                                .with_repeat(PaintRepeat::Forever)
+                                .with_curve(curves::linear),
                         );
                     } else {
                         ui.add_shape(line);
@@ -159,10 +159,7 @@ fn run(script: &[Knobs]) {
     let mut h = UiHarness::new(SURFACE);
     let picture = h
         .ui()
-        .load_image(&Image::from_srgba8(
-            UVec2::new(100, 100),
-            vec![200; 100 * 100 * 4],
-        ))
+        .load_image(&Image::from_srgba8(UVec2::new(100, 100), vec![200; 100 * 100 * 4]).unwrap())
         .expect("a 100x100 image loads");
     let mut oracle = Oracle::default();
     for knobs in [Knobs::BASE, Knobs::BASE].iter().chain(script) {
@@ -266,10 +263,7 @@ fn resize_between_frames() {
     let mut h = UiHarness::new(SURFACE);
     let picture = h
         .ui()
-        .load_image(&Image::from_srgba8(
-            UVec2::new(100, 100),
-            vec![200; 100 * 100 * 4],
-        ))
+        .load_image(&Image::from_srgba8(UVec2::new(100, 100), vec![200; 100 * 100 * 4]).unwrap())
         .expect("a 100x100 image loads");
     let mut oracle = Oracle::default();
     for surface in [

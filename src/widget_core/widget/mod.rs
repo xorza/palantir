@@ -10,6 +10,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -84,6 +85,14 @@ impl Widget {
         Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
     }
 
+    /// Stack container along `axis`: [`Self::hstack`] for [`Axis::X`],
+    /// [`Self::vstack`] for [`Axis::Y`]. For code that picks the
+    /// direction at run time.
+    #[track_caller]
+    pub fn stack(axis: Axis) -> Self {
+        Self::new(NodeMode::Resolved(LayoutMode::Stack(axis)))
+    }
+
     /// Wrapping horizontal stack container for custom widgets.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
@@ -152,7 +161,7 @@ impl Widget {
     #[track_caller]
     fn new(mode: NodeMode) -> Self {
         Self {
-            ident: Ident::Auto(WidgetId::auto_stable()),
+            ident: Ident::Auto(WidgetId::auto()),
             node: Node::new(mode),
         }
     }
@@ -162,7 +171,7 @@ impl Widget {
     ///
     /// The step a widget takes before `record` when it needs its id
     /// first: to read last frame's state through [`Ui::response_for`]
-    /// or [`Ui::state_or_default`], to key an animation slot, or to derive
+    /// or [`Ui::with_state`], to key an animation slot, or to derive
     /// child ids with [`WidgetId::with`]. A widget that needs none of
     /// those never calls it — [`Self::record`] resolves on its own.
     ///
@@ -200,7 +209,7 @@ impl Widget {
     /// resolution, [`Self::record`], the body closure — needs
     /// `&mut Ui`, and a `Response` holds `&Ui` for its lazy cache.
     /// Owned state is what lets the probe outlive all of it and become
-    /// the widget's [`Response::eager`] at the end.
+    /// the widget's [`Response::new`] at the end.
     pub fn response(&mut self, ui: &mut Ui) -> ResponseState {
         let id = self.resolve(ui);
         let mut state = ui.response_for(id);
@@ -209,6 +218,22 @@ impl Widget {
         // by the fold rather than by the caller before it.
         state.merge_disabled(self.node.flags.is_disabled());
         state
+    }
+
+    /// Whether `shortcut` was pressed and granted to this widget — read as
+    /// the widget itself, for a widget that reads its keys before it
+    /// opens its node. Resolves the identity if nothing did yet.
+    ///
+    /// [`Ui::key_pressed`] reads as the place a record has reached, which
+    /// before this node opens is the node around it. A widget that
+    /// declares an [`input_scope`](Configure::input_scope) is granted the
+    /// keys of its classes while it holds focus, so that read misses them
+    /// whenever another scope encloses it — a popup, an application root.
+    /// This one does not. Like [`Ui::key_pressed`], it keeps the chord
+    /// subscribed for the wake gate.
+    pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool {
+        let id = self.resolve(ui);
+        ui.key_pressed_as(id, shortcut)
     }
 
     /// Open this widget's node, run its body, and close it. Resolves the
@@ -244,7 +269,7 @@ impl Widget {
     /// A convenience over the opener, not a second way to open: a widget
     /// that acts on input needs the state *before* it records — to pick
     /// chrome, to apply a click to a bound value — so it opens with
-    /// [`Self::response`] and closes with [`Response::eager`], with the
+    /// [`Self::response`] and closes with [`Response::new`], with the
     /// probe in hand throughout — including `ToggleChrome::record_row`,
     /// which takes it once on behalf of the three toggles. There is
     /// deliberately no helper for it: the response comes off the widget
@@ -383,6 +408,26 @@ impl Widget {
         self.node.flags.is_focusable()
     }
 
+    /// Whether the caller kept this widget a Tab stop. See
+    /// [`Configure::tab_stop`].
+    #[inline]
+    pub const fn authored_tab_stop(&self) -> bool {
+        self.node.flags.is_tab_stop()
+    }
+
+    /// The axis the caller made this widget an arrow group along, or
+    /// `None`. See [`Configure::arrow_focus`].
+    #[inline]
+    pub const fn authored_arrow_focus(&self) -> Option<Axis> {
+        self.node.flags.arrow_focus()
+    }
+
+    /// The caller's Tab order key. See [`Configure::tab_index`].
+    #[inline]
+    pub const fn authored_tab_index(&self) -> i16 {
+        self.node.tab_index
+    }
+
     /// The input scope the caller declared, empty where they declared
     /// none. See [`Configure::input_scope`].
     #[inline]
@@ -435,26 +480,6 @@ impl Widget {
     pub(crate) fn scrollbar_def(&mut self, ui: &mut Ui, def: ScrollbarsDef) {
         let id = ui.push_scrollbars_def(def);
         self.node.set_mode(LayoutMode::Scrollbars(id));
-    }
-
-    /// Take over `from`'s placement — where it sits in its parent, and
-    /// nothing about what it contains, how it behaves, or who it is.
-    ///
-    /// For a widget that hands its slot to a second one partway through
-    /// a gesture: [`crate::DragValue`] swaps its scrub chip for an inline
-    /// [`crate::TextEdit`] on click, and without this the field visibly
-    /// moves and resizes on the edit frame, because margin, alignment,
-    /// grid placement and canvas position all go with the chip.
-    ///
-    /// And for a widget that records as two nodes rather than one:
-    /// [`crate::Scroll`] splits the caller's widget into an outer box
-    /// and an inner viewport, and the placement is the outer one's.
-    ///
-    /// Margin is the one `Option`: `None` there means the caller stated
-    /// no opinion, so the adopting widget keeps its own themed default
-    /// rather than taking a zero.
-    pub fn adopt_placement(&mut self, from: &Widget) {
-        self.node.adopt_placement(from.node);
     }
 
     /// Identity's half of "explicit wins, the theme fills in the rest".

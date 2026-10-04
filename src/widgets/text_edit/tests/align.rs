@@ -298,7 +298,7 @@ fn caret_tracks_aligned_text() {
 fn empty_focused_caret_vcenters_against_one_line() {
     // Bug fix pin: empty buffer's measured height is 0; if the widget
     // used it directly the caret would sit below center. The widget
-    // floors measured.h at `line_height_px`, so VAlign::Center
+    // floors measured.h at `line_height`, so VAlign::Center
     // centers the caret against a full virtual line.
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::new();
@@ -402,10 +402,7 @@ fn selection_rects_offset_matches_text() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click_at(Vec2::new(260.0, 20.0));
     h.key(Key::Home);
-    h.set_modifiers(Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowRight);
     h.key(Key::ArrowRight);
     h.set_modifiers(Modifiers::NONE);
@@ -524,7 +521,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 }
 
 /// **A field placed by
-/// [`TextEditTheme::corner_centring`](crate::TextEditTheme::corner_centring)
+/// [`TextEditTheme::corner_centering`](crate::TextEditTheme::corner_centering)
 /// lands its glyphs on the point it was asked for.**
 ///
 /// The claim an in-place edit rests on: something is drawn, and a field stands
@@ -552,7 +549,7 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     let at = Vec2::new(200.0, 40.0);
     // The theme the field below will be shown with, since it asks for none of
     // its own — so the two cannot be answering about different fields.
-    let corner = h.ui.theme().text_edit.corner_centring(text, at);
+    let corner = h.ui.theme().text_edit.corner_centering(text, at);
 
     let mut buf = String::from("abcd");
     let mut node: Option<NodeId> = None;

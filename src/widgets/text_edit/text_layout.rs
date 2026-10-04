@@ -80,10 +80,7 @@ impl TextLayout {
         } else {
             self.caret_room
         };
-        Size::new(
-            display.w + room,
-            display.h.max(self.ctx.font.line_height_px),
-        )
+        Size::new(display.w + room, display.h.max(self.ctx.font.line_height))
     }
 
     /// Room a single line keeps for the caret past its glyphs, at both

@@ -3,14 +3,16 @@
 
 pub(crate) mod split_half;
 
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::math::approx;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -22,9 +24,9 @@ use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::cursor_icon::CursorIcon;
 
-/// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
-/// the panes side by side (vertical divider bar); [`Splitter::vertical`]
-/// stacks them (horizontal bar). The caller owns the split as `ratio` —
+/// Two panes split by a draggable divider. [`Splitter::row`] lays the panes
+/// side by side (vertical divider bar); [`Splitter::column`] stacks them
+/// (horizontal bar) — the words [`SplitDirection`](crate::SplitDirection) uses. The caller owns the split as `ratio` —
 /// the first pane's share of the free space, `0..1`. While dragging,
 /// the current pointer target feeds layout immediately; the widget writes
 /// the resulting content-constrained share back on the following record.
@@ -62,14 +64,14 @@ impl<'a> Splitter<'a> {
     /// Side-by-side panes with a vertical divider bar; `ratio` is the
     /// left pane's share.
     #[track_caller]
-    pub fn horizontal(ratio: &'a mut f32) -> Self {
+    pub fn row(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::X)
     }
 
     /// Stacked panes with a horizontal divider bar; `ratio` is the top
     /// pane's share.
     #[track_caller]
-    pub fn vertical(ratio: &'a mut f32) -> Self {
+    pub fn column(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::Y)
     }
 
@@ -88,10 +90,15 @@ impl<'a> Splitter<'a> {
         }
     }
 
-    /// Floor either pane's split-axis extent at `px` while dragging.
-    /// Default `0.0` (panes can collapse to nothing).
+    /// Floor either pane's split-axis extent at `px`, a *length*, while
+    /// dragging. Default `0.0` (panes can collapse to nothing).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn min_pane(mut self, px: f32) -> Self {
-        self.min_pane = px.max(0.0);
+        self.min_pane = domain::length(px);
         self
     }
 
@@ -126,8 +133,8 @@ impl<'a> Splitter<'a> {
         let input = *self.ratio;
 
         let theme = self.style.unwrap_or(&ui.theme().splitter);
-        let grab_thickness = theme.grab_thickness.themed_length(1.0);
-        let rule_thickness = theme.rule_thickness.themed_length(0.0);
+        let grab_thickness = domain::length_at_least(theme.grab_thickness, 1.0);
+        let rule_thickness = domain::length_at_least(theme.rule_thickness, 0.0);
         let rule_color = theme.rule;
         let hovered_color = theme.hovered;
         let active_color = theme.active;
@@ -137,6 +144,14 @@ impl<'a> Splitter<'a> {
         // is this frame's.
         let divider_id = id.with("divider");
         let divider = ui.response_for(divider_id);
+        // A Tab stop taking the arrows, Home and End — the `CARET` class —
+        // as WAI-ARIA's window splitter does. Built here so it reads its
+        // keys as itself before the grid around it records.
+        let mut divider_widget = Widget::leaf()
+            .id(divider_id)
+            .sense(Sense::DRAG)
+            .focusable(true)
+            .input_scope(KeyFilter::CARET);
         let first_id = id.with("first");
         let second_id = id.with("second");
         let axis = self.axis;
@@ -155,7 +170,7 @@ impl<'a> Splitter<'a> {
         if !response.disabled {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
-            if divider.left.drag.dragging()
+            if divider.left.drag.is_live()
                 && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
             {
                 layout_ratio = pointer_to_ratio(
@@ -171,11 +186,44 @@ impl<'a> Splitter<'a> {
                 resizing = true;
                 reset = true;
             }
+            // The keys of WAI-ARIA's window splitter on a focused divider:
+            // the arrows along the split move the seam a step, Home and End
+            // to either end — each placed through the drag's own mapping,
+            // so the keyboard obeys the same floors, and each committed on
+            // the next sync, as a reset is.
+            if ui.is_focus_within(divider_id)
+                && let Some(rect) = response.layout_rect
+            {
+                let extent = axis.main(rect.size);
+                let seam = ratio * (extent - rule_thickness) + rule_thickness * 0.5;
+                let (less, more) = match axis {
+                    Axis::X => (Key::ArrowLeft, Key::ArrowRight),
+                    Axis::Y => (Key::ArrowUp, Key::ArrowDown),
+                };
+                let target = [
+                    (less, seam - KEY_STEP),
+                    (more, seam + KEY_STEP),
+                    (Key::Home, 0.0),
+                    (Key::End, extent),
+                ]
+                .into_iter()
+                // Every chord sampled: `key_pressed` also keeps it
+                // subscribed for the wake gate.
+                .fold(None, |target, (key, pos)| {
+                    let pressed = divider_widget.key_pressed(ui, Shortcut::key(key));
+                    if pressed { Some(pos) } else { target }
+                });
+                if let Some(pos) = target {
+                    layout_ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
+                    resizing = true;
+                    reset = true;
+                }
+            }
         }
         *self.ratio = ratio;
         // Approximate, because a ratio re-derived from arranged extents
         // carries last-bit noise an exact compare would report every frame.
-        let changed = !approx::approx_zero(ratio - input);
+        let changed = !domain::is_approx_zero(ratio - input);
         let synced = synced_ratio.is_some();
         let committed =
             !response.disabled && (divider.left.drag.stopped() || (state.commit_on_sync && synced));
@@ -188,10 +236,10 @@ impl<'a> Splitter<'a> {
             commit_on_sync: reset || (state.commit_on_sync && !synced),
         };
         if next != state {
-            *ui.state_or_default::<SplitterState>(id) = next;
+            ui.with_state::<SplitterState, _>(id, |_, s| *s = next);
         }
 
-        let bar_fill = if divider.left.drag.dragging() {
+        let bar_fill = if divider.left.drag.is_live() {
             Some(active_color)
         } else if divider.hovered() && !response.disabled {
             Some(hovered_color)
@@ -209,9 +257,9 @@ impl<'a> Splitter<'a> {
         let rule_bg = Background::fill(rule_color);
 
         let main_tracks = [
-            Track::new(Sizing::share(layout_ratio)),
+            Track::fill(layout_ratio),
             Track::fixed(rule_thickness),
-            Track::new(Sizing::share(1.0 - layout_ratio)),
+            Track::fill(1.0 - layout_ratio),
         ];
         let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
@@ -233,9 +281,7 @@ impl<'a> Splitter<'a> {
             // The grab bar overhangs the seam on the split axis only, so
             // its inset is main-axis with nothing across.
             let inset = (rule_thickness - grab_thickness) * 0.5;
-            Widget::leaf()
-                .id(divider_id)
-                .sense(Sense::DRAG)
+            divider_widget
                 .size((Sizing::FILL, Sizing::FILL))
                 .margin(axis.compose_spacing(inset, 0.0))
                 .grid_cell(GridCell::along(axis, 1))
@@ -243,7 +289,7 @@ impl<'a> Splitter<'a> {
         });
 
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }
@@ -281,16 +327,20 @@ fn arranged_pane_ratio(
     let first_extent = axis.main(first.size);
     let second_extent = axis.main(second.size);
     let span = first_extent + second_extent;
-    (!approx::paints_nothing(span)).then(|| sanitize_ratio(first_extent / span))
+    (!domain::is_invisible(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
 /// A caller-supplied ratio, made safe to use as a `Fill` weight. The
 /// same screen `Sizing::split` applies, under this widget's own neutral:
 /// a splitter with no ratio to honour opens centred, where a progress
 /// bar with none reads empty.
-fn sanitize_ratio(r: f32) -> f32 {
-    r.unit_fraction_or(0.5)
+const fn sanitize_ratio(r: f32) -> f32 {
+    domain::fraction_or(r, 0.5)
 }
+
+/// How far one arrow press moves the seam, in logical px: a step the eye
+/// sees at any size, and fine enough that a few presses reach any place.
+const KEY_STEP: f32 = 10.0;
 
 /// Map a container-local pointer coordinate on the split axis to the
 /// first pane's share of the free space (`extent − reserved`, where
@@ -300,14 +350,13 @@ fn sanitize_ratio(r: f32) -> f32 {
 /// extents pin to `0.5`.
 fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
     let span = extent - reserved;
-    if approx::paints_nothing(span) {
+    if domain::is_invisible(span) {
         return 0.5;
     }
     // `floor <= 0.5` by construction, so the clamp can't invert even
     // when `2 * min_pane > span` — it collapses to the centre instead.
     let floor = (min_pane / span).min(0.5);
-    pos.band_fraction(extent, reserved)
-        .clamp(floor, 1.0 - floor)
+    domain::band_fraction(pos, extent, reserved).clamp(floor, 1.0 - floor)
 }
 
 #[cfg(test)]

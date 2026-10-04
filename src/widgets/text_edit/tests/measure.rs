@@ -150,9 +150,10 @@ fn stable_editor_uses_one_direct_layout_probe() {
         h.prime(2, &mut record);
         if selected {
             h.set_focus(id);
-            let state = h.ui.state_or_default::<TextEditState>(id);
-            state.edit.selection = Some(0);
-            state.edit.caret = text_len;
+            h.ui.with_state::<TextEditState, _>(id, |_, state| {
+                state.edit.selection = Some(0);
+                state.edit.caret = text_len;
+            });
             h.frame(&mut record);
         }
         let before = h.ui.shaper().measure_calls();
@@ -162,5 +163,55 @@ fn stable_editor_uses_one_direct_layout_probe() {
             1,
             "multiline={multiline}, selected={selected}: measurement, caret, and selection must share one direct layout probe",
         );
+    }
+}
+
+/// The placeholder takes every form of text a widget takes, and each one
+/// measures the same: borrowed, owned, interned this pass, and `fmt!`
+/// output. The interned form is read back out of the arena while the
+/// field still measures, which is the case a plain `&str` never meets.
+#[test]
+fn every_text_form_measures_the_same_placeholder() {
+    use crate::primitives::text::text_input::TextInput;
+
+    type Form = fn(&mut Ui) -> TextInput<'static>;
+    let forms: [(&str, Form); 4] = [
+        ("borrowed", |_| PLACEHOLDER.into()),
+        ("owned", |_| PLACEHOLDER.to_owned().into()),
+        ("interned", |ui| ui.intern(PLACEHOLDER).into()),
+        ("fmt", |ui| {
+            crate::fmt!(ui, "type {} here", "something").into()
+        }),
+    ];
+    let mut widths = Vec::new();
+    for (label, form) in forms {
+        let mut h = UiHarness::new(SIZE);
+        let mut buf = String::new();
+        let mut node = None;
+        for _ in 0..2 {
+            h.frame(|ui| {
+                Panel::hstack()
+                    .auto_id()
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        let placeholder = form(ui);
+                        node = Some(
+                            TextEdit::new(&mut buf)
+                                .id(WidgetId::from_hash("editor"))
+                                .placeholder(placeholder)
+                                .size((Sizing::HUG, Sizing::HUG))
+                                .show(ui)
+                                .response
+                                .node(),
+                        );
+                    });
+            });
+        }
+        widths.push((label, h.ui.arranged_rect(Layer::Main, node.unwrap()).size.w));
+    }
+    let borrowed = widths[0].1;
+    assert!(borrowed > 0.0, "premise: the placeholder has width");
+    for (label, w) in widths {
+        assert_eq!(w, borrowed, "{label}");
     }
 }

@@ -38,7 +38,7 @@ fn the_hue_bar_writes_only_the_hue() {
     let id = WidgetId::from_hash("strip-hue-writes");
     let mut h = harness();
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
-    let (sat, val) = (coords.sat(), coords.val());
+    let (sat, val) = (coords.saturation(), coords.value());
     h.frame(|ui| {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
@@ -47,8 +47,8 @@ fn the_hue_bar_writes_only_the_hue() {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
     assert_eq!(coords.hue(), 0.75, "three quarters along the bar");
-    assert_eq!(coords.sat(), sat);
-    assert_eq!(coords.val(), val);
+    assert_eq!(coords.saturation(), sat);
+    assert_eq!(coords.value(), val);
     assert_eq!(coords.model(), ColorModel::Okhsv);
 }
 
@@ -197,4 +197,22 @@ fn page_keys_step_the_alpha_bar() {
         show(&mut h, &mut color);
         assert_eq!(color.a, alpha, "{key:?}");
     }
+}
+
+/// The bar's surface — its texture and the image behind it — lives on the
+/// bar's own id, so it leaves with the bar rather than outliving it.
+#[test]
+fn the_surface_leaves_with_the_bar() {
+    use crate::widgets::color_surface::ColorSurface;
+
+    let id = WidgetId::from_hash("leaving-bar");
+    let mut coords = ColorCoords::default();
+    let mut h = harness();
+    h.frame(|ui| {
+        ColorStrip::for_hue(&mut coords).id(id).show(ui);
+    });
+    let surface = |h: &UiHarness| h.ui.state::<ColorSurface<StripPaint>>(id).is_some();
+    assert!(surface(&h), "built while the bar records");
+    h.frame(|_| {});
+    assert!(!surface(&h), "swept with the bar");
 }

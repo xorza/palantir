@@ -1,5 +1,6 @@
 //! Which rows reach the hit index, in what order, carrying which rect.
 
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -9,6 +10,76 @@ use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
+
+/// The Tab stop rows: a focusable node that kept its stop and is neither
+/// disabled nor hidden, in record order, with its root and its index; and
+/// one root row per tree root, the popup's included.
+#[test]
+fn tab_stops_are_live_focusable_stops_in_record_order() {
+    use crate::cascade::entry::TabStopRow;
+    use crate::widgets::block::Block;
+
+    let first = WidgetId::from_hash("first");
+    let indexed = WidgetId::from_hash("indexed");
+    let in_popup = WidgetId::from_hash("in-popup");
+    let mut h = UiHarness::new(UVec2::splat(100));
+    h.frame(|ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Block::new().auto_id().show(ui);
+            Block::new().id(first).focusable(true).show(ui);
+            Block::new()
+                .auto_id()
+                .focusable(true)
+                .tab_stop(false)
+                .show(ui);
+            Block::new()
+                .auto_id()
+                .focusable(true)
+                .disabled(true)
+                .show(ui);
+            Block::new().auto_id().focusable(true).hidden().show(ui);
+            Block::new()
+                .id(indexed)
+                .focusable(true)
+                .tab_index(-3)
+                .show(ui);
+        });
+        ui.layer(Layer::Popup).show(|ui| {
+            Block::new().id(in_popup).focusable(true).show(ui);
+        });
+    });
+
+    // The frame records under the host's own `Main` root, so both root
+    // ids are read back rather than named: what is asserted is one root
+    // per tree, in record order, and the stops naming their own.
+    let cascade = h.ui.cascade();
+    let layers: Vec<Layer> = cascade.roots.iter().map(|row| row.layer).collect();
+    assert_eq!(layers, [Layer::Main, Layer::Popup]);
+    let [main_root, popup_root] = [0, 1].map(|i| cascade.roots[i].id);
+    assert_eq!(
+        cascade.tab_stops,
+        [
+            TabStopRow {
+                layer: Layer::Main,
+                root: main_root,
+                id: first,
+                index: 0,
+            },
+            TabStopRow {
+                layer: Layer::Main,
+                root: main_root,
+                id: indexed,
+                index: -3,
+            },
+            TabStopRow {
+                layer: Layer::Popup,
+                root: popup_root,
+                id: in_popup,
+                index: 0,
+            },
+        ],
+    );
+}
 
 #[test]
 fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
@@ -84,7 +155,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     );
     let targets = h.ui.cascade().hit_test_targets(pos);
     assert_eq!(targets.hover, Some(disabled));
-    assert_eq!(targets.scroll, Some(popup_scroll));
+    assert_eq!(targets.scroll, ScrollTargets::both(popup_scroll));
     assert_eq!(targets.pinch, None);
 
     h.frame(|ui| {

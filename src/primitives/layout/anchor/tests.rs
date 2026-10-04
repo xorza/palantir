@@ -74,7 +74,7 @@ fn cross_axis_alignment_uses_the_full_rect() {
         (AnchorAlign::End, 140.0),
     ];
     for (align, expected_x) in cases {
-        let anchor = Anchor::below(RECT).align(align);
+        let anchor = Anchor::below(RECT).with_align(align);
         assert_eq!(
             anchor.resolve(BODY, BOUNDS),
             Vec2::new(expected_x, 160.0),

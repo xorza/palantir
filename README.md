@@ -91,6 +91,13 @@ https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
   icon atlas, so they stay crisp at any scale factor and cost nothing until
   first drawn. Gradients and filters included. A single-paint icon takes a
   tint whole; a colour one keeps its palette and takes the tint's alpha.
+- **Keyboard all the way** — `Tab` / `Shift+Tab` walk every interactive
+  widget, an open dialog or menu keeps them inside itself and gives focus
+  back when it closes, the arrows walk menus and any `arrow_focus` group,
+  and a focus ring shows only when focus came from the keyboard. Widgets
+  take the keys WAI-ARIA gives their role.
+- **IME text** — an input method composes inline in a `TextEdit`,
+  underlined at the caret, and its candidate list follows the caret.
 - **Headless test harness** — `UiHarness` runs the real UI with no window
   and no GPU. Click, drag, type, scroll and control the clock, then assert
   on what the frame did. See [Headless UI tests](#headless-ui-tests).
@@ -105,8 +112,6 @@ https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
 Pre-1.0 — these are known gaps, not design rejections:
 
 - **Accessibility** — no AccessKit / screen-reader support yet.
-- **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
-  `Ui::set_focus`), but `Tab` / `Shift+Tab` cycling does not.
 - **Rich text** — one family / size / colour per `Text`; no inline spans.
 - **Visual caret motion in bidirectional text** — `TextEdit`'s arrow keys
   step graphemes in logical order, so inside a right-to-left run `←` moves

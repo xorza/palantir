@@ -43,7 +43,7 @@ pub enum KeyClass {
     /// the application.
     Cycle,
     /// Escape alone. Its own class because cancel is hierarchical — the
-    /// innermost thing *that can be cancelled* should be. Which is not
+    /// innermost thing *that can be canceled* should be. Which is not
     /// always the innermost scope: a field that filters its container
     /// rather than editing a value has nothing of its own to cancel, and
     /// drops the class so the container gets it
@@ -115,13 +115,13 @@ impl KeyClass {
             | Key::Home
             | Key::End => Self::Caret,
             Key::PageUp | Key::PageDown => Self::Page,
-            Key::Tab if press.mods.any_command() => Self::Cycle,
+            Key::Tab if press.mods.has_command() => Self::Cycle,
             Key::Tab => Self::Focus,
             Key::Backspace | Key::Delete => Self::Edit,
             // A command modifier is what turns a typed key into a chord:
             // bare `z` is Text, Ctrl+Z is Edit. Shift is not a command —
             // Shift+Z is still typing.
-            Key::Char(_) | Key::Enter if !press.mods.any_command() => Self::Text,
+            Key::Char(_) | Key::Enter if !press.mods.has_command() => Self::Text,
             Key::Char(_) if is_edit_chord(press) => Self::Edit,
             Key::Char(_) | Key::Enter => Self::Accel,
             Key::F1
@@ -147,7 +147,7 @@ flag_set! {
     /// A press walks the active scope path deepest-first and is granted
     /// to the first scope whose filter contains its [`KeyClass`]; scopes
     /// further out never see it.
-    pub struct KeyFilter {
+    pub struct KeyFilter: packed {
         /// Takes [`KeyClass::Text`].
         const TEXT   = 1 << 0;
         /// Takes [`KeyClass::Edit`].
@@ -168,11 +168,6 @@ flag_set! {
 }
 
 impl KeyFilter {
-    /// Every class — an overlay that owns the keyboard outright. What
-    /// `Popup` and `Modal` declare: a whole-stream claim, expressed as a
-    /// filter rather than as a separate capture mechanism.
-    pub const ALL: Self = Self::all();
-
     /// A focused text field.
     ///
     /// `ACCEL` is **absent**, deliberately: `Ctrl+S` and `Ctrl+R` fall
@@ -201,7 +196,7 @@ impl KeyFilter {
         })
     }
 
-    /// `press` back when this filter takes its class, `None` otherwise.
+    /// Whether this filter takes `press`'s class.
     ///
     /// **The gate a reader applies to the stream it drains**, not only to
     /// the scope it declares. The stream is the whole layer's, so a field
@@ -214,11 +209,11 @@ impl KeyFilter {
     /// One place rather than one per drain: a field's key pass and its
     /// context menu read the same stream through the same filter.
     #[inline]
-    pub fn accepts(self, press: KeyPress) -> Option<KeyPress> {
-        self.takes(KeyClass::of(press)).then_some(press)
+    pub fn takes_press(self, press: KeyPress) -> bool {
+        self.takes(KeyClass::of(press))
     }
 
-    /// A scope declaring nothing is not a scope: [`Self::empty`] is how
+    /// A scope declaring nothing is not a scope: [`Self::NONE`] is how
     /// "this node is not a scope" is stored, which is what lets the
     /// filter live in spare [`crate::scene::node::node_flags::NodeFlags`]
     /// bits without a separate presence flag.
@@ -235,24 +230,24 @@ mod tests {
     use crate::input::keyboard::key_press::KeyPress;
     use crate::input::keyboard::modifiers::Modifiers;
 
-    /// `accepts` is `takes` over a press: it classifies the press the way
+    /// `takes_press` is `takes` over a press: it classifies the press the way
     /// [`KeyClass::of`] does, so one gate serves every reader of the
     /// stream.
     #[test]
-    fn accepts_gates_the_stream_on_the_declared_classes() {
+    fn takes_press_gates_the_stream_on_the_declared_classes() {
         let field = KeyFilter::TEXT_FIELD;
         let typed = KeyPress::with(Key::Char('a'), Modifiers::default());
         let escape = KeyPress::with(Key::Escape, Modifiers::default());
 
-        assert_eq!(field.accepts(typed), Some(typed), "a field takes text");
-        assert_eq!(field.accepts(escape), Some(escape), "and Escape, to cancel");
+        assert!(field.takes_press(typed), "a field takes text");
+        assert!(field.takes_press(escape), "and Escape, to cancel");
 
         // Dropping one class drops exactly that class — the shape
         // `TextEdit::escape_falls_through` produces, and the reason its
         // key pass and its context menu apply the same filter.
         let yields_escape = field.difference(KeyFilter::ESCAPE);
-        assert_eq!(yields_escape.accepts(escape), None);
-        assert_eq!(yields_escape.accepts(typed), Some(typed));
+        assert!(!yields_escape.takes_press(escape));
+        assert!(yields_escape.takes_press(typed));
 
         // `ACCEL` is out of `TEXT_FIELD`, so an application chord walks
         // past a focused field while the bare key it shares still types.
@@ -264,9 +259,9 @@ mod tests {
             },
         );
         assert_eq!(KeyClass::of(save), KeyClass::Accel);
-        assert_eq!(field.accepts(save), None);
+        assert!(!field.takes_press(save));
         let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
-        assert_eq!(field.accepts(shifted), Some(shifted));
+        assert!(field.takes_press(shifted));
     }
 
     /// The four navigation classes, and which of them a text field takes.
@@ -276,16 +271,10 @@ mod tests {
     #[test]
     fn navigation_keys_split_four_ways() {
         let none = Modifiers::NONE;
-        let shift = Modifiers {
-            shift: true,
-            ..none
-        };
-        let ctrl = Modifiers { ctrl: true, ..none };
-        let ctrl_shift = Modifiers {
-            shift: true,
-            ..ctrl
-        };
-        let alt = Modifiers { alt: true, ..none };
+        let shift = Modifiers::SHIFT;
+        let ctrl = Modifiers::CTRL;
+        let ctrl_shift = Modifiers::CTRL_SHIFT;
+        let alt = Modifiers::ALT;
         let mac_ctrl = Modifiers {
             mac_ctrl: true,
             ..none
@@ -310,7 +299,7 @@ mod tests {
             let press = KeyPress::with(key, mods);
             assert_eq!(KeyClass::of(press), class, "{key:?} under {mods:?}");
             assert_eq!(
-                KeyFilter::TEXT_FIELD.accepts(press).is_some(),
+                KeyFilter::TEXT_FIELD.takes_press(press),
                 field_takes,
                 "{key:?} under {mods:?}",
             );

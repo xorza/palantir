@@ -11,8 +11,8 @@ mod view_target;
 
 use crate::common::tracy;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
-use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::device::gpu_frame_context::GpuFrameContext;
+use crate::gpu::device::gpu_init_context::GpuInitContext;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::resource::gpu_view_targets::view_target::{AllocatedTarget, ViewTarget};
 use crate::gpu::resource::image_binding::ImageBinding;
@@ -82,7 +82,7 @@ impl GpuViewTargets {
             if !target.initialized {
                 tracy::zone!("GpuView::init");
                 debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
-                paint.init(&GpuInitCtx {
+                paint.init(&GpuInitContext {
                     device: ctx.device,
                     target_format: TARGET_FORMAT,
                     text,
@@ -95,14 +95,14 @@ impl GpuViewTargets {
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
             tracy::zone!("GpuView::paint");
             debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
-            paint.paint(&mut GpuFrameCtx {
+            paint.paint(&mut GpuFrameContext {
                 device: ctx.device,
                 queue: ctx.queue,
                 encoder: ctx.encoder,
                 target: &target.view,
-                size_px: draw.used,
-                full_px: draw.full,
-                offset_px: draw.offset,
+                physical_size: draw.used,
+                physical_full_size: draw.full,
+                physical_offset: draw.offset,
                 display_scale,
                 raster_scale: draw.raster_scale,
                 dt,
@@ -169,7 +169,7 @@ impl GpuViewTargets {
 #[cfg(test)]
 mod tests {
     use crate::gpu::device::gpu_ctx::GpuCtx;
-    use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
+    use crate::gpu::device::gpu_frame_context::GpuFrameContext;
     use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
     use crate::gpu::resource::image_binding::ImageBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -190,7 +190,7 @@ mod tests {
     struct CountingPaint(Rc<Cell<u32>>);
 
     impl GpuPaint for CountingPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {
+        fn paint(&mut self, _ctx: &mut GpuFrameContext<'_>) {
             self.0.set(self.0.get() + 1);
         }
     }

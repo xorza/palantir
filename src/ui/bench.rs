@@ -383,8 +383,6 @@ fn report_write_stats(surface: &Surface) {
         let mut state = FrameFixture::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
-            use strum::IntoEnumIterator;
-
             mutate(&mut state, frame);
             let _ = WriteStats::take();
             let target = &targets[frame % targets.len()];
@@ -399,9 +397,10 @@ fn report_write_stats(surface: &Surface) {
             // previous one.
             g.poll();
             let stats = host.gpu_pass_stats();
-            let gpu = stats
-                .last_pass_ms()
-                .map_or_else(|| "  n/a   ".into(), |ms| format!("{ms:>5.2} ms"));
+            let gpu = stats.last_pass().map_or_else(
+                || "  n/a   ".into(),
+                |d| format!("{:>5.2} ms", d.as_secs_f64() * 1e3),
+            );
             eprintln!(
                 "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}",
                 s.texture_calls, s.texture_bytes,
@@ -410,9 +409,10 @@ fn report_write_stats(surface: &Surface) {
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
             // when at least one value resolved, so adapters that lack
             // the feature stay quiet.
-            let per_kind: Vec<String> = BatchKind::iter()
-                .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))
-                .map(|(k, ms)| format!("{}={ms:.2}", k.label()))
+            let per_kind: Vec<String> = BatchKind::ALL
+                .into_iter()
+                .filter_map(|k| stats.last_kind(k).map(|d| (k, d)))
+                .map(|(k, d)| format!("{}={:.2}", k.label(), d.as_secs_f64() * 1e3))
                 .collect();
             if !per_kind.is_empty() {
                 eprintln!("           kinds: {}", per_kind.join(" "));

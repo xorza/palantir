@@ -5,7 +5,6 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
-use glam::Vec2;
 
 /// Per-corner radii, packed as four f16 lanes in a `u64` (8 bytes).
 ///
@@ -28,6 +27,21 @@ pub struct Corners(F16x4);
 f16x4_lanes!(Corners, [tl, tr, br, bl]);
 
 impl Corners {
+    /// Panics unless every radius is a [length](crate::widget::domain::length) the f16
+    /// lanes hold, at most 65504 — the check a radius faces where it
+    /// enters a shape or a node, under the rule a theme file's radius is
+    /// read by. A larger one packed to infinity, so the length rule's
+    /// "finite" would blame a value the caller never passed.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(self) {
+        assert!(
+            !self.0.any_lane_non_finite() && !self.0.any_lane_negative(),
+            "{}",
+            <Self as LaneCodec>::LANE_RULE,
+        );
+    }
+
     /// One radius on all four corners.
     #[inline]
     pub fn all(r: f32) -> Self {
@@ -36,8 +50,13 @@ impl Corners {
 
     /// Four radii, clockwise from the top left.
     #[inline]
-    pub fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
-        Self(F16x4::from_lanes([tl, tr, br, bl]))
+    pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
+        Self(F16x4::from_lanes([
+            top_left,
+            top_right,
+            bottom_right,
+            bottom_left,
+        ]))
     }
 
     /// Round the top edge only — `tl == tr == r`, `br == bl == 0`.
@@ -64,29 +83,11 @@ impl Corners {
         Self(F16x4::from_lanes([0.0, r, r, 0.0]))
     }
 
-    /// CSS-style `[top, bottom]` shorthand.
-    #[inline]
-    pub fn top_bottom(top: f32, bottom: f32) -> Self {
-        Self(F16x4::from_lanes([top, top, bottom, bottom]))
-    }
-
-    /// Round the `tl`/`br` diagonal pair (e.g. asymmetric chat bubble).
-    #[inline]
-    pub fn diag_main(r: f32) -> Self {
-        Self(F16x4::from_lanes([r, 0.0, r, 0.0]))
-    }
-
-    /// Round the `tr`/`bl` diagonal pair.
-    #[inline]
-    pub fn diag_anti(r: f32) -> Self {
-        Self(F16x4::from_lanes([0.0, r, 0.0, r]))
-    }
-
-    /// Every radius multiplied by `scale` — what carries a logical
+    /// Every radius multiplied by `factor` — what carries a logical
     /// radius into physical pixels at compose time.
     #[inline]
-    pub fn scaled_by(self, scale: f32) -> Self {
-        Self(self.0.scaled(scale))
+    pub fn scaled_by(self, factor: f32) -> Self {
+        Self(self.0.scaled(factor))
     }
 
     /// The radii a box of `size` physical px is drawn with: every radius
@@ -118,7 +119,7 @@ impl Corners {
         .into_iter()
         .filter(|&(_, sum)| sum > 0.0)
         .fold(1.0_f32, |f, (side, sum)| f.min(side.max(0.0) / sum));
-        Self::from_array(radii.map(|r| r * f))
+        Self(F16x4::from_lanes(radii.map(|r| r * f)))
     }
 
     /// True when every corner is within UI epsilon of zero. Routes
@@ -129,7 +130,7 @@ impl Corners {
     /// `skip_serializing_if` requires `fn(&T) -> bool`, and
     /// [`Background::corners`](crate::Background) uses this as one.
     #[inline]
-    pub const fn approx_zero(&self) -> bool {
+    pub const fn is_approx_zero(&self) -> bool {
         // A NaN radius reports non-zero and so cannot take the
         // sharp-corner fast path this gates. The shape-level NaN gate is
         // what drops such a shape.
@@ -176,18 +177,6 @@ impl<T: Num, B: Num> From<(T, B)> for Corners {
 impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners {
     fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {
         Self::new(tl.as_f32(), tr.as_f32(), br.as_f32(), bl.as_f32())
-    }
-}
-
-impl From<Vec2> for Corners {
-    fn from(v: Vec2) -> Self {
-        Self::new(v.x, v.x, v.y, v.y)
-    }
-}
-
-impl From<Size> for Corners {
-    fn from(s: Size) -> Self {
-        Self::new(s.w, s.w, s.h, s.h)
     }
 }
 

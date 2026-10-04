@@ -9,7 +9,7 @@
 //! swapped pair of metrics is a type error rather than a silent mis-key
 //! that only shows up as a cache miss.
 
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::math::nan::NanCheck;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -23,11 +23,11 @@ use crate::text::font_weight::FontWeight;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphFont {
     /// Em size in logical pixels.
-    pub size_px: f32,
+    pub size: f32,
     /// Leading is the caller's to choose. Palantir's own widgets derive one
     /// from the type scale; a single line pinned to a point in space has no
     /// stack to sit in, so this defaults to the size itself.
-    pub line_height_px: f32,
+    pub line_height: f32,
     /// Which family to match a face in.
     pub family: FontFamily,
     /// Which weight to match, on the CSS 1–1000 scale.
@@ -48,8 +48,8 @@ impl GlyphFont {
     /// asked for. Takes the two scalars rather than a whole `GlyphFont`
     /// because the theme validates a line height it has just derived
     /// from a scaled size, before any face exists to hold them.
-    pub(crate) const fn metrics_are_valid(size_px: f32, line_height_px: f32) -> bool {
-        Self::length_is_valid(size_px) && Self::length_is_valid(line_height_px)
+    pub(crate) const fn metrics_are_valid(size: f32, line_height: f32) -> bool {
+        Self::length_is_valid(size) && Self::length_is_valid(line_height)
     }
 
     /// The half of [`Self::metrics_are_valid`] one metric answers alone —
@@ -61,10 +61,10 @@ impl GlyphFont {
 
     /// This face's own metrics, per [`Self::metrics_are_valid`].
     pub(crate) const fn metrics_valid(&self) -> bool {
-        Self::metrics_are_valid(self.size_px, self.line_height_px)
+        Self::metrics_are_valid(self.size, self.line_height)
     }
 
-    /// `size_px` in the default family, weight and style, led at its own
+    /// `size` in the default family, weight and style, led at its own
     /// size.
     ///
     /// Every field is public, so anything else is a struct update over this —
@@ -74,10 +74,10 @@ impl GlyphFont {
     /// The three defaults are spelled out rather than asked of [`Default`],
     /// which a derive does not make a `const fn`. They are what the axes
     /// beside them call default and have to stay that.
-    pub const fn new(size_px: f32) -> Self {
+    pub const fn new(size: f32) -> Self {
         Self {
-            size_px,
-            line_height_px: size_px,
+            size,
+            line_height: size,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
@@ -88,7 +88,7 @@ impl GlyphFont {
 impl NanCheck for GlyphFont {
     /// Only the two metrics can be NaN; the three face axes are integral.
     fn has_nan(&self) -> bool {
-        self.size_px.is_nan() || self.line_height_px.is_nan()
+        self.size.is_nan() || self.line_height.is_nan()
     }
 }
 
@@ -115,6 +115,6 @@ mod tests {
         assert_eq!(STOCK.weight, FontWeight::default());
         assert_eq!(STOCK.slant, FontSlant::default());
         // Led at its own size, which is what "no stack to sit in" comes to.
-        assert_eq!(STOCK.line_height_px, 16.0);
+        assert_eq!(STOCK.line_height, 16.0);
     }
 }

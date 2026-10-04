@@ -4,6 +4,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -62,8 +63,13 @@ impl<'a> Modal<'a> {
 
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c` is a [colour](crate::widget::domain::color).
+    #[track_caller]
     pub const fn backdrop(mut self, c: RgbaF32) -> Self {
-        self.backdrop = Some(c);
+        self.backdrop = Some(domain::color(c));
         self
     }
 
@@ -116,6 +122,7 @@ impl<'a> Modal<'a> {
             })
         });
         let response = OverlayResponse {
+            id: root_id,
             dismissed: turn.outside || turn.escape,
             close_requested: handle.requested(),
             inner: turn.inner,
@@ -127,12 +134,36 @@ impl<'a> Modal<'a> {
 }
 
 impl Modal<'_> {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// The panel chrome. Pass [`Background::NONE`] to suppress the themed
     /// panel chrome for this modal.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 }

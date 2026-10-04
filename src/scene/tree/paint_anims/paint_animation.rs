@@ -2,7 +2,8 @@
 //! written in.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_mod::PaintMod;
 use std::f32::consts::TAU;
@@ -30,10 +31,13 @@ pub type PaintCurve = fn(f32) -> f32;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaintChannel {
     /// Alpha multiplier, lerped `from` → `to` by the curve. `None`
-    /// leaves the shape's own opacity alone.
+    /// leaves the shape's own opacity alone. The sample is read as a
+    /// *fraction*: clamped to `0..=1`, and `0` when it is not finite, so an
+    /// overshooting curve or a NaN end cannot reach paint.
     pub alpha: Option<(f32, f32)>,
     /// Turns about the owner box's centre, in **full turns**, lerped
-    /// `from` → `to`. `None` leaves the shape's orientation alone.
+    /// `from` → `to`. `None` leaves the shape's orientation alone. A sample
+    /// that is not finite reads as no turn.
     ///
     /// Honoured on stroked shapes — polylines, curves and arcs. A quad,
     /// a text run and an image cannot be turned.
@@ -114,18 +118,18 @@ pub struct PaintTiming {
 /// Hand one to [`Ui::add_shape_animated`](crate::Ui::add_shape_animated).
 ///
 /// ```
-/// # use palantir::widget::{PaintAnim, PaintRepeat, curves};
+/// # use palantir::widget::{PaintAnimation, PaintRepeat, curves};
 /// # use std::time::Duration;
 /// // Fade in over 240 ms and stay.
-/// let fade = PaintAnim::alpha(0.0, 1.0)
-///     .period(Duration::from_millis(240))
-///     .curve(curves::linear);
+/// let fade = PaintAnimation::alpha(0.0, 1.0)
+///     .with_period(Duration::from_millis(240))
+///     .with_curve(curves::linear);
 ///
 /// // Breathe, forever.
-/// let pulse = PaintAnim::alpha(0.4, 1.0)
-///     .period(Duration::from_secs(2))
-///     .repeat(PaintRepeat::Forever)
-///     .curve(curves::sine);
+/// let pulse = PaintAnimation::alpha(0.4, 1.0)
+///     .with_period(Duration::from_secs(2))
+///     .with_repeat(PaintRepeat::Forever)
+///     .with_curve(curves::sine);
 /// ```
 ///
 /// No `PartialEq`: two animations agree when their channel and timing do,
@@ -133,7 +137,7 @@ pub struct PaintTiming {
 /// nothing. Compare [`Self::channel`] and [`Self::timing`] instead.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
-pub struct PaintAnim {
+pub struct PaintAnimation {
     /// What the animation drives, and over what range.
     pub channel: PaintChannel,
     /// When it runs, and how finely.
@@ -142,7 +146,7 @@ pub struct PaintAnim {
     pub curve: PaintCurve,
 }
 
-impl PaintAnim {
+impl PaintAnimation {
     /// Feed what this animation paints into `h`: the channel, the timing
     /// and the curve — everything the sampled modifier at a given time
     /// depends on.
@@ -240,20 +244,20 @@ impl PaintAnim {
     }
 
     /// One pass of the curve takes this long. One second by default.
-    pub const fn period(mut self, period: Duration) -> Self {
+    pub const fn with_period(mut self, period: Duration) -> Self {
         self.timing.period = period;
         self
     }
 
     /// Begin at this absolute time rather than the clock's origin.
     /// Before it the animation reads at phase zero.
-    pub const fn started_at(mut self, at: Duration) -> Self {
+    pub const fn with_started_at(mut self, at: Duration) -> Self {
         self.timing.started_at = at;
         self
     }
 
     /// How many passes run. Default one, then hold at the end value.
-    pub const fn repeat(mut self, repeat: PaintRepeat) -> Self {
+    pub const fn with_repeat(mut self, repeat: PaintRepeat) -> Self {
         self.timing.repeat = repeat;
         self
     }
@@ -266,15 +270,16 @@ impl PaintAnim {
     /// Panics on zero steps. It would read as a shape that never
     /// animates, with no other sign that the animation was asked for —
     /// and this is a cold builder, so the check costs a frame nothing.
-    pub const fn steps(mut self, n: u32) -> Self {
-        let n = NonZeroU32::new(n).expect("a paint animation cannot have zero steps");
+    #[track_caller]
+    pub const fn with_steps(mut self, n: u32) -> Self {
+        let n = NonZeroU32::new(domain::count(n)).expect("a count is non-zero");
         self.timing.steps = PaintSteps::Steps(n);
         self
     }
 
     /// The shape of one pass. Any `fn(f32) -> f32` over `0.0..=1.0`,
     /// including the ones in [`curves`].
-    pub fn curve(mut self, curve: PaintCurve) -> Self {
+    pub const fn with_curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self
     }
@@ -287,12 +292,16 @@ impl PaintAnim {
             return PaintMod::IDENTITY;
         };
         let t = (self.curve)(phase);
+        let rotation = |(a, b)| {
+            let radians = f32::lerp(a, b, t) * TAU;
+            if radians.is_finite() { radians } else { 0.0 }
+        };
         PaintMod {
-            alpha: self.channel.alpha.map_or(1.0, |(a, b)| f32::lerp(a, b, t)),
-            rotation: self
+            alpha: self
                 .channel
-                .turn
-                .map_or(0.0, |(a, b)| f32::lerp(a, b, t) * TAU),
+                .alpha
+                .map_or(1.0, |(a, b)| domain::fraction(f32::lerp(a, b, t))),
+            rotation: self.channel.turn.map_or(0.0, rotation),
         }
     }
 

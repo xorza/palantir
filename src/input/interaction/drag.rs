@@ -55,7 +55,7 @@ impl Drag {
 
     /// A drag is live (`Started` / `Active`).
     #[inline]
-    pub const fn dragging(self) -> bool {
+    pub const fn is_live(self) -> bool {
         matches!(self, Drag::Started { .. } | Drag::Active { .. })
     }
 

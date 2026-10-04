@@ -2,6 +2,7 @@
 //! measured like any other content.
 
 use crate::primitives::layout::align::Align;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -35,7 +36,7 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 /// global [`crate::TextStyle`] from [`crate::Theme::text`]. Each axis also
 /// has a setter of its own — [`Self::color`], [`Self::font_size`],
 /// [`Self::family`], [`Self::weight`], [`Self::slant`],
-/// [`Self::line_height`] — which overrides that one axis of whatever the
+/// [`Self::line_height_factor`] — which overrides that one axis of whatever the
 /// bundle resolved to:
 ///
 /// ```
@@ -92,24 +93,40 @@ impl<'a> Text<'a> {
     }
 
     /// Fill colour for this run, overriding the resolved style's.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
-        self.overrides.color = Some(color);
+        self.overrides.color = Some(domain::color(color));
         self
     }
 
-    /// Font size in logical px, overriding the resolved style's.
+    /// Font size in logical px, a *length*, overriding the resolved style's.
     ///
     /// Named apart from [`Configure::size`], which is the widget's layout
     /// extent.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size_px = Some(px);
+        self.overrides.font_size = Some(domain::length(px));
         self
     }
 
     /// Line height as a multiple of the font size, overriding the resolved
-    /// style's `line_height_mult`. `1.0` sets the lines solid.
-    pub const fn line_height(mut self, mult: f32) -> Self {
-        self.overrides.line_height_mult = Some(mult);
+    /// style's `line_height_factor`. `1.0` sets the lines solid. `factor`:
+    /// *positive*, as a theme file's is.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    #[track_caller]
+    pub const fn line_height_factor(mut self, factor: f32) -> Self {
+        self.overrides.line_height_factor = Some(domain::positive(factor));
         self
     }
 
@@ -174,7 +191,7 @@ impl<'a> Text<'a> {
     /// otherwise.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         // Folded back into a `TextStyle` rather than a `GlyphFont`, so the
-        // `line_height_mult` formula keeps its one owner.
+        // `line_height_factor` formula keeps its one owner.
         let style = self.overrides.apply(self.style.unwrap_or(&ui.theme().text));
         let color = style.color;
         let font = style.font();

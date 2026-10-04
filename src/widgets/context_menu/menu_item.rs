@@ -1,6 +1,8 @@
 //! One activatable row inside a context menu.
 
 use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::layout::align::{Align, HAlign};
@@ -13,7 +15,6 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 
@@ -49,7 +50,12 @@ impl<'a> MenuItem<'a> {
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
-            widget: Widget::hstack().sense(Sense::CLICK),
+            // A Tab stop that a focused Enter or Space activates, as
+            // WAI-ARIA's menu item does; both keys are `KeyClass::Text`.
+            widget: Widget::hstack()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT),
             label: label.into(),
             shortcut: MenuShortcut::None,
             style: None,
@@ -67,7 +73,7 @@ impl<'a> MenuItem<'a> {
     /// using the platform's native form (`⌘C` / `Ctrl+C`) and
     /// intercepts that keypress while the menu is open. Glyph-only
     /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
-    /// `Shortcut::new(ShortcutMods::NONE, Key::Backspace)`.
+    /// `Shortcut::key(Key::Backspace)`.
     pub const fn shortcut(mut self, s: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Activate(s);
         self
@@ -80,14 +86,6 @@ impl<'a> MenuItem<'a> {
     pub const fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Hint(shortcut);
         self
-    }
-
-    /// Thin horizontal divider between groups — no label, no input.
-    /// Chain `.show(ui)` and ignore the response. See
-    /// [`MenuSeparator`].
-    #[track_caller]
-    pub fn separator<'s>() -> MenuSeparator<'s> {
-        MenuSeparator::new()
     }
 
     /// Record the row inside an open menu. Activating it closes the menu
@@ -139,6 +137,13 @@ impl<'a> MenuItem<'a> {
                 Some(shortcut)
             }
         };
+        if !disabled && ui.is_focus_within(id) {
+            // Both sampled: `key_pressed` also keeps each chord subscribed
+            // for the wake gate.
+            let enter = self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
+            let space = self.widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+            shortcut_fired |= enter || space;
+        }
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));
 
         // Label + optional right-aligned shortcut hint as `Text` leaves;
@@ -160,14 +165,15 @@ impl<'a> MenuItem<'a> {
         };
         self.widget.record(ui, Some(&look.background), body);
 
-        // A shortcut is a click the pointer pipeline never saw. Callers
-        // read `.clicked()` and must not care which device produced it.
+        // A shortcut or an activation key is a click the pointer pipeline
+        // never saw. Callers read `.clicked()` and must not care which
+        // device produced it.
         if shortcut_fired {
             response.left.phase = ButtonPhase::Up { click: Some(1) };
         }
         // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
-        let resp = Response::eager(id, ui, response);
+        let resp = Response::new(id, ui, response);
         if resp.clicked() {
             popup.close();
         }

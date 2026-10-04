@@ -10,12 +10,12 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use glam::UVec2;
-use image::RgbaImage;
+use palantir::golden::image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
 use palantir::{
-    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RgbaF32, TextShaper, Theme,
-    Ui,
+    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RenderTarget, RgbaF32,
+    TextShaper, Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -34,10 +34,10 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text: RgbaF32::hex(0xf2f2f2),
     text_muted: RgbaF32::hex(0x9ad2a0),
     text_disabled: RgbaF32::hex(0xd9a05e),
-    window_bg: RgbaF32::hex(0x14141a),
-    elem: RgbaF32::hex(0x2e1f38),
-    elem_mid: RgbaF32::hex(0x1e4048),
-    elem_strong: RgbaF32::hex(0x3d4f1e),
+    window_background: RgbaF32::hex(0x14141a),
+    element: RgbaF32::hex(0x2e1f38),
+    element_mid: RgbaF32::hex(0x1e4048),
+    element_strong: RgbaF32::hex(0x3d4f1e),
     border_focused: RgbaF32::hex(0x2f6fd0),
     accent: RgbaF32::hex(0xd23f7a),
 };
@@ -157,9 +157,11 @@ impl Harness {
         );
 
         self.host.ui().theme_mut().window_clear = self.clear;
-        let report = self
-            .host
-            .frame(&target, self.scale, &mut RecordApp::new(scene));
+        let report = self.host.frame(
+            RenderTarget::new(&target),
+            self.scale,
+            &mut RecordApp::new(scene),
+        );
 
         let mut image = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.

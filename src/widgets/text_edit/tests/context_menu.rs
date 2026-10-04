@@ -51,11 +51,10 @@ fn context_menu_cut_copy_paste_clear() {
     h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    {
-        let st = h.ui.state_or_default::<TextEditState>(editor_id());
+    h.ui.with_state::<TextEditState, _>(editor_id(), |_, st| {
         st.edit.caret = 4;
         st.edit.selection = Some(1);
-    }
+    });
 
     // Copy → clipboard holds "ell", buffer unchanged. Menu closes
     // on click.
@@ -69,11 +68,10 @@ fn context_menu_cut_copy_paste_clear() {
     );
 
     // Cut → buffer drops "ell", caret collapses to selection start.
-    {
-        let st = h.ui.state_or_default::<TextEditState>(editor_id());
+    h.ui.with_state::<TextEditState, _>(editor_id(), |_, st| {
         st.edit.caret = 4;
         st.edit.selection = Some(1);
-    }
+    });
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
@@ -112,10 +110,7 @@ fn context_menu_cut_copy_paste_clear() {
     // Select All is menu-owned while the popup is open. The captured
     // command stream executes it once and closes the popup.
     open_menu_and_record(&mut h, &mut buf);
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.frame(|ui| body(ui, &mut buf));
     let state = h.state::<TextEditState>(editor_id()).clone();
@@ -135,24 +130,12 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
     fn primary(c: char) -> KeyPress {
-        KeyPress::with(
-            Key::Char(c),
-            Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-        )
+        KeyPress::with(Key::Char(c), Modifiers::CTRL)
     }
 
     // A non-command modifier — must NOT trigger clipboard shortcuts.
     fn non_primary(c: char) -> KeyPress {
-        KeyPress::with(
-            Key::Char(c),
-            Modifiers {
-                alt: true,
-                ..Modifiers::NONE
-            },
-        )
+        KeyPress::with(Key::Char(c), Modifiers::ALT)
     }
 
     let clipboard = Clipboard::memory();
@@ -183,7 +166,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     assert_eq!(state.caret, 4);
 
     // Non-primary modifier must NOT trigger any clipboard action.
-    // (On macOS, raw Ctrl+C is not Copy; on Win/Linux, Super+C is
+    // (On macOS, raw Ctrl+C is not Copy; on Windows/Linux, Super+C is
     // not Copy.) Reset state and verify a no-op.
     clipboard.set_text("CLIP").unwrap();
     let mut text2 = String::from("hello");
@@ -297,13 +280,7 @@ fn clipboard_shortcut_does_not_insert_char() {
     apply_key_with_clipboard(
         &mut text,
         &mut state,
-        KeyPress::with(
-            Key::Char('c'),
-            Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-        ),
+        KeyPress::with(Key::Char('c'), Modifiers::CTRL),
         &clipboard,
     );
     assert_eq!(text, "ab", "primary+c without a selection is a no-op");
@@ -311,7 +288,7 @@ fn clipboard_shortcut_does_not_insert_char() {
 }
 
 /// Right-click on the editor opens the menu — pins the secondary-
-/// click → `ContextMenu::attach` wiring.
+/// click → `ContextMenu::on` wiring.
 #[test]
 fn secondary_click_opens_text_edit_menu() {
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -362,20 +339,16 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     };
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.set_focus(a_id);
-    {
-        let state = h.ui.state_or_default::<TextEditState>(a_id);
+    h.ui.with_state::<TextEditState, _>(a_id, |_, state| {
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
-    }
+    });
     ContextMenu::open(&mut h.ui, b_id, Vec2::new(200.0, 20.0));
     h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });
 
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     for key in [Key::Char('a'), Key::Char('x')] {
         h.key(key);
     }

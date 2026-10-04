@@ -81,9 +81,9 @@ impl ButtonState {
     /// This frame's click-run position: `0` off the click edge,
     /// 1/2/3+ on it (`2` = double-click, `3` = triple-click).
     #[inline]
-    pub fn click_count(self) -> u8 {
+    pub const fn click_count(self) -> u8 {
         match self.phase {
-            ButtonPhase::Up { click } => click.unwrap_or(0),
+            ButtonPhase::Up { click: Some(n) } => n,
             _ => 0,
         }
     }
@@ -92,7 +92,7 @@ impl ButtonState {
     /// the second in its run). Sugar for `click_count() == 2` — read
     /// [`Self::click_count`] for triple and beyond.
     #[inline]
-    pub fn double_clicked(self) -> bool {
+    pub const fn double_clicked(self) -> bool {
         self.click_count() == 2
     }
 }

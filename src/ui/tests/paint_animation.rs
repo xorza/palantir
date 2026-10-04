@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Shape;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
@@ -32,9 +32,9 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
             .show(ui);
         ui.add_shape_animated(
             Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
-            PaintAnim::alpha(0.0, 1.0)
-                .period(Duration::from_secs(1))
-                .curve(curves::linear),
+            PaintAnimation::alpha(0.0, 1.0)
+                .with_period(Duration::from_secs(1))
+                .with_curve(curves::linear),
         );
     };
 

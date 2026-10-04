@@ -24,7 +24,7 @@ pub struct ComboBoxTheme {
     pub arrow_size: Vec2,
     /// Stroke width of the chevron polyline.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub arrow_stroke: f32,
+    pub arrow_width: f32,
 }
 
 impl ComboBoxTheme {
@@ -36,7 +36,7 @@ impl ComboBoxTheme {
         Self {
             gap: 12.0,
             arrow_size: Vec2::new(10.0, 6.0),
-            arrow_stroke: 1.5,
+            arrow_width: 1.5,
         }
     }
 

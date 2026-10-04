@@ -9,7 +9,7 @@
 //! showcase builds with `internals` on. The listing beside the demo is
 //! the check, not the compiler.
 //!
-//! Its chrome reads the showcase's own `ELEM` ladder rather than hexes of
+//! Its chrome reads the showcase's own `ELEMENT` ladder rather than hexes of
 //! its own, so it rests, hovers and presses at the rungs every shipped
 //! widget beside it does.
 
@@ -265,11 +265,11 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     } else if state.hovered() {
         support::ELEM_MID
     } else {
-        support::ELEM
+        support::ELEMENT
     };
     let chrome = Background {
         fill: fill.into(),
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::all(support::RADIUS),
         shadow: Shadow::NONE,
     };

@@ -299,7 +299,7 @@ fn max_chars_caps_typing_and_paste_through_show() {
     h.frame(|ui| record(ui, &mut buf));
     h.click_on(id);
     h.frame(|ui| record(ui, &mut buf));
-    h.ui.state_or_default::<TextEditState>(id).edit.caret = 2;
+    h.ui.with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 2);
 
     for c in ['c', 'd'] {
         h.key(Key::Char(c));
@@ -308,10 +308,7 @@ fn max_chars_caps_typing_and_paste_through_show() {
     assert_eq!(buf, "abcd", "typing below the cap lands");
 
     h.set_clipboard_text("xyz");
-    h.set_modifiers(Modifiers {
-        ctrl: true,
-        ..Modifiers::NONE
-    });
+    h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(buf, "abcdx", "the paste is cut to the one char that fits");

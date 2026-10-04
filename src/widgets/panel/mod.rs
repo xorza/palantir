@@ -1,6 +1,7 @@
 //! The container widget — every stack, wrap and canvas layout an app
 //! reaches for, over the one node the layout drivers dispatch on.
 
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -60,6 +61,14 @@ impl Panel {
         Self::auto(Widget::vstack())
     }
 
+    /// Children in one line along `axis`: [`Self::hstack`] for
+    /// [`Axis::X`], [`Self::vstack`] for [`Axis::Y`]. For code that picks
+    /// the direction at run time.
+    #[track_caller]
+    pub fn stack(axis: Axis) -> Self {
+        Self::auto(Widget::stack(axis))
+    }
+
     /// HStack with overflow wrap: children flow left-to-right; when the
     /// next child wouldn't fit on the current row, wrap to a new row
     /// below. `.gap(g)` spaces siblings within a row; `.line_gap(g)`
@@ -98,13 +107,37 @@ impl Panel {
 }
 
 impl Panel {
-    /// Paint `bg` as this widget's background.
+    /// Paint `background` as this widget's background.
     ///
     /// `None` is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this panel.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        background.validate();
+        self.chrome = Some(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        background.validate();
+        if self.chrome.is_none() {
+            self.chrome = Some(background);
+        }
         self
     }
 }
@@ -122,14 +155,6 @@ pub(crate) mod internals {
     use crate::widgets::panel::Panel;
 
     impl Panel {
-        /// [`Panel::hstack`] or [`Panel::vstack`], stacking along `axis`.
-        pub(crate) fn stack_on(axis: Axis) -> Self {
-            match axis {
-                Axis::X => Self::hstack(),
-                Axis::Y => Self::vstack(),
-            }
-        }
-
         /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing
         /// along `axis`.
         pub(crate) fn wrap_stack_on(axis: Axis) -> Self {

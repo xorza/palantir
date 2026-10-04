@@ -30,7 +30,7 @@ use std::cell::RefMut;
 /// must not ask the same [`Ui`](crate::Ui) to measure text while holding one.
 ///
 /// Minted by [`TextShaper::glyphs`](crate::TextShaper::glyphs), which a
-/// `GpuView` reaches through [`GpuInitCtx`](crate::GpuInitCtx).
+/// `GpuView` reaches through [`GpuInitContext`](crate::GpuInitContext).
 ///
 /// **Palantir's own text backend holds one too**, for the length of a batch's
 /// encoded-cache misses — its `extract_glyphs` is the crate-facing half of

@@ -14,7 +14,7 @@ fn disabled_size(theme: &Theme) -> f32 {
         .disabled
         .to_animated(theme.text)
         .text
-        .font_size_px
+        .font_size
 }
 
 /// The size the tooltip names for its text.
@@ -22,7 +22,7 @@ fn tooltip_size(theme: &Theme) -> f32 {
     theme
         .tooltip
         .text
-        .font_size_px
+        .font_size
         .expect("the tooltip overrides the size")
 }
 
@@ -35,33 +35,33 @@ fn value_size(theme: &Theme) -> f32 {
         .looks
         .normal
         .text
-        .font_size_px
+        .font_size
         .expect("the picker's value chips override the size")
 }
 
 #[test]
 fn scale_text_is_relative_and_total() {
     let mut theme = Theme::default();
-    let body = theme.text.font_size_px;
+    let body = theme.text.font_size;
     let tooltip = tooltip_size(&theme);
     let value = value_size(&theme);
     assert_eq!(disabled_size(&theme), body);
 
     theme.scale_text(2.0);
-    assert_eq!(theme.text.font_size_px, body * 2.0);
+    assert_eq!(theme.text.font_size, body * 2.0);
     assert_eq!(tooltip_size(&theme), tooltip * 2.0);
     assert_eq!(value_size(&theme), value * 2.0);
     assert_eq!(disabled_size(&theme), body * 2.0);
 
     // Composes: 2.0 × 0.75 = 1.5, not 0.75.
     theme.scale_text(0.75);
-    assert_eq!(theme.text.font_size_px, body * 1.5);
+    assert_eq!(theme.text.font_size, body * 1.5);
     assert_eq!(tooltip_size(&theme), tooltip * 1.5);
     assert_eq!(value_size(&theme), value * 1.5);
 
     // And inverts back to the baseline: 1.5 × (1 / 1.5) = 1.0.
     theme.scale_text(1.0 / 1.5);
-    assert_eq!(theme.text.font_size_px, body);
+    assert_eq!(theme.text.font_size, body);
     assert_eq!(tooltip_size(&theme), tooltip);
     assert_eq!(value_size(&theme), value);
     assert_eq!(disabled_size(&theme), body);
@@ -96,7 +96,7 @@ fn scale_text_reaches_every_font_size() {
                     walk(&format!("{path}[{index}]"), before, after);
                 }
             }
-            (Value::Number(before), Value::Number(after)) if path.ends_with("font_size_px") => {
+            (Value::Number(before), Value::Number(after)) if path.ends_with("font_size") => {
                 let (before, after) = (before.into_f64(), after.into_f64());
                 assert_eq!(
                     after,
@@ -127,55 +127,51 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 
     let valid = pretty(&Theme::default());
     let cases = [
-        ("zero font", "font_size_px: 16.0", "font_size_px: 0.0"),
-        ("negative font", "font_size_px: 16.0", "font_size_px: -1.0"),
-        (
-            "sub-epsilon font",
-            "font_size_px: 16.0",
-            "font_size_px: 0.00005",
-        ),
-        ("epsilon font", "font_size_px: 16.0", "font_size_px: 0.0001"),
-        ("NaN font", "font_size_px: 16.0", "font_size_px: NaN"),
-        ("infinite font", "font_size_px: 16.0", "font_size_px: inf"),
+        ("zero font", "font_size: 16.0", "font_size: 0.0"),
+        ("negative font", "font_size: 16.0", "font_size: -1.0"),
+        ("sub-epsilon font", "font_size: 16.0", "font_size: 0.00005"),
+        ("epsilon font", "font_size: 16.0", "font_size: 0.0001"),
+        ("NaN font", "font_size: 16.0", "font_size: NaN"),
+        ("infinite font", "font_size: 16.0", "font_size: inf"),
         (
             "zero line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: 0.0",
+            "line_height_factor: 1.2",
+            "line_height_factor: 0.0",
         ),
         (
             "negative line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: -1.0",
+            "line_height_factor: 1.2",
+            "line_height_factor: -1.0",
         ),
         (
             "sub-epsilon line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: 0.000001",
+            "line_height_factor: 1.2",
+            "line_height_factor: 0.000001",
         ),
         (
             "epsilon line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: 0.00000625",
+            "line_height_factor: 1.2",
+            "line_height_factor: 0.00000625",
         ),
         (
             "NaN line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: NaN",
+            "line_height_factor: 1.2",
+            "line_height_factor: NaN",
         ),
         (
             "infinite line height",
-            "line_height_mult: 1.2",
-            "line_height_mult: inf",
+            "line_height_factor: 1.2",
+            "line_height_factor: inf",
         ),
         (
             "zero override font",
-            "font_size_px: Some(13.0)",
-            "font_size_px: Some(0.0)",
+            "font_size: Some(13.0)",
+            "font_size: Some(0.0)",
         ),
         (
             "NaN override font",
-            "font_size_px: Some(13.0)",
-            "font_size_px: Some(NaN)",
+            "font_size: Some(13.0)",
+            "font_size: Some(NaN)",
         ),
     ];
 
@@ -192,7 +188,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 
 #[test]
 fn scale_text_rejects_invalid_factors_without_partial_mutation() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
     const FACTOR: &str = "text scale factor must be finite and positive";
     const RESULT: &str = "text scale would make font size or line height invalid";
     // A look's override is checked as the face it folds into. The first
@@ -201,10 +197,10 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     // at 1×, but at 1/1000 its leading is 16 × 0.001 × 0.001 = 0.000016 px,
     // under EPS = 0.0001, while the ambient's own 0.016 × 1.2 is above it.
     let big_override = |theme: &mut Theme| {
-        theme.button.looks.normal.text.font_size_px = Some(f32::MAX / 2.0);
+        theme.button.looks.normal.text.font_size = Some(f32::MAX / 2.0);
     };
     let tight_override = |theme: &mut Theme| {
-        theme.button.looks.normal.text.line_height_mult = Some(0.001);
+        theme.button.looks.normal.text.line_height_factor = Some(0.001);
     };
     let untouched = |_: &mut Theme| {};
     for (label, setup, factor, expected) in [
@@ -238,7 +234,7 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
 #[test]
 fn scaled_theme_survives_a_serde_roundtrip() {
     let baseline = Theme::default();
-    let body_font_size = baseline.text.font_size_px;
+    let body_font_size = baseline.text.font_size;
     let tooltip_font_size = tooltip_size(&baseline);
     let value_font_size = value_size(&baseline);
     let mut scaled = baseline;
@@ -246,12 +242,12 @@ fn scaled_theme_survives_a_serde_roundtrip() {
 
     let serialized = pretty(&scaled);
     let mut parsed = ron::from_str::<Theme>(&serialized).expect("parse scaled theme");
-    assert_eq!(parsed.text.font_size_px, body_font_size * 2.0);
+    assert_eq!(parsed.text.font_size, body_font_size * 2.0);
     assert_eq!(tooltip_size(&parsed), tooltip_font_size * 2.0);
     assert_eq!(value_size(&parsed), value_font_size * 2.0);
 
     parsed.scale_text(0.75);
-    assert_eq!(parsed.text.font_size_px, body_font_size * 1.5);
+    assert_eq!(parsed.text.font_size, body_font_size * 1.5);
     assert_eq!(tooltip_size(&parsed), tooltip_font_size * 1.5);
     assert_eq!(value_size(&parsed), value_font_size * 1.5);
 }

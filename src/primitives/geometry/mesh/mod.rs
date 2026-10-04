@@ -5,7 +5,8 @@
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::domain::vec2;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -72,8 +73,7 @@ pub struct Mesh {
     cached_hash: Cell<Option<u64>>,
     /// Lazy cache of owner-local AABB. Same memoization contract as
     /// `cached_hash` — a retained mesh re-lowered each frame would
-    /// otherwise recompute its AABB every frame. [`Self::with_known_bbox`]
-    /// pre-seeds it to skip the compute entirely.
+    /// otherwise recompute its AABB every frame.
     cached_bbox: Cell<Option<Rect>>,
 }
 
@@ -155,11 +155,14 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// Panics if the new vertex index cannot be represented by `u32`.
+    /// Panics unless `pos` is an [offset](crate::widget::domain::offset), or
+    /// if the new vertex index cannot be represented by `u32`.
     #[inline]
+    #[track_caller]
     pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32 {
         let index = checked_vertex_index(self.vertices.len());
-        self.vertices.push(MeshVertex::new(pos, color));
+        self.vertices
+            .push(MeshVertex::new(vec2::offset(pos), color));
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
         index
@@ -237,19 +240,14 @@ impl Mesh {
         b
     }
 
-    /// Skip the lazy compute by handing over a pre-computed AABB.
-    /// Caller is responsible for correctness — a wrong bbox silently
-    /// breaks scissor culling. Use for procedural / baked meshes where
-    /// the AABB falls out of the construction algorithm.
-    #[must_use]
-    pub fn with_known_bbox(self, bbox: Rect) -> Self {
-        self.cached_bbox.set(Some(bbox));
-        self
-    }
-
     /// Convenience: filled triangle in a single color (`RgbaF32` or
     /// `SrgbaU8`). Bbox falls out of the three known vertices —
     /// pre-cached so the first `bbox()` call is free.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::vertex`].
+    #[track_caller]
     pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<SrgbaU8>) -> Self {
         let color = color.into();
         let mut m = Self::with_capacity(3, 3);
@@ -269,6 +267,11 @@ impl Mesh {
     /// wrong — caller's responsibility. `color` accepts `RgbaF32` or
     /// `SrgbaU8`. Bbox is pre-cached, so the first `bbox()` call is
     /// free.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::vertex`].
+    #[track_caller]
     pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self {
         if points.len() < 3 {
             return Self::new();

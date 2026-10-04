@@ -3,7 +3,7 @@
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
@@ -50,16 +50,8 @@ impl<'a> Separator<'a> {
 
     #[track_caller]
     fn along(axis: Axis) -> Self {
-        Self::from_widget(Widget::leaf(), axis)
-    }
-
-    /// A rule on `axis` over a node the caller already built, for a
-    /// wrapper that forwards the `Configure` calls that landed on it —
-    /// identity included, which is why this takes the node rather than
-    /// building one at *this* call site. [`crate::MenuSeparator`] is one.
-    pub const fn from_widget(widget: Widget, axis: Axis) -> Self {
         Self {
-            widget,
+            widget: Widget::leaf(),
             axis,
             thickness: None,
             color: None,
@@ -80,22 +72,32 @@ impl<'a> Separator<'a> {
 
     /// Line thickness in logical px, defaulting to
     /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
     pub const fn thickness(mut self, px: f32) -> Self {
-        self.thickness = Some(px);
+        self.thickness = Some(domain::length(px));
         self
     }
 
     /// Line color, defaulting to [`crate::Theme::separator`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c` is a [colour](crate::widget::domain::color).
+    #[track_caller]
     pub const fn color(mut self, c: RgbaF32) -> Self {
-        self.color = Some(c);
+        self.color = Some(domain::color(c));
         self
     }
 
     /// Record the rule. It senses nothing.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().separator);
-        let t = self.thickness.unwrap_or(theme.thickness).themed_length(0.0);
+        let t = domain::length_at_least(self.thickness.unwrap_or(theme.thickness), 0.0);
         let (default_size, stretch) = match self.axis {
             Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
             Axis::Y => ((Sizing::fixed(t), Sizing::HUG), Align::v(VAlign::Stretch)),

@@ -1,6 +1,6 @@
 //! A lowered shape's stroke.
 
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
@@ -37,7 +37,7 @@ impl ShapeStroke {
 
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
-        paints_nothing(self.width) || self.color.is_noop()
+        is_invisible(self.width) || self.color.is_noop()
     }
 
     /// Collapse a no-op stroke to [`Self::NONE`]; pass anything else
@@ -49,7 +49,7 @@ impl ShapeStroke {
     /// was a no-op".
     ///
     /// A NaN width normalizes away like any other non-painting width —
-    /// `paints_nothing` classifies it as invisible. Catching a NaN *loudly* is
+    /// `is_invisible` classifies it as invisible. Catching a NaN *loudly* is
     /// `Shapes::add`'s job, at the authoring boundary
     /// where the value still has a call site; by the time it reaches
     /// here the useful thing to do is fail safe.

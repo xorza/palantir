@@ -48,7 +48,6 @@ use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::primitives::math::approx::EPS;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -250,7 +249,7 @@ impl OffscreenHost {
     /// Start building an offscreen host. The text shaper defaults to bundled
     /// fonts, GPU timing defaults off, the clock defaults to realtime, and
     /// physical-pixel snapping defaults on.
-    pub fn builder(gpu: Gpu) -> OffscreenHostBuilder {
+    pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
             retained_target: false,
@@ -277,7 +276,7 @@ impl OffscreenHost {
     /// host's own clock — the one that also stamps its frames — so a press
     /// between two frames is timed against the other presses rather than
     /// against the frame that carried it.
-    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+    pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         let now = self.driver.now();
         self.driver.ui.on_input(event, now)
     }
@@ -299,17 +298,16 @@ impl OffscreenHost {
     /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame
     /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
     /// window lifecycle.
-    pub fn frame<'t, T: App>(
+    pub fn frame<T: App>(
         &mut self,
-        target: impl Into<RenderTarget<'t>>,
+        target: RenderTarget<'_>,
         system_scale: f32,
         app: &mut T,
     ) -> FrameReport {
-        let target = target.into();
         assert!(
             display::scale_factor_is_valid(system_scale),
-            "offscreen system scale must be finite and at least {EPS}, got \
-             {system_scale}"
+            "{}, got {system_scale}",
+            display::SCALE_RULE,
         );
 
         let key = TargetKey::of(target);
@@ -358,8 +356,8 @@ pub(crate) mod internals {
         /// Whether the shared backend has built a pipeline set for `format`.
         /// Lets format-change tests confirm a new format materializes its own
         /// pipelines.
-        pub fn has_format_pipelines(&self, format: impl Into<TargetFormat>) -> bool {
-            self.core.backend.has_format_pipelines(format.into())
+        pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
+            self.core.backend.has_format_pipelines(format)
         }
 
         /// Images resident in the GPU texture cache. Used by the format-change
@@ -410,7 +408,7 @@ mod tests {
         });
 
         for (frame, paints) in [(0, true), (1, false)] {
-            let target = RenderTarget::from(&texture);
+            let target = RenderTarget::new(&texture);
             let key = TargetKey::of(target);
             host.driver.note_target(key);
             let display = host.driver.display(key.physical, 1.0, None);

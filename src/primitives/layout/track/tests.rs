@@ -1,15 +1,15 @@
 use crate::common::span::Span;
 use crate::internals::panic_probe;
 use crate::primitives::layout::track::{GridDef, Track};
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::{self, EPS};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 
 #[test]
 fn bounds_accept_valid_ranges_in_either_order() {
-    const MIN_THEN_MAX: Track = Track::FILL.min(10.0).max(20.0);
-    const MAX_THEN_MIN: Track = Track::FILL.max(20.0).min(10.0);
-    const PINNED: Track = Track::fixed(5.0).min(5.0).max(5.0);
+    const MIN_THEN_MAX: Track = Track::FILL.with_min(10.0).with_max(20.0);
+    const MAX_THEN_MIN: Track = Track::FILL.with_max(20.0).with_min(10.0);
+    const PINNED: Track = Track::fixed(5.0).with_min(5.0).with_max(5.0);
 
     assert_eq!(MIN_THEN_MAX, MAX_THEN_MIN);
     assert_eq!(MIN_THEN_MAX.min, 10.0);
@@ -18,30 +18,32 @@ fn bounds_accept_valid_ranges_in_either_order() {
     assert_eq!(PINNED.max, 5.0);
 }
 
+/// A minimum is a length and a maximum an extent, so each panics with its
+/// kind's rule. Their order is coerced rather than checked: the minimum
+/// wins, so a maximum below it is raised to it in either setter order.
 #[test]
-fn bounds_reject_invalid_values_and_inverted_setter_orders() {
-    const MIN: &str = "Track minimum must be finite, non-negative, and not exceed its maximum";
-    const MAX: &str = "Track maximum must be non-negative and not be less than its minimum";
+fn bounds_validate_their_kinds_and_coerce_their_order() {
     type Case = (&'static str, fn() -> Track);
 
     let cases: &[Case] = &[
-        (MIN, || Track::HUG.min(-1.0)),
-        (MIN, || Track::HUG.min(f32::NAN)),
-        (MIN, || Track::HUG.min(f32::INFINITY)),
-        (MAX, || Track::HUG.max(-1.0)),
-        (MAX, || Track::HUG.max(f32::NEG_INFINITY)),
-        (MAX, || Track::HUG.max(f32::NAN)),
-        // Minimum above an existing maximum.
-        (MIN, || Track::HUG.max(10.0).min(11.0)),
-        // Maximum below an existing minimum.
-        (MAX, || Track::HUG.min(11.0).max(10.0)),
+        (domain::LENGTH_RULE, || Track::HUG.with_min(-1.0)),
+        (domain::LENGTH_RULE, || Track::HUG.with_min(f32::NAN)),
+        (domain::LENGTH_RULE, || Track::HUG.with_min(f32::INFINITY)),
+        (domain::EXTENT_RULE, || Track::HUG.with_max(-1.0)),
+        (domain::EXTENT_RULE, || {
+            Track::HUG.with_max(f32::NEG_INFINITY)
+        }),
+        (domain::EXTENT_RULE, || Track::HUG.with_max(f32::NAN)),
     ];
-
     for &(expected, build) in cases {
         panic_probe::assert_panics_with(expected, build);
     }
 
-    assert_eq!(Track::HUG.max(f32::INFINITY).max, f32::INFINITY);
+    assert_eq!(Track::HUG.with_max(f32::INFINITY).max, f32::INFINITY);
+    let raised = Track::HUG.with_max(10.0).with_min(11.0);
+    assert_eq!((raised.min, raised.max), (11.0, 11.0), "max then min");
+    let raised = Track::HUG.with_min(11.0).with_max(10.0);
+    assert_eq!((raised.min, raised.max), (11.0, 11.0), "min then max");
 }
 
 fn grid_content_hash(def: GridDef, tracks: &[Track]) -> u64 {
@@ -55,9 +57,9 @@ fn grid_content_hash_uses_tracks_not_arena_offsets_and_collapses_visual_noise() 
     let hash_at = |start: u32, noise: f32| {
         let tracks = [
             Track::fixed(99.0),
-            Track::HUG.min(noise),
+            Track::HUG.with_min(noise),
             Track::FILL,
-            Track::HUG.min(noise),
+            Track::HUG.with_min(noise),
             Track::FILL,
         ];
         let def = GridDef {

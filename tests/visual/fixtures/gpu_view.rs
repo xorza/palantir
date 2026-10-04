@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use glam::UVec2;
-use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
+use palantir::{Configure, GpuFrameContext, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 
 use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
@@ -26,7 +26,7 @@ use crate::harness::Harness;
 struct RedClear;
 
 impl GpuPaint for RedClear {
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
         let _pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("visual.gpu_view.red_clear"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -114,7 +114,7 @@ fn fs() -> @location(0) vec4<f32> {
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
-    fn init(&mut self, ctx: &palantir::GpuInitCtx<'_>) {
+    fn init(&mut self, ctx: &palantir::GpuInitContext<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("visual.gpu_view.tri.shader"),
@@ -160,17 +160,17 @@ impl GpuPaint for DepthTriangle {
         );
     }
 
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
-        self.last_size = ctx.size_px;
+    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
+        self.last_size = ctx.physical_size;
         self.last_display_scale = ctx.display_scale;
         self.last_raster_scale = ctx.raster_scale;
-        // Depth matches the target size (`size_px`), like the cube.
-        if self.depth.is_none() || self.depth_size != ctx.size_px {
+        // Depth matches the target size (`physical_size`), like the cube.
+        if self.depth.is_none() || self.depth_size != ctx.physical_size {
             let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("visual.gpu_view.tri.depth"),
                 size: wgpu::Extent3d {
-                    width: ctx.size_px.x.max(1),
-                    height: ctx.size_px.y.max(1),
+                    width: ctx.physical_size.x.max(1),
+                    height: ctx.physical_size.y.max(1),
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -181,7 +181,7 @@ impl GpuPaint for DepthTriangle {
                 view_formats: &[],
             });
             self.depth = Some(tex.create_view(&wgpu::TextureViewDescriptor::default()));
-            self.depth_size = ctx.size_px;
+            self.depth_size = ctx.physical_size;
         }
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("visual.gpu_view.tri.pass"),
@@ -191,7 +191,7 @@ impl GpuPaint for DepthTriangle {
                 depth_slice: None,
                 ops: wgpu::Operations {
                     // Clear the whole (capacity) target to BLUE — the slack
-                    // outside `size_px` must NOT show up in the composite.
+                    // outside `physical_size` must NOT show up in the composite.
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
                     store: wgpu::StoreOp::Store,
                 },
@@ -208,9 +208,12 @@ impl GpuPaint for DepthTriangle {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        let viewport = self.logical_square.map_or(ctx.size_px, |logical_side| {
-            UVec2::splat((logical_side * ctx.raster_scale).round().max(1.0) as u32).min(ctx.size_px)
-        });
+        let viewport = self
+            .logical_square
+            .map_or(ctx.physical_size, |logical_side| {
+                UVec2::splat((logical_side * ctx.raster_scale).round().max(1.0) as u32)
+                    .min(ctx.physical_size)
+            });
         let (w, h) = (viewport.x.max(1), viewport.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
         pass.set_scissor_rect(0, 0, w, h);
@@ -223,7 +226,7 @@ impl GpuPaint for DepthTriangle {
 /// GpuView, **and** the √2 capacity ladder's UV crop. A 64×64 view
 /// allocates a 67×67 capacity texture (16,23,33,47,67 rungs), so the
 /// bottom/right 3px are BLUE slack the renderer never touches. The green
-/// triangle fills only the `size_px` sub-rect; the composite must sample
+/// triangle fills only the `physical_size` sub-rect; the composite must sample
 /// `used/capacity` so the whole 64×64 widget reads green — including the
 /// far corner, which would sample blue slack if the crop were wrong.
 #[test]

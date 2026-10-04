@@ -1,11 +1,12 @@
 //! The radial gradient's axis: colour runs outward from a centre, with a
 //! radius per axis so an ellipse is expressible.
 
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
@@ -19,8 +20,10 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGeometry {
     /// Ramp origin, in object-space `0..1` coordinates.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub center: Vec2,
     /// Elliptical radius, per axis, in the same coordinates.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
     pub radius: Vec2,
 }
 
@@ -30,10 +33,10 @@ pub type RadialGradient = Gradient<RadialGeometry>;
 /// Authoring builder for a [`RadialGradient`].
 pub type RadialGradientBuilder = GradientBuilder<RadialGeometry>;
 
-impl GradientGeometry for RadialGeometry {
+impl Geometry for RadialGeometry {
     /// Radial fills are usually soft glows, where perceptual smoothness
     /// matters most.
-    const DEFAULT_INTERP: Interp = Interp::Oklab;
+    const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
 
     /// The shader reads these as `(cx, cy, rx, ry)` on the radial
     /// branch.

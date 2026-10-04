@@ -14,7 +14,7 @@ pub enum Platform {
     /// [`ShortcutMods::ctrl`](crate::ShortcutMods) names.
     Mac,
     /// Windows.
-    Win,
+    Windows,
     /// Linux and the other X11 / Wayland targets.
     Linux,
 }
@@ -31,7 +31,7 @@ pub const PLATFORM: Platform = {
     }
     #[cfg(target_os = "windows")]
     {
-        Platform::Win
+        Platform::Windows
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {

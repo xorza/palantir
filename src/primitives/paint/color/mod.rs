@@ -18,9 +18,8 @@ pub(crate) mod oklab;
 pub(crate) mod rgba_f16;
 mod srgb_transfer;
 
-use crate::animation::animatable::Animatable;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -62,6 +61,13 @@ use std::str;
 /// Writing an sRGB-encoded value straight into the fields skips the
 /// linearisation and will render too bright. Components may exceed `1.0`
 /// for HDR-shaped tween outputs. Hashing is approximate (`1e-4`).
+///
+/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends two colours
+/// per channel, unclamped. Storage is linear and straight-alpha, so a
+/// straight component blend is the correct one, and **alpha travels with the
+/// colour**: a caller that wants to keep its own opacity follows up with
+/// [`Self::with_alpha`]. [`Interpolation::Oklab`](crate::Interpolation) blends in a
+/// perceptual space instead, for gradients.
 #[must_use]
 pub struct RgbaF32 {
     /// Red, linear, nominally 0..1.
@@ -141,7 +147,7 @@ impl RgbaF32 {
         // Alpha decides visibility; the colour channels are screened
         // for NaN only. See `RgbaF16::is_noop` for why a NaN in a
         // non-alpha lane has to count as invisible.
-        approx::paints_nothing(self.a) || self.has_nan()
+        domain::is_invisible(self.a) || self.has_nan()
     }
 
     /// True if any channel is NaN. `const`, so [`Self::is_noop`] can
@@ -221,23 +227,6 @@ impl RgbaF32 {
         }
     }
 
-    /// Per-channel linear interpolation toward `other`: `t = 0` is `self`,
-    /// `t = 1` is `other`. Storage is linear / straight-alpha (see the
-    /// [`RgbaF32`] docs), so a straight component blend is the correct one —
-    /// no gamma round-trip, no de-premultiply.
-    ///
-    /// **Alpha travels with the color.** A caller that wants to shift only the
-    /// hue and keep its own opacity — a resting tint pulled toward the
-    /// background, say, where a separate rule already owns alpha — follows up
-    /// with [`Self::with_alpha`].
-    ///
-    /// `t` is not clamped, so overshooting past either end is available on
-    /// purpose. Blending in a perceptual space instead is what
-    /// [`Interp::Oklab`](crate::Interp) does for gradients.
-    pub fn lerp(self, other: Self, t: f32) -> Self {
-        <Self as Animatable>::lerp(self, other, t)
-    }
-
     /// Decode sRGB-encoded bytes. Alpha is not gamma-encoded — straight
     /// `a / 255`. `const`, and the [`From`] impl delegates here, so a hex
     /// literal can be a constant.
@@ -258,10 +247,6 @@ impl RgbaF32 {
     /// notation: `#3366CC` → `RgbaF32::hex(0x3366CC)`.
     pub const fn hex(rgb: u32) -> Self {
         Self::from_srgba(SrgbaU8::hex(rgb))
-    }
-    /// Packed 32-bit `0xRRGGBBAA` sRGB+alpha literal. CSS-order (alpha last).
-    pub const fn hexa(rgba: u32) -> Self {
-        Self::from_srgba(SrgbaU8::hexa(rgba))
     }
 
     /// Encode to **sRGB** 8-bit bytes: what an image texel, a CSS hex

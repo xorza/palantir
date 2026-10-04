@@ -58,7 +58,7 @@ fn buttons_watcher_wakes_press_on_inert() {
 
     h.move_to(Vec2::new(50.0, 50.0));
     let delta = h.press();
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 
     let events = h.ui.pointer_events();
     assert_eq!(events.len(), 1);
@@ -77,7 +77,7 @@ fn press_on_inert_with_no_watcher_does_not_wake() {
     h.frame(empty);
     h.move_to(Vec2::new(50.0, 50.0));
     let delta = h.press();
-    assert!(!delta.requests_repaint);
+    assert!(!delta.repaint_requested);
     assert!(h.ui.pointer_events().is_empty());
 }
 
@@ -89,7 +89,7 @@ fn record_without_rewatch_drops_wake() {
 
     h.move_to(Vec2::new(50.0, 50.0));
     let delta = h.press();
-    assert!(!delta.requests_repaint);
+    assert!(!delta.repaint_requested);
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn press_and_release_both_captured() {
 
     h.press_at(Vec2::new(50.0, 50.0));
     let release = h.release();
-    assert!(release.requests_repaint);
+    assert!(release.repaint_requested);
 
     let events = h.ui.pointer_events();
     assert_eq!(events.len(), 2);
@@ -114,7 +114,7 @@ fn move_watcher_wakes_on_inert_move() {
     h.frame(empty_watch_move);
 
     let delta = h.move_to(Vec2::new(50.0, 50.0));
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 
     let events = h.ui.pointer_events();
     assert_eq!(events.len(), 1);
@@ -146,7 +146,7 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     h.frame(empty_watch_scroll);
     let delta = h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
 
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
     assert!(h.ui.input().frame_target_deltas.is_empty());
     assert!(matches!(
         h.ui.pointer_events(),
@@ -189,10 +189,10 @@ fn scroll_and_pinch_wake_categories_are_independent() {
         let zoom = h.pinch(1.25);
 
         assert_eq!(
-            scroll.requests_repaint, *wants_scroll,
+            scroll.repaint_requested, *wants_scroll,
             "{label}: scroll wake"
         );
-        assert_eq!(zoom.requests_repaint, *wants_zoom, "{label}: pinch wake");
+        assert_eq!(zoom.repaint_requested, *wants_zoom, "{label}: pinch wake");
 
         let scrolls =
             h.ui.pointer_events()
@@ -230,7 +230,7 @@ fn pointer_pos_read_asserts_move_watch() {
     h.frame(empty_reads_pointer);
     let delta = h.move_to(Vec2::new(50.0, 50.0));
     assert!(
-        delta.requests_repaint,
+        delta.repaint_requested,
         "a record pass that read pointer_pos must wake on moves"
     );
 
@@ -239,7 +239,7 @@ fn pointer_pos_read_asserts_move_watch() {
     h.frame(empty);
     let delta = h.move_to(Vec2::new(60.0, 50.0));
     assert!(
-        !delta.requests_repaint,
+        !delta.repaint_requested,
         "no read this pass → moves over an inert surface skip again"
     );
 }
@@ -278,7 +278,7 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
     for expected in [Vec2::new(20.0, 25.0), Vec2::new(70.0, 60.0)] {
         let delta = h.move_to(origin + expected);
         assert!(
-            delta.requests_repaint,
+            delta.repaint_requested,
             "pointer-local paint must wake on movement within one inert surface",
         );
         h.frame(|ui| indicator(ui, id, &mut painted_at));
@@ -315,13 +315,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
     assert_eq!(painted, RgbaF32::BLACK);
 
     let states = [
-        (
-            Modifiers {
-                alt: true,
-                ..Modifiers::NONE
-            },
-            RgbaF32::srgb(1.0, 0.0, 0.0),
-        ),
+        (Modifiers::ALT, RgbaF32::srgb(1.0, 0.0, 0.0)),
         (
             Modifiers {
                 alt: true,
@@ -330,13 +324,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
             },
             RgbaF32::WHITE,
         ),
-        (
-            Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-            RgbaF32::srgb(0.0, 0.0, 1.0),
-        ),
+        (Modifiers::CTRL, RgbaF32::srgb(0.0, 0.0, 1.0)),
         (Modifiers::NONE, RgbaF32::BLACK),
     ];
     for (modifiers, expected) in states {
@@ -344,7 +332,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
         // the helper's change-only emit has no delta to hand back.
         let delta = h.on_input(InputEvent::ModifiersChanged(modifiers));
         assert!(
-            delta.requests_repaint,
+            delta.repaint_requested,
             "modifier-dependent paint must wake on every press and release",
         );
         h.frame(|ui| visual(ui, &mut painted));
@@ -356,26 +344,23 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 fn key_chord_watcher_wakes_only_exact_chord() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(empty_watch_escape);
-    assert_eq!(h.focused_id(), None);
+    assert_eq!(h.focus(), None);
 
     let delta = h.key(Key::Enter);
-    assert!(!delta.requests_repaint);
+    assert!(!delta.repaint_requested);
 
     // Alt+Escape: watcher asked for bare Escape → no match.
     // (Avoid ctrl here: on macOS, raw Ctrl isn't represented in
     // `Shortcut`'s `ShortcutMods` vocabulary, so ctrl+Escape would *match*
     // Shortcut::key(Escape) — a documented platform compromise.)
-    let alt = Modifiers {
-        alt: true,
-        ..Modifiers::NONE
-    };
+    let alt = Modifiers::ALT;
     h.set_modifiers(alt);
     let delta = h.key(Key::Escape);
-    assert!(!delta.requests_repaint);
+    assert!(!delta.repaint_requested);
 
     h.set_modifiers(Modifiers::NONE);
     let delta = h.key(Key::Escape);
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 
     // The watch list keeps duplicates, so a chord declared twice in one
     // frame must still wake once and match nothing extra.
@@ -384,9 +369,9 @@ fn key_chord_watcher_wakes_only_exact_chord() {
         ui.watch_key(Shortcut::key(Key::Escape));
     });
     let delta = h.key(Key::Enter);
-    assert!(!delta.requests_repaint);
+    assert!(!delta.repaint_requested);
     let delta = h.key(Key::Escape);
-    assert!(delta.requests_repaint);
+    assert!(delta.repaint_requested);
 }
 
 #[test]
@@ -523,30 +508,27 @@ fn peeks_return_the_watched_value_without_asserting_the_watch() {
     assert!(
         watched
             .on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)))
-            .requests_repaint,
+            .repaint_requested,
         "pointer_pos watches MOVE",
     );
     assert!(
         !peeked
             .on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)))
-            .requests_repaint,
+            .repaint_requested,
         "peek_pointer_pos must not",
     );
 
-    let mods = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
+    let mods = Modifiers::SHIFT;
     assert!(
         watched
             .on_input(InputEvent::ModifiersChanged(mods))
-            .requests_repaint,
+            .repaint_requested,
         "modifiers watches MODIFIER",
     );
     assert!(
         !peeked
             .on_input(InputEvent::ModifiersChanged(mods))
-            .requests_repaint,
+            .repaint_requested,
         "peek_modifiers must not",
     );
 

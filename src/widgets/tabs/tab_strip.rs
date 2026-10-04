@@ -13,7 +13,8 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::background::Background;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
@@ -152,8 +153,9 @@ impl<'a> TabStrip<'a> {
         }
     }
 
-    /// Which chip wears the selection cap. Out of range, or unset, caps
-    /// nothing.
+    /// Which chip wears the selection cap. Unset caps nothing; an index
+    /// past the end is an *index* coerced for display, so it caps the
+    /// last chip, and an empty strip caps nothing.
     pub fn selected(mut self, selected: impl Into<Option<usize>>) -> Self {
         self.selected = selected.into();
         self
@@ -227,11 +229,12 @@ impl<'a> TabStrip<'a> {
             overflow,
             style: _,
         } = self;
+        let selected = selected.and_then(|i| domain::index(i, items.len()));
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_bg = t.strip.clone();
-        let rule = Background::fill(t.hline);
-        let rule_thickness = t.hline_thickness;
+        let rule = Background::fill(t.rule);
+        let rule_thickness = t.rule_thickness;
 
         let mut hits = StripHits::default();
         widget.record(ui, Some(&strip_bg), |ui| {
@@ -277,7 +280,7 @@ impl<'a> TabStrip<'a> {
         // next frame pans the band to it. A click needs no pan — the chip
         // was where the pointer was.
         if let Some(slot) = hits.keyed.or(hits.menu_picked) {
-            ui.state_or_default::<StripState>(id).reveal = Some(items[slot].key);
+            ui.with_state::<StripState, _>(id, |_, s| s.reveal = Some(items[slot].key));
         }
 
         let StripHits {
@@ -289,7 +292,7 @@ impl<'a> TabStrip<'a> {
             drag_stopped,
         } = hits;
         TabStripResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             clicked,
             keyed,
             menu_picked,
@@ -335,7 +338,7 @@ fn reveal_delta(ui: &mut Ui, strip: WidgetId, t: &TabsTheme) -> Vec2 {
     let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
         return Vec2::ZERO;
     };
-    ui.state_or_default::<StripState>(strip).reveal = None;
+    ui.with_state::<StripState, _>(strip, |_, s| s.reveal = None);
     let (Some(clip), Some(chip)) = (band_clip(ui, strip, t), chip_extent(ui, strip, key)) else {
         return Vec2::ZERO;
     };
@@ -412,12 +415,12 @@ impl ChipCtx<'_> {
             .plan(&state, selected, self.ambient)
             .apply(ui, &mut widget);
         let cap_bg = if selected {
-            Background::rounded(t.cap(self.focused), Corners::top(t.corner))
+            Background::rounded(t.cap(self.focused), Corners::top(t.radius))
         } else {
             Background::NONE
         };
         let inner_bg = Background {
-            corners: Corners::top((t.corner - cap).max(0.0)),
+            corners: Corners::top((t.radius - cap).max(0.0)),
             ..look.background
         };
         // The selected chip lifts its inner top inset by the cap, so the
@@ -425,7 +428,7 @@ impl ChipCtx<'_> {
         // chip carrying a badge or a close button trades its right inset
         // for that glyph's own box — see `TabsTheme::trailing_inset`.
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
-        let trailing = if item.badge.reserved() || item.closable {
+        let trailing = if item.badge.is_reserved() || item.closable {
             t.trailing_inset
         } else {
             pad_r
@@ -453,7 +456,7 @@ impl ChipCtx<'_> {
         widget.record(ui, Some(&cap_bg), |ui| {
             inner.record(ui, Some(&inner_bg), |ui| {
                 if let Some(handle) = icon {
-                    let side = text.font_size_px;
+                    let side = text.font_size;
                     let art = Widget::leaf()
                         .id(chip_id.with("icon"))
                         .size((Sizing::fixed(side), Sizing::fixed(side)));
@@ -469,8 +472,8 @@ impl ChipCtx<'_> {
                     .style(&text)
                     .text_wrap(TextWrap::Ellipsis)
                     .show(ui);
-                if badge.reserved() {
-                    let fill = if badge.inked() {
+                if badge.is_reserved() {
+                    let fill = if badge.is_inked() {
                         Background::rounded(t.badge, Corners::all(t.badge_size * 0.5))
                     } else {
                         // Not a transparent fill: the default paints no
@@ -535,7 +538,7 @@ impl GlyphButton {
         Self {
             background: look.background.clone(),
             text: TextStyle {
-                line_height_mult: 1.0,
+                line_height_factor: 1.0,
                 ..look.text.apply(&ambient)
             },
             state,
@@ -582,11 +585,12 @@ fn overflow_menu(
         chip_extent(ui, strip, item.key)
             .is_some_and(|full| full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS)
     };
-    let menu_id = strip.with("overflow_menu");
-    if !items.iter().any(hidden) && !ContextMenu::is_open(ui, menu_id) {
+    // The menu is keyed by the chevron that opens it, a node that records
+    // whenever the menu can be open, so its state leaves with the chevron.
+    let button_id = strip.with("overflow");
+    if !items.iter().any(hidden) && !ContextMenu::is_open(ui, button_id) {
         return;
     }
-    let button_id = strip.with("overflow");
     let chevron = GlyphButton::resolve(ui, t, button_id, ambient);
     // The chevron sits outside the scrolling band, so it takes the
     // strip's own trailing inset as a margin rather than inheriting it.
@@ -604,15 +608,15 @@ fn overflow_menu(
     if chevron.state.clicked()
         && let Some(rect) = chevron.state.rect
     {
-        ContextMenu::open(ui, menu_id, Vec2::new(rect.min.x, rect.max().y));
+        ContextMenu::open(ui, button_id, Vec2::new(rect.min.x, rect.max().y));
     }
-    let picked = ContextMenu::for_id(menu_id)
+    let picked = ContextMenu::for_id(button_id)
         .size((Sizing::HUG, Sizing::HUG))
         .show(ui, |ui, popup| {
             let mut picked = None;
             for (i, item) in items.iter().enumerate() {
                 if MenuItem::new(item.label)
-                    .id(menu_id.with(item.key))
+                    .id(button_id.with(item.key))
                     .show(ui, popup)
                     .left
                     .clicked()
@@ -624,7 +628,7 @@ fn overflow_menu(
         });
     if let Some(slot) = picked.inner.flatten() {
         hits.menu_picked = Some(slot);
-        ContextMenu::close(ui, menu_id);
+        ContextMenu::close(ui, button_id);
     }
 }
 
@@ -642,7 +646,7 @@ fn keyboard_travel(
     selected: Option<usize>,
     hits: &mut StripHits,
 ) {
-    if len == 0 || !ui.focus_within(strip) {
+    if len == 0 || !ui.is_focus_within(strip) {
         return;
     }
     // With nothing selected, a step lands on the end it moves from: Right

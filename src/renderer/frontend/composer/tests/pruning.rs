@@ -345,7 +345,7 @@ fn prune_occluder_stroke_translucency_gates_cover() {
         Case {
             label: "no_stroke_full_cover",
             under: Rect::new(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::ZERO,
+            stroke: Stroke::NONE,
             pruned: true,
         },
         Case {

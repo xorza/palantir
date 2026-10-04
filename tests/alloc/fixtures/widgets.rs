@@ -6,16 +6,15 @@
 //! touches the heap not at all. `churn.rs` covers the scenes that
 //! change, `renderer.rs` the shape counts that stress the frontend.
 
-use palantir::Anchor;
-
 use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
 use palantir::{
-    AnimSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField, ColorPicker,
-    ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid, MenuItem, Modal,
-    Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
-    SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
+    Anchor, AnimationSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField,
+    ColorPicker, ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid,
+    MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut,
+    Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui,
+    Vec2, WidgetId,
 };
 
 #[test]
@@ -176,7 +175,10 @@ fn expander_mid_reveal_alloc_free() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            anim: Some(AnimSpec::duration(60.0, Easing::Linear)),
+            animation: Some(AnimationSpec::duration(
+                Duration::from_secs(60),
+                Easing::Linear,
+            )),
             ..base.defaults
         },
         ..base
@@ -219,7 +221,7 @@ fn expander_mid_reveal_alloc_free() {
 fn splitter_alloc_free() {
     let mut ratio = 0.5;
     Audit::new().run(move |ui| {
-        Splitter::horizontal(&mut ratio)
+        Splitter::row(&mut ratio)
             .id_salt("splitter")
             .min_pane(80.0)
             .show(ui, |_, _| {});
@@ -282,7 +284,7 @@ fn open_context_menu_shortcuts_alloc_free() {
             ContextMenu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
             needs_open = false;
         }
-        ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+        ContextMenu::on(&trigger).show(ui, |ui, popup| {
             MenuItem::new("Copy")
                 .shortcut(Shortcut::ctrl('C'))
                 .show(ui, popup);
@@ -302,7 +304,7 @@ fn long_multiline_selection_alloc_free() {
         TextEdit::new(&mut document)
             .id(editor_id)
             .multiline(true)
-            .select_all_on_focus()
+            .select_all_on_focus(true)
             .size((Sizing::fixed(360.0), Sizing::fixed(500.0)))
             .show(ui);
     });
@@ -313,8 +315,7 @@ fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
     Audit::new().run(move |ui| {
         Block::new().id_salt("counter").show(ui);
-        let n = ui.state_or_default::<u32>(id);
-        *n = n.wrapping_add(1);
+        ui.with_state::<u32, _>(id, |_, n| *n = n.wrapping_add(1));
     });
 }
 
@@ -386,8 +387,7 @@ fn tooltip_bubble_alloc_free() {
     let host = WidgetId::from_hash("tip-host");
     let scene = |ui: &mut Ui| {
         let trigger = Button::new().id(host).label("hover").show(ui).snapshot();
-        Tooltip::on(&trigger)
-            .label("a tooltip body")
+        Tooltip::on(&trigger, "a tooltip body")
             .delay(Duration::ZERO)
             .show(ui)
     };

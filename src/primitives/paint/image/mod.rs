@@ -6,10 +6,13 @@
 //! lives in [`crate::renderer::image_registry`] — `primitives` stays a
 //! pure leaf.
 
+pub(crate) mod error;
+
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::error::ImageDataError;
 use glam::{UVec2, Vec2};
 
 /// How an image's intrinsic size maps onto its paint rect. Same
@@ -122,21 +125,20 @@ pub struct Image {
 impl Image {
     /// Build from raw RGBA8 bytes.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics for a zero dimension, an unrepresentable byte length, or when
-    /// `pixels.len() != size.x * size.y * 4`.
-    pub fn from_srgba8(size: UVec2, pixels: Vec<u8>) -> Self {
-        let expected = rgba8_len(size.x, size.y);
-        assert_eq!(
-            pixels.len(),
-            expected,
-            "RGBA8 byte length {} does not match {}x{}x4 = {expected}",
-            pixels.len(),
-            size.x,
-            size.y,
-        );
-        Self { size, pixels }
+    /// [`ImageDataError`] for a zero dimension, an unrepresentable byte
+    /// length, or when `pixels.len() != size.x * size.y * 4`.
+    pub fn from_srgba8(size: UVec2, pixels: Vec<u8>) -> Result<Self, ImageDataError> {
+        let expected = rgba8_len(size)?;
+        if pixels.len() != expected {
+            return Err(ImageDataError::LengthMismatch {
+                size,
+                expected,
+                actual: pixels.len(),
+            });
+        }
+        Ok(Self { size, pixels })
     }
 
     /// Transparent black at `size`: what a surface fills before it registers,
@@ -144,12 +146,13 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics for a zero dimension or an unrepresentable byte length, as
-    /// [`Self::from_srgba8`] does.
+    /// Panics for a zero dimension or an unrepresentable byte length — the
+    /// size errors [`Self::from_srgba8`] returns. A blank image is sized by
+    /// the caller's own code, not read from data.
     pub fn blank(size: UVec2) -> Self {
         Self {
             size,
-            pixels: vec![0; rgba8_len(size.x, size.y)],
+            pixels: vec![0; rgba8_len(size).unwrap_or_else(|error| panic!("{error}"))],
         }
     }
 
@@ -209,16 +212,15 @@ impl Image {
     }
 }
 
-fn rgba8_len(width: u32, height: u32) -> usize {
-    assert!(
-        width != 0 && height != 0,
-        "RGBA8 dimensions must be non-zero, got {width}x{height}",
-    );
-    u64::from(width)
-        .checked_mul(u64::from(height))
+fn rgba8_len(size: UVec2) -> Result<usize, ImageDataError> {
+    if size.x == 0 || size.y == 0 {
+        return Err(ImageDataError::ZeroSize { size });
+    }
+    u64::from(size.x)
+        .checked_mul(u64::from(size.y))
         .and_then(|texels| texels.checked_mul(4))
         .and_then(|len| usize::try_from(len).ok())
-        .expect("RGBA8 dimensions overflow addressable byte length")
+        .ok_or(ImageDataError::TooLarge { size })
 }
 
 /// Where a fitted image paints, and which part of the texture shows.

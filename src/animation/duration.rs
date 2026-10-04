@@ -8,7 +8,12 @@
 
 use crate::animation::animatable::Animatable;
 
-const MAX_DURATION_SECS: f32 = 60.0;
+use std::time::Duration;
+
+/// The longest duration a spec runs for.
+pub(super) const MAX_DURATION: Duration = Duration::from_secs(60);
+
+const MAX_DURATION_SECS: f32 = MAX_DURATION.as_secs() as f32;
 
 pub(super) const DURATION_ERROR: &str =
     "animation duration must be finite and in 0.0..=60.0 seconds";

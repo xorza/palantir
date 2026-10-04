@@ -102,21 +102,13 @@ impl FontFamily {
     ///
     /// Cold: one lock, and a leak the first time a name appears. Naming
     /// a family no face answers to is not an error here — it resolves at
-    /// shaping time, and [`Ui::font_available`](crate::Ui::font_available)
+    /// shaping time, and [`Ui::has_font`](crate::Ui::has_font)
     /// is what asks in advance.
     ///
-    /// # Panics
-    ///
-    /// Panics when 65 536 families are interned already and `name` is
-    /// not one of them.
-    pub fn named(name: &str) -> Self {
-        Self::try_named(name).expect("more than 65536 font families interned")
-    }
-
-    /// [`Self::named`], or `None` when the table is full and `name` is not
-    /// in it. Untrusted names — a theme file's — come through here, so a
-    /// hostile file is a deserialization error rather than a panic.
-    pub(crate) fn try_named(name: &str) -> Option<Self> {
+    /// `None` when 65 536 families are interned already and `name` is not
+    /// one of them. A name usually comes from configuration or a font
+    /// file, so a full table is data the caller handles, not a panic.
+    pub fn named(name: &str) -> Option<Self> {
         if let Some(found) = read_names().get(name) {
             return Some(found);
         }
@@ -189,8 +181,7 @@ impl de::Visitor<'_> for NameVisitor {
     }
 
     fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
-        FontFamily::try_named(name)
-            .ok_or_else(|| E::custom("more than 65536 font families interned"))
+        FontFamily::named(name).ok_or_else(|| E::custom("more than 65536 font families interned"))
     }
 }
 
@@ -209,15 +200,18 @@ mod tests {
         assert_eq!(FontFamily::SANS.name(), "Inter");
         assert_eq!(FontFamily::MONO.name(), "JetBrains Mono");
         assert_eq!(FontFamily::default(), FontFamily::SANS);
-        assert_eq!(FontFamily::named("Inter"), FontFamily::SANS);
-        assert_eq!(FontFamily::named("JetBrains Mono"), FontFamily::MONO);
+        assert_eq!(FontFamily::named("Inter").unwrap(), FontFamily::SANS);
+        assert_eq!(
+            FontFamily::named("JetBrains Mono").unwrap(),
+            FontFamily::MONO
+        );
     }
 
     /// Interning is idempotent, and a new name lands past the seeded two.
     #[test]
     fn a_new_name_interns_once() {
-        let first = FontFamily::named("Palantir Test Family");
-        let again = FontFamily::named("Palantir Test Family");
+        let first = FontFamily::named("Palantir Test Family").unwrap();
+        let again = FontFamily::named("Palantir Test Family").unwrap();
         assert_eq!(first, again);
         assert_eq!(first.name(), "Palantir Test Family");
         assert!(first.raw() >= 2, "a fresh name cannot take a seeded index");
@@ -255,7 +249,7 @@ mod tests {
         );
 
         let unknown: FontFamily = ron::from_str("\"Segoe UI\"").expect("parse");
-        assert_eq!(unknown, FontFamily::named("Segoe UI"));
+        assert_eq!(unknown, FontFamily::named("Segoe UI").unwrap());
         assert_eq!(unknown.name(), "Segoe UI");
     }
 }

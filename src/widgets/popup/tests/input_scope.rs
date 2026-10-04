@@ -1,11 +1,10 @@
 //! What the layers below see while a popup is open, per click-outside mode.
 
-use crate::primitives::layout::anchor::Anchor;
-
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -72,7 +71,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
             "{mode:?}: scroll lines"
         );
         assert_eq!(bg.scroll.zoom.get() != 1.0, leaks, "{mode:?}: pinch zoom");
-        assert_eq!(bg.middle.drag.dragging(), leaks, "{mode:?}: middle drag");
+        assert_eq!(bg.middle.drag.is_live(), leaks, "{mode:?}: middle drag");
         h.release_button(PointerButton::Middle);
     }
 }
@@ -242,13 +241,10 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                         .id(WidgetId::from_hash("filter-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _handle| {
-                            let edit = TextEdit::new(buf).id(field);
-                            let edit = if falls_through {
-                                edit.escape_falls_through()
-                            } else {
-                                edit
-                            };
-                            edit.show(ui);
+                            TextEdit::new(buf)
+                                .id(field)
+                                .escape_falls_through(falls_through)
+                                .show(ui);
                         })
                         .dismissed
                 })
@@ -269,11 +265,11 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         h.frame(|ui| {
             scene(ui, &mut buf);
         });
-        assert_eq!(h.focused_id(), Some(field), "the field holds focus");
+        assert_eq!(h.focus(), Some(field), "the field holds focus");
 
         h.key(Key::Escape);
         let dismissed = h.frame_value(|ui| scene(ui, &mut buf));
-        (dismissed, h.focused_id())
+        (dismissed, h.focus())
     }
 
     use crate::input::keyboard::key::Key;

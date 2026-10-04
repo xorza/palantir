@@ -16,7 +16,7 @@ use std::time::Duration;
 use glam::UVec2;
 use palantir::internals::HeadlessTestGpuLease;
 use palantir::internals::record_app::RecordApp;
-use palantir::{FixedClock, FrameReport, OffscreenHost, RgbaF32, Ui};
+use palantir::{FixedClock, FrameReport, OffscreenHost, RenderTarget, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.
 #[derive(Debug)]
@@ -49,9 +49,11 @@ impl OffscreenTarget {
         dpr: f32,
         record: impl FnMut(&mut Ui),
     ) -> FrameReport {
-        let report = self
-            .host
-            .frame(&self.texture, dpr, &mut RecordApp::new(record));
+        let report = self.host.frame(
+            RenderTarget::new(&self.texture),
+            dpr,
+            &mut RecordApp::new(record),
+        );
         gpu.wait();
         report
     }

@@ -3,7 +3,9 @@
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::{GradientStopsBuilder, Stop};
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
+use crate::primitives::paint::brush::gradient::{
+    Gradient, GradientGeometry, Interpolation, Spread,
+};
 use crate::primitives::paint::color::RgbaF32;
 
 /// Chainable, allocation-free authoring builder for [`Gradient`].
@@ -12,16 +14,16 @@ use crate::primitives::paint::color::RgbaF32;
 /// [`Self::build`] and implicit conversions panic if fewer than two were
 /// added.
 ///
-/// `with_spread` / `with_interp` are spelled the same here as on the
-/// finished [`Gradient`] on purpose, so a caller needn't know which side
-/// of the build it is holding.
+/// Its setters are bare (`spread`, `interpolation`), as a builder's are;
+/// the finished [`Gradient`] spells the same settings `with_spread` and
+/// `with_interpolation`, as a value does.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct GradientBuilder<G> {
     geometry: G,
     stops: GradientStopsBuilder,
     spread: Spread,
-    interp: Interp,
+    interpolation: Interpolation,
 }
 
 impl<G: GradientGeometry> GradientBuilder<G> {
@@ -30,11 +32,12 @@ impl<G: GradientGeometry> GradientBuilder<G> {
             geometry,
             stops: GradientStopsBuilder::default(),
             spread: Spread::default(),
-            interp: G::DEFAULT_INTERP,
+            interpolation: G::DEFAULT_INTERPOLATION,
         }
     }
 
     /// Add a color stop at `offset`, clamped to the 0..=1 gradient range.
+    #[track_caller]
     pub fn stop(mut self, offset: f32, color: RgbaF32) -> Self {
         self.stops.push(Stop::new(offset, color));
         self
@@ -42,15 +45,15 @@ impl<G: GradientGeometry> GradientBuilder<G> {
 
     /// Override how the gradient repeats outside the 0..1
     /// parametric range. Builder-style.
-    pub const fn with_spread(mut self, spread: Spread) -> Self {
+    pub const fn spread(mut self, spread: Spread) -> Self {
         self.spread = spread;
         self
     }
 
     /// Override the colour space interpolation runs in.
     /// Builder-style.
-    pub const fn with_interp(mut self, interp: Interp) -> Self {
-        self.interp = interp;
+    pub const fn interpolation(mut self, interpolation: Interpolation) -> Self {
+        self.interpolation = interpolation;
         self
     }
 
@@ -60,7 +63,7 @@ impl<G: GradientGeometry> GradientBuilder<G> {
             geometry: self.geometry,
             ramp: ColorRamp {
                 stops: self.stops.build(),
-                interp: self.interp,
+                interpolation: self.interpolation,
             },
             spread: self.spread,
         }

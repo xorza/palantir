@@ -23,8 +23,7 @@ use crate::primitives::geometry::bezier;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -116,7 +115,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
 /// reference — the recording chain threads it through four functions
 /// and [`Background`] is deliberately not `Copy`; the per-field reads
 /// below copy the small fields locally as needed.
-pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow {
+pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke) -> ChromeRow {
     // **Chrome's NaN gate**, and the second of the crate's two — the
     // shape path's is `Shapes::add`. It runs here for the same reason
     // that one runs before lowering: `fill` interns its gradient into the
@@ -140,7 +139,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     // A background that paints nothing is kept only for a rounded clip's
     // corners. Its fill lowers to transparent rather than interning a
     // gradient no pass draws, which is also what lets
-    // `ChromeRow::paints_nothing` answer from the row alone.
+    // `ChromeRow::is_invisible` answer from the row alone.
     let fill_brush = if bg.fill.has_nan() || bg.is_noop() {
         &Brush::TRANSPARENT
     } else {
@@ -148,7 +147,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     };
     let fill = brush(store, fill_brush);
     let border = ShapeStroke::from(if bg.border.has_nan() {
-        Stroke::ZERO
+        Stroke::NONE
     } else {
         bg.border
     });
@@ -162,6 +161,8 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     } else {
         bg.shadow.into()
     };
+    let ring = ShapeStroke::from(ring);
+    let has_ring = !ring.is_noop();
     // Canonical authoring hash: fold all inputs into one
     // `Hasher::pod` call. Five separate `Hasher::write*` calls pay
     // `hash_bytes` setup + final `add_to_hash` five times — ~40 cycles
@@ -177,6 +178,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         fill_payload: u64, // RgbaF16-as-u64 (Solid) or content hash (Gradient)
         corners_u64: u64,
         border: ShapeStroke,   // 12 B align 4
+        ring: ShapeStroke,     // 12 B align 4
         shadow: LoweredShadow, // 18 B align 2
         fill_tag: u8,
     }
@@ -185,6 +187,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         fill_payload: brush.payload,
         corners_u64: corners.as_u64(),
         border,
+        ring,
         shadow,
         fill_tag: brush.tag,
         ..bytemuck::Zeroable::zeroed()
@@ -198,6 +201,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
         corners,
         shadow,
         hash,
+        ring: has_ring,
     }
 }
 
@@ -302,7 +306,7 @@ pub(crate) fn polyline(
         point.hash_visual(&mut h);
     }
     h.pod_slice(lowered_colors);
-    let style = u64::from(approx::canon_bits(stroke.width)) << 24
+    let style = u64::from(float_hash::canon_bits(stroke.width)) << 24
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
         | (join as u64);

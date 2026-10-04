@@ -1,22 +1,24 @@
 //! The chip that opens a picker: a swatch-styled trigger, and the popup it
 //! drops.
 
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::color_model::ColorModel;
+use crate::primitives::math::domain;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
+use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::popup::Popup;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use std::rc::Rc;
 
@@ -24,65 +26,47 @@ use std::rc::Rc;
 ///
 /// The compact form of the picker, for a properties panel or a node's port:
 /// one chip the size of a preview, and the panel only while it is wanted.
-/// Open state lives in the response map keyed off the trigger, so a caller
-/// threads nothing but the colour.
+/// The picker is configured as it would be on its own and handed over
+/// whole; the chip shows its colour. Open state lives in the response map
+/// keyed off the trigger, so a caller threads nothing but the picker.
 ///
 /// Clicking outside or pressing Esc closes it. There is no revert, because
 /// every gesture inside the panel has already committed — the chip shows what
 /// the colour is, not a proposal.
+///
+/// ```
+/// # use palantir::{ColorButton, ColorPicker, RgbaF32, Ui};
+/// # fn f(ui: &mut Ui, color: &mut RgbaF32) {
+/// ColorButton::new(ColorPicker::new(color).alpha(true).history(true)).show(ui);
+/// # }
+/// ```
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorButton<'a> {
     widget: Widget,
-    color: &'a mut RgbaF32,
-    alpha: bool,
-    model: Option<ColorModel>,
-    history: bool,
+    picker: ColorPicker<'a>,
     style: Option<&'a ColorPickerTheme>,
 }
 
-/// Open/closed flag for one trigger site, keyed off the trigger id.
-#[derive(Default, Clone, Copy, Debug)]
-struct ChipState {
-    open: bool,
-}
-
 impl<'a> ColorButton<'a> {
-    /// A chip bound to `color`.
-    #[track_caller]
-    pub fn new(color: &'a mut RgbaF32) -> Self {
+    /// A chip that opens `picker`. The picker's id defaults to the chip's
+    /// `id.with("picker")`; an id set on the picker wins.
+    pub fn new(picker: ColorPicker<'a>) -> Self {
         Self {
-            widget: Widget::leaf().sense(Sense::CLICK),
-            color,
-            alpha: false,
-            model: None,
-            history: true,
+            // A Tab stop that opens on Space and Enter, as a button does.
+            widget: Widget::leaf()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT),
+            picker,
             style: None,
         }
     }
 
-    /// Show the alpha bar and the opacity value in the popup. Off by default,
-    /// matching [`ColorPicker::alpha`].
-    pub const fn alpha(mut self, on: bool) -> Self {
-        self.alpha = on;
-        self
-    }
-
-    /// Pin the popup's model instead of offering the switch.
-    pub const fn model(mut self, model: ColorModel) -> Self {
-        self.model = Some(model);
-        self
-    }
-
-    /// Show the picker's own swatch row. On by default: a chip in a panel is
-    /// the case with no room for a preset row of its own.
-    pub const fn history(mut self, on: bool) -> Self {
-        self.history = on;
-        self
-    }
-
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `color_picker`, for the
+    /// chip, the popup's chrome and the picker inside it. Takes an `Option`
+    /// as readily as a reference: `.style(overrides.as_ref())`. `None`
+    /// leaves the picker's own style in place.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
@@ -94,68 +78,47 @@ impl<'a> ColorButton<'a> {
         // chrome out of it across the `&mut Ui` the chip's record takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
-        let side = slot.chip_size.themed_length(1.0);
+        let side = domain::length_at_least(slot.chip_size, 1.0);
         let checker = Checkerboard::new(slot);
         let mut widget = self
             .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        let response = widget.response(ui);
+        let mut response = widget.response(ui);
         let id = widget.resolve(ui);
+        if !response.disabled && ui.is_focus_within(id) {
+            let space = widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+            let enter = widget.key_pressed(ui, Shortcut::key(Key::Enter));
+            if space || enter {
+                response.left.phase = ButtonPhase::Up { click: Some(1) };
+            }
+        }
         let size = response
             .layout_rect
             .map_or(Size::new(side, side), |r| r.size);
-        let color = self.color;
-        let shown = *color;
+        let shown = self.picker.color();
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, shown, size));
 
-        // Probed, not inserted: a chip spends nearly every frame closed, and
-        // closed is the default — so an unopened trigger keeps no row at all.
-        let was_open = ui.state::<ChipState>(id).is_some_and(|state| state.open);
-        let mut open = was_open;
-        if response.clicked() {
-            open = !open;
+        let mut picker = self.picker.default_id(id.with("picker"));
+        if let Some(style) = self.style {
+            picker = picker.style(style);
         }
-        // A disabled trigger closes its popup, as a native one does: the
-        // popup is a tree of its own, and would go on taking picks for a
-        // control that refuses them.
-        if response.disabled {
-            open = false;
-        }
-
-        let mut changed = false;
-        let mut committed = false;
-        if open && let Some(rect) = response.rect {
-            let alpha = self.alpha;
-            let model = self.model;
-            let history = self.history;
-            let style = self.style;
-            let popup = Popup::below(rect)
-                .id(id.with("panel"))
-                .background(slot.popup.clone())
-                .padding(slot.popup_padding);
-            let opened = popup.show(ui, |ui, _| {
-                let mut picker = ColorPicker::new(color)
-                    .alpha(alpha)
-                    .history(history)
-                    .style(style);
-                if let Some(model) = model {
-                    picker = picker.model(model);
-                }
-                let r = picker.id(id.with("picker")).show(ui);
+        let trigger = ResponseSnapshot {
+            id,
+            state: response,
+        };
+        let opened = PopupTrigger::on(&trigger)
+            .id(id.with("panel"))
+            .background(slot.popup.clone())
+            .padding(slot.popup_padding)
+            .show(ui, |ui, _| {
+                let r = picker.show(ui);
                 (r.changed, r.committed)
             });
-            (changed, committed) = opened.inner;
-            if opened.closed() {
-                open = false;
-            }
-        }
-        if open != was_open {
-            ui.state_or_default::<ChipState>(id).open = open;
-        }
+        let (changed, committed) = opened.inner.unwrap_or_default();
 
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }

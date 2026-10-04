@@ -7,7 +7,7 @@
 /// `Always` is the blunt one: any input event whatsoever —
 /// including a pointer move over inert surface — forces a full
 /// record→measure→arrange→cascade→encode pass. `OnDelta` consults the
-/// finer-grained `InputDelta::requests_repaint` instead: pointer moves
+/// finer-grained `InputDelta::repaint_requested` instead: pointer moves
 /// only force a record when the hover/scroll
 /// target changed or a capture is active; scroll over a non-scroll
 /// surface is dropped; a press records when it hits a sense target,
@@ -24,7 +24,7 @@
 pub enum InputPolicy {
     /// Re-record on any input event.
     Always,
-    /// Re-record only when `InputDelta::requests_repaint` fired on at
+    /// Re-record only when `InputDelta::repaint_requested` fired on at
     /// least one event since the last frame.
     #[default]
     OnDelta,

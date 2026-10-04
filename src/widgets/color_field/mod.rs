@@ -5,7 +5,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::image::Image;
@@ -31,7 +31,7 @@ use glam::Vec2;
 ///
 /// Exact per texel. The field builds a CPU texture and refreshes it in place
 /// whenever the hue or the model moves, at a resolution
-/// [`downsample`](Self::downsample) below the display's, which the sampler
+/// [`texel_size`](Self::texel_size) below the display's, which the sampler
 /// then smooths back out. A gradient stack cannot draw this — it interpolates
 /// in linear light, which is neither model's geometry — and a vertex-coloured
 /// mesh pays eight *linear* bits, which crushes the darks.
@@ -43,7 +43,7 @@ use glam::Vec2;
 pub struct ColorField<'a> {
     widget: Widget,
     coords: &'a mut ColorCoords,
-    downsample: u32,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -81,19 +81,20 @@ impl<'a> ColorField<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             coords,
-            downsample: color_surface::DOWNSAMPLE,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
 
-    /// How far below the display's resolution the texture is built, as a
-    /// power of two. Default 4.
+    /// The edge of one texture texel, in physical pixels: how far below the
+    /// display's resolution the texture is built, as a power of two.
+    /// Default 4.
     ///
     /// Worst error against the exact colour, in 8-bit sRGB units, over a
     /// 208 × 160 field at display scale 1.5 and twelve hues — measured by
-    /// `tests::downsample_four_tracks_the_exact_colour`:
+    /// `tests::texel_size_four_tracks_the_exact_colour`:
     ///
-    /// | divisor | Okhsv | HSV | texels to convert |
+    /// | texel size | Okhsv | HSV | texels to convert |
     /// |---|---|---|---|
     /// | 1 | 0 | 0 | 74 880 |
     /// | 2 | 4 | 1 | 18 720 |
@@ -109,8 +110,9 @@ impl<'a> ColorField<'a> {
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = color_surface::checked_downsample(n);
+    #[track_caller]
+    pub const fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
         self
     }
 
@@ -125,11 +127,11 @@ impl<'a> ColorField<'a> {
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let themed = Size::new(
-            theme.field_width.themed_length(1.0),
-            theme.field_height.themed_length(1.0),
+            domain::length_at_least(theme.field_width, 1.0),
+            domain::length_at_least(theme.field_height, 1.0),
         );
-        let handle_radius = theme.handle_radius.themed_length(1.0);
-        let handle_width = theme.handle_width.themed_length(0.0);
+        let handle_radius = domain::length_at_least(theme.handle_radius, 1.0);
+        let handle_width = domain::length_at_least(theme.handle_width, 0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
 
@@ -145,24 +147,24 @@ impl<'a> ColorField<'a> {
         if let Some(at) = response.press_fraction(0.0) {
             changed |= write_axes(coords, at.x, 1.0 - at.y);
         }
-        let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, coords);
+        let keyed = !response.disabled && ui.is_focus_within(id) && keyboard_travel(ui, coords);
         changed |= keyed;
         let committed = !response.disabled && (response.left.released() || keyed);
 
-        let texels = color_surface::texel_size(size, self.downsample, ui);
+        let texels = color_surface::texture_size(size, self.texel_size, ui);
         let model = coords.model();
         let hue = coords.hue();
-        let marker = Vec2::new(coords.sat() * size.w, (1.0 - coords.val()) * size.h);
+        let marker = Vec2::new(
+            coords.saturation() * size.w,
+            (1.0 - coords.value()) * size.h,
+        );
 
         widget.record(ui, None, |ui| {
-            let image = ui.with_state::<ColorSurface<(ColorModel, f32)>, _>(
-                id.with("surface"),
-                |ui, surface| {
-                    surface
-                        .ensure(ui, texels, (model, hue), |image| fill(image, model, hue))
-                        .clone()
-                },
-            );
+            let image = ui.with_state::<ColorSurface<(ColorModel, f32)>, _>(id, |ui, surface| {
+                surface
+                    .ensure(ui, texels, (model, hue), |image| fill(image, model, hue))
+                    .clone()
+            });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             ui.add_shape(Shape::circle(
                 marker,
@@ -171,12 +173,12 @@ impl<'a> ColorField<'a> {
             ));
             ui.add_shape(Shape::circle(
                 marker,
-                handle_radius - handle_width,
+                domain::length_at_least(handle_radius - handle_width, 0.0),
                 Stroke::new(handle_inner, handle_width),
             ));
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }
@@ -192,14 +194,14 @@ impl Configure for ColorField<'_> {
 
 fn write_axes(coords: &mut ColorCoords, sat: f32, val: f32) -> bool {
     let before = *coords;
-    coords.set_sat(sat);
-    coords.set_val(val);
+    coords.set_saturation(sat);
+    coords.set_value(val);
     *coords != before
 }
 
 fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
-    let sat = ACROSS.travel(ui, coords.sat());
-    let val = UP.travel(ui, coords.val());
+    let sat = ACROSS.travel(ui, coords.saturation());
+    let val = UP.travel(ui, coords.value());
     write_axes(coords, sat.to, val.to)
 }
 

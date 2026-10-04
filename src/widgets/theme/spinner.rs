@@ -16,7 +16,7 @@ pub struct SpinnerTheme {
     pub diameter: f32,
     /// Arc length in radians. Under a full turn, so the gap is what
     /// reads as motion; `TAU` would look like a static ring.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::finite")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub sweep: f32,
     /// Rotation rate in radians/second.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::positive")]
@@ -33,7 +33,7 @@ pub struct SpinnerTheme {
 
 impl SpinnerTheme {
     /// An accent arc sweeping three quarters of the circle.
-    pub fn from_palette(p: &Palette) -> Self {
+    pub const fn from_palette(p: &Palette) -> Self {
         Self {
             color: p.accent,
             diameter: 24.0,

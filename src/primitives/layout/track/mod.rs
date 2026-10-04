@@ -2,10 +2,9 @@
 //! a whole grid by.
 
 use crate::common::span::Span;
-use crate::primitives::layout::limits::{valid_lower_bound, valid_upper_bound};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx;
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use std::hash;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
@@ -50,42 +49,48 @@ impl Track {
     pub const FILL: Self = Self::new(Sizing::FILL);
 
     /// [`Sizing::fixed`] as a track.
+    ///
+    /// # Panics
+    ///
+    /// As [`Sizing::fixed`].
+    #[track_caller]
     pub const fn fixed(v: f32) -> Self {
         Self::new(Sizing::fixed(v))
     }
 
     /// [`Sizing::fill`] as a track.
+    ///
+    /// # Panics
+    ///
+    /// As [`Sizing::fill`].
+    #[track_caller]
     pub const fn fill(weight: f32) -> Self {
         Self::new(Sizing::fill(weight))
     }
 
-    /// Set the lower size clamp.
+    /// Set the lower size clamp. `min`: a *length*. The order against the
+    /// maximum is coerced: the minimum wins, as in CSS and WPF, so a
+    /// maximum below it is raised to it.
     ///
     /// # Panics
     ///
-    /// Panics if `min` is negative, non-finite, or greater than the current
-    /// maximum.
-    pub const fn min(mut self, min: f32) -> Self {
-        assert!(
-            valid_lower_bound(min) && min <= self.max,
-            "Track minimum must be finite, non-negative, and not exceed its maximum",
-        );
-        self.min = min;
+    /// Panics unless `min` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn with_min(mut self, min: f32) -> Self {
+        self.min = domain::length(min);
+        self.max = self.max.max(min);
         self
     }
 
-    /// Set the upper size clamp.
+    /// Set the upper size clamp. `max`: an *extent*, so `+inf` is the
+    /// unbounded maximum. A maximum below the minimum is raised to it.
     ///
     /// # Panics
     ///
-    /// Panics if `max` is negative, NaN, or less than the current minimum.
-    /// Positive infinity is the unbounded sentinel.
-    pub const fn max(mut self, max: f32) -> Self {
-        assert!(
-            valid_upper_bound(max) && max >= self.min,
-            "Track maximum must be non-negative and not be less than its minimum",
-        );
-        self.max = max;
+    /// Panics unless `max` is an [extent](crate::widget::domain::extent).
+    #[track_caller]
+    pub const fn with_max(mut self, max: f32) -> Self {
+        self.max = domain::extent(max).max(self.min);
         self
     }
 
@@ -108,12 +113,12 @@ impl From<Sizing> for Track {
 impl FloatHash for Track {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, h: &mut H) {
-        self.hash_bits(h, approx::eq_bits);
+        self.hash_bits(h, float_hash::eq_bits);
     }
 
     #[inline]
     fn hash_visual<H: hash::Hasher>(&self, h: &mut H) {
-        self.hash_bits(h, approx::canon_bits);
+        self.hash_bits(h, float_hash::canon_bits);
     }
 }
 

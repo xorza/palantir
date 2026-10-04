@@ -28,6 +28,7 @@ pub(crate) mod triangle;
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -143,7 +144,14 @@ impl Shape {
     /// A rounded rectangle painting `rect` (owner-relative). Starts
     /// transparent-filled, borderless, sharp-cornered — chain
     /// [`RectShape::fill`] / [`RectShape::border`] / [`RectShape::corners`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    /// Every shape's geometry is checked the same way: finite.
+    #[track_caller]
     pub const fn rect(rect: Rect) -> RectShape {
+        rect.validate();
         RectShape::new(RectKind::Rounded, Some(rect))
     }
 
@@ -154,7 +162,13 @@ impl Shape {
 
     /// An inverse-mask rectangle over `rect` — the sibling of
     /// [`Self::rect`], same chainable fill/border/corners.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::rect`].
+    #[track_caller]
     pub const fn windowed_rect(rect: Rect) -> RectShape {
+        rect.validate();
         RectShape::new(RectKind::Windowed, Some(rect))
     }
 
@@ -165,24 +179,53 @@ impl Shape {
 
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp
     /// (radius 0), transparent-filled, borderless.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every corner is an [offset](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
-        TriangleShape::new(a, b, c)
+        TriangleShape::new(vec2::offset(a), vec2::offset(b), vec2::offset(c))
     }
 
     /// A straight line from `a` to `b` in `stroke` (`Butt` cap).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every point is an *offset*, the stroke's width a
+    /// *length* and its colour a *colour*. The same holds for every stroked
+    /// shape below.
+    #[track_caller]
     pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
+        stroke.validate();
+        let (a, b) = (vec2::offset(a), vec2::offset(b));
         CurveShape::new(CurveGeometry::Line { a, b }, stroke)
     }
 
     /// A polyline through `points` in `stroke` (`Butt` cap, `Miter`
     /// join). Chain [`PolylineShape::per_point`] or
     /// [`PolylineShape::per_segment`] to vary the colour along it.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::line`].
+    #[track_caller]
     pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_> {
-        PolylineShape::new(points, stroke)
+        stroke.validate();
+        let shape = PolylineShape::new(points, stroke);
+        // The points' box is folded under the NaN contract, so one check
+        // of it covers every point.
+        shape.bbox.validate();
+        shape
     }
 
     /// A cubic Bézier through control points `p0..=p3` in `stroke`
     /// (`Butt` cap).
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::line`].
+    #[track_caller]
     pub const fn cubic_bezier(
         p0: Vec2,
         p1: Vec2,
@@ -190,18 +233,35 @@ impl Shape {
         p3: Vec2,
         stroke: Stroke,
     ) -> CurveShape {
+        stroke.validate();
+        let (p0, p1) = (vec2::offset(p0), vec2::offset(p1));
+        let (p2, p3) = (vec2::offset(p2), vec2::offset(p3));
         CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, stroke)
     }
 
     /// A quadratic Bézier through `p0`/`p1`/`p2`. See
     /// [`Self::cubic_bezier`].
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::line`].
+    #[track_caller]
     pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
+        stroke.validate();
+        let (p0, p1, p2) = (vec2::offset(p0), vec2::offset(p1), vec2::offset(p2));
         CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
     }
 
     /// A circular arc sweeping `sweep` radians from `start_angle` in
     /// `stroke` (`Butt` cap) — chain [`CurveShape::ramp`] /
-    /// [`CurveShape::cap`].
+    /// [`CurveShape::cap`]. `radius`: a *length*; `start_angle` and
+    /// `sweep`: *angles*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless each value holds its kind, as [`Self::line`] says of
+    /// the stroke.
+    #[track_caller]
     pub const fn arc(
         center: Vec2,
         radius: f32,
@@ -209,12 +269,13 @@ impl Shape {
         sweep: f32,
         stroke: Stroke,
     ) -> CurveShape {
+        stroke.validate();
         CurveShape::new(
             CurveGeometry::Arc {
-                center,
-                radius,
-                start_angle,
-                sweep,
+                center: vec2::offset(center),
+                radius: domain::length(radius),
+                start_angle: domain::angle(start_angle),
+                sweep: domain::angle(sweep),
             },
             stroke,
         )
@@ -222,6 +283,7 @@ impl Shape {
 
     /// A full circle — [`Self::arc`] with a `2π` sweep, which closes
     /// seamlessly under the default `Butt` cap.
+    #[track_caller]
     pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
         Self::arc(center, radius, 0.0, TAU, stroke)
     }
@@ -240,12 +302,23 @@ impl Shape {
     /// which place the bytes in the frame's text arena. Widget
     /// constructors take borrowed or owned text directly because they
     /// defer interning until `show`.
+    ///
+    /// A font is how a theme's text reaches paint, so it is coerced rather
+    /// than checked: a face the shaper cannot use — a size or a leading
+    /// not finite and above the UI epsilon — shapes nothing.
     pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape {
         TextShape::new(text, font)
     }
 
     /// A `shadow` of the owner's full rect.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the shadow's colour is a *colour*, its offset and
+    /// spread *offsets*, and its blur a *length*.
+    #[track_caller]
     pub const fn shadow(shadow: Shadow) -> ShadowShape {
+        shadow.validate();
         ShadowShape::new(shadow)
     }
 

@@ -7,7 +7,7 @@
 //! relation.
 
 use glam::UVec2;
-use image::{Rgba, RgbaImage};
+use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::{Background, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
 use crate::goldens::assert_same;

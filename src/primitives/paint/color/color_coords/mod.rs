@@ -1,6 +1,7 @@
 //! The model-tagged triple a picker drives, so no widget branches on the
 //! model.
 
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::hsv::Hsv;
@@ -74,54 +75,64 @@ impl ColorCoords {
         Self::new(model, self.to_color(), self.hue())
     }
 
-    /// Hue, `0..1`.
+    /// Hue, read as the *turn* [`Self::to_color`] paints: a hue outside
+    /// `0..=1` wraps, and a non-finite one reads as `0`. A hue of `1` stays
+    /// `1`, for the reason [`Self::set_hue`] keeps it.
     pub const fn hue(self) -> f32 {
-        match self {
+        let h = match self {
             Self::Okhsv(c) => c.h,
             Self::Hsv(c) => c.h,
+        };
+        if domain::is_fraction(h) {
+            h
+        } else {
+            domain::turn(h)
         }
     }
 
-    /// Saturation, `0..1`.
-    pub const fn sat(self) -> f32 {
-        match self {
+    /// Saturation, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
+    /// the model holds as non-finite.
+    pub const fn saturation(self) -> f32 {
+        domain::fraction(match self {
             Self::Okhsv(c) => c.s,
             Self::Hsv(c) => c.s,
-        }
+        })
     }
 
-    /// Value, `0..1`.
-    pub const fn val(self) -> f32 {
-        match self {
+    /// Value, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
+    /// the model holds as non-finite.
+    pub const fn value(self) -> f32 {
+        domain::fraction(match self {
             Self::Okhsv(c) => c.v,
             Self::Hsv(c) => c.v,
-        }
+        })
     }
 
-    /// Set the hue, clamped to `0..=1`. Both ends name red, and both are
-    /// kept: a hue bar dragged to its right edge reads 1 and draws its
-    /// marker there, where a wrap to 0 jumped it to the left. A caller
-    /// stepping round the circle wraps its own arithmetic.
+    /// Set the hue, as a *fraction* — clamped to `0..=1`, and `0` when it is
+    /// not finite. Both ends name red, and both are kept: a hue bar dragged
+    /// to its right edge reads 1 and draws its marker there, where a wrap
+    /// to 0 jumped it to the left. A caller stepping round the circle wraps
+    /// its own arithmetic.
     pub const fn set_hue(&mut self, h: f32) {
-        let h = h.clamp(0.0, 1.0);
+        let h = domain::fraction(h);
         match self {
             Self::Okhsv(c) => c.h = h,
             Self::Hsv(c) => c.h = h,
         }
     }
 
-    /// Set the saturation, clamped to `0..1`.
-    pub const fn set_sat(&mut self, s: f32) {
-        let s = s.clamp(0.0, 1.0);
+    /// Set the saturation, as a *fraction*.
+    pub const fn set_saturation(&mut self, s: f32) {
+        let s = domain::fraction(s);
         match self {
             Self::Okhsv(c) => c.s = s,
             Self::Hsv(c) => c.s = s,
         }
     }
 
-    /// Set the value, clamped to `0..1`.
-    pub const fn set_val(&mut self, v: f32) {
-        let v = v.clamp(0.0, 1.0);
+    /// Set the value, as a *fraction*.
+    pub const fn set_value(&mut self, v: f32) {
+        let v = domain::fraction(v);
         match self {
             Self::Okhsv(c) => c.v = v,
             Self::Hsv(c) => c.v = v,

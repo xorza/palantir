@@ -1,5 +1,5 @@
 use crate::primitives::geometry::bezier::*;
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain::internals::assert_close;
 
 #[test]
 fn quadratic_to_cubic_promotes_inner_cps() {

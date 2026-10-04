@@ -2,12 +2,18 @@
 //! widget, the integer-or-float target it writes through, the retained
 //! drag and edit state, and what a frame of either reports.
 
+use crate::input::key_class::{KeyClass, KeyFilter};
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
+use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -64,7 +70,7 @@ struct Scrub {
 #[derive(Clone, Copy, Debug)]
 struct EditEnd {
     submitted: bool,
-    cancelled: bool,
+    canceled: bool,
 }
 
 impl Scrub {
@@ -108,7 +114,7 @@ pub struct DragValue<'a> {
     min: f64,
     max: f64,
     decimals: usize,
-    suffix: &'a str,
+    suffix: TextInput<'a>,
     editable: bool,
     style: Option<&'a DragValueTheme>,
 }
@@ -119,21 +125,32 @@ impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
         Self {
-            widget: Widget::leaf(),
+            // A Tab stop, as WAI-ARIA's spin button: the arrows step it, and
+            // typing and Enter open the editor — the `CARET` and `TEXT`
+            // classes.
+            widget: Widget::leaf()
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
             value: value.into(),
             speed: 1.0,
             min: f64::NEG_INFINITY,
             max: f64::INFINITY,
             decimals: 2,
-            suffix: "",
+            suffix: TextInput::Borrowed(""),
             editable: false,
             style: None,
         }
     }
 
-    /// Value change per logical pixel of horizontal drag. Default `1.0`.
+    /// Value change per logical pixel of horizontal drag, *positive*.
+    /// Default `1.0`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `speed` is finite and above zero.
+    #[track_caller]
     pub const fn speed(mut self, speed: f64) -> Self {
-        self.speed = speed;
+        self.speed = domain::f64::positive(speed);
         self
     }
 
@@ -141,7 +158,19 @@ impl<'a> DragValue<'a> {
     ///
     /// A builder step here and a constructor argument on
     /// [`Slider::new`](crate::Slider::new), which says why.
+    ///
+    /// An end may be infinite — that is the unbounded default — and a
+    /// reversed range is ordered.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either end is NaN.
+    #[track_caller]
     pub const fn range(mut self, range: RangeInclusive<f64>) -> Self {
+        assert!(
+            !range.start().is_nan() && !range.end().is_nan(),
+            "a drag range's ends must not be NaN",
+        );
         self.min = *range.start();
         self.max = *range.end();
         self
@@ -157,16 +186,18 @@ impl<'a> DragValue<'a> {
     }
 
     /// Text appended after the number — a unit (`"px"`, `"%"`), or
-    /// whatever a locale table hands over. Borrowed for the frame, so it
-    /// need not be `'static`.
-    pub const fn suffix(mut self, s: &'a str) -> Self {
-        self.suffix = s;
+    /// whatever a locale table hands over: borrowed, owned, interned or
+    /// `fmt!` output, as every widget's text.
+    pub fn suffix(mut self, text: impl Into<TextInput<'a>>) -> Self {
+        self.suffix = text.into();
         self
     }
 
-    /// Enable click-to-type keyboard entry alongside drag-to-scrub. A click
-    /// (that doesn't latch a drag) focuses the field and swaps the chip for
-    /// an inline `TextEdit`; Enter / click-away commits, Escape reverts.
+    /// Enable keyboard entry alongside drag-to-scrub. A click that latches
+    /// no drag, Enter on the focused chip, or a character typed into it
+    /// swaps the chip for an inline `TextEdit` — a typed character
+    /// replaces the value, as a spin button's does. Enter and click-away
+    /// commit, Escape reverts, and either leaves the chip focused.
     /// Default off.
     pub const fn editable(mut self, on: bool) -> Self {
         self.editable = on;
@@ -200,6 +231,11 @@ impl<'a> DragValue<'a> {
     }
 
     /// Record the chip, or its inline editor while one is open.
+    ///
+    /// A focused chip is a spin button: Up and Down step the value by one
+    /// unit of its last decimal — one, for an integer — and ten units
+    /// with Shift, each step a committed edit. Focus alone opens no
+    /// editor, so the press that starts a scrub may focus the chip.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let required = self.required_sense();
         self.configure().add_sense(required);
@@ -213,11 +249,21 @@ impl<'a> DragValue<'a> {
         // `rect` is post-zoom and would mismatch the sizing units under a
         // scaled canvas. Disabled mid-edit falls through to the chip path,
         // which kicks focus out and discards the pending draft below.
-        if self.editable && ui.focused_id() == Some(id) {
+        let focused = ui.focus() == Some(id);
+        if self.editable && focused {
             if response.disabled {
                 ui.clear_focus();
             } else {
-                return self.show_editing(ui, id, response.layout_rect);
+                // An open draft keeps the editor; a character typed into
+                // the chip opens it this frame, so the editor takes that
+                // character itself and it replaces the selected value.
+                let editing = matches!(
+                    ui.state::<DragValueState>(id),
+                    Some(DragValueState::Editing { .. })
+                );
+                if editing || typed(ui) {
+                    return self.show_editing(ui, id, response.layout_rect);
+                }
             }
         }
 
@@ -233,80 +279,124 @@ impl<'a> DragValue<'a> {
         let drag_started = response.left.drag.started();
         let drag_delta = response.left.drag.delta();
         let drag_stopped = response.left.drag.stopped();
-        let state = if drag_started {
-            Some(ui.state_or_default::<DragValueState>(id))
-        } else {
-            ui.state_mut::<DragValueState>(id)
-        };
-        if let Some(state) = state {
-            // A click-away reaches the chip with the edit draft still
-            // present. Resolve it while editable and enabled, otherwise drop
-            // it so a later focus cannot replay stale input.
-            if let DragValueState::Editing { buffer, .. } = state {
-                if self.editable && !response.disabled {
-                    changed = self.value.parse_from(buffer, self.min, self.max);
-                    committed = true;
+        // Probed first, so a chip that never scrubbed or edited stores no
+        // row.
+        if drag_started || ui.state::<DragValueState>(id).is_some() {
+            ui.with_state::<DragValueState, _>(id, |_, state| {
+                // A click-away reaches the chip with the edit draft still
+                // present. Resolve it while editable and enabled, otherwise drop
+                // it so a later focus cannot replay stale input.
+                if let DragValueState::Editing { buffer, .. } = state {
+                    if self.editable && !response.disabled {
+                        changed = self.value.parse_from(buffer, self.min, self.max);
+                        committed = true;
+                    }
+                    *state = DragValueState::Idle;
                 }
-                *state = DragValueState::Idle;
-            }
 
-            if drag_started {
-                *state = DragValueState::Scrubbing(Scrub {
-                    anchor: self.value.read(),
-                    speed: self.speed,
-                    travel: 0.0,
-                });
-            }
+                if drag_started {
+                    *state = DragValueState::Scrubbing(Scrub {
+                        anchor: self.value.read(),
+                        speed: self.speed,
+                        travel: 0.0,
+                    });
+                }
 
-            let mut stopped = None;
-            if let DragValueState::Scrubbing(scrub) = state {
-                if !response.disabled
-                    && let Some(delta) = drag_delta
-                {
-                    scrub.travel = delta.x;
-                    changed |= self.value.commit_drag(
-                        scrub.anchor,
-                        scrub.offset(),
-                        self.decimals,
-                        self.min,
-                        self.max,
-                    );
+                let mut stopped = None;
+                if let DragValueState::Scrubbing(scrub) = state {
+                    if !response.disabled
+                        && let Some(delta) = drag_delta
+                    {
+                        scrub.travel = delta.x;
+                        changed |= self.value.commit_drag(
+                            scrub.anchor,
+                            scrub.offset(),
+                            self.decimals,
+                            self.min,
+                            self.max,
+                        );
+                    }
+                    if drag_stopped {
+                        stopped = Some(*scrub);
+                    }
                 }
-                if drag_stopped {
-                    stopped = Some(*scrub);
+                // The stop edge is the commit: the drag state is already gone on
+                // this frame, so the scrub's own travel carries the final value.
+                // Released while disabled, the gesture is dropped instead.
+                if let Some(scrub) = stopped {
+                    *state = DragValueState::Idle;
+                    if !response.disabled {
+                        changed |= self.value.commit_drag(
+                            scrub.anchor,
+                            scrub.offset(),
+                            self.decimals,
+                            self.min,
+                            self.max,
+                        );
+                        committed = true;
+                    }
+                }
+            });
+        }
+
+        if focused && !response.disabled {
+            let step = match self.value.read() {
+                Num::I64(_) => 1.0,
+                Num::F64(_) => 1.0 / 10f64.powi(self.decimals.min(15) as i32),
+            };
+            // Every chord sampled: `key_pressed` also keeps it subscribed
+            // for the wake gate.
+            let mut moved = 0.0;
+            for (key, sign) in [(Key::ArrowUp, 1.0), (Key::ArrowDown, -1.0)] {
+                let coarse = self
+                    .widget
+                    .key_pressed(ui, Shortcut::new(ShortcutMods::SHIFT, key));
+                let plain = self.widget.key_pressed(ui, Shortcut::key(key));
+                if coarse {
+                    moved += sign * step * 10.0;
+                } else if plain {
+                    moved += sign * step;
                 }
             }
-            // The stop edge is the commit: the drag state is already gone on
-            // this frame, so the scrub's own travel carries the final value.
-            // Released while disabled, the gesture is dropped instead.
-            if let Some(scrub) = stopped {
-                *state = DragValueState::Idle;
-                if !response.disabled {
-                    changed |= self.value.commit_drag(
-                        scrub.anchor,
-                        scrub.offset(),
-                        self.decimals,
-                        self.min,
-                        self.max,
-                    );
-                    committed = true;
-                }
+            if moved != 0.0 {
+                let to = self.value.read().widen() + moved;
+                changed |= self
+                    .value
+                    .commit_value(to, self.decimals, self.min, self.max);
+                committed = true;
             }
         }
 
-        // A plain enabled click (no drag latched) enters keyboard entry;
-        // `show_editing` seeds the buffer on entry, so a click and a
-        // programmatic `set_focus` get the same fresh draft.
-        if self.editable && response.clicked() {
+        // A plain enabled click (no drag latched), or Enter on the focused
+        // chip, opens keyboard entry on the next frame — Enter so the
+        // editor does not take the Enter that opened it as its submit.
+        let enter = focused && self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
+        if self.editable && !response.disabled && (response.clicked() || enter) {
             ui.set_focus(id);
             // The probed snapshot predates the request, so without this
             // the response denies the focus the widget just took.
             response.focused = true;
+            ui.with_state::<DragValueState, _>(id, |_, s| {
+                *s = DragValueState::Editing {
+                    buffer: self.value.edit_string(),
+                    original: self.value.read(),
+                }
+            });
         }
 
-        let text = match &self.value {
-            DragNum::I64(v) => ui.fmt(format_args!("{}{}", **v, self.suffix)),
-            DragNum::F64(v) => ui.fmt(format_args!("{:.*}{}", self.decimals, **v, self.suffix)),
+        let text = match &self.suffix {
+            TextInput::Borrowed(suffix) => label(ui, &self.value, self.decimals, suffix),
+            TextInput::Owned(suffix) => label(ui, &self.value, self.decimals, suffix),
+            // The arena cannot be read while it is written, so an interned
+            // suffix goes through a retained copy.
+            TextInput::Interned(suffix) => {
+                let (suffix, value, decimals) = (*suffix, &self.value, self.decimals);
+                ui.with_state::<SuffixScratch, _>(id, |ui, scratch| {
+                    scratch.0.clear();
+                    scratch.0.push_str(ui.text(suffix));
+                    label(ui, value, decimals, &scratch.0)
+                })
+            }
         };
 
         // The chip half of the bundle — the same one the edit mode's editor
@@ -327,7 +417,7 @@ impl<'a> DragValue<'a> {
             );
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }
@@ -375,42 +465,50 @@ impl<'a> DragValue<'a> {
         // Entry replaces any scrub state atomically, so its later release
         // cannot overwrite the typed result. Existing edit frames move the
         // same String through TextEdit without allocating a new buffer.
-        let (mut buffer, original) = match mem::take(ui.state_or_default::<DragValueState>(id)) {
-            DragValueState::Editing { buffer, original } => (buffer, original),
-            DragValueState::Idle | DragValueState::Scrubbing(_) => {
-                (self.value.edit_string(), self.value.read())
-            }
-        };
+        let (mut buffer, original) =
+            match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
+                DragValueState::Editing { buffer, original } => (buffer, original),
+                DragValueState::Idle | DragValueState::Scrubbing(_) => {
+                    (self.value.edit_string(), self.value.read())
+                }
+            };
         let ended = {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
                 .text_align(Align::CENTER)
-                .select_all_on_focus()
+                .select_all_on_focus(true)
                 .style(editor)
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
             // The chip's placement has to survive the swap or the field
-            // visibly jumps mid-interaction; which fields that means is
-            // `TextEdit`'s call, and documented there.
+            // visibly jumps mid-interaction. Its size does not travel with
+            // it: the width is pinned above to the chip's last rect, so a
+            // long value scrolls instead of growing the row, and
+            // `DragValueTheme::from_chip` mirrors the chip's padding onto
+            // the editor.
             let resp = edit.adopt_placement(&self.widget).show(ui);
             EditEnd {
                 submitted: resp.submitted,
-                cancelled: resp.cancelled,
+                canceled: resp.canceled,
             }
         };
-        let changed = if ended.cancelled {
+        let changed = if ended.canceled {
             self.value.restore(original)
         } else {
             self.value.parse_from(&buffer, self.min, self.max)
         };
-        *ui.state_or_default::<DragValueState>(id) = if ended.submitted || ended.cancelled {
-            DragValueState::Idle
-        } else {
-            DragValueState::Editing { buffer, original }
-        };
-        if ended.submitted {
-            ui.clear_focus();
+        ui.with_state::<DragValueState, _>(id, |_, s| {
+            *s = if ended.submitted || ended.canceled {
+                DragValueState::Idle
+            } else {
+                DragValueState::Editing { buffer, original }
+            }
+        });
+        // The chip keeps focus once the edit ends, as a spin button does,
+        // so the keyboard goes on from it; Escape blurred the editor.
+        if ended.canceled {
+            ui.set_focus(id);
         }
         ValueResponse {
             response: Response::lazy(id, ui),
@@ -426,6 +524,29 @@ impl Configure for DragValue<'_> {
         self.widget.configure()
     }
 }
+
+/// The chip's text: `value` at `decimals` places, then `suffix`.
+/// Whether a character was typed into the focused chip this frame — text
+/// a press produced, Space aside, which a spin button does not type.
+fn typed(ui: &Ui) -> bool {
+    ui.keyboard_events().iter().any(|press| {
+        KeyClass::of(*press) == KeyClass::Text
+            && !press.text.is_empty()
+            && press.text.as_str() != " "
+    })
+}
+
+fn label(ui: &mut Ui, value: &DragNum<'_>, decimals: usize, suffix: &str) -> InternedStr {
+    match value {
+        DragNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
+        DragNum::F64(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
+    }
+}
+
+/// An interned suffix's characters, copied out of the arena so the label
+/// can be formatted into it. Retained, so a steady suffix allocates once.
+#[derive(Debug, Default)]
+struct SuffixScratch(String);
 
 #[cfg(test)]
 mod tests;

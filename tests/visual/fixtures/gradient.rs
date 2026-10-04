@@ -4,7 +4,7 @@
 //! showcase's gradients page.
 
 use glam::UVec2;
-use image::RgbaImage;
+use palantir::golden::image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{
     Background, Block, Brush, Configure, ConicGradient, Corners, LinearGradient, Panel,
@@ -13,6 +13,7 @@ use palantir::{
 use std::f32::consts::FRAC_PI_2;
 
 use crate::fixtures::SRGB_ROUND_TRIP;
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 use crate::support;
@@ -123,7 +124,7 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
 /// visible diff rather than only as a per-pixel assertion.
 #[test]
 fn overflowing_gradient_atlas_matches_golden() {
-    assert_matches_golden("overflowing_gradient_atlas", &render_swatches());
+    assert_matches_golden(GoldenName::OverflowingGradientAtlas, &render_swatches());
 }
 
 /// The LUT is sampled at texel centres: a ramp parameter `t` reads the
@@ -184,7 +185,7 @@ fn showcase_gradients_page_matches_golden() {
                 .show(ui, showcase_page::build);
         })
         .image;
-    assert_matches_golden("showcase_gradients_page", &img);
+    assert_matches_golden(GoldenName::ShowcaseGradientsPage, &img);
 }
 
 /// Pin the linear-gradient paint path end-to-end: composer registers
@@ -220,7 +221,7 @@ fn frame_linear_gradient_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("frame_linear_gradient", &img);
+    assert_matches_golden(GoldenName::FrameLinearGradient, &img);
 }
 
 /// Pin: `Shape::rect(rect).fill(LinearGradient::builder(...))` lowered
@@ -251,13 +252,13 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("add_shape_rounded_rect_linear_gradient", &img);
+    assert_matches_golden(GoldenName::AddShapeRoundedRectLinearGradient, &img);
 }
 
 /// Pins the radial + conic shader paths end-to-end. Two side-by-side
 /// frames: a centred radial (yellow core fading to navy) and a 4-stop
 /// conic colour wheel. Mismatch flags drift in `eval_fill`'s radial /
-/// conic branches, the atlas (stops, interp) keying, or the
+/// conic branches, the atlas (stops, interpolation) keying, or the
 /// `fill_axis` payload packing.
 #[test]
 fn radial_and_conic_gradient_matches_golden() {
@@ -305,5 +306,5 @@ fn radial_and_conic_gradient_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("radial_and_conic_gradient", &img);
+    assert_matches_golden(GoldenName::RadialAndConicGradient, &img);
 }

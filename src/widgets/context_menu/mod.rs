@@ -6,6 +6,8 @@ pub(crate) mod menu_separator;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::layout::axis::Axis;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -42,14 +44,14 @@ struct ContextMenuState {
 /// [`Self::open`] and [`Self::close`] are the whole of what it would have
 /// written.
 ///
-/// Typical usage chains [`Self::attach`] off a trigger's `Response`,
+/// Typical usage chains [`Self::on`] off a trigger's `Response`,
 /// which auto-opens at the pointer on a right-click (`right.clicked()`):
 ///
 /// ```
 /// # use palantir::{Button, ContextMenu, Configure, MenuItem, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let trigger = Button::new().label("…").show(ui).snapshot();
-/// ContextMenu::attach(ui, &trigger)
+/// ContextMenu::on(&trigger)
 ///     .max_size((280.0, 400.0))
 ///     .show(ui, |ui, popup| { MenuItem::new("Delete").show(ui, popup); });
 /// # }
@@ -75,11 +77,14 @@ struct ContextMenuState {
 #[must_use = "a widget records nothing until `show`"]
 pub struct ContextMenu<'a> {
     for_id: WidgetId,
+    /// The trigger reported a right-click this frame, so `show` opens the
+    /// menu at the pointer first.
+    open_on_show: bool,
     /// The popup this menu *is*. It owns the body node from the start,
     /// so the caller's [`Configure`] calls land on the node that
     /// actually records — there is no second node to keep in sync or
     /// swap in at `show`. Its anchor is a placeholder until `show`
-    /// re-anchors it (see [`Popup::anchored`]); a closed menu returns
+    /// re-anchors it (see [`Popup::anchor`]); a closed menu returns
     /// before recording, so the placeholder never places anything.
     ///
     /// It owns the chrome too, so `.background(..)` and the theme
@@ -97,8 +102,20 @@ impl<'a> ContextMenu<'a> {
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,
+            open_on_show: false,
             popup: Popup::new(Anchor::at_point(Vec2::ZERO)).default_id(for_id.with("body")),
             style: None,
+        }
+    }
+
+    /// Attach a menu to the trigger `snapshot` was taken from: the menu
+    /// takes the trigger's id, and [`Self::show`] opens it at the pointer
+    /// on the frame the trigger reports a right-click. Pass via
+    /// `trigger.snapshot()` to detach from the trigger's `&Ui` borrow.
+    pub fn on(snapshot: &ResponseSnapshot) -> Self {
+        Self {
+            open_on_show: snapshot.right.clicked(),
+            ..Self::for_id(snapshot.id)
         }
     }
 
@@ -112,20 +129,6 @@ impl<'a> ContextMenu<'a> {
     pub fn style(mut self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self {
         self.style = s.into();
         self
-    }
-
-    /// Derive `for_id` from a trigger widget's response snapshot, and
-    /// auto-open at the current pointer position if the trigger
-    /// reported a right-click this frame. Pass via
-    /// `trigger.snapshot()` to detach from the trigger's `&Ui`
-    /// borrow before attaching the menu.
-    pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
-        if snapshot.right.clicked()
-            && let Some(p) = ui.pointer_pos()
-        {
-            ContextMenu::open(ui, snapshot.id, p);
-        }
-        ContextMenu::for_id(snapshot.id)
     }
 
     /// Record the menu and return the popup's own per-frame outcome.
@@ -145,8 +148,13 @@ impl<'a> ContextMenu<'a> {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
+        if self.open_on_show
+            && let Some(p) = ui.pointer_pos()
+        {
+            ContextMenu::open(ui, self.for_id, p);
+        }
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
-        // `resp.closed()`, so no hand-rolled `escape_pressed` here.
+        // `resp.closed()`, so no hand-rolled Escape check here.
         //
         // Read via `state` so a never-opened menu doesn't materialize a
         // StateMap row every frame `show` is called (matches `is_open`'s no-alloc
@@ -169,11 +177,13 @@ impl<'a> ContextMenu<'a> {
         let resp = self
             .popup
             .layer(Layer::Menu)
-            .anchored(Anchor::at_point(open_at))
-            .default_background(&ctx.panel)
+            .anchor(Anchor::at_point(open_at))
+            .default_background(ctx.panel.clone())
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
+            // Up and Down walk the rows, as a native menu's do.
+            .arrow_focus(Axis::Y)
             .show(ui, |ui, handle| Some(body(ui, handle)));
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);
@@ -184,14 +194,23 @@ impl<'a> ContextMenu<'a> {
 
     /// Open the context menu keyed off `for_id` at surface-space
     /// `point`. Idempotent — repeated calls move an open menu.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
-        ui.state_or_default::<ContextMenuState>(for_id).open_at = Some(point);
+        ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = Some(vec2::offset(point)));
     }
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        if let Some(response) = ui.state_mut::<ContextMenuState>(for_id) {
-            response.open_at = None;
+        // Probed first, so closing a closed menu stores nothing.
+        if ui
+            .state::<ContextMenuState>(for_id)
+            .is_some_and(|s| s.open_at.is_some())
+        {
+            ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = None);
         }
     }
 
@@ -205,13 +224,33 @@ impl<'a> ContextMenu<'a> {
 }
 
 impl ContextMenu<'_> {
-    /// Paint `bg` as the menu panel's background.
+    /// Paint `background` as the menu panel's background.
     ///
     /// Unset is the default; the theme fallback in [`Self::show`] fills
     /// it in from the resolved theme's `panel`. Pass
     /// [`Background::NONE`] to suppress the themed menu chrome.
-    pub const fn background(mut self, bg: Background) -> Self {
-        self.popup = self.popup.background(bg);
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn background(mut self, background: Background) -> Self {
+        self.popup = self.popup.background(background);
+        self
+    }
+
+    /// Paint `background` as this widget's background unless the caller set one —
+    /// the chrome peer of
+    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
+    /// for a wrapper that themes a widget it holds after the caller's own
+    /// setters ran. An explicit [`Self::background`] wins in either order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    #[track_caller]
+    pub const fn default_background(mut self, background: Background) -> Self {
+        self.popup = self.popup.default_background(background);
         self
     }
 }

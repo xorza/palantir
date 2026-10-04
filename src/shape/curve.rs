@@ -2,7 +2,8 @@
 //! `ShapeRecord::Curve`, and the stroke properties travel beside the
 //! geometry so only the geometry varies between the entry points.
 
-use crate::primitives::math::approx::{paints_nothing, vec2_approx_eq};
+use crate::primitives::math::domain::is_invisible;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::stroke::Stroke;
@@ -78,14 +79,14 @@ impl CurveShape {
     /// curve parameter, not arc length: on a Bézier whose control points
     /// are unevenly spaced, the colour changes fastest where the curve
     /// moves least per step of `t`.
-    pub fn ramp(mut self, ramp: impl Into<ColorRamp>) -> Self {
-        self.style.ramp = Some(ramp.into());
+    pub const fn ramp(mut self, ramp: ColorRamp) -> Self {
+        self.style.ramp = Some(ramp);
         self
     }
 
     /// How the two ends are finished.
-    pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
-        self.style.cap = cap.into();
+    pub const fn cap(mut self, cap: LineCap) -> Self {
+        self.style.cap = cap;
         self
     }
 }
@@ -96,15 +97,15 @@ impl sealed::LowerShape for CurveShape {
             return true;
         }
         match &self.geometry {
-            CurveGeometry::Line { a, b } => vec2_approx_eq(*a, *b),
+            CurveGeometry::Line { a, b } => vec2::approx_eq(*a, *b),
             CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
-                vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2) && vec2_approx_eq(*p0, *p3)
+                vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2) && vec2::approx_eq(*p0, *p3)
             }
             CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
-                vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2)
+                vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2)
             }
             CurveGeometry::Arc { radius, sweep, .. } => {
-                paints_nothing(*radius) || paints_nothing(sweep.abs())
+                is_invisible(*radius) || is_invisible(sweep.abs())
             }
         }
     }

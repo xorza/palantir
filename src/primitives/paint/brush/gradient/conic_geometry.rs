@@ -1,10 +1,11 @@
 //! The conic gradient's axis: colour sweeps around a centre by angle.
 
-use crate::primitives::math::approx::FloatHash;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
+use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interp};
+use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
@@ -17,8 +18,10 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGeometry {
     /// Sweep centre, in object-space `0..1` coordinates.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub center: Vec2,
     /// Where the sweep begins, in radians.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub start_angle: f32,
 }
 
@@ -28,13 +31,13 @@ pub type ConicGradient = Gradient<ConicGeometry>;
 /// Authoring builder for a [`ConicGradient`].
 pub type ConicGradientBuilder = GradientBuilder<ConicGeometry>;
 
-impl GradientGeometry for ConicGeometry {
+impl Geometry for ConicGeometry {
     /// Conic gradients commonly implement colour-wheel / hue-rotation
     /// visuals where straight linear-RGB interpolation gives the most
     /// predictable hue sweep; Oklab can shift the perceived hue at the
-    /// midpoint. (A future `Oklch{hue}` interp would be the truly right
+    /// midpoint. (A future `Oklch{hue}` interpolation would be the truly right
     /// default.)
-    const DEFAULT_INTERP: Interp = Interp::Linear;
+    const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Linear;
 
     /// The shader reads these as `(cx, cy, start_angle, _)` on the conic
     /// branch.

@@ -6,10 +6,10 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 
-/// The whole reason [`Ui::with_state`](crate::Ui::with_state) exists: the
-/// row is live *at the same time as* the `Ui`, so a subtree can read and
-/// write it around the widget calls it drives. `state_or_default`'s borrow cannot
-/// survive the first of those.
+/// The whole reason [`Ui::with_state`](crate::Ui::with_state) lends the row
+/// rather than borrowing it out of the `Ui`: the row is live *at the same
+/// time as* the `Ui`, so a subtree can read and write it around the widget
+/// calls it drives.
 #[test]
 fn with_state_lends_a_row_across_widget_calls() {
     #[derive(Default, Debug, PartialEq)]
@@ -54,7 +54,7 @@ fn with_state_survives_the_body_growing_its_own_store() {
             // Enough same-`T` rows to force the dense store's `Vec` to
             // reallocate while the outer row is out on loan.
             for i in 0..64u64 {
-                *ui.state_or_default::<u32>(WidgetId::from_hash(("filler", i))) = i as u32;
+                ui.with_state::<u32, _>(WidgetId::from_hash(("filler", i)), |_, s| *s = i as u32);
             }
         });
     });
@@ -100,4 +100,33 @@ fn with_state_returns_the_body_value() {
     });
     assert_eq!(out, 15);
     assert_eq!(h.ui.state::<u32>(id), Some(&5));
+}
+
+/// A singleton is one value per type for the life of the `Ui`: absent
+/// until something stores it, `with_singleton` lends it across widget
+/// calls and puts back every write, and it outlives frames that record
+/// nothing for it — no id owns it, so no sweep reaches it.
+#[test]
+fn a_singleton_is_lent_across_widget_calls_and_kept() {
+    #[derive(Default, Debug, PartialEq)]
+    struct Shared(u32);
+
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        assert_eq!(ui.singleton::<Shared>(), None, "nothing stored yet");
+        ui.with_singleton::<Shared, _>(|ui, shared| {
+            shared.0 += 1;
+            Button::new().label("a").show(ui);
+            shared.0 += 10;
+        });
+    });
+    assert_eq!(h.ui.singleton::<Shared>(), Some(&Shared(11)));
+    h.frame(|_| {});
+    h.frame(|_| {});
+    h.ui.with_singleton::<Shared, _>(|_, shared| shared.0 += 100);
+    assert_eq!(
+        h.ui.singleton::<Shared>(),
+        Some(&Shared(111)),
+        "kept across frames"
+    );
 }

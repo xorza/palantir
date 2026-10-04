@@ -1,10 +1,16 @@
 //! The drop-down selector: a trigger that opens a popup list, and the
 //! open/closed flag one trigger site keeps between frames.
 
+use crate::input::interaction::button_phase::ButtonPhase;
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
@@ -12,22 +18,16 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
-use crate::widget_core::select_response::SelectResponse;
+use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::popup::Popup;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use std::rc::Rc;
-
-/// Open/closed flag for one combo site, keyed off the trigger id.
-#[derive(Default, Clone, Copy, Debug)]
-struct ComboState {
-    open: bool,
-}
 
 /// A dropdown selector: a button-styled trigger showing the current
 /// choice, which opens a [`crate::widgets::popup::Popup`] list of the
@@ -36,12 +36,10 @@ struct ComboState {
 /// lives in the response map keyed off the trigger id, so the caller only
 /// threads the selected index.
 ///
-/// **`*selected` must index `options`.** Showing the current choice is
-/// the trigger's whole contract and there is no placeholder response, so an
-/// out-of-range index — including any index into an empty list — is a
-/// caller bug and panics. A caller whose option list can shrink or be
-/// replaced between frames owns re-deriving the index alongside it;
-/// swallowing it here would render as an ordinary blank control.
+/// `*selected` is an *index* coerced for display: one past the end of
+/// `options` — a list that shrank under it — shows the last option, and an
+/// empty list shows an empty trigger. The bound index is not rewritten; it
+/// moves only when the user picks.
 ///
 /// The trigger chrome reuses [`crate::Theme::button`]; the list reuses
 /// the context-menu panel + [`MenuItem`] rows
@@ -84,7 +82,13 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
-            widget: Widget::hstack().sense(Sense::CLICK),
+            // A Tab stop: Space, Enter and Alt+Down open it, and the
+            // arrows step the pick while it is closed — `TEXT` and `CARET`
+            // are the classes those keys fall in.
+            widget: Widget::hstack()
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
             selected,
             options,
             label,
@@ -117,12 +121,45 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
 
     /// Record the trigger, and the dropdown when it is open.
     ///
-    /// The [`SelectResponse`]'s own `response` is the trigger's — read
-    /// `changed` for the pick. See [`SelectResponse`] for why the two
-    /// differ.
-    pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
-        let response = self.widget.response(ui);
+    /// The [`ValueResponse`]'s own `response` is the trigger's — read
+    /// `changed` for the pick, which commits at once. See [`ValueResponse`]
+    /// for why the two differ.
+    ///
+    /// Focused, it takes the keys of WAI-ARIA's select-only combobox: Space,
+    /// Enter and Alt+Down open the dropdown, and while it is closed the Up
+    /// and Down arrows step the pick, stopping at the ends.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
+        let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
+        let mut stepped = false;
+        if !response.disabled && ui.is_focus_within(id) {
+            // Every chord sampled: `key_pressed` also keeps it subscribed
+            // for the wake gate.
+            let mut key = |shortcut| self.widget.key_pressed(ui, shortcut);
+            let space = key(Shortcut::key(Key::Char(' ')));
+            let enter = key(Shortcut::key(Key::Enter));
+            let alt_down = key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
+            let up = key(Shortcut::key(Key::ArrowUp));
+            let down = key(Shortcut::key(Key::ArrowDown));
+            if space || enter || alt_down {
+                response.left.phase = ButtonPhase::Up { click: Some(1) };
+            } else if !PopupTrigger::is_open(ui, id)
+                && let Some(shown) = domain::index(*self.selected, self.options.len())
+            {
+                let last = self.options.len() - 1;
+                let next = if down {
+                    (shown + 1).min(last)
+                } else if up {
+                    shown.saturating_sub(1)
+                } else {
+                    shown
+                };
+                if (up || down) && next != *self.selected {
+                    *self.selected = next;
+                    stepped = true;
+                }
+            }
+        }
 
         // Trigger chrome from the button theme (same flow as `Button`).
         // One handle covers both reads: the geometry is read again inside
@@ -142,14 +179,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
 
         let arrow_color = look.text.color;
         let text_style = look.text;
-        let Some(option) = self.options.get(*self.selected) else {
-            panic!(
-                "ComboBox selection {} is out of range for {} option(s)",
-                self.selected,
-                self.options.len(),
-            )
-        };
-        let chosen = (self.label)(option);
+        let chosen = domain::index(*self.selected, self.options.len())
+            .map_or("", |shown| (self.label)(&self.options[shown]));
         // Intern the selected label into the frame buffer — an option
         // borrows from the caller's collection rather than from `'static`,
         // so it routes through `Ui::intern`.
@@ -168,49 +199,35 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             arrow.record(ui, None, |ui| {
                 let pts = geom.chevron_pts();
                 ui.add_shape(
-                    Shape::polyline(&pts, Stroke::new(arrow_color, geom.arrow_stroke))
+                    Shape::polyline(&pts, Stroke::new(arrow_color, geom.arrow_width))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
             });
         });
 
-        let trigger_rect = response.rect;
-        // Probed, not inserted: a combo box spends nearly every frame closed,
-        // and a closed one is the default — so an unopened trigger keeps no
-        // row at all, and the write-back below happens only on a real flip.
-        let was_open = ui.state::<ComboState>(id).is_some_and(|state| state.open);
-        let mut open = was_open;
-        let mut changed = false;
-        if response.clicked() {
-            open = !open;
-        }
-        // A disabled trigger closes its popup, as a native one does: the
-        // popup is a tree of its own, and would go on taking picks for a
-        // control that refuses them.
-        if response.disabled {
-            open = false;
-        }
-        // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
-        // separate `escape_pressed` here.
-
-        if open && let Some(rect) = trigger_rect {
-            let ctx = &theme.context_menu;
-            let options = self.options;
-            let label = self.label;
-            let selected = self.selected;
-            // The same menu theme `ContextMenu` fills its popup in from,
-            // so the two read as one control with two triggers. The one
-            // deliberate difference is the minimum: a dropdown is at
-            // least as wide as the trigger it drops from, which is an
-            // explicit set and so outranks `ContextMenuTheme::min_width`.
-            let popup = Popup::below(rect)
-                .id(id.with("list"))
-                .min_size((rect.size.w, 0.0))
-                .default_background(&ctx.panel)
-                .default_padding(ctx.padding)
-                .default_gap(ctx.gap);
-            let resp = popup.show(ui, |ui, popup| {
+        let ctx = &theme.context_menu;
+        let options = self.options;
+        let label = self.label;
+        let selected = self.selected;
+        let trigger = ResponseSnapshot {
+            id,
+            state: response,
+        };
+        // The same menu theme `ContextMenu` fills its popup in from, so the
+        // two read as one control with two triggers. The one deliberate
+        // difference is the minimum: a dropdown is at least as wide as the
+        // trigger it drops from, which is an explicit set and so outranks
+        // `ContextMenuTheme::min_width`. Esc closes through the popup.
+        let resp = PopupTrigger::on(&trigger)
+            .id(id.with("list"))
+            // Up and Down walk the rows of the open list.
+            .arrow_focus(Axis::Y)
+            .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
+            .default_background(ctx.panel.clone())
+            .default_padding(ctx.padding)
+            .default_gap(ctx.gap)
+            .show(ui, |ui, popup| {
                 let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));
@@ -221,18 +238,12 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 }
                 picked
             });
-            changed = resp.inner;
-            if resp.closed() {
-                open = false;
-            }
-        }
-        if open != was_open {
-            ui.state_or_default::<ComboState>(id).open = open;
-        }
+        let changed = resp.inner.unwrap_or(false) || stepped;
 
-        SelectResponse {
-            response: Response::eager(id, ui, response),
+        ValueResponse {
+            response: Response::new(id, ui, response),
             changed,
+            committed: changed,
         }
     }
 }

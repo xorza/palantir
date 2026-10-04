@@ -3,6 +3,7 @@
 
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::ImageFit;
@@ -90,21 +91,32 @@ impl IconShape {
 impl IconShape {
     /// Paint into `rect`, in owner-relative coords, instead of the
     /// owner's whole arranged rect.
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.local_rect = Some(rect);
         self
     }
 
     /// How the glyph is placed inside its box.
-    pub fn fit(mut self, fit: impl Into<IconFit>) -> Self {
-        self.fit = fit.into();
+    pub const fn fit(mut self, fit: IconFit) -> Self {
+        self.fit = fit;
         self
     }
 
     /// Multiply the icon by `tint` — whole for a tintable icon, alpha only
     /// for a colour one. See the type docs.
-    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
-        self.tint = tint.into();
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `tint` is a [colour](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn tint(mut self, tint: RgbaF32) -> Self {
+        self.tint = domain::color(tint);
         self
     }
 
@@ -114,8 +126,8 @@ impl IconShape {
     /// Pairs with a faded `tint` alpha, which is the other half of the same
     /// state. No effect on a tintable icon: there the draw already picks the
     /// colour, so a grey one is a grey `tint`.
-    pub fn desaturate(mut self, desaturate: impl Into<bool>) -> Self {
-        self.desaturate = desaturate.into();
+    pub const fn desaturate(mut self, desaturate: bool) -> Self {
+        self.desaturate = desaturate;
         self
     }
 }

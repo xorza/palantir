@@ -40,6 +40,18 @@ pub struct KeyPress {
 }
 
 impl KeyPress {
+    /// A press that typed `text` and is no key — how an IME commit enters
+    /// the stream. No modifiers: a commit is text whatever keys are held.
+    pub(crate) const fn typed(text: KeyText) -> Self {
+        Self {
+            key: Key::Other,
+            mods: Modifiers::NONE,
+            repeat: false,
+            physical: Key::Other,
+            text,
+        }
+    }
+
     /// The layout-independent key to retry a chord against, when the
     /// logical one is not Latin.
     ///

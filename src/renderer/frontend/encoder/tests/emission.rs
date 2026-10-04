@@ -123,7 +123,7 @@ fn baseline_draw_rect_count_cases() {
                         .size(50.0)
                         .background(Background {
                             fill: RgbaF32::TRANSPARENT.into(),
-                            border: Stroke::ZERO,
+                            border: Stroke::NONE,
                             ..Default::default()
                         })
                         .show(ui);

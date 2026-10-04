@@ -2,6 +2,8 @@
 //! is normalized 0..1 progress; output is the eased value (also 0..1
 //! for "out" curves; may overshoot for `OutBack`).
 
+use crate::primitives::math::domain;
+
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// The easing curve a duration-based tween follows.
@@ -23,10 +25,11 @@ pub enum Easing {
 }
 
 impl Easing {
-    /// Ease normalized progress `t`. Input is clamped to 0..1; output is
-    /// also 0..1 except for [`Self::OutBack`], which overshoots.
-    pub fn apply(self, t: f32) -> f32 {
-        let t = t.clamp(0.0, 1.0);
+    /// Ease normalized progress `t`, read as a *fraction*: clamped to
+    /// `0..=1`, and `0` when it is not finite. The output is in `0..=1` too,
+    /// except for [`Self::OutBack`], which overshoots.
+    pub const fn apply(self, t: f32) -> f32 {
+        let t = domain::fraction(t);
         match self {
             Easing::Linear => t,
             Easing::OutCubic => {

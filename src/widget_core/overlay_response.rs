@@ -1,6 +1,8 @@
 //! What one frame of an overlay body reports, and the value that body
 //! produced.
 
+use crate::primitives::identity::widget_id::WidgetId;
+
 /// Result of [`Popup::show`](crate::Popup::show) and
 /// [`Modal::show`](crate::Modal::show).
 ///
@@ -21,6 +23,11 @@
 /// result without a branch.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct OverlayResponse<R> {
+    /// The overlay's own id — the node it records its body under, and what
+    /// [`Ui::focus_first_within`](crate::Ui::focus_first_within) takes to
+    /// move focus into it. The default id on a frame the overlay was not
+    /// recorded.
+    pub id: WidgetId,
     /// The user asked from outside — an eaten outside-press, or Escape.
     pub dismissed: bool,
     /// A widget inside the body called

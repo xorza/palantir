@@ -1,6 +1,6 @@
 //! Which splits a dock offers.
 
-use crate::widgets::dock::split_side::{SplitDir, SplitSide};
+use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
 
 /// The split directions a [`DockView`](crate::DockView) offers while a
 /// tab is dragged. A refused direction degrades to a join, so the widget
@@ -23,8 +23,8 @@ impl AllowedSplits {
     pub fn allows(self, side: SplitSide) -> bool {
         match self {
             Self::All => true,
-            Self::Row => side.dir() == SplitDir::Row,
-            Self::Column => side.dir() == SplitDir::Column,
+            Self::Row => side.direction() == SplitDirection::Row,
+            Self::Column => side.direction() == SplitDirection::Column,
             Self::None => false,
         }
     }

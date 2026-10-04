@@ -1,46 +1,47 @@
 //! The authored animation spec: which motion model a value travels
 //! under, and the parameters that model was authored with.
 
-use crate::animation::duration::{DURATION_ERROR, duration_is_valid};
+use crate::animation::duration::{DURATION_ERROR, MAX_DURATION, duration_is_valid};
 use crate::animation::easing::Easing;
 use crate::animation::spring::{SPRING_ERROR, params_are_valid as spring_params_are_valid};
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::time::Duration;
 
 /// How a value moves toward its target. Animation itself is opt-in
 /// at the call site — pass `None` to [`crate::Ui::animate`] (or omit
 /// the field on a theme) when you want snap-to-target behavior.
-/// `AnimSpec` only describes what motion looks like *when there is
-/// motion*; "no animation" lives in `Option<AnimSpec>`, not as a
+/// `AnimationSpec` only describes what motion looks like *when there is
+/// motion*; "no animation" lives in `Option<AnimationSpec>`, not as a
 /// variant here.
 ///
 /// Wire format is internally tagged on `kind` (snake_case), so theme
 /// files read cleanly:
 ///
 /// ```toml
-/// [theme.button.anim]
+/// [theme.button.defaults.animation]
 /// kind = "duration"
 /// secs = 0.12
 /// ease = "out_cubic"
 ///
-/// [theme.button.anim]
+/// [theme.button.defaults.animation]
 /// kind = "spring"
 /// stiffness = 170.0
 /// damping = 26.0
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AnimSpec {
+pub struct AnimationSpec {
     pub(super) motion: AnimMotion,
 }
 
 /// The motion model a spec was authored under, plus its
 /// parameters. Kept private to the module: the public surface is
-/// [`AnimSpec`]'s constructors, and every reader is an animation-row
+/// [`AnimationSpec`]'s constructors, and every reader is an animation-row
 /// step that matches on it.
 ///
 /// Also the wire shape — every field here is authored, so
-/// [`AnimSpec`]'s hand-written impls delegate to this one and spend
+/// [`AnimationSpec`]'s hand-written impls delegate to this one and spend
 /// themselves on validation alone.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -49,7 +50,7 @@ pub(super) enum AnimMotion {
     Spring { stiffness: f32, damping: f32 },
 }
 
-impl AnimSpec {
+impl AnimationSpec {
     /// 120 ms ease-out-cubic. Snappy hover/press default.
     pub const FAST: Self = Self {
         motion: AnimMotion::Duration {
@@ -80,15 +81,20 @@ impl AnimSpec {
         },
     };
 
-    /// Construct a duration animation. Values below `1e-4` canonicalize to an
-    /// instant snap.
+    /// Construct a duration animation that runs for `length`. A length
+    /// under `1e-4` seconds canonicalizes to an instant snap.
     ///
     /// # Panics
     ///
-    /// Panics unless `secs` is finite and in `0.0..=60.0`.
-    pub const fn duration(secs: f32, ease: Easing) -> Self {
-        assert!(duration_is_valid(secs), "{}", DURATION_ERROR);
-        Self::duration_from_validated(secs, ease)
+    /// Panics when `length` is longer than 60 seconds.
+    #[track_caller]
+    pub const fn duration(length: Duration, ease: Easing) -> Self {
+        assert!(
+            length.as_nanos() <= MAX_DURATION.as_nanos(),
+            "{}",
+            DURATION_ERROR
+        );
+        Self::duration_from_validated(length.as_secs_f32(), ease)
     }
 
     const fn duration_from_validated(secs: f32, ease: Easing) -> Self {
@@ -113,6 +119,7 @@ impl AnimSpec {
     /// Panics when either parameter is non-positive or non-finite, when
     /// the slowest decay rate is below 1/s, or when the spring swings at
     /// 30 Hz or faster. Raise `damping` or lower `stiffness` for the last.
+    #[track_caller]
     pub fn spring(stiffness: f32, damping: f32) -> Self {
         assert!(
             spring_params_are_valid(stiffness, damping),
@@ -127,7 +134,7 @@ impl AnimSpec {
     /// `Duration` canonicalized to zero seconds. Springs are never instant by
     /// construction. `Ui::animate` short-circuits on this and on `None`.
     #[inline(always)]
-    pub fn is_instant(self) -> bool {
+    pub const fn is_instant(self) -> bool {
         match self.motion {
             AnimMotion::Duration { secs, .. } => secs == 0.0,
             AnimMotion::Spring { .. } => false,
@@ -135,7 +142,7 @@ impl AnimSpec {
     }
 }
 
-impl Serialize for AnimSpec {
+impl Serialize for AnimationSpec {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -145,11 +152,11 @@ impl Serialize for AnimSpec {
 }
 
 /// Validating, so a hand-written impl rather than `#[serde(transparent)]`:
-/// a theme file is untrusted input, and the bounds [`AnimSpec::duration`]
-/// and [`AnimSpec::spring`] assert on have to hold for a spec that arrived
+/// a theme file is untrusted input, and the bounds [`AnimationSpec::duration`]
+/// and [`AnimationSpec::spring`] assert on have to hold for a spec that arrived
 /// over the wire too. Bad data is an `Err` here rather than the panic those
 /// two raise.
-impl<'de> Deserialize<'de> for AnimSpec {
+impl<'de> Deserialize<'de> for AnimationSpec {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

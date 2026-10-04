@@ -4,7 +4,6 @@ use crate::scene::layer::Layer;
 use std::array;
 use std::ops;
 use std::slice;
-use strum::EnumCount as _;
 
 /// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`].
 ///

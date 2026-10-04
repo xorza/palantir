@@ -2,13 +2,13 @@
 
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_row::MotionRow;
-use crate::animation::anim_spec::{AnimMotion, AnimSpec};
+use crate::animation::animation_spec::{AnimMotion, AnimationSpec};
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{AnimUi, SLOT, linear_100ms, setup_anim_ui, wid};
 use crate::common::time::MAX_ANIM_DT;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::math::approx::internals::assert_close;
+use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -21,7 +21,7 @@ use std::time::Duration;
 /// resets cleanly so a future real spec starts fresh.
 #[test]
 fn instant_duration_is_noop_and_drops_row() {
-    let instant = Some(AnimSpec::duration(0.0, Easing::Linear));
+    let instant = Some(AnimationSpec::duration(Duration::ZERO, Easing::Linear));
     let AnimUi { mut h, id } = setup_anim_ui("anim-instant");
 
     // Instant on a fresh slot: snaps, no row, no repaint.
@@ -38,13 +38,13 @@ fn instant_duration_is_noop_and_drops_row() {
 
     // Mid-flight on FAST: row gets allocated.
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
+        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimationSpec::FAST));
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
@@ -68,7 +68,7 @@ fn instant_duration_is_noop_and_drops_row() {
 
     // Switching back to FAST with a new target: first-touch snaps.
     let v = h.at(Duration::from_millis(70)).frame_value(|ui| {
-        let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimSpec::FAST));
+        let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimationSpec::FAST));
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
@@ -89,9 +89,10 @@ fn instant_duration_is_noop_and_drops_row() {
 /// over its 1e-4 and animates.
 #[test]
 fn target_below_snap_floor_snaps_without_animating() {
-    let duration = AnimSpec::duration(1.0, Easing::Linear);
+    let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
     let tiny = 1.0e-5;
-    let cases: &[(&str, AnimSpec)] = &[("duration", duration), ("spring", AnimSpec::SPRING)];
+    let cases: &[(&str, AnimationSpec)] =
+        &[("duration", duration), ("spring", AnimationSpec::SPRING)];
     for (label, spec) in cases {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid("a");
@@ -134,10 +135,10 @@ fn target_below_snap_floor_snaps_without_animating() {
 #[test]
 fn one_floor_animates_a_small_change_under_either_motion() {
     let delta = 5.0e-4_f32;
-    let duration = AnimSpec::duration(1.0, Easing::Linear);
+    let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
     let t = f64::from(0.016f32);
     let spring_travel = 1.0 - (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
-    for (label, spec) in [("spring", AnimSpec::SPRING), ("duration", duration)] {
+    for (label, spec) in [("spring", AnimationSpec::SPRING), ("duration", duration)] {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid(label);
         let _ = map.step(id, SLOT, 0.0, spec, 0.016);
@@ -167,9 +168,9 @@ fn one_floor_animates_a_small_change_under_either_motion() {
     let mut colours = AnimMapTyped::<RgbaF32>::default();
     let id = wid("hover");
     let (rest, hover) = (RgbaF32::hex(0x121212), RgbaF32::hex(0x1c1c1c));
-    let _ = colours.step(id, SLOT, rest, AnimSpec::SPRING, 0.016);
-    let _ = colours.step(id, SLOT, hover, AnimSpec::SPRING, 0.016);
-    let moving = colours.step(id, SLOT, hover, AnimSpec::SPRING, 0.016);
+    let _ = colours.step(id, SLOT, rest, AnimationSpec::SPRING, 0.016);
+    let _ = colours.step(id, SLOT, hover, AnimationSpec::SPRING, 0.016);
+    let moving = colours.step(id, SLOT, hover, AnimationSpec::SPRING, 0.016);
     assert!(!moving.settled, "the hover fades over several frames");
     let expected = f64::from(rest.r) + f64::from(hover.r - rest.r) * spring_travel;
     assert_close(
@@ -183,7 +184,10 @@ fn one_floor_animates_a_small_change_under_either_motion() {
 
 #[test]
 fn first_touch_returns_target_and_settled() {
-    for (label, spec) in [("duration", AnimSpec::FAST), ("spring", AnimSpec::SPRING)] {
+    for (label, spec) in [
+        ("duration", AnimationSpec::FAST),
+        ("spring", AnimationSpec::SPRING),
+    ] {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid(label);
         let r = map.step(id, SLOT, 1.0, spec, 0.016);
@@ -225,7 +229,7 @@ fn duration_settles_in_finite_steps() {
 
     let mut boundary_map = AnimMapTyped::<f32>::default();
     let boundary_id = wid("maximum-duration");
-    let boundary = AnimSpec::duration(60.0, Easing::Linear);
+    let boundary = AnimationSpec::duration(Duration::from_secs(60), Easing::Linear);
     let _ = boundary_map.step(boundary_id, SLOT, 0.0, boundary, 0.0);
     // The change's frame spends nothing, then 600 steps of 0.1 s run the
     // 60 s; one more absorbs the f32 sum landing a hair under 60.
@@ -278,7 +282,7 @@ fn vec2_duration_lerps_componentwise() {
 fn out_back_reaches_its_overshoot_on_a_small_change() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("out-back");
-    let spec = AnimSpec::duration(0.2, Easing::OutBack);
+    let spec = AnimationSpec::duration(Duration::from_millis(200), Easing::OutBack);
     let _ = map.step(id, SLOT, 0.0, spec, 0.016);
     let mut peak = 0.0_f32;
     for _ in 0..30 {
@@ -300,9 +304,9 @@ fn a_non_finite_target_is_refused() {
     for target in [f32::NAN, f32::INFINITY] {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid("nan");
-        let _ = map.step(id, SLOT, 0.0, AnimSpec::FAST, 0.016);
+        let _ = map.step(id, SLOT, 0.0, AnimationSpec::FAST, 0.016);
         panic_probe::assert_panics_with("is not finite", || {
-            map.step(id, SLOT, target, AnimSpec::FAST, 0.016)
+            map.step(id, SLOT, target, AnimationSpec::FAST, 0.016)
         });
     }
 }

@@ -8,6 +8,12 @@
 
 mod row_stats;
 
+/// The `image` Palantir was built against. Re-exported because this
+/// module's surface takes and returns `image::RgbaImage`, and a suite naming
+/// it from its own `image` dependency would have to keep the two
+/// semver-identical by hand.
+pub use image;
+
 use std::path::{Path, PathBuf};
 
 use crate::golden::row_stats::RowStats;
@@ -15,29 +21,34 @@ use image::RgbaImage;
 use std::env;
 use std::fs;
 use std::io;
+use std::process;
+use std::thread;
 
-/// Per-channel + ratio thresholds for [`Tolerance::diff`]. A pixel
-/// "differs" when any R/G/B/A channel deviates by more than
-/// `per_channel`; the image passes when the fraction of differing pixels
-/// is at most `max_ratio`.
-#[derive(Clone, Copy, Debug)]
+/// How far an image may stray from what it is compared against, in the
+/// shape of a WPT fuzzy match: at most `max_pixels` pixels may differ at
+/// all, and none of them by more than `max_delta` on any R/G/B/A channel.
+///
+/// Both numbers bound something a reader can derive — how many pixels a
+/// change may touch, and how wrong any one of them may be — so a loosened
+/// golden says exactly what it lets through. [`Self::EXACT`], the default,
+/// lets nothing through.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tolerance {
-    /// Per-channel deviation a pixel may carry and still match.
-    pub per_channel: u8,
-    /// Fraction of differing pixels an image may carry and still pass.
-    pub max_ratio: f32,
-}
-
-impl Default for Tolerance {
-    fn default() -> Self {
-        Self {
-            per_channel: 2,
-            max_ratio: 0.001,
-        }
-    }
+    /// The largest channel deviation any pixel may carry.
+    pub max_delta: u8,
+    /// How many pixels may differ at all.
+    pub max_pixels: u32,
 }
 
 impl Tolerance {
+    /// No pixel may differ. Goldens written by the adapter that compares
+    /// against them diff at zero on an unchanged tree, so anything looser
+    /// hides a change.
+    pub const EXACT: Self = Self {
+        max_delta: 0,
+        max_pixels: 0,
+    };
+
     /// Compare two equal-sized RGBA images under these thresholds. The
     /// diff image marks each differing pixel red (alpha 255) and dims the
     /// rest of the `actual` image to 25% so failures pop visually.
@@ -65,29 +76,22 @@ impl Tolerance {
             return DiffReport {
                 max_channel_delta: 0,
                 differing_pixels: 0,
-                differing_ratio: 0.0,
                 diff_image,
                 tolerance: self,
             };
         }
 
         let row_bytes = w as usize * 4;
-        let per_channel = self.per_channel;
         let totals = actual
             .as_raw()
             .chunks_exact(row_bytes)
             .zip(expected.as_raw().chunks_exact(row_bytes))
             .zip(diff_image.chunks_exact_mut(row_bytes))
-            .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row, per_channel))
+            .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row))
             .fold(RowStats::default(), RowStats::merge);
-
-        // `u64` because the product overflows `u32` past 65 536², and the
-        // divisor is nonzero by the guard above.
-        let pixels = u64::from(w) * u64::from(h);
         DiffReport {
             max_channel_delta: totals.max_delta,
             differing_pixels: totals.differing,
-            differing_ratio: totals.differing as f32 / pixels as f32,
             diff_image,
             tolerance: self,
         }
@@ -99,25 +103,21 @@ impl Tolerance {
 pub struct DiffReport {
     /// The largest single-channel deviation found anywhere.
     pub max_channel_delta: u8,
-    /// How many pixels exceeded [`Tolerance::per_channel`].
+    /// How many pixels differ at all, by any channel.
     pub differing_pixels: u32,
-    /// [`Self::differing_pixels`] over the image's pixel count.
-    pub differing_ratio: f32,
     /// The two images overlaid, with differing pixels marked.
     pub diff_image: RgbaImage,
-    /// The tolerance the comparison ran under. Carried rather than
-    /// re-taken by [`Self::passes`]: `per_channel` is spent inside the
-    /// scan deciding which pixels count as differing, so a `passes` that
-    /// accepted its own `Tolerance` could only honour `max_ratio` and
-    /// would silently pair one threshold with the other's ratio.
+    /// The tolerance the comparison ran under, which [`Self::passes`]
+    /// reads.
     pub tolerance: Tolerance,
 }
 
 impl DiffReport {
-    /// Whether [`Self::differing_ratio`] is within the tolerance the
-    /// comparison ran under.
-    pub fn passes(&self) -> bool {
-        self.differing_ratio <= self.tolerance.max_ratio
+    /// Whether no pixel strays further than the tolerance's `max_delta`,
+    /// and no more pixels differ than its `max_pixels`.
+    pub const fn passes(&self) -> bool {
+        self.max_channel_delta <= self.tolerance.max_delta
+            && self.differing_pixels <= self.tolerance.max_pixels
     }
 }
 
@@ -136,7 +136,11 @@ const UPDATE: &str = "UPDATE_GOLDEN";
 pub struct Goldens {
     root: PathBuf,
     tolerance: Tolerance,
+    adapter: Option<String>,
 }
+
+/// The sidecar beside the goldens that names the adapter which wrote them.
+const ADAPTER_FILE: &str = "adapter.txt";
 
 impl Goldens {
     /// Rooted at `root`, usually a suite's own directory under
@@ -144,16 +148,50 @@ impl Goldens {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
-            tolerance: Tolerance::default(),
+            tolerance: Tolerance::EXACT,
+            adapter: None,
         }
     }
 
-    /// How far apart two images may drift and still pass.
+    /// Name the adapter this run draws on — its name and driver, as the
+    /// suite's GPU reports them.
     ///
-    /// The default suits flat, mostly axis-aligned drawing. A scene made of
-    /// antialiased curves wants a looser ratio: the edge pixels are where two
-    /// runs disagree, and a curve is nearly all edge.
-    pub const fn tolerance(mut self, tolerance: Tolerance) -> Self {
+    /// The goldens record it in an `adapter.txt` sidecar the first time one
+    /// is compared, and a later run on another adapter fails with that
+    /// reason rather than with a pixel diff across the suite: a driver
+    /// update or another machine is not a regression. An `UPDATE_GOLDEN` run
+    /// adopts the new adapter.
+    pub fn with_adapter(mut self, adapter: impl Into<String>) -> Self {
+        self.adapter = Some(adapter.into());
+        self
+    }
+
+    /// The golden files no name in `names` claims, sorted — goldens a test
+    /// no longer compares against. A suite asserts this empty from one test
+    /// that names every golden it draws.
+    pub fn orphans<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Vec<PathBuf> {
+        let claimed: Vec<&str> = names.into_iter().collect();
+        let Ok(entries) = fs::read_dir(self.root.join("golden")) else {
+            return Vec::new();
+        };
+        let mut orphans: Vec<PathBuf> = entries
+            .map(|entry| entry.expect("read golden directory entry").path())
+            .filter(|path| {
+                path.extension().is_some_and(|ext| ext == "png")
+                    && path
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .is_none_or(|stem| !claimed.contains(&stem))
+            })
+            .collect();
+        orphans.sort();
+        orphans
+    }
+
+    /// How far apart two images may drift and still pass.
+    /// [`Tolerance::EXACT`] by default; a looser one names how many pixels
+    /// and how far, with its derivation beside it.
+    pub const fn with_tolerance(mut self, tolerance: Tolerance) -> Self {
         self.tolerance = tolerance;
         self
     }
@@ -211,6 +249,7 @@ impl Goldens {
     /// read from the environment, which a test cannot set for itself alone.
     #[track_caller]
     fn check(&self, name: &str, actual: &RgbaImage, forced: bool) {
+        self.check_adapter(forced);
         let golden = self.golden_path(name);
         let output = self.output_dir(name);
         if !golden.exists() {
@@ -253,6 +292,45 @@ impl Goldens {
         );
     }
 
+    /// Compare the run's adapter against the one the goldens record, and
+    /// record it where none is recorded or an update adopts it.
+    #[track_caller]
+    fn check_adapter(&self, forced: bool) {
+        let Some(adapter) = &self.adapter else {
+            return;
+        };
+        let sidecar = self.root.join("golden").join(ADAPTER_FILE);
+        match fs::read_to_string(&sidecar) {
+            Ok(stored) if stored == *adapter => {}
+            Ok(stored) if !forced => panic!(
+                "the goldens in {} were written on adapter {stored:?}, and this run draws on \
+                 {adapter:?}.\nRe-run with {UPDATE}=1 to adopt this adapter's goldens.",
+                sidecar.parent().expect("sidecar has a directory").display()
+            ),
+            Ok(_) => Self::write_sidecar(&sidecar, adapter),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Self::write_sidecar(&sidecar, adapter);
+            }
+            Err(error) => panic!("read {}: {error}", sidecar.display()),
+        }
+    }
+
+    /// Written beside and renamed into place, because a suite's tests
+    /// compare in parallel: a plain write truncates the file first, and a
+    /// test reading it then sees an empty adapter and fails on a mismatch
+    /// that is not there.
+    fn write_sidecar(sidecar: &Path, adapter: &str) {
+        let dir = sidecar.parent().expect("sidecar has a directory");
+        fs::create_dir_all(dir).expect("create golden directory");
+        let staged = dir.join(format!(
+            "{ADAPTER_FILE}.{}.{:?}.tmp",
+            process::id(),
+            thread::current().id()
+        ));
+        fs::write(&staged, adapter).expect("stage the adapter sidecar");
+        fs::rename(&staged, sidecar).expect("move the adapter sidecar into place");
+    }
+
     /// Leave a failure's artifacts in `output` — what the test got, what it
     /// expected, and the map of where they differ — and describe the
     /// failure against this set's tolerance, for the panic.
@@ -274,14 +352,13 @@ impl Goldens {
             .expect("save diff");
         format!(
             "  max channel delta {}\n  \
-             differing pixels  {} ({:.4} of the image)\n  \
-             allowed           {} per channel, {} of the image\n  \
+             differing pixels  {}\n  \
+             allowed           {} per channel, {} pixels\n  \
              written to        {}",
             report.max_channel_delta,
             report.differing_pixels,
-            report.differing_ratio,
-            self.tolerance.per_channel,
-            self.tolerance.max_ratio,
+            self.tolerance.max_delta,
+            self.tolerance.max_pixels,
             output.display(),
         )
     }

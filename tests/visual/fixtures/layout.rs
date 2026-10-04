@@ -8,6 +8,7 @@ use palantir::{
     Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
+use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::{FIXTURE_PALETTE, Harness};
 
@@ -52,7 +53,7 @@ fn vstack_fill_weights_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("vstack_fill_weights", &img);
+    assert_matches_golden(GoldenName::VstackFillWeights, &img);
 }
 
 /// Grid with mixed track types (fixed / fill), gap, and a spanning
@@ -74,7 +75,7 @@ fn grid_mixed_tracks_matches_golden() {
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("header")
-                        .grid_cell(GridCell::at(0, 0).span(1, 3))
+                        .grid_cell(GridCell::at(0, 0).with_span(1, 3))
                         .background(Background {
                             fill: RgbaF32::srgb(0.25, 0.30, 0.45).into(),
                             corners: Corners::all(4.0),
@@ -111,7 +112,7 @@ fn grid_mixed_tracks_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("grid_mixed_tracks", &img);
+    assert_matches_golden(GoldenName::GridMixedTracks, &img);
 }
 
 /// ZStack: tinted background frame + centered button on top. Tests
@@ -142,7 +143,7 @@ fn zstack_centered_button_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("zstack_centered_button", &img);
+    assert_matches_golden(GoldenName::ZstackCenteredButton, &img);
 }
 
 /// Two `Hug` columns: a wrapping paragraph in col 0 and a bare
@@ -196,7 +197,7 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden("grid_two_hug_cols_label_not_clipped", &img);
+    assert_matches_golden(GoldenName::GridTwoHugColsLabelNotClipped, &img);
 }
 
 /// The frame bench's own tree at scale 1 — the one scene that records
@@ -209,5 +210,5 @@ fn frame_fixture_matches_golden() {
         .size(UVec2::new(1280, 800))
         .frame(|ui| state.render(1, ui))
         .image;
-    assert_matches_golden("frame_fixture", &img);
+    assert_matches_golden(GoldenName::FrameFixture, &img);
 }

@@ -49,8 +49,12 @@ impl ZoomFactor {
     /// factors have no meaning — a zoom cannot invert or annihilate —
     /// and a non-finite one poisons every product it enters.
     #[inline]
-    pub fn new(factor: f32) -> Option<Self> {
-        is_valid(factor).then_some(Self(factor))
+    pub const fn new(factor: f32) -> Option<Self> {
+        if is_valid(factor) {
+            Some(Self(factor))
+        } else {
+            None
+        }
     }
 
     /// The factor `notches` of wheel travel represents, given a
@@ -63,6 +67,7 @@ impl ZoomFactor {
     /// Panics unless `step` is a valid factor and `notches` is a number.
     /// A cold call on a wheel event, so the check costs a frame nothing.
     #[inline]
+    #[track_caller]
     pub fn from_wheel(step: f32, notches: f32) -> Self {
         assert!(is_valid(step), "a zoom step must be finite and positive");
         assert!(!notches.is_nan(), "wheel notches must be a number");
@@ -89,7 +94,7 @@ impl ZoomFactor {
 
 /// A valid factor is finite and strictly positive.
 #[inline]
-fn is_valid(factor: f32) -> bool {
+const fn is_valid(factor: f32) -> bool {
     factor.is_finite() && factor > 0.0
 }
 

@@ -3,13 +3,14 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::placement::Placement;
+use crate::primitives::math::domain::{self, vec2};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
 
 /// A side layer being configured, terminated by [`Self::show`].
 ///
-/// [`Self::fixed_at`] pins the body's top-left. [`Self::anchored`]
+/// [`Self::fixed_at`] pins the body's top-left. [`Self::anchor`]
 /// resolves the origin from the body's measured size instead — that is
 /// what lets a popup flip above its anchor when it would not fit below,
 /// and it is why `Popup`, `ContextMenu` and `Tooltip` place themselves
@@ -38,10 +39,15 @@ impl<'a> LayerScope<'a> {
     /// Without a [`Self::max_size`] the available extent runs from here
     /// to the surface's bottom-right.
     ///
-    /// [`Self::anchored`] is the other form, and the one an overlay
+    /// [`Self::anchor`] is the other form, and the one an overlay
     /// wants: it moves the body to keep it on screen.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn fixed_at(mut self, point: Vec2) -> Self {
-        self.placement = self.placement.with_fixed(point);
+        self.placement = self.placement.with_fixed(vec2::offset(point));
         self
     }
 
@@ -52,7 +58,7 @@ impl<'a> LayerScope<'a> {
     /// trigger, a menu at the pointer, a tooltip beside the thing it
     /// describes. Replaces an origin set by [`Self::fixed_at`] and keeps
     /// a cap set by [`Self::max_size`].
-    pub const fn anchored(mut self, anchor: Anchor) -> Self {
+    pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.placement = self.placement.with_anchored(anchor);
         self
     }
@@ -60,8 +66,16 @@ impl<'a> LayerScope<'a> {
     /// Cap the available extent at `size`, still clamped to the surface
     /// so an oversized cap can't bleed past the viewport. The root's own
     /// `Sizing` (Hug / Fill / Fixed) governs the painted size within it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes are [extents](crate::widget::domain::extent).
+    #[track_caller]
     pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.placement = self.placement.with_max_size(size.into());
+        let size = size.into();
+        domain::extent(size.w);
+        domain::extent(size.h);
+        self.placement = self.placement.with_max_size(size);
         self
     }
 

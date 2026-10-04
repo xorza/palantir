@@ -47,6 +47,7 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::primitives::layout::track::{GridDef, Track};
 use crate::primitives::paint::background::Background;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::Node;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::panel_extras::PanelExtras;
@@ -63,6 +64,7 @@ use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::scene::tree::tree_fingerprint::TreeFingerprint;
 use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
@@ -93,6 +95,10 @@ pub(crate) struct Tree {
     /// clip-radius column. Per-emit gates in `PaintSink::draw_*`
     /// drop the visual no-op slices; the radius survives.
     pub(crate) chrome_table: Vec<ChromeRow>,
+    /// The focus ring's stroke, for the one chrome row that flags it —
+    /// see [`ChromeRow::ring`]. A no-op when no node in this tree holds
+    /// focus that came from the keyboard.
+    pub(crate) focus_ring: ShapeStroke,
 
     /// Flat per-frame shape buffer. Records are indexed via
     /// `NodeRecord.shape_span`; variable-length payloads (mesh
@@ -140,6 +146,9 @@ pub(crate) struct Tree {
 #[derive(Debug)]
 pub(crate) struct ChromeInput<'a> {
     pub(crate) bg: &'a Background,
+    /// The focus ring over the chrome — `Stroke::NONE` unless the node
+    /// holds focus that came from the keyboard.
+    pub(crate) ring: Stroke,
     pub(crate) store: &'a mut RecordStore,
 }
 
@@ -188,6 +197,7 @@ impl Tree {
         self.bounds_table.clear();
         self.panel_table.clear();
         self.chrome_table.clear();
+        self.focus_ring = ShapeStroke::default();
         self.shapes.clear();
         self.paint_anims.clear();
         self.grid_tracks.clear();
@@ -477,7 +487,9 @@ impl Tree {
         // this is the only hop that sees both the node's request and the
         // chrome supplying the radius.
         if cols.attrs.clip_mode() == ClipMode::Rounded
-            && chrome.as_ref().is_none_or(|c| c.bg.corners.approx_zero())
+            && chrome
+                .as_ref()
+                .is_none_or(|c| c.bg.corners.is_approx_zero())
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }
@@ -508,7 +520,12 @@ impl Tree {
             ex.panel = Some(Index16::new(self.panel_table.len(), "panel_table"));
             self.panel_table.push(cols.panel);
         }
-        if let Some(ChromeInput { bg, store }) = chrome {
+        if let Some(ChromeInput {
+            bg,
+            ring: focus_ring,
+            store,
+        }) = chrome
+        {
             // A chrome border paints fully inside the node's arranged
             // rect (see `quad_pipeline/shader.wgsl` SDF stroke band), so `padding` grows
             // by the border on every side and children sit inside it
@@ -524,10 +541,14 @@ impl Tree {
             }
             // Tree-storage noop gate for chrome — mirrors `Shapes::add`
             // for the shape buffer and `PaintSink::draw_*` for emits.
-            let needs_chrome_row =
-                !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
+            let needs_chrome_row = !bg.is_noop()
+                || !focus_ring.is_noop()
+                || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::background(store, bg);
+                let row = lower::background(store, bg, focus_ring);
+                if row.ring {
+                    self.focus_ring = ShapeStroke::from(focus_ring);
+                }
                 ex.chrome = Some(Index16::new(self.chrome_table.len(), "chrome_table"));
                 self.chrome_table.push(row);
             }

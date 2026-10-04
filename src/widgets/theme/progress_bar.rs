@@ -22,7 +22,7 @@ impl ProgressBarTheme {
     /// A muted track under an accent fill.
     pub const fn from_palette(p: &Palette) -> Self {
         Self {
-            track: p.elem_mid,
+            track: p.element_mid,
             fill: p.accent,
             thickness: 6.0,
         }

@@ -1,5 +1,5 @@
 //! Deterministic placeholder shaping for the mono fallback: every glyph
-//! is `font_size_px * 0.5` wide, so a layout case can state the width it
+//! is `font_size * 0.5` wide, so a layout case can state the width it
 //! expects as arithmetic rather than as whatever the bundled face
 //! advances to. [`root`] and [`resolve`] are the metric
 //! behind [`TextShaper::test_mono`](crate::text::shaper::TextShaper) — the
@@ -19,29 +19,29 @@ use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, LineFit, WrapFloor};
 
-/// Width of one `char` at `font_size_px`, whatever its UTF-8 length.
-fn glyph_width(font_size_px: f32) -> f32 {
-    font_size_px * 0.5
+/// Width of one `char` at `font_size`, whatever its UTF-8 length.
+fn glyph_width(font_size: f32) -> f32 {
+    font_size * 0.5
 }
 
 /// Caret-x along a single-line mono layout: one glyph width per `char`
 /// before `byte_offset`. Multi-line aware callers should go through
 /// `cursor_xy` instead — this is the cheap path for the mono fallback's
 /// degenerate single-line behaviour.
-pub(super) fn single_line_caret_x(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
+pub(super) fn single_line_caret_x(text: &str, byte_offset: usize, font_size: f32) -> f32 {
     let clamped = text.floor_char_boundary(byte_offset.min(text.len()));
-    text[..clamped].chars().count() as f32 * glyph_width(font_size_px)
+    text[..clamped].chars().count() as f32 * glyph_width(font_size)
 }
 
 /// Inverse of [`single_line_caret_x`]. Picks the char boundary whose
 /// prefix-x is closest to `target_x` so click positioning on the mono
 /// fallback matches the rendered glyph layout exactly.
-pub(super) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usize {
+pub(super) fn nearest_byte(text: &str, target_x: f32, font_size: f32) -> usize {
     let mut best_off = 0usize;
     let mut best_dist = target_x.abs();
     for (i, ch) in text.char_indices() {
         let next = i + ch.len_utf8();
-        let x = single_line_caret_x(text, next, font_size_px);
+        let x = single_line_caret_x(text, next, font_size);
         let d = (x - target_x).abs();
         if d < best_dist {
             best_dist = d;
@@ -61,12 +61,12 @@ pub(super) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usiz
 /// and the key commits no width by the time it arrives — exactly as on
 /// the cosmic side.
 pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
-    let glyph_w = glyph_width(request.key.font_size_px());
+    let glyph_w = glyph_width(request.key.font_size());
     TextRoot {
         // Mono reads no outlines: a cell holds its glyph.
         extent: TextExtent::inked_within(Size::new(
             request.text.chars().count() as f32 * glyph_w,
-            request.key.line_height_px(),
+            request.key.line_height(),
         )),
         intrinsic_min: (floor == WrapFloor::Scan)
             .then(|| intrinsic_min_width(request.text, glyph_w)),
@@ -81,11 +81,9 @@ pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot 
 /// routed by the same [`LineFit`] to the same two answers.
 pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     let key = request.key;
-    let glyph_w = glyph_width(key.font_size_px());
-    let line_h = key.line_height_px();
-    let max = key
-        .max_width_px()
-        .expect("a bounded resolve commits a width");
+    let glyph_w = glyph_width(key.font_size());
+    let line_h = key.line_height();
+    let max = key.max_width().expect("a bounded resolve commits a width");
     let chars = request.text.chars().count() as f32;
     let unbroken_w = chars * glyph_w;
     TextExtent::inked_within(match key.fit() {

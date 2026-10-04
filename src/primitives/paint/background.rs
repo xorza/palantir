@@ -2,7 +2,7 @@
 //! corner radii and a shadow, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::math::approx::paints_nothing;
+use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::shadow::Shadow;
@@ -21,10 +21,21 @@ use palantir_anim_derive::Animatable;
 /// `Animatable` derived: fill and border interpolate componentwise;
 /// `radius` is `#[animate(snap)]` (corner-radius morphing across
 /// states is rarely-wanted polish and would require `Corners:
-/// Animatable`). "No border" is `Stroke::ZERO` (width 0, transparent)
+/// Animatable`). "No border" is `Stroke::NONE` (width 0, transparent)
 /// — there is no `Option<Stroke>` here. The animation pipeline lerps
-/// `Stroke` directly through `Stroke::ZERO`; paint-time `is_noop`
+/// `Stroke` directly through `Stroke::NONE`; paint-time `is_noop`
 /// filtering catches both authored and animation-decayed no-ops.
+///
+/// Plain data, so arithmetic may pass through values no widget takes. A
+/// widget's `background` and `default_background` check it where it
+/// enters, and panic unless every colour is a
+/// [colour](crate::widget::domain::color); a gradient fill's angles are
+/// [angles](crate::widget::domain::angle), its centre an
+/// [offset](crate::widget::domain::offset) and a radial radius a
+/// [length](crate::widget::domain::length) on each axis; the border's width
+/// is a length; each corner radius is a length of at most 65504, one f16
+/// lane; and the shadow's offset and spread are offsets and its blur a
+/// length.
 // `Background` is intentionally **not `Copy`**: the recording chain
 // (`Widget::record` → `Forest::open_node` → `Tree::open_node` →
 // `shapes::lower::background`) takes it by reference. It is the largest
@@ -39,17 +50,17 @@ pub struct Background {
     /// the padding, so children sit inside the border without the caller
     /// subtracting it.
     ///
-    /// `Stroke::ZERO` (the `Default`) omitted from serialized output —
+    /// `Stroke::NONE` (the `Default`) omitted from serialized output —
     /// the common "fill-only, no border" case stays compact.
     #[serde(default, skip_serializing_if = "Stroke::is_noop")]
     pub border: Stroke,
     /// Zero (or sub-`EPS`) radii — the `Default` — omitted from
     /// serialized output.
-    #[serde(default, skip_serializing_if = "Corners::approx_zero")]
+    #[serde(default, skip_serializing_if = "Corners::is_approx_zero")]
     #[animate(snap)]
     pub corners: Corners,
     /// Single drop / inset shadow. `Shadow::NONE` (the `Default`) is
-    /// the "no shadow" sentinel — matches the `Stroke::ZERO` border
+    /// the "no shadow" sentinel — matches the `Stroke::NONE` border
     /// convention so the field stays plain `Shadow` and animates
     /// componentwise (alpha lerps in/out for hover-elevation), with
     /// the paint-time `is_noop` filter catching authored or
@@ -62,12 +73,23 @@ pub struct Background {
 }
 
 impl Background {
+    /// Panics unless its fill, border, corners and shadow each pass their
+    /// own check — the check a background faces where it enters a node.
+    #[inline]
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        self.fill.validate();
+        self.border.validate();
+        self.corners.validate();
+        self.shadow.validate();
+    }
+
     /// Canonical background that paints nothing. Use this as an explicit
     /// builder override when a theme supplies chrome that this widget should
     /// suppress.
     pub const NONE: Self = Self {
         fill: Brush::TRANSPARENT,
-        border: Stroke::ZERO,
+        border: Stroke::NONE,
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
@@ -81,7 +103,7 @@ impl Background {
     /// without considering shadow would silently kill a shadow-only
     /// background.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         self.fill.is_noop() && self.border.is_noop() && self.shadow.is_noop()
     }
 
@@ -92,7 +114,7 @@ impl Background {
     /// chrome's padding, so children sit inside the border without the
     /// caller adding it by hand. The widgets that need the same inner
     /// rect before the tree has it — `TextEdit` for its glyph and caret
-    /// coordinates, `TextEditTheme::corner_centring` for a `DragValue`'s
+    /// coordinates, `TextEditTheme::corner_centering` for a `DragValue`'s
     /// in-place edit — read it here rather than each writing the gate
     /// out.
     ///
@@ -100,7 +122,7 @@ impl Background {
     /// colour makes invisible is still a border the fold makes room for.
     #[inline]
     pub(crate) const fn border_inset(&self) -> f32 {
-        if paints_nothing(self.border.width) {
+        if is_invisible(self.border.width) {
             0.0
         } else {
             self.border.width
@@ -111,7 +133,7 @@ impl Background {
     pub fn fill<I: Into<Brush>>(brush: I) -> Self {
         Self {
             fill: brush.into(),
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
             corners: Corners::ZERO,
             shadow: Shadow::NONE,
         }
@@ -122,7 +144,7 @@ impl Background {
     pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self {
         Self {
             fill: brush.into(),
-            border: Stroke::ZERO,
+            border: Stroke::NONE,
             corners,
             shadow: Shadow::NONE,
         }
@@ -172,7 +194,7 @@ mod tests {
     // `with_border`/`with_shadow` chained in a const context. If either
     // regresses to non-const, this fails to compile.
     const _CONST_BUILDER: Background = Background::NONE
-        .with_border(Stroke::ZERO)
+        .with_border(Stroke::NONE)
         .with_shadow(Shadow::NONE);
 
     #[test]

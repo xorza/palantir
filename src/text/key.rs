@@ -3,7 +3,7 @@
 
 use crate::common::hash;
 use crate::primitives::layout::align::HAlign;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::text::RENDERED_RUN_KEEP_SPREAD_MASK;
 use crate::text::font_family::FontFamily;
@@ -55,10 +55,10 @@ pub(crate) struct TextShapeKey {
     /// answer, rather than a value each of them has to remember to
     /// screen for.
     pub(crate) text_hash: NonZeroU64,
-    /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
+    /// `font_size * 64`, rounded. Quantizing to 1/64 px is below any
     /// visible difference and keeps the key purely integral.
     size_q: u32,
-    /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
+    /// `max_width * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
     ///
     /// Unlike its 1/64-px neighbours this carries only whole pixels:
     /// [`WrapBound::new`] snaps the width to the measure cache's grid via
@@ -66,7 +66,7 @@ pub(crate) struct TextShapeKey {
     /// multiple of 64. The scale is kept so all three quantized fields
     /// dequantize the same way, not because the precision is reachable.
     max_w_q: u32,
-    /// `line_height_px * 64`, rounded. Two `ShapeRecord::Text` runs at the
+    /// `line_height * 64`, rounded. Two `ShapeRecord::Text` runs at the
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
     lh_q: u32,
@@ -146,22 +146,22 @@ impl TextShapeKey {
     /// silent: a NaN size lands on a 1/64-px face and shapes against it.
     pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
         let GlyphFont {
-            size_px: font_size_px,
-            line_height_px,
+            size: font_size,
+            line_height,
             family,
             weight,
             slant,
         } = font;
         debug_assert!(
-            GlyphFont::metrics_are_valid(font_size_px, line_height_px),
+            GlyphFont::metrics_are_valid(font_size, line_height),
             "{}",
             GlyphFont::METRICS_ERROR,
         );
         Self {
             text_hash: Self::content_hash(text_hash),
-            size_q: quantize_metric(font_size_px),
+            size_q: quantize_metric(font_size),
             max_w_q: MAX_W_NONE,
-            lh_q: quantize_metric(line_height_px),
+            lh_q: quantize_metric(line_height),
             family_q: family.raw(),
             face_q: FaceBits::new(weight, slant, LineAlign::Auto, LineFit::Wrap),
         }
@@ -208,33 +208,33 @@ impl TextShapeKey {
         }
     }
 
-    pub(super) const fn font_size_px(self) -> f32 {
+    pub(super) const fn font_size(self) -> f32 {
         dequantize(self.size_q)
     }
 
-    pub(super) const fn line_height_px(self) -> f32 {
+    pub(super) const fn line_height(self) -> f32 {
         dequantize(self.lh_q)
     }
 
-    /// `line_height_px` as a key stores it, back in px: the leading the
+    /// `line_height` as a key stores it, back in px: the leading the
     /// shaper lays lines at, the nearest 1/64 px. A value no key accepts —
     /// non-finite, or at or below the UI epsilon — comes back unchanged,
     /// so validation still refuses it.
-    pub(crate) fn leading_on_grid(line_height_px: f32) -> f32 {
-        if line_height_px.is_finite() && line_height_px > EPS {
-            dequantize(quantize_metric(line_height_px))
+    pub(crate) fn leading_on_grid(line_height: f32) -> f32 {
+        if line_height.is_finite() && line_height > EPS {
+            dequantize(quantize_metric(line_height))
         } else {
-            line_height_px
+            line_height
         }
     }
 
-    pub(crate) fn max_width_px(self) -> Option<f32> {
+    pub(crate) fn max_width(self) -> Option<f32> {
         (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
     }
 
     /// The family this key shapes in. Any index the table has handed out
     /// is valid, and `CosmicMeasure` is what decides whether a face
-    /// answers to it — see `font_available`.
+    /// answers to it — see `has_font`.
     pub(super) const fn family(self) -> FontFamily {
         FontFamily::from_raw(self.family_q)
     }
@@ -287,7 +287,7 @@ impl FaceBits {
     /// `1..=1000`, and the `const _` block below pins that inside
     /// [`WEIGHT_MASK`].
     const fn new(weight: FontWeight, slant: FontSlant, align: LineAlign, fit: LineFit) -> Self {
-        Self(weight.value() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit))
+        Self(weight.get() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit))
     }
 
     /// The two fields a committed width rewrites, as bits — the one place
@@ -424,8 +424,8 @@ pub(super) struct WrapBound {
 }
 
 impl WrapBound {
-    pub(super) fn new(max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
-        debug_assert!(max_width_px.is_finite(), "text wrap width must be finite");
+    pub(super) fn new(max_width: f32, halign: HAlign, fit: LineFit) -> Self {
+        debug_assert!(max_width.is_finite(), "text wrap width must be finite");
         let align = match fit {
             // A truncating fit is one line, and cosmic aligns per line,
             // so there is nothing for an align to move.
@@ -433,7 +433,7 @@ impl WrapBound {
             LineFit::Clip | LineFit::Ellipsis => LineAlign::Auto,
         };
         Self {
-            max_w_q: quantize(max_width_px.canonical_px()).min(MAX_W_NONE - 1),
+            max_w_q: quantize(max_width.canonical_px()).min(MAX_W_NONE - 1),
             bound_q: FaceBits::bound_bits(align, fit),
         }
     }

@@ -20,8 +20,12 @@ pub(crate) mod user_scale;
 use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use glam::{UVec2, Vec2};
+
+/// What every door a scale factor enters by says when
+/// [`scale_factor_is_valid`] fails.
+pub(crate) const SCALE_RULE: &str = "a scale factor must be finite and at least 1e-4";
 
 #[inline]
 pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
@@ -72,7 +76,7 @@ pub struct Display {
     /// to `wgpu::SurfaceConfiguration { width, height, .. }`.
     pub physical: UVec2,
     /// The device pixel ratio the platform reported (e.g. `2.0` on a 2×
-    /// retina display). Must be finite and at least `approx::EPS`; host
+    /// retina display). Must be finite and at least `domain::EPS`; host
     /// boundaries validate external values and `Ui::frame` checks the
     /// invariant on the product.
     ///
@@ -123,11 +127,24 @@ impl Display {
     /// a `Display` built here would silently take these defaults instead —
     /// so both hosts mint theirs through the `WindowDriver` that owns both,
     /// and that is the only place either reaches a frame.
-    pub fn from_physical(physical: UVec2, system_scale: f32) -> Self {
+    ///
+    /// `system_scale`: finite and at least `1e-4`, the rule the hosts and
+    /// the frame apply to every scale factor.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `system_scale` is finite and at least `1e-4`.
+    #[track_caller]
+    pub const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
         Self {
             physical,
-            system_scale,
-            ..Default::default()
+            system_scale: {
+                assert!(scale_factor_is_valid(system_scale), "{}", SCALE_RULE);
+                system_scale
+            },
+            user_scale: UserScale::ONE,
+            pixel_snap: true,
+            refresh_millihertz: None,
         }
     }
 
@@ -154,7 +171,7 @@ impl Display {
     ///
     /// What a size handed back to the platform is read in: winit's
     /// `LogicalSize`, and so
-    /// [`WindowConfig::inner_size`](crate::WindowConfig::inner_size). Equal
+    /// [`WindowConfig::with_inner_size`](crate::WindowConfig::with_inner_size). Equal
     /// to [`Self::logical_size`] only while the user scale is `1.0`, which
     /// is exactly why the two are named apart — a round trip through the
     /// wrong one shrinks the window by the user scale on every launch.

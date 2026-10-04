@@ -17,10 +17,10 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 /// to [`F16x4`] (one `u64` write).
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct RgbaF16(F16x4);
+pub(crate) struct RgbaF16(F16x4);
 
 impl RgbaF16 {
-    pub const TRANSPARENT: Self = Self(F16x4::ZERO);
+    pub(crate) const TRANSPARENT: Self = Self(F16x4::ZERO);
 
     /// Opaque white — the identity of the channel-by-channel multiply a
     /// colour lane applies to a ramp sample.
@@ -50,7 +50,7 @@ impl RgbaF16 {
     /// [`F16x4::lane_is_noop`]'s bit-trick (mask sign, compare against
     /// the `EPS` pattern) so no f16→f32 conversion is needed.
     #[inline]
-    pub const fn is_noop(self) -> bool {
+    pub(crate) const fn is_noop(self) -> bool {
         // A NaN in *any* lane, not just alpha: an opaque colour with a
         // NaN red channel reaches the shader and renders as
         // hardware-dependent garbage. Covering all four costs one
@@ -67,14 +67,14 @@ impl RgbaF16 {
     /// composer sees lowered colour. Authoring colour is never asked
     /// whether it is opaque.
     #[inline]
-    pub const fn is_opaque(self) -> bool {
+    pub(crate) const fn is_opaque(self) -> bool {
         self.0.lane_is_opaque(3)
     }
 
     /// All four lanes unpacked to f32 at once. Single instruction on
     /// F16C/fp16 targets.
     #[inline]
-    pub fn unpack(self) -> RgbaF32 {
+    pub(crate) fn unpack(self) -> RgbaF32 {
         let [r, g, b, a] = self.0.lanes();
         RgbaF32 { r, g, b, a }
     }

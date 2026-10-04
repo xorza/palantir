@@ -114,11 +114,12 @@ fn radii(ui: &mut Ui) {
 /// keeps every cell on it.
 fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) {
     let id = WidgetId::from_hash(("showcase::shapes::mesh", key));
-    let fresh = ui.state::<Mesh>(id).is_none();
-    ui.with_state::<Mesh, _>(id, |ui, m| {
-        if fresh {
-            build(m);
-        }
+    ui.with_state::<Option<Mesh>, _>(id, |ui, m| {
+        let m = m.get_or_insert_with(|| {
+            let mut m = Mesh::new();
+            build(&mut m);
+            m
+        });
         ui.add_shape(Shape::mesh(m));
     });
 }

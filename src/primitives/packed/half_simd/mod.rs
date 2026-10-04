@@ -24,7 +24,7 @@
 //! fallback goes through `half`'s slice path (`fcvtl` on aarch64-fp16),
 //! where the dispatch is the point.
 
-use crate::primitives::math::approx::EPS;
+use crate::primitives::math::domain::EPS;
 use std::hash;
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
@@ -39,7 +39,7 @@ use std::hash;
 ///
 /// **A wrapper forwards what it has a caller for, and no more.** The three
 /// surfaces differ — only two forward `as_u64`, only `Corners` answers
-/// `approx_zero` or scales itself — and each gap is an absent caller
+/// `is_approx_zero` or scales itself — and each gap is an absent caller
 /// rather than an oversight. Adding the missing side of one is a change
 /// to make when something asks.
 #[repr(transparent)]
@@ -51,7 +51,7 @@ impl F16x4 {
     /// mask and exponent the lane predicates classify against.
     ///
     /// Here rather than beside [`EPS`] itself, because the encoding is
-    /// this type's business: `approx` answers f32 questions, and a lane
+    /// this type's business: `domain` answers f32 questions, and a lane
     /// pattern is not one.
     const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
     const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
@@ -118,6 +118,27 @@ impl F16x4 {
         let bias = (0x7FFF - bits) as u64;
         let bias = bias | (bias << 16) | (bias << 32) | (bias << 48);
         ((packed & ABS) + bias) & SIGN != 0
+    }
+
+    /// True if any lane is infinite or NaN: a magnitude past the largest
+    /// finite f16.
+    #[inline]
+    pub(crate) const fn any_lane_non_finite(self) -> bool {
+        self.any_lane_above(Self::NAN_EXP - 1)
+    }
+
+    /// True if any lane is below zero. `-0.0` is not.
+    #[inline]
+    pub(crate) const fn any_lane_negative(self) -> bool {
+        let mut i = 0;
+        while i < 4 {
+            let lane = self.0[i];
+            if lane & !Self::ABS_MASK != 0 && lane & Self::ABS_MASK != 0 {
+                return true;
+            }
+            i += 1;
+        }
+        false
     }
 
     /// True if any lane is NaN.

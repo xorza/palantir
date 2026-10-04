@@ -9,7 +9,7 @@ use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 
 /// The whole public probe surface, against the mono shaper's exact
-/// metric: every glyph is `font_size_px * 0.5` wide, so at 16 px a
+/// metric: every glyph is `font_size * 0.5` wide, so at 16 px a
 /// character is 8 px and every expected value below is arithmetic
 /// rather than a recorded observation.
 ///
@@ -19,19 +19,19 @@ use crate::text::wrap::TextWrap;
 /// click, or wash a selection, it stops compiling here.
 #[test]
 fn probing_a_run_maps_bytes_and_positions_both_ways() {
-    fn run(text: &str, max_width_px: Option<f32>) -> TextRun<'_> {
+    fn run(text: &str, max_width: Option<f32>) -> TextRun<'_> {
         TextRun {
             text,
             font: GlyphFont {
-                size_px: 16.0,
-                line_height_px: 20.0,
+                size: 16.0,
+                line_height: 20.0,
                 family: FontFamily::SANS,
                 weight: FontWeight::REGULAR,
                 slant: FontSlant::Normal,
             },
             wrap: TextWrap::SingleLine,
             align: Align::LEFT,
-            max_width_px,
+            max_width,
         }
     }
 
@@ -99,18 +99,18 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
 fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
     let mut harness = UiHarness::arena();
     let ui = harness.ui();
-    let run = |wrap, max_width_px| TextRun {
+    let run = |wrap, max_width| TextRun {
         text: "hello world",
         font: GlyphFont {
-            size_px: 16.0,
-            line_height_px: 20.0,
+            size: 16.0,
+            line_height: 20.0,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
         },
         wrap,
         align: Align::LEFT,
-        max_width_px,
+        max_width,
     };
 
     // 11 glyphs × 8 px = 88 px on one line, whatever width is offered.
@@ -133,7 +133,7 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
 
     // A width that names no width binds nothing: the run keeps its
     // unbounded shape rather than committing to a wrap grid derived from
-    // a non-finite number. `max_width_px` is a public field filled from a
+    // a non-finite number. `max_width` is a public field filled from a
     // caller's own arithmetic, so this is an input case.
     let unbounded = ui.probe_text(run(TextWrap::Wrap, None)).size();
     for width in [f32::INFINITY, f32::NAN] {
@@ -154,29 +154,29 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
 fn an_unusable_face_probes_to_nothing() {
     let mut harness = UiHarness::arena();
     let ui = harness.ui();
-    let run = |size_px, line_height_px| TextRun {
+    let run = |size, line_height| TextRun {
         text: "hello",
         font: GlyphFont {
-            size_px,
-            line_height_px,
+            size,
+            line_height,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
         },
         wrap: TextWrap::SingleLine,
         align: Align::LEFT,
-        max_width_px: None,
+        max_width: None,
     };
 
     assert_eq!(ui.probe_text(run(16.0, 20.0)).size().w, 5.0 * 8.0);
-    for (size_px, line_height_px, label) in [
+    for (size, line_height, label) in [
         (0.0, 20.0, "zero size"),
         (f32::NAN, 20.0, "NaN size"),
         (f32::INFINITY, 20.0, "infinite size"),
         (16.0, 0.0, "zero leading"),
         (16.0, f32::NAN, "NaN leading"),
     ] {
-        let probe = ui.probe_text(run(size_px, line_height_px));
+        let probe = ui.probe_text(run(size, line_height));
         assert_eq!(probe.size(), Size::ZERO, "{label} must measure nothing");
         assert_eq!(
             probe.caret_at(3).x,

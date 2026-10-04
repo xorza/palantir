@@ -226,7 +226,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
 
     let scroll = h.scroll_pixels_at(Vec2::new(150.0, 150.0), Vec2::new(0.0, 12.0));
     assert!(
-        !scroll.requests_repaint,
+        !scroll.repaint_requested,
         "scroll with no current target must be discarded",
     );
     h.move_to(Vec2::new(50.0, 50.0));

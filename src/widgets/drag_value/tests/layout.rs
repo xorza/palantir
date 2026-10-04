@@ -2,6 +2,7 @@
 //! node.
 
 use crate::Ui;
+use crate::input::keyboard::key::Key;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -46,6 +47,7 @@ fn editing_a_long_value_holds_the_field_width() {
 
     // Enter edit mode; entry seeds the full-precision text.
     h.set_focus(id);
+    h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut v));
     let edit_w = h.arranged(id).size.w;
 
@@ -88,6 +90,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     };
     h.frame(|ui| draw(ui, &mut v));
     h.set_focus(id);
+    h.key(Key::Enter);
     h.frame(|ui| draw(ui, &mut v));
 }
 
@@ -165,6 +168,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 
     // Focus flips the same widget to its inline editor.
     h.set_focus(id);
+    h.key(Key::Enter);
     h.frame(scene);
     let editor = placement(&h.ui, id);
 
@@ -227,6 +231,8 @@ fn entering_edit_mode_keeps_the_chips_box() {
     let chip = h.arranged(id).size;
 
     h.set_focus(id);
+
+    h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut fps));
     let editor = h.arranged(id).size;
 
@@ -234,5 +240,72 @@ fn entering_edit_mode_keeps_the_chips_box() {
         (chip.w, chip.h),
         (editor.w, editor.h),
         "entering edit mode resized the field (chip {chip:?}, editor {editor:?})",
+    );
+}
+
+/// The suffix takes every form of text a widget takes, and each one
+/// labels the chip the same: borrowed, owned, interned this pass, and
+/// `fmt!` output. The interned form is copied out of the arena while the
+/// label is formatted into it, which is the case a plain `&str` never
+/// meets. A chip with no suffix is narrower, so the width reads the
+/// suffix.
+#[test]
+fn every_text_form_labels_the_same_suffix() {
+    use crate::primitives::text::text_input::TextInput;
+
+    type Form = fn(&mut Ui) -> TextInput<'static>;
+    let forms: [(&str, Form); 5] = [
+        ("none", |_| TextInput::default()),
+        ("borrowed", |_| " fps".into()),
+        ("owned", |_| " fps".to_owned().into()),
+        ("interned", |ui| ui.intern(" fps").into()),
+        ("fmt", |ui| crate::fmt!(ui, " {}", "fps").into()),
+    ];
+    let id = WidgetId::from_hash("dv-suffix");
+    let widths = forms.map(|(label, form)| {
+        let mut h = UiHarness::new(UVec2::new(400, 120));
+        let mut fps = 120_i64;
+        for _ in 0..2 {
+            h.frame(|ui| {
+                Panel::hstack().auto_id().show(ui, |ui| {
+                    let suffix = form(ui);
+                    DragValue::new(&mut fps)
+                        .suffix(suffix)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .id(id)
+                        .show(ui);
+                });
+            });
+        }
+        (label, h.arranged(id).size.w)
+    });
+    let [none, borrowed, rest @ ..] = widths;
+    assert!(borrowed.1 > none.1, "premise: the suffix widens the chip");
+    for (label, w) in rest {
+        assert_eq!(w, borrowed.1, "{label}");
+    }
+}
+
+/// The copy an interned suffix is formatted through lives on the chip's
+/// own id, so it leaves with the chip rather than outliving it.
+#[test]
+fn the_suffix_copy_leaves_with_the_chip() {
+    use crate::widgets::drag_value::SuffixScratch;
+
+    let id = WidgetId::from_hash("dv-leaving-suffix");
+    let mut fps = 120_i64;
+    let mut h = UiHarness::new(UVec2::new(400, 120));
+    h.frame(|ui| {
+        let suffix = ui.intern(" fps");
+        DragValue::new(&mut fps).suffix(suffix).id(id).show(ui);
+    });
+    assert!(
+        h.ui.state::<SuffixScratch>(id).is_some(),
+        "used while the chip records"
+    );
+    h.frame(|_| {});
+    assert!(
+        h.ui.state::<SuffixScratch>(id).is_none(),
+        "swept with the chip"
     );
 }

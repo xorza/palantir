@@ -141,6 +141,11 @@ impl RecordStore {
         self.text.reuse(text)
     }
 
+    /// The characters of a handle this pass minted. Backs [`crate::Ui::text`].
+    pub(crate) fn text(&self, text: InternedStr) -> &str {
+        self.text.text(text)
+    }
+
     /// Lower a handle this pass minted into the span and content hash a
     /// `ShapeRecord::Text` carries.
     pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {

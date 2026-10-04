@@ -189,7 +189,7 @@ impl TextShaper {
     /// a standalone recorder, a golden test and a bench all reach for:
     /// deterministic metrics, and no font directory to walk. A window
     /// says otherwise through
-    /// [`WinitHostConfig::fonts`](crate::WinitHostConfig::fonts).
+    /// [`WinitHostBuilder::fonts`](crate::WinitHostBuilder::fonts).
     pub fn new() -> Self {
         Self::with_fonts(FontScope::Bundled)
     }
@@ -217,8 +217,9 @@ impl TextShaper {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] for an unreadable file, and
-    /// [`FontLoadError::NoFaces`] for bytes that parse to no face.
+    /// [`FontLoadError::Io`] for an unreadable file,
+    /// [`FontLoadError::NoFaces`] for bytes that parse to no face,
+    /// and [`FontLoadError::FamilyTableFull`] when the family table is full.
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         let loaded = self
             .shared
@@ -231,8 +232,8 @@ impl TextShaper {
     }
 
     /// Whether a face answers to `family`.
-    pub fn font_available(&self, family: FontFamily) -> bool {
-        self.shared.inner.borrow_mut().cosmic.font_available(family)
+    pub fn has_font(&self, family: FontFamily) -> bool {
+        self.shared.inner.borrow_mut().cosmic.has_font(family)
     }
 
     /// Every family the database knows, system fonts included.
@@ -394,7 +395,7 @@ impl TextShaper {
     /// would ask this `RefCell` for a second borrow and panic, so a view takes
     /// one inside its own paint and drops it there.
     ///
-    /// Reached through [`GpuInitCtx`](crate::GpuInitCtx), which hands a view the
+    /// Reached through [`GpuInitContext`](crate::GpuInitContext), which hands a view the
     /// shaper the rest of the window is already drawing with — so a label in a
     /// scene is in the same faces as the UI around it without anyone arranging
     /// for that.
@@ -424,7 +425,7 @@ pub(crate) mod internals {
     /// What the integration suites reach through `UiHarness`.
     impl TextShaper {
         /// Deterministic mono-fallback shaper for tests and headless
-        /// tools: every glyph measures `font_size_px * 0.5` wide, so a
+        /// tools: every glyph measures `font_size * 0.5` wide, so a
         /// layout case states the width it expects as arithmetic rather
         /// than as whatever the bundled face happens to advance to.
         ///
@@ -488,7 +489,7 @@ pub(crate) mod internals {
                 font: shape.font,
                 wrap: TextWrap::Wrap,
                 align: Align::h(shape.halign),
-                max_width_px: shape.max_width_px,
+                max_width: shape.max_width,
             }))
         }
 

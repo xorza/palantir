@@ -3,13 +3,13 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
-use crate::widget_core::select_response::SelectResponse;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -70,21 +70,20 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     /// Record the row and report whether this click moved the group's
     /// selection.
     ///
-    /// A [`SelectResponse`] rather than a bare [`Response`](crate::Response), for the
-    /// reason [`ComboBox`](crate::ComboBox) returns one: a radio latches,
-    /// so `clicked()` is true on the already-selected option and
-    /// `changed` is not. The caller has no other way to tell the two
-    /// apart.
-    pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
+    /// A radio latches, so `response.clicked()` is true on the
+    /// already-selected option and `changed` is not; read `changed` for the
+    /// pick. A pick commits at once, so `committed == changed`.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
+        let activated = ToggleChrome::activated(ui, &mut self.widget, &response);
 
         // Read ahead of the latch below, which moves `self.value` and so
         // leaves `self` unborrowable.
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.radio);
-        let pip_size = slot.box_size.themed_length(1.0);
+        let pip_size = domain::length_at_least(slot.box_size, 1.0);
         let indicator = slot.indicator;
-        let dot_inset = slot.indicator_inset.themed_length(0.0);
+        let dot_inset = domain::length_at_least(slot.indicator_inset, 0.0);
 
         let mut selected = *self.current == self.value;
         let mut changed = false;
@@ -93,7 +92,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // this option, so flip `selected` now (`value` is moved into
         // `current`, so we can't re-derive it) — otherwise the chrome +
         // pip below paint unselected until the next unrelated repaint.
-        if response.clicked() && !selected {
+        if activated && !selected {
             *self.current = self.value;
             selected = true;
             changed = true;
@@ -110,12 +109,16 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         };
         let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if selected {
-                let dot_size = pip_size - 2.0 * dot_inset;
+                let dot_size = domain::length_at_least(pip_size - 2.0 * dot_inset, 0.0);
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
                 ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
             }
         });
-        SelectResponse { response, changed }
+        ValueResponse {
+            response,
+            changed,
+            committed: changed,
+        }
     }
 }
 

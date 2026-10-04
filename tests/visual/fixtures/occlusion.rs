@@ -1,5 +1,5 @@
 use glam::UVec2;
-use image::RgbaImage;
+use palantir::golden::image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
 

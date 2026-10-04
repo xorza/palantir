@@ -1,11 +1,13 @@
 //! The horizontal value slider, and what a frame of it reports about the
 //! value it writes through.
 
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -55,12 +57,11 @@ impl<'a> Slider<'a> {
         // A track maps its fraction onto the range, and an infinite end
         // maps every fraction past zero to infinity or NaN: a click would
         // store `+inf` in the bound value.
-        assert!(
-            range.start().is_finite() && range.end().is_finite(),
-            "slider range must be finite, got {range:?}",
-        );
+        assert!(domain::f64::is_range(&range), "{}", domain::RANGE_RULE);
         Self {
-            widget: Widget::hstack().sense(Sense::CLICK | Sense::DRAG),
+            widget: Widget::hstack()
+                .sense(Sense::CLICK | Sense::DRAG)
+                .focusable(true),
             value: value.into(),
             min: *range.start(),
             max: *range.end(),
@@ -78,12 +79,9 @@ impl<'a> Slider<'a> {
     /// Panics unless `step` is finite and greater than zero. A slider
     /// that should not snap simply never calls this — there is no second
     /// spelling of "off".
-    pub fn step(mut self, step: f64) -> Self {
-        assert!(
-            step.is_finite() && step > 0.0,
-            "slider step must be finite and greater than zero, got {step}",
-        );
-        self.step = Some(step);
+    #[track_caller]
+    pub const fn step(mut self, step: f64) -> Self {
+        self.step = Some(domain::f64::positive(step));
         self
     }
 
@@ -108,7 +106,7 @@ impl<'a> Slider<'a> {
     ///
     /// A [`ValueResponse`] rather than a bare [`Response`] because the
     /// widget writes through the caller's number: they have no other way to
-    /// tell whether the value moved this frame. `left.drag.dragging()`
+    /// tell whether the value moved this frame. `left.drag.is_live()`
     /// does not answer it — a drag pinned at `min`/`max` keeps reporting
     /// while the value stays put. The same type
     /// [`DragValue`](crate::DragValue) returns, so the two value-editing
@@ -118,8 +116,8 @@ impl<'a> Slider<'a> {
         let id = self.widget.resolve(ui);
 
         let theme = self.style.unwrap_or(&ui.theme().slider);
-        let knob = theme.knob_size.themed_length(1.0);
-        let track_h = theme.track_thickness.themed_length(0.0);
+        let knob = domain::length_at_least(theme.knob_size, 1.0);
+        let track_h = domain::length_at_least(theme.track_thickness, 0.0);
         let fill_color = theme.fill;
         let track_color = theme.track;
         let knob_color = theme.knob;
@@ -140,12 +138,25 @@ impl<'a> Slider<'a> {
                 .value
                 .commit_value(v, self.decimals, self.min, self.max);
         }
+        // A key press is a whole edit of its own, so it commits at once.
+        let keyed = !response.disabled
+            && ui.is_focus_within(id)
+            && key_target(ui, self.value.read().widen(), self.min, self.max, self.step)
+                .is_some_and(|to| {
+                    self.value.commit_value(
+                        snap_to_step(to, self.min, self.step),
+                        self.decimals,
+                        self.min,
+                        self.max,
+                    )
+                });
+        changed |= keyed;
         // Edge, not level: the frame the gesture ends is the one a caller
         // treats as a single undoable edit. Every release ends one, so
         // this reads `left.released()` and not `drag.stopped()` — a press
         // and release on the track writes a value and never latches a
         // drag, and that edit owes a commit like any other.
-        let committed = !response.disabled && response.left.released();
+        let committed = !response.disabled && (response.left.released() || keyed);
         let fraction = value_to_fraction(self.value.read().widen(), self.min, self.max);
 
         let pill = Corners::all(track_h * 0.5);
@@ -179,7 +190,7 @@ impl<'a> Slider<'a> {
                 .record(ui, Some(&track_bg), |_| {});
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed,
             committed,
         }
@@ -204,7 +215,7 @@ impl Configure for Slider<'_> {
 /// *distance* answers to, one past `f32`'s reach, one whose share alone
 /// is past it.
 ///
-/// The end of it is [`F32Ext::unit_fraction_or`]'s policy in the value
+/// The end of it is [`domain::fraction_or`](crate::widget::domain::fraction_or)'s policy in the value
 /// domain: a share that is no share reads as the low end, and every
 /// other share is pinned into `0..=1`. Non-finite covers the ranges
 /// geometry can collapse — a range whose ends coincide divides by zero,
@@ -231,6 +242,51 @@ fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {
 /// value is stored at.
 fn fraction_to_value(fraction: f32, min: f64, max: f64) -> f64 {
     min + f64::from(fraction.clamp(0.0, 1.0)) * (max - min)
+}
+
+/// Where this frame's keys send a slider now at `at`, or `None` when no key
+/// fired. An arrow steps toward `max` (right, up) or `min` (left, down) by
+/// `step`, or by a hundredth of the range without one, and Shift makes it
+/// ten steps; Page Up and Page Down move a tenth of the range; Home and End
+/// jump to `min` and `max`. A reversed range steps the same way along the
+/// track, since the direction comes from `max - min`.
+///
+/// Every chord is sampled rather than short-circuited: `key_pressed` also
+/// keeps the chord subscribed for the wake gate.
+fn key_target(ui: &mut Ui, at: f64, min: f64, max: f64, step: Option<f64>) -> Option<f64> {
+    let span = max - min;
+    let unit = step.map_or(span / 100.0, |s| s.copysign(span));
+    let mut to = at;
+    let mut moved = false;
+    for (key, sign) in [
+        (Key::ArrowLeft, -1.0),
+        (Key::ArrowDown, -1.0),
+        (Key::ArrowRight, 1.0),
+        (Key::ArrowUp, 1.0),
+    ] {
+        let coarse = ui.key_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
+        let plain = ui.key_pressed(Shortcut::key(key));
+        if coarse {
+            to += sign * unit * 10.0;
+            moved = true;
+        } else if plain {
+            to += sign * unit;
+            moved = true;
+        }
+    }
+    for (key, sign) in [(Key::PageDown, -1.0), (Key::PageUp, 1.0)] {
+        if ui.key_pressed(Shortcut::key(key)) {
+            to += sign * span / 10.0;
+            moved = true;
+        }
+    }
+    let home = ui.key_pressed(Shortcut::key(Key::Home));
+    let end = ui.key_pressed(Shortcut::key(Key::End));
+    if home || end {
+        to = if end { max } else { min };
+        moved = true;
+    }
+    moved.then_some(to)
 }
 
 /// Snap to the nearest multiple of `step` measured from `min`. A slider

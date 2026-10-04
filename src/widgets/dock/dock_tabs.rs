@@ -1,13 +1,13 @@
 //! What the application answers about each tab, and the menu bundle one
 //! of those answers is handed.
 
-use glam::Vec2;
+use crate::primitives::geometry::size::Size;
 
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::dock::dock_op::DockOp;
+use crate::widgets::dock::dock_operation::DockOperation;
 use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::tab_group::TabGroupId;
 use crate::widgets::tabs::tab_item::TabBadge;
@@ -38,7 +38,7 @@ pub trait DockTabs {
     /// in a pane's life that has not been laid out yet. It is the
     /// *group's* content area, which outlives the tab in it, so a view
     /// that first records on this pass is still handed a size.
-    fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Vec2>);
+    fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>);
 
     /// Whether the chip carries a close button. The pinned tab is
     /// refused by the model whatever this answers.
@@ -72,11 +72,11 @@ pub trait DockTabs {
 }
 
 /// What [`DockTabs::tab_menu`] is handed: which chip was right-clicked,
-/// the pane it sits in, the sink its items push ops onto, and the handle
+/// the pane it sits in, the sink its items push operations onto, and the handle
 /// that dismisses the menu.
 ///
 /// A bundle rather than four parameters — `tab` and `group` are the two
-/// addresses a split op is built from, and an item that reached for one
+/// addresses a split operation is built from, and an item that reached for one
 /// without the other could not name its own drop.
 #[derive(Debug)]
 pub struct DockTabMenu<'a, T> {
@@ -84,9 +84,9 @@ pub struct DockTabMenu<'a, T> {
     pub tab: T,
     /// The pane that chip sits in.
     pub group: TabGroupId,
-    /// Where an item's op goes. The application's own queue drains it,
+    /// Where an item's operation goes. The application's own queue drains it,
     /// or [`DockView::run`](crate::DockView::run) does.
-    pub ops: &'a mut Vec<DockOp<T>>,
+    pub operations: &'a mut Vec<DockOperation<T>>,
     /// Pass to [`MenuItem::show`](crate::MenuItem::show).
     pub close: &'a CloseHandle,
 }

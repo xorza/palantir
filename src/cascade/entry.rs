@@ -4,10 +4,12 @@
 //! a key press resolves against.
 
 use crate::input::key_class::KeyFilter;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 
@@ -109,6 +111,59 @@ pub(crate) struct ScopeRow {
     pub(crate) filter: KeyFilter,
 }
 
+/// One Tab stop, in record order across every layer — the table Tab
+/// traversal sorts. A node is a stop when it is focusable, kept its
+/// [`Configure::tab_stop`](crate::Configure::tab_stop), and is neither
+/// disabled nor invisible: the rule [`HitRow::focusable`] applies to a
+/// press. Same lifecycle as [`ScopeRow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TabStopRow {
+    pub(crate) layer: Layer,
+    /// The root of the tree the stop was recorded under — what a trap
+    /// domain is named by.
+    pub(crate) root: WidgetId,
+    pub(crate) id: WidgetId,
+    pub(crate) index: i16,
+}
+
+/// Which way a Tab press moves focus: Tab forward, Shift+Tab back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabDirection {
+    Next,
+    Previous,
+}
+
+/// The stops one Tab press may reach — see
+/// [`Cascade::next_tab_stop`](super::Cascade::next_tab_stop) for the rule
+/// that picks it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabDomain {
+    /// The stops recorded under one overlay root.
+    Root(WidgetId),
+    /// Every stop of one layer.
+    Layer(Layer),
+    /// The stops recorded under one arrow group.
+    Group(WidgetId),
+}
+
+/// One arrow group — see [`Configure::arrow_focus`](crate::Configure::arrow_focus) —
+/// in record order across every layer. A node in a disabled or invisible
+/// subtree is no group, as it is no stop. Same lifecycle as [`ScopeRow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ArrowGroupRow {
+    pub(crate) id: WidgetId,
+    pub(crate) axis: Axis,
+}
+
+/// One root a layer recorded, in record order across every layer — how
+/// Tab traversal finds the topmost open modal when it holds no stop.
+/// Same lifecycle as [`ScopeRow`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RootRow {
+    pub(crate) layer: Layer,
+    pub(crate) id: WidgetId,
+}
+
 /// What a press lands on: the topmost clickable row under the point and
 /// the topmost focusable one, from a single reverse scan.
 ///
@@ -127,11 +182,12 @@ pub(crate) struct PressTargets {
     pub(crate) focus: Option<WidgetId>,
 }
 
-/// Topmost interactive row under a point for each of three
-/// independent sense filters — the result of one reverse scan.
+/// Topmost interactive row under a point for each independent sense
+/// filter — hover, each wheel axis, pinch — the result of one reverse
+/// scan.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct HitTargets {
     pub(crate) hover: Option<WidgetId>,
-    pub(crate) scroll: Option<WidgetId>,
+    pub(crate) scroll: ScrollTargets,
     pub(crate) pinch: Option<WidgetId>,
 }

@@ -6,8 +6,9 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
-use crate::primitives::math::approx;
-use crate::primitives::paint::brush::gradient::Interp;
+use crate::animation::animatable::Animatable;
+use crate::primitives::math::domain;
+use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
@@ -17,15 +18,15 @@ use crate::renderer::gradient_atlas::*;
 use std::array;
 use std::collections::HashSet;
 
-/// `Interp::Linear`: midpoint of black→white in linear-RGB space
+/// `Interpolation::Linear`: midpoint of black→white in linear-RGB space
 /// is exactly linear 0.5. The sampler reads the f16 store directly
 /// as the linear value the shader uses. Regression check: an
 /// accidental sRGB-space lerp would produce linear ≈ 0.215, far
 /// below the 0.4 threshold.
 #[test]
 fn linear_midpoint_black_to_white_is_half() {
-    let g =
-        LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE).with_interp(Interp::Linear);
+    let g = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE)
+        .with_interpolation(Interpolation::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     // Texel 127 sits at t = 127/255, so the grey is that, f16-rounded.
@@ -33,7 +34,7 @@ fn linear_midpoint_black_to_white_is_half() {
     assert_eq!(texel(&out, 127), stored(RgbaF32::new(t, t, t, 1.0)));
 }
 
-/// `Interp::Oklab`: red→green midpoint should *not* be muddy
+/// `Interpolation::Oklab`: red→green midpoint should *not* be muddy
 /// brown (which is what linear-RGB lerps produce). Specifically,
 /// the green channel at midpoint should be high (Oklab keeps
 /// luminance up through the midpoint by traversing yellow-ish
@@ -42,7 +43,7 @@ fn linear_midpoint_black_to_white_is_half() {
 fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     let red = linear(255, 0, 0);
     let green = linear(0, 255, 0);
-    let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
+    let g = LinearGradient::two_stop(0.0, red, green).with_interpolation(Interpolation::Oklab);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     // The midpoint is the two stops' Oklab coordinates blended at
@@ -63,12 +64,12 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
 /// edge-clamp guard.
 #[test]
 fn endpoints_match_stops_exactly() {
-    for interp in [Interp::Linear, Interp::Oklab] {
+    for interpolation in [Interpolation::Linear, Interpolation::Oklab] {
         let g = LinearGradient::two_stop(0.0, linear(11, 22, 33), linear(244, 233, 222))
-            .with_interp(interp);
+            .with_interpolation(interpolation);
         let mut out = fresh_row();
         bake::row(&g.ramp, &mut out);
-        let label = format!("interp={interp:?}");
+        let label = format!("interpolation={interpolation:?}");
         assert_stored(texel(&out, 0), g.ramp.stops[0].color(), &label);
         assert_stored(
             texel(&out, LUT_ROW_TEXELS - 1),
@@ -87,7 +88,7 @@ fn three_stop_quarter_brackets_first_pair() {
         .stop(0.0, linear(0, 0, 0))
         .stop(0.5, linear(255, 0, 0))
         .stop(1.0, linear(0, 0, 255))
-        .with_interp(Interp::Linear)
+        .interpolation(Interpolation::Linear)
         .build();
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
@@ -127,7 +128,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         let lower_offset = stops[upper - 1].offset();
         let upper_offset = stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if approx::approx_zero(denominator) {
+        if domain::is_approx_zero(denominator) {
             return linear[upper];
         }
         RgbaF32::lerp(
@@ -150,7 +151,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
             Stop::new(1.0, linear(255, 255, 255)),
         ],
     )
-    .with_interp(Interp::Linear);
+    .with_interpolation(Interpolation::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     for (i, got) in out.iter().enumerate() {

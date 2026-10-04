@@ -16,7 +16,7 @@ use glam::Vec2;
 
 #[test]
 fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
-    use crate::primitives::math::approx::EPS;
+    use crate::primitives::math::domain::EPS;
 
     #[derive(Debug)]
     struct Case {

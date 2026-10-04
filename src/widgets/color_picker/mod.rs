@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -66,7 +66,7 @@ pub struct ColorPicker<'a> {
     alpha: bool,
     model: Option<ColorModel>,
     swatches: Swatches<'a>,
-    downsample: u32,
+    texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
 }
 
@@ -108,7 +108,7 @@ impl<'a> ColorPicker<'a> {
             alpha: false,
             model: None,
             swatches: Swatches::Hidden,
-            downsample: color_surface::DOWNSAMPLE,
+            texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
     }
@@ -147,14 +147,15 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    /// How far below the display's resolution the field and bars are built.
-    /// See [`ColorField::downsample`].
+    /// The edge of one texel of the field and the bars, in physical pixels.
+    /// See [`ColorField::texel_size`].
     ///
     /// # Panics
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
-    pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = color_surface::checked_downsample(n);
+    #[track_caller]
+    pub const fn texel_size(mut self, n: u32) -> Self {
+        self.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
         self
     }
 
@@ -165,19 +166,25 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
+    /// The bound colour as it stands before `show`: what a
+    /// [`ColorButton`](crate::ColorButton) paints its chip with.
+    pub const fn color(&self) -> RgbaF32 {
+        *self.color
+    }
+
     /// Record the panel and report what it did to the bound colour.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         // An `Rc` bump on the theme bundle, so the rows can borrow their
         // styles out of it across the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
-        let gap = slot.gap.themed_length(0.0);
+        let gap = domain::length_at_least(slot.gap, 0.0);
 
         // The panel is as wide as its field and no wider. Every row below is
         // `FILL` inside that, which is what keeps the value grid's columns a
         // fixed width instead of one the digits inside them push around.
         let mut widget = self.widget.gap(gap).default_size((
-            Sizing::fixed(slot.field_width.themed_length(1.0)),
+            Sizing::fixed(domain::length_at_least(slot.field_width, 1.0)),
             Sizing::HUG,
         ));
         let response = widget.response(ui);
@@ -187,7 +194,7 @@ impl<'a> ColorPicker<'a> {
         let alpha_on = self.alpha;
         let pinned = self.model;
         let swatches = self.swatches;
-        let downsample = self.downsample;
+        let texel_size = self.texel_size;
 
         let mut edit = Edit::default();
         widget.record(ui, None, |ui| {
@@ -202,13 +209,13 @@ impl<'a> ColorPicker<'a> {
                         alpha_on,
                         pinned,
                         swatches,
-                        downsample,
+                        texel_size,
                     },
                 );
             });
         });
         ValueResponse {
-            response: Response::eager(id, ui, response),
+            response: Response::new(id, ui, response),
             changed: edit.changed,
             committed: edit.committed,
         }
@@ -234,7 +241,7 @@ struct Inputs<'a> {
     alpha_on: bool,
     pinned: Option<ColorModel>,
     swatches: Swatches<'a>,
-    downsample: u32,
+    texel_size: u32,
 }
 
 /// Columns the value grid is built on. Four, so the hex field spans two and
@@ -295,11 +302,11 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
         alpha_on,
         pinned,
         swatches,
-        downsample,
+        texel_size,
     } = inputs;
-    let gap = theme.gap.themed_length(0.0);
-    let bar = theme.bar_thickness.themed_length(1.0);
-    let chip = theme.chip_size.themed_length(1.0);
+    let gap = domain::length_at_least(theme.gap, 0.0);
+    let bar = domain::length_at_least(theme.bar_thickness, 1.0);
+    let chip = domain::length_at_least(theme.chip_size, 1.0);
 
     // An edit from outside moves the handles; the picker's own writes do not
     // come back through here, which is what lets black keep its hue.
@@ -318,7 +325,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
     };
 
     let field = ColorField::new(&mut state.coords)
-        .downsample(downsample)
+        .texel_size(texel_size)
         .style(theme)
         .id(id.with("field"))
         .show(ui);
@@ -344,7 +351,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     let hue = ColorStrip::for_hue(&mut state.coords)
-                        .downsample(downsample)
+                        .texel_size(texel_size)
                         .style(theme)
                         .id(id.with("hue"))
                         .size((Sizing::FILL, Sizing::fixed(bar)))
@@ -355,7 +362,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                     if alpha_on {
                         let mut working = preview;
                         let strip = ColorStrip::for_alpha(&mut working)
-                            .downsample(downsample)
+                            .texel_size(texel_size)
                             .style(theme)
                             .id(id.with("alpha"))
                             .size((Sizing::FILL, Sizing::fixed(bar)))
@@ -431,10 +438,10 @@ fn values_grid(
     shown: RgbaF32,
     writes: &mut Writes,
 ) {
-    let gap = theme.gap.themed_length(0.0);
+    let gap = domain::length_at_least(theme.gap, 0.0);
     let quantized = shown.to_srgba_u8();
     let hex_id = id.with("hex");
-    if ui.focused_id() != Some(hex_id) {
+    if ui.focus() != Some(hex_id) {
         state.hex.clear();
         let _ = write!(
             state.hex,
@@ -450,8 +457,8 @@ fn values_grid(
     ];
     let mut opacity = (writes.alpha * 100.0).round() as i64;
     let mut hue = (state.coords.hue() * 360.0).round() as i64;
-    let mut sat = (state.coords.sat() * 100.0).round() as i64;
-    let mut val = (state.coords.val() * 100.0).round() as i64;
+    let mut sat = (state.coords.saturation() * 100.0).round() as i64;
+    let mut val = (state.coords.value() * 100.0).round() as i64;
 
     Grid::new()
         .id(id.with("values"))
@@ -464,7 +471,7 @@ fn values_grid(
             Panel::vstack()
                 .id(id.with("hex-cell"))
                 .gap(LABEL_GAP)
-                .grid_cell(GridCell::at(0, 0).span(1, 2))
+                .grid_cell(GridCell::at(0, 0).with_span(1, 2))
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("HEX")
@@ -479,8 +486,7 @@ fn values_grid(
                         .show(ui);
                     // A buffer that parses to the colour already shown is no
                     // edit: tabbing through the field commits nothing.
-                    if !hex.cancelled
-                        && (hex.submitted || hex.lost_focus)
+                    if hex.committed
                         && let Ok(parsed) = state.hex.trim().parse::<RgbaF32>()
                         && !same_rgb(parsed.to_srgba_u8(), quantized)
                     {
@@ -505,7 +511,7 @@ fn values_grid(
             } else {
                 let r = value_cell(ui, id, theme, "V %", GridCell::at(0, 2), &mut val, 100.0);
                 if r.changed {
-                    state.coords.set_val(val as f32 / 100.0);
+                    state.coords.set_value(val as f32 / 100.0);
                     writes.axes = true;
                 }
                 writes.committed |= r.committed;
@@ -540,7 +546,7 @@ fn values_grid(
 
             let r = value_cell(ui, id, theme, "S %", GridCell::at(1, 3), &mut sat, 100.0);
             if r.changed {
-                state.coords.set_sat(sat as f32 / 100.0);
+                state.coords.set_saturation(sat as f32 / 100.0);
                 writes.axes = true;
             }
             writes.committed |= r.committed;
@@ -624,7 +630,7 @@ fn swatch_row(
     let mut picked = None;
     Panel::wrap_hstack()
         .id(id.with("swatches"))
-        .gap(theme.gap.themed_length(0.0))
+        .gap(domain::length_at_least(theme.gap, 0.0))
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for (index, color) in colors.iter().enumerate() {

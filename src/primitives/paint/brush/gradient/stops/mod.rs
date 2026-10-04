@@ -2,6 +2,7 @@
 //! run a gradient carries them in, and the builder that sorts and
 //! validates one.
 
+use crate::primitives::math::domain;
 use crate::primitives::math::num;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -39,15 +40,20 @@ pub struct Stop {
 }
 
 impl Stop {
-    /// Construct a stop. Finite offsets are clamped to 0..=1 and
-    /// quantized to u8 (round-to-nearest). The colour is encoded to sRGB
-    /// bytes, exactly for a colour built from a hex code.
+    /// Construct a stop. `offset` is a *fraction*, coerced: clamped to
+    /// 0..=1, a non-finite one read as 0, then quantized to u8
+    /// (round-to-nearest). `color` is a *colour*, encoded to sRGB bytes,
+    /// exactly for a colour built from a hex code.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [colour](crate::widget::domain::color).
     #[inline]
+    #[track_caller]
     pub fn new(offset: f32, color: RgbaF32) -> Self {
-        assert!(offset.is_finite(), "gradient stop offset must be finite");
         Self {
-            offset_u8: num::unit_to_u8(offset),
-            color: color.into(),
+            offset_u8: num::unit_to_u8(domain::fraction(offset)),
+            color: domain::color(color).into(),
         }
     }
 
@@ -84,8 +90,15 @@ impl<'de> Deserialize<'de> for Stop {
         }
 
         let raw = RawStop::deserialize(deserializer)?;
-        if !raw.offset.is_finite() {
-            return Err(D::Error::custom("gradient stop offset must be finite"));
+        if !domain::is_fraction(raw.offset) {
+            return Err(D::Error::custom(format_args!(
+                "{}, got {}",
+                domain::FRACTION_RULE,
+                raw.offset
+            )));
+        }
+        if !domain::is_color(raw.color) {
+            return Err(D::Error::custom(domain::COLOR_RULE));
         }
         Ok(Stop::new(raw.offset, raw.color))
     }
@@ -106,7 +119,7 @@ impl<'de> Deserialize<'de> for Stop {
 ///
 /// A `u8` count beside a fixed array rather than a `tinyvec::ArrayVec`,
 /// whose `u16` count aligns the value to two bytes. At 41 B and align 1,
-/// a [`ColorRamp`](crate::ColorRamp) adds its interp byte with no tail
+/// a [`ColorRamp`](crate::ColorRamp) adds its interpolation byte with no tail
 /// padding, so a gradient's spread byte packs beside it and
 /// `LinearGradient` stays 48 B. Slots past `len` always hold
 /// `Stop::default()`, so the derived `Eq` agrees with the `Hash` below,
@@ -129,6 +142,12 @@ impl GradientStops {
             builder.push(stop);
         }
         builder.build()
+    }
+
+    /// The stops in use, for a `const fn` that cannot reach them through
+    /// `Deref`.
+    pub(crate) const fn as_slice(&self) -> &[Stop] {
+        self.stops.split_at(self.len as usize).0
     }
 
     /// True when the stops hold [`Self::sorted`]'s ascending order — for
@@ -205,7 +224,7 @@ impl ops::Deref for GradientStops {
     type Target = [Stop];
 
     fn deref(&self) -> &Self::Target {
-        &self.stops[..usize::from(self.len)]
+        self.as_slice()
     }
 }
 

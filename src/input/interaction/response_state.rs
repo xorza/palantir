@@ -6,7 +6,7 @@ use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain::vec2;
 use glam::Vec2;
 
 /// Snapshot of one widget's interaction state for the current frame.
@@ -21,7 +21,7 @@ use glam::Vec2;
 /// without waiting for the cascade.
 ///
 /// `focused` is `true` when this widget currently holds keyboard focus
-/// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
+/// (`Ui::focus() == Some(id)`). Updated synchronously with focus
 /// changes, so unlike `hovered`/`left.held` it isn't one-frame stale —
 /// a widget that just called `ui.set_focus(id)` reads `true` on
 /// the same frame.
@@ -178,7 +178,7 @@ impl ResponseState {
     /// whose press was the second in its run, not a separate event. Read
     /// [`ButtonState::click_count`] for triple and beyond.
     #[inline]
-    pub fn double_clicked(&self) -> bool {
+    pub const fn double_clicked(&self) -> bool {
         self.left.double_clicked()
     }
 
@@ -190,8 +190,15 @@ impl ResponseState {
     /// button, and spelling it `left || right || middle` at each site
     /// leaves the next button silently unhandled.
     #[inline]
-    pub fn any_clicked(&self) -> bool {
-        PointerButton::all().any(|button| self.button(button).clicked())
+    pub const fn any_clicked(&self) -> bool {
+        let mut i = 0;
+        while i < PointerButton::COUNT {
+            if self.button(PointerButton::ALL[i]).clicked() {
+                return true;
+            }
+            i += 1;
+        }
+        false
     }
 
     /// The per-button slice for a **runtime** `button` value — the one
@@ -251,21 +258,20 @@ impl ResponseState {
     /// are named once. `band` is the width of a centred thing the pointer
     /// drags, a knob, and comes off each end before the division; pass
     /// zero when the pointer itself is the position — see
-    /// [`F32Ext::band_fraction`]. Clamped,
+    /// [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped,
     /// so a pointer past an edge reports that edge, which is the only way
     /// a drag reaches an axis end.
     #[inline]
     pub fn press_fraction(&self, band: f32) -> Option<Vec2> {
-        let in_gesture = self.pressed() || self.left.drag.dragging() || self.left.released();
+        let in_gesture = self.pressed() || self.left.drag.is_live() || self.left.released();
         if self.disabled || !in_gesture {
             return None;
         }
         let local = self.pointer_local?;
         let rect = self.layout_rect?;
-        Some(
-            local
-                .band_fraction(rect.size.into(), Vec2::splat(band))
-                .unit_fraction_or(Vec2::ZERO),
-        )
+        Some(vec2::fraction_or(
+            vec2::band_fraction(local, rect.size.into(), Vec2::splat(band)),
+            Vec2::ZERO,
+        ))
     }
 }

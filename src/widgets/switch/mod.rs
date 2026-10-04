@@ -3,14 +3,13 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::approx;
-use crate::primitives::math::num::F32Ext;
+use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::text::text_input::TextInput;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ConfigureWidget;
-use crate::widget_core::response::Response;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -64,24 +63,26 @@ impl<'a> Switch<'a> {
         self
     }
 
-    /// Record the row and hand back its [`Response`].
-    ///
-    /// **`clicked()` is the change edge**, for the reason
-    /// [`Checkbox::show`](crate::Checkbox::show) gives: a switch flips on
-    /// every activation, so a click always writes the bound `bool`.
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    /// Record the row and report whether this frame flipped the bound
+    /// `bool`. A flip commits at once, so `committed == changed`.
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
 
-        let on = ToggleChrome::toggled(&response, self.value);
+        let before = *self.value;
+        let on = ToggleChrome::toggled(
+            ToggleChrome::activated(ui, &mut self.widget, &response),
+            self.value,
+        );
+        let changed = on != before;
 
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.switch);
-        let track_h = slot.box_size.themed_length(1.0);
-        let inset = slot.indicator_inset.themed_length(0.0);
+        let track_h = domain::length_at_least(slot.box_size, 1.0);
+        let inset = domain::length_at_least(slot.indicator_inset, 0.0);
         let aspect = slot.track_aspect;
         let knob_color = slot.indicator;
-        let anim = slot.defaults.anim;
+        let anim = slot.defaults.animation;
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
             plan: slot.plan(&response, on, theme.text),
@@ -95,7 +96,7 @@ impl<'a> Switch<'a> {
             )),
             pill: Some(track_h * 0.5),
         };
-        chrome.record_row(ui, self.widget, response, self.label, |ui, track| {
+        let response = chrome.record_row(ui, self.widget, response, self.label, |ui, track| {
             // The track's border auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
             // declared position is content-box-relative. Feed the border
@@ -106,7 +107,7 @@ impl<'a> Switch<'a> {
             // theme: the border animates between the on and off looks,
             // and a mid-transition knob has to track it.
             let border = track.border.width;
-            let border_inset = if approx::paints_nothing(border) {
+            let border_inset = if domain::is_invisible(border) {
                 0.0
             } else {
                 border
@@ -121,7 +122,12 @@ impl<'a> Switch<'a> {
                 .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
                 .position(Vec2::new(knob_x, geom.knob_y));
             knob.record(ui, Some(&knob_bg), |_| {});
-        })
+        });
+        ValueResponse {
+            response,
+            changed,
+            committed: changed,
+        }
     }
 }
 

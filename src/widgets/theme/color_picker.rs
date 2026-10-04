@@ -74,6 +74,7 @@ pub struct ColorPickerTheme {
     /// Padding between that chrome and the panel inside it. Wider than
     /// [`Self::gap`], so the panel reads as set in a card rather than as one
     /// more of its own rows.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub popup_padding: Spacing,
     /// What the channel values wear: [`Theme::drag_value`](crate::Theme) in
     /// the bundled monospace face.
@@ -124,7 +125,7 @@ fn mono_states(looks: &mut StatefulLook) {
         &mut looks.disabled,
     ] {
         look.text.family = Some(FontFamily::MONO);
-        look.text.font_size_px = Some(VALUE_FONT_PX);
+        look.text.font_size = Some(VALUE_FONT_PX);
     }
 }
 
@@ -181,10 +182,10 @@ impl ColorPickerTheme {
             handle_width: 1.5,
             handle_outer: RgbaF32::new(0.0, 0.0, 0.0, 0.75),
             handle_inner: RgbaF32::new(1.0, 1.0, 1.0, 0.95),
-            checker_light: p.elem_mid,
-            checker_dark: p.elem,
+            checker_light: p.element_mid,
+            checker_dark: p.element,
             checker_cell: 6.0,
-            border: p.elem_strong,
+            border: p.element_strong,
             border_width: 1.0,
             gap: 6.0,
             popup: p.popup_panel(),

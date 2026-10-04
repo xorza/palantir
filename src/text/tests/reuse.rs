@@ -283,14 +283,14 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
         text.shaper()
             .render_ensure(TextShapeRequest::for_key(BODY, bounded).unwrap());
         assert!(
-            bounded.max_width_px().is_some(),
+            bounded.max_width().is_some(),
             "{label}: premise — the narrow box binds a width",
         );
 
         let before = text.shaper().cache_counts();
         let after = text.shape_run(s, BODY, second_shape, second_wrap);
         assert!(
-            after.buffer_key().max_width_px().is_none(),
+            after.buffer_key().max_width().is_none(),
             "{label}: premise — the second measure answers unbounded",
         );
         assert_eq!(

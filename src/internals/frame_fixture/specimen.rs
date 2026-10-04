@@ -10,7 +10,6 @@ use crate::internals::demo_swatches;
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -214,21 +213,25 @@ fn add_shadow(ui: &mut Ui) {
     );
 }
 
-/// The gradient triangle, built once into a state row and lent to
+/// The gradient triangle, built once into a singleton and lent to
 /// `add_shape` from there. Rebuilding it per frame would allocate, which
-/// the allocation suite (`tests/alloc`) forbids; the row is what makes the
-/// build a warmup cost instead.
+/// the allocation suite (`tests/alloc`) forbids; the singleton is what
+/// makes the build a warmup cost instead.
 fn gradient_mesh(ui: &mut Ui) {
-    let id = WidgetId::from_hash("frame_fixture::specimen::gradient-mesh");
-    let fresh = ui.state::<Mesh>(id).is_none();
-    ui.with_state::<Mesh, _>(id, |ui, m| {
-        if fresh {
-            *m = Mesh::with_capacity(3, 3);
+    ui.with_singleton::<GradientMesh, _>(|ui, GradientMesh(m)| {
+        let m = m.get_or_insert_with(|| {
+            let mut m = Mesh::with_capacity(3, 3);
             let a = m.vertex(glam::Vec2::new(96.0, 82.0), RgbaF32::hex(0xff5e44));
             let b = m.vertex(glam::Vec2::new(128.0, 22.0), RgbaF32::hex(0xfacc15));
             let c = m.vertex(glam::Vec2::new(160.0, 82.0), RgbaF32::hex(0x46c46c));
             m.triangle(a, b, c);
-        }
+            m
+        });
         ui.add_shape(Shape::mesh(m));
     });
 }
+
+/// The fixture's one gradient triangle, `None` until its first use builds
+/// it.
+#[derive(Debug, Default)]
+struct GradientMesh(Option<Mesh>);

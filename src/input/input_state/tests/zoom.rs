@@ -22,7 +22,7 @@ fn native_zoom_ingress_rejects_every_invalid_factor_class() {
 
     for factor in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         let delta = state.feed(InputEvent::Zoom(factor));
-        assert!(!delta.requests_repaint, "invalid factor {factor:?}");
+        assert!(!delta.repaint_requested, "invalid factor {factor:?}");
         assert_eq!(
             state.scroll_delta_for(pinch_id()).zoom.get(),
             1.0,

@@ -1,7 +1,7 @@
 //! The bundle a widget wears whole: its per-state looks, and the rule that
 //! picks one of them from a response.
 
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::widget_core::widget_look::WidgetLook;
@@ -78,12 +78,14 @@ pub trait ThemeSlot {
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none. Applied at
     /// `show()` time; explicit zero spacing overrides it.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
     /// Margin the widget takes when its builder set none.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
     pub margin: Spacing,
     /// Spec the state transitions run under. `None` by default —
     /// animation is opt-in. Round-trips through serde, so a theme file
     /// configures motion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
+    pub animation: Option<AnimationSpec>,
 }
