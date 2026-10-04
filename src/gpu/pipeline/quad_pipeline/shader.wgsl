@@ -518,10 +518,12 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let sigma  = in.fill_axis.z;
         let spread = in.fill_axis.w;
         let half   = in.size * 0.5;
-        // Clip to inside the source — inset never paints outside.
-        let p_src = in.local - half;
-        let d_src = sdf_rounded_box_centered(p_src, half, in.radius);
-        if (d_src > 0.0) {
+        // Inset never paints outside the source, and across the source's
+        // edge it takes the same coverage ramp the source's fill does, so
+        // the two meet without a staircase on a rounded corner.
+        let d_src = sdf_rounded_box_centered(in.local - half, half, in.radius);
+        let source_cov = clamp(AA_RADIUS - d_src, 0.0, 1.0);
+        if (source_cov <= 0.0) {
             return vec4<f32>(0.0);
         }
         let hole_half = max(half - vec2<f32>(spread), vec2<f32>(0.0));
@@ -531,7 +533,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // negative — then fit the hole's own box.
         let hole_radius = fit_radii(spread_radius(in.radius, -spread), hole_half);
         let p_hole = in.local - half - offset;
-        let cov = 1.0 - blurred_box_coverage(p_hole, hole_half, hole_radius, sigma);
+        let cov = source_cov * (1.0 - blurred_box_coverage(p_hole, hole_half, hole_radius, sigma));
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);
     }

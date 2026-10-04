@@ -7,17 +7,6 @@ the pipeline modules that build and feed them, and the wire types they read
 
 Whoever addresses an item deletes it.
 
-## Inset shadow has a hard edge
-
-- [ ] `src/gpu/pipeline/quad_pipeline/shader.wgsl:421-426`. The inset arm
-  returns 0 for `d_src > 0` and full shadow for `d_src <= 0`. The fill below
-  it has a 1 px coverage ramp across the same edge. On rounded corners the
-  shadow therefore makes a staircase. Where the source covers a pixel partly,
-  the shadow is too dark outside the fill or is missing inside the fill.
-  Target: multiply the inset coverage by the source coverage
-  `clamp(AA_RADIUS - d_src, 0, 1)`, so that the shadow and the fill share one
-  edge ramp.
-
 ## One antialiasing fact has three names, and the ramp width is hard-coded
 
 - [ ] `src/renderer/quad.rs:15` (`AA_RADIUS`), `src/shape/stroke_bounds/mod.rs:10`
