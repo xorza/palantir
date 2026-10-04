@@ -22,10 +22,24 @@ pub(crate) struct DynamicBuffer<T: bytemuck::Pod> {
 }
 
 impl<T: bytemuck::Pod> DynamicBuffer<T> {
+    /// Bytes per item, checked when a buffer of `T` is instantiated: a
+    /// zero-sized row holds nothing, and every upload's byte count is a
+    /// whole number of rows that the belt copy and the mapped write both
+    /// need in multiples of [`wgpu::COPY_BUFFER_ALIGNMENT`].
+    const ITEM_BYTES: usize = {
+        let size = size_of::<T>();
+        assert!(size != 0, "DynamicBuffer does not support zero-sized rows");
+        assert!(
+            size.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT as usize),
+            "a DynamicBuffer row must be a multiple of COPY_BUFFER_ALIGNMENT bytes",
+        );
+        size
+    };
+
     /// Construct a vertex/instance buffer for items of type `T`.
     /// `VERTEX | COPY_DST` usage (the common case for the four
     /// pipelines and the debug overlay). Item size comes from
-    /// `size_of::<T>()` so call sites don't repeat it.
+    /// [`Self::ITEM_BYTES`] so call sites don't repeat it.
     pub(crate) fn vertex(
         device: &wgpu::Device,
         label: &'static str,
@@ -60,14 +74,9 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         usage: wgpu::BufferUsages,
         initial_capacity: usize,
     ) -> Self {
-        let item_size = size_of::<T>();
-        assert!(
-            item_size != 0,
-            "DynamicBuffer does not support zero-sized rows"
-        );
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
-            size: (initial_capacity * item_size) as u64,
+            size: (initial_capacity * Self::ITEM_BYTES) as u64,
             usage,
             mapped_at_creation: false,
         });
@@ -121,7 +130,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         self.capacity = grown_capacity(needed_len);
         self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(self.label),
-            size: (self.capacity * size_of::<T>()) as u64,
+            size: (self.capacity * Self::ITEM_BYTES) as u64,
             usage: self.usage,
             mapped_at_creation: true,
         });

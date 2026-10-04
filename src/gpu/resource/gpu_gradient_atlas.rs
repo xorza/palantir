@@ -3,11 +3,10 @@
 //! Owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend) and lent to the quad and
 //! curve pipelines (both render gradient brushes). Keeping the resource
 //! here — rather than on whichever pipeline happens to build first —
-//! means neither pipeline owns the other's input: each takes `&bgl` at
-//! build time and `&bg` at bind time.
+//! means neither pipeline owns the other's input: each binds `&bg`.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::resource::texture_binding;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::texture_region::TextureRegion;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
@@ -32,8 +31,8 @@ const _: () = assert!(
     "gradient atlas row pitch must stay 256-aligned to keep write_texture on its single-copy path"
 );
 
-/// Shared CPU gradient source plus the texture, sampler, and bind group
-/// consumed by the quad and curve pipelines. Format-independent: survives a
+/// Shared CPU gradient source plus the texture and bind group consumed by
+/// the quad and curve pipelines. Format-independent: survives a
 /// swapchain format change untouched (only the pipelines carry the target).
 #[derive(Debug)]
 pub(crate) struct GpuGradientAtlas {
@@ -48,14 +47,10 @@ pub(crate) struct GpuGradientAtlas {
     /// Uploaded each dirty frame by [`Self::upload`], which also
     /// replaces the texture when the CPU atlas grew past its height.
     texture: wgpu::Texture,
-    /// Retained for bind-group rebuilds after a texture replacement —
-    /// sampler state never varies with the atlas height.
-    sampler: wgpu::Sampler,
-    /// Group-0 layout (gradient texture + sampler). Quad and curve build
-    /// their pipeline layouts against this so they can share one bind
-    /// group at draw time. Height-independent, so a grown atlas leaves
-    /// every pipeline built against it valid.
-    pub(crate) bgl: wgpu::BindGroupLayout,
+    /// The binding every sampled texture shares, retained to rebuild
+    /// [`Self::bg`] after a texture replacement. Height-independent, so a
+    /// grown atlas leaves every pipeline built against its layout valid.
+    binding: TextureBinding,
     /// Group-0 bind group, bound by both pipelines at draw time.
     pub(crate) bg: wgpu::BindGroup,
 }
@@ -81,23 +76,21 @@ fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
 }
 
 impl GpuGradientAtlas {
-    pub(crate) fn new(device: &wgpu::Device, cpu: SharedGradientAtlas) -> Self {
-        // Group 0 = gradient LUT atlas + sampler. Viewport rides
-        // immediates (shared with every pipeline) — no bind-group slot.
-        let bgl = texture_binding::layout(device, "palantir.gradient.bgl");
-
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        cpu: SharedGradientAtlas,
+        binding: TextureBinding,
+    ) -> Self {
         let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // Linear inside a row, for smooth gradient interpolation.
-        let sampler = texture_binding::sampler(device, "palantir.gradient.sampler");
-
-        let bg = texture_binding::bind_group(device, &bgl, &sampler, &view, "palantir.gradient.bg");
+        // The shared sampler is linear inside a row, for smooth gradient
+        // interpolation.
+        let bg = binding.bind_group(device, &view, "palantir.gradient.bg");
 
         Self {
             cpu,
             texture,
-            sampler,
-            bgl,
+            binding,
             bg,
         }
     }
@@ -117,29 +110,22 @@ impl GpuGradientAtlas {
     /// texture and its bind group are replaced at the new height before
     /// the upload. Growth dirties every row, so the replacement texture
     /// is refilled in the same `write_texture`, and the pipelines stay
-    /// valid because they bind through the height-independent `bgl` and
-    /// read the height with `textureDimensions`.
+    /// valid because they bind through the height-independent shared
+    /// layout and read the height with `textureDimensions`.
     pub(crate) fn upload(&mut self, ctx: &GpuCtx<'_>) {
         // Destructured so the resize below borrows the GPU-side fields
         // while `flush_with` holds the CPU atlas.
         let Self {
             cpu,
             texture,
-            sampler,
-            bgl,
+            binding,
             bg,
         } = self;
         cpu.flush_with(|rows| {
             if texture.height() != rows.total_rows {
                 *texture = create_texture(ctx.device, rows.total_rows);
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                *bg = texture_binding::bind_group(
-                    ctx.device,
-                    bgl,
-                    sampler,
-                    &view,
-                    "palantir.gradient.bg",
-                );
+                *bg = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
             }
             // Whole rows by the `FlushedRows` contract, so this divides
             // exactly.

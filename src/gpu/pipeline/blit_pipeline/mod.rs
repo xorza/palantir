@@ -3,6 +3,7 @@
 
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::resource::texture_binding::TextureBinding;
 
 /// The format-independent half of the backbuffer blit: one shader module,
 /// no buffers.
@@ -12,7 +13,7 @@ use crate::gpu::pipeline::shader_body::ShaderBody;
 /// the default framebuffer and takes draws alone. Without it such a surface
 /// would have to give up damage-limited painting and repaint whole.
 ///
-/// It binds the same group-0 layout every image draw uses, rather than a
+/// It binds the same group-0 layout every sampled texture uses, rather than a
 /// second one that would have to agree with it. The sampler slot that layout
 /// carries goes unused: the shader reads texels by index, because this stands
 /// in for a copy and a filtered read is not one.
@@ -24,14 +25,14 @@ pub(crate) struct BlitPipeline {
 }
 
 impl BlitPipeline {
-    pub(crate) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Blit.module(device);
         Self {
             shader,
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.blit.pl",
-                &[Some(image_bgl)],
+                &[Some(textures.layout())],
             ),
         }
     }

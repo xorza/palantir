@@ -5,8 +5,8 @@
 //! `CacheKey`; the icon backend keys another on
 //! [`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey). They share
 //! every policy below — bucketed packing, clock-sweep eviction, grow-with-blit,
-//! and batched staging uploads — plus the layout and sampler their bind
-//! groups are built against, which belong to the shared
+//! and batched staging uploads — plus the layout their bind groups are
+//! built against, which belongs to the shared
 //! [`RasterProgram`]. What stays separate is the **space**: its own
 //! textures, its own bind group, its own eviction budget, so a
 //! colour-icon-heavy frame cannot take rectangles from the glyphs of the
@@ -184,7 +184,7 @@ pub(super) struct RasterAtlas<K> {
     /// caches above this one — see [`ExpiryWheel`] — so `touch` stays a
     /// single indexed store on the hot path and files nothing.
     unallocated_expiry: ExpiryWheel<K>,
-    /// Everything group 0 needs to sample [`Self::sides`] — see
+    /// Everything group 0 needs to read [`Self::sides`] — see
     /// [`BoundSides`].
     ///
     /// Owned here rather than by each tenant because it is a function of
@@ -255,7 +255,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ) -> Self {
         let max = device.limits().max_texture_dimension_2d;
 
-        // Order matches `ContentType as usize`: [Mask, RgbaF32].
+        // Order matches `ContentType as usize`: [Mask, Color].
         let sides = [
             Side::new(
                 device,

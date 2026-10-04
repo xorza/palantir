@@ -96,7 +96,7 @@ impl TargetFormat {
     /// True if a target in `format` encodes the linear light the shaders
     /// write. A unorm target would store it as is, and everything renders
     /// too dark — sRGB 0x80 grey lands as 0x37 — with no error.
-    pub(crate) fn encodes_linear(format: wgpu::TextureFormat) -> bool {
+    fn encodes_linear(format: wgpu::TextureFormat) -> bool {
         format.is_srgb()
             || matches!(
                 format,

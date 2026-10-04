@@ -23,8 +23,9 @@
 //! - **28-byte [`RasterQuad`](crate::gpu::raster::raster_atlas::raster_quad::RasterQuad)
 //!   instances.** The content type and the desaturate flag sit above `u`
 //!   in `uv_and_kind`.
-//! - **No `Viewport` object.** Atlas sizes ride the shared immediate
-//!   region as two `u32`s, pushed per batch — no uniform buffer.
+//! - **No atlas sizes in the shader.** It reads each texel by index, so
+//!   a grow changes the bind group alone — no uniform buffer, no
+//!   per-batch push.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;

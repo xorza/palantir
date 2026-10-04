@@ -1,7 +1,7 @@
 //! The off-screen colour target the backbuffer-copy path renders into.
 
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::{self, TargetFormat};
-use crate::gpu::wgpu_backend::WgpuBackend;
 use glam::UVec2;
 
 /// Persistent off-screen *color* target for the backbuffer-copy path: the
@@ -47,10 +47,13 @@ impl Backbuffer {
     /// the same contract [`Stencil::ensure`](crate::gpu::surface::stencil::Stencil::ensure)
     /// offers. The `format` is the per-window surface format; the
     /// matching pipeline set is fetched per submit from the backend's
-    /// `pipelines` map, so no global-format assert is needed.
+    /// `pipelines` map, so no global-format assert is needed. `binding` is
+    /// the one every sampled texture of the backend shares, which a target
+    /// that takes no copy draws the backbuffer through.
     pub(crate) fn ensure<'s>(
         slot: &'s mut Option<Self>,
-        backend: &WgpuBackend,
+        device: &wgpu::Device,
+        binding: &TextureBinding,
         size: UVec2,
         format: TargetFormat,
     ) -> EnsuredBackbuffer<'s> {
@@ -67,7 +70,7 @@ impl Backbuffer {
         }
         let recreated = slot.is_none();
         EnsuredBackbuffer {
-            backbuffer: slot.get_or_insert_with(|| Self::new(backend, size, format)),
+            backbuffer: slot.get_or_insert_with(|| Self::new(device, binding, size, format)),
             recreated,
         }
     }
@@ -102,8 +105,13 @@ impl Backbuffer {
     /// Private, so [`Self::ensure`] is the only way to one — it is what
     /// holds the "matches the surface" invariant [`Self::describes`]
     /// checks.
-    fn new(backend: &WgpuBackend, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> Self {
-        let tex = backend.device().create_texture(&wgpu::TextureDescriptor {
+    fn new(
+        device: &wgpu::Device,
+        binding: &TextureBinding,
+        size: wgpu::Extent3d,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.backbuffer"),
             size,
             mip_level_count: 1,
@@ -118,7 +126,7 @@ impl Backbuffer {
             view_formats: &[],
         });
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = backend.backbuffer_bind_group(&view);
+        let bind_group = binding.bind_group(device, &view, "palantir.renderer.backbuffer.bg");
         Self {
             tex,
             view,

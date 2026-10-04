@@ -1,7 +1,6 @@
 //! Where a text batch spanning several groups actually emits.
 
 use crate::common::span::Span;
-use crate::gpu::frame::schedule::MaskPlan;
 use crate::gpu::wgpu_backend::tests::support::{
     DrawOp, buf_with_batches, collect, group, simplify, text_batch,
 };
@@ -108,7 +107,7 @@ fn text_batches_emit_once_after_their_last_group() {
             .map(|&(texts, last)| text_batch(texts, last))
             .collect();
         let buf = buf_with_batches(groups, batches);
-        let steps = collect(&buf, case.damage, &MaskPlan::default(), false);
+        let steps = collect(&buf, case.damage, None);
         assert_eq!(simplify(&buf, &steps), case.want, "{}", case.label);
     }
 }

@@ -2,8 +2,8 @@
 //! clears.
 
 use crate::common::span::Span;
+use crate::gpu::frame::schedule::MaskPlan;
 use crate::gpu::frame::schedule::RenderStep;
-use crate::gpu::frame::schedule::{MaskPlan, build_mask_plan};
 use crate::gpu::wgpu_backend::tests::support::{
     DrawOp, buf_with, buf_with_batches, collect, group, scissor_count, simplify, text_batch,
 };
@@ -11,7 +11,6 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
@@ -41,12 +40,11 @@ fn stencil_group_brackets_draws_with_mask_write() {
         }],
     );
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(mi.groups, vec![Span::new(0, 1)]);
     assert_eq!(mi.batches, vec![Span::new(0, 1)]);
-    assert_eq!(masks.len(), 1);
-    let steps = collect(&buf, None, &mi, true);
+    assert_eq!(mi.quads().len(), 1);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -115,11 +113,10 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
         vec![text_batch(Span::new(0, 1), 1)],
     );
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(mi.groups, vec![Span::new(0, 1), Span::default()]);
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &mi, true)),
+        simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![
             // Rounded bracket
             DrawOp::MaskWrite(0),
@@ -133,8 +130,8 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     );
 }
 
-/// End-to-end pin of the same-mask elision: `build_mask_plan` (the
-/// CPU half of `stage_masks`) dedups consecutive value-equal chains
+/// End-to-end pin of the same-mask elision: `MaskPlan::build` (the
+/// CPU half of mask staging) dedups consecutive value-equal chains
 /// onto one shared mask-quad run (common: a rect clip nested in a
 /// rounded ancestor inherits the ancestor's chain verbatim, and
 /// quad-budget flushes split groups without changing clip), and the
@@ -163,17 +160,16 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
         },
     ]);
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0), rounded(50.0, 50.0, 4.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     // Groups 0+1 dedup onto mask 0 (one uploaded instance); group 2
     // gets its own.
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 1), Span::new(0, 1), Span::new(1, 1)]
     );
-    assert_eq!(masks.len(), 2);
+    assert_eq!(mi.quads().len(), 2);
 
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -231,15 +227,14 @@ fn stencil_same_mask_wider_scissor_restamps() {
         },
     ]);
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     // Identical clips still dedup to one uploaded mask instance...
     assert_eq!(mi.groups, vec![Span::new(0, 1), Span::new(0, 1)]);
-    assert_eq!(masks.len(), 1);
+    assert_eq!(mi.quads().len(), 1);
     // ...but the schedule re-brackets: clear under the stamp's
     // (0,0,50,100), re-stamp mask 0 under (0,0,100,100), tail clear.
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &mi, true)),
+        simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![
             DrawOp::MaskWrite(0),
             DrawOp::Quads(0),
@@ -270,10 +265,9 @@ fn stencil_text_only_group_still_writes_mask() {
         }],
     );
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &mi, true)),
+        simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![DrawOp::MaskWrite(0), DrawOp::Text(0), DrawOp::MaskClear(0)],
     );
 }
@@ -303,13 +297,12 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
         clipped(sc, Span::default(), 2),
     ]);
     buf.rounded_clips = clips.clone();
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 1), Span::new(1, 1), Span::default()]
     );
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         steps,
         vec![
@@ -381,8 +374,8 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
         clipped(sb, Span::new(1, 1), 1),
     ]);
     buf.rounded_clips = clips;
-    let mi = mask_ix(&buf, &mut masks);
-    let steps = collect(&buf, None, &mi, true);
+    let mi = mask_ix(&buf);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         &steps[steps.len() - 2..],
         &[RenderStep::SetStencilRef(0), RenderStep::MaskClear(1)],
@@ -401,7 +394,7 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
 /// outer at ref 0 → stencil 1, inner at ref 1 → stencil 2 (only
 /// inside the outer), content at ref 2. Group 1 carries a value-equal
 /// chain in a *different* span (pop/re-push of identical clips) —
-/// `build_mask_plan` dedups by value, so the schedule elides and —
+/// `MaskPlan::build` dedups by value, so the schedule elides and —
 /// since both groups also share a scissor — nothing at all separates
 /// the two groups' quads. Group 2
 /// is unmasked: ONE clear of the outermost mask resets the whole
@@ -423,15 +416,14 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
         clipped(Span::default(), 2),
     ]);
     buf.rounded_clips = vec![outer, inner, outer, inner];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     // Value-equal chains share one mask-quad run: two quads total.
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 2), Span::new(0, 2), Span::default()]
     );
-    assert_eq!(masks.len(), 2);
-    let steps = collect(&buf, None, &mi, true);
+    assert_eq!(mi.quads().len(), 2);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         steps,
         vec![
@@ -469,8 +461,8 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
         clipped(Span::new(2, 2), 1),
     ]);
     buf.rounded_clips = vec![outer, inner, outer, inner];
-    let mi = mask_ix(&buf, &mut masks);
-    let steps = collect(&buf, None, &mi, true);
+    let mi = mask_ix(&buf);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         &steps[steps.len() - 2..],
         &[RenderStep::SetStencilRef(0), RenderStep::MaskClear(0)],
@@ -520,14 +512,13 @@ fn stencil_drained_batch_stamps_own_mask_before_text() {
         }],
     );
     buf.rounded_clips = vec![rounded(40.0, 40.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(mi.batches, vec![Span::new(0, 1)]);
     let damage = URect::new(60, 0, 30, 40);
     // Batch scissor ∩ damage = (60,0,30,40) — the damage rect itself,
     // so the batch's scissor request is already satisfied.
     let s = URect::new(60, 0, 30, 40);
-    let steps = collect(&buf, Some(damage), &mi, true);
+    let steps = collect(&buf, Some(damage), Some(&mi));
     assert_eq!(
         steps,
         vec![
@@ -594,12 +585,11 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
         }],
     );
     buf.rounded_clips = vec![rounded(40.0, 40.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     let damage = URect::new(0, 0, 100, 40);
     // Batch scissor ∩ damage = (0,0,40,40) = group 0's stamp scissor.
     assert_eq!(
-        collect(&buf, Some(damage), &mi, true),
+        collect(&buf, Some(damage), Some(&mi)),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
@@ -654,11 +644,10 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
         }],
     );
     buf.rounded_clips = vec![rounded(40.0, 40.0, 8.0)];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     let damage = URect::new(0, 0, 45, 45);
     assert_eq!(
-        collect(&buf, Some(damage), &mi, true),
+        collect(&buf, Some(damage), Some(&mi)),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
@@ -703,15 +692,18 @@ fn stencil_dedups_a_chain_seen_before_the_previous_group() {
         clipped(Span::new(2, 1), 2),
     ]);
     buf.rounded_clips = vec![outer, inner, outer];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 1), Span::new(1, 1), Span::new(0, 1)]
     );
-    assert_eq!(masks.len(), 2, "the repeated chain staged a second copy");
+    assert_eq!(
+        mi.quads().len(),
+        2,
+        "the repeated chain staged a second copy"
+    );
 
-    let steps = collect(&buf, None, &mi, true);
+    let steps = collect(&buf, None, Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -762,14 +754,13 @@ fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
         },
     ]);
     buf.rounded_clips = vec![outer, inner, outer];
-    let mut masks = Vec::new();
-    let mi = mask_ix(&buf, &mut masks);
+    let mi = mask_ix(&buf);
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 1), Span::new(1, 1), Span::new(0, 1)]
     );
 
-    let steps = collect(&buf, Some(e), &mi, true);
+    let steps = collect(&buf, Some(e), Some(&mi));
     assert_eq!(
         simplify(&buf, &steps),
         vec![
@@ -783,11 +774,10 @@ fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
 }
 
 /// Run the real mask staging (CPU half) over `buf`, returning the
-/// per-group / per-batch mask spans; `masks` receives the deduped
-/// mask-quad instances.
-fn mask_ix(buf: &RenderBuffer, masks: &mut Vec<Quad>) -> MaskPlan {
+/// per-group / per-batch mask spans and the deduped mask quads.
+fn mask_ix(buf: &RenderBuffer) -> MaskPlan {
     let mut mi = MaskPlan::default();
-    build_mask_plan(buf, &mut mi, masks);
+    mi.build(buf);
     mi
 }
 
