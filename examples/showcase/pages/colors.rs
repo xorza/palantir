@@ -118,8 +118,7 @@ pub(crate) fn build(ui: &mut Ui) {
             .style(&note_style())
             .show(ui);
             row(ui, |ui| {
-                ColorButton::new(&mut state.port)
-                    .alpha(true)
+                ColorButton::new(ColorPicker::new(&mut state.port).alpha(true).history(true))
                     .id(state_id.with("chip"))
                     .show(ui);
                 ColorSwatch::new(state.port)

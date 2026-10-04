@@ -152,7 +152,7 @@ fn explicit_size_overrides_fill_default() {
 
 /// Each endpoint collapses one track segment to a zero-extent `Fixed`, and an
 /// unseeded value lays out as the low end rather than reaching
-/// `Sizing::share`'s finite assert — the value is app state the widget
+/// `Sizing::fill`'s finite assert — the value is app state the widget
 /// borrows and cannot assert on.
 #[test]
 fn endpoint_rails_collapse_without_invalid_fill_weights() {

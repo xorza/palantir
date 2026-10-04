@@ -7,6 +7,7 @@ use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, Physic
 use crate::common::platform::Platform;
 use crate::common::span::Span;
 use crate::display;
+use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
@@ -303,15 +304,15 @@ struct KeyDownFacts<'a> {
 /// widget acts on. A cursor arrives as two byte offsets, in either order.
 fn ime_event(ime: &Ime) -> Option<InputEvent<'_>> {
     match ime {
-        Ime::Preedit(text, cursor) => Some(InputEvent::ImePreedit {
+        Ime::Preedit(text, cursor) => Some(InputEvent::ImePreedit(ImePreedit {
             text,
             cursor: cursor.map(|(a, b)| Span::from(a.min(b)..a.max(b))),
-        }),
+        })),
         Ime::Commit(text) => Some(InputEvent::ImeCommit(text)),
-        Ime::Disabled => Some(InputEvent::ImePreedit {
+        Ime::Disabled => Some(InputEvent::ImePreedit(ImePreedit {
             text: "",
             cursor: None,
-        }),
+        })),
         Ime::Enabled => None,
     }
 }

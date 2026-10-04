@@ -10,9 +10,9 @@ use std::time::Duration;
 use crate::support;
 use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
-    Align, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem,
-    MenuSeparator, Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, ShortcutMods, Sizing,
-    Spacing, Text, Tooltip, Ui, Vec2, WidgetId, fmt,
+    Align, Anchor, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem,
+    MenuSeparator, Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text,
+    Tooltip, Ui, Vec2, WidgetId, fmt,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -70,7 +70,7 @@ fn popup_menu(ui: &mut Ui, menu: &mut MenuState) {
 
     let anchor = Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0);
     let mut chosen: Option<&'static str> = None;
-    let resp = Popup::at_point(anchor)
+    let resp = Popup::new(Anchor::at_point(anchor))
         .id_salt("popup-menu")
         .padding(6.0)
         .size((Sizing::HUG, Sizing::HUG))
@@ -342,7 +342,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
             .show(ui, popup);
         MenuSeparator::new().style(rule).show(ui);
         if MenuItem::new("Delete")
-            .shortcut(Shortcut::new(ShortcutMods::NONE, Key::Backspace))
+            .shortcut(Shortcut::key(Key::Backspace))
             .style(item)
             .show(ui, popup)
             .left

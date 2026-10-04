@@ -89,7 +89,7 @@ impl Okhsv {
     ///
     /// What a colour field is built from: every texel of one field shares the
     /// hue, and the cusp solve is the expensive half of the conversion.
-    pub fn slice(hue: f32) -> OkhsvSlice {
+    pub(crate) fn slice(hue: f32) -> OkhsvSlice {
         let (sin, cos) = (TAU * domain::turn(hue)).sin_cos();
         OkhsvSlice::from_direction(cos, sin)
     }
@@ -133,7 +133,7 @@ impl Okhsv {
 /// direction in Oklab and the two edges of its gamut triangle. Take one from
 /// [`Okhsv::slice`].
 #[derive(Clone, Copy, Debug)]
-pub struct OkhsvSlice {
+pub(crate) struct OkhsvSlice {
     cos: f32,
     sin: f32,
     slopes: CuspSlopes,
@@ -163,7 +163,7 @@ impl OkhsvSlice {
     }
 
     /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
-    pub fn color(self, s: f32, v: f32) -> RgbaF32 {
+    pub(crate) fn color(self, s: f32, v: f32) -> RgbaF32 {
         let sat = domain::fraction(s);
         let val = domain::fraction(v);
 

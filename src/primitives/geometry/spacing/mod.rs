@@ -52,21 +52,14 @@ impl Spacing {
         Self(F16x4::from_lanes([left, top, right, bottom]))
     }
 
-    /// `left + right` — how much width this spacing costs.
+    /// Inverse of [`Self::as_array`] — the four-lane f32→f16 pack. Use at
+    /// hot sites that compute all four.
     #[inline]
-    pub fn horizontal_sum(self) -> f32 {
-        let [l, _t, r, _b] = self.as_array();
-        l + r
+    pub fn from_array(v: [f32; 4]) -> Self {
+        Self(F16x4::from_lanes(v))
     }
-    /// `top + bottom` — how much height this spacing costs.
-    #[inline]
-    pub fn vertical_sum(self) -> f32 {
-        let [_l, t, _r, b] = self.as_array();
-        t + b
-    }
-    /// The size this spacing costs: `w = left + right`, `h = top + bottom`,
-    /// from one unpack of the lanes. Use when both axes are needed;
-    /// otherwise prefer [`Self::horizontal_sum`] / [`Self::vertical_sum`].
+
+    /// The size this spacing costs: `w = left + right`, `h = top + bottom`.
     #[inline]
     pub fn sums(self) -> Size {
         let [l, t, r, b] = self.as_array();

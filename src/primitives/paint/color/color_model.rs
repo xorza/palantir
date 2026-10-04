@@ -43,8 +43,8 @@ impl ColorModel {
     /// [`HueSlice`].
     pub fn slice(self, hue: f32) -> HueSlice {
         match self {
-            Self::Okhsv => HueSlice::Okhsv(Okhsv::slice(hue)),
-            Self::Hsv => HueSlice::Hsv(hue),
+            Self::Okhsv => HueSlice(HueSliceKind::Okhsv(Okhsv::slice(hue))),
+            Self::Hsv => HueSlice(HueSliceKind::Hsv(hue)),
         }
     }
 }
@@ -56,7 +56,10 @@ impl ColorModel {
 /// the expensive half of a conversion — so it happens once here rather than
 /// four thousand times in the loop. Take one from [`ColorModel::slice`].
 #[derive(Clone, Copy, Debug)]
-pub enum HueSlice {
+pub struct HueSlice(HueSliceKind);
+
+#[derive(Clone, Copy, Debug)]
+enum HueSliceKind {
     /// One hue of [`ColorModel::Okhsv`], gamut already solved.
     Okhsv(OkhsvSlice),
     /// One hue of [`ColorModel::Hsv`], which needs no solve.
@@ -66,9 +69,9 @@ pub enum HueSlice {
 impl HueSlice {
     /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
     pub fn color(self, s: f32, v: f32) -> RgbaF32 {
-        match self {
-            Self::Okhsv(slice) => slice.color(s, v),
-            Self::Hsv(hue) => Hsv::new(hue, s, v).to_color(),
+        match self.0 {
+            HueSliceKind::Okhsv(slice) => slice.color(s, v),
+            HueSliceKind::Hsv(hue) => Hsv::new(hue, s, v).to_color(),
         }
     }
 }

@@ -248,10 +248,6 @@ impl RgbaF32 {
     pub const fn hex(rgb: u32) -> Self {
         Self::from_srgba(SrgbaU8::hex(rgb))
     }
-    /// Packed 32-bit `0xRRGGBBAA` sRGB+alpha literal. CSS-order (alpha last).
-    pub const fn hexa(rgba: u32) -> Self {
-        Self::from_srgba(SrgbaU8::hexa(rgba))
-    }
 
     /// Encode to **sRGB** 8-bit bytes: what an image texel, a CSS hex
     /// string or a number shown to a person means. Inverts

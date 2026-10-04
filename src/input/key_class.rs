@@ -196,7 +196,7 @@ impl KeyFilter {
         })
     }
 
-    /// `press` back when this filter takes its class, `None` otherwise.
+    /// Whether this filter takes `press`'s class.
     ///
     /// **The gate a reader applies to the stream it drains**, not only to
     /// the scope it declares. The stream is the whole layer's, so a field
@@ -209,8 +209,8 @@ impl KeyFilter {
     /// One place rather than one per drain: a field's key pass and its
     /// context menu read the same stream through the same filter.
     #[inline]
-    pub fn accepts(self, press: KeyPress) -> Option<KeyPress> {
-        self.takes(KeyClass::of(press)).then_some(press)
+    pub fn takes_press(self, press: KeyPress) -> bool {
+        self.takes(KeyClass::of(press))
     }
 
     /// A scope declaring nothing is not a scope: [`Self::NONE`] is how
@@ -230,24 +230,24 @@ mod tests {
     use crate::input::keyboard::key_press::KeyPress;
     use crate::input::keyboard::modifiers::Modifiers;
 
-    /// `accepts` is `takes` over a press: it classifies the press the way
+    /// `takes_press` is `takes` over a press: it classifies the press the way
     /// [`KeyClass::of`] does, so one gate serves every reader of the
     /// stream.
     #[test]
-    fn accepts_gates_the_stream_on_the_declared_classes() {
+    fn takes_press_gates_the_stream_on_the_declared_classes() {
         let field = KeyFilter::TEXT_FIELD;
         let typed = KeyPress::with(Key::Char('a'), Modifiers::default());
         let escape = KeyPress::with(Key::Escape, Modifiers::default());
 
-        assert_eq!(field.accepts(typed), Some(typed), "a field takes text");
-        assert_eq!(field.accepts(escape), Some(escape), "and Escape, to cancel");
+        assert!(field.takes_press(typed), "a field takes text");
+        assert!(field.takes_press(escape), "and Escape, to cancel");
 
         // Dropping one class drops exactly that class — the shape
         // `TextEdit::escape_falls_through` produces, and the reason its
         // key pass and its context menu apply the same filter.
         let yields_escape = field.difference(KeyFilter::ESCAPE);
-        assert_eq!(yields_escape.accepts(escape), None);
-        assert_eq!(yields_escape.accepts(typed), Some(typed));
+        assert!(!yields_escape.takes_press(escape));
+        assert!(yields_escape.takes_press(typed));
 
         // `ACCEL` is out of `TEXT_FIELD`, so an application chord walks
         // past a focused field while the bare key it shares still types.
@@ -259,9 +259,9 @@ mod tests {
             },
         );
         assert_eq!(KeyClass::of(save), KeyClass::Accel);
-        assert_eq!(field.accepts(save), None);
+        assert!(!field.takes_press(save));
         let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
-        assert_eq!(field.accepts(shifted), Some(shifted));
+        assert!(field.takes_press(shifted));
     }
 
     /// The four navigation classes, and which of them a text field takes.
@@ -299,7 +299,7 @@ mod tests {
             let press = KeyPress::with(key, mods);
             assert_eq!(KeyClass::of(press), class, "{key:?} under {mods:?}");
             assert_eq!(
-                KeyFilter::TEXT_FIELD.accepts(press).is_some(),
+                KeyFilter::TEXT_FIELD.takes_press(press),
                 field_takes,
                 "{key:?} under {mods:?}",
             );

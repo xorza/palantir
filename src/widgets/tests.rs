@@ -5,6 +5,7 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -155,7 +156,7 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
             name: "Popup",
             record: |ui, c| {
                 c.apply(
-                    Popup::at_point(Vec2::new(20.0, 20.0)).id(own_id()),
+                    Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0))).id(own_id()),
                     Popup::background,
                     Popup::default_background,
                 )
@@ -409,7 +410,9 @@ fn widget_setters_check_their_kinds() {
         || {
             let _ = Anchor::at_point(Vec2::new(0.0, f32::INFINITY));
         },
-        || drop(Popup::below(Rect::new(f32::NAN, 0.0, 4.0, 4.0))),
+        || {
+            let _ = Anchor::below(Rect::new(f32::NAN, 0.0, 4.0, 4.0));
+        },
         || {
             let mut h = UiHarness::new(SURFACE);
             ContextMenu::open(
@@ -554,6 +557,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::color_button::ColorButton;
+    use crate::widgets::color_picker::ColorPicker;
     use crate::widgets::combo_box::ComboBox;
     use crate::widgets::expander::Expander;
     use crate::widgets::splitter::Splitter;
@@ -613,7 +617,9 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     let mut opened = false;
     press(id, Key::Enter, |ui| {
         under_root(ui, |ui| {
-            ColorButton::new(&mut color).id(id).show(ui);
+            ColorButton::new(ColorPicker::new(&mut color))
+                .id(id)
+                .show(ui);
         });
         opened |= PopupTrigger::is_open(ui, id);
     });

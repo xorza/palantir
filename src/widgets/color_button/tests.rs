@@ -12,6 +12,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
+use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 
@@ -42,7 +43,7 @@ fn the_chip_toggles_its_panel() {
     let mut color = RgbaF32::hex(0x4cd3ff);
     let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
         h.frame(|ui| {
-            ColorButton::new(color).id(id).show(ui);
+            ColorButton::new(ColorPicker::new(color)).id(id).show(ui);
         });
     };
     frame(&mut h, &mut color);
@@ -59,33 +60,60 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
 }
 
-/// The popup's picker takes the chip's settings. Its swatch row shows by
-/// default — a chip has no room for a preset row of its own — and
-/// `history(false)` hides it, unless `swatches` hands it a row of the
-/// app's own. `texel_size` reaches the field's texture: one texel per
-/// `n` px, rounded up, so the 4 default builds a quarter of the 1 one on
-/// each axis.
+/// The popup shows the picker as the caller configured it, under the
+/// chip's `id.with("picker")` unless the picker names its own id. Its
+/// swatch row is off by default, as a picker's is; `history(true)` shows
+/// the picker's own and `swatches` a row of the app's. `texel_size`
+/// reaches the field's texture: one texel per `n` px, rounded up, so the 4
+/// default builds a quarter of the 1 one on each axis.
 #[test]
 fn panel_settings_reach_the_picker() {
     use crate::primitives::paint::color::color_model::ColorModel;
     use crate::widgets::color_surface::ColorSurface;
 
-    type Settings = fn(ColorButton<'_>) -> ColorButton<'_>;
+    type Settings = fn(ColorPicker<'_>) -> ColorPicker<'_>;
     const OWN: [RgbaF32; 2] = [RgbaF32::WHITE, RgbaF32::BLACK];
+    const OWN_ID: &str = "color-button-own-picker";
     let id = WidgetId::from_hash("color-button-settings");
-    let picker = id.with("picker");
-    let rows: [(&str, Settings, bool, u32); 4] = [
-        ("default", |c| c, true, 4),
-        ("history off", |c| c.history(false), false, 4),
-        ("own swatches", |c| c.history(false).swatches(&OWN), true, 4),
-        ("texel size 1", |c| c.texel_size(1), true, 1),
+    let rows: [(&str, Settings, bool, u32, WidgetId); 5] = [
+        ("default", |c| c, false, 4, id.with("picker")),
+        (
+            "history on",
+            |c| c.history(true),
+            true,
+            4,
+            id.with("picker"),
+        ),
+        (
+            "own swatches",
+            |c| c.swatches(&OWN),
+            true,
+            4,
+            id.with("picker"),
+        ),
+        (
+            "texel size 1",
+            |c| c.texel_size(1),
+            false,
+            1,
+            id.with("picker"),
+        ),
+        (
+            "own id",
+            |c| c.id(WidgetId::from_hash(OWN_ID)),
+            false,
+            4,
+            WidgetId::from_hash(OWN_ID),
+        ),
     ];
-    for (label, settings, swatch_row, texel) in rows {
+    for (label, settings, swatch_row, texel, picker) in rows {
         let mut h = harness();
         let mut color = RgbaF32::hex(0x4cd3ff);
         let mut frame = |h: &mut UiHarness| {
             h.frame(|ui| {
-                settings(ColorButton::new(&mut color).id(id)).show(ui);
+                ColorButton::new(settings(ColorPicker::new(&mut color)))
+                    .id(id)
+                    .show(ui);
             });
         };
         frame(&mut h);
@@ -119,7 +147,12 @@ fn opening_the_panel_is_not_an_edit() {
     let before = color;
     for round in 0..2 {
         let changes = h
-            .frame_passes(|ui| ColorButton::new(&mut color).id(id).show(ui).changed)
+            .frame_passes(|ui| {
+                ColorButton::new(ColorPicker::new(&mut color))
+                    .id(id)
+                    .show(ui)
+                    .changed
+            })
             .count_where(|&changed| changed);
         assert_eq!(changes, 0, "round {round}");
         h.press_at(Vec2::new(10.0, 10.0));
@@ -144,7 +177,10 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     let mut color = RgbaF32::hex(0x4cd3ff);
     let mut frame = |h: &mut UiHarness| {
         h.frame(|ui| {
-            ColorButton::new(&mut color).style(style).id(id).show(ui);
+            ColorButton::new(ColorPicker::new(&mut color))
+                .style(style)
+                .id(id)
+                .show(ui);
         });
     };
     frame(&mut h);
@@ -200,6 +236,6 @@ fn the_popup_takes_the_picker_theme() {
     // Two edges of padding, (19 - 8) * 2 = 22, plus the preview's 30: the chip
     // is taller than the bar beside it on both sides of the difference, so
     // the bars row grows by exactly what the chip does.
-    let padding = custom.popup_padding.vertical_sum() - stock.popup_padding.vertical_sum();
+    let padding = custom.popup_padding.sums().h - stock.popup_padding.sums().h;
     assert_eq!(styled.height - plain.height, padding + 30.0);
 }

@@ -6,6 +6,7 @@ use crate::input::shortcut::Shortcut;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -246,7 +247,7 @@ fn nested(ui: &mut Ui) {
         .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Popup::below(Rect::new(10.0, 10.0, 100.0, 20.0))
+            Popup::new(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
                 .id(WidgetId::from_hash("host"))
                 .show(ui, |ui, _| {
                     let trigger = Button::new()

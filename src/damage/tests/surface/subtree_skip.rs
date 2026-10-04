@@ -6,6 +6,7 @@ use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::configure::Configure;
@@ -122,7 +123,7 @@ fn popup_eater_does_not_force_full_repaint() {
     let anchor = Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut h, |ui| {
-        Popup::at_point(anchor)
+        Popup::new(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
             .background(Background::fill(BLUE))
             .show(ui, |ui, _popup| {

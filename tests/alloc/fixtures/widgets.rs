@@ -10,10 +10,11 @@ use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
 use palantir::{
-    AnimationSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField, ColorPicker,
-    ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid, MenuItem, Modal,
-    Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
-    SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
+    Anchor, AnimationSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField,
+    ColorPicker, ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid,
+    MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut,
+    Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui,
+    Vec2, WidgetId,
 };
 
 #[test]
@@ -422,7 +423,7 @@ fn overlays_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::at_point(Vec2::new(40.0, 40.0))
+                Popup::new(Anchor::at_point(Vec2::new(40.0, 40.0)))
                     .id_salt("pop")
                     .show(ui, |ui, _handle| {
                         Text::new("popup body").id_salt("pop-text").show(ui);

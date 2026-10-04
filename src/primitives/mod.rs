@@ -35,13 +35,6 @@ macro_rules! f16x4_lanes {
                 self.0.lanes()
             }
 
-            /// Inverse of [`Self::as_array`] — the four-lane f32→f16
-            /// pack. Use at hot sites that compute all four.
-            #[inline]
-            pub fn from_array(v: [f32; 4]) -> Self {
-                Self($crate::primitives::packed::half_simd::F16x4::from_lanes(v))
-            }
-
             /// True if any lane is NaN. `const`, so the predicates that
             /// gate on it can be too; the [`NanCheck`] impl below
             /// delegates here rather than keeping a second copy. A NaN

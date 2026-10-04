@@ -98,62 +98,15 @@ impl TranslateScale {
         Self { translation, scale }
     }
 
-    /// Fold a pivot into a translation: `p ↦ (p - center) * s + center +
-    /// translation` is `p * s + (center * (1 - s) + translation)`, and this
-    /// is that parenthesised half. The one place the pivot algebra lives; the
-    /// three constructors below differ in where the pivot comes from and in
-    /// whether they validate the result.
-    const fn pivoted_translation(translation: Vec2, center: Vec2, s: f32) -> Vec2 {
-        Vec2::new(
-            center.x * (1.0 - s) + translation.x,
-            center.y * (1.0 - s) + translation.y,
-        )
-    }
-
     /// Move by `t`, at unit scale.
     pub const fn from_translation(t: Vec2) -> Self {
         Self::new(t, 1.0)
     }
 
     /// Scale by `s` about the origin. For a scale about a pivot, see
-    /// [`Self::from_scale_about`].
+    /// [`Self::anchored_at`].
     pub const fn from_scale(s: f32) -> Self {
         Self::new(Vec2::ZERO, s)
-    }
-
-    /// Scale by `s` about the pivot `center` (in the *parent* coordinate
-    /// space the transform is applied in). The pivot is folded into the
-    /// translation at construction time:
-    ///
-    /// ```text
-    /// p ↦ (p - center) * s + center
-    ///   = p * s + center * (1 - s)
-    /// ```
-    ///
-    /// so the runtime representation stays the same uniform-scale + translate
-    /// pair. Useful for "scale about my own center" / "zoom toward cursor"
-    /// effects where origin-relative scaling would translate the content away
-    /// from where the user expects.
-    pub const fn from_scale_about(center: Vec2, s: f32) -> Self {
-        Self::new(Self::pivoted_translation(Vec2::ZERO, center, s), s)
-    }
-
-    /// Scale by `s` about `center`, then translate by `translation`. The
-    /// pivot and the additional translation collapse into the single
-    /// `translation` field at construction:
-    ///
-    /// ```text
-    /// p ↦ (p - center) * s + center + translation
-    ///   = p * s + center * (1 - s) + translation
-    /// ```
-    ///
-    /// so the runtime representation stays a plain uniform-scale +
-    /// translate pair — same compose/apply paths, no extra fields.
-    /// Useful when an animation wants both a pan and a pivot-anchored
-    /// zoom in one step (e.g. "zoom toward cursor while easing the
-    /// content into view").
-    pub const fn from_translate_scale_about(translation: Vec2, center: Vec2, s: f32) -> Self {
-        Self::new(Self::pivoted_translation(translation, center, s), s)
     }
 
     /// Re-anchor `self` so its scale pivots about `origin` instead of
@@ -176,13 +129,15 @@ impl TranslateScale {
     /// Identity-preserving: when `scale == 1`, `origin * (1 - scale)
     /// == 0` so the translation is unchanged.
     ///
-    /// Re-anchors an already-valid `self`, so it builds
-    /// `from_parts` rather than revalidating through
-    /// [`Self::from_translate_scale_about`] — this is the cascade's
-    /// per-transformed-node path.
+    /// Re-anchors an already-valid `self`, so it builds `from_parts`
+    /// rather than revalidating through [`Self::new`] — this is the
+    /// cascade's per-transformed-node path.
     pub const fn anchored_at(self, origin: Vec2) -> Self {
         Self::from_parts(
-            Self::pivoted_translation(self.translation, origin, self.scale),
+            Vec2::new(
+                origin.x * (1.0 - self.scale) + self.translation.x,
+                origin.y * (1.0 - self.scale) + self.translation.y,
+            ),
             self.scale,
         )
     }
@@ -312,7 +267,7 @@ mod tests {
         const SCALE: &str = domain::POSITIVE_RULE;
         // Pivot arithmetic that overflows translation.
         panic_probe::assert_panics_with(TRANSLATION, || {
-            TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
+            TranslateScale::from_scale(f32::MAX).anchored_at(Vec2::splat(f32::MAX))
         });
         // Composition that overflows scale.
         panic_probe::assert_panics_with(SCALE, || {

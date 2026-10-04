@@ -34,11 +34,11 @@ use std::hash;
 ///
 /// # Which constructors panic, and why
 ///
-/// [`Self::fixed`], [`Self::fill`] and [`Self::share`] each state a
-/// contract and **panic** when a caller breaks it. A negative or
-/// non-finite extent is arithmetic that already went wrong upstream, and
-/// clamping it here would put a collapsed row on screen with nothing
-/// pointing at the divide that produced the NaN.
+/// [`Self::fixed`] and [`Self::fill`] each state a contract and **panic**
+/// when a caller breaks it. A negative or non-finite extent is arithmetic
+/// that already went wrong upstream, and clamping it here would put a
+/// collapsed row on screen with nothing pointing at the divide that
+/// produced the NaN.
 ///
 /// [`Self::split`] is the one **total** constructor, and deliberately: it
 /// is the only one a widget feeds a number it took from application code,
@@ -77,26 +77,19 @@ impl Sizing {
         Self(SizingValue::Fixed(domain::length(value)))
     }
 
-    /// A positive relative share of remaining space. `weight`: *positive*.
+    /// A share of remaining space, in proportion to `weight` across the
+    /// `Fill` siblings. `weight`: a *length*.
     ///
-    /// # Panics
-    ///
-    /// Panics unless `weight` is [positive](crate::widget::domain::positive).
-    #[inline]
-    #[track_caller]
-    pub const fn fill(weight: f32) -> Self {
-        Self(SizingValue::Fill(domain::positive(weight)))
-    }
-
-    /// A relative share that may be zero. Zero becomes `fixed(0.0)`;
-    /// positive values become [`Self::fill`]. `weight`: a *length*.
+    /// A zero weight takes no share, as WPF reads `0*`, and is stored as
+    /// `fixed(0.0)` so arrange never divides by a zero weight:
+    /// [`Self::fill_weight`] answers `None` for it.
     ///
     /// # Panics
     ///
     /// Panics unless `weight` is a [length](crate::widget::domain::length).
     #[inline]
     #[track_caller]
-    pub const fn share(weight: f32) -> Self {
+    pub const fn fill(weight: f32) -> Self {
         let weight = domain::length(weight);
         if weight == 0.0 {
             Self(SizingValue::Fixed(0.0))
@@ -113,14 +106,14 @@ impl Sizing {
     /// weights and arrange resolves it against whatever width lands.
     ///
     /// **Total over every `f32`** — see [`Sizing`]'s own doc for why this
-    /// one is. `fraction` goes through `domain::fraction`, so an
-    /// endpoint collapses one share to a zero-extent `Fixed` rather than
-    /// tripping [`Self::share`]'s non-negative assert, and a fraction that
-    /// names no share — a `0 / 0` progress ratio, an unseeded slider
-    /// value — reads as empty instead of reaching that assert with a NaN.
+    /// one is. `fraction` goes through `domain::fraction`, so an endpoint
+    /// collapses one share to a zero-extent `Fixed`, a value past the range
+    /// cannot trip [`Self::fill`]'s non-negative assert, and a fraction that
+    /// names no share — a `0 / 0` progress ratio, an unseeded slider value —
+    /// reads as empty instead of reaching that assert with a NaN.
     pub const fn split(fraction: f32) -> [Self; 2] {
         let f = domain::fraction(fraction);
-        [Self::share(f), Self::share(1.0 - f)]
+        [Self::fill(f), Self::fill(1.0 - f)]
     }
 
     /// The pixel extent if this is a [`Self::fixed`], else `None`.
@@ -334,9 +327,9 @@ mod tests {
 
     /// The two shares always partition 1.0, so the first lands at exactly
     /// `fraction` of the parent — and an out-of-range input clamps rather
-    /// than reaching `share`'s non-negative assert.
+    /// than reaching `fill`'s non-negative assert.
     ///
-    /// Both endpoints matter: `share(0.0)` collapses to a zero-extent
+    /// Both endpoints matter: `fill(0.0)` collapses to a zero-extent
     /// `Fixed`, not a zero-weight `Fill`, which is what keeps a full or
     /// empty `ProgressBar` / `Slider` from handing arrange a degenerate
     /// weight.
@@ -351,14 +344,14 @@ mod tests {
             (1.7, 1.0, 0.0),  // above range clamps to full
             // No share at all — a `0 / 0` progress ratio, an unseeded
             // slider value — reads as empty rather than reaching
-            // `share`'s finite assert.
+            // `fill`'s finite assert.
             (f32::NAN, 0.0, 1.0),
             (f32::INFINITY, 0.0, 1.0),
             (f32::NEG_INFINITY, 0.0, 1.0),
         ];
         for (input, want_a, want_b) in cases {
             let got = Sizing::split(input);
-            let want = [Sizing::share(want_a), Sizing::share(want_b)];
+            let want = [Sizing::fill(want_a), Sizing::fill(want_b)];
             assert_eq!(got, want, "fraction {input}");
         }
         assert_eq!(
@@ -411,29 +404,24 @@ mod tests {
     #[test]
     fn constructors_accept_only_finite_valid_payloads() {
         const FIXED: &str = domain::LENGTH_RULE;
-        const FILL: &str = domain::POSITIVE_RULE;
-        const SHARE: &str = domain::LENGTH_RULE;
+        const FILL: &str = domain::LENGTH_RULE;
         type Case = (&'static str, fn() -> Sizing);
 
         assert_eq!(Sizing::fixed(f32::MAX).fixed_value(), Some(f32::MAX));
         assert_eq!(Sizing::fill(f32::MAX).fill_weight(), Some(f32::MAX));
-        assert_eq!(Sizing::share(0.0), Sizing::fixed(0.0));
-        assert_eq!(Sizing::share(-0.0), Sizing::fixed(0.0));
-        assert_eq!(Sizing::share(2.5), Sizing::fill(2.5));
+        assert_eq!(Sizing::fill(0.0), Sizing::fixed(0.0), "0* takes no share");
+        assert_eq!(Sizing::fill(-0.0), Sizing::fixed(0.0));
+        assert_eq!(Sizing::fill(0.0).fill_weight(), None);
+        assert_eq!(Sizing::fill(2.5).fill_weight(), Some(2.5));
 
         let cases: &[Case] = &[
             (FIXED, || Sizing::fixed(-1.0)),
             (FIXED, || Sizing::fixed(f32::NAN)),
             (FIXED, || Sizing::fixed(f32::INFINITY)),
             (FIXED, || Sizing::fixed(f32::NEG_INFINITY)),
-            (FILL, || Sizing::fill(0.0)),
-            (FILL, || Sizing::fill(-0.0)),
             (FILL, || Sizing::fill(-1.0)),
             (FILL, || Sizing::fill(f32::NAN)),
             (FILL, || Sizing::fill(f32::INFINITY)),
-            (SHARE, || Sizing::share(-1.0)),
-            (SHARE, || Sizing::share(f32::NAN)),
-            (SHARE, || Sizing::share(f32::INFINITY)),
         ];
         for &(expected, construct) in cases {
             panic_probe::assert_panics_with(expected, construct);

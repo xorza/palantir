@@ -368,16 +368,18 @@ fn ime_events_translate_and_a_disable_ends_the_composition() {
     let rows = [
         (
             Ime::Preedit("かな".into(), Some((6, 3))),
-            Some("ImePreedit { text: \"かな\", cursor: Some(Span { start: 3, len: 3 }) }"),
+            Some(
+                "ImePreedit(ImePreedit { text: \"かな\", cursor: Some(Span { start: 3, len: 3 }) })",
+            ),
         ),
         (
             Ime::Preedit("か".into(), None),
-            Some("ImePreedit { text: \"か\", cursor: None }"),
+            Some("ImePreedit(ImePreedit { text: \"か\", cursor: None })"),
         ),
         (Ime::Commit("仮名".into()), Some("ImeCommit(\"仮名\")")),
         (
             Ime::Disabled,
-            Some("ImePreedit { text: \"\", cursor: None }"),
+            Some("ImePreedit(ImePreedit { text: \"\", cursor: None })"),
         ),
         (Ime::Enabled, None),
     ];

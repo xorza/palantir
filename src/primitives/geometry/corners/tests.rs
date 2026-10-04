@@ -29,12 +29,11 @@ fn f16_precision_contract() {
 }
 
 #[test]
-fn as_array_and_from_array_round_trip() {
-    let original = Corners::new(1.0, 2.0, 3.0, 4.0);
-    let arr = original.as_array();
-    assert_eq!(arr, [1.0, 2.0, 3.0, 4.0]);
-    let rebuilt = Corners::from_array(arr);
-    assert_eq!(rebuilt, original);
+fn as_array_reads_clockwise_from_the_top_left() {
+    assert_eq!(
+        Corners::new(1.0, 2.0, 3.0, 4.0).as_array(),
+        [1.0, 2.0, 3.0, 4.0]
+    );
 }
 
 /// `f = min(side / sum of its two radii)`, hand-computed per row; every
@@ -161,12 +160,6 @@ fn convenience_ctors() {
     assert_eq!(Corners::bottom(4.0).as_array(), [0.0, 0.0, 4.0, 4.0]);
     assert_eq!(Corners::left(4.0).as_array(), [4.0, 0.0, 0.0, 4.0]);
     assert_eq!(Corners::right(4.0).as_array(), [0.0, 4.0, 4.0, 0.0]);
-    assert_eq!(
-        Corners::top_bottom(2.0, 8.0).as_array(),
-        [2.0, 2.0, 8.0, 8.0]
-    );
-    assert_eq!(Corners::main_diagonal(5.0).as_array(), [5.0, 0.0, 5.0, 0.0]);
-    assert_eq!(Corners::anti_diagonal(5.0).as_array(), [0.0, 5.0, 0.0, 5.0]);
 }
 
 #[test]

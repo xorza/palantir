@@ -83,24 +83,6 @@ impl Corners {
         Self(F16x4::from_lanes([0.0, r, r, 0.0]))
     }
 
-    /// CSS-style `[top, bottom]` shorthand.
-    #[inline]
-    pub fn top_bottom(top: f32, bottom: f32) -> Self {
-        Self(F16x4::from_lanes([top, top, bottom, bottom]))
-    }
-
-    /// Round the `tl`/`br` diagonal pair (e.g. asymmetric chat bubble).
-    #[inline]
-    pub fn main_diagonal(r: f32) -> Self {
-        Self(F16x4::from_lanes([r, 0.0, r, 0.0]))
-    }
-
-    /// Round the `tr`/`bl` diagonal pair.
-    #[inline]
-    pub fn anti_diagonal(r: f32) -> Self {
-        Self(F16x4::from_lanes([0.0, r, 0.0, r]))
-    }
-
     /// Every radius multiplied by `factor` — what carries a logical
     /// radius into physical pixels at compose time.
     #[inline]
@@ -137,7 +119,7 @@ impl Corners {
         .into_iter()
         .filter(|&(_, sum)| sum > 0.0)
         .fold(1.0_f32, |f, (side, sum)| f.min(side.max(0.0) / sum));
-        Self::from_array(radii.map(|r| r * f))
+        Self(F16x4::from_lanes(radii.map(|r| r * f)))
     }
 
     /// True when every corner is within UI epsilon of zero. Routes

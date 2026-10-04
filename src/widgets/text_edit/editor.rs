@@ -61,7 +61,7 @@ impl<'a> Editor<'a> {
     ///
     /// `filter` is the field's own — the menu drains the same layer-wide
     /// stream the input pass does, so it owes the same
-    /// [`KeyFilter::accepts`] gate against double dispatch.
+    /// [`KeyFilter::takes_press`] gate against double dispatch.
     pub(super) fn show_menu(
         &mut self,
         ui: &mut Ui,
@@ -71,10 +71,10 @@ impl<'a> Editor<'a> {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
         ContextMenu::on(snapshot).show(ui, |ui, popup| {
-            for press in ui.keyboard_events() {
-                let Some(keypress) = filter.accepts(*press) else {
+            for &keypress in ui.keyboard_events() {
+                if !filter.takes_press(keypress) {
                     continue;
-                };
+                }
                 if let Some(action) = EditAction::from_keypress(keypress) {
                     action.execute(self, &clipboard);
                     if EditAction::MENU.iter().any(|item| item.action == action) {

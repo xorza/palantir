@@ -4,10 +4,8 @@
 
 pub(crate) mod menu_item;
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
-use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::palette::Palette;
@@ -61,31 +59,6 @@ impl ContextMenuTheme {
             separator: _,
         } = self;
         item.for_each_text(f);
-    }
-
-    /// Reround the panel and re-nest the row chips inside it. Both radii
-    /// are plain fields (`panel.corners`, and each `item` look's
-    /// `background.corners`), but they are not independent: a chip at or
-    /// above the panel's radius out-rounds the corner it sits in, so
-    /// setting one by hand and not the other is how a menu ends up
-    /// looking like pills in a box. `chip` defaults to one px under
-    /// `panel`, the relationship [`Self::from_palette`] ships.
-    pub fn with_radius(mut self, panel: f32, chip: Option<f32>) -> Self {
-        self.panel.corners = Corners::all(panel);
-        let corners = Corners::all(chip.unwrap_or((panel - 1.0).max(0.0)));
-        // Destructured so a new row state fails to compile here rather
-        // than quietly keeping the radius this method was called to
-        // change — same guarantee `for_each_text` keeps above.
-        let StatefulLook {
-            normal,
-            hovered,
-            active,
-            disabled,
-        } = &mut self.item.looks;
-        for look in [normal, hovered, active, disabled] {
-            look.background.corners = corners;
-        }
-        self
     }
 
     /// The popup panel, holding a [`MenuItemTheme`] and the menu spelling of

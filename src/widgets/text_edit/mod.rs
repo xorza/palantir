@@ -22,6 +22,7 @@ mod text_layout;
 mod unicode;
 mod view_state;
 
+use crate::common::span::Span;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -53,7 +54,6 @@ use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInp
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
-use std::ops::Range;
 
 #[derive(Clone, Default, Debug)]
 struct TextEditState {
@@ -80,7 +80,7 @@ struct TextEditState {
     /// pass can hold it beside `&mut Ui`, and its cursor; empty when
     /// nothing is composing. Retained.
     preedit: String,
-    preedit_cursor: Option<Range<usize>>,
+    preedit_cursor: Option<Span>,
     /// What the field shows while composing — the buffer with the
     /// preedit spliced in at the caret. The bound `String` changes only
     /// when the composition commits. Retained.
@@ -621,8 +621,7 @@ impl<'a> TextEdit<'a> {
             let end = caret_byte + state.preedit.len();
             let cursor = state
                 .preedit_cursor
-                .as_ref()
-                .map_or(state.preedit.len(), |cursor| cursor.end);
+                .map_or(state.preedit.len(), |cursor| cursor.range().end);
             (
                 state.display.as_str(),
                 caret_byte + cursor,
