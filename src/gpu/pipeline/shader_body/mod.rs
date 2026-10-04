@@ -11,6 +11,7 @@ use crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
 
@@ -80,6 +81,7 @@ impl ShaderBody {
                 // does not know, so nothing there compares against it.
                 ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
+                ShaderConstant::float("SHADOW_HALO_SIGMAS", ShadowGeom::HALO_SIGMAS),
             ],
             Self::Curve => vec![
                 ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),

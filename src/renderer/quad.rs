@@ -17,11 +17,11 @@ use bytemuck::{Pod, Zeroable};
 /// offsets, which is the only thing constraining the field order. No tail padding: vertex buffer strides only need
 /// 4-byte alignment, unlike std140 uniforms.
 ///
-/// **Solid fill:** `fill_kind = 0`, `fill` carries the colour,
-/// `fill_lut_row` / `fill_axis` ignored.
+/// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` carries the
+/// colour, `fill_lut_row` / `fill_axis` ignored.
 ///
-/// **Linear-gradient fill:** `fill_kind` low byte = 1, bits 8..16 carry
-/// the `Spread` enum, `fill_lut_row` indexes the gradient atlas texture
+/// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], which
+/// carries the `Spread` beside the tag, `fill_lut_row` indexes the gradient atlas texture
 /// row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the object-space
 /// projection axis and parametric range. `fill` is white, the multiplier
 /// the shader applies to the ramp's colour (`c * in.fill`), so its alpha

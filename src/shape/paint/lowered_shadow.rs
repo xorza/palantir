@@ -41,13 +41,17 @@ impl ShadowGeom {
         }
     }
 
-    /// How far a drop shadow reaches past its moved source: three
-    /// standard deviations of blur, where the Gaussian's tail drops
-    /// below one 8-bit step, plus a positive spread. The shader's drop
-    /// arm repeats it to find the source inside the quad.
+    /// How many standard deviations of blur [`Self::halo`] reaches. The
+    /// quad shader takes it as a substituted constant, to find the source
+    /// inside a drop shadow's quad.
+    pub(crate) const HALO_SIGMAS: f32 = 3.0;
+
+    /// How far a drop shadow reaches past its moved source:
+    /// [`Self::HALO_SIGMAS`] standard deviations of blur, where the
+    /// Gaussian's tail drops below one 8-bit step, plus a positive spread.
     #[inline]
     pub(crate) const fn halo(self) -> f32 {
-        3.0 * self.blur.max(0.0) + self.spread.max(0.0)
+        Self::HALO_SIGMAS * self.blur.max(0.0) + self.spread.max(0.0)
     }
 }
 

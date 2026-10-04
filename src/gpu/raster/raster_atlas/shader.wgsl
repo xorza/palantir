@@ -35,7 +35,7 @@ struct VertexOut {
 
 // The `uv_and_kind` layout: `u` in the low `U_BITS`, the carried flags in
 // the `FLAG_MASK` bits above it, `v` from `V_SHIFT` up. Rust owns every
-// number and substitutes it in — see `RasterQuad::shader_module`.
+// number and substitutes it in — see `raster_quad` and `ShaderBody`.
 const U_BITS: u32 = /*{U_BITS}*/;
 const U_MASK: u32 = (1u << U_BITS) - 1u;
 const V_SHIFT: u32 = /*{V_SHIFT}*/;
@@ -105,7 +105,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         return premultiply(in.color.rgb, in.color.a * cov);
     }
     // Colour emoji or colour icon: the sRGB texture decodes to linear
-    // straight RGBA on sample. Premultiply at output; the run alpha modulates
+    // straight RGBA on load. Premultiply at output; the run alpha modulates
     // the whole premultiplied result, so faded text fades its emoji too and a
     // faded icon fades whole.
     let s = textureLoad(color_atlas, vec2<i32>(in.texel), 0);

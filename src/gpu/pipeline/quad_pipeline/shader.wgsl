@@ -26,6 +26,10 @@ const BLUR_REACH_SIGMAS: f32 = 4.0;
 // 8-bit step.
 const BLUR_ARC_SLICES: u32 = 12u;
 
+// How far a drop shadow's quad reaches past its moved source, in σ, beside
+// the positive spread (`ShadowGeom::halo`).
+const SHADOW_HALO_SIGMAS: f32 = /*{SHADOW_HALO_SIGMAS}*/;
+
 const SQRT_HALF: f32 = 0.70710678;
 const INV_SQRT_TAU: f32 = 0.39894228;
 
@@ -43,10 +47,10 @@ const SPREAD_SHIFT: u32 = /*{SPREAD_SHIFT}*/;
 const SPREAD_MASK: u32 = /*{SPREAD_MASK}*/;
 
 // Brush kind tag:
-//   0 = solid  (use `fill` directly)
-//   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
-//   2 = radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
-//   3 = conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
+//   solid  (use `fill` directly)
+//   linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
+//   radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
+//   conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
 const BRUSH_KIND_SOLID:        u32 = /*{BRUSH_KIND_SOLID}*/;
 const BRUSH_KIND_LINEAR:       u32 = /*{BRUSH_KIND_LINEAR}*/;
 const BRUSH_KIND_RADIAL:       u32 = /*{BRUSH_KIND_RADIAL}*/;
@@ -489,7 +493,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let sigma  = in.fill_axis.z;
         let spread = in.fill_axis.w;
         let half   = in.size * 0.5;
-        let source_half = half - vec2<f32>(3.0 * sigma + max(spread, 0.0));
+        let source_half = half - vec2<f32>(SHADOW_HALO_SIGMAS * sigma + max(spread, 0.0));
         // CSS clips an outer shadow inside the box that casts it
         // (Backgrounds 3 §7.1.1). Only where S's own coverage is full:
         // the fill drawn over S's edge pixels then blends with the shadow
