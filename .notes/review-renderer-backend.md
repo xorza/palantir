@@ -5,16 +5,6 @@ Whoever addresses an item deletes it.
 Scope: `src/gpu` (`WgpuBackend` and everything it draws through), the
 backend half of the renderer. Test code is out of scope.
 
-## Dependency cycle between the surface and the backend
-
-- [ ] `src/gpu/surface/backbuffer.rs:4`, `:53`, `:105` — `Backbuffer::ensure`
-  and `Backbuffer::new` take `&WgpuBackend` only to get the device and
-  `backbuffer_bind_group` (`wgpu_backend/mod.rs:1004`). `WgpuBackend`
-  imports `Backbuffer`, so `gpu::surface` and `gpu::wgpu_backend` depend on
-  each other. Target: `Backbuffer::ensure(slot, device, binding, size,
-  format)` with the shared texture binding (see the next-but-one group),
-  and remove `WgpuBackend::backbuffer_bind_group`.
-
 ## The immediate-region contract is stated in three ways that disagree
 
 - [ ] `src/gpu/pipeline/mod.rs:15-24`, `src/gpu/pipeline/pipeline_recipe.rs:66-69`,
