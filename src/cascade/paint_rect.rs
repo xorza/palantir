@@ -9,13 +9,14 @@ use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnims;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::{self, ShapeRecord};
-use crate::shape::stroke_bounds::{self, HALF_FRINGE};
+use crate::shape::stroke_bounds;
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 
@@ -308,7 +309,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     let screen = stroke_bounds::bbox(
                         centerline,
                         *width * shape_transform.scale,
-                        HALF_FRINGE / display_scale,
+                        AA_HALF_WIDTH / display_scale,
                         *cap,
                         (points.len > 2).then_some(*join),
                     );
@@ -322,7 +323,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     let screen = stroke_bounds::bbox(
                         centerline,
                         stroke.width * shape_transform.scale,
-                        HALF_FRINGE / display_scale,
+                        AA_HALF_WIDTH / display_scale,
                         *cap,
                         None,
                     );
@@ -334,7 +335,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                 // two stroked kinds above add it out here.
                 ShapeRecord::Quad(QuadShape::Triangle { bbox, .. }) => clip_screen(
                     lift_to_screen(*bbox, layout_rect.min, shape_transform, None)
-                        .inflated(HALF_FRINGE / display_scale),
+                        .inflated(AA_HALF_WIDTH / display_scale),
                     shape_clip,
                 ),
                 // The three kinds that resolve their whole paint bound in

@@ -5,10 +5,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::shape::style::{LineCap, LineJoin};
 use std::f32::consts;
 
-/// Half-width of the antialiasing fringe every stroke adds beyond its core
-/// half-width, in physical pixels. The curve shader specializes the same value.
-pub(crate) const HALF_FRINGE: f32 = 0.5;
-
 /// SVG-convention miter limit shared by CPU bounds, composition, and the
 /// specialized curve shader.
 pub(crate) const MITER_LIMIT: f32 = 4.0;

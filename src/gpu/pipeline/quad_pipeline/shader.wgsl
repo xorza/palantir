@@ -29,9 +29,6 @@ const BLUR_ARC_SLICES: u32 = 12u;
 const SQRT_HALF: f32 = 0.70710678;
 const INV_SQRT_TAU: f32 = 0.39894228;
 
-// Half-width of the SDF antialiasing transition in physical pixels.
-const AA_RADIUS: f32 = /*{AA_RADIUS}*/;
-
 // A drop shadow clips where its source's own coverage is within this of
 // full: one 8-bit step, so what the clip takes from under an opaque fill
 // never reaches a stored value, while a pixel centre that sits exactly on
@@ -334,18 +331,17 @@ fn normal_cdf_integral(v: f32) -> f32 {
 }
 
 // The CDF at `u` of what one pixel sees of a blurred edge: a Gaussian of
-// `sigma` convolved with the pixel box of half-width `AA_RADIUS`. So
+// `sigma` convolved with the pixel box of half-width `AA_HALF_WIDTH`. So
 // `filter_cdf(e - x, σ)` is the coverage, at a pixel centred on `x`, of
 // the blurred half-line below `e`. At σ = 0 it is the box alone, the same
 // ramp the unblurred shapes are drawn with.
 fn filter_cdf(u: f32, sigma: f32) -> f32 {
-    let box_width = 2.0 * AA_RADIUS;
     if (sigma <= BLUR_EPS) {
-        return clamp((u + AA_RADIUS) / box_width, 0.0, 1.0);
+        return edge_coverage(-u);
     }
     let inv = 1.0 / sigma;
-    return sigma / box_width
-        * (normal_cdf_integral((u + AA_RADIUS) * inv) - normal_cdf_integral((u - AA_RADIUS) * inv));
+    return sigma / (2.0 * AA_HALF_WIDTH)
+        * (normal_cdf_integral((u + AA_HALF_WIDTH) * inv) - normal_cdf_integral((u - AA_HALF_WIDTH) * inv));
 }
 
 // One half of a corner arc's share of `blurred_box_coverage`, integrated
@@ -418,7 +414,7 @@ fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigm
 // its two edge pairs, an empty box covers nothing, and σ = 0 is the box's
 // exact pixel coverage. `radius` is `(tl, tr, br, bl)`, fitted to the box.
 fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32) -> f32 {
-    let reach = BLUR_REACH_SIGMAS * sigma + AA_RADIUS;
+    let reach = BLUR_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
     let right = filter_cdf(half.x - p.x, sigma)
         * (filter_cdf(half.y - radius.z - p.y, sigma) - filter_cdf(radius.y - half.y - p.y, sigma));
     let left = filter_cdf(-half.x - p.x, sigma)
@@ -432,7 +428,7 @@ fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma:
 
 // Composite an SDF shape's fill + inner-edge stroke into premultiplied linear
 // RGBA, given the signed distance `d` (negative inside). `outer_aa =
-// clamp(AA_RADIUS - d)` is the coverage. With a stroke, the stroke covers the annulus
+// edge_coverage(d)` is the coverage. With a stroke, the stroke covers the annulus
 // between the outer edge and the edge inset by `stroke_width`, and the fill
 // covers the interior inside that inset. The two are *spatially disjoint*
 // within any pixel (stroke = `outer_aa - inner_aa`, fill = `inner_aa`), so they
@@ -443,9 +439,9 @@ fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma:
 // fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
 // by the rounded-rect and triangle paths so they can't drift.
 fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
-    let outer_aa = clamp(AA_RADIUS - d, 0.0, 1.0);
+    let outer_aa = edge_coverage(d);
     if (stroke_width > 0.0) {
-        let inner_aa = clamp(AA_RADIUS - (d + stroke_width), 0.0, 1.0);
+        let inner_aa = edge_coverage(d + stroke_width);
         let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
         let fill_a   = inner_aa * fill.a;
         return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
@@ -463,10 +459,10 @@ fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32
 // (no outward AA): the shape is a mask laid exactly over content of
 // the same extent, so its outer boundary is never a visible edge.
 fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
-    let outer_aa = clamp(AA_RADIUS - d, 0.0, 1.0);
+    let outer_aa = edge_coverage(d);
     let fill_a = (1.0 - outer_aa) * fill.a;
     if (stroke_width > 0.0) {
-        let inner_aa = clamp(AA_RADIUS - (d + stroke_width), 0.0, 1.0);
+        let inner_aa = edge_coverage(d + stroke_width);
         let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
         return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
     }
@@ -495,7 +491,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // under them as CSS's geometric clip would, where a clip at the
         // edge itself would open a seam.
         let d_src = sdf_rounded_box_centered(in.local - half + offset, source_half, in.radius);
-        if (d_src <= AA_RADIUS - 1.0 + SHADOW_CLIP_EPS) {
+        if (edge_coverage(d_src) >= 1.0 - SHADOW_CLIP_EPS) {
             return vec4<f32>(0.0);
         }
         // The shadow's radii are S's under the CSS spread rule, fitted
@@ -522,7 +518,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // edge it takes the same coverage ramp the source's fill does, so
         // the two meet without a staircase on a rounded corner.
         let d_src = sdf_rounded_box_centered(in.local - half, half, in.radius);
-        let source_cov = clamp(AA_RADIUS - d_src, 0.0, 1.0);
+        let source_cov = edge_coverage(d_src);
         if (source_cov <= 0.0) {
             return vec4<f32>(0.0);
         }

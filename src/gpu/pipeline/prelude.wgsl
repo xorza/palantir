@@ -23,6 +23,27 @@ struct Immediates {
 };
 var<immediate> imm: Immediates;
 
+// See `AA_HALF_WIDTH` in `primitives::paint::antialias`: the half-width of
+// the box filter every edge is antialiased with.
+const AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
+
+// Coverage, at a pixel centred `d` outside an edge (negative inside), of
+// the side the edge bounds: zero from `AA_HALF_WIDTH` out, full from
+// `AA_HALF_WIDTH` in.
+fn edge_coverage(d: f32) -> f32 {
+    return clamp((AA_HALF_WIDTH - d) / (2.0 * AA_HALF_WIDTH), 0.0, 1.0);
+}
+
+// Coverage, at a pixel centred `r` from a band's centre line, of the band
+// reaching `core_half` to either side: the edge ramp, capped at the share
+// of the filter the band's whole width fills, since a band narrower than
+// the filter can never cover more of a pixel than its own width.
+fn band_coverage(core_half: f32, r: f32) -> f32 {
+    let filter_width = 2.0 * AA_HALF_WIDTH;
+    let plateau = clamp(2.0 * core_half / filter_width, 0.0, 1.0);
+    return clamp((core_half + AA_HALF_WIDTH - r) / filter_width, 0.0, plateau);
+}
+
 // Rec. 709 luma. Both readers weigh colours that have already been
 // decoded to linear, which is the space these coefficients are defined in.
 const LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);

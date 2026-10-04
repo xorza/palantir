@@ -7,25 +7,6 @@ the pipeline modules that build and feed them, and the wire types they read
 
 Whoever addresses an item deletes it.
 
-## One antialiasing fact has three names, and the ramp width is hard-coded
-
-- [ ] `src/renderer/quad.rs:15` (`AA_RADIUS`), `src/shape/stroke_bounds/mod.rs:10`
-  (`HALF_FRINGE`), and the literal `0.5` in the curve bevel at
-  `src/gpu/pipeline/curve_pipeline/shader.wgsl:395`. All three are the
-  half-width of the same 1 px box filter. Each shader formula also hard-codes
-  the ramp slope as 1 (`clamp(AA_RADIUS - d, 0, 1)`), so `AA_RADIUS` does not
-  set a width. It sets the distance where coverage reaches zero. A change to
-  `AA_RADIUS` therefore moves every edge outward and does not widen the ramp.
-  Code that needs the full-coverage distance gets it right by coincidence
-  only:
-  - `quad_pipeline/shader.wgsl:397` writes it as `AA_RADIUS - 1.0`.
-  - `src/renderer/frontend/composer/session.rs:1052` (`record_opaque_cover`)
-    insets the opaque cover by `AA_RADIUS`, but the shader reaches full
-    coverage at `1 - AA_RADIUS`. The two values are equal at 0.5 only.
-  Target: one constant for the filter half-width, substituted into every
-  shader. Coverage written as a function of that one constant, and the
-  CPU-side full-coverage inset derived from the same function.
-
 ## The raster atlas reads a normalized UV through a nearest sampler
 
 - [ ] `src/gpu/raster/raster_atlas/shader.wgsl:68-77, 110, 117`. A quad that

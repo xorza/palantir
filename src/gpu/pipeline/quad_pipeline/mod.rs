@@ -19,7 +19,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::quad::{AA_RADIUS, Quad};
+use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::Vec2;
 use std::slice;
@@ -199,7 +199,6 @@ impl QuadPipeline {
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
         let wgsl = ShaderBody::Quad.specialize(&[
-            ShaderConstant::float("AA_RADIUS", AA_RADIUS),
             // The family tags, not whole packed words: the shader
             // compares them against `fill_kind & 0xFF`, and
             // `FillKind::linear(Spread::Pad).0` only happened to

@@ -63,7 +63,6 @@
 // change the placeholder syntax without updating the substitution.
 const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/;
 const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
-const HALF_FRINGE: f32 = /*{HALF_FRINGE}*/;
 
 // Pinned against `shape::stroke_bounds::MITER_LIMIT` (the composer
 // downgrades sharper miters to bevel, so this only bounds the miter
@@ -135,10 +134,9 @@ struct VsOut {
     // Round/Square caps key on `> 0`; Butt never sees a positive value
     // because Butt doesn't extend.
     @location(1) cap_t: f32,
-    // Strip half-extent: core half-width + AA fringe, physical px.
-    // Fringe is baked in once here so the fragment's coverage is just
-    // `clamp(half_w - r, 0, plateau)`.
-    @location(2) @interpolate(flat) half_w: f32,
+    // Half the stroke's own width, physical px, which `band_coverage`
+    // reads; the strip reaches `AA_HALF_WIDTH` past it.
+    @location(2) @interpolate(flat) core_half: f32,
     // Stroke colour, premultiplied, lerped `color0 → color1` along `t`
     // for strips (constant when both lanes are equal). Multiplies the
     // ramp sample under `FLAG_RAMP_FILL`, once both are straight.
@@ -243,10 +241,11 @@ fn stroke_pos_tan(in: VsIn, t: f32) -> PosTan {
 fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let section = vid / 2u;
     let side = select(-1.0, 1.0, (vid & 1u) != 0u);
-    let half_w = max(in.width * 0.5, 0.0) + HALF_FRINGE;
+    let core_half = max(in.width * 0.5, 0.0);
+    let half_w = core_half + AA_HALF_WIDTH;
 
     var out: VsOut;
-    out.half_w = half_w;
+    out.core_half = core_half;
     out.lut_row = in.fill_lut_row;
     out.offset = 0.0;
     out.cap_t = 0.0;
@@ -358,13 +357,9 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    // Exact box-filter coverage of a `width`-wide band is a trapezoid
-    // whose plateau tops out at `min(width, 1)` — a sub-pixel stroke
-    // can never cover more of a pixel than its own width. Without the
-    // cap a hairline over-brightens up to ~2× near pixel centers and
-    // pulses as its alignment drifts; ≥ 1 px strokes are unaffected.
-    // `width = 2·(half_w - HALF_FRINGE)`, recovered from the varying.
-    let plateau = clamp(2.0 * in.half_w - 1.0, 0.0, 1.0);
+    // `band_coverage` caps a sub-pixel stroke at its own width: without
+    // the cap a hairline over-brightens up to ~2× near pixel centres and
+    // pulses as its alignment drifts.
     var coverage: f32;
     if ((in.flags & FLAG_JOIN) != 0u) {
         // Join chrome. Exact per-kind distance metric around the
@@ -380,7 +375,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             // diamond, seamless against both strips.
             r = max(abs(perp_dot(d_a, rel)), abs(perp_dot(d_b, rel)));
         }
-        coverage = clamp(in.half_w - r, 0.0, plateau);
+        coverage = band_coverage(in.core_half, r);
         if ((in.flags & FLAG_JOIN_BEVEL) != 0u) {
             // Bevel: cut the round base at the bevel face — the line
             // through the two strip core corners, at distance
@@ -391,8 +386,8 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             let len = length(nsum);
             let s = select(1.0, -1.0, perp_dot(d_a, d_b) > 0.0);
             let d_bev = s * dot(rel, nsum) / len
-                - (in.half_w - HALF_FRINGE) * (0.5 * len);
-            coverage = min(coverage, clamp(0.5 - d_bev, 0.0, 1.0));
+                - in.core_half * (0.5 * len);
+            coverage = min(coverage, edge_coverage(d_bev));
         }
     } else {
         // Body (cap_t == 0) and Square cap (cap_t > 0, no rounding)
@@ -406,7 +401,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         if (in.cap_t > 0.0 && (in.flags & FLAG_ROUND_CAP) != 0u) {
             r = length(vec2<f32>(in.cap_t, r));
         }
-        coverage = clamp(in.half_w - r, 0.0, plateau);
+        coverage = band_coverage(in.core_half, r);
     }
     if ((in.flags & FLAG_CLIP) != 0u) {
         // Keep-half-plane tests (bisector clip for segments, face
