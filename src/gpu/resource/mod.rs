@@ -4,7 +4,6 @@
 pub(crate) mod dynamic_buffer;
 pub(crate) mod gpu_gradient_atlas;
 pub(crate) mod gpu_view_targets;
-pub(crate) mod image_binding;
 pub(crate) mod single_quad_buffer;
 pub(crate) mod texture_binding;
 pub(crate) mod texture_region;

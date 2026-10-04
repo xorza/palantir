@@ -24,14 +24,14 @@ pub(crate) struct BlitPipeline {
 }
 
 impl BlitPipeline {
-    pub(crate) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, texture_bgl: &wgpu::BindGroupLayout) -> Self {
         let shader = ShaderBody::Blit.module(device);
         Self {
             shader,
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.blit.pl",
-                &[Some(image_bgl)],
+                &[Some(texture_bgl)],
             ),
         }
     }

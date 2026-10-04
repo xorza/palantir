@@ -594,7 +594,7 @@ impl WindowDriver {
                     let ensured = Backbuffer::ensure(
                         &mut self.backbuffer,
                         backend.device(),
-                        backend.image_binding(),
+                        backend.texture_binding(),
                         size,
                         target.format(),
                     );

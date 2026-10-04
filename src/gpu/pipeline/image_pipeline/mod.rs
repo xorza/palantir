@@ -48,7 +48,7 @@ impl ImagePipeline {
     /// buffer. The pipelines are built by
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, image_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, texture_bgl: &wgpu::BindGroupLayout) -> Self {
         let shader = ShaderBody::Image.module(device);
 
         let instance_buffer =
@@ -60,7 +60,7 @@ impl ImagePipeline {
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.image.pl",
-                &[Some(image_bgl)],
+                &[Some(texture_bgl)],
             ),
         }
     }
@@ -75,7 +75,7 @@ impl ImagePipeline {
 
     /// Build the base + stencil-test color pipelines against `format` —
     /// the only format-dependent image objects; the per-image textures,
-    /// bind groups, sampler, and `image_bgl` are all format-independent.
+    /// bind groups, sampler, and `texture_bgl` are all format-independent.
     /// Called by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,

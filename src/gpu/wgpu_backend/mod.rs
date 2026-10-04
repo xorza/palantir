@@ -118,7 +118,7 @@ use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
-use crate::gpu::resource::image_binding::ImageBinding;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
@@ -184,6 +184,11 @@ pub(crate) struct WgpuBackend {
     curve: CurvePipeline,
     text: TextBackend,
     debug: DebugOverlay,
+    /// The group-0 layout and sampler every sampled texture binds
+    /// through: the gradient atlas, the images, the `GpuView` targets and
+    /// each window's backbuffer. One, so a group built for one binds in
+    /// every pipeline that samples any of them.
+    texture_binding: TextureBinding,
     /// The rounded-clip chains each group and text batch stamps, rebuilt
     /// on every stencil frame and handed to the schedule only on those.
     /// Retained so a frame costs no allocation.
@@ -241,20 +246,29 @@ impl WgpuBackend {
     /// [`Self::ensure_format`]).
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, config: BackendConfig) -> Self {
         let Gpu { device, queue } = gpu;
-        let image_store = Rc::new(WgpuImageStore::new(device.clone(), queue.clone()));
+        let texture_binding = TextureBinding::new(&device);
+        let image_store = Rc::new(WgpuImageStore::new(
+            device.clone(),
+            queue.clone(),
+            texture_binding.clone(),
+        ));
         resources.images.attach(Rc::clone(&image_store));
         // Gradient LUT atlas resources, shared by the quad and curve
         // pipelines (both sample gradient brushes). Owned here so neither
-        // pipeline owns the other's input — each composes its layout
-        // against `gradient.bgl` and binds `gradient.bg`.
-        let gradient = GpuGradientAtlas::new(&device, resources.gradient_atlas.clone());
-        let quad = QuadPipeline::new(&device, &gradient.bgl);
+        // pipeline owns the other's input — each binds `gradient.bg`.
+        let gradient = GpuGradientAtlas::new(
+            &device,
+            resources.gradient_atlas.clone(),
+            texture_binding.clone(),
+        );
+        let textures = texture_binding.layout();
+        let quad = QuadPipeline::new(&device, textures);
         let mesh = MeshPipeline::new(&device);
-        let image = ImagePipeline::new(&device, image_store.binding().layout());
-        let gpu_view_targets = GpuViewTargets::new(image_store.binding().clone());
-        let curve = CurvePipeline::new(&device, &gradient.bgl);
+        let image = ImagePipeline::new(&device, textures);
+        let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
+        let curve = CurvePipeline::new(&device, textures);
         let raster = RasterProgram::new(&device);
-        let blit = BlitPipeline::new(&device, image_store.binding().layout());
+        let blit = BlitPipeline::new(&device, textures);
         let text = TextBackend::new(&device, &raster, resources.text.clone());
         let icon = IconBackend::new(&device, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&device);
@@ -295,6 +309,7 @@ impl WgpuBackend {
             curve,
             text,
             debug,
+            texture_binding,
             mask_plan: MaskPlan::default(),
             mask_quads: Vec::new(),
             pipelines,
@@ -1003,8 +1018,8 @@ impl WgpuBackend {
     /// The binding every sampled texture here shares, for a host to build
     /// its [`Backbuffer`] through rather than a second layout that would
     /// have to agree with it.
-    pub(crate) fn image_binding(&self) -> &ImageBinding {
-        self.image_store.binding()
+    pub(crate) const fn texture_binding(&self) -> &TextureBinding {
+        &self.texture_binding
     }
 
     /// Skip path: the host's damage compute returned `None`, but the

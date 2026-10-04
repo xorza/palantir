@@ -5,20 +5,6 @@ Whoever addresses an item deletes it.
 Scope: `src/gpu` (`WgpuBackend` and everything it draws through), the
 backend half of the renderer. Test code is out of scope.
 
-## Two texture-binding shapes where the code says there is one
-
-- [ ] `src/gpu/resource/gpu_gradient_atlas.rs:53-58`, `:87`, `:92` —
-  `GpuGradientAtlas` builds its own `texture_binding::layout` and
-  `texture_binding::sampler`. These are the same shape and the same
-  sampler as `ImageBinding` (`image_binding.rs:13`), which the images, the
-  `GpuView` targets, the blit and the backbuffer share. Thus the quad and
-  curve pipelines bind a second, equal layout, against the backbuffer
-  doc's claim of "the one layout every sampled texture here shares".
-  Target: one `TextureBinding` value (the current `ImageBinding`, renamed),
-  built once by the backend and cloned into the gradient atlas, the image
-  store, the view targets and the backbuffer. Then `GpuGradientAtlas`
-  keeps no `bgl` or `sampler` of its own.
-
 ## Arguments threaded down the schedule walk
 
 - [ ] `src/gpu/frame/schedule/mod.rs:210`, `:522`, `:555` — `buffer`,
@@ -64,9 +50,6 @@ describes them.
   0 needs to sample". There is no sampler, and the shader loads texels.
 - [ ] `src/gpu/raster/raster_atlas/mod.rs:258` — "Order matches
   `ContentType as usize`: [Mask, RgbaF32]". The variant is `Color`.
-- [ ] `src/gpu/resource/texture_binding.rs:58-59` — "The raster atlases
-  build their own, and should: they sample at exactly one texel per pixel
-  and want `Nearest`". They have no sampler now.
 - [ ] `src/gpu/resource/wgpu_image_store.rs:160-161` — "one texel per pixel
   with `Nearest`". Say that the raster shader reads texels by index.
 - [ ] `src/gpu/pipeline/mesh_pipeline/mod.rs:136` — "re-pushed by the

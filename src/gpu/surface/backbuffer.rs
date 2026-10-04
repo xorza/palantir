@@ -1,6 +1,6 @@
 //! The off-screen colour target the backbuffer-copy path renders into.
 
-use crate::gpu::resource::image_binding::ImageBinding;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::{self, TargetFormat};
 use glam::UVec2;
 
@@ -53,7 +53,7 @@ impl Backbuffer {
     pub(crate) fn ensure<'s>(
         slot: &'s mut Option<Self>,
         device: &wgpu::Device,
-        binding: &ImageBinding,
+        binding: &TextureBinding,
         size: UVec2,
         format: TargetFormat,
     ) -> EnsuredBackbuffer<'s> {
@@ -107,7 +107,7 @@ impl Backbuffer {
     /// checks.
     fn new(
         device: &wgpu::Device,
-        binding: &ImageBinding,
+        binding: &TextureBinding,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
     ) -> Self {
