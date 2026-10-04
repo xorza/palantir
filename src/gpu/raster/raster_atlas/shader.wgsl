@@ -12,9 +12,9 @@
 struct VertexIn {
     @builtin(vertex_index) idx: u32,
     @location(0) pos: vec2<i32>,
-    @location(1) dim: u32,           // raster texels (w | h<<16)
-    @location(2) size: u32,          // drawn physical px (w | h<<16)
-    @location(3) uv_and_kind: u32,   // (u | flags<<U_BITS | v<<16)
+    @location(1) dim: vec2<u32>,     // raster texels
+    @location(2) size: vec2<u32>,    // drawn physical px
+    @location(3) uv_and_kind: u32,   // (u | flags<<U_BITS | v<<V_SHIFT)
     // Linear straight RGBA — the `Float16x4` fetch widens in hardware,
     // no shader unpack.
     @location(4) color: vec4<f32>,
@@ -33,16 +33,20 @@ struct VertexOut {
     @location(3) @interpolate(flat) texel_rect: vec4<i32>,
 }
 
-// The `uv_and_kind` layout. Rust owns every number here and substitutes it in
-// — see `raster_atlas::quad`, which panics if a marker goes unreplaced.
+// The `uv_and_kind` layout: `u` in the low `U_BITS`, the carried flags in
+// the `FLAG_MASK` bits above it, `v` from `V_SHIFT` up. Rust owns every
+// number and substitutes it in — see `RasterQuad::shader_module`.
 const U_BITS: u32 = /*{U_BITS}*/;
 const U_MASK: u32 = (1u << U_BITS) - 1u;
-// The two flags, already shifted down past `u`.
+const V_SHIFT: u32 = /*{V_SHIFT}*/;
+// The carried flags, already shifted down past `u`.
+const FLAG_MASK: u32 = /*{FLAG_MASK}*/;
 const FLAG_DESATURATE: u32 = /*{FLAG_DESATURATE}*/;  // colour icons only; see `fs`
 const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample colour, not mask
 // Set by `vs`, not carried in: the quad is drawn at a size other than its
-// raster's, so `fs` filters instead of reading texel for texel.
-const FLAG_RESAMPLE: u32 = 4u;
+// raster's, so `fs` filters instead of reading texel for texel. The bit
+// just above the carried ones.
+const FLAG_RESAMPLE: u32 = FLAG_MASK + 1u;
 
 // Group(0) = the atlas textures. Every read is a `textureLoad` by texel,
 // so there is no sampler.
@@ -51,19 +55,13 @@ const FLAG_RESAMPLE: u32 = 4u;
 
 @vertex
 fn vs(in: VertexIn) -> VertexOut {
-    let w = in.dim & 0xFFFFu;
-    let h = (in.dim >> 16u) & 0xFFFFu;
-
-    // u in the low U_BITS, the two flags above it, v in the upper 16.
     let u = in.uv_and_kind & U_MASK;
-    let flags = (in.uv_and_kind >> U_BITS) & 0x3u;
-    let v = (in.uv_and_kind >> 16u) & 0xFFFFu;
+    let flags = (in.uv_and_kind >> U_BITS) & FLAG_MASK;
+    let v = in.uv_and_kind >> V_SHIFT;
 
     let corner = vec2<u32>(in.idx & 1u, (in.idx >> 1u) & 1u);
-    let dim = vec2<u32>(w, h);
-    let size = vec2<u32>(in.size & 0xFFFFu, (in.size >> 16u) & 0xFFFFu);
-    let pos = in.pos + vec2<i32>(size * corner);
-    let uv_texel = vec2<f32>(vec2<u32>(u, v) + dim * corner);
+    let pos = in.pos + vec2<i32>(in.size * corner);
+    let uv_texel = vec2<f32>(vec2<u32>(u, v) + in.dim * corner);
 
     var out: VertexOut;
     out.position = clip_from_px(vec2<f32>(pos));
@@ -71,9 +69,9 @@ fn vs(in: VertexIn) -> VertexOut {
     // Straight-alpha linear color. Shader premuls at output; no sRGB
     // decode — the instance lanes are linear.
     out.color = in.color;
-    out.flags = flags | select(0u, FLAG_RESAMPLE, any(size != dim));
+    out.flags = flags | select(0u, FLAG_RESAMPLE, any(in.size != in.dim));
     out.texel = uv_texel;
-    out.texel_rect = vec4<i32>(vec2<i32>(vec2<u32>(u, v)), vec2<i32>(vec2<u32>(u, v) + dim) - 1);
+    out.texel_rect = vec4<i32>(vec2<i32>(vec2<u32>(u, v)), vec2<i32>(vec2<u32>(u, v) + in.dim) - 1);
     return out;
 }
 
