@@ -5,7 +5,7 @@ Every item the crate exports with the default features plus `golden`, from rustd
 associated constants, and the traits it implements. `internals` and `bench` are left out:
 they exist for this crate's own tests and benches.
 
-Generated on top of `514780b7`. Findings and recommendations are in `API_CHANGES.md`.
+Generated on top of `a96e27bf`. Findings and recommendations are in `API_CHANGES.md`.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -585,7 +585,8 @@ struct           Sense
     assoc_const HOVER
     assoc_const CLICK
     assoc_const DRAG
-    assoc_const SCROLL
+    assoc_const SCROLL_X
+    assoc_const SCROLL_Y
     assoc_const PINCH
     assoc_const NONE
     assoc_const ALL
@@ -597,6 +598,7 @@ struct           Sense
     const fn insert(self, other)
     const fn remove(self, other)
     const fn set(self, other, on)
+    assoc_const SCROLL
     assoc_const ABSORB_POINTER
     traits: BitOr, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, StructuralPartialEq
 struct           Shortcut

@@ -15,6 +15,7 @@ pub(crate) mod keyboard;
 pub(crate) mod pointer;
 pub(crate) mod policy;
 pub(crate) mod scope;
+pub(crate) mod scroll_targets;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
 pub(crate) mod target_scroll_delta;

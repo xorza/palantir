@@ -12,7 +12,10 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
+use crate::widgets::scroll::Scroll;
+use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
@@ -312,6 +315,75 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
     record(&mut h, 2);
     record(&mut h, 2);
     assert!(in_clip(&mut h), "the band panned to the chip End selected");
+}
+
+/// An overflowing strip pans on a horizontal wheel — the Shift+wheel a
+/// Linux or Windows host turns into one, too — and hands a vertical one
+/// to the page behind it while the page can scroll. Over a page that
+/// fits, nothing else pans y, so the strip takes the vertical turn as
+/// horizontal movement.
+#[test]
+fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
+    let page = WidgetId::from_hash("page");
+    let band = strip_id().with("band");
+    // (case, page content height, page offset and band offset after the
+    // vertical turn of 25 px)
+    let cases: [(&str, f32, f32, f32); 2] = [
+        ("the page scrolls, so it takes y", 600.0, 25.0, 30.0),
+        ("the page fits, so the strip takes y", 50.0, 0.0, 55.0),
+    ];
+    for (label, filler_h, page_y, band_x) in cases {
+        let build = |ui: &mut Ui| {
+            let items = items(ui, TabBadge::None);
+            Scroll::vertical()
+                .id(page)
+                .size((Sizing::fixed(300.0), Sizing::fixed(150.0)))
+                .show(ui, |ui| {
+                    TabStrip::new(&items)
+                        .id(strip_id())
+                        .selected(0)
+                        .size((Sizing::fixed(90.0), Sizing::HUG))
+                        .show(ui);
+                    Block::new()
+                        .id_salt("filler")
+                        .size((Sizing::fixed(280.0), Sizing::fixed(filler_h)))
+                        .show(ui);
+                });
+        };
+        let mut h = UiHarness::new(SURFACE);
+        h.prime(2, build);
+        h.move_to(Vec2::new(40.0, 10.0));
+
+        h.scroll_pixels(Vec2::new(20.0, 0.0));
+        h.frame(build);
+        assert_eq!(
+            h.state::<ScrollState>(band).offset.x,
+            20.0,
+            "{label}: wheel x"
+        );
+        // What the host makes of Shift+wheel y on Linux: the swap is
+        // pinned with the host's input translation.
+        h.scroll_pixels(Vec2::new(10.0, 0.0));
+        h.frame(build);
+        assert_eq!(
+            h.state::<ScrollState>(band).offset.x,
+            30.0,
+            "{label}: Shift+wheel"
+        );
+
+        h.scroll_pixels(Vec2::new(0.0, 25.0));
+        h.frame(build);
+        assert_eq!(
+            h.state::<ScrollState>(page).offset.y,
+            page_y,
+            "{label}: page"
+        );
+        assert_eq!(
+            h.state::<ScrollState>(band).offset.x,
+            band_x,
+            "{label}: band"
+        );
+    }
 }
 
 /// Travel is scoped to focus: the same press with the strip unfocused

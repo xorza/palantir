@@ -9,6 +9,7 @@ use crate::input::interaction::drag::Drag;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::zoom_factor::ZoomFactor;
 use crate::internals::harness::UiHarness;
@@ -168,15 +169,15 @@ fn a_departed_pointer_clears_every_routed_target() {
     let mut s = InputState {
         pointer_pos: None,
         hovered: Some(id),
-        scroll_target: Some(id),
+        scroll_targets: ScrollTargets::both(id),
         pinch_target: Some(id),
         ..Default::default()
     };
 
     s.refresh_pointer_targets(&Cascade::default());
     assert_eq!(
-        (s.hovered, s.scroll_target, s.pinch_target),
-        (None, None, None),
+        (s.hovered, s.scroll_targets, s.pinch_target),
+        (None, ScrollTargets::default(), None),
         "a pointer that left takes every routed target with it",
     );
 }
@@ -185,7 +186,7 @@ fn a_departed_pointer_clears_every_routed_target() {
 /// fast path: every pointer/capture-derived signal flips it false, but
 /// `focused` deliberately does not (it can be set mid-record).
 ///
-/// `hovered` / `scroll_target` / `pinch_target` are not among the signals
+/// `hovered` / `scroll_targets` / `pinch_target` are not among the signals
 /// tested, and cannot be: `refresh_pointer_targets` clears all three
 /// whenever the pointer leaves, so a routed target without a pointer is
 /// a state nothing can reach. The invariant is asserted below, and

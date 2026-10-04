@@ -1,6 +1,7 @@
 //! The editor's viewport: where the text block is scrolled to, and when
 //! the caret blinks.
 
+use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::scene::tree::paint_anims::curves;
@@ -30,6 +31,10 @@ pub(super) struct ViewState {
     /// the block are one implementation. What differs is only what moves
     /// it — a wheel and the caret here, a wheel and two bars there.
     pub(super) scroll: ScrollState,
+    /// The wheel axes [`Self::scroll`] could pan as of the last update —
+    /// what the field senses, so a wheel it cannot spend reaches the
+    /// container behind it.
+    pub(super) wheel_axes: Sense,
     pub(super) block_offset: Vec2,
     pub(super) last_caret_change: Duration,
     /// Caret byte the view last scrolled to. Compared against the
@@ -80,11 +85,19 @@ impl ViewState {
     /// bargain: the wheel roams freely, typing snaps back.
     fn update_scroll(&mut self, input: ViewUpdateInput) {
         let layout = input.geometry.layout;
+        let ctx = layout.ctx;
         let Some(viewport) = layout.inner.map(|rect| rect.size) else {
             self.scroll = ScrollState::default();
+            // No box yet, so no overflow to read: the field claims the
+            // axis it pans, and the next frame has the box an event after
+            // this one pans.
+            self.wheel_axes = if ctx.multiline {
+                Sense::SCROLL_Y
+            } else {
+                Sense::SCROLL_X
+            };
             return;
         };
-        let ctx = layout.ctx;
         let caret = input.geometry.caret_pos;
         let follow_caret =
             input.caret_byte != self.last_followed_caret || input.changed || input.gained_focus;
@@ -101,16 +114,11 @@ impl ViewState {
             viewport,
             content_margin: Spacing::ZERO,
         };
-        // One line, so both wheel axes pan a single-line field
-        // horizontally — a plain vertical wheel over one is the common
-        // gesture, and there is nothing vertical to spend it on.
-        let wheel = if ctx.multiline {
-            Vec2::new(0.0, input.wheel.y)
-        } else {
-            Vec2::new(input.wheel.x + input.wheel.y, 0.0)
-        };
+        // A plain vertical wheel over a single-line field arrives on x
+        // already: routing moves it there while nothing under the pointer
+        // pans vertically.
         self.scroll
-            .apply_wheel_pan(bounds, !ctx.multiline, ctx.multiline, wheel, false);
+            .apply_wheel_pan(bounds, !ctx.multiline, ctx.multiline, input.wheel, false);
         if follow_caret {
             let offset = &mut self.scroll.offset;
             if ctx.multiline {
@@ -139,6 +147,9 @@ impl ViewState {
             }
         }
         self.scroll.clamp_to_natural(bounds);
+        self.wheel_axes = self
+            .scroll
+            .wheel_sense(bounds, !ctx.multiline, ctx.multiline);
     }
 
     /// Returns the caret's blink animation, if the field has focus.

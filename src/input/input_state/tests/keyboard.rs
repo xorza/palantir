@@ -9,6 +9,7 @@ use crate::input::input_state::tests::{
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::shortcut::Shortcut;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -23,7 +24,7 @@ use crate::widgets::panel::Panel;
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
     let target = WidgetId::from_hash("scroll");
-    state.scroll_target = Some(target);
+    state.scroll_targets = ScrollTargets::both(target);
     state.feed(InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)));
     let before_scroll = state.frame_target_deltas.clone();
     state.feed(InputEvent::key_down(Key::ArrowLeft));

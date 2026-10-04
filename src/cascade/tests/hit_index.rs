@@ -1,5 +1,6 @@
 //! Which rows reach the hit index, in what order, carrying which rect.
 
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -84,7 +85,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     );
     let targets = h.ui.cascade().hit_test_targets(pos);
     assert_eq!(targets.hover, Some(disabled));
-    assert_eq!(targets.scroll, Some(popup_scroll));
+    assert_eq!(targets.scroll, ScrollTargets::both(popup_scroll));
     assert_eq!(targets.pinch, None);
 
     h.frame(|ui| {
