@@ -199,10 +199,11 @@ impl QuadPipeline {
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, gradient_bgl: &wgpu::BindGroupLayout) -> Self {
         let wgsl = ShaderBody::Quad.specialize(&[
+            ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
+            ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
+            ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
             // The family tags, not whole packed words: the shader
-            // compares them against `fill_kind & 0xFF`, and
-            // `FillKind::linear(Spread::Pad).0` only happened to
-            // equal the tag because `Pad` is zero.
+            // compares them against the tag bits alone.
             ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::TAG_SOLID),
             ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
             ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),

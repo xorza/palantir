@@ -36,7 +36,13 @@ const INV_SQRT_TAU: f32 = 0.39894228;
 // interpolated `local` carries.
 const SHADOW_CLIP_EPS: f32 = 1.0 / 255.0;
 
-// Brush kind low byte:
+// `fill_kind`'s fields: the family tag in the `FILL_TAG_MASK` bits and
+// the spread mode `SPREAD_SHIFT` up. Each flag bit is a constant below.
+const FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
+const SPREAD_SHIFT: u32 = /*{SPREAD_SHIFT}*/;
+const SPREAD_MASK: u32 = /*{SPREAD_MASK}*/;
+
+// Brush kind tag:
 //   0 = solid  (use `fill` directly)
 //   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
 //   2 = radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
@@ -45,20 +51,18 @@ const BRUSH_KIND_SOLID:        u32 = /*{BRUSH_KIND_SOLID}*/;
 const BRUSH_KIND_LINEAR:       u32 = /*{BRUSH_KIND_LINEAR}*/;
 const BRUSH_KIND_RADIAL:       u32 = /*{BRUSH_KIND_RADIAL}*/;
 const BRUSH_KIND_CONIC:        u32 = /*{BRUSH_KIND_CONIC}*/;
-// Bit 16 of fill_kind: fragment fast path. The composer sets it on a
+// Fragment fast path (`FillKind::FAST_BIT`). The composer sets it on a
 // solid, sharp, stroke-less quad whose rect is pixel-aligned — every
 // rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
-// returns the premultiplied fill directly. Kept in lockstep with
-// `FillKind::FAST_BIT` on the CPU side.
+// returns the premultiplied fill directly.
 const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
-// Bit 17 of fill_kind: windowed rect — inverted fill coverage. The fill
+// Windowed rect (`FillKind::WINDOW_BIT`) — inverted fill coverage. The fill
 // paints *outside* the rounded boundary (the corner wedges, out to the
 // quad edge), the stroke keeps its usual inner-edge annulus, and the
 // window interior stays transparent. Cheap stand-in for rounded-corner
 // scissor clipping: draw content as plain rects, then paint this over
 // it with the surrounding background as `fill`. Only meaningful for the
-// rect path (kinds 0..3 — solid + gradients). Kept in lockstep with
-// `FillKind::WINDOW_BIT` on the CPU side.
+// rect path (solid and the gradients).
 const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill` is the shadow colour, `radius` is the source rect's corner
@@ -76,7 +80,7 @@ const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // radius, f16 like every other lane. Stroke uses the usual
 // `stroke_color`/`stroke_width`.
 const BRUSH_KIND_TRIANGLE:     u32 = /*{BRUSH_KIND_TRIANGLE}*/;
-// Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
+// Spread mode, only meaningful for gradients.
 // `Pad` is the fallback below rather than a constant of its own.
 const SPREAD_REPEAT:  u32 = /*{SPREAD_REPEAT}*/;
 const SPREAD_REFLECT: u32 = /*{SPREAD_REFLECT}*/;
@@ -135,7 +139,7 @@ fn vs(
 
     var corner_lanes = radius;
     var axis_lanes = fill_axis;
-    if ((fill_kind & 0xFFu) == BRUSH_KIND_TRIANGLE) {
+    if ((fill_kind & FILL_TAG_MASK) == BRUSH_KIND_TRIANGLE) {
         // Corner points as unorm16 shares of the quad: an f16 lane steps
         // a whole pixel above 1024 px, a share of the quad steps
         // `size / 65535` at any size.
@@ -257,11 +261,11 @@ fn apply_spread(t: f32, mode: u32) -> f32 {
 // 0..1 axis), maps to 0..1 via `(t0, t1)`, applies spread, samples
 // the LUT row at `fill_lut_row`.
 fn eval_fill(in: VertexOut) -> vec4<f32> {
-    let kind = in.fill_kind & 0xFFu;
+    let kind = in.fill_kind & FILL_TAG_MASK;
     if (kind == BRUSH_KIND_SOLID) {
         return in.fill;
     }
-    let spread  = (in.fill_kind >> 8u) & 0xFFu;
+    let spread  = (in.fill_kind >> SPREAD_SHIFT) & SPREAD_MASK;
     let local01 = in.local * in.inv_size;
     var t01: f32 = 0.0;
     if (kind == BRUSH_KIND_LINEAR) {
@@ -476,7 +480,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if ((in.fill_kind & FILL_FLAG_FAST) != 0u) {
         return premultiply(in.fill.rgb, in.fill.a);
     }
-    let kind = in.fill_kind & 0xFFu;
+    let kind = in.fill_kind & FILL_TAG_MASK;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
         // Drop shadow: the quad is the source S moved by `offset` and
         // grown by the halo, so S sits `offset` back from its centre.

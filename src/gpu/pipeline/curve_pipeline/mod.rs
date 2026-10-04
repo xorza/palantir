@@ -85,6 +85,7 @@ impl CurvePipeline {
             ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
             ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
             ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
+            ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
             ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
         ]);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {

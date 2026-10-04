@@ -82,7 +82,8 @@ const KIND_JOIN_BEVEL: u32 = /*{KIND_JOIN_BEVEL}*/;
 const KIND_JOIN_MITER: u32 = /*{KIND_JOIN_MITER}*/;
 
 // Solid is the fill this falls through to, so only the ramp tag is
-// pinned.
+// pinned, with the bits of `fill_kind` that hold the tag.
+const FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
 const BRUSH_KIND_RAMP: u32 = /*{BRUSH_KIND_RAMP}*/;
 
 // `VsOut.flags` bits — the per-instance predicates the fragment
@@ -253,7 +254,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.jv0 = vec4<f32>(0.0);
     out.jv1 = vec4<f32>(0.0);
     out.color = premultiply(in.color0.rgb, in.color0.a);
-    var flags = select(0u, FLAG_RAMP_FILL, (in.fill_kind & 0xFFu) == BRUSH_KIND_RAMP);
+    var flags = select(0u, FLAG_RAMP_FILL, (in.fill_kind & FILL_TAG_MASK) == BRUSH_KIND_RAMP);
     var phys: vec2<f32>;
 
     if (in.kind >= KIND_JOIN_ROUND) {

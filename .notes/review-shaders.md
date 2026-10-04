@@ -9,12 +9,6 @@ Whoever addresses an item deletes it.
 
 ## Wire layouts: the shaders restate numbers that Rust says it owns
 
-- [ ] `src/primitives/packed/fill_kind.rs:30-34` says that every number is
-  substituted. But the tag mask and the spread shift are literals in two
-  shaders: `quad_pipeline/shader.wgsl:129, 251, 255, 382` (`& 0xFFu`,
-  `>> 8u`) and `curve_pipeline/shader.wgsl:257` (`& 0xFFu`). Target:
-  substitute `TAG_MASK` and `SPREAD_SHIFT` from `FillKind`, which already
-  owns them in `tag()` and `gradient()`.
 - [ ] `src/gpu/raster/raster_atlas/shader.wgsl:34-35` says that Rust owns
   every number. But the `v` shift `16u`, the masks `0xFFFFu` and `0x3u`
   (`:54-64`), and `FLAG_RESAMPLE = 4u` (`:43`) are literals. A compile-time
