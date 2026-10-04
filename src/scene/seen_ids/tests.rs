@@ -18,7 +18,7 @@ fn ep(node: u32) -> Endpoint {
 fn open(ids: &mut SeenIds, raw_id: WidgetId, is_explicit: bool, node: u32) -> WidgetId {
     let resolved = ids.resolve(raw_id, is_explicit);
     ids.record_endpoint(resolved, ep(node));
-    resolved.id
+    resolved.id()
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn resolve_queues_pending_only_for_explicit_collisions() {
     let second = ids.resolve(y, true);
     assert_eq!(ids.pending.len(), 1);
     assert_eq!(ids.pending[0].first_raw_id, y);
-    assert_eq!(ids.pending[0].second_final_id, second.id);
+    assert_eq!(ids.pending[0].second_final_id, second.id());
 }
 
 #[test]
@@ -152,8 +152,8 @@ fn resolving_twice_before_recording_disambiguates() {
     let x = WidgetId::from_hash("x");
     let first = ids.resolve(x, false);
     let second = ids.resolve(x, false);
-    assert_eq!(first.id, x);
-    assert_eq!(second.id, x.with(1));
+    assert_eq!(first.id(), x);
+    assert_eq!(second.id(), x.with(1));
     assert!(ids.record_endpoint(second, ep(2)).is_none());
     assert!(ids.record_endpoint(first, ep(1)).is_none());
 
@@ -161,7 +161,7 @@ fn resolving_twice_before_recording_disambiguates() {
     // a widget recording a wrapper under the id it resolved.
     let mut ids = SeenIds::default();
     let owner = ids.resolve(x, false);
-    assert_eq!(owner.id, x);
+    assert_eq!(owner.id(), x);
     assert_eq!(
         ids.resolve(x, true),
         owner,
@@ -169,11 +169,11 @@ fn resolving_twice_before_recording_disambiguates() {
     );
     assert!(ids.record_endpoint(owner, ep(1)).is_none());
     // Once recorded, an explicit repeat is a collision as ever.
-    assert_eq!(ids.resolve(x, true).id, x.with(1));
+    assert_eq!(ids.resolve(x, true).id(), x.with(1));
 
     // A reservation lasts one pass.
     ids.pre_record();
-    assert_eq!(ids.resolve(x, false).id, x);
+    assert_eq!(ids.resolve(x, false).id(), x);
 
     // And it is no recording: an id resolved and never shown has no
     // endpoint, is in no frame's recording, and so is never reported
@@ -181,7 +181,7 @@ fn resolving_twice_before_recording_disambiguates() {
     let mut ids = SeenIds::default();
     let y = WidgetId::from_hash("y");
     open(&mut ids, x, false, 1);
-    assert_eq!(ids.resolve(y, false).id, y);
+    assert_eq!(ids.resolve(y, false).id(), y);
     assert_eq!(ids.endpoint(y), None);
     assert!(ids.rollover().is_empty());
     assert_eq!(ids.last_frame().keys().copied().collect::<Vec<_>>(), [x]);

@@ -1122,7 +1122,7 @@ impl Ui {
         node: &Node,
         chrome: Option<&Background>,
     ) {
-        let ring = if self.input.focused() == Some(resolved.id) && self.input.focus_visible() {
+        let ring = if self.input.focused() == Some(resolved.id()) && self.input.focus_visible() {
             let theme = &self.theme.focus_ring;
             Stroke::new(domain::color(theme.color), domain::length(theme.width))
         } else {

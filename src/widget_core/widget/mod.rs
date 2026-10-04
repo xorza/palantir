@@ -187,7 +187,7 @@ impl Widget {
     /// record to a second occurrence, and the reads made here would have
     /// keyed the first.
     pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId {
-        self.resolved(ui).id
+        self.resolved(ui).id()
     }
 
     /// [`Self::resolve`], keeping the entry the id holds in the pass's id

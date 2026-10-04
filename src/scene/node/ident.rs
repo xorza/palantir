@@ -74,7 +74,7 @@ impl Ident {
         match self {
             Ident::Verbatim(id) => id,
             Ident::Resolved(resolved) => {
-                unreachable!("resolved id {:?} fed back to the forest", resolved.id)
+                unreachable!("resolved id {:?} fed back to the forest", resolved.id())
             }
             Ident::Auto(id) | Ident::Hash(id) => match parent {
                 Some(p) => p.with(id.0),

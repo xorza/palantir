@@ -26,7 +26,14 @@ impl NodeFlags {
     const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
     /// How many low bits of [`Self::bits`] can be set — what a caller
     /// packing the word beside others reserves for it.
-    pub(crate) const WIDTH: u32 = 21;
+    pub(crate) const WIDTH: u32 = (Self::SENSE_MASK
+        | Self::DISABLED
+        | Self::CLIP_MASK
+        | Self::FOCUSABLE
+        | Self::SCOPE_MASK
+        | Self::NOT_TAB_STOP
+        | Self::ARROW_MASK)
+        .bit_width();
 
     /// The whole bitset, for callers that fold it into a hash rather
     /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
@@ -140,9 +147,4 @@ const _: () = assert!(
 const _: () = assert!(
     ((KeyFilter::ALL.bits() as u32) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
     "KeyFilter uses more than 8 bits",
-);
-const _: () = assert!(
-    (NodeFlags::ARROW_MASK | NodeFlags::NOT_TAB_STOP | NodeFlags::SCOPE_MASK) >> NodeFlags::WIDTH
-        == 0,
-    "NodeFlags outgrew its declared width",
 );
