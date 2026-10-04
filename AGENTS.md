@@ -201,8 +201,8 @@ against it.
   `impl Into<Option<&Theme>>`; a second slot is `<slot>_style`
   (`ComboBox::button_style`). An override of one axis of the resolved slot is
   a named setter (`color`, `thickness`, `font_size`). A widget with chrome has
-  `background(bg)` and `default_background(bg)`; no trait holds the eight in
-  step, a test in `widgets::tests` does.
+  `background(background)` and `default_background(background)`; no trait
+  holds them in step, a test in `widgets::tests` does.
 - **Wrappers.** A wrapper holds the widget it wraps, forwards `Configure` to
   it, and finishes it through that widget's public setters. It never reaches
   past them through a hook only it calls.
@@ -214,7 +214,9 @@ against it.
   the widget's own `response` beside what the frame did, as participles. No
   `*Response` derefs to `Response`. A widget that writes a bound value returns
   `ValueResponse { response, changed, committed }`, and a discrete pick
-  commits at once (`committed == changed`). An overlay records in another
+  commits at once (`committed == changed`). A text editor returns
+  `TextEditResponse`: the same `changed` and `committed`, beside the cancel,
+  submit and focus edges a scrub has no equivalent of. An overlay records in another
   layer and returns `OverlayResponse<R>`: the body's value as `inner`, and
   `dismissed` and `close_requested`. A tooltip senses nothing, so it returns
   `TooltipResponse { visible }`.

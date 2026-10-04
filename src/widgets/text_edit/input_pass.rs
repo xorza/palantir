@@ -20,9 +20,9 @@ use crate::widgets::text_edit::text_layout::TextLayout;
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// Escape cancelled the edit, which also blurs before view
+    /// Escape canceled the edit, which also blurs before view
     /// recording.
-    pub(super) cancelled: bool,
+    pub(super) canceled: bool,
     /// Enter accepted a single-line value this frame.
     pub(super) submitted: bool,
     /// The buffer was mutated this frame (typing, delete, paste, cut,
@@ -92,7 +92,7 @@ impl InputPass<'_> {
             select_all_on_focus,
             filter,
         } = policy;
-        let mut cancelled = false;
+        let mut canceled = false;
         let mut submitted = false;
         let clipboard = ui.clipboard();
 
@@ -103,6 +103,7 @@ impl InputPass<'_> {
             // painter — the input pass has no business in it.
             selection_rects: _,
             placeholder: _,
+            commit_pending: _,
         } = state;
         let was_focused = view.was_focused();
         // Repair persisted byte offsets before any range/slice operation.
@@ -163,7 +164,7 @@ impl InputPass<'_> {
         if !is_focused {
             ed.normalize();
             return InputResult {
-                cancelled,
+                canceled,
                 submitted,
                 edited: ed.edited(),
             };
@@ -193,7 +194,7 @@ impl InputPass<'_> {
             }
             match apply_key(&mut ed, kp) {
                 KeyOutcome::Blur => {
-                    cancelled = true;
+                    canceled = true;
                     assert_only_repeats_after(ui.keyboard_events(), i);
                     break;
                 }
@@ -209,7 +210,7 @@ impl InputPass<'_> {
 
         ed.normalize();
         InputResult {
-            cancelled,
+            canceled,
             submitted,
             edited: ed.edited(),
         }

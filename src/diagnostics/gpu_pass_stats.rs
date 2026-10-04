@@ -5,14 +5,14 @@
 //!
 //! Four kinds of data, set independently as feature support permits:
 //!
-//! - **Whole-pass duration** ([`GpuPassStats::last_pass_ms`]). Always
+//! - **Whole-pass duration** ([`GpuPassStats::last_pass`]). Always
 //!   populated when `TIMESTAMP_QUERY` is on.
-//! - **Per-batch-kind duration** ([`GpuPassStats::last_kind_ms`]).
+//! - **Per-batch-kind duration** ([`GpuPassStats::last_kind`]).
 //!   Populated when `TIMESTAMP_QUERY_INSIDE_PASSES` is on.
 //! - **Pipeline statistics** ([`GpuPassStats::last_pipeline_stats`]).
 //!   Populated when `PIPELINE_STATISTICS_QUERY` is on.
 //! - **Main-pass CPU record time**
-//!   ([`GpuPassStats::last_main_pass_cpu_ms`]). The odd one out: host-side,
+//!   ([`GpuPassStats::last_main_pass_cpu`]). The odd one out: host-side,
 //!   not device-side, so it needs no adapter feature and no opt-in and is
 //!   populated on every submitted frame.
 //!

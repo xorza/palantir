@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` and `bench` are the crate's own test surface and are left out.
 
-Generated on top of `9f2a56d7` (plus the working tree).
+Generated on top of `302aba30` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -607,7 +607,7 @@ Corners
         pub fn top_bottom(top: f32, bottom: f32) -> Self
         pub fn main_diagonal(r: f32) -> Self
         pub fn anti_diagonal(r: f32) -> Self
-        pub fn scaled_by(self, scale: f32) -> Self
+        pub fn scaled_by(self, factor: f32) -> Self
         pub const fn is_approx_zero(&self) -> bool
         impl Clone
         impl Copy
@@ -863,8 +863,8 @@ DockView
             pub fn strip_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
             pub fn splitter_id(state: &DockState<T>, path: DockPath) -> WidgetId
             pub fn tab_key(tab: T) -> u64
-            pub fn scan(state: &DockState<T>, ui: &mut Ui, operations: &mut Vec<DockOperation<T>>)
-            pub fn content_size(state: &DockState<T>, ui: &Ui, group: TabGroupId) -> Option<Size>
+            pub fn scan(ui: &mut Ui, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
+            pub fn content_size(ui: &Ui, state: &DockState<T>, group: TabGroupId) -> Option<Size>
         impl ThemeDefaults  (blanket)
         impl<'a, T: Debug> Debug for DockView<'a, T>
         impl<T> Configure for DockView<'_, T>
@@ -1471,8 +1471,8 @@ ImageHandle
         impl Clone
         impl Debug
 
-ImageLoadError
-    struct ImageLoadError
+ImageTooLarge
+    struct ImageTooLarge
         pub size: UVec2
         pub max_dimension: u32
         impl Clone
@@ -1672,7 +1672,7 @@ KeyPress
 KeyText
     struct KeyText
         // and private fields
-        pub const CAP: usize
+        pub const CAPACITY: usize
         pub const EMPTY: Self
         pub fn new(text: &str) -> Self
         pub fn from_char(c: char) -> Self
@@ -1970,7 +1970,7 @@ PipelineStats
 Platform
     enum Platform
         Mac
-        Win
+        Windows
         Linux
         impl Clone
         impl Copy
@@ -3011,10 +3011,11 @@ TextEditResponse
     struct TextEditResponse<'a>
         pub response: Response<'a>
         pub changed: bool
+        pub committed: bool
         pub submitted: bool
-        pub cancelled: bool
-        pub gained_focus: bool
-        pub lost_focus: bool
+        pub canceled: bool
+        pub focus_gained: bool
+        pub focus_lost: bool
         impl<'a> Debug for TextEditResponse<'a>
 
 TextEditTheme
@@ -3289,7 +3290,7 @@ Ui
         pub fn is_window_open(&self, token: WindowToken) -> bool
         pub fn add_shape<S: Lower>(&mut self, shape: S)
         pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
-        pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError>
+        pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
@@ -4167,8 +4168,14 @@ widget::domain::f64
 widget::domain::f64::is_positive
     const fn is_positive(v: f64) -> bool
 
+widget::domain::f64::is_range
+    const fn is_range(r: &RangeInclusive<f64>) -> bool
+
 widget::domain::f64::positive
     const fn positive(v: f64) -> f64
+
+widget::domain::f64::range
+    const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64>
 
 widget::domain::fraction
     const fn fraction(v: f32) -> f32
@@ -4218,9 +4225,6 @@ widget::domain::is_positive
 widget::domain::is_power_of_two_in
     const fn is_power_of_two_in(n: u32, max: u32) -> bool
 
-widget::domain::is_range
-    const fn is_range(r: &RangeInclusive<f64>) -> bool
-
 widget::domain::length
     const fn length(v: f32) -> f32
 
@@ -4235,9 +4239,6 @@ widget::domain::positive
 
 widget::domain::power_of_two_in
     const fn power_of_two_in(n: u32, max: u32) -> u32
-
-widget::domain::range
-    const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64>
 
 widget::domain::share_of
     const fn share_of(n: f32, d: f32) -> f32

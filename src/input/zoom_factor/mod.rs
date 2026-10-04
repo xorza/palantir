@@ -67,6 +67,7 @@ impl ZoomFactor {
     /// Panics unless `step` is a valid factor and `notches` is a number.
     /// A cold call on a wheel event, so the check costs a frame nothing.
     #[inline]
+    #[track_caller]
     pub fn from_wheel(step: f32, notches: f32) -> Self {
         assert!(is_valid(step), "a zoom step must be finite and positive");
         assert!(!notches.is_nan(), "wheel notches must be a number");

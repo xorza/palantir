@@ -18,7 +18,7 @@ use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconRegistry;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::error::ImageLoadError;
+use crate::renderer::error::ImageTooLarge;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
@@ -106,7 +106,7 @@ impl UiResources {
         &self.windows
     }
 
-    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError> {
+    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
         self.texture_limit.accepts(image.size)?;
         Ok(ImageHandle::new(
             TextureId::reserve(),

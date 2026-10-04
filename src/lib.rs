@@ -447,7 +447,7 @@ pub use icons::icon_table::{IconDefinition, IconId, IconTable};
 pub use primitives::geometry::translate_scale::TranslateScale;
 pub use primitives::identity::widget_id::WidgetId;
 pub use primitives::paint::stroke::Stroke;
-pub use renderer::error::ImageLoadError;
+pub use renderer::error::ImageTooLarge;
 pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::image_registry::image_handle::ImageHandle;
 pub use text::error::FontLoadError;

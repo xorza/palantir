@@ -67,7 +67,7 @@ struct Scrub {
 #[derive(Clone, Copy, Debug)]
 struct EditEnd {
     submitted: bool,
-    cancelled: bool,
+    canceled: bool,
 }
 
 impl Scrub {
@@ -430,15 +430,15 @@ impl<'a> DragValue<'a> {
             let resp = edit.adopt_placement(&self.widget).show(ui);
             EditEnd {
                 submitted: resp.submitted,
-                cancelled: resp.cancelled,
+                canceled: resp.canceled,
             }
         };
-        let changed = if ended.cancelled {
+        let changed = if ended.canceled {
             self.value.restore(original)
         } else {
             self.value.parse_from(&buffer, self.min, self.max)
         };
-        *ui.state_or_default::<DragValueState>(id) = if ended.submitted || ended.cancelled {
+        *ui.state_or_default::<DragValueState>(id) = if ended.submitted || ended.canceled {
             DragValueState::Idle
         } else {
             DragValueState::Editing { buffer, original }

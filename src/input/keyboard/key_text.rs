@@ -4,9 +4,9 @@ use std::fmt;
 use std::str;
 use tinyvec::ArrayVec;
 
-/// [`KeyText::CAP`]'s one definition, because a struct cannot name its
+/// [`KeyText::CAPACITY`]'s one definition, because a struct cannot name its
 /// own associated const in its field types.
-const CAP: usize = 14;
+const CAPACITY: usize = 14;
 
 /// The text a key press produced — what the platform resolved the
 /// layout, the dead keys and the modifiers *into*, riding beside the key
@@ -24,7 +24,7 @@ const CAP: usize = 14;
 ///
 /// **Inline and `Copy`**, so `InputEvent` stays `Copy` and the per-frame
 /// queue stays one flat vector. A key press
-/// produces one grapheme or two, which [`Self::CAP`] holds several times
+/// produces one grapheme or two, which [`Self::CAPACITY`] holds several times
 /// over; text longer than that is an IME commit, and this vocabulary
 /// does not carry one.
 ///
@@ -35,7 +35,7 @@ const CAP: usize = 14;
 /// so it happens once, here, on the way in.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct KeyText {
-    utf8: ArrayVec<[u8; CAP]>,
+    utf8: ArrayVec<[u8; CAPACITY]>,
 }
 
 impl KeyText {
@@ -43,22 +43,22 @@ impl KeyText {
     /// characters a keyboard produces, or fourteen of the narrowest.
     /// Sized so the whole value is 16 bytes, since `ArrayVec` spends two
     /// on its own length.
-    pub const CAP: usize = CAP;
+    pub const CAPACITY: usize = CAPACITY;
 
     /// A press that produced no text — a named key, or a dead key still
     /// waiting for the one that completes it.
     pub const EMPTY: Self = Self {
-        utf8: ArrayVec::from_array_empty([0; CAP]),
+        utf8: ArrayVec::from_array_empty([0; CAPACITY]),
     };
 
     /// `text` with its control characters dropped, truncated between
-    /// characters once [`Self::CAP`] is full.
+    /// characters once [`Self::CAPACITY`] is full.
     pub fn new(text: &str) -> Self {
         let mut out = Self::EMPTY;
         for c in text.chars().filter(|c| !c.is_control()) {
             let mut buf = [0u8; 4];
             let encoded = c.encode_utf8(&mut buf).as_bytes();
-            if out.utf8.len() + encoded.len() > CAP {
+            if out.utf8.len() + encoded.len() > CAPACITY {
                 break;
             }
             out.utf8.extend_from_slice(encoded);

@@ -21,7 +21,7 @@ pub(super) struct ViewState {
     /// Focus as of the end of the previous pass. Written only by
     /// [`Self::roll_focus`], which is also the only thing that reads the
     /// edges out of it — a caller that wrote it by hand on one of the
-    /// two return paths would report `gained_focus` again next frame.
+    /// two return paths would report `focus_gained` again next frame.
     prev_focused: bool,
     /// Where the text block is scrolled to.
     ///
@@ -100,7 +100,7 @@ impl ViewState {
         };
         let caret = input.geometry.caret_pos;
         let follow_caret =
-            input.caret_byte != self.last_followed_caret || input.changed || input.gained_focus;
+            input.caret_byte != self.last_followed_caret || input.changed || input.focus_gained;
         self.last_followed_caret = input.caret_byte;
         let bounds = ScrollBounds {
             // A single line reserves room for the caret past its last
@@ -158,7 +158,7 @@ impl ViewState {
     /// second answer to a question it can already ask.
     pub(super) fn update(&mut self, input: ViewUpdateInput) -> Option<PaintAnimation> {
         self.update_scroll(input);
-        if input.focused && (input.caret_moved || input.changed || input.gained_focus) {
+        if input.focused && (input.caret_moved || input.changed || input.focus_gained) {
             self.last_caret_change = input.now;
         }
         self.block_offset = input.geometry.block_offset;
@@ -203,7 +203,7 @@ pub(super) struct ViewUpdateInput {
     /// context menu. Wider than the input pass's own `edited`, and named
     /// apart from it for that reason.
     pub(super) changed: bool,
-    pub(super) gained_focus: bool,
+    pub(super) focus_gained: bool,
     pub(super) now: Duration,
 }
 

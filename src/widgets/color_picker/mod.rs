@@ -480,8 +480,7 @@ fn values_grid(
                         .show(ui);
                     // A buffer that parses to the colour already shown is no
                     // edit: tabbing through the field commits nothing.
-                    if !hex.cancelled
-                        && (hex.submitted || hex.lost_focus)
+                    if hex.committed
                         && let Ok(parsed) = state.hex.trim().parse::<RgbaF32>()
                         && !same_rgb(parsed.to_srgba_u8(), quantized)
                     {

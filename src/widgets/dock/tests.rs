@@ -1024,7 +1024,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     fn frame(h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut operations = Vec::new();
-            DockView::scan(d, ui, &mut operations);
+            DockView::scan(ui, d, &mut operations);
             for operation in operations.drain(..) {
                 d.apply(operation);
             }

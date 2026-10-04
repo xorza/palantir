@@ -43,7 +43,7 @@ pub enum KeyClass {
     /// the application.
     Cycle,
     /// Escape alone. Its own class because cancel is hierarchical — the
-    /// innermost thing *that can be cancelled* should be. Which is not
+    /// innermost thing *that can be canceled* should be. Which is not
     /// always the innermost scope: a field that filters its container
     /// rather than editing a value has nothing of its own to cancel, and
     /// drops the class so the container gets it

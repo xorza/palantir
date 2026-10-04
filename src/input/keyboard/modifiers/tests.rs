@@ -15,7 +15,7 @@ fn any_command_excludes_shift() {
 
 /// Every modifier combination on every platform, hand-derived from the
 /// platform rules: (shift, ctrl, alt, mac_ctrl, meta) → composes on
-/// (Mac, Win, Linux). `meta` is never set on macOS, so its rows read only
+/// (Mac, Windows, Linux). `meta` is never set on macOS, so its rows read only
 /// the other two.
 #[test]
 fn compose_text_follows_each_platforms_rule() {
@@ -44,7 +44,7 @@ fn compose_text_follows_each_platforms_rule() {
             mac_ctrl,
             meta,
         };
-        let got = [Platform::Mac, Platform::Win, Platform::Linux].map(|p| mods.compose_text(p));
+        let got = [Platform::Mac, Platform::Windows, Platform::Linux].map(|p| mods.compose_text(p));
         assert_eq!(got, expected, "{mods:?}");
     }
 }

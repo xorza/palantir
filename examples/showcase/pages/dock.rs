@@ -161,7 +161,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 // arrangement before the record walks it, so a click draws
                 // on the frame it lands.
                 s.operations.clear();
-                DockView::scan(&s.dock, ui, &mut s.operations);
+                DockView::scan(ui, &s.dock, &mut s.operations);
                 for operation in s.operations.drain(..) {
                     s.dock.apply(operation);
                 }

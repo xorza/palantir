@@ -91,7 +91,7 @@ impl DockFixture {
     /// responses into the reused operation buffer, apply them, then show.
     pub fn record_scanned(&mut self, ui: &mut Ui) {
         self.operations.clear();
-        DockView::scan(&self.dock, ui, &mut self.operations);
+        DockView::scan(ui, &self.dock, &mut self.operations);
         for operation in self.operations.drain(..) {
             self.dock.apply(operation);
         }

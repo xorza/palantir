@@ -71,6 +71,39 @@ struct TextEditState {
     /// pass can measure them while it holds `&mut Ui`. Retained, so a
     /// steady placeholder allocates once.
     placeholder: String,
+    /// The focus session has an uncommitted result: set when focus
+    /// arrives and on every edit, cleared by the commit or the cancel that
+    /// ends it. What keeps a blur after Enter from committing twice.
+    commit_pending: bool,
+}
+
+/// One pass's inputs to [`TextEditState::roll_commit`].
+#[derive(Clone, Copy, Debug)]
+struct CommitPass {
+    focus: FocusEdges,
+    changed: bool,
+    submitted: bool,
+    canceled: bool,
+    disabled: bool,
+}
+
+impl TextEditState {
+    /// Whether this pass commits, as [`TextEditResponse::committed`]
+    /// states it, and what stays pending for a later pass.
+    const fn roll_commit(&mut self, pass: CommitPass) -> bool {
+        if pass.disabled || pass.canceled {
+            self.commit_pending = false;
+            return false;
+        }
+        if pass.focus.gained || pass.changed {
+            self.commit_pending = true;
+        }
+        let committed = pass.submitted || (pass.focus.lost && self.commit_pending);
+        if committed || pass.focus.lost {
+            self.commit_pending = false;
+        }
+        committed
+    }
 }
 
 /// Editable text leaf. Supports typing (whatever text a press produced —
@@ -340,10 +373,11 @@ impl<'a> TextEdit<'a> {
             // rather than paying a second cascade + layout lookup here.
             response: Response::new(id, ui, signals.state),
             changed: signals.changed,
+            committed: signals.committed,
             submitted: signals.submitted,
-            cancelled: signals.cancelled,
-            gained_focus: signals.gained_focus,
-            lost_focus: signals.lost_focus,
+            canceled: signals.canceled,
+            focus_gained: signals.focus_gained,
+            focus_lost: signals.focus_lost,
         }
     }
 
@@ -412,12 +446,19 @@ impl<'a> TextEdit<'a> {
         // the box paints, the layout below does not run.
         if !look.text.metrics_valid() {
             let focus = state.view.roll_focus(is_focused);
+            let committed = state.roll_commit(CommitPass {
+                focus,
+                changed: false,
+                submitted: false,
+                canceled: false,
+                disabled: response.disabled,
+            });
             let sense = self.widget.authored_sense();
             self.widget
                 .configure()
                 .sense(sense.difference(Sense::SCROLL));
             self.widget.record(ui, Some(&look.background), |_| {});
-            return EditSignals::focus_only(focus, response);
+            return EditSignals::focus_only(focus, committed, response);
         }
         let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored
@@ -456,7 +497,7 @@ impl<'a> TextEdit<'a> {
         let caret_before = state.edit.caret;
         let sel_before = state.edit.selection;
         let InputResult {
-            cancelled,
+            canceled,
             submitted,
             edited,
         } = InputPass {
@@ -472,7 +513,7 @@ impl<'a> TextEdit<'a> {
             state,
         }
         .run(ui);
-        if cancelled {
+        if canceled {
             ui.clear_focus();
             is_focused = false;
             response.focused = false;
@@ -498,6 +539,13 @@ impl<'a> TextEdit<'a> {
             editor.show_menu(ui, &snapshot, filter)
         };
         let changed = edited || menu_edited;
+        let committed = state.roll_commit(CommitPass {
+            focus,
+            changed,
+            submitted,
+            canceled,
+            disabled: response.disabled,
+        });
         let caret_moved = caret_before != state.edit.caret || sel_before != state.edit.selection;
         let caret_byte = state.edit.caret;
         let selection = state.edit.sel_range();
@@ -540,7 +588,7 @@ impl<'a> TextEdit<'a> {
             focused: is_focused,
             caret_moved,
             changed,
-            gained_focus: focus.gained,
+            focus_gained: focus.gained,
             now,
         });
         // The wheel senses only the axis the text overflows on, so the
@@ -572,10 +620,11 @@ impl<'a> TextEdit<'a> {
         .record(ui, self.widget);
         EditSignals {
             changed,
+            committed,
             submitted,
-            cancelled,
-            gained_focus: focus.gained,
-            lost_focus: focus.lost,
+            canceled,
+            focus_gained: focus.gained,
+            focus_lost: focus.lost,
             state: response,
         }
     }
@@ -594,10 +643,11 @@ impl Configure for TextEdit<'_> {
 #[derive(Clone, Copy, Debug)]
 struct EditSignals {
     changed: bool,
+    committed: bool,
     submitted: bool,
-    cancelled: bool,
-    gained_focus: bool,
-    lost_focus: bool,
+    canceled: bool,
+    focus_gained: bool,
+    focus_lost: bool,
     /// The response the pass probed — disabled already folded in — with
     /// `focused` as the pass left it. What `show` hands to
     /// [`Response::new`] instead of re-probing. Every other field is
@@ -609,13 +659,14 @@ struct EditSignals {
 impl EditSignals {
     /// A pass that left the buffer alone, so the focus roll is all it
     /// has to report.
-    const fn focus_only(focus: FocusEdges, state: ResponseState) -> Self {
+    const fn focus_only(focus: FocusEdges, committed: bool, state: ResponseState) -> Self {
         Self {
             changed: false,
+            committed,
             submitted: false,
-            cancelled: false,
-            gained_focus: focus.gained,
-            lost_focus: focus.lost,
+            canceled: false,
+            focus_gained: focus.gained,
+            focus_lost: focus.lost,
             state,
         }
     }
@@ -632,21 +683,27 @@ pub struct TextEditResponse<'a> {
     pub response: Response<'a>,
     /// The buffer was edited this frame (characters inserted or removed).
     pub changed: bool,
+    /// The edit finished this frame and the buffer holds its result, as
+    /// [`ValueResponse::committed`](crate::ValueResponse::committed)
+    /// means it: on Enter in a single-line editor, or on the blur that
+    /// ends a focus session, and never on Escape or on a blur because the
+    /// editor turned disabled. A session commits once, so a blur after
+    /// Enter commits again only when an edit came between them.
+    pub committed: bool,
     /// The user pressed Enter in a single-line editor — the conventional
     /// "accept" signal. Always `false` in multi-line mode (Enter inserts `\n`).
     pub submitted: bool,
     /// The user pressed Escape with no selection left to collapse — the
     /// conventional "cancel" signal.
     ///
-    /// Escape also blurs, so [`Self::lost_focus`] fires alongside it. A
-    /// commit-on-blur caller has to test this **first**, or a cancel is
-    /// indistinguishable from clicking away.
-    pub cancelled: bool,
+    /// Escape also blurs, so [`Self::focus_lost`] fires alongside it, and
+    /// [`Self::committed`] does not.
+    pub canceled: bool,
     /// The editor took focus this frame.
-    pub gained_focus: bool,
+    pub focus_gained: bool,
     /// The editor lost focus this frame (clicked away, another widget focused,
-    /// or Escape) — the conventional "commit on blur" signal.
-    pub lost_focus: bool,
+    /// or Escape). Read [`Self::committed`] to commit on blur.
+    pub focus_lost: bool,
 }
 
 #[cfg(test)]
@@ -658,18 +715,20 @@ pub(crate) mod internals {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) struct EditEdges {
         pub(crate) changed: bool,
+        pub(crate) committed: bool,
         pub(crate) submitted: bool,
-        pub(crate) gained_focus: bool,
-        pub(crate) lost_focus: bool,
+        pub(crate) focus_gained: bool,
+        pub(crate) focus_lost: bool,
     }
 
     impl TextEditResponse<'_> {
         pub(crate) const fn edges(&self) -> EditEdges {
             EditEdges {
                 changed: self.changed,
+                committed: self.committed,
                 submitted: self.submitted,
-                gained_focus: self.gained_focus,
-                lost_focus: self.lost_focus,
+                focus_gained: self.focus_gained,
+                focus_lost: self.focus_lost,
             }
         }
     }

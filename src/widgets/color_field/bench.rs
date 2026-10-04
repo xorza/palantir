@@ -4,7 +4,7 @@
 //! else in the picker is close to that cost. The question this answers is
 //! whether the default divisor of 4 leaves the rebuild inside a frame — and
 //! what dropping to 2 or 1 would cost if the accuracy at 4 is ever judged
-//! short. See [`ColorField::downsample`](crate::ColorField::downsample) for
+//! short. See [`ColorField::texel_size`](crate::ColorField::texel_size) for
 //! the error each divisor buys.
 //!
 //! Both models run, because they are not the same work: Okhsv solves the
