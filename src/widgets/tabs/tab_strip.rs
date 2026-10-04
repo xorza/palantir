@@ -585,11 +585,12 @@ fn overflow_menu(
         chip_extent(ui, strip, item.key)
             .is_some_and(|full| full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS)
     };
-    let menu_id = strip.with("overflow_menu");
-    if !items.iter().any(hidden) && !ContextMenu::is_open(ui, menu_id) {
+    // The menu is keyed by the chevron that opens it, a node that records
+    // whenever the menu can be open, so its state leaves with the chevron.
+    let button_id = strip.with("overflow");
+    if !items.iter().any(hidden) && !ContextMenu::is_open(ui, button_id) {
         return;
     }
-    let button_id = strip.with("overflow");
     let chevron = GlyphButton::resolve(ui, t, button_id, ambient);
     // The chevron sits outside the scrolling band, so it takes the
     // strip's own trailing inset as a margin rather than inheriting it.
@@ -607,15 +608,15 @@ fn overflow_menu(
     if chevron.state.clicked()
         && let Some(rect) = chevron.state.rect
     {
-        ContextMenu::open(ui, menu_id, Vec2::new(rect.min.x, rect.max().y));
+        ContextMenu::open(ui, button_id, Vec2::new(rect.min.x, rect.max().y));
     }
-    let picked = ContextMenu::for_id(menu_id)
+    let picked = ContextMenu::for_id(button_id)
         .size((Sizing::HUG, Sizing::HUG))
         .show(ui, |ui, popup| {
             let mut picked = None;
             for (i, item) in items.iter().enumerate() {
                 if MenuItem::new(item.label)
-                    .id(menu_id.with(item.key))
+                    .id(button_id.with(item.key))
                     .show(ui, popup)
                     .left
                     .clicked()
@@ -627,7 +628,7 @@ fn overflow_menu(
         });
     if let Some(slot) = picked.inner.flatten() {
         hits.menu_picked = Some(slot);
-        ContextMenu::close(ui, menu_id);
+        ContextMenu::close(ui, button_id);
     }
 }
 

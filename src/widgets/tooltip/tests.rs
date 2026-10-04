@@ -19,7 +19,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
-use crate::widgets::tooltip::{Tooltip, TooltipGlobal, TooltipState, global_state_id};
+use crate::widgets::tooltip::{Tooltip, TooltipGlobal, TooltipState};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -319,8 +319,8 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "an idle trigger must not materialise a state row",
     );
     assert!(
-        h.ui.state::<TooltipGlobal>(global_state_id()).is_none(),
-        "nothing has been visible yet, so the singleton has no row either",
+        h.ui.singleton::<TooltipGlobal>().is_none(),
+        "nothing has been visible yet, so the singleton holds no value either",
     );
 
     // Hover lands a frame late — the response reads the previous frame's
@@ -337,7 +337,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "per-trigger state must not use an unrecorded synthetic id",
     );
     assert!(
-        h.ui.state::<TooltipGlobal>(global_state_id()).is_some(),
+        h.ui.singleton::<TooltipGlobal>().is_some(),
         "the intentional global singleton must exist",
     );
 
@@ -346,7 +346,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     });
 
     assert!(h.ui.state::<TooltipState>(trigger_id).is_none());
-    assert!(h.ui.state::<TooltipGlobal>(global_state_id()).is_some());
+    assert!(h.ui.singleton::<TooltipGlobal>().is_some());
 }
 
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering

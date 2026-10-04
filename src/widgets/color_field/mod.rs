@@ -160,14 +160,11 @@ impl<'a> ColorField<'a> {
         );
 
         widget.record(ui, None, |ui| {
-            let image = ui.with_state::<ColorSurface<(ColorModel, f32)>, _>(
-                id.with("surface"),
-                |ui, surface| {
-                    surface
-                        .ensure(ui, texels, (model, hue), |image| fill(image, model, hue))
-                        .clone()
-                },
-            );
+            let image = ui.with_state::<ColorSurface<(ColorModel, f32)>, _>(id, |ui, surface| {
+                surface
+                    .ensure(ui, texels, (model, hue), |image| fill(image, model, hue))
+                    .clone()
+            });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             ui.add_shape(Shape::circle(
                 marker,

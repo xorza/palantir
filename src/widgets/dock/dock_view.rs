@@ -227,10 +227,6 @@ impl<T: DockTab> DockView<'_, T> {
         Self::dock_id(state).with(("splitter", path))
     }
 
-    fn drag_id(state: &DockState<T>) -> WidgetId {
-        Self::dock_id(state).with("drag")
-    }
-
     /// The chip key a tab is drawn under — the one derivation, so the
     /// strip and a caller polling last frame's responses ask the same
     /// question.
@@ -308,12 +304,12 @@ impl<T: DockTab> DockView<'_, T> {
 
     /// The tab a pointer is currently carrying, if any.
     fn drag(state: &DockState<T>, ui: &Ui) -> Option<T> {
-        ui.state::<TabDrag<T>>(Self::drag_id(state))
+        ui.state::<TabDrag<T>>(Self::dock_id(state))
             .and_then(|d| d.tab)
     }
 
     fn set_drag(state: &DockState<T>, ui: &mut Ui, tab: Option<T>) {
-        ui.state_or_default::<TabDrag<T>>(Self::drag_id(state)).tab = tab;
+        ui.state_or_default::<TabDrag<T>>(Self::dock_id(state)).tab = tab;
     }
 
     /// The drop the pointer currently indicates: the pane whose rect

@@ -285,3 +285,27 @@ fn every_text_form_labels_the_same_suffix() {
         assert_eq!(w, borrowed.1, "{label}");
     }
 }
+
+/// The copy an interned suffix is formatted through lives on the chip's
+/// own id, so it leaves with the chip rather than outliving it.
+#[test]
+fn the_suffix_copy_leaves_with_the_chip() {
+    use crate::widgets::drag_value::SuffixScratch;
+
+    let id = WidgetId::from_hash("dv-leaving-suffix");
+    let mut fps = 120_i64;
+    let mut h = UiHarness::new(UVec2::new(400, 120));
+    h.frame(|ui| {
+        let suffix = ui.intern(" fps");
+        DragValue::new(&mut fps).suffix(suffix).id(id).show(ui);
+    });
+    assert!(
+        h.ui.state::<SuffixScratch>(id).is_some(),
+        "used while the chip records"
+    );
+    h.frame(|_| {});
+    assert!(
+        h.ui.state::<SuffixScratch>(id).is_none(),
+        "swept with the chip"
+    );
+}
