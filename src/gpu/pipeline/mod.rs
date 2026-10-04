@@ -15,9 +15,13 @@ use crate::gpu::surface::viewport::ViewportPush;
 
 /// Size of the immediate (push-constant) region every palantir shader
 /// declares, through the one `var<immediate> imm: Immediates` in
-/// `prelude.wgsl`: the viewport, which `WgpuBackend` writes once per pass.
-/// Every pipeline declares this size, whether it reads the viewport or
-/// not, so the bytes stay valid across a pipeline switch.
+/// `prelude.wgsl`: the viewport. Every pipeline layout declares this
+/// size, since every shader carries the prelude's declaration.
+///
+/// The backend pushes the viewport after every pipeline bind, so no draw
+/// relies on immediate bytes surviving a pipeline switch: a missed push
+/// is silent NDC corruption, quads at the wrong scale painting outside
+/// their damage scissor.
 ///
 /// `DeviceRequirements` asks every device for exactly this many bytes and
 /// rejects one that grants fewer.

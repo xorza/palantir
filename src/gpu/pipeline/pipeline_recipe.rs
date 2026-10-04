@@ -64,9 +64,8 @@ impl PipelineRecipe<'_> {
     }
 
     /// Build the pipeline layout a recipe's [`Self::layout`] field takes.
-    /// Every palantir pipeline declares the same immediate-region size
-    /// ([`IMMEDIATES_BYTES`]) so the immediate state set by the backend at
-    /// pass open (viewport) stays valid as pipelines switch.
+    /// Every palantir pipeline declares the same immediate-region size,
+    /// [`IMMEDIATES_BYTES`], which the prelude's `Immediates` takes.
     pub(crate) fn pipeline_layout(
         device: &wgpu::Device,
         label: &'static str,
