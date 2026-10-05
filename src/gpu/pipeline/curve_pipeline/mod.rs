@@ -117,6 +117,7 @@ impl CurvePipeline {
                 label: "palantir.curve.pipeline",
                 stencil_label: "palantir.curve.pipeline.stencil_test",
                 shader: &self.shader,
+                fragment_entry: "fs",
                 layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,

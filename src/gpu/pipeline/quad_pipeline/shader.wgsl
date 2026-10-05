@@ -499,6 +499,34 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         return premultiply(in.fill.rgb, in.fill.a);
     }
     let kind = in.fill_kind & FILL_TAG_MASK;
+    if (kind == BRUSH_KIND_TRIANGLE) {
+        // Three corner points (in `local` 0..size coords) + corner radius ride
+        // the reused instance lanes. `sdf_triangle - radius` gives the rounded
+        // shape; `composite` applies the same coverage AA + inner stroke as the
+        // rounded-rect path, so a triangle gets crisp AA + rounded corners with
+        // no MSAA and no tessellation. Solid fill only (no gradient lanes).
+        let ta = in.radius.xy;
+        let tb = in.radius.zw;
+        let tc = in.fill_axis.xy;
+        let corner_r = in.fill_axis.z;
+        let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
+        return composite(td, in.fill, in.stroke_color, in.stroke_width);
+    }
+
+    let d = sdf_rounded_rect(in.local, in.size, in.radius);
+    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
+        return composite_window(d, eval_fill(in), in.stroke_color, in.stroke_width);
+    }
+    return composite(d, eval_fill(in), in.stroke_color, in.stroke_width);
+}
+
+// Drop and inset shadows. Its own entry, and so its own pipeline, because
+// a pipeline gets the registers and code of everything its entry reaches:
+// inside `fs`, the blurred-corner integral set every quad's. The schedule
+// routes only the two shadow kinds here.
+@fragment
+fn fs_shadow(in: VertexOut) -> @location(0) vec4<f32> {
+    let kind = in.fill_kind & FILL_TAG_MASK;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
         // Drop shadow: the quad is the source S moved by `offset` and
         // grown by the halo, so S sits `offset` back from its centre.
@@ -555,26 +583,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);
     }
-
-    if (kind == BRUSH_KIND_TRIANGLE) {
-        // Three corner points (in `local` 0..size coords) + corner radius ride
-        // the reused instance lanes. `sdf_triangle - radius` gives the rounded
-        // shape; `composite` applies the same coverage AA + inner stroke as the
-        // rounded-rect path, so a triangle gets crisp AA + rounded corners with
-        // no MSAA and no tessellation. Solid fill only (no gradient lanes).
-        let ta = in.radius.xy;
-        let tb = in.radius.zw;
-        let tc = in.fill_axis.xy;
-        let corner_r = in.fill_axis.z;
-        let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
-        return composite(td, in.fill, in.stroke_color, in.stroke_width);
-    }
-
-    let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
-        return composite_window(d, eval_fill(in), in.stroke_color, in.stroke_width);
-    }
-    return composite(d, eval_fill(in), in.stroke_color, in.stroke_width);
+    return vec4<f32>(0.0);
 }
 
 // Stencil mask-write: `discard` outside the rounded shape so those

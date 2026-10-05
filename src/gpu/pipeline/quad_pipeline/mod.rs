@@ -23,14 +23,20 @@ use std::slice;
 
 /// Every quad pipeline one swapchain format needs.
 ///
-/// Three, not one: the two mask variants write the stencil instead of
-/// colour, through a fragment entry of their own. They are built
-/// together because they share a layout, and held together because the
-/// schedule reaches for whichever the step calls for.
+/// Four, not one: shadows draw through a fragment entry of their own, and
+/// the two mask variants write the stencil instead of colour, through a
+/// third. They are built together because they share a layout, and held
+/// together because the schedule reaches for whichever the step calls for.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
     /// Colour draws — the base and its stencil-test twin.
     pub(crate) color: StencilVariant,
+    /// Drop and inset shadows, through `fs_shadow`. Apart from `fs` because
+    /// a pipeline gets the registers and code of everything its entry
+    /// reaches: with the blurred-corner integral in `fs`, every quad's
+    /// pipeline carried 56 VGPRs and 50 KB of code on RDNA2, and 40 and
+    /// 4 KB without it.
+    pub(crate) shadow: StencilVariant,
     /// Deepens a rounded-clip chain by one level. See
     /// [`Stencil::stamp_state`].
     pub(crate) mask_stamp: wgpu::RenderPipeline,
@@ -237,18 +243,31 @@ impl QuadPipeline {
             }
             .build(device)
         };
-        QuadVariants {
-            color: StencilVariant::build(
+        let color = |label, stencil_label, fragment_entry| {
+            StencilVariant::build(
                 device,
                 ColorVariantSpec {
-                    label: "palantir.quad.pipeline",
-                    stencil_label: "palantir.quad.pipeline.stencil_test",
+                    label,
+                    stencil_label,
                     shader: &self.shader,
+                    fragment_entry,
                     layout: &self.pipeline_layout,
                     vertex_buffers: slice::from_ref(&instance),
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                 },
                 format,
+            )
+        };
+        QuadVariants {
+            color: color(
+                "palantir.quad.pipeline",
+                "palantir.quad.pipeline.stencil_test",
+                "fs",
+            ),
+            shadow: color(
+                "palantir.quad.pipeline.shadow",
+                "palantir.quad.pipeline.shadow.stencil_test",
+                "fs_shadow",
             ),
             mask_stamp: mask("palantir.quad.pipeline.mask_stamp", Stencil::stamp_state()),
             mask_clear: mask("palantir.quad.pipeline.mask_clear", Stencil::clear_state()),

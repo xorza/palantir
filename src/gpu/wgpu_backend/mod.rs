@@ -790,6 +790,9 @@ impl WgpuBackend {
         enum Bound {
             None,
             QuadInstance,
+            /// The quad instances through the shadow pipeline: the same
+            /// buffer and bind group, another pipeline.
+            ShadowInstance,
             Mesh,
             Image,
             Curve,
@@ -900,6 +903,16 @@ impl WgpuBackend {
                 rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
                     self.quad
                         .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                });
+                self.quad.draw(pass, range);
+                debug_marker::pop(pass);
+            }
+            RenderStep::Shadows { range } => {
+                mark(pass, BatchKind::Quads);
+                debug_marker::push(pass, "shadows");
+                rebind(&mut bound, Bound::ShadowInstance, pass, viewport, |pass| {
+                    self.quad
+                        .bind(pass, &fmt.quad.shadow, use_stencil, &self.gradient.bg);
                 });
                 self.quad.draw(pass, range);
                 debug_marker::pop(pass);

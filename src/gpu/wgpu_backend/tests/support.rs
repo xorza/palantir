@@ -32,6 +32,7 @@ pub(super) enum DrawOp {
     MaskWrite(u32),
     MaskClear(u32),
     Quads(usize),
+    Shadows(usize),
     Text(usize),
     Meshes(usize),
     Images(usize),
@@ -58,8 +59,8 @@ pub(super) fn plain_steps(buffer: &RenderBuffer) -> Vec<RenderStep> {
 }
 
 pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
-    // A quad step names its group by span, so two groups sharing a
-    // non-empty span would read as the first of them.
+    // A quad step names its group by the span that holds it, so two
+    // groups sharing a non-empty span would read as the first of them.
     for (i, group) in buffer.groups.iter().enumerate() {
         debug_assert!(
             group.quads.len == 0
@@ -77,13 +78,9 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
             RenderStep::SetScissor(_) | RenderStep::SetStencilRef(_) => {}
             RenderStep::MaskStamp(mi) => out.push(DrawOp::MaskWrite(*mi)),
             RenderStep::MaskClear(mi) => out.push(DrawOp::MaskClear(*mi)),
-            RenderStep::Quads { range } => {
-                let group = buffer
-                    .groups
-                    .iter()
-                    .position(|candidate| candidate.quads == *range)
-                    .expect("quad range missing from draw groups");
-                out.push(DrawOp::Quads(group));
+            RenderStep::Quads { range } => out.push(DrawOp::Quads(group_of(buffer, *range))),
+            RenderStep::Shadows { range } => {
+                out.push(DrawOp::Shadows(group_of(buffer, *range)));
             }
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::TierBatch { tier, batch } => {
@@ -98,6 +95,20 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
         }
     }
     out
+}
+
+/// The group whose quad span holds `run`. A run is the whole span unless
+/// the span mixes shadows with other quads.
+fn group_of(buffer: &RenderBuffer, run: Span) -> usize {
+    buffer
+        .groups
+        .iter()
+        .position(|group| {
+            group.quads.len != 0
+                && group.quads.start <= run.start
+                && run.start + run.len <= group.quads.start + group.quads.len
+        })
+        .expect("quad run outside every draw group")
 }
 
 /// Number of `SetScissor` steps in `steps` — the metric the scissor

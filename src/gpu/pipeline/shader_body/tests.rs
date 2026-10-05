@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::{HashMap, HashSet};
 use strum::VariantArray;
 
 #[test]
@@ -72,6 +73,79 @@ fn every_pinned_shader_constant_is_read() {
             );
         }
     }
+}
+
+/// The quad shader's `fs` never reaches the blurred-corner integral, and
+/// `fs_shadow` does.
+///
+/// A pipeline gets the registers and code of everything its entry
+/// reaches. With the integral reachable from `fs`, the pipeline of every
+/// quad — a plain rectangle too — carried 56 VGPRs and 50 KB of code on
+/// RDNA2 instead of 40 and 4 KB. The schedule routes shadows to
+/// `fs_shadow`, so nothing else needs the integral.
+#[test]
+fn only_the_shadow_entry_reaches_the_blur_integral() {
+    let source = strip_comments(&ShaderBody::Quad.specialize());
+    let reaches = |entry: &str| reachable_functions(&source, entry);
+    for heavy in ["blurred_box_coverage", "blurred_corner", "arc_half"] {
+        assert!(!reaches("fs").contains(heavy), "`fs` reaches `{heavy}`");
+        assert!(
+            reaches("fs_shadow").contains(heavy),
+            "`fs_shadow` lost `{heavy}`"
+        );
+    }
+    assert!(
+        reaches("fs").contains("sdf_rounded_rect"),
+        "the call scan finds nothing"
+    );
+}
+
+/// Every function `entry` calls, directly or through others, in a WGSL
+/// `source` without comments. A call is a defined function's name followed
+/// by `(`.
+fn reachable_functions(source: &str, entry: &str) -> HashSet<String> {
+    let bodies: HashMap<&str, &str> = source
+        .split("fn ")
+        .skip(1)
+        .filter_map(|def| {
+            let name = def.split('(').next()?.trim();
+            let open = def.find('{')?;
+            let mut depth = 0;
+            let close = def[open..].char_indices().find_map(|(i, c)| {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+                (depth == 0).then_some(open + i)
+            })?;
+            Some((name, &def[open..close]))
+        })
+        .collect();
+    let mut seen = HashSet::new();
+    let mut stack = vec![entry.to_owned()];
+    while let Some(name) = stack.pop() {
+        let body = bodies
+            .get(name.as_str())
+            .unwrap_or_else(|| panic!("no function `{name}`"));
+        let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let mut at = 0;
+        while let Some(start) = body[at..].find(|c: char| c.is_ascii_alphabetic() || c == '_') {
+            let start = at + start;
+            let end = body[start..]
+                .find(|c| !is_word(c))
+                .map_or(body.len(), |len| start + len);
+            let word = &body[start..end];
+            if bodies.contains_key(word)
+                && body[end..].trim_start().starts_with('(')
+                && seen.insert(word.to_owned())
+            {
+                stack.push(word.to_owned());
+            }
+            at = end;
+        }
+    }
+    seen
 }
 
 /// The name a `const NAME: T = /*{MARKER}*/;` line declares, or
