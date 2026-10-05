@@ -3,6 +3,8 @@ use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;
 use crate::scene::tree::node_id::NodeId;
 
+mod reference;
+
 fn ep(node: u32) -> Endpoint {
     Endpoint {
         layer: Layer::Main,
@@ -264,4 +266,104 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     assert!(ids.counters.is_empty());
     assert!(ids.curr.entries.is_empty());
     assert_eq!(ids.prev.entries.len(), 2, "prev must survive pre_record");
+}
+
+/// The tracker against plain per-pass hash tables ([`reference`]), over
+/// random frames: collisions of auto and explicit ids, ids resolved and
+/// recorded out of order or never recorded, and discarded passes. Most
+/// frames replay the last one's resolves, some with one change at a
+/// random position, so passes run in step, leave it at every position,
+/// and never enter it. Every resolve, every collision pair, every pass's
+/// recording and endpoints, and every frame's removed set must agree.
+#[test]
+fn matches_the_per_pass_tables_over_random_frames() {
+    let (mut in_step, mut out_of_step) = (0, 0);
+    for seed in 1..=8_u64 {
+        let mut rng = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        let mut next = move |n: usize| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng % n as u64) as usize
+        };
+        let universe: Vec<_> = (0..10).map(WidgetId::from_hash).collect();
+        let probes: Vec<_> = universe
+            .iter()
+            .flat_map(|&id| [id, id.with(1), id.with(2), id.with(3)])
+            .collect();
+        let mut ids = SeenIds::default();
+        let mut model = reference::Reference::default();
+        let mut node = 0;
+        let mut script: Vec<(WidgetId, bool)> = Vec::new();
+        for frame in 0..300 {
+            let resolve_at = |next: &mut dyn FnMut(usize) -> usize| {
+                (universe[next(universe.len())], next(4) == 0)
+            };
+            match next(6) {
+                0 => script = (0..next(16)).map(|_| resolve_at(&mut next)).collect(),
+                1 if !script.is_empty() => {
+                    let at = next(script.len());
+                    match next(3) {
+                        0 => script[at] = resolve_at(&mut next),
+                        1 => drop(script.remove(at)),
+                        _ => script.insert(at, resolve_at(&mut next)),
+                    }
+                }
+                _ => {}
+            }
+            let passes = if next(4) == 0 { 2 } else { 1 };
+            for pass in 0..passes {
+                if frame > 0 || pass > 0 {
+                    ids.pre_record();
+                    model.pre_record();
+                }
+                let at = format!("seed {seed} frame {frame} pass {pass}");
+                let mut open: Vec<ResolvedId> = Vec::new();
+                for &(raw, explicit) in &script {
+                    let got = ids.resolve(raw, explicit);
+                    assert_eq!(got, model.resolve(raw, explicit), "resolve, {at}");
+                    if !open.contains(&got) {
+                        open.push(got);
+                    }
+                    // Record a random open one, so records come out of order.
+                    if !open.is_empty() && next(5) != 0 {
+                        let resolved = open.swap_remove(next(open.len()));
+                        node += 1;
+                        let got = ids.record_endpoint(resolved, ep(node));
+                        let want = model.record_endpoint(resolved, ep(node));
+                        assert_eq!(
+                            got.map(|pair| [pair.first, pair.second]),
+                            want.map(|pair| [pair.first, pair.second]),
+                            "collision pair, {at}",
+                        );
+                    }
+                }
+                // Whatever is still open stays only reserved.
+                assert_eq!(ids.recorded().collect::<Vec<_>>(), model.recorded(), "{at}");
+                for &id in &probes {
+                    assert_eq!(ids.endpoint(id), model.endpoint(id), "endpoint, {at}");
+                }
+            }
+            if ids.split.is_none() {
+                in_step += 1;
+            } else {
+                out_of_step += 1;
+            }
+            let removed = ids.rollover().clone();
+            assert_eq!(
+                removed,
+                model.rollover(),
+                "removed, seed {seed} frame {frame}"
+            );
+            assert_eq!(
+                ids.prev.index.len(),
+                ids.prev.entries.len(),
+                "`prev`'s index covers its entries and no more, seed {seed} frame {frame}",
+            );
+        }
+    }
+    assert!(
+        in_step > 500 && out_of_step > 500,
+        "both paths run: {in_step} frames in step, {out_of_step} out",
+    );
 }

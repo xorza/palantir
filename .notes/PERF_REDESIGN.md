@@ -167,74 +167,31 @@ interpolation.
   bind group that only the shadow pipeline uses.
 - Expected gain: up to about 2 ms on `scrolling_gpu` and `resizing_gpu`.
 
-## C1. One id table across frames
+## C2. Hash an auto id only out of step
 
 ### Problem
 
-`SeenIds` keeps a hash index for the current frame and one for the
-previous frame. For each widget in each frame, `resolve` inserts into
-`curr.index`, and `rollover` probes `curr` once for each entry of `prev`.
-Both indices are cleared and filled again every frame.
-
-### How others do it
-
-- **Dear ImGui** keeps one persistent storage and stamps each window with
-  `LastFrameActive`. Garbage collection reads the stamp and does not rebuild
-  a set.
-- **Generational arenas** (`slotmap`, `thunderdome`) mark liveness with a
-  generation number and do not clear on reuse.
+`WidgetId::auto` hashes the caller's file path (about 35 bytes), its line
+and its column at every widget construction, and `Ident::raw_id` mixes the
+result with the parent's id: about 6–7% of `cached_cpu` together. Since
+`SeenIds` resolves in step with the last frame (done: `cached_cpu` −6%,
+ABBA), a steady frame no longer needs the hash to find the id.
 
 ### Design
 
-One open-addressing table that persists across frames. Each slot holds
-`id`, `stamp: u32` (the frame of its last record), `prev_endpoint` and
-`endpoint`.
-
-- `resolve` probes once. A slot with `stamp == frame` is taken this frame,
-  which takes the collision path. Otherwise the slot gets `stamp = frame`.
-  The reservation state is a second bit beside the stamp.
-- Removal: the dense list of slots that the previous frame recorded is
-  kept. At `rollover`, an entry whose slot stamp is not the current frame
-  was removed. That is one load per entry, and no hash probe.
-- A slot that is not used for one frame is deleted with backward-shift
-  deletion, so the table has no tombstones and never needs a rehash. Growth
-  occurs only while the widget set grows. Growth doubles the table, so it
-  happens a logarithmic number of times, at warmup.
-- `ResolvedId::entry` becomes the slot index, so `record_endpoint` stays
-  probe-free.
+`Ident::Auto` holds the `&'static Location<'static>` instead of its hash,
+taken by the same `#[track_caller]` chain, so the call site is the same. Each
+`SeenIds` entry also keeps the location and the parent's id. In step, an auto
+resolve matches last frame's entry by location pointer and parent id, and
+takes its id with no hash. Out of step, the id is computed as today, so it is
+the same id. A pointer that differs for the same call site only leaves step,
+so the match never gives a wrong id.
 
 ### Validation
 
-- The existing `seen_ids` tests, plus a differential test that runs the
-  old and the new table on the same sequence of frames and compares
-  `removed`, the endpoints and the collision records.
-- Expected gain: 3–5% of `cached_cpu`.
-
-## C2. `WidgetId::auto` hashes each call site once
-
-### Problem
-
-`WidgetId::auto` hashes the caller's file path (about 35 bytes), its line and
-its column on every call: about 40 cycles for each widget in each frame.
-
-### Design
-
-A thread-local, direct-mapped cache of 256 entries, keyed by the address of
-the `&'static Location`. A hit compares one pointer and returns the stored
-id. A miss computes the hash as today and stores it. The result is the same
-id as today on every call. The address is only a cache key, so ids stay
-stable across runs and builds.
-
-Rust does not promise one address per call site. If the compiler duplicates
-a `Location`, the copies only miss more often. If it merges two, their
-contents are equal, so their ids are equal too. Neither case gives a wrong
-id.
-
-### Validation
-
-- A test that `auto()` gives the same id with an empty and a full cache,
-  and the same id as `from_hash` of the location's fields.
-- Expected gain: about 4% of `cached_cpu`.
+- A test that the out-of-step id of a location equals `WidgetId::auto()`
+  from the same call site, and the differential test with locations.
+- Expected gain: up to about 6% of `cached_cpu`.
 
 ## C3. An exact sRGB encode without a binary search
 
@@ -276,8 +233,11 @@ Measure each one with the profile before you change it.
   `is_within` does two hash lookups for each call, and `input/scope.rs`
   calls it in a filter over all rows. The rows already hold their node
   index, so compare node ranges directly.
-- **`Widget::resolved`, 1.5%.** Read it again after C1, because it
-  calls `resolve`.
+- **`Widget::resolved`, 1.5%.** Read it again after C2, because it
+  mixes the parent's id.
+- **Last-frame lookups by position** (`response_for` 3.2%, `is_within`,
+  `AnimMap`) wait for a decision: see
+  `.notes/PERF_REDESIGN_QUESTIONS.md`.
 
 ## C5. The worst-case compose bound, at a lower constant
 
@@ -308,14 +268,12 @@ Each step is one commit with its tests. Measure each step with the A/B
 protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
-1. **C1, persistent id table.** Largest CPU gain. The differential test
-   comes first, against the current `SeenIds`.
-2. **C2, call-site memo.** Small, local change.
-3. **C3, exact sRGB table.** Local change with an exhaustive test.
-4. **C4 items**, each one after a fresh profile.
-5. **C5, compose threshold**, after a measurement of the index cost.
-6. **G3, corner cache.** The largest GPU gain left.
-7. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
+1. **C2, auto ids hashed only out of step.**
+2. **C3, exact sRGB table.** Local change with an exhaustive test.
+3. **C4 items**, each one after a fresh profile.
+4. **C5, compose threshold**, after a measurement of the index cost.
+5. **G3, corner cache.** The largest GPU gain left.
+6. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
    with full runs. Add the `git archive` mtime trap from
    `.notes/FRAME_BENCH_REGRESSION.md` to `benches/AGENTS.md`.
 
