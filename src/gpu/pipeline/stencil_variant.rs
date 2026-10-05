@@ -17,9 +17,9 @@ pub(crate) struct StencilVariant {
     test: wgpu::RenderPipeline,
 }
 
-/// What one color-pipeline family varies: labels, shader, pipeline
-/// layout, vertex buffers, topology. Everything else (fragment entry
-/// `"fs"`, `ColorWrites::ALL`, premultiplied blend) is fixed across the
+/// What one color-pipeline family varies: labels, shader, fragment
+/// entry, pipeline layout, vertex buffers, topology. Everything else
+/// (`ColorWrites::ALL`, premultiplied blend) is fixed across the
 /// quad / mesh / image / curve / raster families and filled in by
 /// [`StencilVariant::build`].
 ///
@@ -33,6 +33,10 @@ pub(crate) struct ColorVariantSpec<'a> {
     pub(crate) label: &'static str,
     pub(crate) stencil_label: &'static str,
     pub(crate) shader: &'a wgpu::ShaderModule,
+    /// The fragment entry point. A pipeline compiles only what its entry
+    /// reaches, so one module can hold a path its other entries leave out:
+    /// quad's shadows, in `fs_shadow`, stay out of `fs`.
+    pub(crate) fragment_entry: &'static str,
     pub(crate) layout: &'a wgpu::PipelineLayout,
     pub(crate) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(crate) topology: wgpu::PrimitiveTopology,
@@ -41,7 +45,7 @@ pub(crate) struct ColorVariantSpec<'a> {
 impl StencilVariant {
     /// Build the base + stencil-test twin for one swapchain format from
     /// one spec. Shared by every color family's `build_variants` so they
-    /// cannot drift on blend / writes / fragment entry.
+    /// cannot drift on blend or writes.
     pub(crate) fn build(
         device: &wgpu::Device,
         spec: ColorVariantSpec<'_>,
@@ -55,7 +59,7 @@ impl StencilVariant {
                 vertex_buffers: spec.vertex_buffers,
                 topology: spec.topology,
                 color_format,
-                fragment_entry: "fs",
+                fragment_entry: spec.fragment_entry,
                 color_writes: wgpu::ColorWrites::ALL,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 depth_stencil,

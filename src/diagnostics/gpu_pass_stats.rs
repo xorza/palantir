@@ -39,7 +39,8 @@ pub enum BatchKind {
     PreClear = 1,
     /// `RenderStep::MaskStamp` / `MaskClear` — stencil mask quads.
     Mask = 2,
-    /// `RenderStep::Quads` — the main quad pipeline.
+    /// `RenderStep::Quads` and `RenderStep::Shadows` — the quad pipeline
+    /// and its shadow twin.
     Quads = 3,
     /// `RenderStep::Text` — text batches via the inlined text
     /// pipeline.
