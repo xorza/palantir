@@ -54,8 +54,11 @@
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
+use crate::scene::node::ident::Ident;
 use std::collections::hash_map::Entry;
 use std::mem;
+use std::panic::Location;
+use std::ptr;
 
 /// Both nodes of one explicit-id collision, in recording order. What
 /// [`SeenIds::record_endpoint`] hands back when the endpoint it just
@@ -125,13 +128,39 @@ impl ResolvedId {
 struct IdEntry {
     id: WidgetId,
     slot: IdSlot,
-    /// The raw id that resolved to `id`, and whether it was explicit:
-    /// what the next frame's resolve at this position must repeat to stay
-    /// in step.
+    origin: Origin,
+}
+
+/// How a pass came to an entry's id: what the next frame's resolve at the
+/// same position must repeat to stay in step.
+#[derive(Clone, Copy, Debug)]
+struct Origin {
+    /// The raw id that resolved to the entry's id, and whether it was
+    /// explicit.
     raw: WidgetId,
     is_explicit: bool,
-    /// The occurrence counter `id` took, or 0 when `id` is `raw`.
+    /// The occurrence counter the id took, or 0 when the id is `raw`.
     occurrence: u32,
+    /// An auto id's call site, which names `raw` without its hash.
+    site: Option<AutoSite>,
+}
+
+/// Where an auto id was made: the call site and the parent it hangs off,
+/// the two inputs of its raw id.
+#[derive(Clone, Copy, Debug)]
+struct AutoSite {
+    location: &'static Location<'static>,
+    parent: Option<WidgetId>,
+}
+
+impl AutoSite {
+    /// Whether `other` names the same raw id by the same inputs. The
+    /// `Location` is compared by address: a call site the compiler
+    /// duplicated only fails to match, and the resolve then hashes it.
+    #[inline]
+    fn is(self, other: Self) -> bool {
+        ptr::eq(self.location, other.location) && self.parent == other.parent
+    }
 }
 
 /// One pass's ids: a hash index over a dense run of entries. The index
@@ -317,24 +346,15 @@ impl SeenIds {
         self.curr.recorded_entries()
     }
 
-    /// Push the reserved entry for `id`, which `raw` resolved to at
-    /// `occurrence`. Out of step, the caller has just put its index in the
-    /// hash index.
+    /// Push the reserved entry for `id`, which `origin` resolved to. Out
+    /// of step, the caller has just put its index in the hash index.
     #[inline]
-    fn reserve(
-        &mut self,
-        id: WidgetId,
-        raw: WidgetId,
-        is_explicit: bool,
-        occurrence: u32,
-    ) -> ResolvedId {
+    fn reserve(&mut self, id: WidgetId, origin: Origin) -> ResolvedId {
         let entry = self.curr.entries.len() as u32;
         self.curr.entries.push(IdEntry {
             id,
             slot: IdSlot::Reserved,
-            raw,
-            is_explicit,
-            occurrence,
+            origin,
         });
         ResolvedId { id, entry }
     }
@@ -349,8 +369,9 @@ impl SeenIds {
         self.split = Some(self.curr.entries.len());
         self.curr.index_entries();
         for entry in &self.curr.entries {
-            if entry.occurrence != 0 {
-                self.counters.insert(entry.raw, entry.occurrence);
+            if entry.origin.occurrence != 0 {
+                self.counters
+                    .insert(entry.origin.raw, entry.origin.occurrence);
             }
         }
     }
@@ -368,7 +389,12 @@ impl SeenIds {
     ///   whether one of those claims a reservation depends on record
     ///   order.
     #[inline]
-    fn in_step(&mut self, raw: WidgetId, is_explicit: bool) -> Option<ResolvedId> {
+    fn in_step(
+        &mut self,
+        raw: WidgetId,
+        is_explicit: bool,
+        site: Option<AutoSite>,
+    ) -> Option<ResolvedId> {
         if self.split.is_some() {
             return None;
         }
@@ -383,12 +409,21 @@ impl SeenIds {
             return self.claim(at - 1);
         }
         if let Some(last) = self.prev.entries.get(at)
-            && last.raw == raw
-            && last.is_explicit == is_explicit
-            && (!is_explicit || last.occurrence == 0)
+            && last.origin.raw == raw
+            && last.origin.is_explicit == is_explicit
+            && (!is_explicit || last.origin.occurrence == 0)
         {
-            let (id, occurrence) = (last.id, last.occurrence);
-            return Some(self.reserve(id, raw, is_explicit, occurrence));
+            let id = last.id;
+            let occurrence = last.origin.occurrence;
+            return Some(self.reserve(
+                id,
+                Origin {
+                    raw,
+                    is_explicit,
+                    occurrence,
+                    site,
+                },
+            ));
         }
         if !is_explicit {
             return None;
@@ -423,7 +458,47 @@ impl SeenIds {
     /// in whichever order the two record.
     #[inline]
     pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> ResolvedId {
-        if let Some(resolved) = self.in_step(raw_id, is_explicit) {
+        self.resolve_raw(raw_id, is_explicit, None)
+    }
+
+    /// [`Self::resolve`] for an auto id, made at `location` under `parent`.
+    /// In step, last frame's entry at this position names the same raw id
+    /// when it came from the same call site and parent, so the id is taken
+    /// from it and the call site is never hashed. Otherwise the raw id is
+    /// hashed, by [`Ident::raw_id`] as for any other ident.
+    #[inline]
+    pub(crate) fn resolve_auto(
+        &mut self,
+        location: &'static Location<'static>,
+        parent: Option<WidgetId>,
+    ) -> ResolvedId {
+        let site = AutoSite { location, parent };
+        if self.split.is_none()
+            && let Some(last) = self.prev.entries.get(self.curr.entries.len())
+            && last.origin.site.is_some_and(|last| last.is(site))
+        {
+            let (id, origin) = (last.id, last.origin);
+            return self.reserve(
+                id,
+                Origin {
+                    site: Some(site),
+                    ..origin
+                },
+            );
+        }
+        let raw = Ident::Auto(location).raw_id(parent);
+        self.resolve_raw(raw, false, Some(site))
+    }
+
+    /// [`Self::resolve`], recording `site` for an auto id.
+    #[inline]
+    fn resolve_raw(
+        &mut self,
+        raw_id: WidgetId,
+        is_explicit: bool,
+        site: Option<AutoSite>,
+    ) -> ResolvedId {
+        if let Some(resolved) = self.in_step(raw_id, is_explicit, site) {
             return resolved;
         }
         if self.split.is_none() {
@@ -436,7 +511,15 @@ impl SeenIds {
             // `collisions / frame` (typically 0), not `widgets / frame`.
             Entry::Vacant(slot) => {
                 slot.insert(next);
-                return self.reserve(raw_id, raw_id, is_explicit, 0);
+                return self.reserve(
+                    raw_id,
+                    Origin {
+                        raw: raw_id,
+                        is_explicit,
+                        occurrence: 0,
+                        site,
+                    },
+                );
             }
             // An explicit id that is only reserved is the widget that
             // reserved it, claiming it: a widget resolves its own id,
@@ -472,7 +555,15 @@ impl SeenIds {
                 second_final_id: final_id,
             });
         }
-        self.reserve(final_id, raw_id, is_explicit, count)
+        self.reserve(
+            final_id,
+            Origin {
+                raw: raw_id,
+                is_explicit,
+                occurrence: count,
+                site,
+            },
+        )
     }
 
     /// Record the endpoint where `resolved` is being opened. `Some`
