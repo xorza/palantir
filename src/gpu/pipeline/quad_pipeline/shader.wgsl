@@ -23,10 +23,22 @@ const BLUR_EPS: f32 = 1e-4;
 const SHADOW_REACH_SIGMAS: f32 = /*{SHADOW_REACH_SIGMAS}*/;
 
 // Slices per half of a blurred corner arc. Midpoint slices with exact
-// weights err as 1/N²: 12 keeps the worst corner pixel within 0.002 of
-// the exact integral (σ = 0.5 px against a 30 px radius), under half an
+// weights err as 1/N²: 12 keep a blur below `CUTOUT_MIN_SIGMA`, the only
+// one sliced this way, within 0.0015 of the exact integral, under half an
 // 8-bit step.
 const BLUR_ARC_SLICES: u32 = 12u;
+
+// σ from which a blurred box's corners are cut out of its sharp box
+// (`cutout_box_coverage`) instead of integrated along their outline
+// (`blurred_corner`). Measured against the exact integral, the cutout's
+// `CUTOUT_NODES` err at most 0.0011 from here up, where the outline's
+// slices reach 0.0023, at half the kernel evaluations. Below it the
+// cutout's density loses to the pixel box's step (0.0026 at σ = 0, against
+// the outline's 0.0015), so small blurs keep the outline.
+const CUTOUT_MIN_SIGMA: f32 = 0.25;
+
+// Midpoint nodes of a corner cutout's angle integral.
+const CUTOUT_NODES: u32 = 12u;
 
 const SQRT_HALF: f32 = 0.70710678;
 const INV_SQRT_TAU: f32 = 0.39894228;
@@ -366,6 +378,57 @@ fn filter_cdf(u: f32, sigma: f32) -> f32 {
         * (normal_cdf_integral((u + AA_HALF_WIDTH) * inv) - normal_cdf_integral((u - AA_HALF_WIDTH) * inv));
 }
 
+// The density of `filter_cdf` at `u`: the pixel box's mean of the
+// Gaussian. Reached only at σ ≥ `CUTOUT_MIN_SIGMA`, so it has no σ = 0
+// limit to take.
+fn filter_pdf(u: f32, sigma: f32) -> f32 {
+    let inv = 1.0 / sigma;
+    return (normal_cdf((u + AA_HALF_WIDTH) * inv) - normal_cdf((u - AA_HALF_WIDTH) * inv))
+        / (2.0 * AA_HALF_WIDTH);
+}
+
+// One corner's cutout: the filter's weight over the `r`×`r` square at the
+// corner minus its quarter disk, at the pixel `q` relative to the arc's
+// centre, reflected so the corner points to +x and +y. Kernel and region
+// are both symmetric, so the one function serves all four corners.
+//
+// Integrated over the arc's angle, `x = r·sin t`, which keeps the
+// integrand smooth where the arc runs steep, and only over the angles
+// whose `x` the kernel reaches: outside them the weight is zero, as it is
+// everywhere the kernel misses the square.
+fn corner_cutout(q: vec2<f32>, r: f32, sigma: f32, reach: f32) -> f32 {
+    if (r <= 0.0 || any(q < vec2<f32>(-reach)) || any(q > vec2<f32>(r + reach))) {
+        return 0.0;
+    }
+    let t0 = asin(clamp((q.x - reach) / r, 0.0, 1.0));
+    let t1 = asin(clamp((q.x + reach) / r, 0.0, 1.0));
+    let step = (t1 - t0) / f32(CUTOUT_NODES);
+    let top = filter_cdf(r - q.y, sigma);
+    var sum = 0.0;
+    for (var i = 0u; i < CUTOUT_NODES; i++) {
+        let t = t0 + (f32(i) + 0.5) * step;
+        let x = r * sin(t);
+        let y = r * cos(t);
+        // `dx = r·cos t·dt = y·dt`.
+        sum += filter_pdf(x - q.x, sigma) * (top - filter_cdf(y - q.y, sigma)) * y;
+    }
+    return sum * step;
+}
+
+// `blurred_box_coverage` from σ = `CUTOUT_MIN_SIGMA` up: the sharp box,
+// separable and so closed form, less each corner's cutout. The same
+// integral as the outline form, split so that the four corners share one
+// symmetric term.
+fn cutout_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32, reach: f32) -> f32 {
+    let sharp = (filter_cdf(half.x - p.x, sigma) - filter_cdf(-half.x - p.x, sigma))
+        * (filter_cdf(half.y - p.y, sigma) - filter_cdf(-half.y - p.y, sigma));
+    let cut = corner_cutout(p - (half - radius.zz), radius.z, sigma, reach)
+        + corner_cutout((p - vec2<f32>(radius.w - half.x, half.y - radius.w)) * vec2<f32>(-1.0, 1.0), radius.w, sigma, reach)
+        + corner_cutout((radius.xx - half) - p, radius.x, sigma, reach)
+        + corner_cutout((p - vec2<f32>(half.x - radius.y, radius.y - half.y)) * vec2<f32>(1.0, -1.0), radius.y, sigma, reach);
+    return clamp(sharp - cut, 0.0, 1.0);
+}
+
 // One half of a corner arc's share of `blurred_box_coverage`, integrated
 // along one axis over `[e0, e1]` (either order): the sum of
 // `filter_cdf` across the arc, at each slice's midpoint, times the
@@ -435,8 +498,13 @@ fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigm
 // arcs are sliced (`blurred_corner`). A sharp box is the exact product of
 // its two edge pairs, an empty box covers nothing, and σ = 0 is the box's
 // exact pixel coverage. `radius` is `(tl, tr, br, bl)`, fitted to the box.
+// From σ = `CUTOUT_MIN_SIGMA` up, the corners are cut out instead
+// (`cutout_box_coverage`).
 fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32) -> f32 {
     let reach = SHADOW_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+    if (sigma >= CUTOUT_MIN_SIGMA) {
+        return cutout_box_coverage(p, half, radius, sigma, reach);
+    }
     let right = filter_cdf(half.x - p.x, sigma)
         * (filter_cdf(half.y - radius.z - p.y, sigma) - filter_cdf(radius.y - half.y - p.y, sigma));
     let left = filter_cdf(-half.x - p.x, sigma)

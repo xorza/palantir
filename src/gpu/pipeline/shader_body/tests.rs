@@ -87,7 +87,13 @@ fn every_pinned_shader_constant_is_read() {
 fn only_the_shadow_entry_reaches_the_blur_integral() {
     let source = strip_comments(&ShaderBody::Quad.specialize());
     let reaches = |entry: &str| reachable_functions(&source, entry);
-    for heavy in ["blurred_box_coverage", "blurred_corner", "arc_half"] {
+    for heavy in [
+        "blurred_box_coverage",
+        "blurred_corner",
+        "arc_half",
+        "cutout_box_coverage",
+        "corner_cutout",
+    ] {
         assert!(!reaches("fs").contains(heavy), "`fs` reaches `{heavy}`");
         assert!(
             reaches("fs_shadow").contains(heavy),

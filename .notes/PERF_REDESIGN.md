@@ -105,20 +105,22 @@ cycles per node.
 
 # Part 1: Designs
 
-## G3. A cache of blurred corners
+## G3. A cache of corner cutouts
+
+### Done: the cutout form
+
+From σ = 0.25 up, the shadow coverage is now the sharp box (closed form)
+less four corner cutouts, each an angle integral over 12 midpoint nodes.
+Against the exact integral it errs at most 1.1·10⁻³ there, where the
+outline form erred 2.3·10⁻³, and it costs about half the kernel
+evaluations: ABBA `scrolling_gpu` 7.33 → 6.05 ms, `resizing_gpu` 8.19 →
+7.08 ms. Below σ = 0.25 the outline form stays, because the cutout's
+density loses to the pixel box's step there.
 
 ### Problem
 
-The integral costs about 2.2 ms per full frame on this fixture, and the
-separate shadow pipeline did not reduce it. A cheaper analytic rule does not
-exist at the same accuracy. The midpoint rule errs as
-1/N², and Simpson's rule on the same weights is worse, because the across
-factor is a steep step when σ is small:
-
-| σ, r | midpoint N=12 | Simpson N=4 (13 evals) |
-| --- | ---: | ---: |
-| 2, 16 | 2.2·10⁻³ | 1.5·10⁻² |
-| 0.5, 16 | 2.0·10⁻³ | 3.1·10⁻² |
+The cutout integral still costs about 1.1 ms per full frame on this fixture
+(`scrolling_gpu` 6.05 ms against 4.91 ms before `e0500557`).
 
 ### How others do it
 
@@ -127,45 +129,32 @@ draw the shadow as a nine-patch. Chrome's GPU box shadows use the Skia path.
 
 ### Design
 
-Each corner term in `blurred_box_coverage` depends only on the pixel's
-offset from the corner centre, on r and on σ. The four corners are
-independent terms of an exact sum. So a table of one corner term per
-`(r, σ)` replaces the loops with no approximation other than the
-interpolation.
+The cutout `U(q; r, σ)` is one function for all four corners (they are its
+reflections), and it is zero more than `reach` away from its `r`×`r`
+square, so one table per `(r, σ)` over `[−reach, r + reach]²` replaces the
+12 nodes with four texel loads.
 
-- Grid spacing h = σ / 8. Bilinear interpolation error, against the exact
-  term:
-
-  | σ | r = 4 | r = 16 |
-  | --- | ---: | ---: |
-  | 0.5 (h = 0.0625) | below 1.1·10⁻³ | below 1.4·10⁻³ |
-  | 1 (h = 0.125) | 4.8·10⁻⁴ | 3.6·10⁻⁴ |
-  | 2 (h = 0.25) | 7.0·10⁻⁴ | 4.5·10⁻⁴ |
-  | 4 (h = 0.5) | 6.9·10⁻⁴ | 6.3·10⁻⁴ |
-
-  That is more accurate than the current 12 slices (2.2·10⁻³ worst case),
-  and under half an 8-bit step. The σ = 0.5 values are from h = 0.125 and
-  will be measured again at h = 0.0625.
-- The key is `(r, σ)` in physical pixels, exactly. A compute pass bakes a
-  table with the exact integral at a high slice count.
+- Grid spacing h = σ / 8. Bilinear interpolation of the outline form's
+  corner term measured at most 7·10⁻⁴ at that spacing; measure it again for
+  the cutout, and choose h so that table and interpolation together stay
+  under the current 1.1·10⁻³.
+- `R32Float` texels with a manual bilinear filter: the format is not
+  filterable on every backend, and 16-bit texels would add 2.4·10⁻⁴.
+- The key is `(r, σ)` as the shader computes them — the spread-adjusted,
+  fitted radius in the shader's units — so the CPU side must compute them
+  the same way, and a shadow instance must carry where its four tables are.
 - **Worst frame.** A key that is not baked yet draws with the analytic
-  `fs_shadow` on that frame, and the bake has a fixed budget of texels per
-  frame. So the first frame of a new shadow costs what it costs today, and no
-  frame pays a large bake. An animated blur or radius never bakes, because
-  each frame has a new key. Its key must be the same on two frames in a row
-  before it bakes.
+  cutout on that frame, and the bake has a fixed budget of texels per
+  frame. An animated blur or radius never bakes, because each frame has a
+  new key: a key must hold for two frames in a row before it bakes.
 - Eviction runs on a frame stamp, with a fixed number of entries examined
-  per frame, so no frame pays a full sweep.
+  per frame, and the allocator never repacks, so no frame pays a sweep.
 
 ### Validation
 
 - A test compares table and analytic coverage over a grid of `(p, r, σ)`
-  and asserts the bound above.
-- The goldens change within that bound. Update them in the same commit and
-  state the bound in the commit message.
-- The table sampling belongs in `fs_shadow` alone, with its texture in a
-  bind group that only the shadow pipeline uses.
-- Expected gain: up to about 2 ms on `scrolling_gpu` and `resizing_gpu`.
+  and asserts the bound.
+- Expected gain: up to about 1 ms on `scrolling_gpu` and `resizing_gpu`.
 
 ## C4. Small per-widget costs added since August
 
@@ -193,7 +182,8 @@ protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
 1. **C4 items**, each one after a fresh profile.
-2. **G3, corner cache.** The largest GPU gain left.
+2. **G3, cutout cache.** The largest GPU gain left. Waits for a decision:
+   see Q2 in `.notes/PERF_REDESIGN_QUESTIONS.md`.
 3. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
    with full runs. Add the `git archive` mtime trap from
    `.notes/FRAME_BENCH_REGRESSION.md` to `benches/AGENTS.md`.
