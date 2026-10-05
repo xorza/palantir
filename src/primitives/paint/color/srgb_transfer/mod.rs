@@ -47,12 +47,93 @@ pub(super) fn encode(y: f32) -> f32 {
 ///
 /// **Counted, not evaluated.** The byte rises to `i + 1` exactly where
 /// `y` reaches the decode of the midpoint `(i + ½) / 255`, so counting
-/// the midpoints `y` has reached is exact and costs a binary search,
-/// where evaluating [`encode`] costs a `powf` and is only as exact as it.
+/// the midpoints `y` has reached is exact, where evaluating [`encode`]
+/// costs a `powf` and is only as exact as it.
+///
+/// **Looked up, not searched.** The count is the byte at the start of
+/// `y`'s bucket — its exponent and top [`BUCKET_MANTISSA_BITS`] mantissa
+/// bits — plus one when `y` has reached the bucket's own threshold. No
+/// bucket holds two thresholds (checked when the tables are built), so one
+/// compare is exact, where a binary search over the 255 thresholds takes
+/// eight branches no predictor can learn.
+#[inline]
 pub(super) fn encode_byte(y: f32) -> u8 {
-    let y = f64::from(y);
-    BYTE_THRESHOLDS.partition_point(|&threshold| threshold <= y) as u8
+    // NaN, a negative value and a value below the first threshold count no
+    // threshold.
+    if y.is_nan() || y < THRESHOLDS_F32[0] {
+        return 0;
+    }
+    if y >= 1.0 {
+        return 255;
+    }
+    let bucket = (y.to_bits() >> BUCKET_SHIFT) - FIRST_BUCKET;
+    let start = BUCKET_BYTES[bucket as usize];
+    start + u8::from(y >= THRESHOLDS_F32[usize::from(start)])
 }
+
+/// The mantissa bits a bucket of [`encode_byte`] keeps beside the
+/// exponent. Seven is the fewest that leave each bucket at most one
+/// threshold: at six, two share one.
+const BUCKET_MANTISSA_BITS: u32 = 7;
+
+/// The shift that leaves an `f32`'s bucket of its bits.
+const BUCKET_SHIFT: u32 = f32::MANTISSA_DIGITS - 1 - BUCKET_MANTISSA_BITS;
+
+/// The bucket of the first threshold. Below it, nothing has been reached.
+const FIRST_BUCKET: u32 = THRESHOLDS_F32[0].to_bits() >> BUCKET_SHIFT;
+
+/// The buckets from [`FIRST_BUCKET`] up to `1.0`, where every threshold
+/// has been reached.
+const BUCKET_COUNT: usize = ((1.0f32.to_bits() >> BUCKET_SHIFT) - FIRST_BUCKET) as usize;
+
+/// [`BYTE_THRESHOLDS`] as the smallest `f32` at or above each, and `+∞`
+/// past the last. An `f32` reaches the `f64` threshold exactly when it
+/// reaches this one, so [`encode_byte`] compares in `f32`.
+const THRESHOLDS_F32: [f32; 256] = {
+    let mut thresholds = [f32::INFINITY; 256];
+    let mut i = 0;
+    while i < 255 {
+        let rounded = BYTE_THRESHOLDS[i] as f32;
+        thresholds[i] = if (rounded as f64) < BYTE_THRESHOLDS[i] {
+            rounded.next_up()
+        } else {
+            rounded
+        };
+        i += 1;
+    }
+    thresholds
+};
+
+/// The byte at the start of each bucket: how many thresholds its first
+/// value has reached.
+const BUCKET_BYTES: [u8; BUCKET_COUNT] = {
+    let mut bytes = [0; BUCKET_COUNT];
+    let mut reached = 0;
+    let mut bucket = 0;
+    while bucket < BUCKET_COUNT {
+        let start = f32::from_bits((FIRST_BUCKET + bucket as u32) << BUCKET_SHIFT);
+        while reached < 255 && THRESHOLDS_F32[reached] <= start {
+            reached += 1;
+        }
+        bytes[bucket] = reached as u8;
+        bucket += 1;
+    }
+    bytes
+};
+
+// One compare per lookup is exact only while no bucket holds two
+// thresholds: consecutive thresholds must fall in different buckets.
+const _: () = {
+    let mut i = 1;
+    while i < 255 {
+        assert!(
+            THRESHOLDS_F32[i].to_bits() >> BUCKET_SHIFT
+                != THRESHOLDS_F32[i - 1].to_bits() >> BUCKET_SHIFT,
+            "two sRGB byte thresholds share a bucket: raise BUCKET_MANTISSA_BITS",
+        );
+        i += 1;
+    }
+};
 
 /// Entry `i` is the linear value at which the encode reaches `(i + ½) /
 /// 255` — see [`encode_byte`].
