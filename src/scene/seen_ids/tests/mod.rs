@@ -2,6 +2,7 @@ use crate::internals::panic_probe;
 use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;
 use crate::scene::tree::node_id::NodeId;
+use std::panic::Location;
 
 mod reference;
 
@@ -271,8 +272,11 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
 /// One resolve of a frame's script.
 #[derive(Clone, Copy, Debug)]
 enum Resolve {
-    /// [`SeenIds::resolve_auto`] at `SITES[site]` under `PARENTS[parent]`.
+    /// [`SeenIds::resolve_scoped`] of an auto id at `sites[site]` under
+    /// `parents[parent]`.
     Auto { site: usize, parent: usize },
+    /// [`SeenIds::resolve_scoped`] of a salt under `parents[parent]`.
+    Salt { salt: usize, parent: usize },
     /// [`SeenIds::resolve`] of a raw id.
     Raw { raw: WidgetId, explicit: bool },
 }
@@ -306,11 +310,13 @@ fn matches_the_per_pass_tables_over_random_frames() {
         let auto_raw = |site: usize, parent: usize| {
             WidgetId::from_location(sites[site]).scoped(parents[parent])
         };
-        // The auto ids' raw ids join the universe, so explicit ids collide
-        // with auto ones too.
+        let salts: Vec<_> = (100..104).map(WidgetId::from_hash).collect();
+        // The scoped ids' raw ids join the universe, so raw ids collide with
+        // auto ids and salts too.
         let universe: Vec<_> = (0..10)
             .map(WidgetId::from_hash)
             .chain((0..3).map(|site| auto_raw(site, site % 3)))
+            .chain((0..2).map(|salt| salts[salt].scoped(parents[salt + 1])))
             .collect();
         let probes: Vec<_> = universe
             .iter()
@@ -325,6 +331,11 @@ fn matches_the_per_pass_tables_over_random_frames() {
                 if next(3) == 0 {
                     Resolve::Auto {
                         site: next(sites.len()),
+                        parent: next(parents.len()),
+                    }
+                } else if next(2) == 0 {
+                    Resolve::Salt {
+                        salt: next(salts.len()),
                         parent: next(parents.len()),
                     }
                 } else {
@@ -357,8 +368,12 @@ fn matches_the_per_pass_tables_over_random_frames() {
                 for &step in &script {
                     let (got, want) = match step {
                         Resolve::Auto { site, parent } => (
-                            ids.resolve_auto(sites[site], parents[parent]),
+                            ids.resolve_scoped(Ident::Auto(sites[site]), parents[parent]),
                             model.resolve(auto_raw(site, parent), false),
+                        ),
+                        Resolve::Salt { salt, parent } => (
+                            ids.resolve_scoped(Ident::Hash(salts[salt]), parents[parent]),
+                            model.resolve(salts[salt].scoped(parents[parent]), true),
                         ),
                         Resolve::Raw { raw, explicit } => {
                             (ids.resolve(raw, explicit), model.resolve(raw, explicit))

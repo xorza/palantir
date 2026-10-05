@@ -148,14 +148,14 @@ impl Forest {
     /// other — a raw id that skipped disambiguation would collide, and a
     /// disambiguated id that skipped the parent would move with record
     /// order — so they resolve together here rather than being paired up
-    /// again by every caller. An auto id goes to the tracker as its call
-    /// site and parent, the raw id's inputs, so a frame in step with the
-    /// last one never hashes it.
+    /// again by every caller. A parent-scoped ident goes to the tracker as
+    /// its inputs, the call site or salt and the parent, so a frame in step
+    /// with the last one never hashes its raw id.
     #[inline]
     pub(crate) fn widget_id(&mut self, ident: Ident) -> ResolvedId {
         let parent = self.current_parent_id();
         match ident {
-            Ident::Auto(location) => self.ids.resolve_auto(location, parent),
+            Ident::Auto(_) | Ident::Hash(_) => self.ids.resolve_scoped(ident, parent),
             _ => self.ids.resolve(ident.raw_id(parent), ident.is_explicit()),
         }
     }
