@@ -17,14 +17,12 @@ Measured on the Ryzen 7 6800U / Radeon 680M, `x86-64-v3`, core 2 pinned,
 
 | arm | `b7b77cfd` | `77719e8a` | target | now |
 | --- | ---: | ---: | ---: | ---: |
-| `cached_cpu` | 125.6 µs | 162.7 µs | 135–145 µs | 141.7 µs |
-| `scrolling_cpu` | 194.2 µs | 225.7 µs | 195–205 µs | 204.0 µs |
-| `scrolling_gpu` | 3.91 ms | 7.15–7.73 ms | 5.0–5.5 ms | 6.15 ms |
-| `resizing_gpu` | 4.84 ms | 8.36–8.54 ms | 5.6–6.2 ms | 7.08 ms |
+| `cached_cpu` | 125.6 µs | 162.7 µs | 135–145 µs | 140.6 µs |
+| `scrolling_cpu` | 194.2 µs | 225.7 µs | 195–205 µs | 203.7 µs |
+| `scrolling_gpu` | 3.91 ms | 7.15–7.73 ms | 5.0–5.5 ms | 5.40 ms |
+| `resizing_gpu` | 4.84 ms | 8.36–8.54 ms | 5.6–6.2 ms | 6.56 ms |
 
-"Now" is the median of three full runs before G3's table, which then took
-`scrolling_gpu` from 6.09 to 5.50 ms and `resizing_gpu` from 7.09 to 6.31 ms
-(ABBA).
+"Now" is the median of three full runs at `c4a28240`, with every step in.
 
 The targets were estimates from the profile shares below. Each step was
 measured on its own before the next one started.
