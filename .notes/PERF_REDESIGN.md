@@ -184,27 +184,6 @@ Measure each one with the profile before you change it.
   `AnimMap`) wait for a decision: see
   `.notes/PERF_REDESIGN_QUESTIONS.md`.
 
-## C5. The worst-case compose bound, at a lower constant
-
-### Problem
-
-`86739680` bounds the worst-case compose with a tiled occlusion index and
-`RectGrid`. The default fixture pays about 100 K instructions per frame for
-it. The bound is correct and stays.
-
-### Design
-
-Measure the index's own cost per group size first. If small groups pay for
-the index, they use the plain scan up to the size where the index wins. That
-is the same rule that the higher-kind tiers already use at 32 rects. The
-worst case keeps its bound, because large groups still use the index.
-
-### Validation
-
-- The composer's pruning tests, plus a test that the threshold does not
-  change which quads survive.
-- Expected gain: up to 1.5% of `cached_cpu`.
-
 ---
 
 # Part 2: Implementation order
@@ -214,9 +193,8 @@ protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
 1. **C4 items**, each one after a fresh profile.
-2. **C5, compose threshold**, after a measurement of the index cost.
-3. **G3, corner cache.** The largest GPU gain left.
-4. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
+2. **G3, corner cache.** The largest GPU gain left.
+3. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
    with full runs. Add the `git archive` mtime trap from
    `.notes/FRAME_BENCH_REGRESSION.md` to `benches/AGENTS.md`.
 
