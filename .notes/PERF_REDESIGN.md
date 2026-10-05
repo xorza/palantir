@@ -167,35 +167,6 @@ interpolation.
   bind group that only the shadow pipeline uses.
 - Expected gain: up to about 2 ms on `scrolling_gpu` and `resizing_gpu`.
 
-## C3. An exact sRGB encode without a binary search
-
-### Problem
-
-`encode_byte` finds a byte with `partition_point` over 255 `f64` thresholds:
-eight branches that the CPU cannot predict, for each channel. Gradient stops
-(`Stop::new`) and mesh vertices encode on every frame.
-
-### Design
-
-A `u8` table of 1 634 entries, indexed by the exponent and the top seven
-mantissa bits of the `f32`. Each bucket holds at most one threshold
-(checked for all 255 thresholds), so
-
-`byte = TABLE[i] + (y >= THRESHOLD_F32[TABLE[i]])`
-
-is exact. `THRESHOLD_F32[k]` is the smallest `f32` at or above the `f64`
-threshold, so the `f32` compare gives the same answer as the `f64` compare.
-Values below the first bucket give 0, values at or above 1.0 give 255, and
-NaN gives 0, as `partition_point` does today. Both tables are `const`.
-
-### Validation
-
-- An exhaustive test over every `f32` in `[0, 1]` (about 1.07·10⁹ values)
-  against the current function. It runs only under `--ignored`, because it
-  takes seconds. The normal test checks every threshold, the `f32` on each
-  side of it, and the special values.
-- Expected gain: 2–3% of `cached_cpu`.
-
 ## C4. Small per-widget costs added since August
 
 Measure each one with the profile before you change it.
@@ -243,11 +214,10 @@ Each step is one commit with its tests. Measure each step with the A/B
 protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
-1. **C3, exact sRGB table.** Local change with an exhaustive test.
-2. **C4 items**, each one after a fresh profile.
-3. **C5, compose threshold**, after a measurement of the index cost.
-4. **G3, corner cache.** The largest GPU gain left.
-5. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
+1. **C4 items**, each one after a fresh profile.
+2. **C5, compose threshold**, after a measurement of the index cost.
+3. **G3, corner cache.** The largest GPU gain left.
+4. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
    with full runs. Add the `git archive` mtime trap from
    `.notes/FRAME_BENCH_REGRESSION.md` to `benches/AGENTS.md`.
 
