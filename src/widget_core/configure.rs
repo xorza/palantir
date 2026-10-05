@@ -27,6 +27,7 @@ use crate::scene::node::ident::Ident;
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
 use std::hash::Hash;
+use std::panic::Location;
 
 /// A widget borrowed for configuration: the same setters [`Configure`]
 /// chains, in the form that writes where the widget already sits.
@@ -58,8 +59,8 @@ impl ConfigureWidget<'_> {
     /// Borrowing form of [`Configure::auto_id`].
     #[track_caller]
     #[inline]
-    pub fn auto_id(&mut self) -> &mut Self {
-        self.widget.ident = Ident::Auto(WidgetId::auto());
+    pub const fn auto_id(&mut self) -> &mut Self {
+        self.widget.ident = Ident::Auto(Location::caller());
         self
     }
 

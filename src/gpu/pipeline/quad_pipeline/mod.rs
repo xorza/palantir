@@ -4,9 +4,13 @@
 //! immediate region rather than a uniform buffer — see
 //! [`ViewportPush`](crate::gpu::surface::viewport::ViewportPush).
 
+pub(crate) mod cutout_plan;
+mod cutout_tables;
+
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
@@ -14,23 +18,29 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::stencil::Stencil;
+use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::quad::Quad;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 use std::slice;
 
 /// Every quad pipeline one swapchain format needs.
 ///
-/// Three, not one: the two mask variants write the stencil instead of
-/// colour, through a fragment entry of their own. They are built
-/// together because they share a layout, and held together because the
-/// schedule reaches for whichever the step calls for.
+/// Four, not one: shadows draw through a fragment entry of their own, and
+/// the two mask variants write the stencil instead of colour, through a
+/// third. They are built together because they share a layout, and held
+/// together because the schedule reaches for whichever the step calls for.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
     /// Colour draws — the base and its stencil-test twin.
     pub(crate) color: StencilVariant,
+    /// Drop and inset shadows, through `vs_shadow` and `fs_shadow`, which
+    /// also read the baked corner cutouts ([`CutoutTables`]). Apart from
+    /// `fs` so that the blur integral's registers and code stay out of
+    /// every other quad's pipeline.
+    pub(crate) shadow: StencilVariant,
     /// Deepens a rounded-clip chain by one level. See
     /// [`Stencil::stamp_state`].
     pub(crate) mask_stamp: wgpu::RenderPipeline,
@@ -63,6 +73,11 @@ pub(crate) struct QuadPipeline {
     shader: wgpu::ShaderModule,
     /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
+    /// [`Self::pipeline_layout`] plus the cutout atlas at group 1, for the
+    /// shadow variant alone.
+    shadow_layout: wgpu::PipelineLayout,
+    /// The shadows' baked corner cutouts.
+    cutouts: CutoutTables,
 }
 
 impl QuadPipeline {
@@ -181,6 +196,7 @@ impl QuadPipeline {
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Quad.module(device);
+        let cutouts = CutoutTables::new(device, &shader);
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
 
@@ -198,6 +214,12 @@ impl QuadPipeline {
                 "palantir.quad.pl",
                 &[Some(textures.layout())],
             ),
+            shadow_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.quad.shadow.pl",
+                &[Some(textures.layout()), Some(cutouts.layout())],
+            ),
+            cutouts,
         }
     }
 
@@ -227,6 +249,7 @@ impl QuadPipeline {
                 label,
                 shader: &self.shader,
                 layout: &self.pipeline_layout,
+                vertex_entry: "vs",
                 vertex_buffers: slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_format: format,
@@ -237,6 +260,7 @@ impl QuadPipeline {
             }
             .build(device)
         };
+        let shadow_buffers = [instance.clone(), Some(CutoutTables::corner_layout())];
         QuadVariants {
             color: StencilVariant::build(
                 device,
@@ -244,8 +268,24 @@ impl QuadPipeline {
                     label: "palantir.quad.pipeline",
                     stencil_label: "palantir.quad.pipeline.stencil_test",
                     shader: &self.shader,
+                    vertex_entry: "vs",
+                    fragment_entry: "fs",
                     layout: &self.pipeline_layout,
                     vertex_buffers: slice::from_ref(&instance),
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                },
+                format,
+            ),
+            shadow: StencilVariant::build(
+                device,
+                ColorVariantSpec {
+                    label: "palantir.quad.pipeline.shadow",
+                    stencil_label: "palantir.quad.pipeline.shadow.stencil_test",
+                    shader: &self.shader,
+                    vertex_entry: "vs_shadow",
+                    fragment_entry: "fs_shadow",
+                    layout: &self.shadow_layout,
+                    vertex_buffers: &shadow_buffers,
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                 },
                 format,
@@ -255,8 +295,17 @@ impl QuadPipeline {
         }
     }
 
-    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
+    /// Upload the frame's quads, and bake the cutout tables the shadows a
+    /// repaint inside `scissors` of a `viewport` in physical pixels read.
+    pub(crate) fn upload(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        quads: &[Quad],
+        scissors: &RepaintScissors,
+        viewport: UVec2,
+    ) {
         self.instance_buffer.upload_instances(ctx, quads);
+        self.cutouts.prepare(ctx, quads, scissors, viewport);
     }
 
     /// Bind pipeline + gradient bind group + instance buffer once per
@@ -276,6 +325,19 @@ impl QuadPipeline {
             gradient_bg,
             &self.instance_buffer.buffer,
         );
+    }
+
+    /// [`Self::bind`] for the shadow variant, which also reads the cutout
+    /// atlas and the per-instance corner tables.
+    pub(crate) fn bind_shadows<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        variant: &'a StencilVariant,
+        use_stencil: bool,
+        gradient_bg: &'a wgpu::BindGroup,
+    ) {
+        self.bind(pass, variant, use_stencil, gradient_bg);
+        self.cutouts.bind(pass);
     }
 
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
@@ -321,3 +383,15 @@ const _: () = {
     assert!(QUAD_INSTANCE_ATTRS[7].offset == offset_of!(Quad, fill_lut_row) as u64);
     assert!(QUAD_INSTANCE_ATTRS[8].offset == offset_of!(Quad, fill_axis) as u64);
 };
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+
+    impl QuadPipeline {
+        /// See `CutoutTables::disable_baking`.
+        pub(crate) const fn disable_cutout_tables(&mut self) {
+            self.cutouts.disable_baking();
+        }
+    }
+}

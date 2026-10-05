@@ -402,6 +402,7 @@ impl<'a> FrameCycle<'a> {
             &key,
             &mut self.ui.cascade,
         );
+        self.ui.cascade_is_last_frame = false;
     }
 
     /// Paint-half of the frame: diff seen ids against the last painted
@@ -413,6 +414,7 @@ impl<'a> FrameCycle<'a> {
     fn finalize_frame(&mut self) {
         tracy::zone!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
+        self.ui.cascade_is_last_frame = true;
         // Every removal sweep probes per removed id, so each costs what
         // the frame removed. The animation sweep alone walks its rows,
         // because it also drops slots no call site reached for this

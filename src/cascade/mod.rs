@@ -113,11 +113,16 @@ impl Cascade {
     /// on that path.
     #[inline]
     pub(crate) fn locate(&self, id: WidgetId) -> Option<WidgetLocation> {
-        let endpoint = *self.by_id.get(&id)?;
-        Some(WidgetLocation {
+        Some(self.location(*self.by_id.get(&id)?))
+    }
+
+    /// [`Self::locate`] for an endpoint already known, with no probe.
+    #[inline]
+    pub(crate) fn location(&self, endpoint: Endpoint) -> WidgetLocation {
+        WidgetLocation {
             entry_idx: self.layers[endpoint.layer].entries_base + endpoint.node.0,
             endpoint,
-        })
+        }
     }
 
     /// True when `descendant`'s most recent record sits inside

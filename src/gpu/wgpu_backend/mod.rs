@@ -405,7 +405,7 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.main"),
             });
 
-        let overlay_count = self.upload_frame(&mut encoder, &submission);
+        let overlay_count = self.upload_frame(&mut encoder, &submission, &repaint_scissors);
 
         // Alpha forced to 1 — the clear is the frame's bottom paint layer.
         let clear_color = wgpu::Color {
@@ -490,7 +490,12 @@ impl WgpuBackend {
     /// texture and dynamic-buffer write the frame's passes will read,
     /// recorded onto `encoder` before any render pass opens. Returns the
     /// damage-overlay instance count for the post-copy overlay pass.
-    fn upload_frame(&mut self, encoder: &mut wgpu::CommandEncoder, sub: &Submission<'_>) -> u32 {
+    fn upload_frame(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        sub: &Submission<'_>,
+        scissors: &RepaintScissors,
+    ) -> u32 {
         let Submission {
             owner,
             targets,
@@ -537,7 +542,8 @@ impl WgpuBackend {
             self.quad.upload_masks(&mut ctx, self.mask_plan.quads());
         }
 
-        self.quad.upload(&mut ctx, &buffer.quads);
+        self.quad
+            .upload(&mut ctx, &buffer.quads, scissors, buffer.display.physical);
         self.mesh.upload(
             &mut ctx,
             MeshUpload {
@@ -790,6 +796,10 @@ impl WgpuBackend {
         enum Bound {
             None,
             QuadInstance,
+            /// The quad instances through the shadow pipeline: the same
+            /// buffer and bind group, another pipeline, and the cutout
+            /// tables beside them.
+            ShadowInstance,
             Mesh,
             Image,
             Curve,
@@ -900,6 +910,16 @@ impl WgpuBackend {
                 rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
                     self.quad
                         .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                });
+                self.quad.draw(pass, range);
+                debug_marker::pop(pass);
+            }
+            RenderStep::Shadows { range } => {
+                mark(pass, BatchKind::Quads);
+                debug_marker::push(pass, "shadows");
+                rebind(&mut bound, Bound::ShadowInstance, pass, viewport, |pass| {
+                    self.quad
+                        .bind_shadows(pass, &fmt.quad.shadow, use_stencil, &self.gradient.bg);
                 });
                 self.quad.draw(pass, range);
                 debug_marker::pop(pass);
@@ -1125,6 +1145,12 @@ pub(crate) mod internals {
     use crate::gpu::wgpu_backend::WgpuBackend;
 
     impl WgpuBackend {
+        /// Shade every shadow corner's cutout from now on instead of baking
+        /// tables: the reference the tables are compared with.
+        pub(crate) const fn disable_cutout_tables(&mut self) {
+            self.quad.disable_cutout_tables();
+        }
+
         /// Whether a pipeline set has been built for `format`.
         pub(crate) fn has_format_pipelines(&self, format: TargetFormat) -> bool {
             self.pipelines.contains_key(&format)

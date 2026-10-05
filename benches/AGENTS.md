@@ -59,6 +59,15 @@ RUN=(taskset -c 2 setarch -R)
 "${RUN[@]}" tmp/criterion-a --bench -d cascade --baseline b   # A against B
 ```
 
+**Bisecting through `git archive`.** An extracted file's mtime is its
+commit's time. Extract several commits into one directory and build them
+into one target directory, and an older commit reads to Cargo as "not
+changed": it rebuilds the crate only when the version, the lock file or
+the profile changes, and otherwise hands back the binary it built for the
+commit before.
+Touch every extracted file before the build, or give each commit its own
+target directory.
+
 ## Profiling
 
 `benches/bench-perf.sh` (Linux) profiles the bench under the rules above,
