@@ -17,8 +17,8 @@ pub(crate) struct StencilVariant {
     test: wgpu::RenderPipeline,
 }
 
-/// What one color-pipeline family varies: labels, shader, fragment
-/// entry, pipeline layout, vertex buffers, topology. Everything else
+/// What one color-pipeline family varies: labels, shader, entry points,
+/// pipeline layout, vertex buffers, topology. Everything else
 /// (`ColorWrites::ALL`, premultiplied blend) is fixed across the
 /// quad / mesh / image / curve / raster families and filled in by
 /// [`StencilVariant::build`].
@@ -33,6 +33,9 @@ pub(crate) struct ColorVariantSpec<'a> {
     pub(crate) label: &'static str,
     pub(crate) stencil_label: &'static str,
     pub(crate) shader: &'a wgpu::ShaderModule,
+    /// The vertex entry point: `vs` everywhere but quad's shadows, whose
+    /// `vs_shadow` also reads their cutout tables.
+    pub(crate) vertex_entry: &'static str,
     /// The fragment entry point. A pipeline compiles only what its entry
     /// reaches, so one module can hold a path its other entries leave out:
     /// quad's shadows, in `fs_shadow`, stay out of `fs`.
@@ -53,6 +56,7 @@ impl StencilVariant {
     ) -> Self {
         let variant = |label: &'static str, depth_stencil: Option<wgpu::DepthStencilState>| {
             PipelineRecipe {
+                vertex_entry: spec.vertex_entry,
                 label,
                 shader: spec.shader,
                 layout: spec.layout,

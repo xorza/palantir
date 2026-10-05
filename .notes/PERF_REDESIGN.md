@@ -22,8 +22,9 @@ Measured on the Ryzen 7 6800U / Radeon 680M, `x86-64-v3`, core 2 pinned,
 | `scrolling_gpu` | 3.91 ms | 7.15–7.73 ms | 5.0–5.5 ms | 6.15 ms |
 | `resizing_gpu` | 4.84 ms | 8.36–8.54 ms | 5.6–6.2 ms | 7.08 ms |
 
-"Now" is the median of three full runs after the steps done so far. The GPU
-targets need G3's table.
+"Now" is the median of three full runs before G3's table, which then took
+`scrolling_gpu` from 6.09 to 5.50 ms and `resizing_gpu` from 7.09 to 6.31 ms
+(ABBA).
 
 The targets were estimates from the profile shares below. Each step was
 measured on its own before the next one started.
@@ -108,70 +109,12 @@ cycles per node.
 
 # Part 1: Designs
 
-## G3. A cache of corner cutouts
-
-### Done: the cutout form
-
-From σ = 0.25 up, the shadow coverage is now the sharp box (closed form)
-less four corner cutouts, each an angle integral over 12 midpoint nodes.
-Against the exact integral it errs at most 1.1·10⁻³ there, where the
-outline form erred 2.3·10⁻³, and it costs about half the kernel
-evaluations: ABBA `scrolling_gpu` 7.33 → 6.05 ms, `resizing_gpu` 8.19 →
-7.08 ms. Below σ = 0.25 the outline form stays, because the cutout's
-density loses to the pixel box's step there.
-
-### Problem
-
-The cutout integral still costs about 1.1 ms per full frame on this fixture
-(`scrolling_gpu` 6.05 ms against 4.91 ms before `e0500557`).
-
-### How others do it
-
-WebRender and Skia render the blurred corner once into a cached texture and
-draw the shadow as a nine-patch. Chrome's GPU box shadows use the Skia path.
-
-### Design (decided: bake every frame)
-
-The cutout `U(q; r, σ)` is one function for all four corners (they are its
-reflections), and it is zero more than `reach` away from its `r`×`r`
-square, so one table per `(r, σ)` over `[−reach, r + reach]²` replaces the
-12 nodes with four texel loads.
-
-- Every frame bakes the tables its shadows use, deduplicated by key, into a
-  fixed atlas packed from scratch, before the main pass. About 5 000 texels
-  × 48 nodes per table, some 30× cheaper than shading the same corners, so
-  every frame pays the same kind of cost and there is no cache, eviction or
-  stability rule.
-- `R32Float` texels with a manual bilinear filter: the format is not
-  filterable on every backend, and 16-bit texels would add 2.4·10⁻⁴. The
-  bake renders into it, which GLES 3.0 allows only with
-  `EXT_color_buffer_float`; without it, every shadow keeps the analytic
-  cutout.
-- Grid spacing h = σ / 8; measure the cutout's bilinear error and choose h
-  so that bake and interpolation together stay under the current
-  1.1·10⁻³. A key whose table would pass a texel budget (small σ against a
-  large radius) keeps the analytic cutout, as does any key the atlas has no
-  room for.
-- The key is `(r, σ)` as the shader computes them — the spread-adjusted,
-  fitted radius in the shader's units — so the CPU side mirrors that
-  computation, and a shadow instance points at its four tables through a
-  descriptor buffer in the shadow pipeline's own bind group.
-
-### Validation
-
-- A test compares table and analytic coverage over a grid of `(p, r, σ)`
-  and asserts the bound.
-- Expected gain: up to about 1 ms on `scrolling_gpu` and `resizing_gpu`.
-
 ---
 
 # Part 2: Implementation order
 
-Each step is one commit with its tests. Measure each step with the A/B
-protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
-`performance`), and record the result in the commit message.
-
-1. **G3, cutout table baked every frame.** The largest GPU gain left.
+Every step is done. Each was one commit with its tests, measured with the
+A/B protocol in `benches/AGENTS.md`, its result in the commit message.
 
 ## Not in this plan
 

@@ -48,6 +48,7 @@ impl BlitPipeline {
         format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
         PipelineRecipe {
+            vertex_entry: "vs",
             label: "palantir.blit.pipeline",
             shader: &self.shader,
             layout: &self.pipeline_layout,

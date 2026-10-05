@@ -353,6 +353,12 @@ pub(crate) mod internals {
     }
 
     impl OffscreenHost {
+        /// Shade every shadow corner's cutout from now on instead of baking
+        /// tables: the reference the visual suite compares the tables with.
+        pub const fn disable_cutout_tables(&mut self) {
+            self.core.backend.disable_cutout_tables();
+        }
+
         /// Whether the shared backend has built a pipeline set for `format`.
         /// Lets format-change tests confirm a new format materializes its own
         /// pipelines.
