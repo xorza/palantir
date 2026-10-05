@@ -23,7 +23,7 @@ Measured on the Ryzen 7 6800U / Radeon 680M, `x86-64-v3`, core 2 pinned,
 | `resizing_gpu` | 4.84 ms | 8.36–8.54 ms | 5.6–6.2 ms | 7.08 ms |
 
 "Now" is the median of three full runs after the steps done so far. The GPU
-targets need G3's table (Q2).
+targets need G3's table.
 
 The targets were estimates from the profile shares below. Each step was
 measured on its own before the next one started.
@@ -130,28 +130,32 @@ The cutout integral still costs about 1.1 ms per full frame on this fixture
 WebRender and Skia render the blurred corner once into a cached texture and
 draw the shadow as a nine-patch. Chrome's GPU box shadows use the Skia path.
 
-### Design
+### Design (decided: bake every frame)
 
 The cutout `U(q; r, σ)` is one function for all four corners (they are its
 reflections), and it is zero more than `reach` away from its `r`×`r`
 square, so one table per `(r, σ)` over `[−reach, r + reach]²` replaces the
 12 nodes with four texel loads.
 
-- Grid spacing h = σ / 8. Bilinear interpolation of the outline form's
-  corner term measured at most 7·10⁻⁴ at that spacing; measure it again for
-  the cutout, and choose h so that table and interpolation together stay
-  under the current 1.1·10⁻³.
+- Every frame bakes the tables its shadows use, deduplicated by key, into a
+  fixed atlas packed from scratch, before the main pass. About 5 000 texels
+  × 48 nodes per table, some 30× cheaper than shading the same corners, so
+  every frame pays the same kind of cost and there is no cache, eviction or
+  stability rule.
 - `R32Float` texels with a manual bilinear filter: the format is not
-  filterable on every backend, and 16-bit texels would add 2.4·10⁻⁴.
+  filterable on every backend, and 16-bit texels would add 2.4·10⁻⁴. The
+  bake renders into it, which GLES 3.0 allows only with
+  `EXT_color_buffer_float`; without it, every shadow keeps the analytic
+  cutout.
+- Grid spacing h = σ / 8; measure the cutout's bilinear error and choose h
+  so that bake and interpolation together stay under the current
+  1.1·10⁻³. A key whose table would pass a texel budget (small σ against a
+  large radius) keeps the analytic cutout, as does any key the atlas has no
+  room for.
 - The key is `(r, σ)` as the shader computes them — the spread-adjusted,
-  fitted radius in the shader's units — so the CPU side must compute them
-  the same way, and a shadow instance must carry where its four tables are.
-- **Worst frame.** A key that is not baked yet draws with the analytic
-  cutout on that frame, and the bake has a fixed budget of texels per
-  frame. An animated blur or radius never bakes, because each frame has a
-  new key: a key must hold for two frames in a row before it bakes.
-- Eviction runs on a frame stamp, with a fixed number of entries examined
-  per frame, and the allocator never repacks, so no frame pays a sweep.
+  fitted radius in the shader's units — so the CPU side mirrors that
+  computation, and a shadow instance points at its four tables through a
+  descriptor buffer in the shadow pipeline's own bind group.
 
 ### Validation
 
@@ -159,22 +163,36 @@ square, so one table per `(r, σ)` over `[−reach, r + reach]²` replaces the
   and asserts the bound.
 - Expected gain: up to about 1 ms on `scrolling_gpu` and `resizing_gpu`.
 
-## C4. Small per-widget costs added since August
+## C4. Read last frame's data by position
 
-Measure each one with the profile before you change it.
+### Problem
 
-- **`AnimMap::animate`, 1.6%.** A settled look still probes the animation
-  map for each widget in each frame: the row that says it settled lives
-  there. Skipping the probe needs the widget's row by position (Q1).
-- **`Cascade::is_within`, 1.0%: measured and dropped for the scope scans.**
-  Scope rows that carried their node, and scans that looked up only the
-  queried widget, made `cached_cpu` 0.9% slower (ABBA, +0.92% / −0.87%):
-  `Scopes::reader`'s memo already spares the per-chord scans. The rest of
-  the cost is in callers that ask about one widget, `is_focus_within` and
-  `is_hover_within`, which belong to Q1's positional reads.
-- **Last-frame lookups by position** (`response_for` 3.2%, `is_within`,
-  `AnimMap`) wait for a decision: see
-  `.notes/PERF_REDESIGN_QUESTIONS.md`.
+Each widget finds last frame's data through hash lookups of its id in every
+frame: `response_for` probes `Cascade::by_id` (3.2% of `cached_cpu`), a look
+animation probes `AnimMap` even when settled (1.8%), and `is_within`,
+`is_focus_within` and `is_hover_within` probe twice per call (1.0%). The
+state map does the same for stateful widgets.
+
+### Design (decided: positional reads with a probe fallback)
+
+While a pass is in step with the last frame, a widget's `SeenIds` entry has
+the same position as last frame's entry for the same id, and that entry
+holds last frame's endpoint. `ResolvedId` carries the entry position, and
+the reads above take last frame's row through it — but only while the pass
+is in step *and* the cascade snapshot they read is the one of that frame.
+In a two-pass frame, pass B reads a cascade built for pass A, while
+`SeenIds::prev` holds the last painted frame, so the snapshot names the pass
+it belongs to and a mismatch probes as today. Anything out of step probes as
+today.
+
+The scope-row variant of the containment scan was measured and dropped
+(`cached_cpu` +0.9%): `Scopes::reader`'s memo already spares those scans.
+
+### Validation
+
+- A differential test that the positional reads return what the probes
+  return, over frames in step, out of step and with two passes.
+- Expected gain: 3–5% of `cached_cpu`.
 
 ---
 
@@ -184,9 +202,8 @@ Each step is one commit with its tests. Measure each step with the A/B
 protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
-1. **C4 items.** All wait for Q1 in `.notes/PERF_REDESIGN_QUESTIONS.md`.
-2. **G3, cutout cache.** The largest GPU gain left. Waits for a decision:
-   see Q2 in `.notes/PERF_REDESIGN_QUESTIONS.md`.
+1. **C4, positional reads.** The differential test comes first.
+2. **G3, cutout table baked every frame.** The largest GPU gain left.
 
 ## Not in this plan
 
