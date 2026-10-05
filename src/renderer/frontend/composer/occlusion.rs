@@ -42,11 +42,11 @@ struct Occluder {
 /// tests only the covers registered in that one tile. Each tile holds its
 /// covers as a chain, newest first: covers register in occluder order, so
 /// a query walks its tile's chain only while the covers are still drawn
-/// above the quad, and the index is built in one pass with no sort. A cover spanning
-/// more than [`LARGE_COVER_TILES`] tiles is kept apart and tested by
-/// every query instead, so no cover registers in more tiles than that —
-/// and each such cover is an opaque area of at least that many tiles,
-/// which the GPU pays to fill anyway.
+/// above the quad, and the index is built in one pass with no sort. A
+/// cover spanning more than [`LARGE_COVER_TILES`] tiles is kept apart and
+/// tested by every query instead, so no cover registers in more tiles than
+/// that — and each such cover is an opaque area of at least that many
+/// tiles, which the GPU pays to fill anyway.
 ///
 /// The covers are clamped to the viewport's tiles. A clamped corner
 /// still lands in a clamped cover's tile range, because the clamp is

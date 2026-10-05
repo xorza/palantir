@@ -179,7 +179,8 @@ impl CutoutPlan {
                 continue;
             };
             let sigma = quad.fill_axis.lanes()[2];
-            // A corner the frame does not draw has no key, and no table.
+            // A corner the frame does not draw adds no area to its key, and
+            // reads a table only when a drawn corner pays for one.
             self.corners.push(CornerTables(corners.map(|corner| {
                 self.keys
                     .binary_search_by_key(&CutoutKey::new(corner.r, sigma), |used| used.key)
