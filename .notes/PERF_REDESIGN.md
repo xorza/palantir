@@ -167,32 +167,6 @@ interpolation.
   bind group that only the shadow pipeline uses.
 - Expected gain: up to about 2 ms on `scrolling_gpu` and `resizing_gpu`.
 
-## C2. Hash an auto id only out of step
-
-### Problem
-
-`WidgetId::auto` hashes the caller's file path (about 35 bytes), its line
-and its column at every widget construction, and `Ident::raw_id` mixes the
-result with the parent's id: about 6–7% of `cached_cpu` together. Since
-`SeenIds` resolves in step with the last frame (done: `cached_cpu` −6%,
-ABBA), a steady frame no longer needs the hash to find the id.
-
-### Design
-
-`Ident::Auto` holds the `&'static Location<'static>` instead of its hash,
-taken by the same `#[track_caller]` chain, so the call site is the same. Each
-`SeenIds` entry also keeps the location and the parent's id. In step, an auto
-resolve matches last frame's entry by location pointer and parent id, and
-takes its id with no hash. Out of step, the id is computed as today, so it is
-the same id. A pointer that differs for the same call site only leaves step,
-so the match never gives a wrong id.
-
-### Validation
-
-- A test that the out-of-step id of a location equals `WidgetId::auto()`
-  from the same call site, and the differential test with locations.
-- Expected gain: up to about 6% of `cached_cpu`.
-
 ## C3. An exact sRGB encode without a binary search
 
 ### Problem
@@ -233,8 +207,9 @@ Measure each one with the profile before you change it.
   `is_within` does two hash lookups for each call, and `input/scope.rs`
   calls it in a filter over all rows. The rows already hold their node
   index, so compare node ranges directly.
-- **`Widget::resolved`, 1.5%.** Read it again after C2, because it
-  mixes the parent's id.
+- **`Widget::resolved` and `Forest::widget_id`.** The parent mix is one
+  hash per widget per frame for every `id_salt` widget. Measure it before
+  you change it.
 - **Last-frame lookups by position** (`response_for` 3.2%, `is_within`,
   `AnimMap`) wait for a decision: see
   `.notes/PERF_REDESIGN_QUESTIONS.md`.
@@ -268,12 +243,11 @@ Each step is one commit with its tests. Measure each step with the A/B
 protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
-1. **C2, auto ids hashed only out of step.**
-2. **C3, exact sRGB table.** Local change with an exhaustive test.
-3. **C4 items**, each one after a fresh profile.
-4. **C5, compose threshold**, after a measurement of the index cost.
-5. **G3, corner cache.** The largest GPU gain left.
-6. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
+1. **C3, exact sRGB table.** Local change with an exhaustive test.
+2. **C4 items**, each one after a fresh profile.
+3. **C5, compose threshold**, after a measurement of the index cost.
+4. **G3, corner cache.** The largest GPU gain left.
+5. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
    with full runs. Add the `git archive` mtime trap from
    `.notes/FRAME_BENCH_REGRESSION.md` to `benches/AGENTS.md`.
 

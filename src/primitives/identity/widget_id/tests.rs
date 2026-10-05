@@ -26,6 +26,8 @@ fn auto_hashes_location_via_fx() {
     // than re-spelled, so this stays a cross-check of the *hashing*
     // half. `finalize_avalanches_sequential_ids` covers the other.
     assert_eq!(id, WidgetId::finalize(hasher.finish()));
+    // The deferred form widgets keep gives the same id from the same site.
+    assert_eq!(WidgetId::from_location(l), id);
 
     // Same call site (loop) → identical ids; a different call line →
     // a different id.

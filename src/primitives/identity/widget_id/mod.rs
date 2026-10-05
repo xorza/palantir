@@ -187,16 +187,6 @@ impl WidgetId {
 
     /// Stable across frames as long as the call site is unchanged.
     ///
-    /// Hashes the caller's `(file, line, column)` through the crate's
-    /// FxHash-backed `Hasher`.
-    /// `Location::caller()` resolves at *runtime*, so this runs on every
-    /// widget constructor call — with a byte-serial FNV-1a over the file
-    /// path it was the single largest record-pass cost in the frame
-    /// profile (~90% of `Button::new` self-time); FxHasher walks the
-    /// path a word at a time. The [`Self::from_hash`] space can't alias
-    /// this one: `str`'s `Hash` impl appends a `0xff` terminator that the
-    /// raw byte-slice write here never produces.
-    ///
     /// Repeated calls from the same source location (a loop or a closure
     /// helper) all produce the same id; id resolution silently disambiguates by
     /// mixing in a per-id occurrence counter. Override with
@@ -204,11 +194,33 @@ impl WidgetId {
     /// stable across frames.
     #[track_caller]
     pub fn auto() -> Self {
-        let l = Location::caller();
+        Self::from_location(Location::caller())
+    }
+
+    /// `self` under `parent`, or `self` itself where nothing is open — a
+    /// side layer's root.
+    #[inline]
+    #[must_use]
+    pub(crate) fn scoped(self, parent: Option<Self>) -> Self {
+        match parent {
+            Some(p) => p.with(self.0),
+            None => self,
+        }
+    }
+
+    /// The id [`Self::auto`] gives at `site`: its `(file, line, column)`
+    /// through the crate's FxHash-backed `Hasher`. The [`Self::from_hash`]
+    /// space can't alias this one: `str`'s `Hash` impl appends a `0xff`
+    /// terminator that the raw byte-slice write here never produces.
+    ///
+    /// The file path costs a hash a word at a time, so the crate's widgets
+    /// keep the `Location` and hash it only when the id tracker cannot
+    /// match the call site to last frame's (see `SeenIds::resolve_auto`).
+    pub(crate) fn from_location(site: &Location<'_>) -> Self {
         let mut hasher = Hasher::new();
-        hasher.write(l.file().as_bytes());
-        hasher.write_u32(l.line());
-        hasher.write_u32(l.column());
+        hasher.write(site.file().as_bytes());
+        hasher.write_u32(site.line());
+        hasher.write_u32(site.column());
         Self::finalize(hasher.finish())
     }
 }

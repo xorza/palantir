@@ -268,9 +268,19 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     assert_eq!(ids.prev.entries.len(), 2, "prev must survive pre_record");
 }
 
+/// One resolve of a frame's script.
+#[derive(Clone, Copy, Debug)]
+enum Resolve {
+    /// [`SeenIds::resolve_auto`] at `SITES[site]` under `PARENTS[parent]`.
+    Auto { site: usize, parent: usize },
+    /// [`SeenIds::resolve`] of a raw id.
+    Raw { raw: WidgetId, explicit: bool },
+}
+
 /// The tracker against plain per-pass hash tables ([`reference`]), over
-/// random frames: collisions of auto and explicit ids, ids resolved and
-/// recorded out of order or never recorded, and discarded passes. Most
+/// random frames: collisions of auto and explicit ids, auto ids from a few
+/// call sites under a few parents, ids resolved and recorded out of order
+/// or never recorded, and discarded passes. Most
 /// frames replay the last one's resolves, some with one change at a
 /// random position, so passes run in step, leave it at every position,
 /// and never enter it. Every resolve, every collision pair, every pass's
@@ -286,7 +296,22 @@ fn matches_the_per_pass_tables_over_random_frames() {
             rng ^= rng << 17;
             (rng % n as u64) as usize
         };
-        let universe: Vec<_> = (0..10).map(WidgetId::from_hash).collect();
+        let sites: [&'static Location<'static>; 3] =
+            [Location::caller(), Location::caller(), Location::caller()];
+        let parents = [
+            None,
+            Some(WidgetId::from_hash("p")),
+            Some(WidgetId::from_hash("q")),
+        ];
+        let auto_raw = |site: usize, parent: usize| {
+            WidgetId::from_location(sites[site]).scoped(parents[parent])
+        };
+        // The auto ids' raw ids join the universe, so explicit ids collide
+        // with auto ones too.
+        let universe: Vec<_> = (0..10)
+            .map(WidgetId::from_hash)
+            .chain((0..3).map(|site| auto_raw(site, site % 3)))
+            .collect();
         let probes: Vec<_> = universe
             .iter()
             .flat_map(|&id| [id, id.with(1), id.with(2), id.with(3)])
@@ -294,10 +319,20 @@ fn matches_the_per_pass_tables_over_random_frames() {
         let mut ids = SeenIds::default();
         let mut model = reference::Reference::default();
         let mut node = 0;
-        let mut script: Vec<(WidgetId, bool)> = Vec::new();
+        let mut script: Vec<Resolve> = Vec::new();
         for frame in 0..300 {
             let resolve_at = |next: &mut dyn FnMut(usize) -> usize| {
-                (universe[next(universe.len())], next(4) == 0)
+                if next(3) == 0 {
+                    Resolve::Auto {
+                        site: next(sites.len()),
+                        parent: next(parents.len()),
+                    }
+                } else {
+                    Resolve::Raw {
+                        raw: universe[next(universe.len())],
+                        explicit: next(4) == 0,
+                    }
+                }
             };
             match next(6) {
                 0 => script = (0..next(16)).map(|_| resolve_at(&mut next)).collect(),
@@ -319,9 +354,17 @@ fn matches_the_per_pass_tables_over_random_frames() {
                 }
                 let at = format!("seed {seed} frame {frame} pass {pass}");
                 let mut open: Vec<ResolvedId> = Vec::new();
-                for &(raw, explicit) in &script {
-                    let got = ids.resolve(raw, explicit);
-                    assert_eq!(got, model.resolve(raw, explicit), "resolve, {at}");
+                for &step in &script {
+                    let (got, want) = match step {
+                        Resolve::Auto { site, parent } => (
+                            ids.resolve_auto(sites[site], parents[parent]),
+                            model.resolve(auto_raw(site, parent), false),
+                        ),
+                        Resolve::Raw { raw, explicit } => {
+                            (ids.resolve(raw, explicit), model.resolve(raw, explicit))
+                        }
+                    };
+                    assert_eq!(got, want, "resolve, {at}");
                     if !open.contains(&got) {
                         open.push(got);
                     }

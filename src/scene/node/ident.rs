@@ -3,6 +3,7 @@
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::seen_ids::ResolvedId;
+use std::panic::Location;
 
 /// A [`Widget`](crate::widget_core::widget::Widget)'s identity, in one of two
 /// halves of its life. Before the widget's first contact with `Ui` it is a
@@ -13,9 +14,11 @@ use crate::scene::seen_ids::ResolvedId;
 ///
 /// Three recipes:
 ///
-/// - [`Ident::Auto`] — `#[track_caller]`-derived. The captured
-///   `(file, line, column)` encodes call-site identity, but a call
-///   site reached from a loop or helper resolves to the *same* base id
+/// - [`Ident::Auto`] — `#[track_caller]`-derived. The captured call site
+///   is kept as its `Location` and hashed only when `SeenIds` cannot match
+///   it to last frame's. Its `(file, line, column)` encodes call-site
+///   identity, but a call site reached from a loop or helper resolves to
+///   the *same* base id
 ///   for every iteration, so identity must also depend on **where in
 ///   the tree** the widget sits. So an auto id is **parent-scoped**
 ///   too: mixed with the most-recently-opened parent's resolved
@@ -49,7 +52,7 @@ use crate::scene::seen_ids::ResolvedId;
 /// answer must not be recorded under the second.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Ident {
-    Auto(WidgetId),
+    Auto(&'static Location<'static>),
     Hash(WidgetId),
     Verbatim(WidgetId),
     Resolved(ResolvedId),
@@ -76,10 +79,8 @@ impl Ident {
             Ident::Resolved(resolved) => {
                 unreachable!("resolved id {:?} fed back to the forest", resolved.id())
             }
-            Ident::Auto(id) | Ident::Hash(id) => match parent {
-                Some(p) => p.with(id.0),
-                None => id,
-            },
+            Ident::Auto(site) => WidgetId::from_location(site).scoped(parent),
+            Ident::Hash(id) => id.scoped(parent),
         }
     }
 
