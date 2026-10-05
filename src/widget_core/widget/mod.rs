@@ -35,6 +35,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::{Configure, ConfigureWidget};
 use crate::widget_core::response::{InnerResponse, Response};
 use glam::Vec2;
+use std::panic::Location;
 
 /// What a widget records: its identity, and the node the tree reads.
 /// Every widget builder owns one, chains the [`Configure`] setters on it,
@@ -162,7 +163,7 @@ impl Widget {
     #[track_caller]
     fn new(mode: NodeMode) -> Self {
         Self {
-            ident: Ident::Auto(WidgetId::auto()),
+            ident: Ident::Auto(Location::caller()),
             node: Node::new(mode),
         }
     }

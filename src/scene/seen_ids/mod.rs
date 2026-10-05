@@ -36,11 +36,28 @@
 //!    and folded into `removed` — they reach neither `prev` nor the
 //!    final `curr`, and without the fold their state/anim/text rows
 //!    would leak and resume stale if the widget later reappeared.
+//!
+//! **In step with the last frame.** A frame usually resolves the same raw
+//! ids in the same order as the one before it. While it does, each id is
+//! known without a probe: an id that took its raw id last frame cannot be
+//! taken yet, because last frame's ids are distinct and this pass holds
+//! only the ones before it; and an auto id that collided gets the same
+//! occurrence, from the same taken set. So `curr` builds no hash index
+//! until the first resolve that differs, then indexes the entries so far,
+//! sets the counters from them, and goes on probing, as every resolve did
+//! before. The rollover diff compares by position over the matching
+//! prefix. A frame that changes early costs what every frame cost without
+//! this, and a steady frame hashes no id. Ordered reconciliation does the
+//! same: Flutter's `updateChildren` and the Vue and Inferno diffs walk the
+//! old and the new children in order and fall back to a keyed map only
+//! past a mismatch.
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
+use crate::scene::node::ident::Ident;
 use std::collections::hash_map::Entry;
 use std::mem;
+use std::ptr;
 
 /// Both nodes of one explicit-id collision, in recording order. What
 /// [`SeenIds::record_endpoint`] hands back when the endpoint it just
@@ -81,6 +98,17 @@ impl IdSlot {
     }
 }
 
+/// What [`SeenIds::last_frame_endpoint`] knows of an id's last frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LastFrame {
+    /// Recorded at this endpoint.
+    At(Endpoint),
+    /// Not recorded: absent, or only reserved.
+    Absent,
+    /// Not known without a probe.
+    Unknown,
+}
+
 /// An id [`SeenIds::resolve`] handed out this pass, with the index of
 /// the entry that reserves it. Only `resolve` makes one, so the index
 /// always names that entry; [`SeenIds::record_endpoint`] checks the id
@@ -110,12 +138,52 @@ impl ResolvedId {
 struct IdEntry {
     id: WidgetId,
     slot: IdSlot,
+    origin: Origin,
+}
+
+/// How a pass came to an entry's id: what the next frame's resolve at the
+/// same position must repeat to stay in step.
+#[derive(Clone, Copy, Debug)]
+struct Origin {
+    /// The raw id that resolved to the entry's id, and whether it was
+    /// explicit.
+    raw: WidgetId,
+    is_explicit: bool,
+    /// The occurrence counter the id took, or 0 when the id is `raw`.
+    occurrence: u32,
+    /// The inputs of a parent-scoped `raw`, which name it without a hash.
+    recipe: Option<Recipe>,
+}
+
+/// A parent-scoped raw id before its hash: an auto id's call site or a
+/// salt, and the parent it hangs off.
+#[derive(Clone, Copy, Debug)]
+struct Recipe {
+    /// [`Ident::Auto`] or [`Ident::Hash`].
+    ident: Ident,
+    parent: Option<WidgetId>,
+}
+
+impl Recipe {
+    /// Whether `other` names the same raw id by the same inputs. A
+    /// `Location` is compared by address: a call site the compiler
+    /// duplicated only fails to match, and the resolve then hashes it.
+    #[inline]
+    fn is(self, other: Self) -> bool {
+        let same = match (self.ident, other.ident) {
+            (Ident::Auto(a), Ident::Auto(b)) => ptr::eq(a, b),
+            (Ident::Hash(a), Ident::Hash(b)) => a == b,
+            _ => false,
+        };
+        same && self.parent == other.parent
+    }
 }
 
 /// One pass's ids: a hash index over a dense run of entries. The index
 /// answers "is this id taken" at resolve; the run is what a record
 /// writes through, and what the diffs and the cascade's id snapshot
-/// walk, in resolve order.
+/// walk, in resolve order. `curr`'s index is empty while the pass is in
+/// step with `prev`, and `prev`'s always covers every entry.
 #[derive(Debug, Default)]
 struct IdTable {
     index: WidgetIdMap<u32>,
@@ -148,6 +216,17 @@ impl IdTable {
         self.index.clear();
         self.entries.clear();
     }
+
+    /// Index every entry, into an empty index.
+    fn index_entries(&mut self) {
+        debug_assert!(self.index.is_empty());
+        self.index.extend(
+            self.entries
+                .iter()
+                .enumerate()
+                .map(|(at, entry)| (entry.id, at as u32)),
+        );
+    }
 }
 
 /// One side of a queued explicit-collision pair. The first endpoint
@@ -167,9 +246,10 @@ pub(crate) struct SeenIds {
     /// when the raw id is already occupied. Candidate ids normally
     /// progress through `raw_id.with(1)`, `.with(2)`, etc.; explicitly
     /// occupied candidates are skipped. Cleared each frame in
-    /// [`Self::pre_record`]. Independent of the `(layer, node)` of the
-    /// actual record, so `Widget::resolve` answers the right id before any
-    /// node exists.
+    /// [`Self::pre_record`], left alone while the pass is in step, and set
+    /// from its entries when it leaves. Independent of the `(layer, node)`
+    /// of the actual record, so `Widget::resolve` answers the right id
+    /// before any node exists.
     counters: WidgetIdMap<u32>,
     /// Every id this pass handed out, with the endpoint of each one that
     /// has opened. [`Self::resolve`] reserves, and
@@ -181,6 +261,10 @@ pub(crate) struct SeenIds {
     /// [`crate::cascade::Cascade::by_id`] snapshot taken at the end of
     /// each `CascadeEngine::run`; a reserved one is in neither.
     curr: IdTable,
+    /// How many of `curr`'s entries match `prev`'s, once the pass has left
+    /// step; `None` while every entry so far matches, and `curr`'s index is
+    /// still unbuilt.
+    split: Option<usize>,
     /// Last *painted* frame's `curr`. Only which ids were recorded
     /// matters for the rollover diff — endpoints are stale across
     /// frames. Same type as `curr` so `std::mem::swap` is alloc-free.
@@ -236,14 +320,24 @@ impl SeenIds {
     /// per widget per settling pass to restate what the diff already says.
     pub(crate) fn pre_record(&mut self) {
         self.counters.clear();
+        let matched = self.split.unwrap_or(self.curr.entries.len());
         let prev = &self.prev;
+        // The matching prefix holds `prev`'s own ids at their positions, so
+        // it is read by position, and only the rest is probed.
+        let (stepped, rest) = self.curr.entries.split_at(matched);
+        let new_in_step = stepped.iter().zip(&prev.entries).filter(|(entry, last)| {
+            entry.slot != IdSlot::Reserved && last.slot == IdSlot::Reserved
+        });
+        let new_past_step = rest
+            .iter()
+            .filter(|entry| entry.slot != IdSlot::Reserved && !prev.recorded(entry.id));
         self.discarded.extend(
-            self.curr
-                .recorded_entries()
-                .map(|(wid, _)| wid)
-                .filter(|wid| !prev.recorded(*wid)),
+            new_in_step
+                .map(|(entry, _)| entry.id)
+                .chain(new_past_step.map(|entry| entry.id)),
         );
         self.curr.clear();
+        self.split = None;
         self.pending.clear();
     }
 
@@ -251,7 +345,40 @@ impl SeenIds {
     /// absent, or only reserved.
     #[inline]
     pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
-        self.curr.slot(id).and_then(IdSlot::endpoint)
+        if self.split.is_some() {
+            return self.curr.slot(id).and_then(IdSlot::endpoint);
+        }
+        // In step: `curr` is a prefix of `prev`, so `prev`'s index finds
+        // the position.
+        let at = *self.prev.index.get(&id)? as usize;
+        let entry = self.curr.entries.get(at)?;
+        debug_assert_eq!(entry.id, id, "an in-step entry left its position");
+        entry.slot.endpoint()
+    }
+
+    /// Where the last painted frame recorded `id`, when that is known
+    /// without a probe: when `id` is the newest entry of a pass in step,
+    /// whose position names last frame's entry for the same id. Otherwise
+    /// [`LastFrame::Unknown`], and the caller probes.
+    ///
+    /// The newest entry is the usual case: a widget reads last frame's
+    /// response right after it resolves its id.
+    #[inline]
+    pub(crate) fn last_frame_endpoint(&self, id: WidgetId) -> LastFrame {
+        let newest = self.curr.entries.len().wrapping_sub(1);
+        if self.split.is_some()
+            || self
+                .curr
+                .entries
+                .get(newest)
+                .is_none_or(|entry| entry.id != id)
+        {
+            return LastFrame::Unknown;
+        }
+        match self.prev.entries[newest].slot.endpoint() {
+            Some(endpoint) => LastFrame::At(endpoint),
+            None => LastFrame::Absent,
+        }
     }
 
     /// The ids recorded this pass, with their endpoints.
@@ -260,16 +387,105 @@ impl SeenIds {
         self.curr.recorded_entries()
     }
 
-    /// Push the reserved entry for `id`, whose index the caller has just
-    /// put in the hash index.
+    /// Push the reserved entry for `id`, which `origin` resolved to. Out
+    /// of step, the caller has just put its index in the hash index.
     #[inline]
-    fn reserve(&mut self, id: WidgetId) -> ResolvedId {
+    fn reserve(&mut self, id: WidgetId, origin: Origin) -> ResolvedId {
         let entry = self.curr.entries.len() as u32;
         self.curr.entries.push(IdEntry {
             id,
             slot: IdSlot::Reserved,
+            origin,
         });
         ResolvedId { id, entry }
+    }
+
+    /// Index the entries so far, and set the counters from them: the
+    /// probing resolve the pass continues with reads both. The counters
+    /// only let a collision skip the occurrences already taken, so the
+    /// in-step resolves leave them alone and this pays one insert per
+    /// colliding raw id, once.
+    #[cold]
+    fn leave_step(&mut self) {
+        self.split = Some(self.curr.entries.len());
+        self.curr.index_entries();
+        for entry in &self.curr.entries {
+            if entry.origin.occurrence != 0 {
+                self.counters
+                    .insert(entry.origin.raw, entry.origin.occurrence);
+            }
+        }
+    }
+
+    /// What `raw` resolves to while the pass is in step, when no probe
+    /// this pass could answer differently; `None` leaves step.
+    ///
+    /// - An explicit id held by a reservation of this pass is its owner
+    ///   claiming it, and pushes no entry. The newest entry is the usual
+    ///   holder — a widget resolves, then records a wrapper under the id
+    ///   it got — and any other is found through `prev`'s index, since
+    ///   this pass holds `prev`'s ids at their positions.
+    /// - Otherwise the id is last frame's next entry, when that entry came
+    ///   from the same raw id and kind, and was no explicit collision:
+    ///   whether one of those claims a reservation depends on record
+    ///   order.
+    #[inline]
+    fn in_step(
+        &mut self,
+        raw: WidgetId,
+        is_explicit: bool,
+        recipe: Option<Recipe>,
+    ) -> Option<ResolvedId> {
+        if self.split.is_some() {
+            return None;
+        }
+        let at = self.curr.entries.len();
+        if is_explicit
+            && self
+                .curr
+                .entries
+                .last()
+                .is_some_and(|newest| newest.id == raw)
+        {
+            return self.claim(at - 1);
+        }
+        if let Some(last) = self.prev.entries.get(at)
+            && last.origin.raw == raw
+            && last.origin.is_explicit == is_explicit
+            && (!is_explicit || last.origin.occurrence == 0)
+        {
+            let id = last.id;
+            let occurrence = last.origin.occurrence;
+            return Some(self.reserve(
+                id,
+                Origin {
+                    raw,
+                    is_explicit,
+                    occurrence,
+                    recipe,
+                },
+            ));
+        }
+        if !is_explicit {
+            return None;
+        }
+        let holder = *self.prev.index.get(&raw)? as usize;
+        if holder >= at {
+            return None;
+        }
+        self.claim(holder)
+    }
+
+    /// The claim of entry `holder` by its owner's explicit resolve, while
+    /// it is only reserved; `None` once it is recorded, which makes the
+    /// resolve an explicit collision.
+    #[inline]
+    fn claim(&self, holder: usize) -> Option<ResolvedId> {
+        let entry = &self.curr.entries[holder];
+        (entry.slot == IdSlot::Reserved).then_some(ResolvedId {
+            id: entry.id,
+            entry: holder as u32,
+        })
     }
 
     /// Eagerly resolve a raw id to its disambiguated final id, and
@@ -283,6 +499,53 @@ impl SeenIds {
     /// in whichever order the two record.
     #[inline]
     pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> ResolvedId {
+        self.resolve_raw(raw_id, is_explicit, None)
+    }
+
+    /// [`Self::resolve`] for a parent-scoped ident — an auto id's call site
+    /// or a salt — under `parent`. In step, last frame's entry at this
+    /// position names the same raw id when it came from the same inputs,
+    /// so the id is taken from it and the raw id is never hashed: an auto
+    /// id's file path, or a salt's mix with the parent. An explicit salt
+    /// takes it only when last frame's did not collide, and then it is no
+    /// claim either, since that id is not yet taken. Otherwise the raw id
+    /// is hashed, by [`Ident::raw_id`] as for any other ident.
+    #[inline]
+    pub(crate) fn resolve_scoped(&mut self, ident: Ident, parent: Option<WidgetId>) -> ResolvedId {
+        debug_assert!(matches!(ident, Ident::Auto(_) | Ident::Hash(_)));
+        let recipe = Recipe { ident, parent };
+        let is_explicit = ident.is_explicit();
+        if self.split.is_none()
+            && let Some(last) = self.prev.entries.get(self.curr.entries.len())
+            && last.origin.recipe.is_some_and(|last| last.is(recipe))
+            && (!is_explicit || last.origin.occurrence == 0)
+        {
+            let (id, origin) = (last.id, last.origin);
+            return self.reserve(
+                id,
+                Origin {
+                    recipe: Some(recipe),
+                    ..origin
+                },
+            );
+        }
+        self.resolve_raw(ident.raw_id(parent), is_explicit, Some(recipe))
+    }
+
+    /// [`Self::resolve`], recording the `recipe` of a parent-scoped ident.
+    #[inline]
+    fn resolve_raw(
+        &mut self,
+        raw_id: WidgetId,
+        is_explicit: bool,
+        recipe: Option<Recipe>,
+    ) -> ResolvedId {
+        if let Some(resolved) = self.in_step(raw_id, is_explicit, recipe) {
+            return resolved;
+        }
+        if self.split.is_none() {
+            self.leave_step();
+        }
         let next = self.curr.entries.len() as u32;
         match self.curr.index.entry(raw_id) {
             // Fast path — first occurrence. `counters` only tracks raw
@@ -290,7 +553,15 @@ impl SeenIds {
             // `collisions / frame` (typically 0), not `widgets / frame`.
             Entry::Vacant(slot) => {
                 slot.insert(next);
-                return self.reserve(raw_id);
+                return self.reserve(
+                    raw_id,
+                    Origin {
+                        raw: raw_id,
+                        is_explicit,
+                        occurrence: 0,
+                        recipe,
+                    },
+                );
             }
             // An explicit id that is only reserved is the widget that
             // reserved it, claiming it: a widget resolves its own id,
@@ -326,7 +597,15 @@ impl SeenIds {
                 second_final_id: final_id,
             });
         }
-        self.reserve(final_id)
+        self.reserve(
+            final_id,
+            Origin {
+                raw: raw_id,
+                is_explicit,
+                occurrence: count,
+                recipe,
+            },
+        )
     }
 
     /// Record the endpoint where `resolved` is being opened. `Some`
@@ -389,9 +668,19 @@ impl SeenIds {
     /// damage); the field stays populated until the next `rollover`.
     pub(crate) fn rollover(&mut self) -> &WidgetIdSet {
         self.removed.clear();
-        for (wid, _) in self.prev.recorded_entries() {
-            if !self.curr.recorded(wid) {
-                self.removed.insert(wid);
+        let matched = self.split.unwrap_or(self.curr.entries.len());
+        for (at, last) in self.prev.entries.iter().enumerate() {
+            if last.slot == IdSlot::Reserved {
+                continue;
+            }
+            // Past the matching prefix, an in-step `curr` holds none of
+            // `prev`'s ids: its own are the prefix's, and they are distinct.
+            let kept = match self.curr.entries.get(at) {
+                Some(entry) if at < matched => entry.slot != IdSlot::Reserved,
+                _ => self.split.is_some() && self.curr.recorded(last.id),
+            };
+            if !kept {
+                self.removed.insert(last.id);
             }
         }
         // Ids seen only in a discarded pass this frame (double-layout
@@ -399,14 +688,26 @@ impl SeenIds {
         // — the prev-minus-curr diff can't see them, but any state /
         // anim / measure / text rows they created during that pass are
         // real and must be swept with everything else.
-        for wid in &self.discarded {
-            if !self.curr.recorded(*wid) {
-                self.removed.insert(*wid);
+        for &wid in &self.discarded {
+            if self.endpoint(wid).is_none() {
+                self.removed.insert(wid);
             }
         }
         self.discarded.clear();
-        mem::swap(&mut self.curr, &mut self.prev);
-        self.curr.clear();
+        if self.split.is_some() {
+            mem::swap(&mut self.curr, &mut self.prev);
+            self.curr.clear();
+        } else {
+            // In step, `curr` is a prefix of `prev`, so `prev`'s index
+            // already holds every position it needs once the tail leaves.
+            // It only ever loses ids here, so it never rehashes.
+            for last in &self.prev.entries[matched..] {
+                self.prev.index.remove(&last.id);
+            }
+            mem::swap(&mut self.curr.entries, &mut self.prev.entries);
+            self.curr.entries.clear();
+        }
+        self.split = None;
         &self.removed
     }
 }

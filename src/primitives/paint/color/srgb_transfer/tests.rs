@@ -101,3 +101,51 @@ fn encode_byte_saturates_like_unit_to_u8() {
         assert_eq!(encode_byte(y), byte, "y = {y}");
     }
 }
+
+/// The byte by binary search over the `f64` thresholds: what
+/// [`encode_byte`] computed before its bucket table, kept as its
+/// reference.
+fn searched(y: f32) -> u8 {
+    let y = f64::from(y);
+    BYTE_THRESHOLDS.partition_point(|&threshold| threshold <= y) as u8
+}
+
+/// The bucket lookup gives the searched byte for every 4099th `f32` bit
+/// pattern from 0 to `+∞` — about half a million inputs across every
+/// bucket — and for the values at its edges: NaN, the zeros, negatives,
+/// the subnormals, the first bucket's start, and either side of `1.0`.
+#[test]
+fn encode_byte_matches_the_search() {
+    let last = f32::INFINITY.to_bits();
+    for bits in (0..=last).step_by(4099).chain([last]) {
+        let y = f32::from_bits(bits);
+        assert_eq!(encode_byte(y), searched(y), "y = {y:e}");
+    }
+    let edges = [
+        f32::NAN,
+        -0.0,
+        -1.0,
+        f32::NEG_INFINITY,
+        f32::from_bits(1),
+        f32::MIN_POSITIVE,
+        f32::from_bits(FIRST_BUCKET << BUCKET_SHIFT),
+        THRESHOLDS_F32[0].next_down(),
+        THRESHOLDS_F32[254],
+        1.0f32.next_down(),
+        1.0,
+        f32::MAX,
+    ];
+    for y in edges {
+        assert_eq!(encode_byte(y), searched(y), "y = {y:e}");
+    }
+}
+
+/// Every non-negative `f32`, `+∞` included, gives the searched byte.
+#[test]
+#[ignore = "about 2·10⁹ inputs: run with --ignored after a change to the table"]
+fn encode_byte_matches_the_search_everywhere() {
+    for bits in 0..=f32::INFINITY.to_bits() {
+        let y = f32::from_bits(bits);
+        assert_eq!(encode_byte(y), searched(y), "y = {y:e}");
+    }
+}

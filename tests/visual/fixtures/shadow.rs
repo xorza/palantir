@@ -597,3 +597,60 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
         );
     }
 }
+
+/// A grid of shadows over the blurs and radii the corner cutout tables
+/// cover: drop shadows in the top four rows, inset ones below, each cell a
+/// 60 px source with some spread.
+fn cutout_grid(ui: &mut palantir::Ui) {
+    const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
+    const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
+    const CELL: f32 = 200.0;
+    Panel::canvas()
+        .auto_id()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            for (row, inset) in [false, true].into_iter().enumerate() {
+                for (y, blur) in BLURS.into_iter().enumerate() {
+                    for (x, radius) in RADII.into_iter().enumerate() {
+                        let at = Vec2::new(x as f32, (row * BLURS.len() + y) as f32) * CELL;
+                        ui.add_shape(
+                            Shape::shadow(Shadow {
+                                color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
+                                offset: Vec2::new(3.0, 5.0),
+                                blur,
+                                spread: if inset { 4.0 } else { 2.0 },
+                                inset,
+                            })
+                            .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
+                            .corners(radius),
+                        );
+                    }
+                }
+            }
+        });
+}
+
+/// Baked cutout tables draw the shadows the shaded cutout does, to one
+/// 8-bit level in every channel: the tables err under 6e-4 of coverage
+/// against the shaded form's 0.0011, so the two can round apart by a level
+/// and no more. And they are in use: some pixel does round apart, which a
+/// frame that never read a table could not show.
+#[test]
+fn baked_cutout_tables_match_the_shaded_cutout() {
+    let size = UVec2::new(800, 1600);
+    let mut baked = Harness::new();
+    let mut shaded = Harness::new();
+    shaded.host.disable_cutout_tables();
+    let [baked, shaded] = [&mut baked, &mut shaded]
+        .map(|harness| harness.size(size).clear(CLEAR).frame(cutout_grid).image);
+    let deltas = baked
+        .as_raw()
+        .iter()
+        .zip(shaded.as_raw())
+        .map(|(&a, &b)| a.abs_diff(b));
+    let (most, differing) = deltas.fold((0, 0), |(most, differing), d| {
+        (most.max(d), differing + usize::from(d != 0))
+    });
+    assert!(most <= 1, "a channel moved {most} levels");
+    assert!(differing > 0, "no pixel read a table");
+}

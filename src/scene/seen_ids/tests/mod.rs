@@ -2,6 +2,9 @@ use crate::internals::panic_probe;
 use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;
 use crate::scene::tree::node_id::NodeId;
+use std::panic::Location;
+
+mod reference;
 
 fn ep(node: u32) -> Endpoint {
     Endpoint {
@@ -264,4 +267,176 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     assert!(ids.counters.is_empty());
     assert!(ids.curr.entries.is_empty());
     assert_eq!(ids.prev.entries.len(), 2, "prev must survive pre_record");
+}
+
+/// One resolve of a frame's script.
+#[derive(Clone, Copy, Debug)]
+enum Resolve {
+    /// [`SeenIds::resolve_scoped`] of an auto id at `sites[site]` under
+    /// `parents[parent]`.
+    Auto { site: usize, parent: usize },
+    /// [`SeenIds::resolve_scoped`] of a salt under `parents[parent]`.
+    Salt { salt: usize, parent: usize },
+    /// [`SeenIds::resolve`] of a raw id.
+    Raw { raw: WidgetId, explicit: bool },
+}
+
+/// The tracker against plain per-pass hash tables ([`reference`]), over
+/// random frames: collisions of auto and explicit ids, auto ids from a few
+/// call sites under a few parents, ids resolved and recorded out of order
+/// or never recorded, and discarded passes. Most
+/// frames replay the last one's resolves, some with one change at a
+/// random position, so passes run in step, leave it at every position,
+/// and never enter it. Every resolve, every collision pair, every pass's
+/// recording and endpoints, every frame's removed set, and every last-frame
+/// endpoint known by position must agree.
+#[test]
+fn matches_the_per_pass_tables_over_random_frames() {
+    let (mut in_step, mut out_of_step, mut positional) = (0, 0, 0);
+    for seed in 1..=8_u64 {
+        let mut rng = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        let mut next = move |n: usize| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng % n as u64) as usize
+        };
+        let sites: [&'static Location<'static>; 3] =
+            [Location::caller(), Location::caller(), Location::caller()];
+        let parents = [
+            None,
+            Some(WidgetId::from_hash("p")),
+            Some(WidgetId::from_hash("q")),
+        ];
+        let auto_raw = |site: usize, parent: usize| {
+            WidgetId::from_location(sites[site]).scoped(parents[parent])
+        };
+        let salts: Vec<_> = (100..104).map(WidgetId::from_hash).collect();
+        // The scoped ids' raw ids join the universe, so raw ids collide with
+        // auto ids and salts too.
+        let universe: Vec<_> = (0..10)
+            .map(WidgetId::from_hash)
+            .chain((0..3).map(|site| auto_raw(site, site % 3)))
+            .chain((0..2).map(|salt| salts[salt].scoped(parents[salt + 1])))
+            .collect();
+        let probes: Vec<_> = universe
+            .iter()
+            .flat_map(|&id| [id, id.with(1), id.with(2), id.with(3)])
+            .collect();
+        let mut ids = SeenIds::default();
+        let mut model = reference::Reference::default();
+        let mut node = 0;
+        let mut script: Vec<Resolve> = Vec::new();
+        for frame in 0..300 {
+            let resolve_at = |next: &mut dyn FnMut(usize) -> usize| {
+                if next(3) == 0 {
+                    Resolve::Auto {
+                        site: next(sites.len()),
+                        parent: next(parents.len()),
+                    }
+                } else if next(2) == 0 {
+                    Resolve::Salt {
+                        salt: next(salts.len()),
+                        parent: next(parents.len()),
+                    }
+                } else {
+                    Resolve::Raw {
+                        raw: universe[next(universe.len())],
+                        explicit: next(4) == 0,
+                    }
+                }
+            };
+            match next(6) {
+                0 => script = (0..next(16)).map(|_| resolve_at(&mut next)).collect(),
+                1 if !script.is_empty() => {
+                    let at = next(script.len());
+                    match next(3) {
+                        0 => script[at] = resolve_at(&mut next),
+                        1 => drop(script.remove(at)),
+                        _ => script.insert(at, resolve_at(&mut next)),
+                    }
+                }
+                _ => {}
+            }
+            let passes = if next(4) == 0 { 2 } else { 1 };
+            for pass in 0..passes {
+                if frame > 0 || pass > 0 {
+                    ids.pre_record();
+                    model.pre_record();
+                }
+                let at = format!("seed {seed} frame {frame} pass {pass}");
+                let mut open: Vec<ResolvedId> = Vec::new();
+                for &step in &script {
+                    let (got, want) = match step {
+                        Resolve::Auto { site, parent } => (
+                            ids.resolve_scoped(Ident::Auto(sites[site]), parents[parent]),
+                            model.resolve(auto_raw(site, parent), false),
+                        ),
+                        Resolve::Salt { salt, parent } => (
+                            ids.resolve_scoped(Ident::Hash(salts[salt]), parents[parent]),
+                            model.resolve(salts[salt].scoped(parents[parent]), true),
+                        ),
+                        Resolve::Raw { raw, explicit } => {
+                            (ids.resolve(raw, explicit), model.resolve(raw, explicit))
+                        }
+                    };
+                    assert_eq!(got, want, "resolve, {at}");
+                    let known = match ids.last_frame_endpoint(got.id()) {
+                        LastFrame::At(endpoint) => Some(Some(endpoint)),
+                        LastFrame::Absent => Some(None),
+                        LastFrame::Unknown => None,
+                    };
+                    if let Some(known) = known {
+                        positional += 1;
+                        assert_eq!(
+                            known,
+                            model.last_frame_endpoint(got.id()),
+                            "last frame's endpoint by position, {at}",
+                        );
+                    }
+                    if !open.contains(&got) {
+                        open.push(got);
+                    }
+                    // Record a random open one, so records come out of order.
+                    if !open.is_empty() && next(5) != 0 {
+                        let resolved = open.swap_remove(next(open.len()));
+                        node += 1;
+                        let got = ids.record_endpoint(resolved, ep(node));
+                        let want = model.record_endpoint(resolved, ep(node));
+                        assert_eq!(
+                            got.map(|pair| [pair.first, pair.second]),
+                            want.map(|pair| [pair.first, pair.second]),
+                            "collision pair, {at}",
+                        );
+                    }
+                }
+                // Whatever is still open stays only reserved.
+                assert_eq!(ids.recorded().collect::<Vec<_>>(), model.recorded(), "{at}");
+                for &id in &probes {
+                    assert_eq!(ids.endpoint(id), model.endpoint(id), "endpoint, {at}");
+                }
+            }
+            if ids.split.is_none() {
+                in_step += 1;
+            } else {
+                out_of_step += 1;
+            }
+            let removed = ids.rollover().clone();
+            assert_eq!(
+                removed,
+                model.rollover(),
+                "removed, seed {seed} frame {frame}"
+            );
+            assert_eq!(
+                ids.prev.index.len(),
+                ids.prev.entries.len(),
+                "`prev`'s index covers its entries and no more, seed {seed} frame {frame}",
+            );
+        }
+    }
+    assert!(
+        in_step > 500 && out_of_step > 500 && positional > 5000,
+        "both paths run: {in_step} frames in step, {out_of_step} out, \
+         {positional} last-frame endpoints by position",
+    );
 }

@@ -142,8 +142,12 @@ pub(crate) enum RenderStep {
     /// ever incremented inside the outer's SDF.
     MaskClear(u32),
     /// Bind the quad pipeline (stencil-test variant when stencil is
-    /// active, plain otherwise) + draw the group's quad range.
+    /// active, plain otherwise) + draw this run of a group's quads.
     Quads { range: Span },
+    /// The same for a run of shadow quads, through the shadow pipeline.
+    /// A group's quad range splits into `Quads` and `Shadows` runs, in
+    /// paint order, wherever the kind changes.
+    Shadows { range: Span },
     /// Render a coalesced text batch via the text-renderer pool slot.
     /// Emitted once per batch, immediately after the last group in
     /// the batch has drawn its quads (any meshes in that group still
@@ -376,6 +380,25 @@ impl ScheduleWalk<'_> {
         }
     }
 
+    /// The group's quads as runs of one pipeline each, in paint order: a
+    /// `Shadows` run wherever the shadow kind starts, a `Quads` run
+    /// wherever it stops.
+    fn emit_quad_runs(&mut self, quads: Span) {
+        let range = quads.range();
+        let mut start = range.start;
+        let runs = self.buffer.quads[range]
+            .chunk_by(|a, b| a.fill_kind.is_shadow() == b.fill_kind.is_shadow());
+        for run in runs {
+            let span = Span::from(start..start + run.len());
+            self.state.push(if run[0].fill_kind.is_shadow() {
+                RenderStep::Shadows { range: span }
+            } else {
+                RenderStep::Quads { range: span }
+            });
+            start += run.len();
+        }
+    }
+
     /// The draws every non-skipped group emits, identical under both the
     /// stencil and non-stencil paths: the group's quads, then its text
     /// batches (drained after the quads so a child quad occludes a
@@ -385,10 +408,7 @@ impl ScheduleWalk<'_> {
     /// chain. Shared by the stencil and non-stencil paths so the two
     /// can't drift; the caller gates it on the group having any content.
     fn emit_group_body(&mut self, i: usize, effective: URect) {
-        let quads = self.buffer.groups[i].quads;
-        if quads.len != 0 {
-            self.state.push(RenderStep::Quads { range: quads });
-        }
+        self.emit_quad_runs(self.buffer.groups[i].quads);
         self.drain_text_batches(i + 1);
         if !self.has_tier_batch_at(i) {
             return;

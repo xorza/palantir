@@ -25,6 +25,7 @@ use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::app::App;
 use crate::cascade::Cascade;
+use crate::cascade::entry::WidgetLocation;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
@@ -68,7 +69,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
-use crate::scene::seen_ids::ResolvedId;
+use crate::scene::seen_ids::{LastFrame, ResolvedId};
 use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
 use crate::text::error::FontLoadError;
@@ -154,6 +155,12 @@ pub struct Ui {
     /// hit index. Written by `CascadeEngine::run` in the paint phase
     /// and read by the encoder, input dispatch, and damage compute.
     cascade: Cascade,
+    /// Whether [`Self::cascade`] is the last painted frame's: true from the
+    /// rollover that ends a frame until the next cascade run, which a
+    /// discarded pass makes before the final one. Only then does
+    /// [`SeenIds::last_frame_endpoint`](crate::scene::seen_ids::SeenIds::last_frame_endpoint)
+    /// name a row of it.
+    cascade_is_last_frame: bool,
     input: InputState,
     display: Display,
     anim: AnimMap,
@@ -205,6 +212,7 @@ impl Ui {
             gpu_views: GpuViews::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
+            cascade_is_last_frame: false,
             input: InputState::default(),
             display: Display::default(),
             anim: AnimMap::default(),
@@ -1194,11 +1202,33 @@ impl Ui {
     /// `ResponseState::merge_disabled`, which is idempotent, so the
     /// interaction half is gone by the time either of them returns.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
-        let mut state = self.input.response_for(id, &self.cascade, &self.layout);
+        let loc = self.last_frame_location(id);
+        let mut state = self
+            .input
+            .response_for(id, loc, &self.cascade, &self.layout);
         // Cascade lags one frame; fold this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.merge_disabled(self.forest.ancestor_disabled());
         state
+    }
+
+    /// Where the most recent cascade run put `id`. While that run is the
+    /// last painted frame's and `id` is the newest id of a pass in step,
+    /// [`SeenIds::last_frame_endpoint`](crate::scene::seen_ids::SeenIds::last_frame_endpoint)
+    /// names its row by position; otherwise this probes `Cascade::by_id`.
+    #[inline]
+    fn last_frame_location(&self, id: WidgetId) -> Option<WidgetLocation> {
+        let endpoint = match self.forest.ids.last_frame_endpoint(id) {
+            LastFrame::At(endpoint) if self.cascade_is_last_frame => Some(endpoint),
+            LastFrame::Absent if self.cascade_is_last_frame => None,
+            _ => return self.cascade.locate(id),
+        };
+        debug_assert_eq!(
+            endpoint,
+            self.cascade.endpoint(id),
+            "the positional read of {id:?} left the cascade's row",
+        );
+        endpoint.map(|endpoint| self.cascade.location(endpoint))
     }
 
     /// The cross-frame state row for `id`, or `None` when nothing has been

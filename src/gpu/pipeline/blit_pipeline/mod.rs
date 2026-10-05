@@ -51,6 +51,7 @@ impl BlitPipeline {
             label: "palantir.blit.pipeline",
             shader: &self.shader,
             layout: &self.pipeline_layout,
+            vertex_entry: "vs",
             vertex_buffers: &[],
             topology: wgpu::PrimitiveTopology::TriangleList,
             color_format: format,

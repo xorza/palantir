@@ -23,10 +23,46 @@ const BLUR_EPS: f32 = 1e-4;
 const SHADOW_REACH_SIGMAS: f32 = /*{SHADOW_REACH_SIGMAS}*/;
 
 // Slices per half of a blurred corner arc. Midpoint slices with exact
-// weights err as 1/N²: 12 keeps the worst corner pixel within 0.002 of
-// the exact integral (σ = 0.5 px against a 30 px radius), under half an
+// weights err as 1/N²: 12 keep a blur below `CUTOUT_MIN_SIGMA`, the only
+// one sliced this way, within 0.0015 of the exact integral, under half an
 // 8-bit step.
 const BLUR_ARC_SLICES: u32 = 12u;
+
+// σ from which a blurred box's corners are cut out of its sharp box
+// (`cutout_box_coverage`) instead of integrated along their outline
+// (`blurred_corner`). Measured against the exact integral, the cutout's
+// `CUTOUT_NODES` err at most 0.0011 from here up, where the outline's
+// slices reach 0.0023, at half the kernel evaluations. Below it the
+// cutout's density loses to the pixel box's step (0.0026 at σ = 0, against
+// the outline's 0.0015), so small blurs keep the outline.
+const CUTOUT_MIN_SIGMA: f32 = /*{CUTOUT_MIN_SIGMA}*/;
+
+// Midpoint nodes of a corner cutout's angle integral, where it is shaded
+// (`CutoutPlan::SHADED_NODES`, which prices shading against a table).
+const CUTOUT_NODES: u32 = /*{CUTOUT_NODES}*/;
+
+// Midpoint nodes of a corner cutout baked into a table (`fs_cutout_bake`):
+// twice `CUTOUT_NODES`, so the bake errs about a quarter of the shaded
+// form, 3e-4, beside the table's bilinear error of under 6e-4.
+const CUTOUT_BAKE_NODES: u32 = /*{CUTOUT_BAKE_NODES}*/;
+
+// A cutout table's texels per σ, both axes (`CutoutPlan`). At 10 its
+// bilinear error stays under 6e-4 of the exact cutout (measured at
+// σ = 0.25–16 against radii 4–40), under the shaded form's 0.0011.
+const CUTOUT_TEXELS_PER_SIGMA: f32 = /*{CUTOUT_TEXELS_PER_SIGMA}*/;
+
+// Side of the square cutout atlas in texels, and of the cell a table's
+// origin is a multiple of, both from `CutoutPlan`.
+const CUTOUT_ATLAS_SIZE: f32 = /*{CUTOUT_ATLAS_SIZE}*/;
+const CUTOUT_CELL: u32 = /*{CUTOUT_CELL}*/;
+
+// A corner with no table: its cutout is shaded (`corner_cutout`).
+const NO_CUTOUT_TABLE: u32 = /*{NO_CUTOUT_TABLE}*/;
+
+// Baked corner cutouts, one square table per `(r, σ)`, read by
+// `textureLoad` and filtered by hand: `R32Float` is not filterable on
+// every backend. Bound to the shadow pipeline only.
+@group(1) @binding(0) var cutout_atlas: texture_2d<f32>;
 
 const SQRT_HALF: f32 = 0.70710678;
 const INV_SQRT_TAU: f32 = 0.39894228;
@@ -106,11 +142,14 @@ struct VertexOut {
     // path multiplies per-fragment instead of dividing (solid fills and the
     // shadow / triangle paths don't read it).
     @location(9) @interpolate(flat) inv_size:     vec2<f32>,
+    // A shadow's baked cutout tables, `(tl, tr, br, bl)` like `radius`: each
+    // the table's origin cell and side (`cutout_lookup`), or
+    // `NO_CUTOUT_TABLE`. Set by `vs_shadow` only.
+    @location(10) @interpolate(flat) cutouts:     vec4<u32>,
 };
 
-@vertex
-fn vs(
-    @builtin(vertex_index) vi: u32,
+// The instance attributes every quad pipeline reads.
+struct QuadIn {
     @location(0) pos:          vec2<f32>,
     @location(1) size:         vec2<f32>,
     @location(2) fill_packed:  vec2<u32>,
@@ -120,7 +159,36 @@ fn vs(
     @location(6) fill_kind:    u32,
     @location(7) fill_lut_row: u32,
     @location(8) fill_axis_packed: vec2<u32>,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32, quad: QuadIn) -> VertexOut {
+    return quad_vertex(vi, quad);
+}
+
+// `vs` for the shadow pipeline, which also binds the per-instance cutout
+// tables (`CutoutTables`).
+@vertex
+fn vs_shadow(
+    @builtin(vertex_index) vi: u32,
+    quad: QuadIn,
+    @location(9) cutouts: vec4<u32>,
 ) -> VertexOut {
+    var out = quad_vertex(vi, quad);
+    out.cutouts = cutouts;
+    return out;
+}
+
+fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
+    let pos = quad.pos;
+    let size = quad.size;
+    let fill_packed = quad.fill_packed;
+    let radius_packed = quad.radius_packed;
+    let stroke_color_packed = quad.stroke_color_packed;
+    let stroke_width = quad.stroke_width;
+    let fill_kind = quad.fill_kind;
+    let fill_lut_row = quad.fill_lut_row;
+    let fill_axis_packed = quad.fill_axis_packed;
     // Unpack 4x f16 (tl, tr, br, bl) — matches `Corners` lane order.
     let r_lo = unpack2x16float(radius_packed.x);
     let r_hi = unpack2x16float(radius_packed.y);
@@ -179,6 +247,7 @@ fn vs(
     out.fill_lut_row = fill_lut_row;
     out.fill_axis    = axis_lanes;
     out.inv_size     = 1.0 / max(size, vec2<f32>(ZERO_EPS));
+    out.cutouts      = vec4<u32>(NO_CUTOUT_TABLE);
     return out;
 }
 
@@ -366,6 +435,95 @@ fn filter_cdf(u: f32, sigma: f32) -> f32 {
         * (normal_cdf_integral((u + AA_HALF_WIDTH) * inv) - normal_cdf_integral((u - AA_HALF_WIDTH) * inv));
 }
 
+// The density of `filter_cdf` at `u`: the pixel box's mean of the
+// Gaussian. Reached only at σ ≥ `CUTOUT_MIN_SIGMA`, so it has no σ = 0
+// limit to take.
+fn filter_pdf(u: f32, sigma: f32) -> f32 {
+    let inv = 1.0 / sigma;
+    return (normal_cdf((u + AA_HALF_WIDTH) * inv) - normal_cdf((u - AA_HALF_WIDTH) * inv))
+        / (2.0 * AA_HALF_WIDTH);
+}
+
+// One corner's cutout: the filter's weight over the `r`×`r` square at the
+// corner minus its quarter disk, at the pixel `q` relative to the arc's
+// centre, reflected so the corner points to +x and +y. Kernel and region
+// are both symmetric, so the one function serves all four corners.
+//
+// Integrated over the arc's angle, `x = r·sin t`, which keeps the
+// integrand smooth where the arc runs steep, and only over the angles
+// whose `x` the kernel reaches: outside them the weight is zero, as it is
+// everywhere the kernel misses the square.
+fn corner_cutout(q: vec2<f32>, r: f32, sigma: f32, reach: f32, nodes: u32) -> f32 {
+    if (r <= 0.0 || any(q < vec2<f32>(-reach)) || any(q > vec2<f32>(r + reach))) {
+        return 0.0;
+    }
+    let t0 = asin(clamp((q.x - reach) / r, 0.0, 1.0));
+    let t1 = asin(clamp((q.x + reach) / r, 0.0, 1.0));
+    let step = (t1 - t0) / f32(nodes);
+    let top = filter_cdf(r - q.y, sigma);
+    var sum = 0.0;
+    for (var i = 0u; i < nodes; i++) {
+        let t = t0 + (f32(i) + 0.5) * step;
+        let x = r * sin(t);
+        let y = r * cos(t);
+        // `dx = r·cos t·dt = y·dt`.
+        sum += filter_pdf(x - q.x, sigma) * (top - filter_cdf(y - q.y, sigma)) * y;
+    }
+    return sum * step;
+}
+
+// A table code's first texel in the atlas: its origin cell times
+// `CUTOUT_CELL` (`CutoutPlan::code`).
+fn cutout_origin(table: u32) -> vec2<u32> {
+    return vec2<u32>(table & 63u, (table >> 6u) & 63u) * CUTOUT_CELL;
+}
+
+// A table code's side in texels (`CutoutPlan::code`).
+fn cutout_side(table: u32) -> u32 {
+    return table >> 12u;
+}
+
+// The cutout at `q` from a baked table, filtered bilinearly: texel `i` of
+// each axis holds the cutout at `q = i·h − reach`, `h = σ /
+// CUTOUT_TEXELS_PER_SIGMA`. Outside the table the cutout is zero, as it is
+// past `reach` from its square.
+fn cutout_lookup(table: u32, q: vec2<f32>, sigma: f32, reach: f32) -> f32 {
+    let t = (q + vec2<f32>(reach)) * (CUTOUT_TEXELS_PER_SIGMA / sigma);
+    if (any(t < vec2<f32>(0.0)) || any(t >= vec2<f32>(f32(cutout_side(table) - 1u)))) {
+        return 0.0;
+    }
+    let i = vec2<u32>(t);
+    let f = t - vec2<f32>(i);
+    let at = cutout_origin(table) + i;
+    let a = textureLoad(cutout_atlas, at, 0).x;
+    let b = textureLoad(cutout_atlas, at + vec2<u32>(1u, 0u), 0).x;
+    let c = textureLoad(cutout_atlas, at + vec2<u32>(0u, 1u), 0).x;
+    let d = textureLoad(cutout_atlas, at + vec2<u32>(1u, 1u), 0).x;
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// One corner's cutout, from its table when it has one.
+fn corner_cutout_at(table: u32, q: vec2<f32>, r: f32, sigma: f32, reach: f32) -> f32 {
+    if (table == NO_CUTOUT_TABLE) {
+        return corner_cutout(q, r, sigma, reach, CUTOUT_NODES);
+    }
+    return cutout_lookup(table, q, sigma, reach);
+}
+
+// `blurred_box_coverage` from σ = `CUTOUT_MIN_SIGMA` up: the sharp box,
+// separable and so closed form, less each corner's cutout. The same
+// integral as the outline form, split so that the four corners share one
+// symmetric term.
+fn cutout_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32, reach: f32, cutouts: vec4<u32>) -> f32 {
+    let sharp = (filter_cdf(half.x - p.x, sigma) - filter_cdf(-half.x - p.x, sigma))
+        * (filter_cdf(half.y - p.y, sigma) - filter_cdf(-half.y - p.y, sigma));
+    let cut = corner_cutout_at(cutouts.z, p - (half - radius.zz), radius.z, sigma, reach)
+        + corner_cutout_at(cutouts.w, (p - vec2<f32>(radius.w - half.x, half.y - radius.w)) * vec2<f32>(-1.0, 1.0), radius.w, sigma, reach)
+        + corner_cutout_at(cutouts.x, (radius.xx - half) - p, radius.x, sigma, reach)
+        + corner_cutout_at(cutouts.y, (p - vec2<f32>(half.x - radius.y, radius.y - half.y)) * vec2<f32>(1.0, -1.0), radius.y, sigma, reach);
+    return clamp(sharp - cut, 0.0, 1.0);
+}
+
 // One half of a corner arc's share of `blurred_box_coverage`, integrated
 // along one axis over `[e0, e1]` (either order): the sum of
 // `filter_cdf` across the arc, at each slice's midpoint, times the
@@ -435,8 +593,13 @@ fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigm
 // arcs are sliced (`blurred_corner`). A sharp box is the exact product of
 // its two edge pairs, an empty box covers nothing, and σ = 0 is the box's
 // exact pixel coverage. `radius` is `(tl, tr, br, bl)`, fitted to the box.
-fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32) -> f32 {
+// From σ = `CUTOUT_MIN_SIGMA` up, the corners are cut out instead
+// (`cutout_box_coverage`).
+fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32, cutouts: vec4<u32>) -> f32 {
     let reach = SHADOW_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+    if (sigma >= CUTOUT_MIN_SIGMA) {
+        return cutout_box_coverage(p, half, radius, sigma, reach, cutouts);
+    }
     let right = filter_cdf(half.x - p.x, sigma)
         * (filter_cdf(half.y - radius.z - p.y, sigma) - filter_cdf(radius.y - half.y - p.y, sigma));
     let left = filter_cdf(-half.x - p.x, sigma)
@@ -499,6 +662,34 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         return premultiply(in.fill.rgb, in.fill.a);
     }
     let kind = in.fill_kind & FILL_TAG_MASK;
+    if (kind == BRUSH_KIND_TRIANGLE) {
+        // Three corner points (in `local` 0..size coords) + corner radius ride
+        // the reused instance lanes. `sdf_triangle - radius` gives the rounded
+        // shape; `composite` applies the same coverage AA + inner stroke as the
+        // rounded-rect path, so a triangle gets crisp AA + rounded corners with
+        // no MSAA and no tessellation. Solid fill only (no gradient lanes).
+        let ta = in.radius.xy;
+        let tb = in.radius.zw;
+        let tc = in.fill_axis.xy;
+        let corner_r = in.fill_axis.z;
+        let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
+        return composite(td, in.fill, in.stroke_color, in.stroke_width);
+    }
+
+    let d = sdf_rounded_rect(in.local, in.size, in.radius);
+    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
+        return composite_window(d, eval_fill(in), in.stroke_color, in.stroke_width);
+    }
+    return composite(d, eval_fill(in), in.stroke_color, in.stroke_width);
+}
+
+// Drop and inset shadows. Its own entry, and so its own pipeline, because
+// a pipeline gets the registers and code of everything its entry reaches:
+// inside `fs`, the blurred-corner integral set every quad's. The schedule
+// routes only the two shadow kinds here.
+@fragment
+fn fs_shadow(in: VertexOut) -> @location(0) vec4<f32> {
+    let kind = in.fill_kind & FILL_TAG_MASK;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
         // Drop shadow: the quad is the source S moved by `offset` and
         // grown by the halo, so S sits `offset` back from its centre.
@@ -520,7 +711,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // to the shadow's own box, as the inset hole's are.
         let shadow_half = max(source_half + vec2<f32>(spread), vec2<f32>(0.0));
         let shadow_radius = fit_radii(spread_radius(in.radius, spread), shadow_half);
-        let cov = blurred_box_coverage(in.local - half, shadow_half, shadow_radius, sigma);
+        let cov = blurred_box_coverage(in.local - half, shadow_half, shadow_radius, sigma, in.cutouts);
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);
     }
@@ -551,30 +742,11 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // negative — then fit the hole's own box.
         let hole_radius = fit_radii(spread_radius(in.radius, -spread), hole_half);
         let p_hole = in.local - half - offset;
-        let cov = source_cov * (1.0 - blurred_box_coverage(p_hole, hole_half, hole_radius, sigma));
+        let cov = source_cov * (1.0 - blurred_box_coverage(p_hole, hole_half, hole_radius, sigma, in.cutouts));
         let a = in.fill.a * cov;
         return premultiply(in.fill.rgb, a);
     }
-
-    if (kind == BRUSH_KIND_TRIANGLE) {
-        // Three corner points (in `local` 0..size coords) + corner radius ride
-        // the reused instance lanes. `sdf_triangle - radius` gives the rounded
-        // shape; `composite` applies the same coverage AA + inner stroke as the
-        // rounded-rect path, so a triangle gets crisp AA + rounded corners with
-        // no MSAA and no tessellation. Solid fill only (no gradient lanes).
-        let ta = in.radius.xy;
-        let tb = in.radius.zw;
-        let tc = in.fill_axis.xy;
-        let corner_r = in.fill_axis.z;
-        let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
-        return composite(td, in.fill, in.stroke_color, in.stroke_width);
-    }
-
-    let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
-        return composite_window(d, eval_fill(in), in.stroke_color, in.stroke_width);
-    }
-    return composite(d, eval_fill(in), in.stroke_color, in.stroke_width);
+    return vec4<f32>(0.0);
 }
 
 // Stencil mask-write: `discard` outside the rounded shape so those
@@ -593,4 +765,41 @@ fn fs_mask(in: VertexOut) -> @location(0) vec4<f32> {
         discard;
     }
     return vec4<f32>(0.0);
+}
+
+// One cutout table for `fs_cutout_bake` (`CutoutPlan::BakeTable`): where
+// it goes in the atlas (`cutout_lookup`'s packing) and its `(r, σ)`.
+struct BakeIn {
+    @location(0) table: u32,
+    @location(1) r:     f32,
+    @location(2) sigma: f32,
+};
+
+struct BakeOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) @interpolate(flat) table: u32,
+    @location(1) @interpolate(flat) r:     f32,
+    @location(2) @interpolate(flat) sigma: f32,
+};
+
+// The table's square of the atlas, one fragment per texel.
+@vertex
+fn vs_cutout_bake(@builtin(vertex_index) vi: u32, bake: BakeIn) -> BakeOut {
+    let texel = vec2<f32>(cutout_origin(bake.table)) + CORNERS[vi] * f32(cutout_side(bake.table));
+    var out: BakeOut;
+    out.clip = vec4<f32>(texel.x / CUTOUT_ATLAS_SIZE * 2.0 - 1.0, 1.0 - texel.y / CUTOUT_ATLAS_SIZE * 2.0, 0.0, 1.0);
+    out.table = bake.table;
+    out.r = bake.r;
+    out.sigma = bake.sigma;
+    return out;
+}
+
+// The cutout at the `q` this texel stands for (`cutout_lookup`), with
+// `CUTOUT_BAKE_NODES`.
+@fragment
+fn fs_cutout_bake(in: BakeOut) -> @location(0) vec4<f32> {
+    let texel = vec2<f32>(vec2<u32>(in.clip.xy) - cutout_origin(in.table));
+    let reach = SHADOW_REACH_SIGMAS * in.sigma + AA_HALF_WIDTH;
+    let q = texel * (in.sigma / CUTOUT_TEXELS_PER_SIGMA) - vec2<f32>(reach);
+    return vec4<f32>(corner_cutout(q, in.r, in.sigma, reach, CUTOUT_BAKE_NODES), 0.0, 0.0, 0.0);
 }

@@ -39,11 +39,14 @@ struct Occluder {
 /// linearly, which bounds each query at that many tests. A larger one is
 /// indexed: a cover that contains a quad contains the quad's top-left
 /// corner, so it overlaps the tile that corner falls in, and a query
-/// tests only the covers registered in that one tile. A cover spanning
-/// more than [`LARGE_COVER_TILES`] tiles is kept apart and tested by
-/// every query instead, so no cover registers in more tiles than that —
-/// and each such cover is an opaque area of at least that many tiles,
-/// which the GPU pays to fill anyway.
+/// tests only the covers registered in that one tile. Each tile holds its
+/// covers as a chain, newest first: covers register in occluder order, so
+/// a query walks its tile's chain only while the covers are still drawn
+/// above the quad, and the index is built in one pass with no sort. A
+/// cover spanning more than [`LARGE_COVER_TILES`] tiles is kept apart and
+/// tested by every query instead, so no cover registers in more tiles than
+/// that — and each such cover is an opaque area of at least that many
+/// tiles, which the GPU pays to fill anyway.
 ///
 /// The covers are clamped to the viewport's tiles. A clamped corner
 /// still lands in a clamped cover's tile range, because the clamp is
@@ -59,17 +62,32 @@ pub(super) struct OcclusionPruner {
     drop_indices: Vec<u32>,
     /// The last tile of the viewport on each axis.
     last_tile: UVec2,
-    /// One key per tile a small cover overlaps: the tile index in the
-    /// high half, the occluder's position in `opaque_in_group` in the
-    /// low half. Sorted, so each tile's covers are one run in occluder
-    /// order.
-    cover_tiles: Vec<u64>,
+    /// Each tile's newest link in [`Self::cover_links`], or [`NO_LINK`].
+    /// Sized to the viewport's tiles, grow-only, and reset through
+    /// [`Self::touched_tiles`] rather than whole.
+    tile_heads: Vec<u32>,
+    /// The tiles whose head the current index set.
+    touched_tiles: Vec<u32>,
+    /// Every small cover once per tile it overlaps, chained per tile.
+    cover_links: Vec<CoverLink>,
     /// Positions in `opaque_in_group` of the covers spanning more than
     /// [`LARGE_COVER_TILES`] tiles, ascending.
     large_covers: Vec<u32>,
     /// `contains_rect` tests this frame.
     contains_tests: TestOnly<Cell<u32>>,
 }
+
+/// One small cover in one tile's chain.
+#[derive(Clone, Copy, Debug)]
+struct CoverLink {
+    /// The cover's position in `opaque_in_group`.
+    at: u32,
+    /// The tile's previous link, or [`NO_LINK`].
+    next: u32,
+}
+
+/// The end of a tile's chain.
+const NO_LINK: u32 = u32::MAX;
 
 /// The largest group the prune scans without an index.
 const LINEAR_OCCLUDERS: usize = 16;
@@ -97,6 +115,10 @@ impl OcclusionPruner {
             viewport.x.div_ceil(TILE_SIZE).max(1) - 1,
             viewport.y.div_ceil(TILE_SIZE).max(1) - 1,
         );
+        let tiles = ((self.last_tile.x + 1) * (self.last_tile.y + 1)) as usize;
+        if tiles > self.tile_heads.len() {
+            self.tile_heads.resize(tiles, NO_LINK);
+        }
         self.contains_tests.reset();
         self.clear();
     }
@@ -196,7 +218,11 @@ impl OcclusionPruner {
     /// Register every small cover in the tiles it overlaps, and set the
     /// large ones apart.
     fn build_index(&mut self) {
-        self.cover_tiles.clear();
+        for &tile in &self.touched_tiles {
+            self.tile_heads[tile as usize] = NO_LINK;
+        }
+        self.touched_tiles.clear();
+        self.cover_links.clear();
         self.large_covers.clear();
         for (at, occluder) in self.opaque_in_group.iter().enumerate() {
             let span = self.span_of(occluder.cover);
@@ -207,29 +233,36 @@ impl OcclusionPruner {
             }
             for y in span.min.y..=span.max.y {
                 for x in span.min.x..=span.max.x {
-                    self.cover_tiles
-                        .push(u64::from(self.tile_index(UVec2::new(x, y))) << 32 | at as u64);
+                    let tile = self.tile_index(UVec2::new(x, y));
+                    let head = &mut self.tile_heads[tile as usize];
+                    if *head == NO_LINK {
+                        self.touched_tiles.push(tile);
+                    }
+                    self.cover_links.push(CoverLink {
+                        at: at as u32,
+                        next: *head,
+                    });
+                    *head = (self.cover_links.len() - 1) as u32;
                 }
             }
         }
-        self.cover_tiles.sort_unstable();
     }
 
     /// Whether an occluder at position `cursor` or later covers `rect`,
     /// through the index.
     fn indexed_covers(&self, rect: Rect, cursor: usize) -> bool {
-        let tile = u64::from(self.tile_index(self.tile_of(rect.min)));
-        let first = self
-            .cover_tiles
-            .partition_point(|&key| key < (tile << 32 | cursor as u64));
-        for at in first..self.cover_tiles.len() {
-            let key = self.cover_tiles[at];
-            if key >> 32 != tile {
+        let tile = self.tile_index(self.tile_of(rect.min));
+        let mut link = self.tile_heads[tile as usize];
+        while link != NO_LINK {
+            let CoverLink { at, next } = self.cover_links[link as usize];
+            // Newest first: the rest of the chain is drawn beneath the quad.
+            if (at as usize) < cursor {
                 break;
             }
-            if self.covers(key as u32 as usize, rect) {
+            if self.covers(at as usize, rect) {
                 return true;
             }
+            link = next;
         }
         let first = self
             .large_covers
