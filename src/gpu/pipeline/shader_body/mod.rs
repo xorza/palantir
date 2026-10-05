@@ -1,6 +1,7 @@
 //! Assembly of a pipeline's WGSL source: the shared prelude, then the
 //! shader body, with the Rust-owned constants of both substituted in.
 
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::raster::raster_atlas::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, U_BITS, V_SHIFT,
 };
@@ -82,6 +83,13 @@ impl ShaderBody {
                 ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
                 ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeom::REACH_SIGMAS),
+                ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
+                ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),
+                ShaderConstant::float("CUTOUT_ATLAS_SIZE", CutoutPlan::ATLAS_SIZE as f32),
+                ShaderConstant::uint("CUTOUT_CELL", CutoutPlan::CELL),
+                ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
+                ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
+                ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
             ],
             Self::Curve => vec![
                 ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),

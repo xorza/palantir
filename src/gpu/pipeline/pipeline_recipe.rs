@@ -18,6 +18,7 @@ pub(crate) struct PipelineRecipe<'a> {
     pub(super) label: &'static str,
     pub(super) shader: &'a wgpu::ShaderModule,
     pub(super) layout: &'a wgpu::PipelineLayout,
+    pub(super) vertex_entry: &'static str,
     pub(super) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(super) topology: wgpu::PrimitiveTopology,
     pub(super) color_format: wgpu::TextureFormat,
@@ -38,7 +39,7 @@ impl PipelineRecipe<'_> {
             layout: Some(self.layout),
             vertex: wgpu::VertexState {
                 module: self.shader,
-                entry_point: Some("vs"),
+                entry_point: Some(self.vertex_entry),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: self.vertex_buffers,
             },
