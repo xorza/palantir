@@ -288,10 +288,11 @@ enum Resolve {
 /// frames replay the last one's resolves, some with one change at a
 /// random position, so passes run in step, leave it at every position,
 /// and never enter it. Every resolve, every collision pair, every pass's
-/// recording and endpoints, and every frame's removed set must agree.
+/// recording and endpoints, every frame's removed set, and every last-frame
+/// endpoint known by position must agree.
 #[test]
 fn matches_the_per_pass_tables_over_random_frames() {
-    let (mut in_step, mut out_of_step) = (0, 0);
+    let (mut in_step, mut out_of_step, mut positional) = (0, 0, 0);
     for seed in 1..=8_u64 {
         let mut rng = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15);
         let mut next = move |n: usize| {
@@ -380,6 +381,19 @@ fn matches_the_per_pass_tables_over_random_frames() {
                         }
                     };
                     assert_eq!(got, want, "resolve, {at}");
+                    let known = match ids.last_frame_endpoint(got.id()) {
+                        LastFrame::At(endpoint) => Some(Some(endpoint)),
+                        LastFrame::Absent => Some(None),
+                        LastFrame::Unknown => None,
+                    };
+                    if let Some(known) = known {
+                        positional += 1;
+                        assert_eq!(
+                            known,
+                            model.last_frame_endpoint(got.id()),
+                            "last frame's endpoint by position, {at}",
+                        );
+                    }
                     if !open.contains(&got) {
                         open.push(got);
                     }
@@ -421,7 +435,8 @@ fn matches_the_per_pass_tables_over_random_frames() {
         }
     }
     assert!(
-        in_step > 500 && out_of_step > 500,
-        "both paths run: {in_step} frames in step, {out_of_step} out",
+        in_step > 500 && out_of_step > 500 && positional > 5000,
+        "both paths run: {in_step} frames in step, {out_of_step} out, \
+         {positional} last-frame endpoints by position",
     );
 }
