@@ -2,7 +2,7 @@
 //! independently of whether the tree was rebuilt.
 
 use crate::cascade::Cascade;
-use crate::cascade::entry::{TabDirection, TabDomain};
+use crate::cascade::entry::{TabDirection, TabDomain, WidgetLocation};
 use crate::common::span::Span;
 use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
 use crate::input::event_outcome::EventOutcome;
@@ -1210,14 +1210,14 @@ impl InputState {
     pub(crate) fn response_for(
         &self,
         id: WidgetId,
+        loc: Option<WidgetLocation>,
         cascade: &Cascade,
         layout: &Layout,
     ) -> ResponseState {
         // Geometry half — needed every frame for theme picking and
-        // layout-relative math. `locate` is the lone hash probe, and it
-        // yields both the entry index and the endpoint the layout
+        // layout-relative math. `loc` is where the most recent cascade
+        // run put `id`: both the entry index and the endpoint the layout
         // columns are keyed by.
-        let loc = cascade.locate(id);
         // One gather of the whole `EntryRow` — `entries` is AoS precisely
         // so these three land on one cache line instead of three.
         let entry = loc.map(|l| cascade.entries[l.entry_idx as usize]);

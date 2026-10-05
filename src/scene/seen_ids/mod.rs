@@ -98,6 +98,17 @@ impl IdSlot {
     }
 }
 
+/// What [`SeenIds::last_frame_endpoint`] knows of an id's last frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LastFrame {
+    /// Recorded at this endpoint.
+    At(Endpoint),
+    /// Not recorded: absent, or only reserved.
+    Absent,
+    /// Not known without a probe.
+    Unknown,
+}
+
 /// An id [`SeenIds::resolve`] handed out this pass, with the index of
 /// the entry that reserves it. Only `resolve` makes one, so the index
 /// always names that entry; [`SeenIds::record_endpoint`] checks the id
@@ -343,6 +354,31 @@ impl SeenIds {
         let entry = self.curr.entries.get(at)?;
         debug_assert_eq!(entry.id, id, "an in-step entry left its position");
         entry.slot.endpoint()
+    }
+
+    /// Where the last painted frame recorded `id`, when that is known
+    /// without a probe: when `id` is the newest entry of a pass in step,
+    /// whose position names last frame's entry for the same id. Otherwise
+    /// [`LastFrame::Unknown`], and the caller probes.
+    ///
+    /// The newest entry is the usual case: a widget reads last frame's
+    /// response right after it resolves its id.
+    #[inline]
+    pub(crate) fn last_frame_endpoint(&self, id: WidgetId) -> LastFrame {
+        let newest = self.curr.entries.len().wrapping_sub(1);
+        if self.split.is_some()
+            || self
+                .curr
+                .entries
+                .get(newest)
+                .is_none_or(|entry| entry.id != id)
+        {
+            return LastFrame::Unknown;
+        }
+        match self.prev.entries[newest].slot.endpoint() {
+            Some(endpoint) => LastFrame::At(endpoint),
+            None => LastFrame::Absent,
+        }
     }
 
     /// The ids recorded this pass, with their endpoints.

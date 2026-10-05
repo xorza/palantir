@@ -163,37 +163,6 @@ square, so one table per `(r, σ)` over `[−reach, r + reach]²` replaces the
   and asserts the bound.
 - Expected gain: up to about 1 ms on `scrolling_gpu` and `resizing_gpu`.
 
-## C4. Read last frame's data by position
-
-### Problem
-
-Each widget finds last frame's data through hash lookups of its id in every
-frame: `response_for` probes `Cascade::by_id` (3.2% of `cached_cpu`), a look
-animation probes `AnimMap` even when settled (1.8%), and `is_within`,
-`is_focus_within` and `is_hover_within` probe twice per call (1.0%). The
-state map does the same for stateful widgets.
-
-### Design (decided: positional reads with a probe fallback)
-
-While a pass is in step with the last frame, a widget's `SeenIds` entry has
-the same position as last frame's entry for the same id, and that entry
-holds last frame's endpoint. `ResolvedId` carries the entry position, and
-the reads above take last frame's row through it — but only while the pass
-is in step *and* the cascade snapshot they read is the one of that frame.
-In a two-pass frame, pass B reads a cascade built for pass A, while
-`SeenIds::prev` holds the last painted frame, so the snapshot names the pass
-it belongs to and a mismatch probes as today. Anything out of step probes as
-today.
-
-The scope-row variant of the containment scan was measured and dropped
-(`cached_cpu` +0.9%): `Scopes::reader`'s memo already spares those scans.
-
-### Validation
-
-- A differential test that the positional reads return what the probes
-  return, over frames in step, out of step and with two passes.
-- Expected gain: 3–5% of `cached_cpu`.
-
 ---
 
 # Part 2: Implementation order
@@ -202,8 +171,7 @@ Each step is one commit with its tests. Measure each step with the A/B
 protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
-1. **C4, positional reads.** The differential test comes first.
-2. **G3, cutout table baked every frame.** The largest GPU gain left.
+1. **G3, cutout table baked every frame.** The largest GPU gain left.
 
 ## Not in this plan
 
