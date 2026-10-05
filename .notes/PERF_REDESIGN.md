@@ -15,15 +15,18 @@ Measured on the Ryzen 7 6800U / Radeon 680M, `x86-64-v3`, core 2 pinned,
 
 ## Result
 
-| arm | `b7b77cfd` | HEAD | target after this plan |
-| --- | ---: | ---: | ---: |
-| `cached_cpu` | 125.6 µs | 162.7 µs | 135–145 µs |
-| `scrolling_cpu` | 194.2 µs | 225.7 µs | 195–205 µs |
-| `scrolling_gpu` | 3.91 ms | 7.15–7.73 ms | 5.0–5.5 ms |
-| `resizing_gpu` | 4.84 ms | 8.36–8.54 ms | 5.6–6.2 ms |
+| arm | `b7b77cfd` | `77719e8a` | target | now |
+| --- | ---: | ---: | ---: | ---: |
+| `cached_cpu` | 125.6 µs | 162.7 µs | 135–145 µs | 141.7 µs |
+| `scrolling_cpu` | 194.2 µs | 225.7 µs | 195–205 µs | 204.0 µs |
+| `scrolling_gpu` | 3.91 ms | 7.15–7.73 ms | 5.0–5.5 ms | 6.15 ms |
+| `resizing_gpu` | 4.84 ms | 8.36–8.54 ms | 5.6–6.2 ms | 7.08 ms |
 
-The targets are estimates from the profile shares below. Each step is measured
-on its own before the next one starts.
+"Now" is the median of three full runs after the steps done so far. The GPU
+targets need G3's table (Q2).
+
+The targets were estimates from the profile shares below. Each step was
+measured on its own before the next one started.
 
 The plan does not reach the `b7b77cfd` numbers. The rest of the difference is
 the cost of features that the later commits added on purpose: exact colour,
@@ -160,9 +163,9 @@ square, so one table per `(r, σ)` over `[−reach, r + reach]²` replaces the
 
 Measure each one with the profile before you change it.
 
-- **`AnimMap::animate`, 1.6%.** Find out if a settled look still does a map
-  lookup for each widget in each frame. If so, a settled look reads its value
-  without the animation map.
+- **`AnimMap::animate`, 1.6%.** A settled look still probes the animation
+  map for each widget in each frame: the row that says it settled lives
+  there. Skipping the probe needs the widget's row by position (Q1).
 - **`Cascade::is_within`, 1.0%: measured and dropped for the scope scans.**
   Scope rows that carried their node, and scans that looked up only the
   queried widget, made `cached_cpu` 0.9% slower (ABBA, +0.92% / −0.87%):
@@ -181,12 +184,9 @@ Each step is one commit with its tests. Measure each step with the A/B
 protocol in `benches/AGENTS.md` (ABBA, pinned core, `setarch -R`, governor
 `performance`), and record the result in the commit message.
 
-1. **C4 items**, each one after a fresh profile.
+1. **C4 items.** All wait for Q1 in `.notes/PERF_REDESIGN_QUESTIONS.md`.
 2. **G3, cutout cache.** The largest GPU gain left. Waits for a decision:
    see Q2 in `.notes/PERF_REDESIGN_QUESTIONS.md`.
-3. **Docs.** Update the `README.md` tables and the `perf stat` paragraph
-   with full runs. Add the `git archive` mtime trap from
-   `.notes/FRAME_BENCH_REGRESSION.md` to `benches/AGENTS.md`.
 
 ## Not in this plan
 

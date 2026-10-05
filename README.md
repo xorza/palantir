@@ -65,14 +65,14 @@ AMD Ryzen 7 6800U (Zen 3+) with its integrated Radeon 680M:
 
 | arm         | CPU pipeline | CPU + GPU frame |
 | ----------- | -----------: | --------------: |
-| `cached`    |       130 µs |         1.12 ms |
-| `partial`   |       145 µs |         1.37 ms |
-| `scrolling` |       201 µs |         4.25 ms |
-| `resizing`  |       317 µs |         5.38 ms |
+| `cached`    |       142 µs |         1.39 ms |
+| `partial`   |       155 µs |         1.58 ms |
+| `scrolling` |       204 µs |         6.15 ms |
+| `resizing`  |       306 µs |         7.08 ms |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured 4.59 GHz,
-~130 µs/frame): **~2.03 M instructions retired**, **~596 K cycles**,
-**IPC ≈ 3.41**.
+Steady-state cost per frame on `frame/cached_cpu` (measured 4.66 GHz,
+~142 µs/frame): **~2.30 M instructions retired**, **~660 K cycles**,
+**IPC ≈ 3.48**.
 
 Measured via `perf stat`, pinned to one core; the per-frame counts are a
 differential between two measurement windows, so process startup cancels
