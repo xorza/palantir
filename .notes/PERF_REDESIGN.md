@@ -174,13 +174,12 @@ Measure each one with the profile before you change it.
 - **`AnimMap::animate`, 1.6%.** Find out if a settled look still does a map
   lookup for each widget in each frame. If so, a settled look reads its value
   without the animation map.
-- **`Cascade::is_within`, 1.0%, and `Scopes::resolve`, 0.5%.**
-  `is_within` does two hash lookups for each call, and `input/scope.rs`
-  calls it in a filter over all rows. The rows already hold their node
-  index, so compare node ranges directly.
-- **`Widget::resolved` and `Forest::widget_id`.** The parent mix is one
-  hash per widget per frame for every `id_salt` widget. Measure it before
-  you change it.
+- **`Cascade::is_within`, 1.0%: measured and dropped for the scope scans.**
+  Scope rows that carried their node, and scans that looked up only the
+  queried widget, made `cached_cpu` 0.9% slower (ABBA, +0.92% / −0.87%):
+  `Scopes::reader`'s memo already spares the per-chord scans. The rest of
+  the cost is in callers that ask about one widget, `is_focus_within` and
+  `is_hover_within`, which belong to Q1's positional reads.
 - **Last-frame lookups by position** (`response_for` 3.2%, `is_within`,
   `AnimMap`) wait for a decision: see
   `.notes/PERF_REDESIGN_QUESTIONS.md`.

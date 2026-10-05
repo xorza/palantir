@@ -57,7 +57,6 @@ use crate::scene::endpoint::Endpoint;
 use crate::scene::node::ident::Ident;
 use std::collections::hash_map::Entry;
 use std::mem;
-use std::panic::Location;
 use std::ptr;
 
 /// Both nodes of one explicit-id collision, in recording order. What
@@ -141,25 +140,31 @@ struct Origin {
     is_explicit: bool,
     /// The occurrence counter the id took, or 0 when the id is `raw`.
     occurrence: u32,
-    /// An auto id's call site, which names `raw` without its hash.
-    site: Option<AutoSite>,
+    /// The inputs of a parent-scoped `raw`, which name it without a hash.
+    recipe: Option<Recipe>,
 }
 
-/// Where an auto id was made: the call site and the parent it hangs off,
-/// the two inputs of its raw id.
+/// A parent-scoped raw id before its hash: an auto id's call site or a
+/// salt, and the parent it hangs off.
 #[derive(Clone, Copy, Debug)]
-struct AutoSite {
-    location: &'static Location<'static>,
+struct Recipe {
+    /// [`Ident::Auto`] or [`Ident::Hash`].
+    ident: Ident,
     parent: Option<WidgetId>,
 }
 
-impl AutoSite {
-    /// Whether `other` names the same raw id by the same inputs. The
+impl Recipe {
+    /// Whether `other` names the same raw id by the same inputs. A
     /// `Location` is compared by address: a call site the compiler
     /// duplicated only fails to match, and the resolve then hashes it.
     #[inline]
     fn is(self, other: Self) -> bool {
-        ptr::eq(self.location, other.location) && self.parent == other.parent
+        let same = match (self.ident, other.ident) {
+            (Ident::Auto(a), Ident::Auto(b)) => ptr::eq(a, b),
+            (Ident::Hash(a), Ident::Hash(b)) => a == b,
+            _ => false,
+        };
+        same && self.parent == other.parent
     }
 }
 
@@ -393,7 +398,7 @@ impl SeenIds {
         &mut self,
         raw: WidgetId,
         is_explicit: bool,
-        site: Option<AutoSite>,
+        recipe: Option<Recipe>,
     ) -> Option<ResolvedId> {
         if self.split.is_some() {
             return None;
@@ -421,7 +426,7 @@ impl SeenIds {
                     raw,
                     is_explicit,
                     occurrence,
-                    site,
+                    recipe,
                 },
             ));
         }
@@ -461,44 +466,45 @@ impl SeenIds {
         self.resolve_raw(raw_id, is_explicit, None)
     }
 
-    /// [`Self::resolve`] for an auto id, made at `location` under `parent`.
-    /// In step, last frame's entry at this position names the same raw id
-    /// when it came from the same call site and parent, so the id is taken
-    /// from it and the call site is never hashed. Otherwise the raw id is
-    /// hashed, by [`Ident::raw_id`] as for any other ident.
+    /// [`Self::resolve`] for a parent-scoped ident — an auto id's call site
+    /// or a salt — under `parent`. In step, last frame's entry at this
+    /// position names the same raw id when it came from the same inputs,
+    /// so the id is taken from it and the raw id is never hashed: an auto
+    /// id's file path, or a salt's mix with the parent. An explicit salt
+    /// takes it only when last frame's did not collide, and then it is no
+    /// claim either, since that id is not yet taken. Otherwise the raw id
+    /// is hashed, by [`Ident::raw_id`] as for any other ident.
     #[inline]
-    pub(crate) fn resolve_auto(
-        &mut self,
-        location: &'static Location<'static>,
-        parent: Option<WidgetId>,
-    ) -> ResolvedId {
-        let site = AutoSite { location, parent };
+    pub(crate) fn resolve_scoped(&mut self, ident: Ident, parent: Option<WidgetId>) -> ResolvedId {
+        debug_assert!(matches!(ident, Ident::Auto(_) | Ident::Hash(_)));
+        let recipe = Recipe { ident, parent };
+        let is_explicit = ident.is_explicit();
         if self.split.is_none()
             && let Some(last) = self.prev.entries.get(self.curr.entries.len())
-            && last.origin.site.is_some_and(|last| last.is(site))
+            && last.origin.recipe.is_some_and(|last| last.is(recipe))
+            && (!is_explicit || last.origin.occurrence == 0)
         {
             let (id, origin) = (last.id, last.origin);
             return self.reserve(
                 id,
                 Origin {
-                    site: Some(site),
+                    recipe: Some(recipe),
                     ..origin
                 },
             );
         }
-        let raw = Ident::Auto(location).raw_id(parent);
-        self.resolve_raw(raw, false, Some(site))
+        self.resolve_raw(ident.raw_id(parent), is_explicit, Some(recipe))
     }
 
-    /// [`Self::resolve`], recording `site` for an auto id.
+    /// [`Self::resolve`], recording the `recipe` of a parent-scoped ident.
     #[inline]
     fn resolve_raw(
         &mut self,
         raw_id: WidgetId,
         is_explicit: bool,
-        site: Option<AutoSite>,
+        recipe: Option<Recipe>,
     ) -> ResolvedId {
-        if let Some(resolved) = self.in_step(raw_id, is_explicit, site) {
+        if let Some(resolved) = self.in_step(raw_id, is_explicit, recipe) {
             return resolved;
         }
         if self.split.is_none() {
@@ -517,7 +523,7 @@ impl SeenIds {
                         raw: raw_id,
                         is_explicit,
                         occurrence: 0,
-                        site,
+                        recipe,
                     },
                 );
             }
@@ -561,7 +567,7 @@ impl SeenIds {
                 raw: raw_id,
                 is_explicit,
                 occurrence: count,
-                site,
+                recipe,
             },
         )
     }

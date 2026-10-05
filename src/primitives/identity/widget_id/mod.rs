@@ -215,7 +215,7 @@ impl WidgetId {
     ///
     /// The file path costs a hash a word at a time, so the crate's widgets
     /// keep the `Location` and hash it only when the id tracker cannot
-    /// match the call site to last frame's (see `SeenIds::resolve_auto`).
+    /// match the call site to last frame's (see `SeenIds::resolve_scoped`).
     pub(crate) fn from_location(site: &Location<'_>) -> Self {
         let mut hasher = Hasher::new();
         hasher.write(site.file().as_bytes());
