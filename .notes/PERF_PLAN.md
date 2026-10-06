@@ -128,19 +128,22 @@ them. So the gains are elsewhere:
 
 - **The shadow hole skip** is in: it removed 2.5 M blended fragments,
   about 20 MB of traffic per full frame.
-- **The resync after a direct frame.** A full frame renders directly and
-  leaves the backbuffer stale. The next partial frame then repaints the
-  whole frame into the backbuffer before it copies out. A frame sequence
-  of full, partial, full, partial (a hover over an animated region, for
-  example) pays a full repaint plus a full copy at every partial frame.
-  Choosing per full frame between "direct" and "via the backbuffer, then
-  copy" by the last frames' history would avoid that. This needs a bench
-  arm that alternates full and partial frames before any design, because
-  no arm measures that sequence today.
-- **A timestamp around the copy-out.** The copy runs outside the render
-  pass, so `GpuPassStats` does not show it. One timestamp pair around it
-  separates the copy from the GPU wake-up, and tells whether a smaller
-  copy would help at all.
+- **The resync after a direct frame was tried, and did not pay.** The
+  frame bench now has an `alternating` arm: a scroll step (a full
+  repaint) and a counter tick (a small partial) in turn. A rule that sent
+  a full frame through the backbuffer when the frame before it was a
+  partial, so the next partial would stay cheap, moved
+  `alternating_gpu` by −1.8% ± 4% and +3.1% ± 5% (ABBA): the copy it adds
+  to the full frame costs about what the resync saves. Reverted; the arm
+  stays.
+- **The GPU arms depend on the GPU's power state.** With the
+  `alternating` arm running first, `scrolling_gpu` and `resizing_gpu`
+  read 3.3 and 3.9 ms, against 4.0 and 5.2 ms for the same code when
+  `cached_gpu`, which leaves the GPU idle, ran before them. Compare GPU
+  numbers only between runs of the same arm set, in the same order.
+- **A timestamp around the copy-out** would separate the copy from the
+  GPU wake-up. It needs a new public `GpuPassStats` reading, so it waits
+  for a decision: see `PERF_PLAN_QUESTIONS.md`.
 
 ## CPU: where the time goes
 
@@ -251,8 +254,7 @@ binary each (`cached_cpu`, base re-run at 140.8 µs):
 
 ## Plan
 
-1. **M1**: the alternating bench arm and the copy-out timestamp, then a
-   decision on the per-frame choice of path.
+1. **M1, copy-out timestamp**: blocked on `PERF_PLAN_QUESTIONS.md`.
 2. **C5** profiles, written up here.
 3. **G3**, only if a profile shows the edge terms as a large part of the
    remaining shadow cost.

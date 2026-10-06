@@ -17,7 +17,7 @@ cargo bench -p palantir --features bench --bench criterion -- -d frame --arms cp
   its setup. A positional is criterion's regex over benchmark ids, which
   filters only after the setup. `--arms cpu|gpu|both` picks a half of the
   pipeline. `--help` lists the rest.
-- `frame` is opt-in. Its full matrix takes ~90 s (`--arms cpu`, ~40 s) and
+- `frame` is opt-in. Its full matrix takes ~110 s (`--arms cpu`, ~50 s) and
   appends a row to `benches/results/<machine>.txt`, so it needs `--note`.
 - The binary reads no environment variable. Every knob is a flag.
 - Cut `--sample-size` and `--measurement-time` while you iterate. Report
