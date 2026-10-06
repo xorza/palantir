@@ -23,6 +23,16 @@ cargo bench -p palantir --features bench --bench criterion -- -d frame --arms cp
 - Cut `--sample-size` and `--measurement-time` while you iterate. Report
   only numbers from a full run.
 
+**The GPU arms present the way the desktop does.** `bench_host` builds its
+`OffscreenHost` with `retained_target(true)`, which is the winit host's
+`DirectAdaptive`. A desktop can never rely on what a swapchain image held,
+and `DirectAdaptive` never reads it: a skip frame presents nothing, a full
+frame renders straight into the target, and a partial frame paints into
+palantir's own backbuffer and copies all of it out. The default
+`BackbufferCopy` is the screenshot path. It also copies out on skip and
+full frames, which costs 1.3 ms on a 1440p `cached_gpu` frame, so rows in
+`benches/results` from before 2026-10-06 do not compare with later ones.
+
 ## Measuring
 
 - **Pin the run, never the build.** `taskset` in front of `cargo` pins the

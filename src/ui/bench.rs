@@ -15,7 +15,8 @@
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
 //!   `OffscreenHost::frame` against an offscreen `wgpu::Texture` +
-//!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
+//!   `PollType::Wait`, on the desktop's present strategy (see
+//!   `bench_host`). Wall time covers the whole CPU + GPU pipeline;
 //!   dominated by GPU exec on large views. The per-frame `write_stats`
 //!   dump (upload counts, GPU pass timings) lives here since it's
 //!   inherently GPU.
@@ -144,8 +145,15 @@ fn gpu() -> &'static BenchGpu {
     gpu
 }
 
+/// A host on the desktop's present strategy: `retained_target` selects
+/// the `DirectAdaptive` the winit host runs, which never reads what the
+/// target held before. The default would measure the screenshot path,
+/// which also copies the whole backbuffer out on skip and full frames.
 fn bench_host(g: &BenchGpu) -> OffscreenHost {
-    g.offscreen_builder().collect_gpu_stats(true).build()
+    g.offscreen_builder()
+        .collect_gpu_stats(true)
+        .retained_target(true)
+        .build()
 }
 
 fn gpu_frame(
