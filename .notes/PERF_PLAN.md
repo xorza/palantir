@@ -64,7 +64,7 @@ blends zero, which still reads and writes 8 bytes of the target. At
 
 ## GPU design
 
-### G3. Only if the edges dominate what is left: a baked edge profile
+### The shadow grid, done
 
 The shadow grid is in: a shadow skips the pixels its source hides, and
 takes the two-term edge form or the full cover where the cutoff at
@@ -72,11 +72,6 @@ takes the two-term edge form or the full cover where the cutoff at
 5.85 M, `scrolling_gpu` from 4.9 to 4.0 ms and `resizing_gpu` from 5.95
 to 5.20 ms (ABBA, both directions). Shadows are still about 1.1 ms of a
 full frame, against about 0.5 ms for every other quad.
-
-`filter_cdf(u, σ)` depends only on `u` and σ. One atlas row per distinct
-σ, baked by the cutout pass, gives the edge profile with two texel loads
-and a lerp. Do G3 only if a profile shows the edge terms as a large part
-of the remaining shadow cost.
 
 ## GPU: the copy-out
 
@@ -227,16 +222,25 @@ binary each (`cached_cpu`, base re-run at 140.8 µs):
   bytes in `hot_struct_sizes.rs`, and a test pins that a parent of id 0
   is a parent, which a later shrink with a sentinel would break.
 
-### C5. Investigate before designing
+### C5. What the investigations found
 
-- `AnimMap::animate`, +1 µs: one hash probe per animated look per frame,
-  also for looks at rest.
-- `Text::show` +2.2 µs and `Block::show` +1.4 µs: the source of
-  `Text::show` is short, so this is probably inlining that moved.
-  `perf annotate` of both builds will show it.
-- `CascadeKey::new`, 0.9 µs.
-- `Stop::new` encodes each colour to sRGB bytes every frame (1.5 µs).
-  `encode_byte` is already a table lookup, so only fewer calls would help.
+- `Text::show`, `Block::show` and `CascadeKey::new` have no hot line: a
+  profile spreads each over many 0.1–0.3% items of the record path. This
+  is inlining that moved, not new work, and there is no design to make.
+- `AnimMap::animate` costs about 2.3 µs (1.6%). Each animated look pays
+  two lookups per frame: the type map (`TypeId` and a downcast) and the
+  row probe by `(id, slot)`. A concrete field for the `AnimatedLook` map,
+  the crate's own animated type, would remove the first. Not done: a new
+  item for a later round, with its own measurement.
+- `Stop::new` encodes each stop's colour every frame (1.5 µs). The encode
+  is already a table lookup; the calls are the fixture's own gradients.
+
+### G3 measured and not done
+
+With the edge form replaced by a constant, `scrolling_gpu` and
+`resizing_gpu` fell only 0.13–0.19 ms. A baked edge profile would recover
+part of that at most, so the edge terms are not a large part of the
+shadow cost, and G3 is not done.
 
 ## Measurement protocol
 
@@ -255,12 +259,9 @@ binary each (`cached_cpu`, base re-run at 140.8 µs):
 ## Plan
 
 1. **M1, copy-out timestamp**: blocked on `PERF_PLAN_QUESTIONS.md`.
-2. **C5** profiles, written up here.
-3. **G3**, only if a profile shows the edge terms as a large part of the
-   remaining shadow cost.
-4. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
-   updated with what each step recovered.
+
 
 ## Public API this plan touches
 
-None. Everything left is crate-private.
+Only M1's copy-out timing, if its question is answered with option 1: a
+new `GpuPassStats::last_copy_out`.

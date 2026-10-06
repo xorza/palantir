@@ -152,3 +152,37 @@ build into the same target directory, an older commit time always reads as
 file or the profile changes, and it silently reuses the previous binary. The
 first bisection here was wrong for this reason. Touch every extracted file
 before the build, or give each commit its own target directory.
+
+## What was recovered (2026-10-06)
+
+Measured on the same machine, CachyOS, with `x86-64-v3`. The plan and the
+measurements of each step are in `PERF_PLAN.md`.
+
+| step | effect |
+| --- | --- |
+| Before the plan (`c4a28240` to `507f14db`): cutout tables, in-step widget ids, the sRGB lookup, the occlusion tile chains | `cached_cpu` 162.7 → 141 µs, `scrolling_gpu` 7.7 → 5.3 ms |
+| Shadow grid (`2676bf74`) | shadow fragments 8.39 M → 5.85 M; `scrolling_gpu` −0.9 ms, `resizing_gpu` −0.75 ms |
+| Input-scope memo (`dfdd6823`) | `cached_cpu` −1.8 µs |
+| GPU arms on the desktop strategy (`2c608f01`) | a method change: `cached_gpu` 1.41 → 0.13 ms, because a skip frame no longer copies |
+
+Tried and reverted, each slower: folding the rollups at `close_node`
+(+22 µs), a word compare of gradient stops (+1.5 µs), a 48-byte `IdEntry`
+(+6.3 µs), and sending a full frame after a partial one through the
+backbuffer (no gain).
+
+The full run after these steps, against the old README:
+
+| arm | old README | now |
+| --- | ---: | ---: |
+| `cached_cpu` | 130 µs | 139.6 µs |
+| `partial_cpu` | 145 µs | 153.8 µs |
+| `scrolling_cpu` | 201 µs | 201.3 µs |
+| `resizing_cpu` | 317 µs | 303.6 µs |
+| `cached_gpu` | 1.12 ms | 0.13 ms (desktop strategy) |
+| `partial_gpu` | 1.37 ms | 1.53 ms (desktop strategy) |
+| `scrolling_gpu` | 4.25 ms | 3.40 ms (desktop strategy) |
+| `resizing_gpu` | 5.38 ms | 3.71 ms (desktop strategy) |
+
+The GPU arms beat the old numbers. `cached_cpu` and `partial_cpu` are
+still 9–10 µs above them; the CPU remainder has no single cause left that
+a profile shows.
