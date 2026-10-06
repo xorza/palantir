@@ -9,7 +9,7 @@ experiment code is in the tree.
 ## Result
 
 - **GPU, shading:** the shadow shader is the whole regression of
-  `scrolling_gpu` and `resizing_gpu`. G1 removes most of it.
+  `scrolling_gpu` and `resizing_gpu`. The shadow grid (in) removed 0.75–0.9 ms of it.
 - **GPU, copy-out:** the GPU arms now present the way the desktop does
   (`DirectAdaptive`, see `benches/AGENTS.md`). On that strategy a skip
   frame copies nothing, so `cached_gpu` is the CPU frame alone, and
@@ -63,97 +63,19 @@ blends zero, which still reads and writes 8 bytes of the target. At
 
 ## GPU design
 
-### G1. Draw a shadow as a 3×3 grid of cells
+### G3. Only if the edges dominate what is left: a baked edge profile
 
-WebRender splits a box shadow into segments and skips the ones it knows
-are empty, and Skia draws a blurred rounded rect as a nine-patch. Each
-segment evaluates only the terms that are not constant on it.
-
-`vs_shadow` computes four grid lines per axis and draws the nine cells of
-that grid as a triangle list (`pass.draw(0..54, range)` for
-`RenderStep::Shadows`), with a flat `cell` varying.
-
-**Grid lines.** On x: `X0` and `X3` are the bounds the quad has today.
-`X1 = box.min.x + max(r_tl, r_bl) + reach` and
-`X2 = box.max.x − max(r_tr, r_br) − reach`, where `box` and the radii are
-the shadow's own (`fit_radii(spread_radius(..))`, as `fs_shadow` computes
-them). y is the same with the top and bottom radii. Then every line is
-clamped into `[X0, X3]`, and `X1` and `X2` are clamped to their midpoint
-when they cross. So the lines are always in order, and the nine cells
-tile the quad exactly, for every size.
-
-**Watertight.** Every vertex of every cell is `(X[i], Y[j])`, one value
-per grid line, computed once in the shader. Two cells that share an edge
-share bit-identical vertices, so the rasterizer's fill rule shades each
-pixel once. A collapsed cell has zero area and shades nothing. A pixel
-shaded twice would blend twice, which is a visible bug, so a test must
-show that it cannot happen (below).
-
-**Forms per cell.** Each form is valid on its whole cell by construction,
-with no condition on the box size:
-
-| cell | form |
-| --- | --- |
-| corner (4) | today's full `blurred_box_coverage`, all terms and cutouts |
-| edge (4) | the two `filter_cdf` across the edge. The pair along the edge is 1, and every cutout is 0, because the cell is more than `r + reach` from the perpendicular edges. |
-| centre | drop shadow: the source clip, else `fill.a`. Inset shadow: 0. |
-
-On the edge and centre cells, a term past `reach` is set to 0 or 1. This
-moves a value by at most 3.2·10⁻⁵, about 1/120 of an 8-bit step
-(**decided**: cut at `reach`). The corner cells keep today's exact tail.
-The corner cutouts and the quad bounds already stop at `reach`.
-
-**Centre skip.** For a drop shadow, the centre cell is not drawn when it
-lies inside the hole: the source inset by its largest radius plus
-`AA_HALF_WIDTH`. At a pixel centre there, the source SDF is at most
-`−AA_HALF_WIDTH`, coverage is 1, and today's shader returns exactly
-zero, so the skip is bit-exact. With a large offset or spread, the
-centre cell can stick out of the hole. Then it is drawn with the centre
-form, which is cheap. For an inset shadow, the centre form is 0, so the
-centre is never drawn.
-
-**σ below `CUTOUT_MIN_SIGMA`, and σ = 0.** The corner cells use the full
-form, so they keep the outline integral for a small σ and the exact box
-for σ = 0. With σ = 0, `reach = AA_HALF_WIDTH`, and the edge form is
-`edge_coverage`, which is correct.
-
-**`CutoutPlan`.** A corner reads its cutout only in its corner cell. So
-the shaded area of a corner is its region inside the corner cell, and
-the plan's estimate becomes more exact.
-
-**Estimate.** The centre skip removes 2.7 M fragments (−0.5 to
-−0.7 ms, and about 22 MB of traffic per full frame). The edge cells drop
-from four `filter_cdf` and four cutout tests to two `filter_cdf`
-(−0.4 to −0.6 ms). Total −0.9 to −1.3 ms on `scrolling_gpu` and
-`resizing_gpu`.
-
-**Tests.**
-
-- A golden-free GPU A/B: render a sweep of shadows with the 3×3 grid and
-  with today's single quad (an `internals` switch, as
-  `disable_cutout_tables` does), and compare the images. The sweep:
-  drop and inset; σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2, 18; radius 0,
-  4, 30; boxes larger than, equal to and smaller than `2·(r + reach)`;
-  offset 0 and larger than `reach`; spread −4, 0, 6; a partial scissor
-  across a cell edge; a rounded clip (stencil). Every channel must be
-  within one level. The pixels of the skipped centre must be **equal**,
-  not within one level.
-- A double-blend test: a shadow with a colour whose double blend changes
-  the 8-bit result at every pixel, over a known background. Any pixel
-  shaded twice fails the A/B above, so this case goes into its sweep.
-- The pipeline statistics (where the adapter has them) show the fragment
-  count fall from 8.39 M toward 5.7 M on the first full frame of the
-  fixture. This goes into the plan's measurement, not into the suite,
-  because lavapipe has no pipeline statistics.
-- `shader_body/tests.rs`: `fs` still reaches none of the shadow code, and
-  the edge and centre forms reach no cutout function.
-
-### G3. Only if G1 leaves the edges dominant: a baked edge profile
+The shadow grid is in: a shadow skips the pixels its source hides, and
+takes the two-term edge form or the full cover where the cutoff at
+`reach` makes them exact. On the fixture it cut fragments from 8.39 M to
+5.85 M, `scrolling_gpu` from 4.9 to 4.0 ms and `resizing_gpu` from 5.95
+to 5.20 ms (ABBA, both directions). Shadows are still about 1.1 ms of a
+full frame, against about 0.5 ms for every other quad.
 
 `filter_cdf(u, σ)` depends only on `u` and σ. One atlas row per distinct
 σ, baked by the cutout pass, gives the edge profile with two texel loads
-and a lerp. Do G3 only if a measurement after G1 shows the edge cells as
-a large part of the shadow cost.
+and a lerp. Do G3 only if a profile shows the edge terms as a large part
+of the remaining shadow cost.
 
 ## GPU: the copy-out
 
@@ -203,8 +125,8 @@ The partial copy is two times the floor, and the only way below it would
 be to render the undamaged pixels again, which costs more than reading
 them. So the gains are elsewhere:
 
-- **The shadow centre skip (G1)** removes about 22 MB of blend traffic
-  per full frame.
+- **The shadow hole skip** is in: it removed 2.5 M blended fragments,
+  about 20 MB of traffic per full frame.
 - **The resync after a direct frame.** A full frame renders directly and
   leaves the backbuffer stale. The next partial frame then repaints the
   whole frame into the backbuffer before it copies out. A frame sequence
@@ -343,16 +265,14 @@ Estimate −0.5 to −1 µs.
 
 ## Plan
 
-1. **G1**, drop and inset together, because the grid is the same and the
-   inset centre form is the simplest one.
-2. **C1a**, with the reference test. Decide on C1b from its profile.
-3. **C2, C3, C4**, measured as one group.
-4. **M1**: the alternating bench arm and the copy-out timestamp, then a
+1. **C1a**, with the reference test. Decide on C1b from its profile.
+2. **C2, C3, C4**, measured as one group.
+3. **M1**: the alternating bench arm and the copy-out timestamp, then a
    decision on the per-frame choice of path.
-5. **C5** profiles, written up here.
-6. **G3**, only if step 1 shows the edge cells as a large part of the
+4. **C5** profiles, written up here.
+5. **G3**, only if a profile shows the edge terms as a large part of the
    remaining shadow cost.
-7. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
+6. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
    updated with what each step recovered.
 
 ## Public API this plan touches

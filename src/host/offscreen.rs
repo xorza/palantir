@@ -359,6 +359,12 @@ pub(crate) mod internals {
             self.core.backend.disable_cutout_tables();
         }
 
+        /// Draw every shadow as one cell of the full form instead of its
+        /// grid: the reference the visual suite compares the grid with.
+        pub fn disable_shadow_grid(&mut self) {
+            self.core.backend.disable_shadow_grid();
+        }
+
         /// Whether the shared backend has built a pipeline set for `format`.
         /// Lets format-change tests confirm a new format materializes its own
         /// pipelines.

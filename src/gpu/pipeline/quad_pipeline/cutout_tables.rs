@@ -92,6 +92,7 @@ impl CutoutTables {
             shader,
             layout: &bake_layout,
             vertex_entry: "vs_cutout_bake",
+            constants: &[],
             vertex_buffers: slice::from_ref(&bake_buffer),
             topology: wgpu::PrimitiveTopology::TriangleStrip,
             color_format: Self::FORMAT,

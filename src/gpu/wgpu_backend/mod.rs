@@ -921,7 +921,7 @@ impl WgpuBackend {
                     self.quad
                         .bind_shadows(pass, &fmt.quad.shadow, use_stencil, &self.gradient.bg);
                 });
-                self.quad.draw(pass, range);
+                self.quad.draw_shadows(pass, range);
                 debug_marker::pop(pass);
             }
             RenderStep::Text { batch } => {
@@ -1149,6 +1149,14 @@ pub(crate) mod internals {
         /// tables: the reference the tables are compared with.
         pub(crate) const fn disable_cutout_tables(&mut self) {
             self.quad.disable_cutout_tables();
+        }
+
+        /// Draw every shadow as one cell of the full form instead of its
+        /// grid: the reference the grid is compared with. Drops the built
+        /// pipelines, so the next frame builds them with the reference.
+        pub(crate) fn disable_shadow_grid(&mut self) {
+            self.quad.disable_shadow_grid();
+            self.pipelines.clear();
         }
 
         /// Whether a pipeline set has been built for `format`.

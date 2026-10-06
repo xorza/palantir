@@ -78,6 +78,10 @@ pub(crate) struct QuadPipeline {
     shadow_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
+    /// Whether the shadow variant draws each shadow as its grid of cells
+    /// (`vs_shadow`). Off only in the crate's internals, which build the
+    /// one-cell reference the grid is compared with.
+    shadow_grid: bool,
 }
 
 impl QuadPipeline {
@@ -220,6 +224,7 @@ impl QuadPipeline {
                 &[Some(textures.layout()), Some(cutouts.layout())],
             ),
             cutouts,
+            shadow_grid: true,
         }
     }
 
@@ -250,6 +255,7 @@ impl QuadPipeline {
                 shader: &self.shader,
                 layout: &self.pipeline_layout,
                 vertex_entry: "vs",
+                constants: &[],
                 vertex_buffers: slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_format: format,
@@ -261,6 +267,7 @@ impl QuadPipeline {
             .build(device)
         };
         let shadow_buffers = [instance.clone(), Some(CutoutTables::corner_layout())];
+        let shadow_constants = [("SHADOW_GRID", f64::from(u8::from(self.shadow_grid)))];
         QuadVariants {
             color: StencilVariant::build(
                 device,
@@ -270,6 +277,7 @@ impl QuadPipeline {
                     shader: &self.shader,
                     vertex_entry: "vs",
                     fragment_entry: "fs",
+                    constants: &[],
                     layout: &self.pipeline_layout,
                     vertex_buffers: slice::from_ref(&instance),
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -284,9 +292,10 @@ impl QuadPipeline {
                     shader: &self.shader,
                     vertex_entry: "vs_shadow",
                     fragment_entry: "fs_shadow",
+                    constants: &shadow_constants,
                     layout: &self.shadow_layout,
                     vertex_buffers: &shadow_buffers,
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    topology: wgpu::PrimitiveTopology::TriangleList,
                 },
                 format,
             ),
@@ -350,7 +359,19 @@ impl QuadPipeline {
         }
         pass.draw(0..4, instances.into());
     }
+
+    /// [`Self::draw`] for shadows bound by [`Self::bind_shadows`]: each
+    /// instance is its grid's nine cells, two triangles each (`vs_shadow`).
+    pub(crate) fn draw_shadows<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
+        if instances.len == 0 {
+            return;
+        }
+        pass.draw(0..SHADOW_GRID_VERTICES, instances.into());
+    }
 }
+
+/// Vertices per shadow instance: a 3×3 grid of cells, two triangles each.
+const SHADOW_GRID_VERTICES: u32 = 9 * 6;
 
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
     0 => Float32x2,
@@ -392,6 +413,13 @@ pub(crate) mod internals {
         /// See `CutoutTables::disable_baking`.
         pub(crate) const fn disable_cutout_tables(&mut self) {
             self.cutouts.disable_baking();
+        }
+
+        /// Draw every shadow as one cell of the full form, the reference
+        /// the grid is compared with. Takes effect in the variants built
+        /// from now on.
+        pub(crate) const fn disable_shadow_grid(&mut self) {
+            self.shadow_grid = false;
         }
     }
 }
