@@ -14,17 +14,18 @@ experiment code is in the tree.
   (`DirectAdaptive`, see `benches/AGENTS.md`). On that strategy a skip
   frame copies nothing, so `cached_gpu` is the CPU frame alone, and
   `partial_gpu` is the damage paint plus one full copy-out (M1).
-- **CPU:** no single cause. The largest item, folding the rollups at
-  `close_node` (C1), made the frame slower and was reverted. Three small
-  internal changes remain, estimated at 2–3.5 µs, so `cached_cpu` stays
-  above the old README unless the C5 investigations find more.
+- **CPU:** no single cause. Of four internal changes, only the scope
+  memo (C2) made the frame faster, by about 1.8 µs. Folding the rollups
+  at `close_node` (C1), a word compare of gradient stops (C3) and a
+  smaller `IdEntry` (C4) each made it slower and were reverted. So
+  `cached_cpu` stays above the old README unless C5 finds more.
 
 | arm | old README | now (desktop strategy) | estimate |
 | --- | ---: | ---: | ---: |
-| `cached_cpu` | 130 µs | 140.3 µs | 137–138 µs |
-| `partial_cpu` | 145 µs | 155.2 µs | 152–153 µs |
-| `scrolling_cpu` | 201 µs | 203.7 µs | 200–202 µs |
-| `resizing_cpu` | 317 µs | 304.6 µs | 301–303 µs |
+| `cached_cpu` | 130 µs | 140.3 µs | ≈ 138.5 µs (C2 in) |
+| `partial_cpu` | 145 µs | 155.2 µs | ≈ 153.5 µs (C2 in) |
+| `scrolling_cpu` | 201 µs | 203.7 µs | ≈ 202 µs (C2 in) |
+| `resizing_cpu` | 317 µs | 304.6 µs | ≈ 303 µs (C2 in) |
 | `cached_gpu` | 1.12 ms | 0.131 ms | 0.125–0.128 ms |
 | `partial_gpu` | 1.37 ms | 1.64 ms | ≈ 1.6 ms |
 | `scrolling_gpu` | 4.25 ms | 4.86 ms | ≈ 4.0 ms (grid in) |
@@ -206,35 +207,22 @@ What is left of `compute_rollups` is its own arithmetic: four hashers
 and the `TreeItems` interleave per node. A change there needs a profile
 of that loop alone (`perf annotate` of `post_record`) before a design.
 
-### C2. Resolve input scopes only when their inputs change
+### C2–C4, measured one at a time
 
-`Scopes::resolve` is a function of `focused`, the cascade, `closing` and
-`closed`. Keep the inputs of the last resolve: the focused id, the
-`CascadeKey` the cascade stores for its last build (an equal key means
-the cascade skipped and its tables did not change), and a dirty bit that
-`close` and `end_frame` set. When all are the same, keep `path`, `live`
-and `outermost`. No new counter: the cascade already stores its key.
-Estimate −1 to −1.5 µs. Test: one resolve per steady frame, and a fresh
-one after a focus change, a cascade rebuild, a paint-only repair, a
-`close` and the `end_frame` swap.
+All three were built, tested and measured against the same base, one
+binary each (`cached_cpu`, base re-run at 140.8 µs):
 
-### C3. Compare gradient stops as words
-
-**Decided:** crate-private. `Stop::as_u64` (`pub(crate) const fn`) packs
-the offset into the low byte and the sRGB bytes above it, and the ramp's
-equality compares those words. Estimate −0.5 to −1 µs. Test: two ramps
-that differ in one byte of one stop are not equal, at every byte
-position.
-
-### C4. Shrink `IdEntry`
-
-Measure `size_of::<IdEntry>()` first and pin it in `hot_struct_sizes.rs`.
-`Recipe` holds a full `Ident` (16 bytes) and an `Option<WidgetId>` (16
-bytes). It can be one `u64` key (the `Location` address or the salt id)
-and one `u64` parent, with the kind and the presence of a parent in a
-tag byte. A sentinel parent of 0 is **not** sound: `Configure::id`
-accepts `WidgetId::default()`, which is 0, so a node can have the id 0.
-Estimate −0.5 to −1 µs.
+- **C2, the scope-resolve memo, is in:** about −1.8 µs. `Scopes::resolve`
+  keeps its routing when the focus is the same, no withdrawal came, and
+  the cascade kept the structure it was read from.
+- **C3, the word compare of gradient stops, was reverted:** +1.5 µs. It
+  converts all sixteen stops of the two ramps before it compares, which
+  costs more than the field compare it replaced.
+- **C4, a 48-byte `IdEntry`, was reverted:** +6.3 µs. At 64 bytes an entry
+  is one cache line; at 48 most entries cross a line, on two tables that
+  are written and read for every widget. `IdEntry` is now pinned at 64
+  bytes in `hot_struct_sizes.rs`, and a test pins that a parent of id 0
+  is a parent, which a later shrink with a sentinel would break.
 
 ### C5. Investigate before designing
 
@@ -251,10 +239,11 @@ Estimate −0.5 to −1 µs.
 
 - **CPU items under 1.5 µs are below the build-to-build noise** (two
   builds of the same code differ by up to ±1.5 µs from code layout).
-  Judge them by user instructions per frame (a `perf stat` difference of
-  two `--profile-time` lengths, which is deterministic) and by their
-  self time in a frame-pointer profile. Group C2, C3 and C4 into one ABBA
-  wall-time comparison.
+  Measure each change in its own binary against the same base, and run
+  the base again at the end for the drift. A group measurement hides a
+  regression inside it: C2–C4 together read as +3.7 µs. `--profile-time`
+  runs for a fixed time, not a fixed frame count, so its instruction
+  counts do not compare per frame.
 - **GPU items:** ABBA with 30 samples, plus fragment invocations and the
   per-kind times (`BatchKind::Shadows` separates the shadows).
 - **Every step:** a full `frame` run with a `--note` row, and the visual
@@ -262,13 +251,12 @@ Estimate −0.5 to −1 µs.
 
 ## Plan
 
-1. **C2, C3, C4**, measured as one group.
-2. **M1**: the alternating bench arm and the copy-out timestamp, then a
+1. **M1**: the alternating bench arm and the copy-out timestamp, then a
    decision on the per-frame choice of path.
-3. **C5** profiles, written up here.
-4. **G3**, only if a profile shows the edge terms as a large part of the
+2. **C5** profiles, written up here.
+3. **G3**, only if a profile shows the edge terms as a large part of the
    remaining shadow cost.
-5. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
+4. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
    updated with what each step recovered.
 
 ## Public API this plan touches
