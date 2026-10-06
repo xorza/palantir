@@ -33,6 +33,16 @@ palantir's own backbuffer and copies all of it out. The default
 full frames, which costs 1.3 ms on a 1440p `cached_gpu` frame, so rows in
 `benches/results` from before 2026-10-06 do not compare with later ones.
 
+**The frame bench writes no timestamp inside a pass.** Its device is
+`Timing::PassOnly`, so the `write_stats` dump times the whole pass and
+gives no per-kind split, and the timed arms collect no GPU stats. Before
+2026-10-06 the timed arms wrote a timestamp at each batch-kind change
+inside the main pass. On a tiler such as the Pi 5's V3D, each one splits
+the pass, and a 1440p `scrolling_gpu` frame took 149 ms against 45 ms
+without them. Earlier `*_gpu` rows do not compare with later ones. The
+`image_pipeline` and `curve_pipeline` per-kind times have the same
+problem on a tiler.
+
 **`cached_cpu` paints nothing, as `cached_gpu` does.** A still frame plans
 no paint, and the CPU harness encodes and composes only what a frame
 planned. Before 2026-10-06 it repainted the whole scene on such a frame,

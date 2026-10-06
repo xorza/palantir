@@ -37,6 +37,12 @@ pub(crate) enum Timing {
     /// whole-pass and per-batch durations. Missing bits degrade
     /// individually rather than failing the request.
     Instrumented,
+    /// [`Self::Instrumented`] without `TIMESTAMP_QUERY_INSIDE_PASSES`, so
+    /// the backend times the whole pass from its descriptor and writes
+    /// nothing inside it. A tiler pays for a timestamp inside a pass: on
+    /// the Pi 5's V3D each one splits the pass, and the full target is
+    /// stored and loaded again around it.
+    PassOnly,
     /// Ask for none of them, for a driver timing a pass the queries
     /// would write into. The host also passes `collect_gpu_stats(false)`,
     /// but not requesting the feature at all closes the door on a future
@@ -51,13 +57,15 @@ pub(crate) struct BenchGpu {
     pub(crate) gpu: Gpu,
     pub(crate) info: wgpu::AdapterInfo,
     /// What was actually granted — empty under [`Timing::Bare`], and
-    /// under [`Timing::Instrumented`] only what the adapter had.
+    /// otherwise only what the adapter had of what the flavour asks for.
     pub(crate) timing_features: wgpu::Features,
 }
 
 fn build(timing: Timing) -> BenchGpu {
     let timing_features = match timing {
         Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
+        Timing::PassOnly => DeviceRequirements::GPU_TIMING_FEATURES
+            .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
         Timing::Bare => wgpu::Features::empty(),
     };
     // Palantir's own needs — the immediates feature and its byte budget —
@@ -78,9 +86,11 @@ impl BenchGpu {
     /// The process-static GPU for `timing`, built on first ask.
     pub(crate) fn shared(timing: Timing) -> &'static BenchGpu {
         static INSTRUMENTED: OnceLock<BenchGpu> = OnceLock::new();
+        static PASS_ONLY: OnceLock<BenchGpu> = OnceLock::new();
         static BARE: OnceLock<BenchGpu> = OnceLock::new();
         match timing {
             Timing::Instrumented => INSTRUMENTED.get_or_init(|| build(Timing::Instrumented)),
+            Timing::PassOnly => PASS_ONLY.get_or_init(|| build(Timing::PassOnly)),
             Timing::Bare => BARE.get_or_init(|| build(Timing::Bare)),
         }
     }
