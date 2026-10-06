@@ -9,8 +9,7 @@ documentation = "https://docs.rs/palantir"
 readme = "README.md"
 keywords = ["gui", "ui", "immediate-mode", "wgpu", "graphics"]
 categories = ["gui", "graphics", "rendering::engine"]
-# The bundled Inter / JetBrains Mono faces in `assets/fonts` ship under the
-# SIL Open Font License, so the tarball as a whole carries both terms.
+# The bundled fonts in `assets/fonts` are OFL.
 license = "(MIT OR Apache-2.0) AND OFL-1.1"
 exclude = [
     ".cargo/",
@@ -28,119 +27,13 @@ exclude = [
     "scripts/",
 ]
 
-# `internals` exposes test-only reach-ins and `bench` the criterion
-# drivers on top; neither is part of the supported surface, so document the
-# default features — exactly what a consumer gets.
+
 [package.metadata.docs.rs]
 all-features = false
 
 [workspace]
 members = ["palantir-anim-derive"]
 
-# One lint set for every crate of the Darkroom workspace, copied here because a submodule does
-# not inherit it. Warn, not deny: the verification chain runs clippy with `-D warnings`, and a
-# build in the middle of an edit keeps working. Every suppression in code is
-# `#[expect(.., reason = "..")]`.
-[lints.rust]
-rust_2018_idioms = { level = "warn", priority = -1 }
-elided_lifetimes_in_paths = "warn"
-missing_debug_implementations = "warn"
-redundant_imports = "warn"
-trivial_numeric_casts = "warn"
-unreachable_pub = "warn"
-unused_lifetimes = "warn"
-unused_macro_rules = "warn"
-unused_qualifications = "warn"
-
-[lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-# Documentation is reviewed, not linted, for these.
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-must_use_candidate = "allow"
-# `assert!(x.is_empty())` reads plainer than a comparison with an empty array.
-assert_is_empty = "allow"
-# `usize -> f32/f64` in numeric code: a hit says nothing unless the value passes 2^24, and the
-# code cannot show that.
-cast_precision_loss = "allow"
-# `f64 -> f32` narrowing is the design of the f32 pipelines.
-cast_possible_truncation = "allow"
-# Math code names things `x`, `y`, `dx`, `dy`, `cx`.
-similar_names = "allow"
-many_single_char_names = "allow"
-# Size is a review question, not a lint.
-too_many_lines = "allow"
-# `#[inline(always)]` on `#[target_feature]` SIMD helpers is deliberate.
-inline_always = "allow"
-# Exact comparison is deliberate: sample-domain scales, sentinels, tests of exact values.
-float_cmp = "allow"
-# Every pointer cast feeds an unaligned load (`_mm_loadu_*`).
-cast_ptr_alignment = "allow"
-# `u32 -> i32` wraps only above 2^31, and `cast_possible_truncation`, allowed above, already
-# admits the wider `usize -> i32`.
-cast_possible_wrap = "allow"
-# Backticks in docs are reviewed, not linted: every proper noun was one more exception to list.
-doc_markdown = "allow"
-# Digit grouping is style only, and it hides the `RRGGBB` pattern of a hex colour.
-unreadable_literal = "allow"
-# State and config structs carry independent flags; the enum or bitflags it asks for fits neither.
-struct_excessive_bools = "allow"
-# The `use super::*` the gated `internals` and `tests` modules open with is the house style.
-wildcard_imports = "allow"
-# `Instant - Duration` and `Duration - Duration` already panic on underflow; the
-# `checked_sub(..).unwrap()` it asks for panics the same way, only longer.
-unchecked_time_subtraction = "allow"
-# A suffix every field shares is usually a unit or an encoding (`_ns`, `_q`), and a field named
-# after its struct (`Window::window`) is often the plainest name it has.
-struct_field_names = "allow"
-# Arms with equal bodies often stay apart on purpose: a guard, a fallback, or bindings of
-# different types that no `|` pattern can join.
-match_same_arms = "allow"
-# A method is the house home for what works on a type, even when the body reads no field
-# (a pipeline's `draw`) or reads one only under `cfg(test)`.
-unused_self = "allow"
-absolute_paths = "warn"
-allow_attributes = "warn"
-allow_attributes_without_reason = "warn"
-assigning_clones = "warn"
-cast_lossless = "warn"
-cast_sign_loss = "warn"
-clone_on_ref_ptr = "warn"
-dbg_macro = "warn"
-decimal_bitwise_operands = "warn"
-default_trait_access = "warn"
-ignore_without_reason = "warn"
-imprecise_flops = "warn"
-items_after_statements = "warn"
-items_after_test_module = "warn"
-large_stack_arrays = "warn"
-large_types_passed_by_value = "warn"
-lossy_float_literal = "warn"
-manual_let_else = "warn"
-map_unwrap_or = "warn"
-match_wildcard_for_single_variants = "warn"
-# `const fn` by default: every fn that can be one is.
-missing_const_for_fn = "warn"
-missing_fields_in_debug = "warn"
-needless_pass_by_value = "warn"
-print_stderr = "warn"
-print_stdout = "warn"
-redundant_closure_for_method_calls = "warn"
-return_self_not_must_use = "warn"
-self_named_module_files = "warn"
-semicolon_if_nothing_returned = "warn"
-should_panic_without_expect = "warn"
-todo = "warn"
-trivially_copy_pass_by_ref = "warn"
-unnecessary_debug_formatting = "warn"
-unnecessary_wraps = "warn"
-used_underscore_binding = "warn"
-
-[lints.rustdoc]
-broken_intra_doc_links = "warn"
-private_intra_doc_links = "warn"
-redundant_explicit_links = "warn"
-unescaped_backticks = "warn"
 
 [dependencies]
 palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.7.2" }
@@ -180,14 +73,9 @@ clap = { version = "4", optional = true, features = ["derive"] }
 gethostname = { version = "1.1", optional = true }
 tracy-client = { version = "0.19", optional = true }
 
-# An example cannot turn on a feature of its own package, and the bundled
-# showcase needs `internals` for the two demo surfaces it reads. Depending on
-# ourselves is the only way to hand it one. Cargo strips a path-only
-# dev-dependency when packaging, so the published manifest carries no cycle.
-#
-# `default-features = false` is what keeps `--no-default-features` meaningful:
-# a request here unifies into every test target, so without it the flag builds
-# the default feature set and the winit-free configuration goes uncompiled.
+# The self dependency turns `internals` on for every example and test, which
+# cannot enable a feature of their own package; packaging strips it.
+# `default-features = false` keeps `--no-default-features` builds winit-free.
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = "0.3"
@@ -195,8 +83,46 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 static_assertions = "1.1"
 ron = "0.12"
 
-# No suite names `internals`: the self dev-dependency below turns it on for
-# every test build.
+
+[features]
+default = ["winit"]
+internals = []
+golden = ["dep:image"]
+bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
+gpu-debug-markers = []
+system-clipboard = ["dep:arboard"]
+winit = ["dep:winit", "system-clipboard"]
+profile-with-tracy = ["dep:tracy-client"]
+
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+split-debuginfo = "off"
+lto = "thin"
+debug = "full"
+
+[profile.bench]
+inherits = "release"
+
+[profile.release-max]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false
+strip = "symbols"
+
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# `objc2` debug assertions allocate on every Metal message send.
+[profile.dev.package.objc2]
+debug-assertions = false
+
+
 [[test]]
 name = "visual"
 path = "tests/visual/main.rs"
@@ -220,46 +146,99 @@ name = "criterion"
 harness = false
 required-features = ["bench"]
 
-[features]
-default = ["winit"]
-internals = []
-golden = ["dep:image"]
-bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
-gpu-debug-markers = []
-system-clipboard = ["dep:arboard"]
-winit = ["dep:winit", "system-clipboard"]
-profile-with-tracy = ["dep:tracy-client"]
 
+# The Darkroom workspace lint set, copied because a submodule does not inherit it. Warn, not
+# deny: the verification chain runs clippy with `-D warnings`.
+[lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+elided_lifetimes_in_paths = "warn"
+missing_debug_implementations = "warn"
+redundant_imports = "warn"
+trivial_numeric_casts = "warn"
+unreachable_pub = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
 
-[profile.dev]
-debug = "line-tables-only"
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Documentation is reviewed, not linted, for these.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+# `assert!(x.is_empty())` reads plainer than a comparison with an empty array.
+assert_is_empty = "allow"
+# `usize -> f32/f64` loses precision only past 2^24.
+cast_precision_loss = "allow"
+# `f64 -> f32` narrowing is the design of the f32 pipelines.
+cast_possible_truncation = "allow"
+# Math code names things `x`, `y`, `dx`, `dy`, `cx`.
+similar_names = "allow"
+many_single_char_names = "allow"
+# Size is a review question, not a lint.
+too_many_lines = "allow"
+# `#[inline(always)]` on `#[target_feature]` SIMD helpers is deliberate.
+inline_always = "allow"
+# Exact comparison is deliberate: sample-domain scales, sentinels, tests of exact values.
+float_cmp = "allow"
+# Every pointer cast feeds an unaligned load (`_mm_loadu_*`).
+cast_ptr_alignment = "allow"
+# `cast_possible_truncation`, allowed above, already admits the wider `usize -> i32`.
+cast_possible_wrap = "allow"
+# Every proper noun was one more exception to list.
+doc_markdown = "allow"
+# Digit grouping is style only, and it hides the `RRGGBB` pattern of a hex colour.
+unreadable_literal = "allow"
+# State and config structs carry independent flags.
+struct_excessive_bools = "allow"
+# The gated `internals` and `tests` modules open with `use super::*`.
+wildcard_imports = "allow"
+# The subtraction already panics on underflow, as `checked_sub(..).unwrap()` would.
+unchecked_time_subtraction = "allow"
+# A shared suffix is usually a unit (`_ns`), and `Window::window` is often the plainest name.
+struct_field_names = "allow"
+# Equal arms stay apart for a guard, a fallback, or bindings no `|` pattern can join.
+match_same_arms = "allow"
+# A method is the house home for what works on a type, even when it reads no field.
+unused_self = "allow"
+absolute_paths = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+assigning_clones = "warn"
+cast_lossless = "warn"
+cast_sign_loss = "warn"
+clone_on_ref_ptr = "warn"
+dbg_macro = "warn"
+decimal_bitwise_operands = "warn"
+default_trait_access = "warn"
+ignore_without_reason = "warn"
+imprecise_flops = "warn"
+items_after_statements = "warn"
+items_after_test_module = "warn"
+large_stack_arrays = "warn"
+large_types_passed_by_value = "warn"
+lossy_float_literal = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+match_wildcard_for_single_variants = "warn"
+missing_const_for_fn = "warn"
+missing_fields_in_debug = "warn"
+needless_pass_by_value = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+redundant_closure_for_method_calls = "warn"
+return_self_not_must_use = "warn"
+self_named_module_files = "warn"
+semicolon_if_nothing_returned = "warn"
+should_panic_without_expect = "warn"
+todo = "warn"
+trivially_copy_pass_by_ref = "warn"
+unnecessary_debug_formatting = "warn"
+unnecessary_wraps = "warn"
+used_underscore_binding = "warn"
 
-[profile.release]
-debug = "line-tables-only"
-split-debuginfo = "off"
-
-# Inherits `release`. Full debuginfo carries the inline records a fat-LTO
-# callgraph needs, and matches what `benches/bench-perf.sh` builds with, so
-# a bench run and a profile share one link.
-[profile.bench]
-lto = "fat"
-codegen-units = 1
-debug = "full"
-
-[profile.release-max]
-inherits = "release"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-debug = false
-strip = "symbols"
-
-
-[profile.dev.package."*"]
-opt-level = 3
-
-# With debug assertions on, `objc2` checks every message send against the
-# runtime's method signature, which parses a type encoding and allocates. It
-# sits behind every Metal call, so a frame pays it a few hundred times.
-[profile.dev.package.objc2]
-debug-assertions = false
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"
+redundant_explicit_links = "warn"
+unescaped_backticks = "warn"
