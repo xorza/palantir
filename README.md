@@ -73,11 +73,25 @@ Steady-state cost per frame on `frame/cached_cpu` (measured 4.58 GHz,
 ~107 µs/frame): **~1.71 M instructions retired**, **~490 K cycles**,
 **IPC ≈ 3.49**.
 
-Measured via `perf stat`, pinned to one core; the per-frame counts are a
-differential between two measurement windows, so process startup cancels
-out.
+Apple M5 (4 super + 6 efficiency cores) with its 10-core GPU, in a MacBook Air:
 
-The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the CPU figures above.
+| arm         | CPU pipeline | CPU + GPU frame |
+| ----------- | -----------: | --------------: |
+| `cached`    |        66 µs |           66 µs |
+| `partial`   |        93 µs |          361 µs |
+| `scrolling` |       116 µs |          866 µs |
+| `resizing`  |       175 µs |         1.00 ms |
+
+Steady-state cost per frame on `frame/cached_cpu` (measured 4.32 GHz,
+~66 µs/frame): **~1.74 M instructions retired**, **~285 K cycles**,
+**IPC ≈ 6.1**.
+
+The x86 counts are measured via `perf stat`, pinned to one core; the M5
+counts via `/usr/bin/time -l`, unpinned, since macOS offers no core
+affinity. Either way the per-frame counts are a differential between two
+measurement windows, so process startup cancels out.
+
+The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the x86 CPU figures above. An aarch64 build gets no flag.
 
 ## Highlights
 
