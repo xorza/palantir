@@ -39,26 +39,28 @@ pub enum BatchKind {
     PreClear = 1,
     /// `RenderStep::MaskStamp` / `MaskClear` — stencil mask quads.
     Mask = 2,
-    /// `RenderStep::Quads` and `RenderStep::Shadows` — the quad pipeline
-    /// and its shadow twin.
+    /// `RenderStep::Quads` — the quad pipeline.
     Quads = 3,
+    /// `RenderStep::Shadows` — drop and inset shadows, through the quad
+    /// pipeline's shadow variant.
+    Shadows = 4,
     /// `RenderStep::Text` — text batches via the inlined text
     /// pipeline.
-    Text = 4,
+    Text = 5,
     /// `PaintTier::Mesh`'s replay — the mesh pipeline.
-    Mesh = 5,
+    Mesh = 6,
     /// `PaintTier::Image`'s replay — the image pipeline.
-    Image = 6,
+    Image = 7,
     /// `PaintTier::Curve`'s replay — the curve pipeline.
-    Curve = 7,
+    Curve = 8,
     /// `PaintTier::Icon`'s replay — the icon pipeline (the glyph shader
     /// over the icon atlas).
-    Icon = 8,
+    Icon = 9,
 }
 
 impl BatchKind {
     /// How many kinds there are.
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
 
     /// Every kind, in discriminant order — the order a reporter lists
     /// them in.
@@ -67,6 +69,7 @@ impl BatchKind {
         Self::PreClear,
         Self::Mask,
         Self::Quads,
+        Self::Shadows,
         Self::Text,
         Self::Mesh,
         Self::Image,
@@ -86,6 +89,7 @@ impl BatchKind {
             Self::PreClear => "preclear",
             Self::Mask => "mask",
             Self::Quads => "quads",
+            Self::Shadows => "shadows",
             Self::Text => "text",
             Self::Mesh => "mesh",
             Self::Image => "image",

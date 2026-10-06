@@ -148,17 +148,6 @@ from four `filter_cdf` and four cutout tests to two `filter_cdf`
 - `shader_body/tests.rs`: `fs` still reaches none of the shadow code, and
   the edge and centre forms reach no cutout function.
 
-### G2. Measure shadows apart from quads
-
-**Decided:** `BatchKind::Shadows = 4`, directly after `Quads`. `Text` to
-`Icon` move up by one, and `COUNT` becomes 10.
-
-The per-batch marker writes one timestamp at each change of kind. With
-`Shadows` as a kind, the timed GPU arms write more timestamps inside the
-pass. Measured on today's tree, the instrumentation costs ≤ 0.3 ms on
-`scrolling_gpu` and nothing measurable on `cached_gpu`. So G2 goes in
-first, and every later GPU step compares builds that both have it.
-
 ### G3. Only if G1 leaves the edges dominant: a baked edge profile
 
 `filter_cdf(u, σ)` depends only on `u` and σ. One atlas row per distinct
@@ -348,27 +337,24 @@ Estimate −0.5 to −1 µs.
   self time in a frame-pointer profile. Group C2, C3 and C4 into one ABBA
   wall-time comparison.
 - **GPU items:** ABBA with 30 samples, plus fragment invocations and the
-  per-kind times from G2.
+  per-kind times (`BatchKind::Shadows` separates the shadows).
 - **Every step:** a full `frame` run with a `--note` row, and the visual
   suite for any shader or present change.
 
 ## Plan
 
-1. **G2**.
-2. **G1**, drop and inset together, because the grid is the same and the
+1. **G1**, drop and inset together, because the grid is the same and the
    inset centre form is the simplest one.
-3. **C1a**, with the reference test. Decide on C1b from its profile.
-4. **C2, C3, C4**, measured as one group.
-5. **M1**: the alternating bench arm and the copy-out timestamp, then a
+2. **C1a**, with the reference test. Decide on C1b from its profile.
+3. **C2, C3, C4**, measured as one group.
+4. **M1**: the alternating bench arm and the copy-out timestamp, then a
    decision on the per-frame choice of path.
-6. **C5** profiles, written up here.
-7. **G3**, only if step 2 shows the edge cells as a large part of the
+5. **C5** profiles, written up here.
+6. **G3**, only if step 1 shows the edge cells as a large part of the
    remaining shadow cost.
-8. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
+7. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
    updated with what each step recovered.
 
 ## Public API this plan touches
 
-- `BatchKind::Shadows` (G2), approved. Regenerate `.notes/API_SURFACE.md`.
-
-Everything else is crate-private.
+None. Everything left is crate-private.

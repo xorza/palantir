@@ -915,7 +915,7 @@ impl WgpuBackend {
                 debug_marker::pop(pass);
             }
             RenderStep::Shadows { range } => {
-                mark(pass, BatchKind::Quads);
+                mark(pass, BatchKind::Shadows);
                 debug_marker::push(pass, "shadows");
                 rebind(&mut bound, Bound::ShadowInstance, pass, viewport, |pass| {
                     self.quad
