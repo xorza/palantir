@@ -585,7 +585,10 @@ fn available_key_axis_invariants() {
 /// output whole: a recolour keeps it, and so does the frame after a
 /// change once the change has run. A resize offers the root another
 /// extent and a moved overlay resolves another origin, so each runs
-/// again — and the kept output is the one a run would have written.
+/// again — and the kept output is the one a run would have written. The
+/// popup's margin of 5 puts its rect at `(20, 30) + 5 = (25, 35)`, so the
+/// move to `(25, 35)` lands the new origin where the old rect sat, and
+/// must still run, to `(25, 35) + 5 = (30, 40)`.
 #[test]
 fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -599,6 +602,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
                 Block::new()
                     .id(WidgetId::from_hash("popup"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(10.0)))
+                    .margin(5.0)
                     .show(ui);
             });
         });
@@ -618,11 +622,12 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     assert_eq!(kept(&mut h, color, popup_at), 0, "a resize runs");
     assert_eq!(kept(&mut h, color, popup_at), 1, "and is kept after");
 
-    popup_at = Vec2::new(25.0, 30.0);
+    assert_eq!(popup[0], Rect::new(25.0, 35.0, 30.0, 10.0));
+    popup_at = Vec2::new(25.0, 35.0);
     assert_eq!(kept(&mut h, color, popup_at), 0, "a moved overlay runs");
     assert_eq!(
         h.ui.layout(Layer::Popup).rect[0],
-        Rect::new(25.0, 30.0, 30.0, 10.0),
+        Rect::new(30.0, 40.0, 30.0, 10.0),
     );
     assert_eq!(kept(&mut h, color, popup_at), 1);
 }
