@@ -28,7 +28,7 @@ impl DeviceRequirements {
     /// Features no configuration runs without.
     pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
 
-    /// The three features `collect_gpu_stats` asks for, as the one set they
+    /// The four features `collect_gpu_stats` asks for, as the one set they
     /// mean something as: instrument the GPU timeline.
     ///
     /// Each degrades on its own — [`Self::negotiate`] intersects them with
@@ -38,6 +38,7 @@ impl DeviceRequirements {
     /// backend reads a bit nobody requested.
     pub const GPU_TIMING_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES)
+        .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
         .union(wgpu::Features::PIPELINE_STATISTICS_QUERY);
 
     /// What to request from `adapter`, given the `optional` features the

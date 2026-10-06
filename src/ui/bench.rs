@@ -472,8 +472,12 @@ fn report_write_stats(surface: &Surface) {
                 || "  n/a   ".into(),
                 |d| format!("{:>5.2} ms", d.as_secs_f64() * 1e3),
             );
+            // TIMESTAMP_QUERY_INSIDE_ENCODERS, on a frame that copied out.
+            let copy_out = stats.last_copy_out().map_or_else(String::new, |d| {
+                format!("  copy_out: {:.2} ms", d.as_secs_f64() * 1e3)
+            });
             eprintln!(
-                "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}",
+                "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}{copy_out}",
                 s.texture_calls, s.texture_bytes,
             );
             // Per-kind attribution (TIMESTAMP_QUERY_INSIDE_PASSES) and

@@ -285,6 +285,7 @@ impl WgpuBackend {
                     &device,
                     timestamp_period,
                     features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS),
                     features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
                 )
             });
@@ -454,6 +455,9 @@ impl WgpuBackend {
         );
 
         if let Some(bb) = via_backbuffer {
+            if let Some(t) = &self.gpu_timings {
+                t.copy_out_begin(&mut encoder);
+            }
             if target.takes_copy() {
                 bb.copy_onto(&mut encoder, surface_tex);
             } else {
@@ -461,6 +465,9 @@ impl WgpuBackend {
                     .as_ref()
                     .expect("a target that takes no copy builds the surface view");
                 bb.draw_onto(&mut encoder, view, &fmt.blit);
+            }
+            if let Some(t) = &self.gpu_timings {
+                t.copy_out_end(&mut encoder);
             }
         }
 
