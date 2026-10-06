@@ -33,7 +33,6 @@ https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
 [Darkroom app](https://github.com/xorza/Darkroom)
 ![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
 
-
 ## Performance
 
 ![Frame bench timings](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
@@ -74,18 +73,11 @@ Steady-state cost per frame on `frame/cached_cpu` (measured 4.64 GHz,
 ~140 µs/frame): **~2.27 M instructions retired**, **~648 K cycles**,
 **IPC ≈ 3.51**.
 
-The 6800U's GPU column presents the way a desktop window does: a frame
-with nothing to repaint presents nothing, a full frame renders straight
-into the target, and a partial frame paints into the backbuffer and
-copies it out. The 13980HX numbers are older and also copy the whole
-backbuffer out on skip and full frames.
-
 Measured via `perf stat`, pinned to one core; the per-frame counts are a
 differential between two measurement windows, so process startup cancels
 out.
 
 The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the CPU figures above.
-
 
 ## Highlights
 

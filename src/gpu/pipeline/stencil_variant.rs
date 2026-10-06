@@ -18,10 +18,10 @@ pub(crate) struct StencilVariant {
 }
 
 /// What one color-pipeline family varies: labels, shader, entry points,
-/// override constants, pipeline layout, vertex buffers, topology. Everything else
-/// (`ColorWrites::ALL`, premultiplied blend) is fixed across the
-/// quad / mesh / image / curve / raster families and filled in by
-/// [`StencilVariant::build`].
+/// override constants, pipeline layout, vertex buffers, topology.
+/// Everything else (`ColorWrites::ALL`, premultiplied blend) is fixed
+/// across the quad / mesh / image / curve / raster families and filled in
+/// by [`StencilVariant::build`].
 ///
 /// The layout arrives built rather than described, because a family with
 /// pipelines outside this pair — quad, with its two mask variants —

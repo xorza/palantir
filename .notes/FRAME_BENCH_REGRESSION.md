@@ -155,8 +155,7 @@ before the build, or give each commit its own target directory.
 
 ## What was recovered (2026-10-06)
 
-Measured on the same machine, CachyOS, with `x86-64-v3`. The plan and the
-measurements of each step are in `PERF_PLAN.md`.
+Measured on the same machine, CachyOS, with `x86-64-v3`.
 
 | step | effect |
 | --- | --- |

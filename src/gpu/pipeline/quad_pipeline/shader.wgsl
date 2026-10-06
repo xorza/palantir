@@ -67,9 +67,8 @@ const NO_CUTOUT_TABLE: u32 = /*{NO_CUTOUT_TABLE}*/;
 // Whether a shadow skips the part of its quad that paints nothing and
 // takes the cheaper forms where the cutoff at `reach` makes them exact
 // (`vs_shadow`, `shadow_coverage`), or draws one quad of the full form
-// everywhere: the
-// reference the two are tested against, built only by the crate's
-// internals.
+// everywhere: the reference the two are tested against, built only by the
+// crate's internals.
 override SHADOW_GRID: bool = true;
 
 // Where `shadow_coverage` takes no cheaper form: a bound no point reaches.
@@ -204,11 +203,10 @@ fn vs(@builtin(vertex_index) vi: u32, quad: QuadIn) -> VertexOut {
 // puts all four inner lines on the quad's far corner, which leaves one
 // cell: the whole quad.
 //
-// The inner lines are clamped into the quad, and to their midpoint when
-// they cross, so the lines are always in order and the cells tile the quad
-// less the hole. Every vertex is a pair of these lines, so two cells that
-// share an edge share its vertices exactly and the rasterizer shades each
-// pixel once.
+// The inner lines are clamped into the quad. A clamp keeps the order of a
+// hole that is not empty, so the cells tile the quad less the hole. Every
+// vertex is a pair of these lines, so two cells that share an edge share
+// its vertices exactly and the rasterizer shades each pixel once.
 @vertex
 fn vs_shadow(
     @builtin(vertex_index) vi: u32,
@@ -239,26 +237,18 @@ fn vs_shadow(
         hole_lo = bounds.hi;
         hole_hi = bounds.hi;
     }
-    var inner_lo = clamp(hole_lo, bounds.lo, bounds.hi);
-    var inner_hi = clamp(hole_hi, bounds.lo, bounds.hi);
-    let crossed = inner_lo > inner_hi;
-    let mid = (inner_lo + inner_hi) * 0.5;
-    inner_lo = select(inner_lo, mid, crossed);
-    inner_hi = select(inner_hi, mid, crossed);
+    let inner_lo = clamp(hole_lo, bounds.lo, bounds.hi);
+    let inner_hi = clamp(hole_hi, bounds.lo, bounds.hi);
     var xs = array<f32, 4>(bounds.lo.x, inner_lo.x, inner_hi.x, bounds.hi.x);
     var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
 
-    let cell = vi / 6u;
+    // The grid's cells in row order, past the centre one: the hole.
+    let draw_cell = vi / 6u;
+    let cell = draw_cell + u32(draw_cell >= 4u);
     let cx = cell % 3u;
     let cy = cell / 3u;
     let unit = CORNERS[CELL_TRIANGLES[vi % 6u]];
-    var at = vec2<f32>(xs[cx + u32(unit.x)], ys[cy + u32(unit.y)]);
-    if (cx == 1u && cy == 1u) {
-        // The hole: a cell of zero area.
-        at = inner_lo;
-    }
-    out.clip = clip_from_px(at);
-    out.local = at - quad.pos;
+    out.clip = clip_from_px(vec2<f32>(xs[cx + u32(unit.x)], ys[cy + u32(unit.y)]));
     out.cutouts = cutouts;
     out.shadow_core = select(
         vec4<f32>(SHADOW_NO_SPAN, SHADOW_NO_SPAN, -SHADOW_NO_SPAN, -SHADOW_NO_SPAN),
