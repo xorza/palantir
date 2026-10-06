@@ -13,13 +13,19 @@
 //! - **`PIPELINE_STATISTICS_QUERY`**. When on, we bracket the main
 //!   pass with `begin_pipeline_statistics_query` /
 //!   `end_pipeline_statistics_query` and publish the resolved counts.
+//! - **`TIMESTAMP_QUERY_INSIDE_ENCODERS`**. When on, the backbuffer's copy
+//!   onto the target after the main pass is bracketed by
+//!   `CommandEncoder::write_timestamp` at [`COPY_OUT_INDEX`], and
+//!   published as [`GpuPassStats::last_copy_out`].
 //!
 //! Layout per ping-pong slot (one staging buffer per feature):
 //!
-//! - `timestamps_buffer`: `MAX_TIMESTAMPS * 8` bytes. Layout:
+//! - `timestamps_buffer`: `QUERY_COUNT * 8` bytes. Layout:
 //!     - basic mode (inside-passes off): `[t_begin, t_end]`, count = 2.
 //!     - per-batch mode: `[t_begin, t_mid_0, t_mid_1, ..., t_end]`,
 //!       count = 2 + n_mid (≤ MAX_TIMESTAMPS).
+//!     - then, at [`COPY_OUT_INDEX`], the copy-out's begin and end, on a
+//!       frame that copied.
 //! - `stats_buffer`: `STATS_FIELD_COUNT * 8` bytes when stats query is
 //!   enabled; absent otherwise.
 //!
@@ -43,7 +49,17 @@ const BYTES_PER_U64: u64 = 8;
 /// rounds. Excess transitions silently fold into the surrounding
 /// category (see [`GpuTimings::mark`]).
 const MAX_TIMESTAMPS: u32 = 32;
-const TIMESTAMP_BUFFER_BYTES: u64 = MAX_TIMESTAMPS as u64 * BYTES_PER_U64;
+
+/// Where the copy-out's begin and end timestamps sit in the query set,
+/// past every slot the main pass can use. A query resolve must land on a
+/// `QUERY_RESOLVE_BUFFER_ALIGNMENT` offset, and the main pass's slots fill
+/// exactly that much, so the copy-out resolves into the same buffer.
+const COPY_OUT_INDEX: u32 = MAX_TIMESTAMPS;
+const QUERY_COUNT: u32 = COPY_OUT_INDEX + 2;
+const COPY_OUT_OFFSET: u64 = COPY_OUT_INDEX as u64 * BYTES_PER_U64;
+const TIMESTAMP_BUFFER_BYTES: u64 = QUERY_COUNT as u64 * BYTES_PER_U64;
+
+const _: () = assert!(COPY_OUT_OFFSET.is_multiple_of(wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT));
 
 /// Number of pipeline-statistics fields we request. Matches the bits
 /// set in [`PIPELINE_STATS_FLAGS`]; resolve writes them back in the
@@ -82,6 +98,9 @@ struct Slot {
     /// length `timestamps_count - 1` (zero on basic mode → no per-kind
     /// publish). Saved at `resolve()` time.
     segment_kinds: Vec<BatchKind>,
+    /// Whether this frame's copy-out timestamps are in `timestamps_buffer`
+    /// at [`COPY_OUT_INDEX`]. Saved at `resolve()` time.
+    copied_out: bool,
     stats_buffer: Option<wgpu::Buffer>,
     map_state: Arc<AtomicU8>,
     in_flight: bool,
@@ -106,11 +125,14 @@ struct Inner {
     /// previous timestamp to the one just written. `RefCell` because
     /// `Vec` mutation is rare and uncontended within a frame.
     segment_kinds: RefCell<Vec<BatchKind>>,
+    /// Whether [`GpuTimings::copy_out_end`] ran since the last resolve.
+    copied_out: Cell<bool>,
 }
 
 #[derive(Debug)]
 pub(crate) struct GpuTimings {
-    /// `MAX_TIMESTAMPS` slots in per-batch mode, 2 in basic mode.
+    /// `MAX_TIMESTAMPS` slots in per-batch mode, 2 in basic mode, then
+    /// the copy-out's two at [`COPY_OUT_INDEX`].
     timestamp_query_set: wgpu::QuerySet,
     /// Whether `TIMESTAMP_QUERY_INSIDE_PASSES` is available. False
     /// → only pass begin / end timestamps (via descriptor), no
@@ -119,6 +141,10 @@ pub(crate) struct GpuTimings {
     /// the caller invokes all three unconditionally — the same shape
     /// [`Self::begin_pipeline_stats`] takes for its own feature.
     inside_passes: bool,
+    /// Whether `TIMESTAMP_QUERY_INSIDE_ENCODERS` is available. False → the
+    /// copy-out is not timed; [`Self::copy_out_begin`] and
+    /// [`Self::copy_out_end`] no-op.
+    inside_encoders: bool,
     /// `Some` when `PIPELINE_STATISTICS_QUERY` is available.
     stats_query_set: Option<wgpu::QuerySet>,
     /// GPU-visible resolve target for the timestamp query set.
@@ -138,6 +164,7 @@ impl GpuTimings {
         device: &wgpu::Device,
         period_ns: f32,
         inside_passes: bool,
+        inside_encoders: bool,
         pipeline_stats: bool,
     ) -> Self {
         // Timestamp query set sized for the more permissive mode.
@@ -146,7 +173,7 @@ impl GpuTimings {
         let timestamp_query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
             label: Some("palantir.gpu_timings.timestamps"),
             ty: wgpu::QueryType::Timestamp,
-            count: MAX_TIMESTAMPS,
+            count: QUERY_COUNT,
         });
         let timestamps_resolve = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.gpu_timings.timestamps.resolve"),
@@ -181,6 +208,7 @@ impl GpuTimings {
             }),
             timestamps_count: 0,
             segment_kinds: Vec::new(),
+            copied_out: false,
             stats_buffer: pipeline_stats.then(|| {
                 device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("palantir.gpu_timings.stats.staging"),
@@ -196,6 +224,7 @@ impl GpuTimings {
         Self {
             timestamp_query_set,
             inside_passes,
+            inside_encoders,
             stats_query_set,
             timestamps_resolve,
             stats_resolve,
@@ -206,6 +235,7 @@ impl GpuTimings {
                 next_index: Cell::new(0),
                 current_kind: Cell::new(None),
                 segment_kinds: RefCell::new(Vec::with_capacity(MAX_TIMESTAMPS as usize)),
+                copied_out: Cell::new(false),
             },
         }
     }
@@ -299,10 +329,31 @@ impl GpuTimings {
         }
     }
 
+    /// Write the copy-out's begin timestamp, just before the backbuffer is
+    /// copied or drawn onto the target. No-op without
+    /// `TIMESTAMP_QUERY_INSIDE_ENCODERS`.
+    pub(crate) fn copy_out_begin(&self, encoder: &mut wgpu::CommandEncoder) {
+        if self.inside_encoders {
+            encoder.write_timestamp(&self.timestamp_query_set, COPY_OUT_INDEX);
+        }
+    }
+
+    /// Write the copy-out's end timestamp, just after it. No-op without
+    /// `TIMESTAMP_QUERY_INSIDE_ENCODERS`.
+    pub(crate) fn copy_out_end(&self, encoder: &mut wgpu::CommandEncoder) {
+        if self.inside_encoders {
+            encoder.write_timestamp(&self.timestamp_query_set, COPY_OUT_INDEX + 1);
+            self.inner.copied_out.set(true);
+        }
+    }
+
     /// Emit `resolve_query_set` + `copy_buffer_to_buffer` into the
     /// caller's encoder. Picks the first idle staging slot; if both
     /// are in-flight, drops this frame's measurement.
     pub(crate) fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        // Taken before a slot is found, so a dropped measurement does not
+        // carry this frame's copy into the next one.
+        let copied_out = self.inner.copied_out.replace(false);
         let Some(slot) = (0..NUM_STAGING).find(|&i| !self.slots[i].in_flight) else {
             self.pending_slot = None;
             return;
@@ -337,6 +388,23 @@ impl GpuTimings {
         let slot_kinds = &mut self.slots[slot].segment_kinds;
         slot_kinds.clear();
         slot_kinds.extend(self.inner.segment_kinds.borrow().iter().copied());
+
+        if copied_out {
+            encoder.resolve_query_set(
+                &self.timestamp_query_set,
+                COPY_OUT_INDEX..QUERY_COUNT,
+                &self.timestamps_resolve,
+                COPY_OUT_OFFSET,
+            );
+            encoder.copy_buffer_to_buffer(
+                &self.timestamps_resolve,
+                COPY_OUT_OFFSET,
+                &self.slots[slot].timestamps_buffer,
+                COPY_OUT_OFFSET,
+                2 * BYTES_PER_U64,
+            );
+        }
+        self.slots[slot].copied_out = copied_out;
 
         if let (Some(stats_qs), Some(stats_resolve), Some(stats_staging)) = (
             &self.stats_query_set,
@@ -430,6 +498,7 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
         period_ns,
         sink,
     );
+    publish_copy_out(&ts_range, slot.copied_out, period_ns, sink);
     drop(ts_range);
     slot.timestamps_buffer.unmap();
 
@@ -447,10 +516,6 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
 /// Parse `count` resolved timestamps and publish pass + per-kind
 /// durations into `sink`. Split from [`consume_slot`] so the publish
 /// rules are testable without wgpu buffers.
-#[expect(
-    clippy::cast_sign_loss,
-    reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
-)]
 fn publish_timestamps(
     ts: &[u8],
     count: usize,
@@ -463,10 +528,7 @@ fn publish_timestamps(
     // a begin/end-only frame (blank window in per-batch mode) must
     // not leave the previous frame's per-kind values published.
     if count >= 2 {
-        let first = tick(ts, 0);
-        let last = tick(ts, count - 1);
-        let delta_ns = (last.saturating_sub(first) as f64 * f64::from(period_ns)) as u64;
-        sink.record_pass_ns(delta_ns);
+        sink.record_pass_ns(span_ns(ts, 0, count - 1, period_ns));
         sink.clear_kinds();
     }
     // Per-batch attribution when we collected midpoint marks.
@@ -474,10 +536,8 @@ fn publish_timestamps(
         let mut per_kind_ns = [0u64; BatchKind::COUNT];
         let mut seen = [false; BatchKind::COUNT];
         for i in 0..count - 1 {
-            let t0 = tick(ts, i);
-            let t1 = tick(ts, i + 1);
             let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
-            let seg_ns = (t1.saturating_sub(t0) as f64 * f64::from(period_ns)) as u64;
+            let seg_ns = span_ns(ts, i, i + 1, period_ns);
             seen[kind.idx()] = true;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }
@@ -487,6 +547,25 @@ fn publish_timestamps(
             }
         }
     }
+}
+
+/// Publish the copy-out's duration from its two timestamps at
+/// [`COPY_OUT_INDEX`], or clear it when the frame copied nothing.
+fn publish_copy_out(ts: &[u8], copied_out: bool, period_ns: f32, sink: &GpuPassStats) {
+    let begin = COPY_OUT_INDEX as usize;
+    let ns = copied_out.then(|| span_ns(ts, begin, begin + 1, period_ns));
+    sink.record_copy_out_ns(ns);
+}
+
+/// Nanoseconds from timestamp `from` to timestamp `to` of a resolved
+/// query buffer, at `period_ns` per tick. A later write that resolved to
+/// an earlier tick reads as zero.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
+)]
+fn span_ns(ts: &[u8], from: usize, to: usize, period_ns: f32) -> u64 {
+    (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(period_ns)) as u64
 }
 
 /// The `index`th 64-bit word of a resolved query buffer.
@@ -532,22 +611,27 @@ mod tests {
     fn per_kind_publish_distinguishes_absent_zero_and_blank() {
         let sink = GpuPassStats::default();
 
-        // Frame 1: timestamps [1000, 1001, 5001] at 0.5 ns/tick:
-        //   pass  = floor((5001 - 1000) * 0.5) = 2000 ns
-        //   quads = floor((1001 - 1000) * 0.5) = 0 ns
-        //   text  = floor((5001 - 1001) * 0.5) = 2000 ns
+        // Frame 1: timestamps [1000, 1001, 3001, 5001] at 0.5 ns/tick:
+        //   pass    = floor((5001 - 1000) * 0.5) = 2000 ns
+        //   quads   = floor((1001 - 1000) * 0.5) = 0 ns
+        //   shadows = floor((3001 - 1001) * 0.5) = 1000 ns
+        //   text    = floor((5001 - 3001) * 0.5) = 1000 ns
         publish_timestamps(
-            &ts_bytes(&[1000, 1001, 5001]),
-            3,
-            &[BatchKind::Quads, BatchKind::Text],
+            &ts_bytes(&[1000, 1001, 3001, 5001]),
+            4,
+            &[BatchKind::Quads, BatchKind::Shadows, BatchKind::Text],
             0.5,
             &sink,
         );
         assert_eq!(sink.last_pass(), Some(Duration::from_micros(2)));
         assert_eq!(sink.last_kind(BatchKind::Quads), Some(Duration::ZERO));
         assert_eq!(
+            sink.last_kind(BatchKind::Shadows),
+            Some(Duration::from_micros(1))
+        );
+        assert_eq!(
             sink.last_kind(BatchKind::Text),
-            Some(Duration::from_micros(2))
+            Some(Duration::from_micros(1))
         );
         assert_eq!(sink.last_kind(BatchKind::Mesh), None);
 
@@ -565,6 +649,23 @@ mod tests {
                 kind.label(),
             );
         }
+    }
+
+    /// A frame that copied publishes its copy-out from the two timestamps
+    /// at `COPY_OUT_INDEX`; the next frame that copied nothing clears it,
+    /// so an earlier copy does not keep showing. Ticks 7 000 → 7 600 at
+    /// 0.5 ns/tick: `floor(600 · 0.5)` = 300 ns.
+    #[test]
+    fn copy_out_publishes_its_two_timestamps_or_clears() {
+        let sink = GpuPassStats::default();
+        let mut ticks = vec![0; QUERY_COUNT as usize];
+        ticks[COPY_OUT_INDEX as usize] = 7_000;
+        ticks[COPY_OUT_INDEX as usize + 1] = 7_600;
+        let bytes = ts_bytes(&ticks);
+        publish_copy_out(&bytes, true, 0.5, &sink);
+        assert_eq!(sink.last_copy_out(), Some(Duration::from_nanos(300)));
+        publish_copy_out(&bytes, false, 0.5, &sink);
+        assert_eq!(sink.last_copy_out(), None, "a frame with no copy clears it");
     }
 
     #[test]

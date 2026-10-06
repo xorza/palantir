@@ -4,7 +4,8 @@
 //! question to, sibling of [`crate::input::watch::Watches`]. It holds one
 //! pass's worth of derived state — the path of scopes enclosing the
 //! focused widget, the layer that path sits on, and the layer's outermost
-//! scope — all rebuilt by [`Scopes::resolve`] at record-pass start.
+//! scope — all rebuilt by [`Scopes::resolve`] at record-pass start, when
+//! the inputs they derive from changed.
 //!
 //! Resolving once per pass rather than per read is what keeps grants
 //! independent of where in the pass anything recorded, and it is also
@@ -15,7 +16,9 @@
 //! of a chord table hitting [`ReaderMemo`].
 
 use crate::cascade::Cascade;
+use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::entry::ScopeRow;
+use crate::common::counters::TestOnly;
 use crate::input::key_class::KeyClass;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -104,6 +107,20 @@ pub(super) struct Scopes {
     /// does. [`Self::end_frame`] swaps, which makes that lifetime
     /// structural rather than arithmetic.
     closed: Vec<WidgetId>,
+    /// The inputs the routing above was last resolved from, or `None`
+    /// once a withdrawal changed [`Self::closing`] or [`Self::closed`]
+    /// since. See [`Self::resolve`].
+    resolved_for: Option<ResolvedFor>,
+    /// How many resolves rebuilt the routing rather than keep it.
+    rebuilds: TestOnly<u32>,
+}
+
+/// What [`Scopes::resolve`] read, beside the withdrawals: the focus, and
+/// the key of the cascade it read the scope rows from.
+#[derive(Copy, Clone, Debug)]
+struct ResolvedFor {
+    focused: Option<WidgetId>,
+    cascade: CascadeKey,
 }
 
 /// The scope [`Scopes::reader`] last answered for, and for whom.
@@ -130,7 +147,21 @@ impl Scopes {
     /// state because it is the whole input here: a scope path is a
     /// function of where focus sits and what the previous frame
     /// recorded, nothing else.
+    ///
+    /// A steady frame resolves from the same inputs as the one before, so
+    /// this keeps the last routing when the focus is the same, no
+    /// withdrawal came since, and the cascade keeps the structure it was
+    /// read from ([`CascadeKey::keeps_structure`]): the scope rows and
+    /// every containment test read structure alone.
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascade: &Cascade) {
+        if let (Some(last), Some(key)) = (self.resolved_for, cascade.key)
+            && last.focused == focused
+            && last.cascade.keeps_structure(&key)
+        {
+            return;
+        }
+        self.resolved_for = cascade.key.map(|cascade| ResolvedFor { focused, cascade });
+        self.rebuilds.bump();
         self.path.clear();
         self.reader_memo = None;
         self.live.clear();
@@ -178,6 +209,7 @@ impl Scopes {
     pub(super) fn close(&mut self, owner: WidgetId) {
         if !self.closing.contains(&owner) {
             self.closing.push(owner);
+            self.resolved_for = None;
         }
     }
 
@@ -192,6 +224,9 @@ impl Scopes {
     /// Age this frame's withdrawals into the next one. Called once per
     /// frame, after the last record pass.
     pub(super) fn end_frame(&mut self) {
+        if !self.closed.is_empty() || !self.closing.is_empty() {
+            self.resolved_for = None;
+        }
         self.closed.clear();
         mem::swap(&mut self.closed, &mut self.closing);
     }
@@ -302,4 +337,16 @@ fn live_scopes<'a>(
         .iter()
         .copied()
         .filter(move |row| !closing.contains(&row.id) && !closed.contains(&row.id))
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::input::scope::Scopes;
+
+    impl Scopes {
+        /// How many resolves rebuilt the routing. See [`Scopes::resolve`].
+        pub(crate) const fn rebuilds(&self) -> u32 {
+            self.rebuilds.count()
+        }
+    }
 }

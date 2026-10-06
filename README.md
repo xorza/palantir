@@ -33,7 +33,6 @@ https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
 [Darkroom app](https://github.com/xorza/Darkroom)
 ![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
 
-
 ## Performance
 
 ![Frame bench timings](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
@@ -65,21 +64,20 @@ AMD Ryzen 7 6800U (Zen 3+) with its integrated Radeon 680M:
 
 | arm         | CPU pipeline | CPU + GPU frame |
 | ----------- | -----------: | --------------: |
-| `cached`    |       130 µs |         1.12 ms |
-| `partial`   |       145 µs |         1.37 ms |
-| `scrolling` |       201 µs |         4.25 ms |
-| `resizing`  |       317 µs |         5.38 ms |
+| `cached`    |       140 µs |          130 µs |
+| `partial`   |       154 µs |         1.53 ms |
+| `scrolling` |       201 µs |         3.40 ms |
+| `resizing`  |       304 µs |         3.71 ms |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured 4.59 GHz,
-~130 µs/frame): **~2.03 M instructions retired**, **~596 K cycles**,
-**IPC ≈ 3.41**.
+Steady-state cost per frame on `frame/cached_cpu` (measured 4.64 GHz,
+~140 µs/frame): **~2.27 M instructions retired**, **~648 K cycles**,
+**IPC ≈ 3.51**.
 
 Measured via `perf stat`, pinned to one core; the per-frame counts are a
 differential between two measurement windows, so process startup cancels
 out.
 
 The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommended-build-flag)); its F16C alone is worth ~6% of the CPU figures above.
-
 
 ## Highlights
 

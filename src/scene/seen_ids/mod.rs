@@ -135,7 +135,7 @@ impl ResolvedId {
 
 /// One id handed out this pass, and what it holds.
 #[derive(Clone, Copy, Debug)]
-struct IdEntry {
+pub(crate) struct IdEntry {
     id: WidgetId,
     slot: IdSlot,
     origin: Origin,

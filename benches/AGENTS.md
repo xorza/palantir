@@ -17,11 +17,21 @@ cargo bench -p palantir --features bench --bench criterion -- -d frame --arms cp
   its setup. A positional is criterion's regex over benchmark ids, which
   filters only after the setup. `--arms cpu|gpu|both` picks a half of the
   pipeline. `--help` lists the rest.
-- `frame` is opt-in. Its full matrix takes ~90 s (`--arms cpu`, ~40 s) and
+- `frame` is opt-in. Its full matrix takes ~110 s (`--arms cpu`, ~50 s) and
   appends a row to `benches/results/<machine>.txt`, so it needs `--note`.
 - The binary reads no environment variable. Every knob is a flag.
 - Cut `--sample-size` and `--measurement-time` while you iterate. Report
   only numbers from a full run.
+
+**The GPU arms present the way the desktop does.** `bench_host` builds its
+`OffscreenHost` with `retained_target(true)`, which is the winit host's
+`DirectAdaptive`. A desktop can never rely on what a swapchain image held,
+and `DirectAdaptive` never reads it: a skip frame presents nothing, a full
+frame renders straight into the target, and a partial frame paints into
+palantir's own backbuffer and copies all of it out. The default
+`BackbufferCopy` is the screenshot path. It also copies out on skip and
+full frames, which costs 1.3 ms on a 1440p `cached_gpu` frame, so rows in
+`benches/results` from before 2026-10-06 do not compare with later ones.
 
 ## Measuring
 

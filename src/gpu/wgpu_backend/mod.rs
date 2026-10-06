@@ -285,6 +285,7 @@ impl WgpuBackend {
                     &device,
                     timestamp_period,
                     features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS),
                     features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
                 )
             });
@@ -454,6 +455,9 @@ impl WgpuBackend {
         );
 
         if let Some(bb) = via_backbuffer {
+            if let Some(t) = &self.gpu_timings {
+                t.copy_out_begin(&mut encoder);
+            }
             if target.takes_copy() {
                 bb.copy_onto(&mut encoder, surface_tex);
             } else {
@@ -461,6 +465,9 @@ impl WgpuBackend {
                     .as_ref()
                     .expect("a target that takes no copy builds the surface view");
                 bb.draw_onto(&mut encoder, view, &fmt.blit);
+            }
+            if let Some(t) = &self.gpu_timings {
+                t.copy_out_end(&mut encoder);
             }
         }
 
@@ -915,13 +922,13 @@ impl WgpuBackend {
                 debug_marker::pop(pass);
             }
             RenderStep::Shadows { range } => {
-                mark(pass, BatchKind::Quads);
+                mark(pass, BatchKind::Shadows);
                 debug_marker::push(pass, "shadows");
                 rebind(&mut bound, Bound::ShadowInstance, pass, viewport, |pass| {
                     self.quad
                         .bind_shadows(pass, &fmt.quad.shadow, use_stencil, &self.gradient.bg);
                 });
-                self.quad.draw(pass, range);
+                self.quad.draw_shadows(pass, range);
                 debug_marker::pop(pass);
             }
             RenderStep::Text { batch } => {
@@ -1149,6 +1156,14 @@ pub(crate) mod internals {
         /// tables: the reference the tables are compared with.
         pub(crate) const fn disable_cutout_tables(&mut self) {
             self.quad.disable_cutout_tables();
+        }
+
+        /// Draw every shadow as one cell of the full form instead of its
+        /// grid: the reference the grid is compared with. Drops the built
+        /// pipelines, so the next frame builds them with the reference.
+        pub(crate) fn disable_shadow_grid(&mut self) {
+            self.quad.disable_shadow_grid();
+            self.pipelines.clear();
         }
 
         /// Whether a pipeline set has been built for `format`.
