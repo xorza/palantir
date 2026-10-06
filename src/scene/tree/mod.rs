@@ -29,6 +29,7 @@ pub(crate) mod node_id;
 pub(crate) mod node_record;
 pub(crate) mod paint_anims;
 pub(crate) mod recording_scratch;
+pub(crate) mod rollup_inputs;
 pub(crate) mod root_slot;
 pub(crate) mod subtree_end;
 pub(crate) mod subtree_rollups;
@@ -59,6 +60,9 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::scene::tree::paint_anims::PaintAnims;
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
+#[cfg(debug_assertions)]
+use crate::scene::tree::rollup_inputs::RollupCheck;
+use crate::scene::tree::rollup_inputs::RollupInputs;
 use crate::scene::tree::root_slot::RootSlot;
 use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
@@ -70,6 +74,7 @@ use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
+use std::mem;
 
 /// A single layer's arena. Per-layer trees live on
 /// [`crate::scene::forest::Forest`] and share no record/shape storage,
@@ -138,6 +143,11 @@ pub(crate) struct Tree {
     /// reads the set and shapes, with no ancestor walk and no test of
     /// its own.
     pub(crate) container_text: FixedBitSet,
+    /// The columns the rollups were computed from. See [`RollupInputs`].
+    last_inputs: RollupInputs,
+    /// Scratch `assert_rollups_hold` swaps the kept rollups into.
+    #[cfg(debug_assertions)]
+    rollup_check: RollupCheck,
 }
 
 /// The chrome half of a [`Tree::open_node`] call: the background to
@@ -194,16 +204,12 @@ impl Tree {
     }
 
     pub(crate) fn pre_record(&mut self) {
-        self.records.clear();
-        self.bounds_table.clear();
-        self.panel_table.clear();
-        self.chrome_table.clear();
+        let mut last = mem::take(&mut self.last_inputs);
+        last.take_from(self);
+        self.last_inputs = last;
         self.focus_ring = ShapeStroke::default();
-        self.shapes.clear();
+        self.shapes.records.clear();
         self.paint_anims.clear();
-        self.grid_tracks.clear();
-        self.grid_defs.clear();
-        self.scrollbar_defs.clear();
         self.roots.clear();
     }
 
@@ -221,15 +227,61 @@ impl Tree {
             "paint animation shape index exceeds shapes.records",
         );
         let n = self.records.len();
+        self.fingerprint.paint_counts =
+            paint_counts(self.shapes.records.len(), self.chrome_table.len(), n);
+        // A pass that records what the last one did keeps its rollups,
+        // which are a function of it — the common frame, where nothing
+        // moved, at a compare rather than a hash per node.
+        if self.last_inputs.hold_for(self) {
+            #[cfg(debug_assertions)]
+            self.assert_rollups_hold();
+            return;
+        }
+        self.roll_up();
+        self.last_inputs.note_rolled();
+    }
+
+    /// Size the rollup columns for this pass and fill them.
+    fn roll_up(&mut self) {
+        let n = self.records.len();
         self.rollups.reset_for(n);
         // `clear` keeps the length, so the grow only does work the first
         // time the tree reaches this size. Sized here rather than at the
         // insert site so `compute_rollups`' loop carries no sizing call.
         self.container_text.clear();
         self.container_text.grow(n);
-        self.fingerprint.paint_counts =
-            paint_counts(self.shapes.records.len(), self.chrome_table.len(), n);
         self.compute_rollups();
+    }
+
+    /// Recompute the rollups a pass kept and assert they are the ones it
+    /// kept — every debug frame checks the compare in `post_record`.
+    #[cfg(debug_assertions)]
+    fn assert_rollups_hold(&mut self) {
+        let mut check = mem::take(&mut self.rollup_check);
+        mem::swap(&mut check.rollups, &mut self.rollups);
+        mem::swap(&mut check.container_text, &mut self.container_text);
+        let cascade_static = self.fingerprint.cascade_static;
+        self.roll_up();
+        assert_eq!(self.rollups.node, check.rollups.node, "kept node hashes");
+        assert_eq!(
+            self.rollups.subtree, check.rollups.subtree,
+            "kept subtree hashes"
+        );
+        assert_eq!(
+            self.rollups.layout_subtree, check.rollups.layout_subtree,
+            "kept layout subtree hashes",
+        );
+        // By the bits set: `clear` keeps a bit set's length, so two sets
+        // with the same owners can differ in it.
+        assert!(
+            self.container_text.ones().eq(check.container_text.ones()),
+            "kept container text",
+        );
+        assert_eq!(
+            self.fingerprint.cascade_static, cascade_static,
+            "kept cascade static"
+        );
+        self.rollup_check = check;
     }
 
     /// Fused reverse-pre-order pass: computes the hash columns and
