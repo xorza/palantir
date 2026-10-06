@@ -34,8 +34,8 @@ pub(crate) struct PipelineRecipe<'a> {
 impl PipelineRecipe<'_> {
     /// Build the render pipeline this recipe describes. Sole source of
     /// truth for the descriptor fields each pipeline doesn't vary —
-    /// sample count, multiview mask. Every quad / mesh /
-    /// image / curve / text pipeline goes through here.
+    /// sample count, multiview mask. Every quad / mesh / image / curve /
+    /// text pipeline goes through here.
     pub(super) fn build(self, device: &wgpu::Device) -> wgpu::RenderPipeline {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(self.label),

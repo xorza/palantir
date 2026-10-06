@@ -785,7 +785,7 @@ fn grid_sweep(ui: &mut palantir::Ui) {
                 offset: Vec2::new(6.0, 10.0),
                 spread: 2.0,
             };
-            let row = (cases.len().div_ceil(GRID_COLUMNS)) as f32 * GRID_CELL;
+            let row = cases.len().div_ceil(GRID_COLUMNS) as f32 * GRID_CELL;
             for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
                 Panel::canvas()
                     .id_salt(("clip", rounded))

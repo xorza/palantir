@@ -361,7 +361,8 @@ impl QuadPipeline {
     }
 
     /// [`Self::draw`] for shadows bound by [`Self::bind_shadows`]: each
-    /// instance is its grid's nine cells, two triangles each (`vs_shadow`).
+    /// instance is the eight cells of its grid around the hole, two
+    /// triangles each (`vs_shadow`).
     pub(crate) fn draw_shadows<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
         if instances.len == 0 {
             return;
@@ -370,8 +371,9 @@ impl QuadPipeline {
     }
 }
 
-/// Vertices per shadow instance: a 3×3 grid of cells, two triangles each.
-const SHADOW_GRID_VERTICES: u32 = 9 * 6;
+/// Vertices per shadow instance: a 3×3 grid of cells less the centre one,
+/// two triangles each.
+const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
     0 => Float32x2,
