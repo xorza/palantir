@@ -321,6 +321,61 @@ fn a_close_takes_effect_at_the_next_resolution() {
     }
 }
 
+/// A steady frame keeps the routing it resolved the frame before: the same
+/// focus, no withdrawal, and a cascade that kept its structure. A focus
+/// move, a new scope in the tree and a withdrawal each resolve again, once,
+/// and a frame that only moves rects does not.
+#[test]
+fn scopes_resolve_again_only_when_their_inputs_change() {
+    let scene = |ui: &mut Ui, extra: bool, width: f32, closes: bool| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .input_scope(KeyFilter::ALL)
+            .size((Sizing::fixed(width), Sizing::fixed(60.0)))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("editor"))
+                    .size(10.0)
+                    .show(ui);
+                Block::new()
+                    .id(WidgetId::from_hash("other"))
+                    .size(10.0)
+                    .show(ui);
+                if extra {
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("extra"))
+                        .input_scope(KeyFilter::ALL)
+                        .size(10.0)
+                        .show(ui, |_| {});
+                }
+                if closes {
+                    ui.release_input_scope(WidgetId::from_hash("root"));
+                }
+            });
+    };
+    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    for _ in 0..3 {
+        h.frame(|ui| scene(ui, false, 60.0, false));
+    }
+    let rebuilds = |h: &UiHarness| h.ui.input().scopes.rebuilds();
+    let mut last = rebuilds(&h);
+    let mut step = |h: &mut UiHarness, label: &str, want: u32, extra: bool, closes: bool| {
+        h.frame(|ui| scene(ui, extra, 80.0, closes));
+        let now = rebuilds(h);
+        assert_eq!(now - last, want, "{label}");
+        last = now;
+    };
+    step(&mut h, "rects only", 0, false, false);
+    step(&mut h, "steady", 0, false, false);
+    h.set_focus(WidgetId::from_hash("editor"));
+    step(&mut h, "focus moved", 1, false, false);
+    step(&mut h, "steady after the move", 0, false, false);
+    step(&mut h, "a scope recorded, read next frame", 0, true, false);
+    step(&mut h, "the cascade holds the new scope", 1, true, false);
+    step(&mut h, "a withdrawal, read next frame", 0, true, true);
+    step(&mut h, "the withdrawal resolved", 1, true, false);
+}
+
 /// Feed an Escape that the keyboard wake-gate will actually deliver,
 /// focused on the fixture's `editor` block when it records one.
 /// The gate drops an unsubscribed chord when nothing is focused, and

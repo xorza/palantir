@@ -49,6 +49,7 @@ use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
+use crate::scene::seen_ids::IdEntry;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::shape::paint::chrome_row::ChromeRow;
@@ -109,7 +110,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 7024;
+const UI_SIZE: usize = 7240;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -162,6 +163,7 @@ const PINS: &[Pin] = &[
     // recorder growing.
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 64, 8),
+    pin::<IdEntry>("scene::IdEntry", 64, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
     // Sense (5 bits), disabled (1), clip (2), focusable (1) and the key
     // scope (8): 17 bits, one past a `u16`, so 15 spare in the `u32`.
